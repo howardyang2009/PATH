@@ -13,7 +13,8 @@ Glossary for the PATH workflow management system. Terms here are canonical; code
 
 ## Composition
 
-- **Logicer** — an engine-evaluated control node that routes and coordinates step execution: collect, wait-one, do-not-wait, branch, while-do. A logicer has no worker, no task, and no run — the engine of the enclosing workflow evaluates it. (Spelled *logicer*.)
+- **Workflow body** — an ordered sequence of **nodes**; a node is a step, a parallel block, a branch block, a while-do block, or a checkpoint. Blocks nest arbitrarily (the *nested block grammar*); checkpoints may appear anywhere in a sequence.
+- **Logicer** — an engine-evaluated control construct that routes and coordinates step execution, realized in the block grammar: collect, wait-one, and do-not-wait are **join modes of the parallel block**; branch and while-do are **block types**. A logicer has no worker, no task, and no run — the engine of the enclosing workflow evaluates it. (Spelled *logicer*.) MVP subset: collect join, branch, while-do with a mandatory max-iterations bound (exceeded → run fails); wait-one and do-not-wait deferred.
 - **Checkpoint** — an engine-evaluated assertion node: a fail-fast gate that mechanically tests data or context (format, presence, ranges, exit codes). True → the workflow continues; false → the run stops as failed. A checkpoint has no worker and never exercises judgment — any check requiring judgment (human or LLM) is expressed as a normal step that outputs a verdict, followed by a checkpoint that tests it (the *judge-step pattern*). `assert` vs `if`: branch routes, checkpoint asserts.
 
 ## Invariants
@@ -27,7 +28,7 @@ Glossary for the PATH workflow management system. Terms here are canonical; code
 ## Relationships
 
 ```
-Workflow ──composed of──> Steps + Logicers + Checkpoints
+Workflow ──body──> sequence of Nodes (Step | Parallel | Branch | While-do | Checkpoint)
 Step ("what") + Worker ("who") = Task
 Task ──executing instance──> Run  (on a Processor = live Worker instance)
 Workflow-as-step: a workflow-step's run spawns child runs → run tree
