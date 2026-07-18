@@ -146,13 +146,23 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
 - **Parallel (collect)**: `{ "<branch-id>": <output object of that branch's last node> }` —
   deterministic regardless of completion order, dot-path addressable.
 
+**Default-input chain** — the mirror rule to the outputs above. When a step omits `input`
+(format §6.1), the chain threads *through* blocks: the first node of any block slot — a branch
+arm, a parallel branch, a while-do body — defaults to the **block's predecessor's output object**
+(parallel siblings all start from that same object, consistent with the context-snapshot rule).
+A while-do body additionally chains **across iterations**: iteration 1's first node reads the
+block's predecessor's output; iteration N's first node reads iteration N−1's last node's output.
+Blocks are thus transparent to one uniform chain, on both their input and output sides.
+
 ### 5.5 Processors & the fan-out cap
 
 - Every `prompt` step-run spawns a **fresh SDK session (processor)**, torn down when the step
   completes. No session reuse in MVP: a step reads exactly what its `input` map builds — no hidden
   conversational state. Reuse/pooling is a later opt-in optimization.
 - A `binary` step-run is one child process (spawned with the step's `cwd`, stdin/stdout convention
-  per format §4.2; non-zero exit fails the step; stderr goes to the run log).
+  per format §4.2; non-zero exit fails the step). stderr is not data: it is captured to
+  `stderr.txt` in the step-run's directory (§6), secret-scrubbed like every persisted artifact
+  (§8.3), and never passed downstream.
 - One **engine-wide semaphore** caps concurrent LLM processors: **default 4**, overridable in
   engine config (§7 memory budget). It spans the entire run tree, including nested workflows and
   nested parallels; a branch whose next step can't get a slot waits. Binary steps are uncapped.
@@ -171,7 +181,10 @@ Retry and resume are out of scope (§1).
 Run rows exist for **step runs only** (domain invariant 1 — control nodes have no runs). Row
 content: run id, parent run id, node id, worker binding, status
 (`pending | running | succeeded | failed | cancelled`), timestamps, input/output object refs
-(§6), and for LLM runs `usage` (real token counts) + `estimated_cost_usd` (§7). Control-node
+(§6), and for LLM runs `usage` (real token counts) + `estimated_cost_usd` (§7). Usage and cost
+are recorded **leaf-only** — on the prompt-step runs where tokens were actually spent; no row
+stores derived totals. Subtree/whole-run figures are a read-time SUM over descendants (the CLI
+may display them), so ground truth exists exactly once and nothing can drift. Control-node
 activity is recorded as typed log events (§8), attributed to the enclosing workflow-step's run.
 
 ## 6. Persistence
@@ -181,14 +194,19 @@ directory** beside the workflow files (like `.git`), gitignored by default.
 
 - **`.path/path.db`** — SQLite via **better-sqlite3** (synchronous API fits the single-process
   engine). Holds structured records only: the **runs table** (§5.7) and the **log table** (§8).
-- **`.path/runs/<run-id>/`** — one directory per **root** run. Every step input/output object and
-  the context snapshot are **JSON files** here, referenced by relative path from run rows. No
-  size-threshold inlining: one rule, every object cat-able on disk. Also holds `run.log` (§8).
-- **Context write-through:** each context mutation atomically rewrites the run's `context.json`,
-  so on-disk state always matches the live blackboard — mid-run inspection works, crashes leave a
-  truthful snapshot, and the door stays open for future resume semantics.
-- **Retention: keep everything.** No automatic expiry. `path runs rm`/`prune` delete db rows and
-  the run directory together, so the two stores never drift.
+- **`.path/runs/<root-run-id>/`** — one directory tree per **root** run, mirroring the run tree:
+  inside it, one subdirectory per run in the tree (keyed by run id) holding that run's blobs —
+  `input.json`, `output.json`, for workflow runs `context.json`, and for binary runs
+  `stderr.txt`. `run.log` (§8) sits at the
+  tree root. Every blob is a **JSON file** referenced by relative path from its run row. No
+  size-threshold inlining: one rule, every object cat-able on disk.
+- **Context write-through:** every workflow-run has its own isolated context, hence its own
+  `context.json` in its run subdirectory; each context mutation atomically rewrites it, so on-disk
+  state always matches the live blackboard — mid-run inspection works, crashes leave a truthful
+  snapshot, and the door stays open for future resume semantics.
+- **Retention: keep everything.** No automatic expiry. `path runs rm <root-run-id>`/`prune`
+  operate on root runs, deleting the run tree's db rows and its directory tree together, so the
+  two stores never drift and nothing can half-delete.
 - **Schema evolution:** stamp the db schema version via `PRAGMA user_version`; on mismatch the
   engine **refuses to open** with a clear message to delete/recreate `path.db` (blob files
   unaffected). No migration framework pre-1.0. This mirrors the format's exact-version rule:
@@ -236,7 +254,7 @@ events — workflow-as-step means they are just the workflow step's `step-starte
 | Event | Payload |
 |---|---|
 | `step-started` | `step_type`, `worker` |
-| `step-finished` | `status` (`succeeded`/`failed`/`cancelled`), `error` message on failure |
+| `step-finished` | `status` (`succeeded`/`failed`/`cancelled`), `error` message on failure (binary steps: exit code + short stderr tail; full stderr is a blob, §6) |
 | `branch-taken` | `arm` (index or `"else"`), winning arm's `trace` |
 | `branch-no-match` | all arms' `trace`s |
 | `checkpoint-passed` / `checkpoint-failed` | `trace` |

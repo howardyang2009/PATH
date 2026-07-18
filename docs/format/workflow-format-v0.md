@@ -90,8 +90,9 @@ directory of the workflow file), all interpolable. I/O convention:
 - The input object is written to the process's **stdin**: raw bytes if it is a string, otherwise
   its JSON serialization.
 - The output object is the captured **stdout** (a string, unless `parse: "json"`).
-- A **non-zero exit code fails the step** (and thus the run). stderr is not data; it goes to the
-  run log.
+- A **non-zero exit code fails the step** (and thus the run). stderr is not data; it is captured
+  for audit (a per-step-run `stderr.txt`, see the MVP spec's persistence section), never passed
+  downstream.
 
 **`workflow`** — `ref` (string, *not* interpolable) is a relative path to another workflow file,
 resolved against the directory of the referencing file. The child run starts with a fresh context
@@ -145,7 +146,9 @@ assertions only (judge-step pattern for anything requiring judgment).
 `input` is **any JSON value**, interpolated: a map is the common case, but a bare `"${context.x}"`
 (whole-string rule) makes that value the entire input object, and literals are allowed. When
 `input` is absent, the step's input object is the **previous node's output object** (for the first
-body node: the workflow's own input object). Output shapes of control nodes are #11's.
+body node: the workflow's own input object). Inside block slots (branch arms, parallel branches,
+loop bodies) the default-input chain threads through the block — the chain rule, like the output
+shapes of control nodes, is owned by the engine execution semantics (MVP spec §5.4).
 
 ### 6.2 Publishing to context
 
@@ -216,6 +219,8 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
 - unknown `format` versions; any schema violation (strict zod, unknown fields rejected)
 - duplicate or pattern-violating ids/names; empty bodies
 - reference cycles between workflow files; unresolvable `ref` paths
+- duplicate `publish` keys across sibling branches of one `parallel` block (per the execution
+  semantics: publish keys are static, so the race is detectable — and rejected — at load)
 - malformed `${}` syntax in interpolable positions, and `${}` roots other than the allowed ones
 
 Authoring errors surface at load, never mid-run. (Path *resolvability* against runtime data is
