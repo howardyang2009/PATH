@@ -42,3 +42,10 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 - **Context** — key-value data written *from inside* the run: produced by steps at runtime and readable by the other steps of the same workflow (a computed temp dir, a branch name, accumulated results). Scoped to one workflow-run and isolated: a nested workflow-step starts with a fresh, empty context and exchanges data with its parent only through its input and output objects.
 
 Rule of thumb: **Config flows in from outside; Context is written from inside.**
+
+## Audit
+
+- **Log event** — one typed, append-only observation of run activity, emitted by the engine. The event set covers step lifecycle (`step-started`, `step-finished`) and control-node activity (`branch-taken`, `branch-no-match`, `checkpoint-passed`/`-failed`, `iteration-started`, `loop-exited`, `join-applied`, `run-cancelled`). Shared envelope: `seq` (monotonic per root run — the ordering truth), `ts`, `type` (flat discriminated union), `run_id`, `node_id`. The log stream is the complete chronological narrative of a run tree; run rows remain the authoritative queryable step record.
+- **Trace** — the per-predicate evaluation record carried by condition-bearing log events: the condition tree annotated with each leaf's dot-path, outcome (`true` / `false` / `error` + message), and the actual value read (post-masking).
+- **Log backend** — a dumb sink implementing `open`/`write`/`close`, instantiated per root run. The engine serializes writes and delivers fully-formed, already-masked events; fan-out to multiple backends is engine-level configuration (MVP default: SQLite log table + per-root-run NDJSON file, both on). A backend write failure fails the run.
+- **Secret** — a config value wrapped as `{"$secret": ...}`; secrecy rides the value through shallow-merge inheritance. The engine scrubs every secret value from all persisted artifacts (log events, input/output objects, `context.json`, error strings, stderr) at the persistence boundary, replacing it with `[secret:<key>]`. Workers receive real values — masking is an audit-surface concern, not a dataflow restriction.
