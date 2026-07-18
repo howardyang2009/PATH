@@ -3,8 +3,9 @@
 Resolves wayfinder ticket #9. This is the concrete LLM/agent pipeline the PATH MVP must run
 end-to-end on macOS — the acceptance case every spec decision is tested against.
 
-**The JSON is a sketch.** The format is not final; ticket #10 (Workflow file format v0) owns the
-real schema. What *is* binding here is the pipeline itself and the constructs it exercises.
+The JSON files are written in the real **format v0** defined by ticket #10 — see
+[docs/format/workflow-format-v0.md](../format/workflow-format-v0.md). Binding here are both the
+pipeline itself and, now, the format it is expressed in.
 
 ## The pipeline
 
@@ -44,25 +45,16 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 Deliberately absent (deferred by earlier decisions): wait-one / do-not-wait joins, API/MCP/skill
 step types, config paths in conditions, templates/inheritance mechanics.
 
-## Questions this sketch raises for #10 / #11
+## Questions this pipeline raised
 
-Writing the pipeline down forced several format/semantics needs that the open tickets must settle:
+The format needs surfaced by the original sketch were settled by #10 (interpolation syntax and
+scope, uniform `input` maps, `publish` maps, `parse: "json"`, binary stdin/stdout convention —
+see the format doc). Still open, owned by #11 (engine execution semantics):
 
-- **Value interpolation** — the sketch leans on `${config.x}` / `${context.x}` placeholders in
-  payloads and input mappings. #10 must define the real substitution syntax and where it is allowed
-  (notably: `max_iterations` referencing config).
-- **Output→context mapping** — steps here use `output.to_context` (single key or key list) to
-  publish onto the blackboard. #10 owns the shape; #11 owns when the write happens.
-- **Prompt-step context injection** — `context_refs` names which context keys are rendered into the
-  LLM input. #10 must decide whether steps declare reads explicitly (as sketched) or see the whole
-  context.
-- **Branch-arm matching** — already parked in #11; the sketch assumes ordered arms,
-  first-match-wins, no-match → run fails.
+- **Branch-arm matching** — the pipeline assumes ordered arms, first-match-wins,
+  no-match → run fails.
 - **Collect-join output shape** — what the merged output object of a parallel block looks like as
-  the next step's input (#11).
-- **While-do condition timing** — the sketch assumes check-before-each-iteration against current
-  context (a do-while would never run `revise-cycle` when the first draft passes — this pipeline
-  needs while-do as sketched) (#11).
-- **Binary-step I/O conventions** — how a binary step receives its input object (stdin? env? file?)
-  and what its output object is (stdout? exit code always checked?). The sketch hand-waves with
-  `stdin_from` (#10/#11).
+  the next step's input.
+- **While-do condition timing** — the pipeline needs check-before-each-iteration against current
+  context (a do-while would never run `revise-cycle` when the first draft passes).
+- **When `publish` writes land** in context relative to parallel siblings.

@@ -1,43 +1,41 @@
 {
-  "$comment": "DRAFT SKETCH — nested workflow referenced by release-notes.workflow.json (workflow-as-step). Starts with a fresh, empty context; exchanges data with the parent only through its input and output objects.",
-  "format": "path/workflow-v0-draft",
+  "format": "path/workflow@0",
   "name": "revise-cycle",
 
-  "$comment_worker": "No worker declared: inherits the parent step's worker binding (LLM / agent-sdk).",
-
-  "input": { "$comment": "{ draft, feedback, raw_changes } — copied in from the parent run." },
-  "output": { "$comment": "{ draft, verdict } — copied back to the parent's context via the parent step's output mapping." },
+  "worker": {
+    "type": "llm",
+    "model": "claude-sonnet-5"
+  },
 
   "body": [
     {
-      "node": "step",
+      "type": "prompt",
       "id": "revise",
-      "type": "prompt",
-      "payload": {
-        "prompt": "Revise the release-notes draft in your input according to the judge feedback, staying faithful to the raw git history. Output the full revised markdown."
+      "input": {
+        "draft": "${context.draft}",
+        "feedback": "${context.feedback}",
+        "raw_changes": "${context.raw_changes}"
       },
-      "output": { "to_context": "draft" }
+      "prompt": "Revise the release-notes draft in your input according to the judge feedback, staying faithful to the raw git history. Output the full revised markdown.",
+      "publish": { "draft": "${output}" }
     },
     {
-      "node": "step",
+      "type": "prompt",
       "id": "judge",
-      "type": "prompt",
-      "payload": {
-        "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }.",
-        "context_refs": ["context.draft"]
-      },
-      "output": { "to_context": "verdict" }
+      "parse": "json",
+      "input": { "draft": "${context.draft}" },
+      "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }.",
+      "publish": { "verdict": "${output}" }
     },
     {
-      "node": "checkpoint",
+      "type": "checkpoint",
       "id": "verdict-wellformed",
-      "condition": {
-        "type": "all",
-        "of": [
-          { "type": "valid-json", "path": "context.verdict" },
-          { "type": "exists", "path": "context.verdict.pass" }
-        ]
-      }
+      "condition": { "type": "exists", "path": "context.verdict.pass" }
     }
-  ]
+  ],
+
+  "output": {
+    "draft": "${context.draft}",
+    "verdict": "${context.verdict}"
+  }
 }
