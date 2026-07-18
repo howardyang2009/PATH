@@ -1,0 +1,184 @@
+{
+  "$comment": "DRAFT SKETCH — rough JSON, format NOT final (format v0 is ticket #10). This is the MVP acceptance workflow: the pipeline the engine must run end-to-end. Vocabulary follows CONTEXT.md.",
+  "format": "path/workflow-v0-draft",
+  "name": "release-notes",
+
+  "$comment_worker": "Workflow-level default worker: prompt steps below carry no worker field and inherit this. Binary steps override to the local engine.",
+  "worker": {
+    "type": "llm",
+    "runner": "agent-sdk",
+    "model": "claude-sonnet-5"
+  },
+
+  "$comment_config": "Config flows in from outside (author/operator), inherited downward. No step ever writes it.",
+  "config": {
+    "repo_path": ".",
+    "commit_range": "HEAD~15..HEAD",
+    "max_revisions": 3,
+    "output_file": "RELEASE_NOTES.md"
+  },
+
+  "input": { "$comment": "Top-level input object is empty; everything arrives via config." },
+  "output": { "$comment": "Output object: { file: <path of written release notes> }." },
+
+  "body": [
+    {
+      "node": "step",
+      "id": "gather-changes",
+      "type": "binary",
+      "worker": { "type": "engine" },
+      "payload": {
+        "command": "git",
+        "args": ["log", "--stat", "--no-color", "${config.commit_range}"],
+        "cwd": "${config.repo_path}"
+      },
+      "output": { "to_context": "raw_changes" }
+    },
+
+    {
+      "node": "checkpoint",
+      "id": "have-changes",
+      "$comment": "Mechanical assertion: fail fast if the range produced nothing.",
+      "condition": { "type": "matches", "path": "context.raw_changes", "pattern": "\\S" }
+    },
+
+    {
+      "node": "parallel",
+      "id": "summarize",
+      "join": "collect",
+      "branches": [
+        {
+          "node": "step",
+          "id": "summarize-features",
+          "type": "prompt",
+          "payload": {
+            "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
+            "context_refs": ["context.raw_changes"]
+          },
+          "output": { "to_context": "features_summary" }
+        },
+        {
+          "node": "step",
+          "id": "summarize-fixes",
+          "type": "prompt",
+          "payload": {
+            "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
+            "context_refs": ["context.raw_changes"]
+          },
+          "output": { "to_context": "fixes_summary" }
+        }
+      ]
+    },
+
+    {
+      "node": "step",
+      "id": "draft-notes",
+      "type": "prompt",
+      "payload": {
+        "prompt": "Write release notes in markdown from the feature and fix summaries in your input (the collected outputs of the parallel block). Audience: users of the project.",
+        "context_refs": ["context.features_summary", "context.fixes_summary"]
+      },
+      "output": { "to_context": "draft" }
+    },
+
+    {
+      "node": "step",
+      "id": "judge-draft",
+      "$comment": "Judge-step pattern: judgment happens in a normal LLM step that outputs a verdict; the checkpoint after it only mechanically tests that verdict.",
+      "type": "prompt",
+      "payload": {
+        "prompt": "Judge the release-notes draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }. pass=true only if accurate, complete, and readable.",
+        "context_refs": ["context.draft", "context.raw_changes"]
+      },
+      "output": { "to_context": "verdict" }
+    },
+
+    {
+      "node": "checkpoint",
+      "id": "verdict-wellformed",
+      "condition": {
+        "type": "all",
+        "of": [
+          { "type": "valid-json", "path": "context.verdict" },
+          { "type": "exists", "path": "context.verdict.pass" },
+          { "type": "one-of", "path": "context.verdict.suggested_format", "values": ["short", "long"] }
+        ]
+      }
+    },
+
+    {
+      "node": "while-do",
+      "id": "revise-loop",
+      "$comment": "Bounded loop per the MVP logicer decision: exceeding max_iterations fails the run, so anything after this loop can assume the draft passed.",
+      "condition": { "type": "equals", "path": "context.verdict.pass", "value": false },
+      "max_iterations": "${config.max_revisions}",
+      "body": [
+        {
+          "node": "step",
+          "id": "revise",
+          "type": "workflow",
+          "$comment": "Nested workflow by relative path (workflow-as-step). Fresh, isolated context inside; data crosses only via input/output objects.",
+          "payload": { "ref": "./revise-cycle.workflow.json" },
+          "input": {
+            "draft": "${context.draft}",
+            "feedback": "${context.verdict.feedback}",
+            "raw_changes": "${context.raw_changes}"
+          },
+          "output": { "to_context": ["draft", "verdict"] }
+        }
+      ]
+    },
+
+    {
+      "node": "branch",
+      "id": "pick-format",
+      "$comment": "Branch-arm matching semantics are still open in ticket #11; sketch assumes first-matching-arm-wins.",
+      "arms": [
+        {
+          "when": { "type": "equals", "path": "context.verdict.suggested_format", "value": "short" },
+          "body": [
+            {
+              "node": "step",
+              "id": "format-short",
+              "type": "prompt",
+              "payload": {
+                "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
+                "context_refs": ["context.draft"]
+              },
+              "output": { "to_context": "final_notes" }
+            }
+          ]
+        },
+        {
+          "when": { "type": "equals", "path": "context.verdict.suggested_format", "value": "long" },
+          "body": [
+            {
+              "node": "step",
+              "id": "format-long",
+              "type": "prompt",
+              "payload": {
+                "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
+                "context_refs": ["context.draft"]
+              },
+              "output": { "to_context": "final_notes" }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "node": "step",
+      "id": "write-file",
+      "type": "binary",
+      "worker": { "type": "engine" },
+      "payload": {
+        "command": "sh",
+        "args": ["-c", "printf '%s\\n' \"$PATH_INPUT\" > \"${config.output_file}\""],
+        "stdin_from": "context.final_notes",
+        "cwd": "${config.repo_path}"
+      },
+      "output": { "$comment": "Workflow output object: { file: config.output_file }." }
+    }
+  ]
+}

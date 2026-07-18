@@ -1,0 +1,43 @@
+{
+  "$comment": "DRAFT SKETCH — nested workflow referenced by release-notes.workflow.json (workflow-as-step). Starts with a fresh, empty context; exchanges data with the parent only through its input and output objects.",
+  "format": "path/workflow-v0-draft",
+  "name": "revise-cycle",
+
+  "$comment_worker": "No worker declared: inherits the parent step's worker binding (LLM / agent-sdk).",
+
+  "input": { "$comment": "{ draft, feedback, raw_changes } — copied in from the parent run." },
+  "output": { "$comment": "{ draft, verdict } — copied back to the parent's context via the parent step's output mapping." },
+
+  "body": [
+    {
+      "node": "step",
+      "id": "revise",
+      "type": "prompt",
+      "payload": {
+        "prompt": "Revise the release-notes draft in your input according to the judge feedback, staying faithful to the raw git history. Output the full revised markdown."
+      },
+      "output": { "to_context": "draft" }
+    },
+    {
+      "node": "step",
+      "id": "judge",
+      "type": "prompt",
+      "payload": {
+        "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }.",
+        "context_refs": ["context.draft"]
+      },
+      "output": { "to_context": "verdict" }
+    },
+    {
+      "node": "checkpoint",
+      "id": "verdict-wellformed",
+      "condition": {
+        "type": "all",
+        "of": [
+          { "type": "valid-json", "path": "context.verdict" },
+          { "type": "exists", "path": "context.verdict.pass" }
+        ]
+      }
+    }
+  ]
+}
