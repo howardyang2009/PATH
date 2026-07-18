@@ -130,6 +130,124 @@ describe("WorkflowFileSchema — file-unique ids", () => {
   });
 });
 
+describe("WorkflowFileSchema — duplicate publish keys across parallel siblings", () => {
+  it("rejects the same publish key written by two sibling branches", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "p",
+          join: "collect",
+          branches: [
+            {
+              id: "a",
+              body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }],
+            },
+            {
+              id: "b",
+              body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("accepts distinct publish keys across sibling branches", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "p",
+          join: "collect",
+          branches: [
+            {
+              id: "a",
+              body: [{ type: "binary", id: "x", command: "echo", publish: { a_result: "${output}" } }],
+            },
+            {
+              id: "b",
+              body: [{ type: "binary", id: "y", command: "echo", publish: { b_result: "${output}" } }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("catches the collision even when one branch's publish is nested inside a while-do", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "p",
+          join: "collect",
+          branches: [
+            {
+              id: "a",
+              body: [
+                {
+                  type: "while-do",
+                  id: "loop",
+                  condition: { type: "exists", path: "context.x" },
+                  max_iterations: 2,
+                  body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }],
+                },
+              ],
+            },
+            {
+              id: "b",
+              body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("does not flag the same publish key reused across sequential (non-parallel) steps", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        { type: "binary", id: "x", command: "echo", publish: { result: "${output}" } },
+        { type: "binary", id: "y", command: "echo", publish: { result: "${output}" } },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("does not flag the same publish key used in different parallel blocks", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "p1",
+          join: "collect",
+          branches: [
+            { id: "a", body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }] },
+          ],
+        },
+        {
+          type: "parallel",
+          id: "p2",
+          join: "collect",
+          branches: [
+            { id: "b", body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("safeParseWorkflowFile — actionable errors", () => {
   it("reports a readable error for an unknown field", () => {
     const result = safeParseWorkflowFile({ ...minimal, bogus: true });

@@ -61,6 +61,90 @@ function collectIds(nodes: WorkflowNode[], basePath: (string | number)[]): IdOcc
   return found;
 }
 
+// Publish keys are static strings, so a race between sibling parallel branches writing the same
+// context key is detectable — and rejected — at load time (workflow-format-v0.md §10). Recurses
+// through nested control blocks (a branch's publish may sit inside a nested while-do/branch/
+// parallel) but not into a `workflow` step's ref'd file: that file has its own isolated context.
+function collectPublishKeys(nodes: WorkflowNode[]): string[] {
+  const keys: string[] = [];
+
+  for (const node of nodes) {
+    if ((node.type === "prompt" || node.type === "binary" || node.type === "workflow") && node.publish) {
+      keys.push(...Object.keys(node.publish));
+    }
+
+    switch (node.type) {
+      case "parallel":
+        for (const branch of node.branches) {
+          keys.push(...collectPublishKeys(branch.body));
+        }
+        break;
+      case "branch":
+        for (const arm of node.arms) {
+          keys.push(...collectPublishKeys(arm.body));
+        }
+        if (node.else) {
+          keys.push(...collectPublishKeys(node.else));
+        }
+        break;
+      case "while-do":
+        keys.push(...collectPublishKeys(node.body));
+        break;
+      default:
+        break;
+    }
+  }
+
+  return keys;
+}
+
+interface PublishKeyCollision {
+  key: string;
+  path: (string | number)[];
+}
+
+function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | number)[]): PublishKeyCollision[] {
+  const collisions: PublishKeyCollision[] = [];
+
+  nodes.forEach((node, index) => {
+    const nodePath = [...basePath, index];
+
+    switch (node.type) {
+      case "parallel": {
+        const firstSeenInBranch = new Map<string, number>();
+        node.branches.forEach((branch, branchIndex) => {
+          for (const key of new Set(collectPublishKeys(branch.body))) {
+            if (firstSeenInBranch.has(key)) {
+              collisions.push({ key, path: [...nodePath, "branches", branchIndex] });
+            } else {
+              firstSeenInBranch.set(key, branchIndex);
+            }
+          }
+          collisions.push(
+            ...findDuplicatePublishKeys(branch.body, [...nodePath, "branches", branchIndex, "body"]),
+          );
+        });
+        break;
+      }
+      case "branch":
+        node.arms.forEach((arm, armIndex) => {
+          collisions.push(...findDuplicatePublishKeys(arm.body, [...nodePath, "arms", armIndex, "body"]));
+        });
+        if (node.else) {
+          collisions.push(...findDuplicatePublishKeys(node.else, [...nodePath, "else"]));
+        }
+        break;
+      case "while-do":
+        collisions.push(...findDuplicatePublishKeys(node.body, [...nodePath, "body"]));
+        break;
+      default:
+        break;
+    }
+  });
+
+  return collisions;
+}
+
 export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchema.superRefine((file, ctx) => {
   const occurrences = collectIds(file.body, ["body"]);
   const byId = new Map<string, IdOccurrence[]>();
@@ -79,6 +163,14 @@ export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchem
         message: `duplicate id "${id}": ids must be unique across the whole file`,
       });
     }
+  }
+
+  for (const collision of findDuplicatePublishKeys(file.body, ["body"])) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: collision.path,
+      message: `duplicate publish key "${collision.key}": sibling parallel branches must not publish the same context key`,
+    });
   }
 });
 

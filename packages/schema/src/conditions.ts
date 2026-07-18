@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { checkDotPath } from "./dot-path.js";
-import type { Condition } from "./condition-type.js";
+import type { AllCondition, AnyCondition, Condition, NotCondition } from "./condition-type.js";
 
 const CONDITION_ROOTS = ["context", "output"] as const;
 
@@ -88,29 +88,26 @@ export const ConditionSchema: z.ZodType<Condition> = z.lazy(() =>
   ]),
 );
 
-const AllConditionSchema: z.ZodType<{ type: "all"; of: Condition[] }> = z.lazy(() =>
-  z
-    .object({
-      type: z.literal("all"),
-      of: z.array(ConditionSchema).min(1),
-    })
-    .strict(),
-);
+// ConditionSchema above is the sole recursion point (wrapped in z.lazy): by the time its lazy
+// callback actually runs (at parse time), module load has already finished and these consts —
+// declared after it but referencing it directly — are initialized. No further laziness needed.
+const AllConditionSchema: z.ZodType<AllCondition> = z
+  .object({
+    type: z.literal("all"),
+    of: z.array(ConditionSchema).min(1),
+  })
+  .strict();
 
-const AnyConditionSchema: z.ZodType<{ type: "any"; of: Condition[] }> = z.lazy(() =>
-  z
-    .object({
-      type: z.literal("any"),
-      of: z.array(ConditionSchema).min(1),
-    })
-    .strict(),
-);
+const AnyConditionSchema: z.ZodType<AnyCondition> = z
+  .object({
+    type: z.literal("any"),
+    of: z.array(ConditionSchema).min(1),
+  })
+  .strict();
 
-const NotConditionSchema: z.ZodType<{ type: "not"; of: Condition }> = z.lazy(() =>
-  z
-    .object({
-      type: z.literal("not"),
-      of: ConditionSchema,
-    })
-    .strict(),
-);
+const NotConditionSchema: z.ZodType<NotCondition> = z
+  .object({
+    type: z.literal("not"),
+    of: ConditionSchema,
+  })
+  .strict();
