@@ -193,7 +193,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
 
     let output: JsonValue;
     if (node.type === "workflow") {
-      const childResult = await runWorkflowStep(node, stepInput, {
+      const childResult = await runWorkflowNode(node, stepInput, {
         fileDir,
         stepConfig,
         parentRunId: runId,
@@ -205,7 +205,6 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       output = childResult.output;
     } else {
       const binaryResult = await runBinaryNode(node, stepInput, {
-        fileConfig,
         stepConfig,
         fileDir,
         fileWorker: file.worker,
@@ -257,7 +256,7 @@ type StepOutcome = { success: true; output: JsonValue } | { success: false; erro
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
 // isolated — CONTEXT invariant); the parent's effective config crosses the boundary but its
 // worker default does not; the child's `output` map is this step's output object (format §6.4).
-async function runWorkflowStep(
+async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
   ctx: {
@@ -307,7 +306,6 @@ async function runBinaryNode(
   node: Extract<WorkflowFile["body"][number], { type: "binary" }>,
   stepInput: JsonValue,
   ctx: {
-    fileConfig: ConfigObject;
     stepConfig: ConfigObject;
     fileDir: string;
     fileWorker: Worker;
