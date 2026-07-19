@@ -16,7 +16,7 @@ function runCli(args: string[]) {
 describe("path run (real dev-mode process, no packaging)", () => {
   it("runs a two-binary-step workflow end to end via tsx", async () => {
     const { stdout } = await runCli(["run", join(fixtures, "two-binary-steps.workflow.json")]);
-    expect(stdout.trim()).toBe("HELLO");
+    expect(stdout.trim()).toBe(JSON.stringify({ shouted: "HELLO" }));
   });
 
   it("exits non-zero with load errors surfaced, running nothing", async () => {

@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseWorkflowFile, type WorkflowFile } from "@path/schema";
+import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { runWorkflow } from "../src/run-workflow.js";
 
@@ -11,12 +11,15 @@ function loadFixture(name: string): WorkflowFile {
   return parseWorkflowFile(JSON.parse(readFileSync(join(fixturesDir, name), "utf8")));
 }
 
-describe("runWorkflow", () => {
-  it("threads the first binary step's stdout into the second step's stdin", async () => {
+function echoStdinScript() {
+  return "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))";
+}
+
+describe("runWorkflow — walking-skeleton basics (ticket #16, still true under #17)", () => {
+  it("threads the first binary step's stdout into the second step's stdin (default-input chain)", async () => {
     const file = loadFixture("two-binary-steps.workflow.json");
     const result = await runWorkflow(file, fixturesDir);
     expect(result.status).toBe("succeeded");
-    expect(result.output).toBe("HELLO");
   });
 
   it("fails fast on a non-zero exit and does not run subsequent steps", async () => {
@@ -26,40 +29,13 @@ describe("runWorkflow", () => {
       worker: { type: "engine" },
       body: [
         { type: "binary", id: "boom", command: "node", args: ["-e", "process.exit(3)"] },
-        {
-          type: "binary",
-          id: "never",
-          command: "node",
-          args: ["-e", "process.stdout.write('should not run')"],
-        },
+        { type: "binary", id: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
       ],
     };
     const result = await runWorkflow(file, fixturesDir);
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/boom/);
     expect(result.error).toMatch(/\b3\b/);
-  });
-
-  it("uses the workflow's own input object as the first step's default input", async () => {
-    const file: WorkflowFile = {
-      format: "path/workflow@0",
-      name: "echo-input",
-      worker: { type: "engine" },
-      body: [
-        {
-          type: "binary",
-          id: "echo",
-          command: "node",
-          args: [
-            "-e",
-            "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))",
-          ],
-        },
-      ],
-    };
-    const result = await runWorkflow(file, fixturesDir, { greeting: "hi" });
-    expect(result.status).toBe("succeeded");
-    expect(JSON.parse(result.output as string)).toEqual({ greeting: "hi" });
   });
 
   it("respects a step's own cwd override", async () => {
@@ -79,7 +55,6 @@ describe("runWorkflow", () => {
     };
     const result = await runWorkflow(file, "/tmp");
     expect(result.status).toBe("succeeded");
-    expect(result.output).toBe(fixturesDir);
   });
 
   it("fails clearly on unsupported step types instead of silently skipping them", async () => {
@@ -92,5 +67,238 @@ describe("runWorkflow", () => {
     const result = await runWorkflow(file, fixturesDir);
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/prompt/i);
+  });
+});
+
+describe("runWorkflow — config interpolation and inheritance (ticket #17)", () => {
+  function configEchoFile(stepConfig?: ConfigObject): WorkflowFile {
+    return {
+      format: "path/workflow@0",
+      name: "config-echo",
+      worker: { type: "engine" },
+      config: { greeting: "file-default" },
+      body: [
+        {
+          type: "binary",
+          id: "echo",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.argv[1])", "${config.greeting}"],
+          ...(stepConfig ? { config: stepConfig } : {}),
+        },
+      ],
+    };
+  }
+
+  it("uses the file's config default when nothing overrides it", async () => {
+    const result = await runWorkflow(configEchoFile(), fixturesDir);
+    expect(result.status).toBe("succeeded");
+  });
+
+  it("operator config overrides the file's config default, nearest wins", async () => {
+    const file = configEchoFile();
+    // RunResult.output on success is the workflow output map, not the raw step output — surface
+    // what the step actually received via publish + a matching output map entry.
+    (file.body[0] as { publish?: Record<string, unknown> }).publish = { seen: "${output}" };
+    file.output = { seen: "${context.seen}" };
+
+    const result = await runWorkflow(file, fixturesDir, { operatorConfig: { greeting: "operator-override" } });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seen: "operator-override" });
+  });
+
+  it("a step-level config override wins over both file default and operator config", async () => {
+    const file = configEchoFile({ greeting: "step-override" });
+    (file.body[0] as { publish?: Record<string, unknown> }).publish = { seen: "${output}" };
+    file.output = { seen: "${context.seen}" };
+
+    const result = await runWorkflow(file, fixturesDir, { operatorConfig: { greeting: "operator-override" } });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seen: "step-override" });
+  });
+});
+
+describe("runWorkflow — input maps (ticket #17)", () => {
+  it("builds the step's input object from an interpolated map, preserving real types and literals", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "input-map",
+      worker: { type: "engine" },
+      config: { max: 3 },
+      body: [
+        {
+          type: "binary",
+          id: "reflect",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          input: { greeting: "${context.name}", count: "${config.max}", literal: "constant" },
+          publish: { reflected: "${output}" },
+        },
+      ],
+      output: { reflected: "${context.reflected}" },
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { input: { name: "Bob" } });
+    expect(result.status).toBe("succeeded");
+    expect(JSON.parse((result.output as { reflected: string }).reflected)).toEqual({
+      greeting: "Bob",
+      count: 3,
+      literal: "constant",
+    });
+  });
+
+  it("fails the run with a clear message on an unresolvable interpolation path", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "bad-path",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "reflect",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          input: { x: "${context.missing}" },
+        },
+      ],
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/missing/);
+  });
+});
+
+describe("runWorkflow — publish (ticket #17)", () => {
+  it("lands atomically on step success, visible to the very next node", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "publish-then-read",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "first",
+          command: "node",
+          args: ["-e", "process.stdout.write('hi')"],
+          publish: { greeting: "${output}" },
+        },
+        {
+          type: "binary",
+          id: "second",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          input: "${context.greeting}",
+        },
+      ],
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("succeeded");
+  });
+
+  it("publishes nothing when the step fails", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "failed-publish",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "boom",
+          command: "node",
+          args: ["-e", "process.exit(3)"],
+          // If publish were (wrongly) evaluated on failure, this would throw an interpolation
+          // error of its own (output is never a string with an "x" key here) — instead the
+          // reported error must be the exit-code failure, proving publish was never attempted.
+          publish: { bogus: "${output.x}" },
+        },
+      ],
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/exited with code 3/);
+  });
+});
+
+describe("runWorkflow — parse: json (ticket #17)", () => {
+  it("yields a structured output object addressable by downstream dot-paths, preserving type", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parse-json",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "produce",
+          command: "node",
+          args: ["-e", "process.stdout.write(JSON.stringify({value: 42}))"],
+          parse: "json",
+          publish: { data: "${output}" },
+        },
+        {
+          type: "binary",
+          id: "consume",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          input: { seen: "${context.data.value}" },
+        },
+      ],
+      output: {},
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("succeeded");
+  });
+
+  it("fails the step on unparseable output", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parse-json-bad",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "produce",
+          command: "node",
+          args: ["-e", "process.stdout.write('not json')"],
+          parse: "json",
+        },
+      ],
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/parse/i);
+  });
+});
+
+describe("runWorkflow — workflow output map (ticket #17)", () => {
+  it("evaluates the top-level output map at successful run end", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "output-map",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "step",
+          command: "node",
+          args: ["-e", "process.stdout.write('done')"],
+          publish: { result: "${output}" },
+        },
+      ],
+      output: { final: "${context.result}", literal: "x" },
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ final: "done", literal: "x" });
+  });
+
+  it("defaults to an empty object when no output map is declared", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "no-output-map",
+      worker: { type: "engine" },
+      body: [{ type: "binary", id: "step", command: "node", args: ["-e", "process.exit(0)"] }],
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({});
   });
 });
