@@ -1,7 +1,8 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import type { ConfigObject, JsonValue, Worker, WorkflowFile } from "@path/schema";
+import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, Worker, WorkflowFile, WorkflowNode } from "@path/schema";
+import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
@@ -197,68 +198,8 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       worker: file.worker,
     });
 
-    for (const node of file.body) {
-      if (node.type !== "binary" && node.type !== "workflow") {
-        return fail(
-          `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary and workflow steps only`,
-        );
-      }
-
-      const stepConfig = mergeConfig(fileConfig, node.config);
-      const scope: InterpolationScope = { config: configScope(stepConfig), context };
-
-      let stepInput: JsonValue;
-      try {
-        stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : previousOutput;
-      } catch (err) {
-        return fail(describeInterpolationError(node.id, err));
-      }
-
-      let output: JsonValue;
-      if (node.type === "workflow") {
-        const childResult = await runWorkflowNode(node, stepInput, {
-          fileDir,
-          stepConfig,
-          parentRunId: runId,
-          rootRunId,
-          files,
-          observer,
-        });
-        if (!childResult.success) return fail(childResult.error);
-        output = childResult.output;
-      } else {
-        const binaryResult = await runBinaryNode(node, stepInput, {
-          stepConfig,
-          fileDir,
-          fileWorker: file.worker,
-          rootRunId,
-          parentRunId: runId,
-          observer,
-          context,
-        });
-        if (!binaryResult.success) return fail(binaryResult.error);
-        output = binaryResult.output;
-      }
-
-      if (node.publish) {
-        const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
-        const updates: { [key: string]: JsonValue } = {};
-        try {
-          for (const [key, expr] of Object.entries(node.publish)) {
-            updates[key] = interpolateValue(expr, publishScope);
-          }
-        } catch (err) {
-          return fail(describeInterpolationError(node.id, err));
-        }
-        // Publish lands atomically on step success, before the next node starts (spec §5.3):
-        // every entry is resolved above before any of them is written to context. A nested
-        // workflow-step publishes to *this* run's context only — never the child's (isolated).
-        Object.assign(context, updates);
-        await observer?.contextChanged?.({ runId, rootRunId, context });
-      }
-
-      previousOutput = output;
-    }
+    const walked = await runSequence(file.body, input);
+    if (!walked.success) return fail(walked.error);
 
     if (!file.output) {
       return succeed({});
@@ -271,6 +212,143 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       if (!(err instanceof InterpolationError)) throw err;
       return fail(`workflow output: ${err.message}`);
     }
+  }
+
+  // Walk a node sequence strictly in order (spec §5.1), threading the default-input chain: each
+  // node's default input is its predecessor's output, seeded by `incomingOutput` (the workflow
+  // input for the top-level body; the block's predecessor's output for a nested block slot —
+  // spec §5.4). Returns the sequence's last node's output. Blocks recurse through here, so they
+  // are transparent to the one chain on both their input and output sides.
+  async function runSequence(nodes: WorkflowNode[], incomingOutput: JsonValue): Promise<StepOutcome> {
+    let seqOutput = incomingOutput;
+    for (const node of nodes) {
+      const result = await runNode(node, seqOutput);
+      if (!result.success) return result;
+      seqOutput = result.output;
+      previousOutput = seqOutput; // keep the run-level last output current for fail() reporting
+    }
+    return { success: true, output: seqOutput };
+  }
+
+  async function runNode(node: WorkflowNode, incomingOutput: JsonValue): Promise<StepOutcome> {
+    switch (node.type) {
+      case "binary":
+      case "workflow":
+        return runStepNode(node, incomingOutput);
+      case "checkpoint":
+        return runCheckpointNode(node, incomingOutput);
+      case "branch":
+        return runBranchNode(node, incomingOutput);
+      default:
+        return {
+          success: false,
+          error: `node type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, checkpoint, and branch nodes only`,
+        };
+    }
+  }
+
+  // A `binary`/`workflow` step node: resolve its config + input (default-input chain), run it, then
+  // apply `publish` atomically on success (spec §5.3). Returns the step's output object.
+  async function runStepNode(
+    node: Extract<WorkflowNode, { type: "binary" | "workflow" }>,
+    incomingOutput: JsonValue,
+  ): Promise<StepOutcome> {
+    const stepConfig = mergeConfig(fileConfig, node.config);
+    const scope: InterpolationScope = { config: configScope(stepConfig), context };
+
+    let stepInput: JsonValue;
+    try {
+      stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
+    } catch (err) {
+      return { success: false, error: describeInterpolationError(node.id, err) };
+    }
+
+    let output: JsonValue;
+    if (node.type === "workflow") {
+      const childResult = await runWorkflowNode(node, stepInput, {
+        fileDir,
+        stepConfig,
+        parentRunId: runId,
+        rootRunId,
+        files,
+        observer,
+      });
+      if (!childResult.success) return childResult;
+      output = childResult.output;
+    } else {
+      const binaryResult = await runBinaryNode(node, stepInput, {
+        stepConfig,
+        fileDir,
+        fileWorker: file.worker,
+        rootRunId,
+        parentRunId: runId,
+        observer,
+        context,
+      });
+      if (!binaryResult.success) return binaryResult;
+      output = binaryResult.output;
+    }
+
+    if (node.publish) {
+      const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
+      const updates: { [key: string]: JsonValue } = {};
+      try {
+        for (const [key, expr] of Object.entries(node.publish)) {
+          updates[key] = interpolateValue(expr, publishScope);
+        }
+      } catch (err) {
+        return { success: false, error: describeInterpolationError(node.id, err) };
+      }
+      // Publish lands atomically on step success, before the next node starts (spec §5.3): every
+      // entry is resolved above before any is written to context. A nested workflow-step publishes
+      // to *this* run's context only — never the child's (isolated).
+      Object.assign(context, updates);
+      await observer?.contextChanged?.({ runId, rootRunId, context });
+    }
+
+    return { success: true, output };
+  }
+
+  // A `checkpoint` node: assert its condition over `context` + the predecessor's `output` (spec
+  // §5.2). True → continue; false or a strict evaluation error → the run stops as failed (§5.6).
+  // Transparent: forwards its predecessor's output unchanged — the same object its `output` root
+  // read (§5.4). The engine has no run for a checkpoint (invariant 1); the event is attributed to
+  // this workflow-run + the checkpoint's node id.
+  async function runCheckpointNode(node: CheckpointNode, incomingOutput: JsonValue): Promise<StepOutcome> {
+    const { outcome, trace } = evaluateCondition(node.condition, { context, output: incomingOutput });
+    const passed = outcome === "true";
+    await observer?.checkpointEvaluated?.({ runId, rootRunId, nodeId: node.id, passed, trace });
+    if (!passed) {
+      return { success: false, error: `checkpoint "${node.id}" failed: ${describeConditionFailure(trace)}` };
+    }
+    return { success: true, output: incomingOutput };
+  }
+
+  // A `branch` node: evaluate arms in declaration order, first true `when` wins; else the fallback;
+  // no match and no `else` fails the run (silent fall-through hides authoring bugs — spec §5.2). A
+  // condition evaluation error in an arm fails the run outright (§5.6). The taken arm's body runs
+  // as a nested sequence seeded by the block's predecessor's output (default-input chain, §5.4),
+  // and its last node's output becomes the block's output (§5.4).
+  async function runBranchNode(node: BranchNode, incomingOutput: JsonValue): Promise<StepOutcome> {
+    const roots = { context, output: incomingOutput };
+    const traces: Trace[] = [];
+    for (const [index, arm] of node.arms.entries()) {
+      const { outcome, trace } = evaluateCondition(arm.when, roots);
+      traces.push(trace);
+      if (outcome === "error") {
+        return { success: false, error: `branch "${node.id}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
+      }
+      if (outcome === "true") {
+        await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: index, trace });
+        return runSequence(arm.body, incomingOutput);
+      }
+    }
+    if (node.else) {
+      await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: "else", trace: null });
+      return runSequence(node.else, incomingOutput);
+    }
+    await observer?.branchNoMatch?.({ runId, rootRunId, nodeId: node.id, traces });
+    return { success: false, error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
   }
 }
 
