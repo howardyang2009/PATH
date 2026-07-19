@@ -183,6 +183,12 @@ function combine(children: Trace[], kind: "all" | "any"): ConditionOutcome {
   return children.some((c) => c.outcome === "true") ? "true" : "false";
 }
 
+// `not` inverts true/false but never masks an error — an error child stays an error (§5.6).
+function negate(outcome: ConditionOutcome): ConditionOutcome {
+  if (outcome === "error") return "error";
+  return outcome === "true" ? "false" : "true";
+}
+
 function evaluate(condition: Condition, roots: ConditionRoots): Trace {
   switch (condition.type) {
     case "all": {
@@ -195,8 +201,7 @@ function evaluate(condition: Condition, roots: ConditionRoots): Trace {
     }
     case "not": {
       const of = evaluate(condition.of, roots);
-      const outcome: ConditionOutcome = of.outcome === "error" ? "error" : of.outcome === "true" ? "false" : "true";
-      return { type: "not", outcome, of };
+      return { type: "not", outcome: negate(of.outcome), of };
     }
     default:
       return evaluateLeaf(condition, roots);
