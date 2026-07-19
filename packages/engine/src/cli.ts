@@ -129,7 +129,8 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
   }
 
   const { tree } = loadResult;
-  // Whole-tree validation happened above; the walking skeleton only executes the root file.
+  // Whole-tree validation happened above; execution starts at the root file and follows
+  // `workflow` step refs into the rest of the tree (#22) via `runWorkflow`'s `files` option.
   const rootFile = tree.files.get(tree.rootPath);
   if (!rootFile) {
     io.error(`internal error: root file "${tree.rootPath}" missing from loaded tree`);
@@ -148,7 +149,11 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
   let runResult;
   try {
     const observer = createPersistedObserver(opened.db, projectDir);
-    runResult = await runWorkflow(rootFile, projectDir, { operatorConfig: operatorConfig.config, observer });
+    runResult = await runWorkflow(rootFile, projectDir, {
+      operatorConfig: operatorConfig.config,
+      files: tree.files,
+      observer,
+    });
   } finally {
     opened.db.close();
   }

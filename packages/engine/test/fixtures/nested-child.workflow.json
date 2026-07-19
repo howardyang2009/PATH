@@ -1,0 +1,19 @@
+{
+  "format": "path/workflow@0",
+  "name": "nested-child",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "shout",
+      "command": "node",
+      "args": [
+        "-e",
+        "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d.toUpperCase()))"
+      ],
+      "input": "${context.seed}",
+      "publish": { "shouted": "${output}" }
+    }
+  ],
+  "output": { "shouted": "${context.shouted}" }
+}
