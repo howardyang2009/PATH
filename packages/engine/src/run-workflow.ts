@@ -95,6 +95,10 @@ function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<Bina
       settle({ success: true, output: stdout, stderr });
     });
 
+    // A child may exit without ever reading stdin (input is offered on stdin, not required —
+    // format doc §4.2), which EPIPEs our write. Swallow stdin errors: the step's outcome is
+    // decided by the exit code in "close", and a broken pipe must not crash the engine.
+    child.stdin.on("error", () => {});
     child.stdin.write(typeof input === "string" ? input : JSON.stringify(input));
     child.stdin.end();
   });
