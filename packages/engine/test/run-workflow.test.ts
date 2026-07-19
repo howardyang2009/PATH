@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+import type { RunObserver } from "../src/run-observer.js";
 import { runWorkflow } from "../src/run-workflow.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -300,5 +301,107 @@ describe("runWorkflow — workflow output map (ticket #17)", () => {
     const result = await runWorkflow(file, fixturesDir);
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({});
+  });
+});
+
+function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof vi.fn> } {
+  return {
+    runStarted: vi.fn(),
+    stepStarted: vi.fn(),
+    stepStderr: vi.fn(),
+    stepFinished: vi.fn(),
+    contextChanged: vi.fn(),
+    runFinished: vi.fn(),
+  };
+}
+
+describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
+  it("reports runStarted, stepStarted/stepFinished per step, and runFinished on success", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "observed",
+      worker: { type: "engine" },
+      body: [{ type: "binary", id: "greet", command: "node", args: ["-e", "process.stdout.write('hi')"] }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { input: { seed: 1 }, observer });
+
+    expect(result.status).toBe("succeeded");
+    expect(observer.runStarted).toHaveBeenCalledTimes(1);
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.runStarted).toHaveBeenCalledWith({ runId, input: { seed: 1 } });
+
+    expect(observer.stepStarted).toHaveBeenCalledTimes(1);
+    const stepCall = observer.stepStarted.mock.calls[0]![0];
+    expect(stepCall.parentRunId).toBe(runId);
+    expect(stepCall.nodeId).toBe("greet");
+    expect(stepCall.worker).toEqual({ type: "engine" });
+    expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
+
+    expect(observer.stepStderr).toHaveBeenCalledWith({ runId: stepCall.runId, stderr: "" });
+    expect(observer.stepFinished).toHaveBeenCalledWith({
+      runId: stepCall.runId,
+      status: "succeeded",
+      output: "hi",
+    });
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "succeeded", output: {} });
+  });
+
+  it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "observed-fail",
+      worker: { type: "engine" },
+      body: [{ type: "binary", id: "boom", command: "node", args: ["-e", "process.exit(2)"] }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    const stepCall = observer.stepStarted.mock.calls[0]![0];
+    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: stepCall.runId, status: "failed" });
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "failed" });
+  });
+
+  it("reports runFinished failed even when the run fails before any step starts", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "observed-unsupported",
+      worker: { type: "llm", model: "claude" },
+      body: [{ type: "prompt", id: "ask", prompt: "hi" }],
+    };
+
+    await runWorkflow(file, fixturesDir, { observer });
+
+    expect(observer.stepStarted).not.toHaveBeenCalled();
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "failed" });
+  });
+
+  it("reports contextChanged with the root run's id after a publish lands", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "observed-publish",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "step",
+          command: "node",
+          args: ["-e", "process.stdout.write('v')"],
+          publish: { seen: "${output}" },
+        },
+      ],
+    };
+
+    await runWorkflow(file, fixturesDir, { observer });
+
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.contextChanged).toHaveBeenCalledWith({ runId, context: { seen: "v" } });
   });
 });

@@ -1,14 +1,18 @@
 import { spawn } from "node:child_process";
-import type { ConfigObject, JsonValue, WorkflowFile } from "@path/schema";
+import { randomUUID } from "node:crypto";
+import type { ConfigObject, JsonValue, Worker, WorkflowFile } from "@path/schema";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
+import type { RunObserver } from "./run-observer.js";
 
 export interface RunOptions {
   /** The workflow's own input object (format doc §6.1); its top-level keys seed context (§6.3). */
   input?: { [key: string]: JsonValue };
   /** Operator launch-time config (CLI flags/file), overriding the top-level file's defaults (spec §3). */
   operatorConfig?: ConfigObject;
+  /** Lifecycle hooks for persistence (#18) and later logging (#19) — see run-observer.ts. */
+  observer?: RunObserver;
 }
 
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
@@ -25,7 +29,9 @@ export interface RunResult {
   error?: string;
 }
 
-type BinaryStepResult = { success: true; output: string } | { success: false; error: string };
+type BinaryStepResult =
+  | { success: true; output: string; stderr: string }
+  | { success: false; error: string; stderr: string };
 
 // The step's `command`/`args`/`cwd` after interpolation — they travel together everywhere a
 // binary step actually runs, so runBinaryStep takes this instead of three loose parameters.
@@ -37,7 +43,9 @@ interface ResolvedBinaryStep {
 }
 
 // I/O convention per format doc §4.2: input object on stdin (raw if a string, else its JSON
-// serialization), captured stdout is the output, non-zero exit fails the step.
+// serialization), captured stdout is the output, non-zero exit fails the step. stderr is always
+// returned (even on success) so the caller can hand it to RunObserver.stepStderr for the audit
+// blob (format doc §4.2: captured, secret-scrubbed later, never passed downstream).
 function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<BinaryStepResult> {
   const { id: nodeId, command, args, cwd } = step;
   return new Promise((resolveResult) => {
@@ -59,7 +67,7 @@ function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<Bina
       stderr += chunk;
     });
     child.on("error", (err) => {
-      settle({ success: false, error: `step "${nodeId}" failed to start "${command}": ${err.message}` });
+      settle({ success: false, error: `step "${nodeId}" failed to start "${command}": ${err.message}`, stderr });
     });
     child.on("close", (code) => {
       if (code !== 0) {
@@ -67,10 +75,11 @@ function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<Bina
         settle({
           success: false,
           error: `step "${nodeId}" exited with code ${code}${tail ? `: ${tail}` : ""}`,
+          stderr,
         });
         return;
       }
-      settle({ success: true, output: stdout });
+      settle({ success: true, output: stdout, stderr });
     });
 
     child.stdin.write(typeof input === "string" ? input : JSON.stringify(input));
@@ -97,8 +106,9 @@ function configScope(config: ConfigObject): JsonValue {
  * message rather than being silently skipped.
  *
  * The domain model wraps the top-level workflow in an implicit root step (mvp spec §2,
- * invariant 2) whose run this body walk *is* — it isn't materialized as its own value here
- * because run records are #18's scope; the CLI reports this function's `RunResult` directly.
+ * invariant 2) whose run this body walk *is* — its `RunObserver.runStarted`/`runFinished` calls
+ * are that run's record; persistence (#18) and later logging (#19) subscribe via `options.observer`
+ * rather than this function touching fs/db itself.
  */
 export async function runWorkflow(
   file: WorkflowFile,
@@ -109,8 +119,19 @@ export async function runWorkflow(
   const context: { [key: string]: JsonValue } = { ...input }; // format doc §6.3
   let previousOutput: JsonValue = input;
 
+  const observer = options.observer;
+  const runId = randomUUID();
+  await observer?.runStarted?.({ runId, input });
+
   const fileConfig = mergeConfig(file.config ?? {}, options.operatorConfig);
-  const fail = (error: string): RunResult => ({ status: "failed", output: previousOutput, error });
+  const fail = async (error: string): Promise<RunResult> => {
+    await observer?.runFinished?.({ runId, status: "failed" });
+    return { status: "failed", output: previousOutput, error };
+  };
+  const succeed = async (output: JsonValue): Promise<RunResult> => {
+    await observer?.runFinished?.({ runId, status: "succeeded", output });
+    return { status: "succeeded", output };
+  };
 
   for (const node of file.body) {
     if (node.type !== "binary") {
@@ -121,6 +142,7 @@ export async function runWorkflow(
 
     const stepConfig = mergeConfig(fileConfig, node.config);
     const scope: InterpolationScope = { config: configScope(stepConfig), context };
+    const effectiveWorker: Worker = node.worker ?? file.worker;
 
     let stepInput: JsonValue;
     let command: string;
@@ -135,8 +157,20 @@ export async function runWorkflow(
       return fail(describeInterpolationError(node.id, err));
     }
 
+    const stepRunId = randomUUID();
+    await observer?.stepStarted?.({
+      runId: stepRunId,
+      parentRunId: runId,
+      nodeId: node.id,
+      worker: effectiveWorker,
+      input: stepInput,
+    });
+
     const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput);
+    await observer?.stepStderr?.({ runId: stepRunId, stderr: result.stderr });
+
     if (!result.success) {
+      await observer?.stepFinished?.({ runId: stepRunId, status: "failed" });
       return fail(result.error);
     }
 
@@ -146,9 +180,11 @@ export async function runWorkflow(
         output = parseStepOutput(result.output);
       } catch (err) {
         if (!(err instanceof OutputParseError)) throw err;
+        await observer?.stepFinished?.({ runId: stepRunId, status: "failed" });
         return fail(`step "${node.id}": ${err.message}`);
       }
     }
+    await observer?.stepFinished?.({ runId: stepRunId, status: "succeeded", output });
 
     if (node.publish) {
       const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
@@ -163,18 +199,19 @@ export async function runWorkflow(
       // Publish lands atomically on step success, before the next node starts (spec §5.3):
       // every entry is resolved above before any of them is written to context.
       Object.assign(context, updates);
+      await observer?.contextChanged?.({ runId, context });
     }
 
     previousOutput = output;
   }
 
   if (!file.output) {
-    return { status: "succeeded", output: {} };
+    return succeed({});
   }
   try {
     const outputScope: InterpolationScope = { config: configScope(fileConfig), context };
     const workflowOutput = interpolateValue(file.output as JsonValue, outputScope);
-    return { status: "succeeded", output: workflowOutput };
+    return succeed(workflowOutput);
   } catch (err) {
     if (!(err instanceof InterpolationError)) throw err;
     return fail(`workflow output: ${err.message}`);

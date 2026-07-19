@@ -1,9 +1,24 @@
+import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 
-const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+const realFixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+
+// `path run` now writes a real .path/ (db + blobs) beside the workflow file (ticket #18) — run
+// against a throwaway copy of the fixtures so tests never leave state in the checked-in tree.
+let fixtures: string;
+
+beforeAll(() => {
+  fixtures = mkdtempSync(join(tmpdir(), "path-engine-cli-test-"));
+  cpSync(realFixtures, fixtures, { recursive: true });
+});
+
+afterAll(() => {
+  rmSync(fixtures, { recursive: true, force: true });
+});
 
 function fakeIo() {
   return { log: vi.fn(), error: vi.fn() };
@@ -49,28 +64,27 @@ describe("cli main()", () => {
 });
 
 describe("cli main() — operator config flags (ticket #17)", () => {
-  const configEcho = join(fixtures, "config-echo.workflow.json");
+  function configEcho() {
+    return join(fixtures, "config-echo.workflow.json");
+  }
 
   it("uses the file's config default with no flags", async () => {
     const io = fakeIo();
-    const code = await main(["run", configEcho], io);
+    const code = await main(["run", configEcho()], io);
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "file-default" }));
   });
 
   it("--set overrides the file default, nearest wins", async () => {
     const io = fakeIo();
-    const code = await main(["run", configEcho, "--set", "greeting=operator-value"], io);
+    const code = await main(["run", configEcho(), "--set", "greeting=operator-value"], io);
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "operator-value" }));
   });
 
   it("--config loads a whole object that overrides the file default", async () => {
     const io = fakeIo();
-    const code = await main(
-      ["run", configEcho, "--config", join(fixtures, "config-override.json")],
-      io,
-    );
+    const code = await main(["run", configEcho(), "--config", join(fixtures, "config-override.json")], io);
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "config-file-value" }));
   });
@@ -78,7 +92,7 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   it("--set wins over --config when both touch the same key", async () => {
     const io = fakeIo();
     const code = await main(
-      ["run", configEcho, "--config", join(fixtures, "config-override.json"), "--set", "greeting=set-value"],
+      ["run", configEcho(), "--config", join(fixtures, "config-override.json"), "--set", "greeting=set-value"],
       io,
     );
     expect(code).toBe(0);
@@ -87,14 +101,14 @@ describe("cli main() — operator config flags (ticket #17)", () => {
 
   it("reports a clear error for a malformed --set argument", async () => {
     const io = fakeIo();
-    const code = await main(["run", configEcho, "--set", "no-equals-sign"], io);
+    const code = await main(["run", configEcho(), "--set", "no-equals-sign"], io);
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--set/));
   });
 
   it("reports a clear error when --config points at a missing file", async () => {
     const io = fakeIo();
-    const code = await main(["run", configEcho, "--config", join(fixtures, "nope.json")], io);
+    const code = await main(["run", configEcho(), "--config", join(fixtures, "nope.json")], io);
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--config/));
   });

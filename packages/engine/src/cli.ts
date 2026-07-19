@@ -1,8 +1,15 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
+import type Database from "better-sqlite3";
 import type { ConfigObject } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { mergeConfig } from "./merge-config.js";
+import { dirExists, removeDir } from "./persistence/blob-store.js";
+import { openDb, SchemaVersionError } from "./persistence/db.js";
+import { ensurePathDirGitignore } from "./persistence/gitignore.js";
+import { dbFilePath, pathDir, rootRunTreeDir, runsDir } from "./persistence/paths.js";
+import { createPersistedObserver } from "./persistence/persisted-observer.js";
+import { deleteAllRuns, deleteRunsForRoot } from "./persistence/run-store.js";
 import { runWorkflow } from "./run-workflow.js";
 
 export interface CliIo {
@@ -15,7 +22,8 @@ const consoleIo: CliIo = {
   error: (message) => console.error(message),
 };
 
-const USAGE = "usage: path run <workflow.json> [--config <config.json>] [--set key=value]...";
+const RUN_USAGE = "usage: path run <workflow.json> [--config <config.json>] [--set key=value]...";
+const RUNS_USAGE = "usage: path runs rm <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -30,7 +38,7 @@ type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; er
 // both merge over the top-level file's config defaults, nearest wins (format doc §8).
 function parseRunArgs(argv: string[]): ParseResult {
   const [workflowPath, ...rest] = argv;
-  if (!workflowPath) return { success: false, error: USAGE };
+  if (!workflowPath) return { success: false, error: RUN_USAGE };
 
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
@@ -39,17 +47,17 @@ function parseRunArgs(argv: string[]): ParseResult {
     const flag = rest[i];
     if (flag === "--config") {
       const value = rest[i + 1];
-      if (!value) return { success: false, error: `--config requires a path argument\n${USAGE}` };
+      if (!value) return { success: false, error: `--config requires a path argument\n${RUN_USAGE}` };
       configFile = value;
       i += 1;
     } else if (flag === "--set") {
       const pair = rest[i + 1];
       const eq = pair?.indexOf("=") ?? -1;
-      if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${USAGE}` };
+      if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${RUN_USAGE}` };
       setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
       i += 1;
     } else {
-      return { success: false, error: `unrecognized argument "${flag}"\n${USAGE}` };
+      return { success: false, error: `unrecognized argument "${flag}"\n${RUN_USAGE}` };
     }
   }
 
@@ -90,15 +98,18 @@ function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
   return { success: true, config };
 }
 
-/** Runs the CLI and returns the process exit code — never calls process.exit itself. */
-export async function main(argv: string[], io: CliIo = consoleIo): Promise<number> {
-  const [command, ...rest] = argv;
+type OpenDbResult = { success: true; db: Database.Database } | { success: false; error: string };
 
-  if (command !== "run") {
-    io.error(USAGE);
-    return 2;
+function openDbOrReport(dbFile: string): OpenDbResult {
+  try {
+    return { success: true, db: openDb(dbFile) };
+  } catch (err) {
+    const error = err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
+    return { success: false, error };
   }
+}
 
+async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
   const parsed = parseRunArgs(rest);
   if (!parsed.success) {
     io.error(parsed.error);
@@ -125,7 +136,23 @@ export async function main(argv: string[], io: CliIo = consoleIo): Promise<numbe
     return 1;
   }
 
-  const runResult = await runWorkflow(rootFile, dirname(tree.rootPath), { operatorConfig: operatorConfig.config });
+  const projectDir = dirname(tree.rootPath);
+  ensurePathDirGitignore(pathDir(projectDir));
+
+  const opened = openDbOrReport(dbFilePath(projectDir));
+  if (!opened.success) {
+    io.error(opened.error);
+    return 1;
+  }
+
+  let runResult;
+  try {
+    const observer = createPersistedObserver(opened.db, projectDir);
+    runResult = await runWorkflow(rootFile, projectDir, { operatorConfig: operatorConfig.config, observer });
+  } finally {
+    opened.db.close();
+  }
+
   if (runResult.status === "failed") {
     io.error(`run failed: ${runResult.error}`);
     return 1;
@@ -133,4 +160,85 @@ export async function main(argv: string[], io: CliIo = consoleIo): Promise<numbe
 
   io.log(typeof runResult.output === "string" ? runResult.output : JSON.stringify(runResult.output));
   return 0;
+}
+
+// `path runs rm`/`path runs prune` take no workflow-file argument (mvp spec §3) — they operate
+// on the `.path/` found in the current working directory, like `git` subcommands operate on
+// whatever repo the cwd is inside.
+async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
+  const [subcommand, ...rest] = args;
+  const projectDir = process.cwd();
+  const dbFile = dbFilePath(projectDir);
+
+  if (subcommand === "rm") {
+    const rootRunId = rest[0];
+    if (!rootRunId) {
+      io.error(RUNS_USAGE);
+      return 2;
+    }
+
+    // An id is "found" if either store has something for it — an orphaned directory with no db
+    // rows (e.g. left by a prior half-finished cleanup) still counts, so `rm` can finish the job
+    // rather than reporting "not found" while silently deleting it anyway.
+    const treeDir = rootRunTreeDir(projectDir, rootRunId);
+    const dirExisted = dirExists(treeDir);
+
+    let deleted = 0;
+    if (existsSync(dbFile)) {
+      const opened = openDbOrReport(dbFile);
+      if (!opened.success) {
+        io.error(opened.error);
+        return 1;
+      }
+      deleted = deleteRunsForRoot(opened.db, rootRunId);
+      opened.db.close();
+    }
+
+    if (deleted === 0 && !dirExisted) {
+      io.error(`no run found with id "${rootRunId}"`);
+      return 1;
+    }
+
+    // Rows and directory are deleted together (mvp spec §6) so the two stores never drift.
+    removeDir(treeDir);
+    io.log(`removed run ${rootRunId}`);
+    return 0;
+  }
+
+  if (subcommand === "prune") {
+    let deleted = 0;
+    if (existsSync(dbFile)) {
+      const opened = openDbOrReport(dbFile);
+      if (!opened.success) {
+        io.error(opened.error);
+        return 1;
+      }
+      deleted = deleteAllRuns(opened.db);
+      opened.db.close();
+    }
+    // Always remove the runs tree, even if the db was already missing — an orphaned directory
+    // shouldn't survive a prune just because its rows happened to be gone already.
+    removeDir(runsDir(projectDir));
+
+    io.log(`pruned ${deleted} run(s)`);
+    return 0;
+  }
+
+  io.error(RUNS_USAGE);
+  return 2;
+}
+
+/** Runs the CLI and returns the process exit code — never calls process.exit itself. */
+export async function main(argv: string[], io: CliIo = consoleIo): Promise<number> {
+  const [command, ...rest] = argv;
+
+  if (command === "run") {
+    return runRunCommand(rest, io);
+  }
+  if (command === "runs") {
+    return runRunsCommand(rest, io);
+  }
+
+  io.error(`${RUN_USAGE}\n${RUNS_USAGE}`);
+  return 2;
 }
