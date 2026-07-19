@@ -43,11 +43,17 @@ const planSchema = z.object({
 // Raise this if your backlog is large; lower it for a quick smoke-test run.
 const MAX_ITERATIONS = 10;
 
-// Hooks run inside the sandbox before the agent starts each iteration.
-// pnpm install ensures the sandbox always has fresh dependencies. It resolves
-// from the store baked into the Docker image via `pnpm fetch` (see
-// .sandcastle/Dockerfile), so this is fast despite starting without
-// node_modules.
+// Hooks for the WORKTREE sandboxes only (implementer + reviewer). pnpm
+// install resolves from the store baked into the Docker image via `pnpm
+// fetch` (see .sandcastle/Dockerfile), so it takes ~3s despite the worktree
+// starting without node_modules.
+//
+// The planner and merger run via sandcastle.run(), which bind-mounts the
+// REPO ROOT itself — where the host's macOS node_modules lives. They get no
+// hooks: `pnpm install` there fails (pnpm refuses to purge a foreign modules
+// dir without a TTY), and "succeeding" would be worse — it would replace the
+// host's node_modules with Linux binaries. The planner needs no deps anyway,
+// and the merge prompt verifies in a scratch copy under /tmp.
 const hooks = {
   sandbox: { onSandboxReady: [{ command: "pnpm install" }] },
 };
@@ -75,7 +81,6 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // It outputs a <plan> JSON block — Output.object parses and validates it.
   // -------------------------------------------------------------------------
   const plan = await sandcastle.run({
-    hooks,
     sandbox: docker(),
     name: "planner",
     // One iteration is enough: the planner just needs to read and reason,
@@ -210,7 +215,6 @@ for (let iteration = 1; iteration <= MAX_ITERATIONS; iteration++) {
   // uses to know which branches to merge and which issues to close.
   // -------------------------------------------------------------------------
   await sandcastle.run({
-    hooks,
     sandbox: docker(),
     name: "merger",
     maxIterations: 1,
