@@ -106,6 +106,27 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     expect(existsSync(join(projectDir, ".path", "runs", rootRunId))).toBe(false);
   });
 
+  it("logs the run to both run.log (with the header line) and the db log table, matching by seq (ticket #19)", async () => {
+    await runCli(["run", join(projectDir, "workflow.json")], projectDir);
+
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const rootRunId = (db.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string })
+      .root_run_id;
+    const dbSeqs = (db.prepare("SELECT seq FROM log_events WHERE root_run_id = ? ORDER BY seq").all(rootRunId) as {
+      seq: number;
+    }[]).map((r) => r.seq);
+    db.close();
+
+    const logLines = readFileSync(join(projectDir, ".path", "runs", rootRunId, "run.log"), "utf8")
+      .trimEnd()
+      .split("\n");
+    expect(JSON.parse(logLines[0]!)).toEqual({ type: "log-header", format: "path/log@0", run_id: rootRunId });
+
+    const fileSeqs = logLines.slice(1).map((line) => JSON.parse(line).seq);
+    expect(fileSeqs).toEqual(dbSeqs);
+    expect(dbSeqs.length).toBeGreaterThanOrEqual(3); // root + at least one step's started/finished
+  });
+
   it("path runs prune removes every root run's rows and directories", async () => {
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);

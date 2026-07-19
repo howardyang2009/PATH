@@ -3,6 +3,14 @@ import { dirname } from "node:path";
 import type Database from "better-sqlite3";
 import type { ConfigObject } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
+import {
+  createLogBackends,
+  DEFAULT_LOG_BACKENDS,
+  isLogBackendId,
+  LOG_BACKEND_IDS,
+  type LogBackendId,
+} from "./logging/backends.js";
+import { createLoggingObserver } from "./logging/logging-observer.js";
 import { mergeConfig } from "./merge-config.js";
 import { dirExists, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
@@ -10,6 +18,7 @@ import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, rootRunTreeDir, runsDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
 import { deleteAllRuns, deleteRunsForRoot } from "./persistence/run-store.js";
+import { composeObservers } from "./run-observer.js";
 import { runWorkflow } from "./run-workflow.js";
 
 export interface CliIo {
@@ -22,13 +31,15 @@ const consoleIo: CliIo = {
   error: (message) => console.error(message),
 };
 
-const RUN_USAGE = "usage: path run <workflow.json> [--config <config.json>] [--set key=value]...";
+const RUN_USAGE =
+  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--log-backends db,ndjson]";
 const RUNS_USAGE = "usage: path runs rm <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
   configFile?: string;
   setPairs: [string, string][];
+  logBackends?: LogBackendId[];
 }
 
 type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; error: string };
@@ -42,6 +53,7 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
+  let logBackends: LogBackendId[] | undefined;
 
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
@@ -56,12 +68,35 @@ function parseRunArgs(argv: string[]): ParseResult {
       if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${RUN_USAGE}` };
       setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
       i += 1;
+    } else if (flag === "--log-backends") {
+      const value = rest[i + 1];
+      const parsed = parseLogBackends(value);
+      if (!parsed.success) return parsed;
+      logBackends = parsed.ids;
+      i += 1;
     } else {
       return { success: false, error: `unrecognized argument "${flag}"\n${RUN_USAGE}` };
     }
   }
 
-  return { success: true, args: { workflowPath, configFile, setPairs } };
+  return { success: true, args: { workflowPath, configFile, setPairs, logBackends } };
+}
+
+// The engine-level `log.backends` setting (mvp spec §8.2): a comma-separated list of backend ids.
+// `--log-backends none` selects no backends; when the flag is absent, both are on by default.
+function parseLogBackends(value: string | undefined): { success: true; ids: LogBackendId[] } | { success: false; error: string } {
+  if (!value) return { success: false, error: `--log-backends requires a value\n${RUN_USAGE}` };
+  if (value === "none") return { success: true, ids: [] };
+
+  const ids: LogBackendId[] = [];
+  for (const raw of value.split(",")) {
+    const id = raw.trim();
+    if (!isLogBackendId(id)) {
+      return { success: false, error: `--log-backends: unknown backend "${id}" (choose from ${LOG_BACKEND_IDS.join(", ")}, or "none")` };
+    }
+    if (!ids.includes(id)) ids.push(id);
+  }
+  return { success: true, ids };
 }
 
 type ConfigResult = { success: true; config: ConfigObject } | { success: false; error: string };
@@ -147,7 +182,10 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
 
   let runResult;
   try {
-    const observer = createPersistedObserver(opened.db, projectDir);
+    // Persistence (#18) writes run rows + blobs; logging (#19) fans the typed event stream out to
+    // the selected backends. Both hang off the single observer slot via composeObservers.
+    const backends = createLogBackends(parsed.args.logBackends ?? DEFAULT_LOG_BACKENDS, { db: opened.db, projectDir });
+    const observer = composeObservers(createPersistedObserver(opened.db, projectDir), createLoggingObserver(backends));
     runResult = await runWorkflow(rootFile, projectDir, { operatorConfig: operatorConfig.config, observer });
   } finally {
     opened.db.close();

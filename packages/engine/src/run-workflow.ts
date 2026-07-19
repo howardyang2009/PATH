@@ -4,7 +4,7 @@ import type { ConfigObject, JsonValue, Worker, WorkflowFile } from "@path/schema
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
-import type { RunObserver } from "./run-observer.js";
+import { ObserverError, type RunObserver } from "./run-observer.js";
 
 export interface RunOptions {
   /** The workflow's own input object (format doc §6.1); its top-level keys seed context (§6.3). */
@@ -121,11 +121,10 @@ export async function runWorkflow(
 
   const observer = options.observer;
   const runId = randomUUID();
-  await observer?.runStarted?.({ runId, input });
 
   const fileConfig = mergeConfig(file.config ?? {}, options.operatorConfig);
   const fail = async (error: string): Promise<RunResult> => {
-    await observer?.runFinished?.({ runId, status: "failed" });
+    await observer?.runFinished?.({ runId, status: "failed", error });
     return { status: "failed", output: previousOutput, error };
   };
   const succeed = async (output: JsonValue): Promise<RunResult> => {
@@ -133,87 +132,112 @@ export async function runWorkflow(
     return { status: "succeeded", output };
   };
 
-  for (const node of file.body) {
-    if (node.type !== "binary") {
-      return fail(
-        `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary steps only`,
-      );
-    }
-
-    const stepConfig = mergeConfig(fileConfig, node.config);
-    const scope: InterpolationScope = { config: configScope(stepConfig), context };
-    const effectiveWorker: Worker = node.worker ?? file.worker;
-
-    let stepInput: JsonValue;
-    let command: string;
-    let args: string[];
-    let cwd: string;
+  // A log backend write failure fails the run audit-first (mvp spec §8.2): the logging observer
+  // throws ObserverError, which we convert to a failed run here with a best-effort terminal event.
+  // Any other thrown error is a bug and propagates — it is not swallowed into a failed run.
+  const failFromObserverError = async (err: ObserverError): Promise<RunResult> => {
     try {
-      stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : previousOutput;
-      command = interpolateToString(node.command, scope);
-      args = (node.args ?? []).map((arg) => interpolateToString(arg, scope));
-      cwd = node.cwd !== undefined ? interpolateToString(node.cwd, scope) : fileDir;
-    } catch (err) {
-      return fail(describeInterpolationError(node.id, err));
+      await observer?.runFinished?.({ runId, status: "failed", error: err.message });
+    } catch {
+      // audit is already compromised; the best we can do is still report the run as failed
     }
+    return { status: "failed", output: previousOutput, error: err.message };
+  };
 
-    const stepRunId = randomUUID();
-    await observer?.stepStarted?.({
-      runId: stepRunId,
-      parentRunId: runId,
-      nodeId: node.id,
-      worker: effectiveWorker,
-      input: stepInput,
-    });
+  try {
+    return await runBody();
+  } catch (err) {
+    if (err instanceof ObserverError) return failFromObserverError(err);
+    throw err;
+  }
 
-    const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput);
-    await observer?.stepStderr?.({ runId: stepRunId, stderr: result.stderr });
+  async function runBody(): Promise<RunResult> {
+    await observer?.runStarted?.({ runId, input, worker: file.worker });
 
-    if (!result.success) {
-      await observer?.stepFinished?.({ runId: stepRunId, status: "failed" });
-      return fail(result.error);
-    }
-
-    let output: JsonValue = result.output;
-    if (node.parse === "json") {
-      try {
-        output = parseStepOutput(result.output);
-      } catch (err) {
-        if (!(err instanceof OutputParseError)) throw err;
-        await observer?.stepFinished?.({ runId: stepRunId, status: "failed" });
-        return fail(`step "${node.id}": ${err.message}`);
+    for (const node of file.body) {
+      if (node.type !== "binary") {
+        return fail(
+          `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary steps only`,
+        );
       }
-    }
-    await observer?.stepFinished?.({ runId: stepRunId, status: "succeeded", output });
 
-    if (node.publish) {
-      const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
-      const updates: { [key: string]: JsonValue } = {};
+      const stepConfig = mergeConfig(fileConfig, node.config);
+      const scope: InterpolationScope = { config: configScope(stepConfig), context };
+      const effectiveWorker: Worker = node.worker ?? file.worker;
+
+      let stepInput: JsonValue;
+      let command: string;
+      let args: string[];
+      let cwd: string;
       try {
-        for (const [key, expr] of Object.entries(node.publish)) {
-          updates[key] = interpolateValue(expr, publishScope);
-        }
+        stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : previousOutput;
+        command = interpolateToString(node.command, scope);
+        args = (node.args ?? []).map((arg) => interpolateToString(arg, scope));
+        cwd = node.cwd !== undefined ? interpolateToString(node.cwd, scope) : fileDir;
       } catch (err) {
         return fail(describeInterpolationError(node.id, err));
       }
-      // Publish lands atomically on step success, before the next node starts (spec §5.3):
-      // every entry is resolved above before any of them is written to context.
-      Object.assign(context, updates);
-      await observer?.contextChanged?.({ runId, context });
+
+      const stepRunId = randomUUID();
+      await observer?.stepStarted?.({
+        runId: stepRunId,
+        parentRunId: runId,
+        nodeId: node.id,
+        stepType: node.type,
+        worker: effectiveWorker,
+        input: stepInput,
+      });
+
+      const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput);
+      await observer?.stepStderr?.({ runId: stepRunId, stderr: result.stderr });
+
+      if (!result.success) {
+        await observer?.stepFinished?.({ runId: stepRunId, status: "failed", error: result.error });
+        return fail(result.error);
+      }
+
+      let output: JsonValue = result.output;
+      if (node.parse === "json") {
+        try {
+          output = parseStepOutput(result.output);
+        } catch (err) {
+          if (!(err instanceof OutputParseError)) throw err;
+          const parseError = `step "${node.id}": ${err.message}`;
+          await observer?.stepFinished?.({ runId: stepRunId, status: "failed", error: parseError });
+          return fail(parseError);
+        }
+      }
+      await observer?.stepFinished?.({ runId: stepRunId, status: "succeeded", output });
+
+      if (node.publish) {
+        const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
+        const updates: { [key: string]: JsonValue } = {};
+        try {
+          for (const [key, expr] of Object.entries(node.publish)) {
+            updates[key] = interpolateValue(expr, publishScope);
+          }
+        } catch (err) {
+          return fail(describeInterpolationError(node.id, err));
+        }
+        // Publish lands atomically on step success, before the next node starts (spec §5.3):
+        // every entry is resolved above before any of them is written to context.
+        Object.assign(context, updates);
+        await observer?.contextChanged?.({ runId, context });
+      }
+
+      previousOutput = output;
     }
 
-    previousOutput = output;
-  }
-
-  if (!file.output) {
-    return succeed({});
-  }
-  try {
-    const outputScope: InterpolationScope = { config: configScope(fileConfig), context };
-    const workflowOutput = interpolateValue(file.output as JsonValue, outputScope);
-    return succeed(workflowOutput);
-  } catch (err) {
-    if (!(err instanceof InterpolationError)) throw err;
-    return fail(`workflow output: ${err.message}`);
+    if (!file.output) {
+      return succeed({});
+    }
+    try {
+      const outputScope: InterpolationScope = { config: configScope(fileConfig), context };
+      const workflowOutput = interpolateValue(file.output as JsonValue, outputScope);
+      return succeed(workflowOutput);
+    } catch (err) {
+      if (!(err instanceof InterpolationError)) throw err;
+      return fail(`workflow output: ${err.message}`);
+    }
   }
 }

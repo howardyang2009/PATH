@@ -113,3 +113,19 @@ describe("cli main() — operator config flags (ticket #17)", () => {
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--config/));
   });
 });
+
+describe("cli main() — log.backends setting (ticket #19)", () => {
+  it("accepts --log-backends to select the audit stream and still runs the workflow", async () => {
+    const io = fakeIo();
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "ndjson"], io);
+    expect(code).toBe(0);
+    expect(io.error).not.toHaveBeenCalled();
+  });
+
+  it("reports a clear error for an unknown backend id", async () => {
+    const io = fakeIo();
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "syslog"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/syslog/));
+  });
+});

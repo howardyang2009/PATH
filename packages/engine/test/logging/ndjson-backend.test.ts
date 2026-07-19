@@ -1,0 +1,55 @@
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { describe, expect, it } from "vitest";
+import { LogEventSchema } from "../../src/logging/log-event.js";
+import { createNdjsonBackend } from "../../src/logging/ndjson-backend.js";
+import { rootRunTreeDir } from "../../src/persistence/paths.js";
+
+function tmp(): string {
+  return mkdtempSync(join(tmpdir(), "path-engine-ndjson-backend-test-"));
+}
+
+function readLog(projectDir: string, rootRunId: string): string[] {
+  const path = join(rootRunTreeDir(projectDir, rootRunId), "run.log");
+  return readFileSync(path, "utf8").trimEnd().split("\n");
+}
+
+describe("createNdjsonBackend", () => {
+  it("opens run.log at the run-tree root with the log-header line, then one JSON line per event", async () => {
+    const projectDir = tmp();
+    try {
+      const backend = createNdjsonBackend(projectDir);
+      await backend.open({ runId: "root-1", format: "path/log@0" });
+      await backend.write({ type: "step-finished", seq: 1, ts: "t", run_id: "root-1", node_id: null, status: "succeeded" });
+      await backend.close();
+
+      const lines = readLog(projectDir, "root-1");
+      expect(JSON.parse(lines[0]!)).toEqual({ type: "log-header", format: "path/log@0", run_id: "root-1" });
+      // Every non-header line validates against the event schema.
+      expect(() => LogEventSchema.parse(JSON.parse(lines[1]!))).not.toThrow();
+      expect(lines).toHaveLength(2);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("preserves seq order across many events", async () => {
+    const projectDir = tmp();
+    try {
+      const backend = createNdjsonBackend(projectDir);
+      await backend.open({ runId: "root-1", format: "path/log@0" });
+      for (let seq = 1; seq <= 5; seq += 1) {
+        await backend.write({ type: "step-finished", seq, ts: "t", run_id: "root-1", node_id: null, status: "succeeded" });
+      }
+      await backend.close();
+
+      const seqs = readLog(projectDir, "root-1")
+        .slice(1)
+        .map((line) => JSON.parse(line).seq);
+      expect(seqs).toEqual([1, 2, 3, 4, 5]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});

@@ -45,6 +45,15 @@ describe("openDb", () => {
     db.close();
   });
 
+  it("creates the log_events table with the documented columns", () => {
+    const db = openDb(join(dir, "path.db"));
+    const columns = (db.prepare("PRAGMA table_info(log_events)").all() as { name: string }[]).map((c) => c.name);
+    expect(columns).toEqual(
+      expect.arrayContaining(["root_run_id", "seq", "ts", "type", "run_id", "node_id", "event"]),
+    );
+    db.close();
+  });
+
   it("reopens an already-initialized db at the same version without error", () => {
     const dbFile = join(dir, "path.db");
     openDb(dbFile).close();

@@ -330,12 +330,13 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(result.status).toBe("succeeded");
     expect(observer.runStarted).toHaveBeenCalledTimes(1);
     const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runStarted).toHaveBeenCalledWith({ runId, input: { seed: 1 } });
+    expect(observer.runStarted).toHaveBeenCalledWith({ runId, input: { seed: 1 }, worker: { type: "engine" } });
 
     expect(observer.stepStarted).toHaveBeenCalledTimes(1);
     const stepCall = observer.stepStarted.mock.calls[0]![0];
     expect(stepCall.parentRunId).toBe(runId);
     expect(stepCall.nodeId).toBe("greet");
+    expect(stepCall.stepType).toBe("binary");
     expect(stepCall.worker).toEqual({ type: "engine" });
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
@@ -362,8 +363,16 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(result.status).toBe("failed");
     const { runId } = observer.runStarted.mock.calls[0]![0];
     const stepCall = observer.stepStarted.mock.calls[0]![0];
-    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: stepCall.runId, status: "failed" });
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "failed" });
+    expect(observer.stepFinished).toHaveBeenCalledWith({
+      runId: stepCall.runId,
+      status: "failed",
+      error: expect.stringMatching(/exited with code 2/),
+    });
+    expect(observer.runFinished).toHaveBeenCalledWith({
+      runId,
+      status: "failed",
+      error: expect.stringMatching(/exited with code 2/),
+    });
   });
 
   it("reports runFinished failed even when the run fails before any step starts", async () => {
@@ -379,7 +388,11 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     expect(observer.stepStarted).not.toHaveBeenCalled();
     const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "failed" });
+    expect(observer.runFinished).toHaveBeenCalledWith({
+      runId,
+      status: "failed",
+      error: expect.stringMatching(/not supported yet/),
+    });
   });
 
   it("reports contextChanged with the root run's id after a publish lands", async () => {
