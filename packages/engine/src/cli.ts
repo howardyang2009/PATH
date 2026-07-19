@@ -82,9 +82,11 @@ function parseRunArgs(argv: string[]): ParseResult {
   return { success: true, args: { workflowPath, configFile, setPairs, logBackends } };
 }
 
+type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
+
 // The engine-level `log.backends` setting (mvp spec §8.2): a comma-separated list of backend ids.
 // `--log-backends none` selects no backends; when the flag is absent, both are on by default.
-function parseLogBackends(value: string | undefined): { success: true; ids: LogBackendId[] } | { success: false; error: string } {
+function parseLogBackends(value: string | undefined): LogBackendsResult {
   if (!value) return { success: false, error: `--log-backends requires a value\n${RUN_USAGE}` };
   if (value === "none") return { success: true, ids: [] };
 
