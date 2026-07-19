@@ -2,10 +2,10 @@ import { ObserverError, type RunObserver } from "../run-observer.js";
 import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
 import { type LogEvent, LogEventSchema } from "./log-event.js";
 
-// The root workflow is the implicit root step (invariant 2); its lifecycle events report this
-// step_type, distinguishing it from a nested workflow-step (which would report "workflow" too but
-// carry a real node_id).
-const ROOT_STEP_TYPE = "workflow";
+// Every workflow-run is its file's implicit root step (invariant 2), so its lifecycle events
+// report this step_type: the root run with `node_id: null`, a nested workflow-step's run (#22)
+// with the `workflow` node's real id.
+const WORKFLOW_STEP_TYPE = "workflow";
 
 // A backend plus the engine-side bookkeeping the seam requires: an `active` flag (a backend is
 // dropped after its first write failure — surviving backends still receive terminal events) and a
@@ -77,10 +77,10 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   }
 
   return {
-    async runStarted({ runId, worker }) {
-      nodeIdByRun.set(runId, null); // the root step has no node id of its own
-      await openAll(runId);
-      await emit({ type: "step-started", ...envelope(runId), step_type: ROOT_STEP_TYPE, worker }, false);
+    async runStarted({ runId, rootRunId, nodeId, worker }) {
+      nodeIdByRun.set(runId, nodeId); // null for the root run; the `workflow` node's id for a nested run (#22)
+      if (runId === rootRunId) await openAll(runId); // backends live per root run, not per nested run
+      await emit({ type: "step-started", ...envelope(runId), step_type: WORKFLOW_STEP_TYPE, worker }, false);
     },
 
     async stepStarted({ runId, nodeId, stepType, worker }) {
@@ -93,6 +93,12 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
     },
 
     async runFinished(info) {
+      if (info.runId !== info.rootRunId) {
+        // A nested workflow-run finishing is an ordinary step-finished — the root run continues,
+        // so a write failure here still fails the run (not best-effort) and backends stay open.
+        await emit(finishedEvent(envelope(info.runId), info), false);
+        return;
+      }
       if (terminated) return; // idempotent: runWorkflow may re-drive the terminal event while failing
       terminated = true;
       await emit(finishedEvent(envelope(info.runId), info), true);

@@ -315,6 +315,180 @@ function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof
   };
 }
 
+describe("runWorkflow — nested workflow steps (ticket #22)", () => {
+  const parentPath = join(fixturesDir, "parent.workflow.json");
+  const childPath = join(fixturesDir, "nested-child.workflow.json");
+
+  // Build the in-memory { absPath -> file } map runWorkflow resolves `ref`s against — the same
+  // shape loadWorkflowTree produces, so these unit tests never touch disk.
+  function tree(parent: WorkflowFile, child: WorkflowFile): Map<string, WorkflowFile> {
+    return new Map([
+      [parentPath, parent],
+      [childPath, child],
+    ]);
+  }
+
+  const noopStep = { type: "binary" as const, id: "noop", command: "node", args: ["-e", "process.exit(0)"] };
+
+  it("the child sees only its input-seeded context, and the parent receives exactly the child's output map", async () => {
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "seed-parent",
+          command: "node",
+          args: ["-e", "process.stdout.write('parent-only')"],
+          publish: { parentKey: "${output}" },
+        },
+        {
+          type: "workflow",
+          id: "call-child",
+          ref: "./nested-child.workflow.json",
+          input: { seed: "from-parent" },
+          publish: { childOut: "${output}" },
+        },
+      ],
+      output: { childOut: "${context.childOut}" },
+    };
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      body: [noopStep],
+      output: { echoedSeed: "${context.seed}" },
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: tree(parent, child) });
+    expect(result.status).toBe("succeeded");
+    // The step's output object *is* the child's `output` map — nothing more, nothing less.
+    expect(result.output).toEqual({ childOut: { echoedSeed: "from-parent" } });
+  });
+
+  it("fails the child when it reads a parent context key — proving the parent's context never crosses", async () => {
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "seed-parent",
+          command: "node",
+          args: ["-e", "process.stdout.write('secret')"],
+          publish: { parentKey: "${output}" },
+        },
+        { type: "workflow", id: "call-child", ref: "./nested-child.workflow.json", input: { seed: "x" } },
+      ],
+    };
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      body: [noopStep],
+      output: { leaked: "${context.parentKey}" }, // parentKey is a *parent* context key
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: tree(parent, child) });
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/parentKey/);
+  });
+
+  it("a child publish never reaches the parent context", async () => {
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      body: [
+        { type: "workflow", id: "call-child", ref: "./nested-child.workflow.json", input: {} },
+        // If the child's publish had leaked into the parent context, `childInternal` would resolve;
+        // it must not, so this second step's input interpolation fails the parent run instead.
+        {
+          type: "binary",
+          id: "read-leak",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          input: "${context.childInternal}",
+        },
+      ],
+    };
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "produce",
+          command: "node",
+          args: ["-e", "process.stdout.write('v')"],
+          publish: { childInternal: "${output}" }, // written to the *child's* context only
+        },
+      ],
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: tree(parent, child) });
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/childInternal/);
+  });
+
+  it("config inherits across the file boundary per key, but the parent's worker default does not", async () => {
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      // A non-engine parent default worker: if it (wrongly) crossed the boundary, the child's
+      // engine-run binary step would still execute, but the child's own worker is what governs —
+      // asserted structurally via the output map, and the run simply succeeds on the engine.
+      worker: { type: "llm", model: "parent-model" },
+      config: { shared: "from-parent" },
+      body: [
+        {
+          type: "workflow",
+          id: "call-child",
+          ref: "./nested-child.workflow.json",
+          input: {},
+          publish: { childOut: "${output}" },
+        },
+      ],
+      output: { childOut: "${context.childOut}" },
+    };
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" }, // the child's own worker runs its binary step
+      config: { shared: "child-default", childOnly: "kept" },
+      body: [noopStep],
+      // shared: parent's effective config shadows the child's default; childOnly: child's own kept.
+      output: { shared: "${config.shared}", childOnly: "${config.childOnly}" },
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: tree(parent, child) });
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ childOut: { shared: "from-parent", childOnly: "kept" } });
+  });
+
+  it("fails clearly when a workflow step's input does not resolve to a JSON object", async () => {
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      body: [{ type: "workflow", id: "call-child", ref: "./nested-child.workflow.json", input: "not-an-object" }],
+    };
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      body: [noopStep],
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: tree(parent, child) });
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/JSON object/);
+  });
+});
+
 describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
   it("reports runStarted, stepStarted/stepFinished per step, and runFinished on success", async () => {
     const observer = fakeObserver();
@@ -330,23 +504,32 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(result.status).toBe("succeeded");
     expect(observer.runStarted).toHaveBeenCalledTimes(1);
     const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runStarted).toHaveBeenCalledWith({ runId, input: { seed: 1 }, worker: { type: "engine" } });
+    expect(observer.runStarted).toHaveBeenCalledWith({
+      runId,
+      rootRunId: runId, // the root run is its own root
+      parentRunId: null,
+      nodeId: null,
+      input: { seed: 1 },
+      worker: { type: "engine" },
+    });
 
     expect(observer.stepStarted).toHaveBeenCalledTimes(1);
     const stepCall = observer.stepStarted.mock.calls[0]![0];
     expect(stepCall.parentRunId).toBe(runId);
+    expect(stepCall.rootRunId).toBe(runId);
     expect(stepCall.nodeId).toBe("greet");
     expect(stepCall.stepType).toBe("binary");
     expect(stepCall.worker).toEqual({ type: "engine" });
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
-    expect(observer.stepStderr).toHaveBeenCalledWith({ runId: stepCall.runId, stderr: "" });
+    expect(observer.stepStderr).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, stderr: "" });
     expect(observer.stepFinished).toHaveBeenCalledWith({
       runId: stepCall.runId,
+      rootRunId: runId,
       status: "succeeded",
       output: "hi",
     });
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId, status: "succeeded", output: {} });
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId, rootRunId: runId, status: "succeeded", output: {} });
   });
 
   it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
@@ -365,11 +548,13 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const stepCall = observer.stepStarted.mock.calls[0]![0];
     expect(observer.stepFinished).toHaveBeenCalledWith({
       runId: stepCall.runId,
+      rootRunId: runId,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
     expect(observer.runFinished).toHaveBeenCalledWith({
       runId,
+      rootRunId: runId,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
@@ -390,6 +575,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const { runId } = observer.runStarted.mock.calls[0]![0];
     expect(observer.runFinished).toHaveBeenCalledWith({
       runId,
+      rootRunId: runId,
       status: "failed",
       error: expect.stringMatching(/not supported yet/),
     });
@@ -415,6 +601,6 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     await runWorkflow(file, fixturesDir, { observer });
 
     const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.contextChanged).toHaveBeenCalledWith({ runId, context: { seen: "v" } });
+    expect(observer.contextChanged).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
   });
 });

@@ -7,14 +7,14 @@ describe("composeObservers", () => {
     const a: RunObserver = { runStarted: () => void calls.push("a") };
     const b: RunObserver = { runStarted: () => void calls.push("b") };
 
-    await composeObservers(a, b).runStarted?.({ runId: "r", input: {}, worker: { type: "engine" } });
+    await composeObservers(a, b).runStarted?.({ runId: "r", rootRunId: "r", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
     expect(calls).toEqual(["a", "b"]);
   });
 
   it("tolerates observers that only implement some hooks", async () => {
     const only = { stepStarted: vi.fn() } satisfies RunObserver;
     const composed = composeObservers(only);
-    await composed.runFinished?.({ runId: "r", status: "succeeded", output: {} });
+    await composed.runFinished?.({ runId: "r", rootRunId: "r", status: "succeeded", output: {} });
     expect(only.stepStarted).not.toHaveBeenCalled();
   });
 
@@ -25,7 +25,7 @@ describe("composeObservers", () => {
       },
     };
     await expect(
-      composeObservers({}, boom).stepFinished?.({ runId: "r", status: "succeeded", output: {} }),
+      composeObservers({}, boom).stepFinished?.({ runId: "r", rootRunId: "r", status: "succeeded", output: {} }),
     ).rejects.toBeInstanceOf(ObserverError);
   });
 });

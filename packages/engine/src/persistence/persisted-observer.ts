@@ -6,69 +6,61 @@ import { finishRun, insertRun, setRunBlobRefs } from "./run-store.js";
 
 /**
  * A `RunObserver` (see run-observer.ts) that persists every run row and blob under `.path/`
- * (mvp spec §5.7, §6). One instance is scoped to a single root run (there is no nested-workflow
- * execution yet — #22 — so every step in scope here belongs to the one root run captured from
- * `runStarted`).
+ * (mvp spec §5.7, §6). One instance serves an entire run tree: every hook carries its own
+ * `rootRunId`, so a nested workflow-run (#22) records under the same root as its parent without
+ * the observer holding any per-run state. The run tree in the db (parent/root ids on each row)
+ * and on disk (`.path/runs/<root>/<run>/`) mirror the nesting, and each workflow-run keeps its
+ * own isolated `context.json`.
  */
 export function createPersistedObserver(db: Database.Database, projectDir: string): RunObserver {
-  // null until runStarted fires; every other hook requires it, so a null read is a genuine
-  // contract violation (a hook firing out of order) rather than a state to silently tolerate.
-  let rootRunId: string | null = null;
-
-  function requireRootRunId(): string {
-    if (rootRunId === null) {
-      throw new Error("RunObserver hook fired before runStarted — no root run id to persist under");
-    }
-    return rootRunId;
-  }
-
   // stepFinished and runFinished share this exact shape: mark the row done, and only a
   // successful outcome has a real output to persist (mvp spec §5.7 — output_ref is per-row).
-  function finishAndPersistOutput(root: string, runId: string, outcome: RunOutcome): void {
+  function finishAndPersistOutput(rootRunId: string, runId: string, outcome: RunOutcome): void {
     finishRun(db, runId, outcome.status);
     if (outcome.status === "succeeded") {
-      const dir = runBlobDir(projectDir, root, runId);
+      const dir = runBlobDir(projectDir, rootRunId, runId);
       writeJsonBlob(dir, "output.json", outcome.output);
-      setRunBlobRefs(db, runId, { outputRef: blobRef(root, runId, "output.json") });
+      setRunBlobRefs(db, runId, { outputRef: blobRef(rootRunId, runId, "output.json") });
     }
   }
 
   return {
-    runStarted({ runId, input }) {
-      rootRunId = runId;
-      insertRun(db, { runId, rootRunId, parentRunId: null, nodeId: null, worker: null, status: "running" });
+    runStarted({ runId, rootRunId, parentRunId, nodeId, input }) {
+      // Root run: parentRunId/nodeId null, worker null. Nested workflow-run (#22): its parent
+      // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step.
+      insertRun(db, { runId, rootRunId, parentRunId, nodeId, worker: null, status: "running" });
       const dir = runBlobDir(projectDir, rootRunId, runId);
       writeJsonBlob(dir, "input.json", input);
       writeJsonBlob(dir, "context.json", input); // format doc §6.3: workflow input seeds context
       setRunBlobRefs(db, runId, { inputRef: blobRef(rootRunId, runId, "input.json") });
     },
 
-    stepStarted({ runId, parentRunId, nodeId, worker, input }) {
-      const root = requireRootRunId();
-      insertRun(db, { runId, rootRunId: root, parentRunId, nodeId, worker, status: "running" });
-      const dir = runBlobDir(projectDir, root, runId);
+    stepStarted({ runId, rootRunId, parentRunId, nodeId, worker, input }) {
+      insertRun(db, { runId, rootRunId, parentRunId, nodeId, worker, status: "running" });
+      const dir = runBlobDir(projectDir, rootRunId, runId);
       writeJsonBlob(dir, "input.json", input);
-      setRunBlobRefs(db, runId, { inputRef: blobRef(root, runId, "input.json") });
+      setRunBlobRefs(db, runId, { inputRef: blobRef(rootRunId, runId, "input.json") });
     },
 
-    stepStderr({ runId, stderr }) {
+    stepStderr({ runId, rootRunId, stderr }) {
       // Always written, even empty — stderr is captured for audit, never passed downstream
       // (format doc §4.2); secret-scrubbing it is #20's scope.
-      writeBlobFile(runBlobDir(projectDir, requireRootRunId(), runId), "stderr.txt", stderr);
+      writeBlobFile(runBlobDir(projectDir, rootRunId, runId), "stderr.txt", stderr);
     },
 
     stepFinished(info) {
-      finishAndPersistOutput(requireRootRunId(), info.runId, info);
+      finishAndPersistOutput(info.rootRunId, info.runId, info);
     },
 
-    contextChanged({ runId, context }) {
+    contextChanged({ runId, rootRunId, context }) {
       // Context write-through (mvp spec §6): rewritten atomically on every mutation, so
       // on-disk state always matches the live blackboard, even if the engine is later killed.
-      writeJsonBlob(runBlobDir(projectDir, requireRootRunId(), runId), "context.json", context);
+      // Keyed by the run's own id — each workflow-run has its own context.json (#22).
+      writeJsonBlob(runBlobDir(projectDir, rootRunId, runId), "context.json", context);
     },
 
     runFinished(info) {
-      finishAndPersistOutput(requireRootRunId(), info.runId, info);
+      finishAndPersistOutput(info.rootRunId, info.runId, info);
     },
   };
 }

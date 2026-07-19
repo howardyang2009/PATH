@@ -157,3 +157,65 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     });
   });
 });
+
+describe("path run with a nested workflow step (ticket #22, real dev-mode process)", () => {
+  let projectDir: string;
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-nested-e2e-"));
+    for (const f of ["nested-parent.workflow.json", "nested-child.workflow.json"]) {
+      cpSync(join(realFixtures, f), join(projectDir, f));
+    }
+  });
+
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("runs the child, returns the child's output map to the parent, and mirrors the run tree in db + on disk", async () => {
+    const { stdout } = await runCli(["run", join(projectDir, "nested-parent.workflow.json")], projectDir);
+    // The parent's `publish` captured the child's `output` map verbatim.
+    expect(stdout.trim()).toBe(JSON.stringify({ childResult: { shouted: "HI" } }));
+
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const rows = db.prepare("SELECT * FROM runs ORDER BY started_at").all() as {
+      run_id: string;
+      root_run_id: string;
+      parent_run_id: string | null;
+      node_id: string | null;
+      status: string;
+    }[];
+    db.close();
+
+    expect(rows.every((r) => r.status === "succeeded")).toBe(true);
+
+    // The run tree: root workflow-run -> child workflow-run ("child-step") -> leaf binary ("shout").
+    const root = rows.find((r) => r.parent_run_id === null);
+    expect(root).toBeTruthy();
+    expect(root!.node_id).toBeNull();
+    expect(root!.run_id).toBe(root!.root_run_id);
+
+    const childRun = rows.find((r) => r.node_id === "child-step");
+    expect(childRun).toBeTruthy();
+    expect(childRun!.parent_run_id).toBe(root!.run_id);
+    expect(childRun!.root_run_id).toBe(root!.run_id);
+
+    const leafRun = rows.find((r) => r.node_id === "shout");
+    expect(leafRun).toBeTruthy();
+    expect(leafRun!.parent_run_id).toBe(childRun!.run_id);
+    expect(leafRun!.root_run_id).toBe(root!.run_id);
+
+    // Every workflow-run has its own context.json in its own run subdirectory under the one root
+    // run's tree; the leaf binary run has stderr.txt but no context of its own.
+    const runsRoot = join(projectDir, ".path", "runs", root!.root_run_id);
+    expect(existsSync(join(runsRoot, root!.run_id, "context.json"))).toBe(true);
+    expect(existsSync(join(runsRoot, childRun!.run_id, "context.json"))).toBe(true);
+    expect(existsSync(join(runsRoot, leafRun!.run_id, "context.json"))).toBe(false);
+    expect(existsSync(join(runsRoot, leafRun!.run_id, "stderr.txt"))).toBe(true);
+
+    // The child's context.json is its own isolated blackboard — it holds the input-seeded key and
+    // the child's own publish, and nothing from the parent.
+    const childContext = JSON.parse(readFileSync(join(runsRoot, childRun!.run_id, "context.json"), "utf8"));
+    expect(childContext).toEqual({ seed: "hi", shouted: "HI" });
+  });
+});

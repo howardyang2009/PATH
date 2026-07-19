@@ -22,17 +22,35 @@ export type RunOutcome =
  * (#19) need to observe. The engine itself never touches fs/db directly — a caller with nothing
  * to observe passes no observer at all, and every hook is independently optional so a caller
  * only implements what it needs.
+ *
+ * Every hook carries `rootRunId` — the id of the run tree's root — so one observer instance
+ * serves an entire nested run tree (#22) without holding hidden per-run state: a nested
+ * workflow-run's own `runStarted` no longer clobbers the observer's notion of "the root".
  */
 export interface RunObserver {
   /**
-   * The root run begins, before any body node executes. `worker` is the top-level workflow's
-   * worker — the root is the implicit root workflow-step (invariant 2), so logging emits its
-   * `step-started`/`step-finished` as the run's own lifecycle (mvp spec §8.1).
+   * A workflow-run begins, before any body node executes. The root run has `parentRunId: null`
+   * and `nodeId: null`; a nested workflow-step's run (#22) carries its parent run's id and the
+   * `workflow` node's id — workflow-as-step means the child run *is* that step's run, so a nested
+   * workflow-run is reported here (with its own context) rather than through `stepStarted`.
+   *
+   * `worker` is this workflow-run's own file worker (inheritance never crosses the file
+   * boundary) — every workflow-run is its file's implicit root workflow-step (invariant 2), so
+   * logging (#19) emits its `step-started`/`step-finished` as the run's own lifecycle
+   * (mvp spec §8.1).
    */
-  runStarted?(info: { runId: string; input: JsonValue; worker: Worker }): void | Promise<void>;
-  /** A step run begins — its input/command/cwd are resolved and it's about to execute. */
+  runStarted?(info: {
+    runId: string;
+    rootRunId: string;
+    parentRunId: string | null;
+    nodeId: string | null;
+    input: JsonValue;
+    worker: Worker;
+  }): void | Promise<void>;
+  /** A leaf step run begins — its input/command/cwd are resolved and it's about to execute. */
   stepStarted?(info: {
     runId: string;
+    rootRunId: string;
     parentRunId: string;
     nodeId: string;
     stepType: string;
@@ -40,13 +58,13 @@ export interface RunObserver {
     input: JsonValue;
   }): void | Promise<void>;
   /** A binary step's captured stderr — never passed downstream (format doc §4.2), audit only. */
-  stepStderr?(info: { runId: string; stderr: string }): void | Promise<void>;
-  /** A step run finished. */
-  stepFinished?(info: { runId: string } & RunOutcome): void | Promise<void>;
-  /** The (root) workflow-run's context changed, after a publish landed. */
-  contextChanged?(info: { runId: string; context: JsonValue }): void | Promise<void>;
-  /** The root run finished. */
-  runFinished?(info: { runId: string } & RunOutcome): void | Promise<void>;
+  stepStderr?(info: { runId: string; rootRunId: string; stderr: string }): void | Promise<void>;
+  /** A leaf step run finished. */
+  stepFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
+  /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
+  contextChanged?(info: { runId: string; rootRunId: string; context: JsonValue }): void | Promise<void>;
+  /** A workflow-run finished (root or nested). */
+  runFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
 }
 
 /**
