@@ -380,6 +380,9 @@ function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof
     stepFinished: vi.fn(),
     contextChanged: vi.fn(),
     runFinished: vi.fn(),
+    checkpointEvaluated: vi.fn(),
+    branchTaken: vi.fn(),
+    branchNoMatch: vi.fn(),
   };
 }
 
@@ -670,5 +673,170 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     const { runId } = observer.runStarted.mock.calls[0]![0];
     expect(observer.contextChanged).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
+  });
+});
+
+// A binary step that writes its raw stdin back out — lets a test observe which object flows into
+// a node's input (the default-input chain) and out of it again.
+function echoStep(id: string) {
+  return { type: "binary" as const, id, command: "node", args: ["-e", echoStdinScript()] };
+}
+
+// Look up the input object a given node's step-run started with (control nodes have no step-run).
+function stepInputFor(observer: ReturnType<typeof fakeObserver>, nodeId: string): unknown {
+  return observer.stepStarted.mock.calls.find(([info]) => info.nodeId === nodeId)?.[0].input;
+}
+
+describe("runWorkflow — checkpoint nodes (ticket #21)", () => {
+  it("checkpoint true forwards its predecessor's output unchanged (transparent) and continues", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "checkpoint-pass",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "produce", command: "node", args: ["-e", "process.stdout.write('hello')"], publish: { seen: "yes" } },
+        { type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.seen" } },
+        echoStep("consume"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+    // transparent: `consume` defaults its input to `produce`'s output, unchanged by the checkpoint.
+    expect(stepInputFor(observer, "consume")).toBe("hello");
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(
+      expect.objectContaining({ runId, rootRunId: runId, nodeId: "gate", passed: true, trace: expect.objectContaining({ outcome: "true" }) }),
+    );
+  });
+
+  it("checkpoint false stops the run as failed and does not run the following node", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "checkpoint-fail",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "produce", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { n: "5" } },
+        { type: "checkpoint", id: "gate", condition: { type: "equals", path: "context.n", value: "6" } },
+        echoStep("never"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/checkpoint "gate"/);
+    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "gate", passed: false }));
+    expect(stepInputFor(observer, "never")).toBeUndefined();
+  });
+
+  it("a checkpoint whose condition errors (strict semantics) fails the run as checkpoint-failed", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "checkpoint-error",
+      worker: { type: "engine" },
+      body: [{ type: "checkpoint", id: "gate", condition: { type: "equals", path: "context.absent", value: 1 } }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) }),
+    );
+  });
+});
+
+describe("runWorkflow — branch nodes (ticket #21)", () => {
+  it("takes the first arm whose when is true; its output becomes the block output; the default-input chain threads through", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "branch-first-match",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "produce", command: "node", args: ["-e", "process.stdout.write('hello')"], publish: { pick: "b" } },
+        {
+          type: "branch",
+          id: "route",
+          arms: [
+            { when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", command: "node", args: ["-e", "process.stdout.write('WRONG')"] }] },
+            { when: { type: "equals", path: "context.pick", value: "b" }, body: [echoStep("arm-b")] },
+          ],
+        },
+        echoStep("after"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+    // arm-b's first (and only) node defaults its input to the block predecessor's output ("hello").
+    expect(stepInputFor(observer, "arm-b")).toBe("hello");
+    // the losing arm never ran.
+    expect(stepInputFor(observer, "arm-a")).toBeUndefined();
+    // the block output (taken arm's last node output) becomes `after`'s default input.
+    expect(stepInputFor(observer, "after")).toBe("hello");
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.branchTaken).toHaveBeenCalledWith(
+      expect.objectContaining({ runId, rootRunId: runId, nodeId: "route", arm: 1, trace: expect.objectContaining({ outcome: "true" }) }),
+    );
+  });
+
+  it("runs the else body when no arm matches, with arm reported as \"else\" and a null trace", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "branch-else",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "produce", command: "node", args: ["-e", "process.stdout.write('base')"], publish: { pick: "z" } },
+        {
+          type: "branch",
+          id: "route",
+          arms: [{ when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", command: "node", args: ["-e", "process.stdout.write('WRONG')"] }] }],
+          else: [echoStep("fallback")],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+    expect(stepInputFor(observer, "fallback")).toBe("base");
+    expect(observer.branchTaken).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "route", arm: "else", trace: null }));
+  });
+
+  it("fails the run with branch-no-match when no arm matches and there is no else", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "branch-no-match",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "produce", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { pick: "z" } },
+        {
+          type: "branch",
+          id: "route",
+          arms: [
+            { when: { type: "equals", path: "context.pick", value: "a" }, body: [echoStep("arm-a")] },
+            { when: { type: "equals", path: "context.pick", value: "b" }, body: [echoStep("arm-b")] },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/branch "route"/);
+    const noMatch = observer.branchNoMatch.mock.calls[0]?.[0];
+    expect(noMatch).toMatchObject({ nodeId: "route" });
+    expect(noMatch.traces).toHaveLength(2); // every arm's trace
+    expect(observer.branchTaken).not.toHaveBeenCalled();
   });
 });

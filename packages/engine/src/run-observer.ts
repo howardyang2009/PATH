@@ -1,4 +1,5 @@
 import type { JsonValue, Worker } from "@path/schema";
+import type { Trace } from "./condition.js";
 
 /**
  * Thrown by an observer hook to signal the engine must **fail the run** rather than crash — the
@@ -65,6 +66,42 @@ export interface RunObserver {
   contextChanged?(info: { runId: string; rootRunId: string; context: JsonValue }): void | Promise<void>;
   /** A workflow-run finished (root or nested). */
   runFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
+
+  /**
+   * A `checkpoint` node was evaluated (#21). Control-node events are attributed to the enclosing
+   * workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run of its
+   * own (invariant 1). `passed` is the condition outcome; a strict-error evaluation is `passed:
+   * false` with the error surfaced as an error leaf inside `trace`. Logging (#19) maps this to the
+   * `checkpoint-passed`/`checkpoint-failed` event.
+   */
+  checkpointEvaluated?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    passed: boolean;
+    trace: Trace;
+  }): void | Promise<void>;
+  /**
+   * A `branch` arm won (#21): `arm` is the winning arm's index, or `"else"` for the fallback (which
+   * has no condition, so `trace` is null). Logging maps this to `branch-taken`.
+   */
+  branchTaken?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    arm: number | "else";
+    trace: Trace | null;
+  }): void | Promise<void>;
+  /**
+   * No `branch` arm matched and there was no `else` (#21) — this fails the run (§5.2). Carries every
+   * arm's `trace`. Logging maps this to `branch-no-match`.
+   */
+  branchNoMatch?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    traces: Trace[];
+  }): void | Promise<void>;
 }
 
 /**
@@ -92,6 +129,15 @@ export function composeObservers(...observers: RunObserver[]): RunObserver {
     },
     async runFinished(info) {
       for (const o of observers) await o.runFinished?.(info);
+    },
+    async checkpointEvaluated(info) {
+      for (const o of observers) await o.checkpointEvaluated?.(info);
+    },
+    async branchTaken(info) {
+      for (const o of observers) await o.branchTaken?.(info);
+    },
+    async branchNoMatch(info) {
+      for (const o of observers) await o.branchNoMatch?.(info);
     },
   };
 }

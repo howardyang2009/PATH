@@ -136,4 +136,42 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const rows = db.prepare("SELECT COUNT(*) AS n FROM log_events").get() as { n: number };
     expect(rows.n).toBe(0);
   });
+
+  it("emits checkpoint and branch control events with complete traces to both backends (ticket #21)", async () => {
+    const controls: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "controls",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { pick: "b" } },
+        { type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.pick" } },
+        {
+          type: "branch",
+          id: "route",
+          arms: [
+            { when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", command: "node", args: ["-e", "process.stdout.write('a')"] }] },
+            { when: { type: "equals", path: "context.pick", value: "b" }, body: [{ type: "binary", id: "arm-b", command: "node", args: ["-e", "process.stdout.write('b')"] }] },
+          ],
+        },
+      ],
+    };
+    const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+    const result = await runWorkflow(controls, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    expect(result.status).toBe("succeeded");
+
+    const root = rootRunId();
+    const dbEvents = getLogEventsForRoot(db, root);
+    const fileEvents = readNdjson(root).slice(1);
+    // Same control-node narrative in both backends, ordered by seq.
+    expect(dbEvents).toEqual(fileEvents);
+
+    const checkpoint = dbEvents.find((e) => e.type === "checkpoint-passed");
+    expect(checkpoint).toMatchObject({ node_id: "gate", trace: { type: "exists", path: "context.pick", outcome: "true" } });
+
+    const branch = dbEvents.find((e) => e.type === "branch-taken");
+    expect(branch).toMatchObject({ node_id: "route", arm: 1, trace: { type: "equals", path: "context.pick", outcome: "true" } });
+
+    // Every persisted control event still validates against the event schema.
+    for (const event of fileEvents) expect(() => LogEventSchema.parse(event)).not.toThrow();
+  });
 });

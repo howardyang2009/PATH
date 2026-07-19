@@ -33,8 +33,12 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   let seq = 0;
   let terminated = false;
 
-  function envelope(runId: string): { seq: number; ts: string; run_id: string; node_id: string | null } {
-    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id: nodeIdByRun.get(runId) ?? null };
+  // Lifecycle events default `node_id` to the run's own node (null for the root, the workflow
+  // node's id for a nested run). Control events (#21) pass the control node's id explicitly — they
+  // are attributed to the enclosing workflow-step's run but carry the checkpoint/branch node id.
+  function envelope(runId: string, nodeId?: string): { seq: number; ts: string; run_id: string; node_id: string | null } {
+    const node_id = nodeId ?? nodeIdByRun.get(runId) ?? null;
+    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id };
   }
 
   // Serialize an op onto a backend's queue: it runs only after that backend's previous op settles,
@@ -103,6 +107,19 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
       terminated = true;
       await emit(finishedEvent(envelope(info.runId), info), true);
       await Promise.allSettled(managed.map((mb) => enqueue(mb, () => mb.backend.close())));
+    },
+
+    async checkpointEvaluated({ runId, nodeId, passed, trace }) {
+      const type = passed ? "checkpoint-passed" : "checkpoint-failed";
+      await emit({ type, ...envelope(runId, nodeId), trace }, false);
+    },
+
+    async branchTaken({ runId, nodeId, arm, trace }) {
+      await emit({ type: "branch-taken", ...envelope(runId, nodeId), arm, trace }, false);
+    },
+
+    async branchNoMatch({ runId, nodeId, traces }) {
+      await emit({ type: "branch-no-match", ...envelope(runId, nodeId), traces }, false);
     },
   };
 
