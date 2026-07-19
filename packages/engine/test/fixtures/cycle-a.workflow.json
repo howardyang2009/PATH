@@ -1,0 +1,6 @@
+{
+  "format": "path/workflow@0",
+  "name": "cycle-a",
+  "worker": { "type": "engine" },
+  "body": [{ "type": "workflow", "id": "to-b", "ref": "./cycle-b.workflow.json" }]
+}

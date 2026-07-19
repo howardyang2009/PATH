@@ -1,0 +1,6 @@
+{
+  "format": "path/workflow@0",
+  "name": "missing-ref",
+  "worker": { "type": "engine" },
+  "body": [{ "type": "workflow", "id": "gone", "ref": "./does-not-exist.workflow.json" }]
+}

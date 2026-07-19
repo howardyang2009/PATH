@@ -1,0 +1,9 @@
+{
+  "format": "path/workflow@0",
+  "name": "parent-with-child",
+  "worker": { "type": "engine" },
+  "body": [
+    { "type": "binary", "id": "step-one", "command": "echo" },
+    { "type": "workflow", "id": "child-step", "ref": "./child.workflow.json" }
+  ]
+}

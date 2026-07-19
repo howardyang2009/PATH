@@ -1,0 +1,6 @@
+{
+  "format": "path/workflow@0",
+  "name": "child",
+  "worker": { "type": "engine" },
+  "body": [{ "type": "binary", "id": "child-step-one", "command": "echo" }]
+}

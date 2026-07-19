@@ -1,0 +1,6 @@
+{
+  "format": "path/workflow@0",
+  "name": "failing-step",
+  "worker": { "type": "engine" },
+  "body": [{ "type": "binary", "id": "boom", "command": "node", "args": ["-e", "process.exit(3)"] }]
+}
