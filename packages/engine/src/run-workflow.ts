@@ -6,6 +6,7 @@ import { InterpolationError, interpolateToString, interpolateValue, type Interpo
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
+import { collectSecrets, createMaskingObserver } from "./secret-mask.js";
 
 export interface RunOptions {
   /** The workflow's own input object (format doc §6.1); its top-level keys seed context (§6.3). */
@@ -20,6 +21,11 @@ export interface RunOptions {
   files?: Map<string, WorkflowFile>;
   /** Lifecycle hooks for persistence (#18) and later logging (#19) — see run-observer.ts. */
   observer?: RunObserver;
+  /**
+   * Load-time diagnostics that aren't run failures — currently the short-secret warning (#20).
+   * The engine has no I/O of its own, so the caller (the CLI) decides where these surface.
+   */
+  warn?: (message: string) => void;
 }
 
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
@@ -399,6 +405,15 @@ export async function runWorkflow(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const runId = randomUUID();
+
+  // Collect every `$secret` value in effective config once at run start (mvp spec §8.3, #20) and
+  // wrap the observer so the whole run tree's persisted artifacts are scrubbed at the seam — the
+  // interpolated values handed to workers stay real, only what crosses into persistence is masked.
+  const masker = collectSecrets(collectRunSecrets(file, options));
+  for (const warning of masker.warnings) options.warn?.(warning);
+  const observer =
+    options.observer && !masker.isEmpty ? createMaskingObserver(masker, options.observer) : options.observer;
+
   return executeWorkflowRun({
     file,
     fileDir,
@@ -406,6 +421,24 @@ export async function runWorkflow(
     incomingConfig: options.operatorConfig ?? {},
     identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
     files: options.files,
-    observer: options.observer,
+    observer,
   });
+}
+
+// Every config object a run's secrets can ride in on: operator overrides first (they win a token
+// key on a duplicated value — nearest config), then each reachable file's declared config and each
+// of its steps' configs, since secrecy rides a value through inheritance to any of them.
+function collectRunSecrets(rootFile: WorkflowFile, options: RunOptions): ConfigObject[] {
+  const configs: ConfigObject[] = [];
+  if (options.operatorConfig) configs.push(options.operatorConfig);
+
+  const files = options.files ? [...options.files.values()] : [rootFile];
+  if (!files.includes(rootFile)) files.push(rootFile);
+  for (const file of files) {
+    if (file.config) configs.push(file.config);
+    for (const node of file.body) {
+      if ("config" in node && node.config) configs.push(node.config);
+    }
+  }
+  return configs;
 }

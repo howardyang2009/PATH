@@ -118,6 +118,74 @@ describe("runWorkflow — config interpolation and inheritance (ticket #17)", ()
   });
 });
 
+describe("runWorkflow — secret masking at the persistence boundary (ticket #20)", () => {
+  const SECRET = "super-secret-abcdef";
+
+  // A binary step that writes its argv secret to both stdout and stderr, then publishes it into
+  // context and surfaces it as workflow output — so the real value touches every persisted surface.
+  function secretLeakFile(): WorkflowFile {
+    return {
+      format: "path/workflow@0",
+      name: "secret-leak",
+      worker: { type: "engine" },
+      config: { apiKey: { $secret: SECRET } },
+      body: [
+        {
+          type: "binary",
+          id: "leak",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])", "${config.apiKey}"],
+          publish: { saved: "${output}" },
+        },
+      ],
+      output: { result: "${context.saved}" },
+    };
+  }
+
+  // Captures every observer payload as it crosses the persistence boundary — this stands in for
+  // what would otherwise be written to disk / a backend.
+  function recordingObserver(): { observer: RunObserver; persisted: () => string } {
+    const seen: unknown[] = [];
+    const capture = (info: unknown) => {
+      seen.push(info);
+    };
+    return {
+      observer: {
+        runStarted: capture,
+        stepStarted: capture,
+        stepStderr: capture,
+        stepFinished: capture,
+        contextChanged: capture,
+        runFinished: capture,
+      },
+      persisted: () => JSON.stringify(seen),
+    };
+  }
+
+  it("hands the worker the real secret but scrubs it from every persisted payload", async () => {
+    const { observer, persisted } = recordingObserver();
+    const result = await runWorkflow(secretLeakFile(), fixturesDir, { observer });
+
+    // The spawned process received the real value: the unmasked RunResult carries it through.
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ result: SECRET });
+
+    // Nothing crossing the persistence boundary leaks the real value; the token stands in for it.
+    const dump = persisted();
+    expect(dump).not.toContain(SECRET);
+    expect(dump).toContain("[secret:apiKey]");
+  });
+
+  it("emits a load-time warning for a short secret", async () => {
+    const file = secretLeakFile();
+    file.config = { pin: { $secret: "ab" } };
+    const warn = vi.fn();
+
+    await runWorkflow(file, fixturesDir, { warn });
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pin/));
+  });
+});
+
 describe("runWorkflow — input maps (ticket #17)", () => {
   it("builds the step's input object from an interpolated map, preserving real types and literals", async () => {
     const file: WorkflowFile = {

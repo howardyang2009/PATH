@@ -193,6 +193,7 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
       operatorConfig: operatorConfig.config,
       files: tree.files,
       observer,
+      warn: (message) => io.error(`warning: ${message}`),
     });
   } finally {
     opened.db.close();

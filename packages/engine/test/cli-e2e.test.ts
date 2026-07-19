@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -155,6 +155,66 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
       code: 1,
       stderr: expect.stringContaining("no run found"),
     });
+  });
+});
+
+describe("path run — secret masking at the persistence boundary (ticket #20, real dev-mode process)", () => {
+  let projectDir: string;
+  const SECRET = "super-secret-value-DEADBEEF";
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-secret-e2e-"));
+    // A step whose interpolated secret reaches argv (the real process), then flows into stdout
+    // (its output), stderr, publish/context, and the workflow output map — every persisted surface.
+    const workflow = {
+      format: "path/workflow@0",
+      name: "secret-flow",
+      worker: { type: "engine" },
+      config: { apiKey: { $secret: SECRET } },
+      body: [
+        {
+          type: "binary",
+          id: "leak",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])", "${config.apiKey}"],
+          publish: { saved: "${output}" },
+        },
+      ],
+      output: { result: "${context.saved}" },
+    };
+    writeFileSync(join(projectDir, "workflow.json"), JSON.stringify(workflow));
+  });
+
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function readAllFiles(dir: string): string {
+    let out = "";
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      out += entry.isDirectory() ? readAllFiles(full) : readFileSync(full, "utf8");
+    }
+    return out;
+  }
+
+  it("never writes the real secret to any file under .path/ or any db row, but the process gets it", async () => {
+    // The spawned process received the real value: the step's stdout (the workflow output) is real.
+    const { stdout } = await runCli(["run", join(projectDir, "workflow.json")], projectDir);
+    expect(stdout.trim()).toBe(JSON.stringify({ result: SECRET }));
+
+    // Not a single byte of the real secret survives under .path/ (blobs, run.log, and — since the
+    // .db file itself lives there — the db). The token stands in for it everywhere.
+    const pathDump = readAllFiles(join(projectDir, ".path"));
+    expect(pathDump).not.toContain(SECRET);
+    expect(pathDump).toContain("[secret:apiKey]");
+
+    // And explicitly across queryable db columns (output blobs are refs, but log-event rows and
+    // captured values are stored inline).
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const logRows = db.prepare("SELECT * FROM log_events").all() as Record<string, unknown>[];
+    db.close();
+    expect(JSON.stringify(logRows)).not.toContain(SECRET);
   });
 });
 
