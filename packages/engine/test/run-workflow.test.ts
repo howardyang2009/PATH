@@ -1156,4 +1156,60 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
     expect(observer.iterationStarted).not.toHaveBeenCalled();
     expect(observer.loopExited).not.toHaveBeenCalled();
   });
+
+  it("resolves an interpolated max_iterations against config before capping the loop", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-cap-interpolated",
+      worker: { type: "engine" },
+      config: { cap: "2" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 100 },
+          max_iterations: "${config.cap}",
+          body: [incStep("body")],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    // "2" resolved to the integer 2: the loop caps after exactly two completed iterations.
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/max_iterations \(2\)/);
+    expect(observer.iterationStarted).toHaveBeenCalledTimes(2);
+    expect(observer.loopExited).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "loop", reason: "max-iterations-exceeded", iterations: 2 }),
+    );
+  });
+
+  it("fails the run when an interpolated max_iterations resolves to a non-positive integer", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-cap-bad",
+      worker: { type: "engine" },
+      config: { cap: "zero" },
+      body: [
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 100 },
+          max_iterations: "${config.cap}",
+          body: [echoStep("body")],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/while-do "loop": max_iterations resolved to "zero", which is not a positive integer/);
+    expect(observer.iterationStarted).not.toHaveBeenCalled();
+    expect(observer.loopExited).not.toHaveBeenCalled();
+  });
 });
