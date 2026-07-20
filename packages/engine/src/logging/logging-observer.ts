@@ -140,6 +140,14 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
     async branchNoMatch({ runId, nodeId, traces }) {
       await emit({ type: "branch-no-match", ...envelope(runId, nodeId), traces }, false);
     },
+
+    async iterationStarted({ runId, nodeId, iteration, trace }) {
+      await emit({ type: "iteration-started", ...envelope(runId, nodeId), iteration, trace }, false);
+    },
+
+    async loopExited({ runId, nodeId, reason, iterations, trace }) {
+      await emit({ type: "loop-exited", ...envelope(runId, nodeId), reason, iterations, trace }, false);
+    },
   };
 
   function finishedEvent(

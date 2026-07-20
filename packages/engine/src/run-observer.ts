@@ -129,6 +129,33 @@ export interface RunObserver {
     nodeId: string;
     traces: Trace[];
   }): void | Promise<void>;
+  /**
+   * A `while-do` iteration is about to run (#23): `iteration` is 1-based; `trace` is the condition
+   * check that passed (true) leading to this iteration. A control-node observation attributed to the
+   * enclosing workflow-run (`runId`) + the `while-do` node's `nodeId` — a logicer has no run of its
+   * own (invariant 1). Logging maps this to `iteration-started`.
+   */
+  iterationStarted?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    iteration: number;
+    trace: Trace;
+  }): void | Promise<void>;
+  /**
+   * A `while-do` loop exited (#23): `reason` is `condition-false` (the normal exit) or
+   * `max-iterations-exceeded` (which fails the run — spec §5.2/§5.6); `iterations` is the number of
+   * completed iterations; `trace` is the final condition check (the false one, or the still-true one
+   * at the cap). Logging maps this to `loop-exited`.
+   */
+  loopExited?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    reason: "condition-false" | "max-iterations-exceeded";
+    iterations: number;
+    trace: Trace;
+  }): void | Promise<void>;
 }
 
 /**
@@ -171,6 +198,12 @@ export function composeObservers(...observers: RunObserver[]): RunObserver {
     },
     async branchNoMatch(info) {
       for (const o of observers) await o.branchNoMatch?.(info);
+    },
+    async iterationStarted(info) {
+      for (const o of observers) await o.iterationStarted?.(info);
+    },
+    async loopExited(info) {
+      for (const o of observers) await o.loopExited?.(info);
     },
   };
 }

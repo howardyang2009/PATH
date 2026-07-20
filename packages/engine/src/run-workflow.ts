@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, Worker, WorkflowFile } from "@path/schema";
+import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, WhileDoNode, Worker, WorkflowFile } from "@path/schema";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { mergeConfig } from "./merge-config.js";
@@ -214,9 +214,9 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
  * Executes one workflow-run: walks the file's body strictly sequentially (mvp spec §5.1),
  * running `binary` steps as child processes and `workflow` steps as nested workflow-runs (#22),
  * resolving `${}` interpolation, `input`/`publish` maps, config inheritance, and `parse: "json"`
- * at each step (spec §2 invariant 4, format §5–6, §8). Remaining node types are out of scope of
- * the walking skeleton (tickets #21–#24) and fail the run with a clear message rather than being
- * silently skipped.
+ * at each step (spec §2 invariant 4, format §5–6, §8). The control constructs — checkpoint, branch
+ * (#21), parallel (#24), and while-do (#23) — are engine-evaluated in the same walk; any other node
+ * type fails the run with a clear message rather than being silently skipped.
  *
  * A workflow-run's own `RunObserver.runStarted`/`runFinished` calls are that run's record — for
  * the root run and, recursively, for each nested workflow-step's run, forming the run tree;
@@ -348,6 +348,58 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     return { status: "failed", error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
   }
 
+  // A `while-do` node: check the condition before every iteration against the run's `context` + the
+  // output that seeds the next iteration's first node (spec §5.2, §5.4). Zero iterations is a normal,
+  // transparent exit — the block forwards its predecessor's output unchanged. Each iteration's body
+  // runs as a nested sequence seeded by the previous iteration's last node's output (the cross-
+  // iteration default-input chain, §5.4); iteration 1 is seeded by the block predecessor's output.
+  // The block output is the final executed iteration's last node's output. If the condition is still
+  // true after `max_iterations` completed iterations the run fails (§5.2/§5.6); a condition
+  // evaluation error fails the run outright (§5.6).
+  async function runWhileDoNode(node: WhileDoNode, incomingOutput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
+    let maxIterations: number;
+    if (typeof node.max_iterations === "number") {
+      maxIterations = node.max_iterations;
+    } else {
+      const scope: InterpolationScope = { config: configScope(fileConfig), context: exec.context };
+      let resolved: string;
+      try {
+        resolved = interpolateToString(node.max_iterations, scope);
+      } catch (err) {
+        return { status: "failed", error: describeInterpolationError(node.id, err) };
+      }
+      const parsed = Number(resolved);
+      if (!Number.isInteger(parsed) || parsed <= 0) {
+        return { status: "failed", error: `while-do "${node.id}": max_iterations resolved to "${resolved}", which is not a positive integer` };
+      }
+      maxIterations = parsed;
+    }
+
+    let iterationOutput = incomingOutput;
+    let iterations = 0; // completed iterations
+    for (;;) {
+      const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: iterationOutput });
+      if (outcome === "error") {
+        return { status: "failed", error: `while-do "${node.id}": condition evaluation error: ${describeConditionFailure(trace)}` };
+      }
+      if (outcome === "false") {
+        await observer?.loopExited?.({ runId, rootRunId, nodeId: node.id, reason: "condition-false", iterations, trace });
+        return { status: "succeeded", output: iterationOutput };
+      }
+      // Condition true, but the cap has already been reached: the run fails (post-loop nodes may
+      // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
+      if (iterations >= maxIterations) {
+        await observer?.loopExited?.({ runId, rootRunId, nodeId: node.id, reason: "max-iterations-exceeded", iterations, trace });
+        return { status: "failed", error: `while-do "${node.id}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
+      }
+      iterations += 1;
+      await observer?.iterationStarted?.({ runId, rootRunId, nodeId: node.id, iteration: iterations, trace });
+      const bodyOutcome = await runSequence(node.body, iterationOutput, exec);
+      if (bodyOutcome.status !== "succeeded") return bodyOutcome;
+      iterationOutput = bodyOutcome.output;
+    }
+  }
+
   /**
    * Walks a node sequence strictly in order (mvp spec §5.1), threading the default-input chain: a
    * node with no `input` reads its predecessor's output (`seedInput` for the first node — the
@@ -408,10 +460,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         outcome = await runCheckpointNode(node, previous, exec);
       } else if (node.type === "branch") {
         outcome = await runBranchNode(node, previous, exec);
+      } else if (node.type === "while-do") {
+        outcome = await runWhileDoNode(node, previous, exec);
       } else {
         return {
           status: "failed",
-          error: `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, parallel, checkpoint, and branch nodes only`,
+          error: `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, parallel, checkpoint, branch, and while-do nodes only`,
         };
       }
 

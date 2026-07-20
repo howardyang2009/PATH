@@ -245,4 +245,50 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     // Every persisted control event still validates against the event schema.
     for (const event of fileEvents) expect(() => LogEventSchema.parse(event)).not.toThrow();
   });
+
+  it("emits while-do iteration-started and loop-exited control events with traces to both backends (ticket #23)", async () => {
+    const loop: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-loop",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 1 },
+          max_iterations: 10,
+          body: [
+            {
+              type: "binary",
+              id: "inc",
+              command: "node",
+              args: ["-e", "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(String(Number(d)+1)))"],
+              parse: "json",
+              publish: { count: "${output}" },
+            },
+          ],
+        },
+      ],
+    };
+    const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+    const result = await runWorkflow(loop, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    expect(result.status).toBe("succeeded");
+
+    const root = rootRunId();
+    const dbEvents = getLogEventsForRoot(db, root);
+    const fileEvents = readNdjson(root).slice(1);
+    expect(dbEvents).toEqual(fileEvents);
+
+    // count runs 0 -> 1 -> 2; the condition (count <= 1) holds for the first two iterations.
+    const iterations = dbEvents.filter((e) => e.type === "iteration-started");
+    expect(iterations).toHaveLength(2);
+    expect(iterations[0]).toMatchObject({ node_id: "loop", iteration: 1 });
+    expect(iterations[1]).toMatchObject({ node_id: "loop", iteration: 2 });
+
+    const exited = dbEvents.find((e) => e.type === "loop-exited");
+    expect(exited).toMatchObject({ node_id: "loop", reason: "condition-false", iterations: 2, trace: { type: "range", path: "context.count", outcome: "false" } });
+
+    for (const event of fileEvents) expect(() => LogEventSchema.parse(event)).not.toThrow();
+  });
 });

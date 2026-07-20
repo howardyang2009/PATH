@@ -87,6 +87,27 @@ const RunCancelledSchema = z
   })
   .strict();
 
+// While-do loops (mvp spec §5.2–5.4, §8.1): `iteration-started` fires before each iteration body
+// with a 1-based `iteration` and the passing (true) condition trace; `loop-exited` fires once at
+// block end with the exit `reason`, the completed `iterations` count, and the final condition trace.
+const IterationStartedSchema = z
+  .object({
+    type: z.literal("iteration-started"),
+    ...envelope,
+    iteration: z.number().int().positive(),
+    trace: TraceSchema,
+  })
+  .strict();
+const LoopExitedSchema = z
+  .object({
+    type: z.literal("loop-exited"),
+    ...envelope,
+    reason: z.enum(["condition-false", "max-iterations-exceeded"]),
+    iterations: z.number().int().nonnegative(),
+    trace: TraceSchema,
+  })
+  .strict();
+
 export const LogEventSchema = z.discriminatedUnion("type", [
   StepStartedSchema,
   StepFinishedSchema,
@@ -96,6 +117,8 @@ export const LogEventSchema = z.discriminatedUnion("type", [
   BranchNoMatchSchema,
   JoinAppliedSchema,
   RunCancelledSchema,
+  IterationStartedSchema,
+  LoopExitedSchema,
 ]);
 
 export type LogEvent = z.infer<typeof LogEventSchema>;

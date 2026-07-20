@@ -386,6 +386,8 @@ function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof
     checkpointEvaluated: vi.fn(),
     branchTaken: vi.fn(),
     branchNoMatch: vi.fn(),
+    iterationStarted: vi.fn(),
+    loopExited: vi.fn(),
   };
 }
 
@@ -1017,5 +1019,141 @@ describe("runWorkflow — parallel blocks: collect join (ticket #24)", () => {
       branches: ["one", "two"],
       publishedKeys: ["k1", "k2"],
     });
+  });
+});
+
+describe("runWorkflow — while-do loops (ticket #23)", () => {
+  // Reads a JSON number on stdin, writes back +1 as its output. Parsed as json + published so the
+  // loop condition (which reads `context.count`) advances each iteration and eventually falls false.
+  function incStep(id: string) {
+    return {
+      type: "binary" as const,
+      id,
+      command: "node",
+      args: ["-e", "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(String(Number(d)+1)))"],
+      parse: "json" as const,
+      publish: { count: "${output}" },
+    };
+  }
+
+  it("runs zero iterations transparently when the condition is false from the start", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-zero",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('5')"], parse: "json", publish: { count: "${output}" } },
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 2 },
+          max_iterations: 10,
+          body: [incStep("body")],
+        },
+        echoStep("after"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+    // Body never ran; the block is transparent on the output side (predecessor's output = "5").
+    expect(stepInputFor(observer, "body")).toBeUndefined();
+    expect(stepInputFor(observer, "after")).toBe(5);
+    expect(observer.iterationStarted).not.toHaveBeenCalled();
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.loopExited).toHaveBeenCalledWith(
+      expect.objectContaining({ runId, rootRunId: runId, nodeId: "loop", reason: "condition-false", iterations: 0, trace: expect.objectContaining({ outcome: "false" }) }),
+    );
+  });
+
+  it("iterates until the condition falls false, chaining input across iterations; block output is the final iteration's last node output", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-count",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 2 },
+          max_iterations: 10,
+          body: [incStep("body")],
+        },
+        echoStep("after"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+    // count runs 0 -> 1 -> 2 -> 3; the condition (count <= 2) holds for the first three iterations.
+    expect(observer.iterationStarted).toHaveBeenCalledTimes(3);
+    // The block output is the last iteration's `body` output (3); `after` chains off it.
+    expect(stepInputFor(observer, "after")).toBe(3);
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.iterationStarted).toHaveBeenNthCalledWith(1, expect.objectContaining({ nodeId: "loop", iteration: 1 }));
+    expect(observer.loopExited).toHaveBeenCalledWith(
+      expect.objectContaining({ runId, rootRunId: runId, nodeId: "loop", reason: "condition-false", iterations: 3 }),
+    );
+  });
+
+  it("fails the run when the condition is still true after max_iterations completed iterations", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-cap",
+      worker: { type: "engine" },
+      body: [
+        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "range", path: "context.count", max: 100 },
+          max_iterations: 2,
+          body: [incStep("body")],
+        },
+        echoStep("after"),
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/while-do "loop"/);
+    expect(observer.iterationStarted).toHaveBeenCalledTimes(2);
+    // Post-loop node never runs on a failed loop cap.
+    expect(stepInputFor(observer, "after")).toBeUndefined();
+    expect(observer.loopExited).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "loop", reason: "max-iterations-exceeded", iterations: 2, trace: expect.objectContaining({ outcome: "true" }) }),
+    );
+  });
+
+  it("fails the run when the condition evaluation errors (strict semantics)", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "while-error",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "while-do",
+          id: "loop",
+          condition: { type: "equals", path: "context.absent", value: 1 },
+          max_iterations: 3,
+          body: [echoStep("body")],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/while-do "loop"/);
+    expect(observer.iterationStarted).not.toHaveBeenCalled();
+    expect(observer.loopExited).not.toHaveBeenCalled();
   });
 });
