@@ -445,12 +445,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
 
     // A failing branch fails the block (and thus the run); no publishes land. Report the
     // first-declared failure for determinism.
-    const failed = branchResults.find((r) => r.outcome.status === "failed");
-    if (failed && failed.outcome.status === "failed") {
-      return {
-        status: "failed",
-        error: `parallel "${node.id}", branch "${failed.branch.id}": ${failed.outcome.error}`,
-      };
+    for (const { branch, outcome } of branchResults) {
+      if (outcome.status === "failed") {
+        return {
+          status: "failed",
+          error: `parallel "${node.id}", branch "${branch.id}": ${outcome.error}`,
+        };
+      }
     }
     // No local failure but a cancelled branch means the enclosing block aborted us: propagate.
     if (branchResults.some((r) => r.outcome.status === "cancelled")) {

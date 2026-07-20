@@ -40,7 +40,7 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
     runId: string,
     nodeId?: string,
   ): { seq: number; ts: string; run_id: string; node_id: string | null } {
-    const node_id = nodeId !== undefined ? nodeId : nodeIdByRun.get(runId) ?? null;
+    const node_id = nodeId ?? nodeIdByRun.get(runId) ?? null;
     return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id };
   }
 
