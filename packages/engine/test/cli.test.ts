@@ -129,3 +129,19 @@ describe("cli main() — log.backends setting (ticket #19)", () => {
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/syslog/));
   });
 });
+
+describe("cli main() — LLM processor cap (ticket #25)", () => {
+  it("accepts --llm-concurrency to override the engine-wide cap and still runs the workflow", async () => {
+    const io = fakeIo();
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--llm-concurrency", "2"], io);
+    expect(code).toBe(0);
+    expect(io.error).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive-integer cap with a clear error", async () => {
+    const io = fakeIo();
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--llm-concurrency", "0"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--llm-concurrency/));
+  });
+});

@@ -2,7 +2,7 @@ import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeJsonBlob } from "./blob-store.js";
 import { blobRef, runBlobDir } from "./paths.js";
-import { finishRun, insertRun, setRunBlobRefs } from "./run-store.js";
+import { finishRun, insertRun, setRunBlobRefs, setRunUsage } from "./run-store.js";
 
 /**
  * A `RunObserver` (see run-observer.ts) that persists every run row and blob under `.path/`
@@ -46,6 +46,13 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       // Always written, even empty — stderr is captured for audit, never passed downstream
       // (format doc §4.2); secret-scrubbing it is #20's scope.
       writeBlobFile(runBlobDir(projectDir, rootRunId, runId), "stderr.txt", stderr);
+    },
+
+    stepUsage({ runId, usage, estimatedCostUsd }) {
+      // Leaf-only (mvp spec §5.7): this row is where the tokens were actually spent; no ancestor
+      // row stores a derived total — subtree figures are a read-time SUM over descendants, left to
+      // whatever reads the run tree back rather than computed or stored here.
+      setRunUsage(db, runId, { usage, estimatedCostUsd });
     },
 
     stepFinished(info) {

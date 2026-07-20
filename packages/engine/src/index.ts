@@ -13,3 +13,11 @@ export {
   type LogBackendId,
 } from "./logging/backends.js";
 export { main, type CliIo } from "./cli.js";
+export { createAgentSdkWorker, type AgentSdkWorkerOptions, type SdkQuery } from "./llm/agent-sdk-worker.js";
+export type { LlmWorker, PromptRequest, PromptResult } from "./llm/llm-worker.js";
+export {
+  createProcessorSemaphore,
+  DEFAULT_LLM_CONCURRENCY,
+  type ProcessorSemaphore,
+  type ReleaseSlot,
+} from "./llm/processor-semaphore.js";

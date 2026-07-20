@@ -64,6 +64,20 @@ export interface RunObserver {
   }): void | Promise<void>;
   /** A binary step's captured stderr — never passed downstream (format doc §4.2), audit only. */
   stepStderr?(info: { runId: string; rootRunId: string; stderr: string }): void | Promise<void>;
+  /**
+   * What one LLM step run spent (#25, mvp spec §5.7, §7): `usage` is the worker's real token
+   * counts, `estimatedCostUsd` the SDK's client-side estimate at API list prices. Reported
+   * **leaf-only**, on the prompt-step run where the tokens were spent — a workflow-run never
+   * reports a total of its children's spend, since subtree figures are a read-time SUM. Emitted
+   * before `stepFinished`, and for a failed step too: a step that died mid-conversation still
+   * spent tokens.
+   */
+  stepUsage?(info: {
+    runId: string;
+    rootRunId: string;
+    usage: JsonValue | null;
+    estimatedCostUsd: number | null;
+  }): void | Promise<void>;
   /** A leaf step run finished. */
   stepFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
@@ -174,6 +188,9 @@ export function composeObservers(...observers: RunObserver[]): RunObserver {
     },
     async stepStderr(info) {
       for (const o of observers) await o.stepStderr?.(info);
+    },
+    async stepUsage(info) {
+      for (const o of observers) await o.stepUsage?.(info);
     },
     async stepFinished(info) {
       for (const o of observers) await o.stepFinished?.(info);

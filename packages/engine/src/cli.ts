@@ -32,7 +32,7 @@ const consoleIo: CliIo = {
 };
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--log-backends db,ndjson]";
+  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE = "usage: path runs rm <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
@@ -40,6 +40,7 @@ interface ParsedRunArgs {
   configFile?: string;
   setPairs: [string, string][];
   logBackends?: LogBackendId[];
+  llmConcurrency?: number;
 }
 
 type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; error: string };
@@ -54,6 +55,7 @@ function parseRunArgs(argv: string[]): ParseResult {
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
   let logBackends: LogBackendId[] | undefined;
+  let llmConcurrency: number | undefined;
 
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
@@ -74,12 +76,30 @@ function parseRunArgs(argv: string[]): ParseResult {
       if (!parsed.success) return parsed;
       logBackends = parsed.ids;
       i += 1;
+    } else if (flag === "--llm-concurrency") {
+      const value = rest[i + 1];
+      const parsed = parseLlmConcurrency(value);
+      if (!parsed.success) return parsed;
+      llmConcurrency = parsed.value;
+      i += 1;
     } else {
       return { success: false, error: `unrecognized argument "${flag}"\n${RUN_USAGE}` };
     }
   }
 
-  return { success: true, args: { workflowPath, configFile, setPairs, logBackends } };
+  return { success: true, args: { workflowPath, configFile, setPairs, logBackends, llmConcurrency } };
+}
+
+type LlmConcurrencyResult = { success: true; value: number } | { success: false; error: string };
+
+// The engine-wide LLM processor cap (mvp spec §5.5, §7): a positive integer overriding the default
+// of 4. The ceiling is memory (~400 MB per live processor), so this is the operator's memory knob.
+function parseLlmConcurrency(value: string | undefined): LlmConcurrencyResult {
+  const parsed = Number(value);
+  if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+    return { success: false, error: `--llm-concurrency requires a positive integer\n${RUN_USAGE}` };
+  }
+  return { success: true, value: parsed };
 }
 
 type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
@@ -193,6 +213,7 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
       operatorConfig: operatorConfig.config,
       files: tree.files,
       observer,
+      llmConcurrency: parsed.args.llmConcurrency,
       warn: (message) => io.error(`warning: ${message}`),
     });
   } finally {

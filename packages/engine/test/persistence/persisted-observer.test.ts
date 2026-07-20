@@ -162,4 +162,33 @@ describe("createPersistedObserver", () => {
     expect(row?.status).toBe("failed");
     expect(row?.outputRef).toBeNull();
   });
+
+  it("records an LLM step run's usage and estimated cost on its own row (mvp spec §5.7)", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.runStarted?.({ runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+    await observer.stepStarted?.({
+      runId: "step-1",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      nodeId: "summarize",
+      stepType: "prompt",
+      worker: { type: "llm", model: "claude-sonnet-5" },
+      input: {},
+    });
+    await observer.stepUsage?.({
+      runId: "step-1",
+      rootRunId: "root-1",
+      usage: { input_tokens: 12, output_tokens: 34 },
+      estimatedCostUsd: 0.0053,
+    });
+
+    const step = getRunsForRoot(db, "root-1").find((r) => r.runId === "step-1");
+    expect(step?.usage).toEqual({ input_tokens: 12, output_tokens: 34 });
+    expect(step?.estimatedCostUsd).toBeCloseTo(0.0053);
+
+    // Leaf-only: the enclosing workflow-run stores no derived total of its children's spend.
+    const root = getRunsForRoot(db, "root-1").find((r) => r.runId === "root-1");
+    expect(root?.usage).toBeNull();
+    expect(root?.estimatedCostUsd).toBeNull();
+  });
 });

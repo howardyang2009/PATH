@@ -4,6 +4,13 @@ import { dirname, resolve } from "node:path";
 import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, WhileDoNode, Worker, WorkflowFile } from "@path/schema";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
+import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
+import type { LlmWorker } from "./llm/llm-worker.js";
+import {
+  createProcessorSemaphore,
+  DEFAULT_LLM_CONCURRENCY,
+  type ProcessorSemaphore,
+} from "./llm/processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
@@ -27,6 +34,26 @@ export interface RunOptions {
    * The engine has no I/O of its own, so the caller (the CLI) decides where these surface.
    */
   warn?: (message: string) => void;
+  /**
+   * Where `prompt` steps execute (#25). Defaults to the pinned Agent SDK worker (mvp spec §7),
+   * which loads the SDK only when a prompt step actually runs; tests and any future alternate
+   * worker (headless CLI, remote runner) substitute their own through this seam.
+   */
+  llmWorker?: LlmWorker;
+  /**
+   * The engine-wide cap on concurrent LLM processors (mvp spec §5.5) — default 4. One semaphore
+   * covers the whole run tree, so nested workflows and nested parallels share it.
+   */
+  llmConcurrency?: number;
+}
+
+/**
+ * The LLM execution resources one run tree shares: the worker `prompt` steps run on, and the
+ * single semaphore that caps how many of its processors are live at once (mvp spec §5.5).
+ */
+interface LlmRuntime {
+  worker: LlmWorker;
+  semaphore: ProcessorSemaphore;
 }
 
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
@@ -198,10 +225,21 @@ interface WorkflowRunParams {
   identity: RunIdentity;
   files?: Map<string, WorkflowFile>;
   observer?: RunObserver;
+  // Shared by the entire run tree, so the processor cap spans nested runs too (mvp spec §5.5).
+  llm: LlmRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
   // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). Absent for the root run.
   signal?: AbortSignal;
   cancellation?: Cancellation;
+}
+
+type WorkflowNode = WorkflowFile["body"][number];
+type StepNode = Extract<WorkflowNode, { type: "binary" | "workflow" | "prompt" }>;
+
+// Only steps carry `config`/`input`/`publish` and execute on a worker; the control nodes around
+// them are engine-evaluated logicers with no run of their own (CONTEXT invariant 1).
+function isStepNode(node: WorkflowNode): node is StepNode {
+  return node.type === "binary" || node.type === "workflow" || node.type === "prompt";
 }
 
 // The interpolated `input` object must be a JSON object so its top-level keys can seed the child's
@@ -418,11 +456,10 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     let previous: JsonValue = seedInput;
 
     for (const node of nodes) {
-      const isStep = node.type === "binary" || node.type === "workflow" || node.type === "prompt";
-      const stepConfig = isStep ? mergeConfig(fileConfig, node.config) : undefined;
+      const stepConfig = isStepNode(node) ? mergeConfig(fileConfig, node.config) : undefined;
 
       let outcome: SeqOutcome;
-      if (node.type === "binary" || node.type === "workflow") {
+      if (isStepNode(node)) {
         const scope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context };
         let stepInput: JsonValue;
         try {
@@ -430,29 +467,34 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         } catch (err) {
           return { status: "failed", error: describeInterpolationError(node.id, err) };
         }
-        outcome =
-          node.type === "workflow"
-            ? await runWorkflowNode(node, stepInput, {
-                fileDir,
-                stepConfig: stepConfig!,
-                parentRunId: runId,
-                rootRunId,
-                files,
-                observer,
-                signal: exec.signal,
-                cancellation: exec.cancellation,
-              })
-            : await runBinaryNode(node, stepInput, {
-                stepConfig: stepConfig!,
-                fileDir,
-                fileWorker: file.worker,
-                rootRunId,
-                parentRunId: runId,
-                observer,
-                context: exec.context,
-                signal: exec.signal,
-                cancellation: exec.cancellation,
-              });
+        const leafCtx = {
+          stepConfig: stepConfig!,
+          fileDir,
+          fileWorker: file.worker,
+          rootRunId,
+          parentRunId: runId,
+          observer,
+          context: exec.context,
+          signal: exec.signal,
+          cancellation: exec.cancellation,
+        };
+        if (node.type === "workflow") {
+          outcome = await runWorkflowNode(node, stepInput, {
+            fileDir,
+            stepConfig: stepConfig!,
+            parentRunId: runId,
+            rootRunId,
+            files,
+            observer,
+            llm: params.llm,
+            signal: exec.signal,
+            cancellation: exec.cancellation,
+          });
+        } else if (node.type === "prompt") {
+          outcome = await runPromptNode(node, stepInput, { ...leafCtx, llm: params.llm });
+        } else {
+          outcome = await runBinaryNode(node, stepInput, leafCtx);
+        }
       } else if (node.type === "parallel") {
         // Every branch's first node defaults to the block's predecessor's output (§5.4).
         outcome = await runParallelNode(node, previous, exec);
@@ -463,16 +505,20 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       } else if (node.type === "while-do") {
         outcome = await runWhileDoNode(node, previous, exec);
       } else {
+        // Unreachable for the format as it stands — every declared node type is walked above. The
+        // guard survives for a node type that lands in the format before the engine walks it: it
+        // must fail the run loudly rather than be silently skipped.
+        const unknown = node as { type: string; id: string };
         return {
           status: "failed",
-          error: `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, parallel, checkpoint, branch, and while-do nodes only`,
+          error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
         };
       }
 
       if (outcome.status !== "succeeded") return outcome;
       const output = outcome.output;
 
-      if ((node.type === "binary" || node.type === "workflow") && node.publish) {
+      if (isStepNode(node) && node.publish) {
         const publishScope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context, output };
         const updates: { [key: string]: JsonValue } = {};
         try {
@@ -613,6 +659,8 @@ async function runWorkflowNode(
     rootRunId: string;
     files?: Map<string, WorkflowFile>;
     observer?: RunObserver;
+    // Shared down the whole run tree so the child's prompt steps queue on the same cap (§5.5).
+    llm: LlmRuntime;
     // Inherited from an enclosing `parallel` branch (#24): a sibling failure kills this nested
     // run's own leaf steps too (mvp spec §5.6), ending it `cancelled`.
     signal?: AbortSignal;
@@ -642,6 +690,7 @@ async function runWorkflowNode(
     identity: { runId: randomUUID(), rootRunId: ctx.rootRunId, parentRunId: ctx.parentRunId, nodeId: node.id },
     files: ctx.files,
     observer: ctx.observer,
+    llm: ctx.llm,
     signal: ctx.signal,
     cancellation: ctx.cancellation,
   });
@@ -653,25 +702,153 @@ async function runWorkflowNode(
   return { status: "succeeded", output: childResult.output };
 }
 
+// Everything a leaf step run needs from its enclosing workflow-run: the effective config and file
+// worker it inherits, its place in the run tree, the context it interpolates against, and any
+// enclosing `parallel` block's cancellation (#24).
+interface LeafStepContext {
+  stepConfig: ConfigObject;
+  fileDir: string;
+  fileWorker: Worker;
+  rootRunId: string;
+  parentRunId: string;
+  observer?: RunObserver;
+  context: { [key: string]: JsonValue };
+  signal?: AbortSignal;
+  cancellation?: Cancellation;
+}
+
+// The tail every leaf step shares once its worker has produced a raw string output: apply
+// `parse: "json"` (format doc §6.5) and emit the terminal `stepFinished`. A parse failure fails
+// the step with its own run as the cause; otherwise the (parsed or raw) output succeeds. Keeps the
+// parse/finish shape identical across binary and prompt steps so the two can't drift.
+async function finishLeafStep(
+  observer: RunObserver | undefined,
+  ids: { runId: string; rootRunId: string },
+  node: { id: string; parse?: "text" | "json" },
+  rawOutput: string,
+): Promise<SeqOutcome> {
+  let output: JsonValue = rawOutput;
+  if (node.parse === "json") {
+    try {
+      output = parseStepOutput(rawOutput);
+    } catch (err) {
+      if (!(err instanceof OutputParseError)) throw err;
+      const parseError = `step "${node.id}": ${err.message}`;
+      await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "failed", error: parseError });
+      return { status: "failed", error: parseError, causeRunId: ids.runId };
+    }
+  }
+  await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "succeeded", output });
+  return { status: "succeeded", output };
+}
+
+/**
+ * A `prompt` step: run it on the LLM worker as one **fresh processor**, torn down when the step
+ * completes (mvp spec §5.5) — no session reuse, so the step reads exactly what its `input` map
+ * built. The processor slot comes from the engine-wide semaphore first, so a step that cannot get
+ * one simply waits (and its run row only starts once it is really running); binary steps are
+ * uncapped and never queue behind it.
+ *
+ * `usage` and `estimated_cost_usd` are reported here, on this leaf run, for both a succeeded and a
+ * failed processor — a step that died mid-conversation still spent tokens (§5.7, §7).
+ */
+async function runPromptNode(
+  node: Extract<WorkflowNode, { type: "prompt" }>,
+  stepInput: JsonValue,
+  ctx: LeafStepContext & { llm: LlmRuntime },
+): Promise<SeqOutcome> {
+  const { rootRunId, observer } = ctx;
+  const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.context };
+  const effectiveWorker: Worker = node.worker ?? ctx.fileWorker;
+
+  // Worker is a *binding*, not a suggestion: a prompt step bound to the local engine has no
+  // processor to run on, and silently treating it as an LLM step would hide the authoring bug.
+  if (effectiveWorker.type !== "llm") {
+    return {
+      status: "failed",
+      error: `prompt step "${node.id}": needs an llm worker, but its effective worker is "${effectiveWorker.type}" (format doc §7)`,
+    };
+  }
+
+  let model: string;
+  let prompt: string;
+  try {
+    model = interpolateToString(effectiveWorker.model, scope); // worker values are interpolable (§7)
+    prompt = interpolateToString(node.prompt, scope);
+  } catch (err) {
+    return { status: "failed", error: describeInterpolationError(node.id, err) };
+  }
+
+  const release = await ctx.llm.semaphore.acquire();
+  let result;
+  try {
+    const stepRunId = randomUUID();
+    await observer?.stepStarted?.({
+      runId: stepRunId,
+      rootRunId,
+      parentRunId: ctx.parentRunId,
+      nodeId: node.id,
+      stepType: node.type,
+      worker: effectiveWorker,
+      input: stepInput,
+    });
+
+    result = await ctx.llm.worker.runPrompt({
+      nodeId: node.id,
+      model,
+      prompt,
+      input: stepInput,
+      // The `options` bag is worker-side: MCP servers and skills pass straight through, and no
+      // engine code interprets them (mvp spec §7).
+      options: effectiveWorker.options,
+      cwd: ctx.fileDir,
+      signal: ctx.signal,
+    });
+
+    if (result.status === "cancelled") {
+      // A failing sibling parallel branch killed this processor (mvp spec §5.6) — not a failure of
+      // this step, so no publish from it lands and the cause is narrated separately.
+      await observer?.runCancelled?.({
+        runId: stepRunId,
+        rootRunId,
+        nodeId: node.id,
+        causeRunId: ctx.cancellation?.causeRunId ?? ctx.parentRunId,
+      });
+      await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
+      return { status: "cancelled" };
+    }
+
+    // Leaf-only (§5.7): recorded on this run, never rolled up — subtree figures are a read-time SUM.
+    if (result.usage !== null || result.estimatedCostUsd !== null) {
+      await observer?.stepUsage?.({
+        runId: stepRunId,
+        rootRunId,
+        usage: result.usage,
+        estimatedCostUsd: result.estimatedCostUsd,
+      });
+    }
+
+    if (result.status === "failed") {
+      await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: result.error });
+      return { status: "failed", error: result.error, causeRunId: stepRunId };
+    }
+
+    return finishLeafStep(observer, { runId: stepRunId, rootRunId }, node, result.output);
+  } finally {
+    // The processor is gone by now either way; holding its slot any longer would shrink the cap.
+    release();
+  }
+}
+
 // A `binary` step: resolve command/args/cwd, spawn the child process, apply `parse: "json"`, and
 // emit the leaf step-run's observer lifecycle. stderr is reported (even on success) for the audit
 // blob; publish/default-input threading stays with the caller.
 async function runBinaryNode(
-  node: Extract<WorkflowFile["body"][number], { type: "binary" }>,
+  node: Extract<WorkflowNode, { type: "binary" }>,
   stepInput: JsonValue,
-  ctx: {
-    stepConfig: ConfigObject;
-    fileDir: string;
-    fileWorker: Worker;
-    rootRunId: string;
-    parentRunId: string;
-    observer?: RunObserver;
-    context: { [key: string]: JsonValue };
-    // The enclosing `parallel` block's cancellation (#24): `signal` kills the child on a sibling
-    // failure; `cancellation.causeRunId` is the failing sibling the run-cancelled event points at.
-    signal?: AbortSignal;
-    cancellation?: Cancellation;
-  },
+  // `signal` (from an enclosing `parallel` block, #24) kills the child on a sibling failure, and
+  // `cancellation.causeRunId` is the failing sibling the run-cancelled event points at.
+  ctx: LeafStepContext,
 ): Promise<SeqOutcome> {
   const { rootRunId, observer } = ctx;
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.context };
@@ -720,19 +897,7 @@ async function runBinaryNode(
     return { status: "failed", error: result.error, causeRunId: stepRunId };
   }
 
-  let output: JsonValue = result.output;
-  if (node.parse === "json") {
-    try {
-      output = parseStepOutput(result.output);
-    } catch (err) {
-      if (!(err instanceof OutputParseError)) throw err;
-      const parseError = `step "${node.id}": ${err.message}`;
-      await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: parseError });
-      return { status: "failed", error: parseError, causeRunId: stepRunId };
-    }
-  }
-  await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "succeeded", output });
-  return { status: "succeeded", output };
+  return finishLeafStep(observer, { runId: stepRunId, rootRunId }, node, result.output);
 }
 
 /**
@@ -763,6 +928,12 @@ export async function runWorkflow(
     identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
     files: options.files,
     observer,
+    // One worker and one semaphore for the whole run tree: the cap is engine-wide, spanning
+    // nested workflows and nested parallels alike (mvp spec §5.5).
+    llm: {
+      worker: options.llmWorker ?? createAgentSdkWorker(),
+      semaphore: createProcessorSemaphore(options.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY),
+    },
   });
 }
 

@@ -4,6 +4,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
 import { describe, expect, it, vi } from "vitest";
+import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
+import { DEFAULT_LLM_CONCURRENCY } from "../src/llm/processor-semaphore.js";
 import type { RunObserver } from "../src/run-observer.js";
 import { runWorkflow } from "../src/run-workflow.js";
 
@@ -59,16 +61,19 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     expect(result.status).toBe("succeeded");
   });
 
-  it("fails clearly on unsupported step types instead of silently skipping them", async () => {
+  it("fails clearly on unsupported node types instead of silently skipping them", async () => {
+    // Every node type the format declares now executes (#25 completed the set with `prompt`), so
+    // reaching this guard takes a node the schema itself would reject. It stays for the case of a
+    // new type landing in the format before the engine walks it: fail loudly, never skip.
     const file: WorkflowFile = {
       format: "path/workflow@0",
-      name: "prompt-not-supported",
-      worker: { type: "llm", model: "claude" },
-      body: [{ type: "prompt", id: "ask", prompt: "hello" }],
+      name: "unknown-node",
+      worker: { type: "engine" },
+      body: [{ type: "telepathy", id: "guess" } as unknown as WorkflowFile["body"][number]],
     };
     const result = await runWorkflow(file, fixturesDir);
     expect(result.status).toBe("failed");
-    expect(result.error).toMatch(/prompt/i);
+    expect(result.error).toMatch(/telepathy/);
   });
 });
 
@@ -378,6 +383,7 @@ function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof
     runStarted: vi.fn(),
     stepStarted: vi.fn(),
     stepStderr: vi.fn(),
+    stepUsage: vi.fn(),
     stepFinished: vi.fn(),
     contextChanged: vi.fn(),
     joinApplied: vi.fn(),
@@ -641,8 +647,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const file: WorkflowFile = {
       format: "path/workflow@0",
       name: "observed-unsupported",
-      worker: { type: "llm", model: "claude" },
-      body: [{ type: "prompt", id: "ask", prompt: "hi" }],
+      worker: { type: "engine" },
+      body: [{ type: "telepathy", id: "guess" } as unknown as WorkflowFile["body"][number]],
     };
 
     await runWorkflow(file, fixturesDir, { observer });
@@ -653,7 +659,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       runId,
       rootRunId: runId,
       status: "failed",
-      error: expect.stringMatching(/not supported yet/),
+      error: expect.stringMatching(/not supported by this engine/),
     });
   });
 
@@ -1211,5 +1217,389 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
     expect(result.error).toMatch(/while-do "loop": max_iterations resolved to "zero", which is not a positive integer/);
     expect(observer.iterationStarted).not.toHaveBeenCalled();
     expect(observer.loopExited).not.toHaveBeenCalled();
+  });
+});
+
+describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
+  /**
+   * A stand-in LLM worker: records every request (so a test can prove one fresh processor per
+   * step-run) and tracks how many processors were live at once (so a test can prove the cap).
+   */
+  function fakeLlmWorker(
+    respond: (request: PromptRequest) => Promise<PromptResult> | PromptResult = () => ({
+      status: "succeeded",
+      output: "ok",
+      usage: { input_tokens: 1, output_tokens: 2 },
+      estimatedCostUsd: 0.001,
+    }),
+  ) {
+    const requests: PromptRequest[] = [];
+    let live = 0;
+    let peakLive = 0;
+    const worker: LlmWorker = {
+      async runPrompt(request) {
+        requests.push(request);
+        live += 1;
+        peakLive = Math.max(peakLive, live);
+        try {
+          return await respond(request);
+        } finally {
+          live -= 1;
+        }
+      },
+    };
+    return {
+      worker,
+      requests,
+      get peakLive() {
+        return peakLive;
+      },
+    };
+  }
+
+  const llmFile = (body: WorkflowFile["body"], rest: Partial<WorkflowFile> = {}): WorkflowFile => ({
+    format: "path/workflow@0",
+    name: "prompt-run",
+    worker: { type: "llm", model: "claude-sonnet-5" },
+    body,
+    ...rest,
+  });
+
+  it("runs a prompt step on the LLM worker with the interpolated prompt, model, and input object", async () => {
+    const llm = fakeLlmWorker();
+    const file = llmFile(
+      [
+        {
+          type: "prompt",
+          id: "summarize",
+          prompt: "Summarize ${config.subject}.",
+          input: { version: "${context.version}" },
+        },
+      ],
+      {
+        config: { subject: "the release" },
+        output: { text: "${context.text}" },
+      },
+    );
+    (file.body[0] as { publish?: unknown }).publish = { text: "${output}" };
+
+    const result = await runWorkflow(file, fixturesDir, { input: { version: "1.2.0" }, llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ text: "ok" });
+    expect(llm.requests).toHaveLength(1);
+    expect(llm.requests[0]).toMatchObject({
+      nodeId: "summarize",
+      model: "claude-sonnet-5",
+      prompt: "Summarize the release.",
+      input: { version: "1.2.0" },
+      cwd: fixturesDir,
+    });
+  });
+
+  it("resolves an interpolated model and passes the worker's options bag through untouched", async () => {
+    const llm = fakeLlmWorker();
+    const options = { mcpServers: { docs: { type: "stdio", command: "docs-server" } } };
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "options-passthrough",
+      worker: { type: "llm", model: "${config.model}", options },
+      config: { model: "claude-opus-4-8" },
+      body: [{ type: "prompt", id: "ask", prompt: "Hi." }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.requests[0]?.model).toBe("claude-opus-4-8");
+    expect(llm.requests[0]?.options).toEqual(options);
+  });
+
+  it("lets a step-level llm worker override the file's engine worker", async () => {
+    const llm = fakeLlmWorker();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "step-worker",
+      worker: { type: "engine" },
+      body: [
+        { type: "prompt", id: "ask", prompt: "Hi.", worker: { type: "llm", model: "claude-haiku-4-5" } },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.requests[0]?.model).toBe("claude-haiku-4-5");
+  });
+
+  it("fails the run when a prompt step's effective worker is not an llm worker", async () => {
+    const llm = fakeLlmWorker();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "wrong-worker",
+      worker: { type: "engine" },
+      body: [{ type: "prompt", id: "ask", prompt: "Hi." }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/prompt step "ask"/);
+    expect(result.error).toMatch(/llm worker/);
+    expect(llm.requests).toEqual([]);
+  });
+
+  it("applies parse: json to the prompt output", async () => {
+    const llm = fakeLlmWorker(() => ({
+      status: "succeeded",
+      output: '{"verdict":"pass"}',
+      usage: null,
+      estimatedCostUsd: null,
+    }));
+    const file = llmFile(
+      [
+        {
+          type: "prompt",
+          id: "judge",
+          prompt: "Judge it.",
+          parse: "json",
+          publish: { verdict: "${output.verdict}" },
+        },
+      ],
+      { output: { verdict: "${context.verdict}" } },
+    );
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    // Parsed, so the output object is dot-path addressable rather than an opaque string.
+    expect(result.output).toEqual({ verdict: "pass" });
+  });
+
+  it("fails the step when a prompt step's output is not the JSON its parse declares", async () => {
+    const llm = fakeLlmWorker(() => ({ status: "succeeded", output: "not json", usage: null, estimatedCostUsd: null }));
+    const file = llmFile([{ type: "prompt", id: "judge", prompt: "Judge it.", parse: "json" }]);
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/step "judge"/);
+    expect(result.error).toMatch(/json/i);
+  });
+
+  it("fails the run when the processor fails, surfacing the worker's error", async () => {
+    const llm = fakeLlmWorker(() => ({
+      status: "failed",
+      error: 'prompt step "ask" ended with SDK result "error_max_turns"',
+      usage: { input_tokens: 9, output_tokens: 0 },
+      estimatedCostUsd: 0.02,
+    }));
+    const file = llmFile([
+      { type: "prompt", id: "ask", prompt: "Hi." },
+      { type: "binary", id: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
+    ]);
+
+    const observer: RunObserver = { stepUsage: vi.fn(), stepFinished: vi.fn() };
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/error_max_turns/);
+    // A step that died mid-conversation still spent tokens: they are recorded before it finishes.
+    expect(observer.stepUsage).toHaveBeenCalledWith(
+      expect.objectContaining({ usage: { input_tokens: 9, output_tokens: 0 }, estimatedCostUsd: 0.02 }),
+    );
+  });
+
+  it("reports the step run's usage and estimated cost leaf-only, before the step finishes", async () => {
+    const llm = fakeLlmWorker();
+    const file = llmFile([{ type: "prompt", id: "ask", prompt: "Hi." }]);
+
+    const calls: string[] = [];
+    const usageInfo: { runId: string }[] = [];
+    const stepRunIds: string[] = [];
+    const observer: RunObserver = {
+      runStarted: ({ runId }) => {
+        calls.push(`runStarted:${runId}`);
+      },
+      stepStarted: ({ runId }) => {
+        stepRunIds.push(runId);
+        calls.push("stepStarted");
+      },
+      stepUsage: (info) => {
+        usageInfo.push(info);
+        calls.push("stepUsage");
+      },
+      stepFinished: () => {
+        calls.push("stepFinished");
+      },
+      runFinished: () => {
+        calls.push("runFinished");
+      },
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
+
+    expect(result.status).toBe("succeeded");
+    expect(calls.slice(1)).toEqual(["stepStarted", "stepUsage", "stepFinished", "runFinished"]);
+    // Attributed to the prompt step's own run — never to the enclosing workflow-run.
+    expect(usageInfo[0]?.runId).toBe(stepRunIds[0]);
+    expect(usageInfo[0]).toMatchObject({ usage: { input_tokens: 1, output_tokens: 2 }, estimatedCostUsd: 0.001 });
+  });
+
+  it("reports no usage for a step whose worker recorded none", async () => {
+    const llm = fakeLlmWorker(() => ({ status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null }));
+    const file = llmFile([{ type: "prompt", id: "ask", prompt: "Hi." }]);
+    const observer: RunObserver = { stepUsage: vi.fn() };
+
+    await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
+
+    expect(observer.stepUsage).not.toHaveBeenCalled();
+  });
+
+  it("spawns a fresh processor per step-run — no conversational state leaks between steps", async () => {
+    const llm = fakeLlmWorker((request) => ({
+      status: "succeeded",
+      output: `answered:${request.nodeId}`,
+      usage: null,
+      estimatedCostUsd: null,
+    }));
+    const file = llmFile([
+      { type: "prompt", id: "first", prompt: "First question." },
+      { type: "prompt", id: "second", prompt: "Second question." },
+    ]);
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.requests).toHaveLength(2); // one processor per step-run, not one reused session
+    expect(llm.requests[1]?.prompt).toBe("Second question.");
+    // The second step reads exactly what its input map built — here the default-input chain, which
+    // carries the predecessor's *output object*, not its conversation.
+    expect(llm.requests[1]?.input).toBe("answered:first");
+  });
+
+  it("caps concurrent processors engine-wide, across a parallel block's branches (spec §5.5)", async () => {
+    const llm = fakeLlmWorker(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+    });
+    const branch = (id: string) => ({
+      id,
+      body: [{ type: "prompt" as const, id: `ask-${id}`, prompt: `Question ${id}.` }],
+    });
+    const file = llmFile([
+      {
+        type: "parallel",
+        id: "fanout",
+        join: "collect",
+        branches: [branch("a"), branch("b"), branch("c"), branch("d")],
+      },
+    ]);
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, llmConcurrency: 2 });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.requests).toHaveLength(4); // every branch still ran
+    expect(llm.peakLive).toBe(2); // …but never more than the cap at once
+  });
+
+  it("spans the cap across nested workflow-runs, not just one file's branches (spec §5.5)", async () => {
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "llm", model: "claude-sonnet-5" },
+      body: [{ type: "prompt", id: "child-ask", prompt: "Child question." }],
+      output: { answer: "${context.answer}" },
+    };
+    (child.body[0] as { publish?: unknown }).publish = { answer: "${output}" };
+
+    const childPath = join(fixturesDir, "llm-child.workflow.json");
+    const file = llmFile([
+      {
+        type: "parallel",
+        id: "fanout",
+        join: "collect",
+        branches: [
+          { id: "direct", body: [{ type: "prompt", id: "ask", prompt: "Parent question." }] },
+          { id: "nested", body: [{ type: "workflow", id: "sub", ref: "llm-child.workflow.json", input: {} }] },
+        ],
+      },
+    ]);
+
+    const llm = fakeLlmWorker(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+    });
+    const result = await runWorkflow(file, fixturesDir, {
+      llmWorker: llm.worker,
+      llmConcurrency: 1,
+      files: new Map([[childPath, child]]),
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.requests).toHaveLength(2);
+    expect(llm.peakLive).toBe(1); // the nested run's processor queues behind the parent's
+  });
+
+  it("defaults the cap to 4 concurrent processors when the operator sets none", async () => {
+    const llm = fakeLlmWorker(async () => {
+      await new Promise((r) => setTimeout(r, 20));
+      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+    });
+    const branch = (id: string) => ({
+      id,
+      body: [{ type: "prompt" as const, id: `ask-${id}`, prompt: `Question ${id}.` }],
+    });
+    const file = llmFile([
+      {
+        type: "parallel",
+        id: "fanout",
+        join: "collect",
+        branches: [branch("a"), branch("b"), branch("c"), branch("d"), branch("e"), branch("f")],
+      },
+    ]);
+
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker });
+
+    expect(result.status).toBe("succeeded");
+    expect(llm.peakLive).toBe(DEFAULT_LLM_CONCURRENCY);
+  });
+
+  it("cancels a prompt step when a sibling parallel branch fails, landing no publish from it", async () => {
+    const llm = fakeLlmWorker(async (request) => {
+      // Hold the processor open long enough for the sibling's failure to abort it.
+      await new Promise((resolve) => {
+        if (request.signal?.aborted) {
+          resolve(undefined);
+          return;
+        }
+        request.signal?.addEventListener("abort", () => resolve(undefined), { once: true });
+      });
+      return { status: "cancelled" };
+    });
+    const file = llmFile([
+      {
+        type: "parallel",
+        id: "fanout",
+        join: "collect",
+        branches: [
+          {
+            id: "slow",
+            body: [{ type: "prompt", id: "ask", prompt: "Hi.", publish: { answer: "${output}" } }],
+          },
+          {
+            id: "boom",
+            body: [{ type: "binary", id: "fail", command: "node", args: ["-e", "process.exit(3)"] }],
+          },
+        ],
+      },
+    ]);
+
+    const observer: RunObserver = { runCancelled: vi.fn(), stepFinished: vi.fn() };
+    const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
+
+    expect(result.status).toBe("failed"); // the block fails because a branch failed
+    expect(observer.runCancelled).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "ask" }));
+    expect(observer.stepFinished).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
   });
 });
