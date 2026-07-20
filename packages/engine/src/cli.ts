@@ -19,6 +19,7 @@ import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, rootRunTreeDir, runsDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
 import { deleteAllRuns, deleteRunsForRoot } from "./persistence/run-store.js";
+import { loadEngineSettings } from "./settings/engine-settings.js";
 import { composeObservers } from "./run-observer.js";
 import { runWorkflow } from "./run-workflow.js";
 
@@ -209,6 +210,15 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   const projectDir = dirname(tree.rootPath);
   ensurePathDirGitignore(pathDir(projectDir));
 
+  // Engine-level settings (ticket #27), kept strictly apart from the operator *workflow* Config
+  // built above: these are read by the engine, never by a step, and never merge into `${config.x}`.
+  const loadedSettings = loadEngineSettings(projectDir);
+  if (!loadedSettings.success) {
+    io.error(loadedSettings.error);
+    return 2;
+  }
+  const { settings } = loadedSettings;
+
   const opened = openDbOrReport(dbFilePath(projectDir));
   if (!opened.success) {
     io.error(opened.error);
@@ -219,14 +229,16 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   try {
     // Persistence (#18) writes run rows + blobs; logging (#19) fans the typed event stream out to
     // the selected backends. Both hang off the single observer slot via composeObservers.
-    const backends = createLogBackends(parsed.args.logBackends ?? DEFAULT_LOG_BACKENDS, { db: opened.db, projectDir });
+    // Nearest wins for both engine settings: CLI flag > engine-settings file > built-in default.
+    const logBackends = parsed.args.logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
+    const backends = createLogBackends(logBackends, { db: opened.db, projectDir });
     const observer = composeObservers(createPersistedObserver(opened.db, projectDir), createLoggingObserver(backends));
     runResult = await runWorkflow(rootFile, projectDir, {
       operatorConfig: operatorConfig.config,
       files: tree.files,
       observer,
       llmWorker: overrides.llmWorker,
-      llmConcurrency: parsed.args.llmConcurrency,
+      llmConcurrency: parsed.args.llmConcurrency ?? settings.llmConcurrency,
       warn: (message) => io.error(`warning: ${message}`),
     });
   } finally {

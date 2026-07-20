@@ -164,8 +164,8 @@ Blocks are thus transparent to one uniform chain, on both their input and output
   `stderr.txt` in the step-run's directory (§6), secret-scrubbed like every persisted artifact
   (§8.3), and never passed downstream.
 - One **engine-wide semaphore** caps concurrent LLM processors: **default 4**, overridable in
-  engine config (§7 memory budget) — today the `--llm-concurrency` flag; the durable
-  engine-settings file is a follow-up (#27, §10), **not** workflow Config (the cap is one
+  engine config (§7 memory budget) — the `--llm-concurrency` flag or the `llm.concurrency` key of
+  the engine-settings file (§6, §9), **not** workflow Config (the cap is one
   engine-wide value, so Config's per-file inherited override would be wrong). It spans the entire
   run tree, including nested workflows and nested parallels; a branch whose next step can't get a
   slot waits. Binary steps are uncapped.
@@ -197,6 +197,12 @@ directory** beside the workflow files (like `.git`), gitignored by default.
 
 - **`.path/path.db`** — SQLite via **better-sqlite3** (synchronous API fits the single-process
   engine). Holds structured records only: the **runs table** (§5.7) and the **log table** (§8).
+- **`.path/settings.json`** — the **engine-settings file** (§9): a flat JSON object carrying the two
+  engine-level operator settings, `log.backends` (§8.2) and `llm.concurrency` (§5.5). Read by the
+  engine, never by a step — it is not workflow Config and never merges into `${config.x}`. Absent
+  file = built-in defaults; unknown keys and bad values are rejected loudly, like the workflow
+  format. An empty `log.backends` list selects no backends — the file spelling of
+  `--log-backends none`. Nearest wins: **CLI flag > engine-settings file > built-in default.**
 - **`.path/runs/<root-run-id>/`** — one directory tree per **root** run, mirroring the run tree:
   inside it, one subdirectory per run in the tree (keyed by run id) holding that run's blobs —
   `input.json`, `output.json`, for workflow runs `context.json`, and for binary runs
@@ -293,8 +299,8 @@ interface LogBackend {
 - **Backends are dumb sinks**: envelope assembly, `seq`, and masking happen engine-side before the
   seam — a backend can't leak what the engine already redacted.
 - **Configuration:** backend list is engine-level operator settings (`log.backends:
-  ["db", "ndjson"]`), *not* workflow-file content — today the `--log-backends` flag; the durable
-  engine-settings file that will also hold this is a follow-up (#27, §10). **Both on by default.**
+  ["db", "ndjson"]`), *not* workflow-file content — the `--log-backends` flag or the
+  `log.backends` key of the engine-settings file (§6, §9). **Both on by default.**
 - **Failure policy:** any active backend write failure **fails the run** (audit-first: executing
   steps whose events can't be recorded defeats the tool's purpose); the engine still best-effort
   emits terminal events to surviving backends.
@@ -325,7 +331,10 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 - Exact CLI flag spellings and the operator config-file format (§3).
 - SQLite DDL (table/column names, indexes) behind the run-row and log-event contracts.
 - Run-id format; internal engine module structure; error-message wording.
-- The engine-settings file location/format (it must carry `log.backends` and the LLM cap).
+- The engine-settings file location/format (it must carry `log.backends` and the LLM cap) —
+  settled in #27 as `.path/settings.json`, a flat strict-unknown-field JSON object keyed
+  `"log.backends"` / `"llm.concurrency"` (§6). Being inside the gitignored `.path/`, it is a
+  per-checkout operator setting, not a committed project artifact.
 
 ## 10. Deferred register (doors deliberately held open)
 
@@ -343,7 +352,6 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | `$env` secret sourcing | composes with `$secret` |
 | Retry/resume | write-through `context.json` + truthful crash snapshots |
 | Remote log backends | async `LogBackend` seam |
-| Engine-settings file (`log.backends`, LLM cap) | CLI flags today; a separate `.path/` file (not workflow Config) is additive — #27 |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |
 
 ## 11. Acceptance

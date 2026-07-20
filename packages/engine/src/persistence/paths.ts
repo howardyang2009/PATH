@@ -9,6 +9,11 @@ export function dbFilePath(projectDir: string): string {
   return join(pathDir(projectDir), "path.db");
 }
 
+/** The engine-settings file (ticket #27), beside `path.db`. */
+export function engineSettingsFilePath(projectDir: string): string {
+  return join(pathDir(projectDir), "settings.json");
+}
+
 export function runsDir(projectDir: string): string {
   return join(pathDir(projectDir), "runs");
 }

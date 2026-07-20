@@ -1,0 +1,15 @@
+{
+  "format": "path/workflow@0",
+  "name": "config-leak-probe",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "echo",
+      "command": "node",
+      "args": ["-e", "process.stdout.write(String(process.argv[1]))", "${config.llm.concurrency}"],
+      "publish": { "seen": "${output}" }
+    }
+  ],
+  "output": { "seen": "${context.seen}" }
+}
