@@ -146,6 +146,30 @@ describe("createLoggingObserver", () => {
     ]);
   });
 
+  it("emits join-applied and run-cancelled as control events, carrying the parallel node id (#24)", async () => {
+    const rec = recordingBackend();
+    const observer = createLoggingObserver([rec.backend]);
+    await observer.runStarted?.({ runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+
+    // A control event: run_id is the enclosing workflow-run, node_id the `parallel` node itself.
+    await observer.joinApplied?.({ runId: "root-1", rootRunId: "root-1", nodeId: "fanout", branches: ["a", "b"], publishedKeys: ["ka", "kb"] });
+
+    // A cancelled step: its step-started sets node_id, run-cancelled points at the failing sibling,
+    // and step-finished carries the cancelled status with no error.
+    await observer.stepStarted?.({ runId: "step-slow", rootRunId: "root-1", parentRunId: "root-1", nodeId: "slow", stepType: "binary", worker: { type: "engine" }, input: {} });
+    await observer.runCancelled?.({ runId: "step-slow", rootRunId: "root-1", nodeId: "slow", causeRunId: "step-boom" });
+    await observer.stepFinished?.({ runId: "step-slow", rootRunId: "root-1", status: "cancelled" });
+    await observer.runFinished?.({ runId: "root-1", rootRunId: "root-1", status: "failed", error: "a branch failed" });
+
+    const join = rec.events.find((e) => e.type === "join-applied");
+    expect(join).toMatchObject({ run_id: "root-1", node_id: "fanout", branches: ["a", "b"], published_keys: ["ka", "kb"] });
+    const cancelled = rec.events.find((e) => e.type === "run-cancelled");
+    expect(cancelled).toMatchObject({ run_id: "step-slow", node_id: "slow", cause_run_id: "step-boom" });
+    const finished = rec.events.find((e) => e.type === "step-finished" && e.run_id === "step-slow");
+    expect(finished).toMatchObject({ status: "cancelled" });
+    expect(finished).not.toHaveProperty("error");
+  });
+
   it("runFinished is idempotent — a second call emits nothing and does not re-close", async () => {
     const rec = recordingBackend();
     const observer = createLoggingObserver([rec.backend]);

@@ -8,8 +8,9 @@ import { TraceSchema } from "../condition.js";
  * (this flat discriminated union), `run_id`, and `node_id` — plus a per-type payload.
  *
  * #19 landed the two step-lifecycle events; #21 adds the checkpoint/branch control-node events
- * (each carrying a condition `trace`, §8.1). Later construct tickets extend the union further
- * (`iteration-started`, `join-applied`, …). Because it is a flat discriminated union, adding a
+ * (each carrying a condition `trace`, §8.1); #24 adds the two parallel-block control events
+ * (`join-applied`, `run-cancelled`). Later construct tickets extend the union further
+ * (`iteration-started`, …). Because it is a flat discriminated union, adding a
  * member never touches the envelope or existing members.
  *
  * Control events are attributed to the enclosing workflow-step's run (`run_id`) + the control
@@ -63,6 +64,29 @@ const BranchTakenSchema = z
   .strict();
 const BranchNoMatchSchema = z.object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) }).strict();
 
+// A `parallel` collect join applied at block end (mvp spec §5.2–5.4, §8.1): control events carry
+// the enclosing workflow-step's run id + the `parallel` node's id (envelope), plus the branch ids
+// in apply order and the context keys those branches published.
+const JoinAppliedSchema = z
+  .object({
+    type: z.literal("join-applied"),
+    ...envelope,
+    branches: z.array(z.string()),
+    published_keys: z.array(z.string()),
+  })
+  .strict();
+
+// A run cancelled because a sibling parallel branch failed (mvp spec §5.6, §8.1): `run_id`/`node_id`
+// identify the cancelled run and its node; `cause_run_id` is the failing sibling run that triggered
+// the best-effort cancellation.
+const RunCancelledSchema = z
+  .object({
+    type: z.literal("run-cancelled"),
+    ...envelope,
+    cause_run_id: z.string(),
+  })
+  .strict();
+
 export const LogEventSchema = z.discriminatedUnion("type", [
   StepStartedSchema,
   StepFinishedSchema,
@@ -70,8 +94,12 @@ export const LogEventSchema = z.discriminatedUnion("type", [
   CheckpointFailedSchema,
   BranchTakenSchema,
   BranchNoMatchSchema,
+  JoinAppliedSchema,
+  RunCancelledSchema,
 ]);
 
 export type LogEvent = z.infer<typeof LogEventSchema>;
 export type StepStartedEvent = z.infer<typeof StepStartedSchema>;
 export type StepFinishedEvent = z.infer<typeof StepFinishedSchema>;
+export type JoinAppliedEvent = z.infer<typeof JoinAppliedSchema>;
+export type RunCancelledEvent = z.infer<typeof RunCancelledSchema>;

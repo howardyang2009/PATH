@@ -134,7 +134,7 @@ export function collectSecrets(configs: ConfigObject[]): SecretMasker {
 export function createMaskingObserver(masker: SecretMasker, inner: RunObserver): RunObserver {
   function maskOutcome<T extends { runId: string; rootRunId: string } & RunOutcome>(info: T): T {
     if (info.status === "succeeded") return { ...info, output: masker.maskValue(info.output) };
-    if (info.error !== undefined) return { ...info, error: masker.maskString(info.error) };
+    if (info.status === "failed" && info.error !== undefined) return { ...info, error: masker.maskString(info.error) };
     return info;
   }
 

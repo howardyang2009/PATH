@@ -11,6 +11,8 @@ import { getLogEventsForRoot } from "../../src/logging/log-store.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
 import { rootRunTreeDir } from "../../src/persistence/paths.js";
+import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
+import { getRunsForRoot } from "../../src/persistence/run-store.js";
 import { composeObservers } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 
@@ -126,6 +128,75 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     expect(events.at(-1)).toMatchObject({ type: "step-finished", node_id: null, status: "failed" });
     // The run did not proceed to the second step after the audit failure.
     expect(events.some((e) => e.node_id === "second")).toBe(false);
+  });
+
+  it("narrates a parallel collect join in both backends, with branch ids and published keys (ticket #24)", async () => {
+    const parallelWorkflow: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parallel-join",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            { id: "one", body: [{ type: "binary", id: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
+            { id: "two", body: [{ type: "binary", id: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
+          ],
+        },
+      ],
+      output: {},
+    };
+    const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+    const result = await runWorkflow(parallelWorkflow, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    expect(result.status).toBe("succeeded");
+
+    const root = rootRunId();
+    const dbEvents = getLogEventsForRoot(db, root);
+    const fileEvents = readNdjson(root).slice(1);
+    // Both backends carry the identical narrative, and both hold the join-applied event.
+    expect(dbEvents).toEqual(fileEvents);
+    const join = dbEvents.find((e) => e.type === "join-applied");
+    expect(join).toMatchObject({ node_id: "fanout", branches: ["one", "two"], published_keys: ["k1", "k2"] });
+  });
+
+  it("narrates a run-cancelled in both backends and marks the cancelled step's row cancelled (ticket #24)", async () => {
+    const cancellingWorkflow: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parallel-cancel",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            { id: "slow", body: [{ type: "binary", id: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"] }] },
+            { id: "boom", body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+          ],
+        },
+      ],
+    };
+    const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+    const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends));
+    const result = await runWorkflow(cancellingWorkflow, projectDir, { observer });
+    expect(result.status).toBe("failed");
+
+    const root = rootRunId();
+    const dbEvents = getLogEventsForRoot(db, root);
+    const fileEvents = readNdjson(root).slice(1);
+    expect(dbEvents).toEqual(fileEvents);
+
+    // The run-cancelled event points at the failing sibling; the sleeper's step-finished is cancelled.
+    const cancelled = dbEvents.find((e) => e.type === "run-cancelled");
+    expect(cancelled).toMatchObject({ node_id: "sleeper", type: "run-cancelled" });
+    expect(dbEvents.some((e) => e.type === "step-finished" && e.node_id === "sleeper" && e.status === "cancelled")).toBe(true);
+
+    // The run row for the cancelled step shows `cancelled` — distinct from the failed root run.
+    const rows = getRunsForRoot(db, root);
+    expect(rows.find((r) => r.nodeId === "sleeper")?.status).toBe("cancelled");
+    expect(rows.find((r) => r.nodeId === "kaboom")?.status).toBe("failed");
   });
 
   it("selects backends by the log.backends setting — 'none' produces no audit stream", async () => {

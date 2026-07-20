@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, Worker, WorkflowFile, WorkflowNode } from "@path/schema";
+import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, Worker, WorkflowFile } from "@path/schema";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { mergeConfig } from "./merge-config.js";
@@ -33,7 +33,9 @@ export interface RunOptions {
 // the last-succeeded node's output (useful to a caller even on failure), so `output` is
 // unconditional rather than living only in a success branch.
 export interface RunResult {
-  status: "succeeded" | "failed";
+  // `cancelled` (#24) applies only to a *nested* workflow-run whose leaf step the engine killed
+  // because a sibling parallel branch failed (mvp spec §5.6); the root run is never cancelled.
+  status: "succeeded" | "failed" | "cancelled";
   /**
    * On success: the workflow's `output` map, evaluated at successful run end (format doc §6.4) —
    * absent map = `{}`. On failure: the last node's raw output that actually ran, for debugging;
@@ -43,9 +45,41 @@ export interface RunResult {
   error?: string;
 }
 
+// The result of running one node (or a whole node sequence). A step run that a failing sibling
+// cancelled reports `cancelled`; a genuine failure carries its `error` and, when a killed step run
+// is the trigger, the `causeRunId` the sibling cancellations narrate (mvp spec §5.6).
+type SeqOutcome =
+  | { status: "succeeded"; output: JsonValue }
+  | { status: "failed"; error: string; causeRunId?: string }
+  | { status: "cancelled" };
+
+// The shared cancellation of one `parallel` block: its branches all run under `signal`, and the
+// first branch to fail `trigger`s the abort so in-flight siblings are killed best-effort. The
+// failing step run's id becomes `causeRunId`, which the sibling run-cancelled events point back at.
+interface Cancellation {
+  signal: AbortSignal;
+  causeRunId: string | null;
+  trigger(causeRunId: string): void;
+}
+
+// What each node in a sequence reads and writes: the `context` it sees (the run's own for the
+// top-level body; a per-branch snapshot copy inside a `parallel` block, so siblings never observe
+// each other's writes — mvp spec §5.3), the `signal`/`cancellation` of any enclosing parallel, and
+// `onPublish` — how a landed publish is surfaced (context write-through at the top level; buffered
+// for the join inside a branch).
+interface NodeExecContext {
+  context: { [key: string]: JsonValue };
+  signal?: AbortSignal;
+  cancellation?: Cancellation;
+  onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
+}
+
 type BinaryStepResult =
   | { success: true; output: string; stderr: string }
-  | { success: false; error: string; stderr: string };
+  | { success: false; error: string; stderr: string }
+  // The child was killed because a sibling parallel branch failed (mvp spec §5.6): not a genuine
+  // failure of this step, so it carries no error — its cause is narrated by the run-cancelled event.
+  | { cancelled: true; stderr: string };
 
 // The step's `command`/`args`/`cwd` after interpolation — they travel together everywhere a
 // binary step actually runs, so runBinaryStep takes this instead of three loose parameters.
@@ -60,17 +94,33 @@ interface ResolvedBinaryStep {
 // serialization), captured stdout is the output, non-zero exit fails the step. stderr is always
 // returned (even on success) so the caller can hand it to RunObserver.stepStderr for the audit
 // blob (format doc §4.2: captured, secret-scrubbed later, never passed downstream).
-function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<BinaryStepResult> {
+//
+// `signal` carries best-effort cancellation (mvp spec §5.6): a parallel branch runs its steps
+// under the block's abort signal, and when a sibling fails the child process is killed — reported
+// as `cancelled`, distinct from a genuine non-zero exit, so no publishes from it land.
+function runBinaryStep(
+  step: ResolvedBinaryStep,
+  input: JsonValue,
+  signal?: AbortSignal,
+): Promise<BinaryStepResult> {
   const { id: nodeId, command, args, cwd } = step;
   return new Promise((resolveResult) => {
+    if (signal?.aborted) {
+      resolveResult({ cancelled: true, stderr: "" });
+      return;
+    }
     const child = spawn(command, args, { cwd });
     let stdout = "";
     let stderr = "";
     let settled = false;
 
+    const onAbort = () => child.kill("SIGTERM");
+    signal?.addEventListener("abort", onAbort, { once: true });
+
     const settle = (result: BinaryStepResult) => {
       if (settled) return;
       settled = true;
+      signal?.removeEventListener("abort", onAbort);
       resolveResult(result);
     };
 
@@ -81,9 +131,19 @@ function runBinaryStep(step: ResolvedBinaryStep, input: JsonValue): Promise<Bina
       stderr += chunk;
     });
     child.on("error", (err) => {
+      if (signal?.aborted) {
+        settle({ cancelled: true, stderr });
+        return;
+      }
       settle({ success: false, error: `step "${nodeId}" failed to start "${command}": ${err.message}`, stderr });
     });
     child.on("close", (code) => {
+      // A kill from `signal` closes the process with a null exit code — that is a cancellation, not
+      // a step failure, so it never lands as a non-zero-exit error.
+      if (signal?.aborted) {
+        settle({ cancelled: true, stderr });
+        return;
+      }
       if (code !== 0) {
         const tail = stderr.trim().slice(-500);
         settle({
@@ -138,6 +198,10 @@ interface WorkflowRunParams {
   identity: RunIdentity;
   files?: Map<string, WorkflowFile>;
   observer?: RunObserver;
+  // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
+  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). Absent for the root run.
+  signal?: AbortSignal;
+  cancellation?: Cancellation;
 }
 
 // The interpolated `input` object must be a JSON object so its top-level keys can seed the child's
@@ -176,6 +240,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     await observer?.runFinished?.({ runId, rootRunId, status: "succeeded", output });
     return { status: "succeeded", output };
   };
+  // A nested workflow-run whose leaf step a failing sibling parallel branch killed ends cancelled
+  // (mvp spec §5.6) — its own terminal event, distinct from failed; no output contract.
+  const cancel = async (): Promise<RunResult> => {
+    await observer?.runFinished?.({ runId, rootRunId, status: "cancelled" });
+    return { status: "cancelled", output: previousOutput };
+  };
 
   // A log backend write failure fails the run audit-first (mvp spec §8.2): the logging observer
   // throws ObserverError, which we convert to a failed run here with a best-effort terminal event.
@@ -208,8 +278,20 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       worker: file.worker,
     });
 
-    const walked = await runSequence(file.body, input);
-    if (!walked.success) return fail(walked.error);
+    // The whole body is one node sequence walked against this run's own context; a top-level
+    // publish is a context write-through (mvp spec §6). The implicit root step's default input is
+    // the workflow input (format doc §6.1).
+    const outcome = await runSequence(file.body, input, {
+      context,
+      signal: params.signal,
+      cancellation: params.cancellation,
+      onPublish: async () => {
+        await observer?.contextChanged?.({ runId, rootRunId, context });
+      },
+    });
+    if (outcome.status === "failed") return fail(outcome.error);
+    if (outcome.status === "cancelled") return cancel();
+    previousOutput = outcome.output;
 
     if (!file.output) {
       return succeed({});
@@ -223,146 +305,245 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       return fail(`workflow output: ${err.message}`);
     }
   }
-
-  // Walk a node sequence strictly in order (spec §5.1), threading the default-input chain: each
-  // node's default input is its predecessor's output, seeded by `incomingOutput` (the workflow
-  // input for the top-level body; the block's predecessor's output for a nested block slot —
-  // spec §5.4). Returns the sequence's last node's output. Blocks recurse through here, so they
-  // are transparent to the one chain on both their input and output sides.
-  async function runSequence(nodes: WorkflowNode[], incomingOutput: JsonValue): Promise<StepOutcome> {
-    let seqOutput = incomingOutput;
-    for (const node of nodes) {
-      const result = await runNode(node, seqOutput);
-      if (!result.success) return result;
-      seqOutput = result.output;
-      previousOutput = seqOutput; // keep the run-level last output current for fail() reporting
-    }
-    return { success: true, output: seqOutput };
-  }
-
-  async function runNode(node: WorkflowNode, incomingOutput: JsonValue): Promise<StepOutcome> {
-    switch (node.type) {
-      case "binary":
-      case "workflow":
-        return runStepNode(node, incomingOutput);
-      case "checkpoint":
-        return runCheckpointNode(node, incomingOutput);
-      case "branch":
-        return runBranchNode(node, incomingOutput);
-      default:
-        return {
-          success: false,
-          error: `node type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, checkpoint, and branch nodes only`,
-        };
-    }
-  }
-
-  // A `binary`/`workflow` step node: resolve its config + input (default-input chain), run it, then
-  // apply `publish` atomically on success (spec §5.3). Returns the step's output object.
-  async function runStepNode(
-    node: Extract<WorkflowNode, { type: "binary" | "workflow" }>,
-    incomingOutput: JsonValue,
-  ): Promise<StepOutcome> {
-    const stepConfig = mergeConfig(fileConfig, node.config);
-    const scope: InterpolationScope = { config: configScope(stepConfig), context };
-
-    let stepInput: JsonValue;
-    try {
-      stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
-    } catch (err) {
-      return { success: false, error: describeInterpolationError(node.id, err) };
-    }
-
-    let output: JsonValue;
-    if (node.type === "workflow") {
-      const childResult = await runWorkflowNode(node, stepInput, {
-        fileDir,
-        stepConfig,
-        parentRunId: runId,
-        rootRunId,
-        files,
-        observer,
-      });
-      if (!childResult.success) return childResult;
-      output = childResult.output;
-    } else {
-      const binaryResult = await runBinaryNode(node, stepInput, {
-        stepConfig,
-        fileDir,
-        fileWorker: file.worker,
-        rootRunId,
-        parentRunId: runId,
-        observer,
-        context,
-      });
-      if (!binaryResult.success) return binaryResult;
-      output = binaryResult.output;
-    }
-
-    if (node.publish) {
-      const publishScope: InterpolationScope = { config: configScope(stepConfig), context, output };
-      const updates: { [key: string]: JsonValue } = {};
-      try {
-        for (const [key, expr] of Object.entries(node.publish)) {
-          updates[key] = interpolateValue(expr, publishScope);
-        }
-      } catch (err) {
-        return { success: false, error: describeInterpolationError(node.id, err) };
-      }
-      // Publish lands atomically on step success, before the next node starts (spec §5.3): every
-      // entry is resolved above before any is written to context. A nested workflow-step publishes
-      // to *this* run's context only — never the child's (isolated).
-      Object.assign(context, updates);
-      await observer?.contextChanged?.({ runId, rootRunId, context });
-    }
-
-    return { success: true, output };
-  }
-
-  // A `checkpoint` node: assert its condition over `context` + the predecessor's `output` (spec
-  // §5.2). True → continue; false or a strict evaluation error → the run stops as failed (§5.6).
-  // Transparent: forwards its predecessor's output unchanged — the same object its `output` root
-  // read (§5.4). The engine has no run for a checkpoint (invariant 1); the event is attributed to
-  // this workflow-run + the checkpoint's node id.
-  async function runCheckpointNode(node: CheckpointNode, incomingOutput: JsonValue): Promise<StepOutcome> {
-    const { outcome, trace } = evaluateCondition(node.condition, { context, output: incomingOutput });
+  // A `checkpoint` node: assert its condition over the run's `context` (the branch's snapshot copy
+  // inside a `parallel`) + the predecessor's `output` (spec §5.2). True → continue; false or a
+  // strict evaluation error → the run stops as failed (§5.6). Transparent: forwards its
+  // predecessor's output unchanged — the same object its `output` root read (§5.4). The engine has
+  // no run for a checkpoint (invariant 1); the event is attributed to this run + the node's id.
+  async function runCheckpointNode(node: CheckpointNode, incomingOutput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
+    const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
     const passed = outcome === "true";
     await observer?.checkpointEvaluated?.({ runId, rootRunId, nodeId: node.id, passed, trace });
     if (!passed) {
-      return { success: false, error: `checkpoint "${node.id}" failed: ${describeConditionFailure(trace)}` };
+      return { status: "failed", error: `checkpoint "${node.id}" failed: ${describeConditionFailure(trace)}` };
     }
-    return { success: true, output: incomingOutput };
+    return { status: "succeeded", output: incomingOutput };
   }
 
   // A `branch` node: evaluate arms in declaration order, first true `when` wins; else the fallback;
   // no match and no `else` fails the run (silent fall-through hides authoring bugs — spec §5.2). A
   // condition evaluation error in an arm fails the run outright (§5.6). The taken arm's body runs
-  // as a nested sequence seeded by the block's predecessor's output (default-input chain, §5.4),
-  // and its last node's output becomes the block's output (§5.4).
-  async function runBranchNode(node: BranchNode, incomingOutput: JsonValue): Promise<StepOutcome> {
-    const roots = { context, output: incomingOutput };
+  // as a nested sequence — transparent to the block's `exec` (same context/cancellation) and seeded
+  // by the block's predecessor's output (default-input chain, §5.4); its last node's output becomes
+  // the block's output (§5.4).
+  async function runBranchNode(node: BranchNode, incomingOutput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
+    const roots = { context: exec.context, output: incomingOutput };
     const traces: Trace[] = [];
     for (const [index, arm] of node.arms.entries()) {
       const { outcome, trace } = evaluateCondition(arm.when, roots);
       traces.push(trace);
       if (outcome === "error") {
-        return { success: false, error: `branch "${node.id}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
+        return { status: "failed", error: `branch "${node.id}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
       }
       if (outcome === "true") {
         await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: index, trace });
-        return runSequence(arm.body, incomingOutput);
+        return runSequence(arm.body, incomingOutput, exec);
       }
     }
     if (node.else) {
       await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: "else", trace: null });
-      return runSequence(node.else, incomingOutput);
+      return runSequence(node.else, incomingOutput, exec);
     }
     await observer?.branchNoMatch?.({ runId, rootRunId, nodeId: node.id, traces });
-    return { success: false, error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
+    return { status: "failed", error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
+  }
+
+  /**
+   * Walks a node sequence strictly in order (mvp spec §5.1), threading the default-input chain: a
+   * node with no `input` reads its predecessor's output (`seedInput` for the first node — the
+   * block's predecessor's output, format doc §6.1). Each step's `publish` lands atomically on
+   * success before the next node starts (§5.3), applied to `exec.context` and surfaced via
+   * `exec.onPublish`. Returns the last node's output, or the first non-success outcome (fail-fast).
+   *
+   * This one function serves both the top-level body and each `parallel` branch — the block is
+   * transparent to one uniform chain (§5.4).
+   */
+  async function runSequence(
+    nodes: WorkflowFile["body"],
+    seedInput: JsonValue,
+    exec: NodeExecContext,
+  ): Promise<SeqOutcome> {
+    let previous: JsonValue = seedInput;
+
+    for (const node of nodes) {
+      const isStep = node.type === "binary" || node.type === "workflow" || node.type === "prompt";
+      const stepConfig = isStep ? mergeConfig(fileConfig, node.config) : undefined;
+
+      let outcome: SeqOutcome;
+      if (node.type === "binary" || node.type === "workflow") {
+        const scope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context };
+        let stepInput: JsonValue;
+        try {
+          stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : previous;
+        } catch (err) {
+          return { status: "failed", error: describeInterpolationError(node.id, err) };
+        }
+        outcome =
+          node.type === "workflow"
+            ? await runWorkflowNode(node, stepInput, {
+                fileDir,
+                stepConfig: stepConfig!,
+                parentRunId: runId,
+                rootRunId,
+                files,
+                observer,
+                signal: exec.signal,
+                cancellation: exec.cancellation,
+              })
+            : await runBinaryNode(node, stepInput, {
+                stepConfig: stepConfig!,
+                fileDir,
+                fileWorker: file.worker,
+                rootRunId,
+                parentRunId: runId,
+                observer,
+                context: exec.context,
+                signal: exec.signal,
+                cancellation: exec.cancellation,
+              });
+      } else if (node.type === "parallel") {
+        // Every branch's first node defaults to the block's predecessor's output (§5.4).
+        outcome = await runParallelNode(node, previous, exec);
+      } else if (node.type === "checkpoint") {
+        outcome = await runCheckpointNode(node, previous, exec);
+      } else if (node.type === "branch") {
+        outcome = await runBranchNode(node, previous, exec);
+      } else {
+        return {
+          status: "failed",
+          error: `step type "${node.type}" (node "${node.id}") is not supported yet — the walking skeleton runs binary, workflow, parallel, checkpoint, and branch nodes only`,
+        };
+      }
+
+      if (outcome.status !== "succeeded") return outcome;
+      const output = outcome.output;
+
+      if ((node.type === "binary" || node.type === "workflow") && node.publish) {
+        const publishScope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context, output };
+        const updates: { [key: string]: JsonValue } = {};
+        try {
+          for (const [key, expr] of Object.entries(node.publish)) {
+            updates[key] = interpolateValue(expr, publishScope);
+          }
+        } catch (err) {
+          return { status: "failed", error: describeInterpolationError(node.id, err) };
+        }
+        // Every entry resolves before any is written, so the publish lands atomically (§5.3). A
+        // nested workflow-step publishes to *this* run's context only — never the child's (isolated).
+        Object.assign(exec.context, updates);
+        await exec.onPublish(updates);
+      }
+
+      previous = output;
+    }
+
+    return { status: "succeeded", output: previous };
+  }
+
+  /**
+   * Runs a `parallel` block with the `collect` join (mvp spec §5.2–5.4, §5.6): every branch runs
+   * concurrently against its own snapshot of context taken at block entry (siblings never see each
+   * other's writes), its publishes buffer and land — at the join, in branch declaration order —
+   * only if *all* branches succeed. A failing branch fails the block and cancels in-flight siblings
+   * best-effort; no publishes from a failed or cancelled branch land. The block output is
+   * `{ "<branch-id>": <that branch's last node's output> }`, deterministic regardless of completion
+   * order.
+   */
+  async function runParallelNode(
+    node: Extract<WorkflowFile["body"][number], { type: "parallel" }>,
+    seedInput: JsonValue,
+    exec: NodeExecContext,
+  ): Promise<SeqOutcome> {
+    const controller = new AbortController();
+    // A nested parallel inherits its enclosing block's cancellation: if the outer block aborts, this
+    // one aborts too, so this block's own in-flight steps are killed as well.
+    const outerSignal = exec.signal;
+    const onOuterAbort = () => controller.abort();
+    if (outerSignal) {
+      if (outerSignal.aborted) controller.abort();
+      else outerSignal.addEventListener("abort", onOuterAbort, { once: true });
+    }
+
+    let causeRunId: string | null = exec.cancellation?.causeRunId ?? null;
+    const cancellation: Cancellation = {
+      signal: controller.signal,
+      get causeRunId() {
+        return causeRunId;
+      },
+      trigger(cause: string) {
+        if (causeRunId === null) causeRunId = cause; // first failing sibling wins
+        controller.abort();
+      },
+    };
+
+    const branchResults = await Promise.all(
+      node.branches.map(async (branch) => {
+        // Each branch runs against a snapshot copy of context (§5.3): its publishes go to the copy
+        // (so later nodes in the same branch see them) and buffer for the join — never touching the
+        // parent context until the join lands them.
+        const branchContext: { [key: string]: JsonValue } = { ...exec.context };
+        const buffer: { [key: string]: JsonValue } = {};
+        const outcome = await runSequence(branch.body, seedInput, {
+          context: branchContext,
+          signal: controller.signal,
+          cancellation,
+          onPublish: async (updates) => {
+            Object.assign(buffer, updates);
+          },
+        });
+        if (outcome.status === "failed") {
+          cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
+        }
+        return { branch, outcome, buffer };
+      }),
+    );
+
+    if (outerSignal) outerSignal.removeEventListener("abort", onOuterAbort);
+
+    // A failing branch fails the block (and thus the run); no publishes land. Report the
+    // first-declared failure for determinism.
+    for (const { branch, outcome } of branchResults) {
+      if (outcome.status === "failed") {
+        return {
+          status: "failed",
+          error: `parallel "${node.id}", branch "${branch.id}": ${outcome.error}`,
+        };
+      }
+    }
+    // No local failure but a cancelled branch means the enclosing block aborted us: propagate.
+    if (branchResults.some((r) => r.outcome.status === "cancelled")) {
+      return { status: "cancelled" };
+    }
+
+    // All branches succeeded: land their buffered publishes at the join, in branch declaration
+    // order (§5.3). Duplicate keys across siblings are already a load-time error, so no key clashes.
+    const landed: { [key: string]: JsonValue } = {};
+    const publishedKeys: string[] = [];
+    for (const { buffer } of branchResults) {
+      for (const [key, value] of Object.entries(buffer)) {
+        landed[key] = value;
+        publishedKeys.push(key);
+      }
+    }
+    Object.assign(exec.context, landed);
+    if (publishedKeys.length > 0) await exec.onPublish(landed);
+    await observer?.joinApplied?.({
+      runId,
+      rootRunId,
+      nodeId: node.id,
+      branches: branchResults.map((r) => r.branch.id),
+      publishedKeys,
+    });
+
+    // Collect output: keyed by branch id in declaration order, deterministic regardless of
+    // completion order and dot-path addressable (§5.4).
+    const output: { [key: string]: JsonValue } = {};
+    for (const { branch, outcome } of branchResults) {
+      output[branch.id] = outcome.status === "succeeded" ? outcome.output : null;
+    }
+    return { status: "succeeded", output };
   }
 }
-
-type StepOutcome = { success: true; output: JsonValue } | { success: false; error: string };
 
 // A `workflow` step: resolve `ref` against the loaded tree and run the child file as a nested
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
@@ -378,21 +559,25 @@ async function runWorkflowNode(
     rootRunId: string;
     files?: Map<string, WorkflowFile>;
     observer?: RunObserver;
+    // Inherited from an enclosing `parallel` branch (#24): a sibling failure kills this nested
+    // run's own leaf steps too (mvp spec §5.6), ending it `cancelled`.
+    signal?: AbortSignal;
+    cancellation?: Cancellation;
   },
-): Promise<StepOutcome> {
+): Promise<SeqOutcome> {
   if (!isJsonObject(stepInput)) {
     return {
-      success: false,
+      status: "failed",
       error: `workflow step "${node.id}": input must be a JSON object to seed the child's context (format doc §6.3)`,
     };
   }
   if (!ctx.files) {
-    return { success: false, error: `workflow step "${node.id}": no loaded file tree to resolve ref "${node.ref}"` };
+    return { status: "failed", error: `workflow step "${node.id}": no loaded file tree to resolve ref "${node.ref}"` };
   }
   const childPath = resolve(ctx.fileDir, node.ref);
   const childFile = ctx.files.get(childPath);
   if (!childFile) {
-    return { success: false, error: `workflow step "${node.id}": referenced file "${node.ref}" is not in the loaded tree` };
+    return { status: "failed", error: `workflow step "${node.id}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
   const childResult = await executeWorkflowRun({
@@ -403,12 +588,15 @@ async function runWorkflowNode(
     identity: { runId: randomUUID(), rootRunId: ctx.rootRunId, parentRunId: ctx.parentRunId, nodeId: node.id },
     files: ctx.files,
     observer: ctx.observer,
+    signal: ctx.signal,
+    cancellation: ctx.cancellation,
   });
 
+  if (childResult.status === "cancelled") return { status: "cancelled" };
   if (childResult.status === "failed") {
-    return { success: false, error: `workflow step "${node.id}": ${childResult.error}` };
+    return { status: "failed", error: `workflow step "${node.id}": ${childResult.error}` };
   }
-  return { success: true, output: childResult.output };
+  return { status: "succeeded", output: childResult.output };
 }
 
 // A `binary` step: resolve command/args/cwd, spawn the child process, apply `parse: "json"`, and
@@ -425,8 +613,12 @@ async function runBinaryNode(
     parentRunId: string;
     observer?: RunObserver;
     context: { [key: string]: JsonValue };
+    // The enclosing `parallel` block's cancellation (#24): `signal` kills the child on a sibling
+    // failure; `cancellation.causeRunId` is the failing sibling the run-cancelled event points at.
+    signal?: AbortSignal;
+    cancellation?: Cancellation;
   },
-): Promise<StepOutcome> {
+): Promise<SeqOutcome> {
   const { rootRunId, observer } = ctx;
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.context };
   const effectiveWorker: Worker = node.worker ?? ctx.fileWorker;
@@ -439,7 +631,7 @@ async function runBinaryNode(
     args = (node.args ?? []).map((arg) => interpolateToString(arg, scope));
     cwd = node.cwd !== undefined ? interpolateToString(node.cwd, scope) : ctx.fileDir;
   } catch (err) {
-    return { success: false, error: describeInterpolationError(node.id, err) };
+    return { status: "failed", error: describeInterpolationError(node.id, err) };
   }
 
   const stepRunId = randomUUID();
@@ -453,12 +645,25 @@ async function runBinaryNode(
     input: stepInput,
   });
 
-  const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput);
+  const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput, ctx.signal);
   await observer?.stepStderr?.({ runId: stepRunId, rootRunId, stderr: result.stderr });
+
+  if ("cancelled" in result) {
+    // A failing sibling parallel branch killed this step (mvp spec §5.6): narrate the cancellation
+    // (its cause the failing sibling run) and end the run `cancelled`, not `failed`. No publish lands.
+    await observer?.runCancelled?.({
+      runId: stepRunId,
+      rootRunId,
+      nodeId: node.id,
+      causeRunId: ctx.cancellation?.causeRunId ?? ctx.parentRunId,
+    });
+    await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
+    return { status: "cancelled" };
+  }
 
   if (!result.success) {
     await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: result.error });
-    return { success: false, error: result.error };
+    return { status: "failed", error: result.error, causeRunId: stepRunId };
   }
 
   let output: JsonValue = result.output;
@@ -469,11 +674,11 @@ async function runBinaryNode(
       if (!(err instanceof OutputParseError)) throw err;
       const parseError = `step "${node.id}": ${err.message}`;
       await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: parseError });
-      return { success: false, error: parseError };
+      return { status: "failed", error: parseError, causeRunId: stepRunId };
     }
   }
   await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "succeeded", output });
-  return { success: true, output };
+  return { status: "succeeded", output };
 }
 
 /**
