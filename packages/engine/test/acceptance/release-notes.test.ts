@@ -125,7 +125,8 @@ interface RunRow {
   root_run_id: string;
   parent_run_id: string | null;
   node_id: string | null;
-  worker: string;
+  // Nullable: the root workflow-run is inserted without a worker (persisted-observer.ts).
+  worker: string | null;
   status: string;
   input_ref: string | null;
   output_ref: string | null;
@@ -325,20 +326,40 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     }
   });
 
-  it("criterion 4 — respects the LLM fan-out cap", async () => {
-    const parallel = createScriptedLlmWorker(happyPathScript());
-    await expect(runPipeline(parallel)).resolves.toBe(0);
-    // The parallel block's two branches are the only concurrency in the pipeline, and the default
-    // cap of 4 leaves room for both.
-    expect(parallel.maxConcurrent).toBe(2);
+  it("criterion 1 — picks the long branch arm when the verdict asks for it", async () => {
+    // The happy path always takes the `short` arm; `pick-format` is ordered-arms/first-match-wins
+    // (NOTES.md), so the second arm needs its own run to be exercised at all.
+    const worker = createScriptedLlmWorker({
+      ...happyPathScript(),
+      "judge-draft": () => verdict(true, "long"),
+      "format-long": () => "# Release notes\n\n## Features\n\nThe long form.",
+    });
 
-    rmSync(harness.projectDir, { recursive: true, force: true });
-    harness.projectDir = createRepo();
+    await expect(runPipeline(worker)).resolves.toBe(0);
 
-    const capped = createScriptedLlmWorker(happyPathScript());
-    await expect(runPipeline(capped, ["--llm-concurrency", "1"])).resolves.toBe(0);
-    // Under a cap of 1 the same block serialises rather than fanning out.
-    expect(capped.maxConcurrent).toBe(1);
+    const nodeIds = worker.calls.map((call) => call.nodeId);
+    expect(nodeIds).toContain("format-long");
+    expect(nodeIds).not.toContain("format-short");
+    // A passing first verdict also means the while-do loop never entered.
+    expect(nodeIds).not.toContain("revise");
+    expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toContain("## Features");
+  });
+
+  it("criterion 4 — fans out the parallel block when the cap leaves room", async () => {
+    const worker = createScriptedLlmWorker(happyPathScript());
+    await expect(runPipeline(worker)).resolves.toBe(0);
+    // The `summarize` block's two branches are the pipeline's only concurrency, and the default cap
+    // of 4 leaves room for both. This shows fan-out *happens* — on its own it says nothing about
+    // the cap (2 < 4 would hold with the semaphore removed); the next test is what binds it.
+    expect(worker.maxConcurrent).toBe(2);
+  });
+
+  it("criterion 4 — respects the LLM fan-out cap when it binds", async () => {
+    const worker = createScriptedLlmWorker(happyPathScript());
+    await expect(runPipeline(worker, ["--llm-concurrency", "1"])).resolves.toBe(0);
+    // Same block, cap lowered below its width: it serialises instead of fanning out. Removing the
+    // semaphore fails this assertion, which is what makes it a test of the cap.
+    expect(worker.maxConcurrent).toBe(1);
   });
 });
 

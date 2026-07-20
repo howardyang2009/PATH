@@ -12,7 +12,7 @@ export {
   isLogBackendId,
   type LogBackendId,
 } from "./logging/backends.js";
-export { main, type CliIo, type RunOverrides } from "./cli.js";
+export { main, type CliIo } from "./cli.js";
 export { createAgentSdkWorker, type AgentSdkWorkerOptions, type SdkQuery } from "./llm/agent-sdk-worker.js";
 export type { LlmWorker, PromptRequest, PromptResult } from "./llm/llm-worker.js";
 export {
