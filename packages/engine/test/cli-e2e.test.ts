@@ -1,5 +1,5 @@
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -106,6 +106,27 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     expect(existsSync(join(projectDir, ".path", "runs", rootRunId))).toBe(false);
   });
 
+  it("logs the run to both run.log (with the header line) and the db log table, matching by seq (ticket #19)", async () => {
+    await runCli(["run", join(projectDir, "workflow.json")], projectDir);
+
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const rootRunId = (db.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string })
+      .root_run_id;
+    const dbSeqs = (db.prepare("SELECT seq FROM log_events WHERE root_run_id = ? ORDER BY seq").all(rootRunId) as {
+      seq: number;
+    }[]).map((r) => r.seq);
+    db.close();
+
+    const logLines = readFileSync(join(projectDir, ".path", "runs", rootRunId, "run.log"), "utf8")
+      .trimEnd()
+      .split("\n");
+    expect(JSON.parse(logLines[0]!)).toEqual({ type: "log-header", format: "path/log@0", run_id: rootRunId });
+
+    const fileSeqs = logLines.slice(1).map((line) => JSON.parse(line).seq);
+    expect(fileSeqs).toEqual(dbSeqs);
+    expect(dbSeqs.length).toBeGreaterThanOrEqual(3); // root + at least one step's started/finished
+  });
+
   it("path runs prune removes every root run's rows and directories", async () => {
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
@@ -134,5 +155,127 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
       code: 1,
       stderr: expect.stringContaining("no run found"),
     });
+  });
+});
+
+describe("path run — secret masking at the persistence boundary (ticket #20, real dev-mode process)", () => {
+  let projectDir: string;
+  const SECRET = "super-secret-value-DEADBEEF";
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-secret-e2e-"));
+    // A step whose interpolated secret reaches argv (the real process), then flows into stdout
+    // (its output), stderr, publish/context, and the workflow output map — every persisted surface.
+    const workflow = {
+      format: "path/workflow@0",
+      name: "secret-flow",
+      worker: { type: "engine" },
+      config: { apiKey: { $secret: SECRET } },
+      body: [
+        {
+          type: "binary",
+          id: "leak",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])", "${config.apiKey}"],
+          publish: { saved: "${output}" },
+        },
+      ],
+      output: { result: "${context.saved}" },
+    };
+    writeFileSync(join(projectDir, "workflow.json"), JSON.stringify(workflow));
+  });
+
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function readAllFiles(dir: string): string {
+    let out = "";
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      out += entry.isDirectory() ? readAllFiles(full) : readFileSync(full, "utf8");
+    }
+    return out;
+  }
+
+  it("never writes the real secret to any file under .path/ or any db row, but the process gets it", async () => {
+    // The spawned process received the real value: the step's stdout (the workflow output) is real.
+    const { stdout } = await runCli(["run", join(projectDir, "workflow.json")], projectDir);
+    expect(stdout.trim()).toBe(JSON.stringify({ result: SECRET }));
+
+    // Not a single byte of the real secret survives under .path/ (blobs, run.log, and — since the
+    // .db file itself lives there — the db). The token stands in for it everywhere.
+    const pathDump = readAllFiles(join(projectDir, ".path"));
+    expect(pathDump).not.toContain(SECRET);
+    expect(pathDump).toContain("[secret:apiKey]");
+
+    // And explicitly across queryable db columns (output blobs are refs, but log-event rows and
+    // captured values are stored inline).
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const logRows = db.prepare("SELECT * FROM log_events").all() as Record<string, unknown>[];
+    db.close();
+    expect(JSON.stringify(logRows)).not.toContain(SECRET);
+  });
+});
+
+describe("path run with a nested workflow step (ticket #22, real dev-mode process)", () => {
+  let projectDir: string;
+
+  beforeAll(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-nested-e2e-"));
+    for (const f of ["nested-parent.workflow.json", "nested-child.workflow.json"]) {
+      cpSync(join(realFixtures, f), join(projectDir, f));
+    }
+  });
+
+  afterAll(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  it("runs the child, returns the child's output map to the parent, and mirrors the run tree in db + on disk", async () => {
+    const { stdout } = await runCli(["run", join(projectDir, "nested-parent.workflow.json")], projectDir);
+    // The parent's `publish` captured the child's `output` map verbatim.
+    expect(stdout.trim()).toBe(JSON.stringify({ childResult: { shouted: "HI" } }));
+
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const rows = db.prepare("SELECT * FROM runs ORDER BY started_at").all() as {
+      run_id: string;
+      root_run_id: string;
+      parent_run_id: string | null;
+      node_id: string | null;
+      status: string;
+    }[];
+    db.close();
+
+    expect(rows.every((r) => r.status === "succeeded")).toBe(true);
+
+    // The run tree: root workflow-run -> child workflow-run ("child-step") -> leaf binary ("shout").
+    const root = rows.find((r) => r.parent_run_id === null);
+    expect(root).toBeTruthy();
+    expect(root!.node_id).toBeNull();
+    expect(root!.run_id).toBe(root!.root_run_id);
+
+    const childRun = rows.find((r) => r.node_id === "child-step");
+    expect(childRun).toBeTruthy();
+    expect(childRun!.parent_run_id).toBe(root!.run_id);
+    expect(childRun!.root_run_id).toBe(root!.run_id);
+
+    const leafRun = rows.find((r) => r.node_id === "shout");
+    expect(leafRun).toBeTruthy();
+    expect(leafRun!.parent_run_id).toBe(childRun!.run_id);
+    expect(leafRun!.root_run_id).toBe(root!.run_id);
+
+    // Every workflow-run has its own context.json in its own run subdirectory under the one root
+    // run's tree; the leaf binary run has stderr.txt but no context of its own.
+    const runsRoot = join(projectDir, ".path", "runs", root!.root_run_id);
+    expect(existsSync(join(runsRoot, root!.run_id, "context.json"))).toBe(true);
+    expect(existsSync(join(runsRoot, childRun!.run_id, "context.json"))).toBe(true);
+    expect(existsSync(join(runsRoot, leafRun!.run_id, "context.json"))).toBe(false);
+    expect(existsSync(join(runsRoot, leafRun!.run_id, "stderr.txt"))).toBe(true);
+
+    // The child's context.json is its own isolated blackboard — it holds the input-seeded key and
+    // the child's own publish, and nothing from the parent.
+    const childContext = JSON.parse(readFileSync(join(runsRoot, childRun!.run_id, "context.json"), "utf8"));
+    expect(childContext).toEqual({ seed: "hi", shouted: "HI" });
   });
 });

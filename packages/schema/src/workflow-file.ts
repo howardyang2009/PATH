@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { ConfigObjectSchema } from "./config.js";
+import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { NodeArraySchema } from "./nodes.js";
@@ -182,13 +183,6 @@ export interface WorkflowFileParseSuccess {
 export interface WorkflowFileParseFailure {
   success: false;
   errors: string[];
-}
-
-function formatIssues(error: z.ZodError): string[] {
-  return error.issues.map((issue) => {
-    const path = issue.path.join(".");
-    return path ? `${path}: ${issue.message}` : issue.message;
-  });
 }
 
 export function safeParseWorkflowFile(

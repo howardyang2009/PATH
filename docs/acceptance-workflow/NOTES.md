@@ -35,7 +35,7 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 | Logicer: branch | `pick-format` |
 | Logicer: while-do with mandatory max-iterations | `revise-loop` (exceeded → run fails, so post-loop nodes assume a passing draft) |
 | Checkpoint = mechanical assertion; judge-step pattern | `judge-draft` + `verdict-wellformed`; also inside `revise-cycle` |
-| Condition language (predicate trees) | `matches`, `equals`, `one-of`, `exists`, `valid-json`, `all` over `context.*` paths |
+| Condition language (predicate trees) | `matches`, `equals`, `one-of`, `exists`, `all` over `context.*` paths |
 | Config from outside, inherited downward | workflow-level `repo_path`/`commit_range`/`max_revisions`/`output_file` |
 | Context as per-workflow-run blackboard | `raw_changes`, summaries, `draft`, `verdict`, `final_notes` |
 | Nested-workflow context isolation | `revise-cycle` starts fresh; data crosses only via input/output objects |
@@ -44,6 +44,15 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 
 Deliberately absent (deferred by earlier decisions): wait-one / do-not-wait joins, API/MCP/skill
 step types, config paths in conditions, templates/inheritance mechanics.
+
+Also absent, and not deferred — **`valid-json`**. The map claimed it until #26's acceptance run
+went looking for the node that exercised it and found none. It has no honest home in this
+pipeline: `valid-json` requires a *string* value, and the only JSON-shaped thing here is
+`context.verdict`, which `judge-draft` already declares `parse: "json"` on — so by the time a
+condition could read it, it is a parsed object and the predicate would evaluate to `error`. The
+parse itself is what fails the step on malformed judge output, which makes a separate predicate
+redundant rather than missing. Exercising `valid-json` needs a pipeline that carries unparsed JSON
+in context; this one deliberately does not.
 
 ## Questions this pipeline raised
 

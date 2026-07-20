@@ -57,3 +57,4 @@ export {
   type InterpolationRoot,
   type InterpolationCheckResult,
 } from "./interpolation.js";
+export { formatIssues } from "./format-issues.js";

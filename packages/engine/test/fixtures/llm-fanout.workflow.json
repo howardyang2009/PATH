@@ -1,0 +1,18 @@
+{
+  "format": "path/workflow@0",
+  "name": "llm-fanout",
+  "worker": { "type": "llm", "model": "claude-sonnet-5" },
+  "body": [
+    {
+      "type": "parallel",
+      "id": "fanout",
+      "join": "collect",
+      "branches": [
+        { "id": "a", "body": [{ "type": "prompt", "id": "ask-a", "prompt": "Question a." }] },
+        { "id": "b", "body": [{ "type": "prompt", "id": "ask-b", "prompt": "Question b." }] },
+        { "id": "c", "body": [{ "type": "prompt", "id": "ask-c", "prompt": "Question c." }] },
+        { "id": "d", "body": [{ "type": "prompt", "id": "ask-d", "prompt": "Question d." }] }
+      ]
+    }
+  ]
+}

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { Worker } from "@path/schema";
+import type { JsonValue, Worker } from "@path/schema";
 
 /** Run rows exist for step runs only (domain invariant 1); mvp spec §5.7. */
 export type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
@@ -49,6 +49,25 @@ export function setRunBlobRefs(
   }
 }
 
+/**
+ * What one LLM run spent (mvp spec §5.7, §7): `usage` is the worker's real token counts, stored
+ * verbatim; `estimatedCostUsd` is the SDK's client-side estimate at API list prices — real for
+ * API-key users, notional under subscription billing. Recorded **leaf-only**, on the prompt-step
+ * runs where the tokens were actually spent.
+ */
+export interface RunUsage {
+  usage: JsonValue | null;
+  estimatedCostUsd: number | null;
+}
+
+export function setRunUsage(db: Database.Database, runId: string, spend: RunUsage): void {
+  db.prepare(`UPDATE runs SET usage = @usage, estimated_cost_usd = @cost WHERE run_id = @runId`).run({
+    usage: spend.usage === null ? null : JSON.stringify(spend.usage),
+    cost: spend.estimatedCostUsd,
+    runId,
+  });
+}
+
 export interface RunRecord {
   runId: string;
   rootRunId: string;
@@ -60,6 +79,8 @@ export interface RunRecord {
   finishedAt: string | null;
   inputRef: string | null;
   outputRef: string | null;
+  usage: JsonValue | null;
+  estimatedCostUsd: number | null;
 }
 
 interface RunRowDb {
@@ -73,6 +94,8 @@ interface RunRowDb {
   finished_at: string | null;
   input_ref: string | null;
   output_ref: string | null;
+  usage: string | null;
+  estimated_cost_usd: number | null;
 }
 
 function fromDbRow(row: RunRowDb): RunRecord {
@@ -87,6 +110,8 @@ function fromDbRow(row: RunRowDb): RunRecord {
     finishedAt: row.finished_at,
     inputRef: row.input_ref,
     outputRef: row.output_ref,
+    usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
+    estimatedCostUsd: row.estimated_cost_usd,
   };
 }
 

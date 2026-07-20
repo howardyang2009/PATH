@@ -11,6 +11,7 @@ import {
   getRunsForRoot,
   insertRun,
   setRunBlobRefs,
+  setRunUsage,
 } from "../../src/persistence/run-store.js";
 
 let dir: string;
@@ -77,6 +78,30 @@ describe("run-store", () => {
     const [row] = getRunsForRoot(db, "r1");
     expect(row?.inputRef).toBe("runs/r1/r1/input.json");
     expect(row?.outputRef).toBe("runs/r1/r1/output.json");
+  });
+
+  it("setRunUsage records real token counts and the estimated cost on an LLM run row (spec §5.7)", () => {
+    insertRun(db, {
+      runId: "r1",
+      rootRunId: "r1",
+      parentRunId: null,
+      nodeId: "summarize",
+      worker: { type: "llm", model: "claude-sonnet-5" },
+      status: "running",
+    });
+    setRunUsage(db, "r1", { usage: { input_tokens: 12, output_tokens: 34 }, estimatedCostUsd: 0.0053 });
+
+    const [row] = getRunsForRoot(db, "r1");
+    expect(row?.usage).toEqual({ input_tokens: 12, output_tokens: 34 });
+    expect(row?.estimatedCostUsd).toBeCloseTo(0.0053);
+  });
+
+  it("leaves usage and cost null on rows where no tokens were spent", () => {
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+
+    const [row] = getRunsForRoot(db, "r1");
+    expect(row?.usage).toBeNull();
+    expect(row?.estimatedCostUsd).toBeNull();
   });
 
   it("scopes getRunsForRoot to only the requested root run's tree", () => {

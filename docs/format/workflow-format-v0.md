@@ -85,7 +85,10 @@ receives the prompt plus the step's entire input object, rendered. There is no `
 mechanism: what the step reads is exactly what its `input` map builds.
 
 **`binary`** — `command` (string), `args` (string array, default `[]`), `cwd` (string, default: the
-directory of the workflow file), all interpolable. I/O convention:
+directory of the workflow file), all interpolable. A **relative `cwd` resolves against the
+directory of the workflow file**, the same anchor as its default — never against the directory
+`path run` was invoked from, so a workflow behaves the same wherever it is launched. I/O
+convention:
 
 - The input object is written to the process's **stdin**: raw bytes if it is a string, otherwise
   its JSON serialization.
