@@ -860,7 +860,11 @@ async function runBinaryNode(
   try {
     command = interpolateToString(node.command, scope);
     args = (node.args ?? []).map((arg) => interpolateToString(arg, scope));
-    cwd = node.cwd !== undefined ? interpolateToString(node.cwd, scope) : ctx.fileDir;
+    // A relative `cwd` is resolved against the workflow file's directory, not the process's —
+    // the same anchor as the documented default (format doc §4.2). Anchoring it to wherever
+    // `path run` happened to be invoked from would make `"cwd": "."` mean something different
+    // from omitting `cwd`, and would make a workflow's behaviour depend on the caller's shell.
+    cwd = node.cwd !== undefined ? resolve(ctx.fileDir, interpolateToString(node.cwd, scope)) : ctx.fileDir;
   } catch (err) {
     return { status: "failed", error: describeInterpolationError(node.id, err) };
   }

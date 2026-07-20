@@ -10,6 +10,7 @@ import {
   LOG_BACKEND_IDS,
   type LogBackendId,
 } from "./logging/backends.js";
+import type { LlmWorker } from "./llm/llm-worker.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
 import { mergeConfig } from "./merge-config.js";
 import { dirExists, removeDir } from "./persistence/blob-store.js";
@@ -24,6 +25,17 @@ import { runWorkflow } from "./run-workflow.js";
 export interface CliIo {
   log(message: string): void;
   error(message: string): void;
+}
+
+/**
+ * Engine collaborators the CLI would otherwise construct itself. The acceptance run (#26) uses
+ * this to drive the real pipeline — real workflow files, real git, real persistence and logging —
+ * with a scripted LLM worker in place of a live Agent SDK processor, which is the one collaborator
+ * that costs money and never answers the same way twice.
+ */
+export interface RunOverrides {
+  /** Where `prompt` steps execute; defaults to the pinned Agent SDK worker (mvp spec §7). */
+  llmWorker?: LlmWorker;
 }
 
 const consoleIo: CliIo = {
@@ -166,7 +178,7 @@ function openDbOrReport(dbFile: string): OpenDbResult {
   }
 }
 
-async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
+async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides): Promise<number> {
   const parsed = parseRunArgs(rest);
   if (!parsed.success) {
     io.error(parsed.error);
@@ -213,6 +225,7 @@ async function runRunCommand(rest: string[], io: CliIo): Promise<number> {
       operatorConfig: operatorConfig.config,
       files: tree.files,
       observer,
+      llmWorker: overrides.llmWorker,
       llmConcurrency: parsed.args.llmConcurrency,
       warn: (message) => io.error(`warning: ${message}`),
     });
@@ -296,11 +309,11 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
 }
 
 /** Runs the CLI and returns the process exit code — never calls process.exit itself. */
-export async function main(argv: string[], io: CliIo = consoleIo): Promise<number> {
+export async function main(argv: string[], io: CliIo = consoleIo, overrides: RunOverrides = {}): Promise<number> {
   const [command, ...rest] = argv;
 
   if (command === "run") {
-    return runRunCommand(rest, io);
+    return runRunCommand(rest, io, overrides);
   }
   if (command === "runs") {
     return runRunsCommand(rest, io);

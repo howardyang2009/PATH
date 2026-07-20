@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -59,6 +59,30 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     };
     const result = await runWorkflow(file, "/tmp");
     expect(result.status).toBe("succeeded");
+  });
+
+  it("resolves a relative cwd against the workflow file's directory, not the process's", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "relative-cwd",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "pwd",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.cwd())"],
+          // `.` is what the acceptance pipeline's `repo_path` default is; anchoring it to the
+          // caller's shell would make the same workflow behave differently per invocation.
+          cwd: ".",
+          publish: { pwd: "${output}" },
+        },
+      ],
+      output: { pwd: "${context.pwd}" },
+    };
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ pwd: realpathSync(fixturesDir) });
   });
 
   it("fails clearly on unsupported node types instead of silently skipping them", async () => {
