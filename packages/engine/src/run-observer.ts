@@ -11,11 +11,15 @@ export class ObserverError extends Error {}
 /**
  * How a run/step ended — shared by `stepFinished` and `runFinished` (identical shape). A failure
  * carries its `error` message so logging (#19) can put it on the `step-finished` event; for a
- * binary step that message already embeds the exit code + short stderr tail (mvp spec §8.1).
+ * binary step that message already embeds the exit code + short stderr tail (mvp spec §8.1). A
+ * `cancelled` outcome (#24) has neither output nor error — an in-flight sibling of a failing
+ * parallel branch that the engine killed best-effort (mvp spec §5.6); its cause is narrated
+ * separately by the `run-cancelled` event.
  */
 export type RunOutcome =
   | { status: "succeeded"; output: JsonValue }
-  | { status: "failed"; error?: string };
+  | { status: "failed"; error?: string }
+  | { status: "cancelled" };
 
 /**
  * Lifecycle hooks `runWorkflow` calls at exactly the points persistence (#18) and later logging
@@ -63,6 +67,29 @@ export interface RunObserver {
   stepFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
   contextChanged?(info: { runId: string; rootRunId: string; context: JsonValue }): void | Promise<void>;
+  /**
+   * A `parallel` collect join applied at block end (#24): all branches succeeded and their buffered
+   * publishes landed in branch declaration order. A control-node observation (the block is a
+   * logicer, not a run) — `runId` is the enclosing workflow-run, `nodeId` the `parallel` node.
+   */
+  joinApplied?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    branches: string[];
+    publishedKeys: string[];
+  }): void | Promise<void>;
+  /**
+   * A run was cancelled best-effort because a sibling parallel branch failed (#24, mvp spec §5.6):
+   * `runId`/`nodeId` identify the cancelled step run and its node; `causeRunId` is the failing
+   * sibling run. Paired with a `cancelled` `stepFinished`/`runFinished` for the same run.
+   */
+  runCancelled?(info: {
+    runId: string;
+    rootRunId: string;
+    nodeId: string;
+    causeRunId: string;
+  }): void | Promise<void>;
   /** A workflow-run finished (root or nested). */
   runFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;
 }
@@ -89,6 +116,12 @@ export function composeObservers(...observers: RunObserver[]): RunObserver {
     },
     async contextChanged(info) {
       for (const o of observers) await o.contextChanged?.(info);
+    },
+    async joinApplied(info) {
+      for (const o of observers) await o.joinApplied?.(info);
+    },
+    async runCancelled(info) {
+      for (const o of observers) await o.runCancelled?.(info);
     },
     async runFinished(info) {
       for (const o of observers) await o.runFinished?.(info);

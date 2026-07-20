@@ -33,8 +33,15 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   let seq = 0;
   let terminated = false;
 
-  function envelope(runId: string): { seq: number; ts: string; run_id: string; node_id: string | null } {
-    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id: nodeIdByRun.get(runId) ?? null };
+  // Envelope for a run's own lifecycle event recovers `node_id` from the run that started it;
+  // a control event (join-applied, run-cancelled) passes `nodeId` explicitly — its `run_id` is the
+  // enclosing workflow-run but its `node_id` is the control node, not that run's own node.
+  function envelope(
+    runId: string,
+    nodeId?: string,
+  ): { seq: number; ts: string; run_id: string; node_id: string | null } {
+    const node_id = nodeId !== undefined ? nodeId : nodeIdByRun.get(runId) ?? null;
+    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id };
   }
 
   // Serialize an op onto a backend's queue: it runs only after that backend's previous op settles,
@@ -92,6 +99,21 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
       await emit(finishedEvent(envelope(info.runId), info), false);
     },
 
+    async joinApplied({ runId, nodeId, branches, publishedKeys }) {
+      // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
+      // the `parallel` node — never a run of its own (a logicer has no run, invariant 1).
+      await emit(
+        { type: "join-applied", ...envelope(runId, nodeId), branches, published_keys: publishedKeys },
+        false,
+      );
+    },
+
+    async runCancelled({ runId, nodeId, causeRunId }) {
+      // The best-effort cancellation of an in-flight sibling (mvp spec §5.6): run_id/node_id are the
+      // cancelled step run and its node, paired with a `cancelled` step-finished for the same run.
+      await emit({ type: "run-cancelled", ...envelope(runId, nodeId), cause_run_id: causeRunId }, false);
+    },
+
     async runFinished(info) {
       if (info.runId !== info.rootRunId) {
         // A nested workflow-run finishing is an ordinary step-finished — the root run continues,
@@ -108,8 +130,9 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
 
   function finishedEvent(
     env: ReturnType<typeof envelope>,
-    outcome: { status: "succeeded"; output: unknown } | { status: "failed"; error?: string },
+    outcome: { status: "succeeded"; output: unknown } | { status: "failed"; error?: string } | { status: "cancelled" },
   ): LogEvent {
+    // A `cancelled` step-finished (#24) carries no error — the cause is narrated by run-cancelled.
     return outcome.status === "failed" && outcome.error !== undefined
       ? { type: "step-finished", ...env, status: "failed", error: outcome.error }
       : { type: "step-finished", ...env, status: outcome.status };

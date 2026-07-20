@@ -1,4 +1,5 @@
-import { readFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
@@ -311,6 +312,8 @@ function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof
     stepStderr: vi.fn(),
     stepFinished: vi.fn(),
     contextChanged: vi.fn(),
+    joinApplied: vi.fn(),
+    runCancelled: vi.fn(),
     runFinished: vi.fn(),
   };
 }
@@ -602,5 +605,180 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     const { runId } = observer.runStarted.mock.calls[0]![0];
     expect(observer.contextChanged).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
+  });
+});
+
+describe("runWorkflow — parallel blocks: collect join (ticket #24)", () => {
+  // A node script that rendezvous with a sibling through a shared dir: write my flag, then poll for
+  // the sibling's — succeeding only if both run concurrently. If the branches ran sequentially the
+  // first to run would wait out its deadline and exit non-zero, failing the run. So a *success* is a
+  // genuine proof of concurrency (mvp spec §5.2).
+  function rendezvousScript() {
+    return "const fs=require('fs'),dir=process.argv[1],me=process.argv[2],other=process.argv[3];fs.writeFileSync(dir+'/'+me,'1');const end=Date.now()+3000;(function p(){if(fs.existsSync(dir+'/'+other)){process.stdout.write(me);return;}if(Date.now()>end){process.exit(1);}setTimeout(p,10);})();";
+  }
+
+  it("runs sibling branches concurrently and collects a deterministic, addressable output object", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "path-parallel-"));
+    try {
+      const file: WorkflowFile = {
+        format: "path/workflow@0",
+        name: "collect-concurrent",
+        worker: { type: "engine" },
+        body: [
+          {
+            type: "parallel",
+            id: "fanout",
+            join: "collect",
+            branches: [
+              {
+                id: "alpha",
+                body: [
+                  { type: "binary", id: "a", command: "node", args: ["-e", rendezvousScript(), dir, "a", "b"], publish: { fromAlpha: "${output}" } },
+                ],
+              },
+              {
+                id: "beta",
+                body: [
+                  { type: "binary", id: "b", command: "node", args: ["-e", rendezvousScript(), dir, "b", "a"], publish: { fromBeta: "${output}" } },
+                ],
+              },
+            ],
+          },
+          // Default input of the node after the block is the collect output object (§5.4).
+          { type: "binary", id: "after", command: "node", args: ["-e", echoStdinScript()], publish: { block: "${output}" } },
+        ],
+        output: { fromAlpha: "${context.fromAlpha}", fromBeta: "${context.fromBeta}", block: "${context.block}" },
+      };
+
+      const result = await runWorkflow(file, fixturesDir);
+      expect(result.status).toBe("succeeded");
+      const out = result.output as { fromAlpha: string; fromBeta: string; block: string };
+      // Branch publishes landed at the join, addressable by their own keys.
+      expect(out.fromAlpha).toBe("a");
+      expect(out.fromBeta).toBe("b");
+      // Collect output is `{ "<branch-id>": <that branch's last output> }`, keyed by branch id.
+      expect(JSON.parse(out.block)).toEqual({ alpha: "a", beta: "b" });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("gives each branch a snapshot of context at block entry — a sibling's publish is never visible", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "snapshot-isolation",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            {
+              id: "writer",
+              body: [
+                { type: "binary", id: "w", command: "node", args: ["-e", "process.stdout.write('w')"], publish: { written: "${output}" } },
+              ],
+            },
+            {
+              id: "reader",
+              // Reads a key its sibling publishes; against the entry snapshot it does not exist, so
+              // the branch fails — proving siblings never observe each other's writes (§5.3).
+              body: [
+                { type: "binary", id: "r", command: "node", args: ["-e", echoStdinScript()], input: "${context.written}" },
+              ],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/written/);
+  });
+
+  it("a failing branch fails the run, cancels the in-flight sibling, and lands no publishes", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "cancel-sibling",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            {
+              id: "slow",
+              // Sleeps well past the sibling's failure; it must be killed, not allowed to finish.
+              body: [
+                { type: "binary", id: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"], publish: { slow: "${output}" } },
+              ],
+            },
+            {
+              id: "boom",
+              body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }],
+            },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/boom/);
+
+    // The failing branch's step run id is the cause the sibling cancellation points back at.
+    const boomStep = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom");
+    const sleeperStep = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper");
+    expect(boomStep).toBeDefined();
+    expect(sleeperStep).toBeDefined();
+
+    // The sleeper was cancelled best-effort (a distinct status), narrated by run-cancelled.
+    expect(observer.runCancelled).toHaveBeenCalledWith({
+      runId: sleeperStep!.runId,
+      rootRunId: sleeperStep!.rootRunId,
+      nodeId: "sleeper",
+      causeRunId: boomStep!.runId,
+    });
+    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: sleeperStep!.runId, rootRunId: sleeperStep!.rootRunId, status: "cancelled" });
+    // No join, hence no publishes landed (§5.6): neither the slow branch's buffered publish nor any
+    // context write reached the run.
+    expect(observer.joinApplied).not.toHaveBeenCalled();
+    expect(observer.contextChanged).not.toHaveBeenCalled();
+  });
+
+  it("narrates the join with branch ids in declaration order and the published keys", async () => {
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "join-narrative",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            { id: "one", body: [{ type: "binary", id: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
+            { id: "two", body: [{ type: "binary", id: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
+          ],
+        },
+      ],
+      output: {},
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+    expect(result.status).toBe("succeeded");
+    const { runId } = observer.runStarted.mock.calls[0]![0];
+    expect(observer.joinApplied).toHaveBeenCalledWith({
+      runId,
+      rootRunId: runId,
+      nodeId: "fanout",
+      branches: ["one", "two"],
+      publishedKeys: ["k1", "k2"],
+    });
   });
 });
