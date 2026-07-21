@@ -12,7 +12,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "acceptance": "tsx scripts/acceptance-release-notes.mts"
   },
   "dependencies": {
     "@path/engine": "workspace:*",
