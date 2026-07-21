@@ -17,8 +17,8 @@ interface Channel {
  *
  * Live-only: a channel exists solely while its run executes, so `subscribe` returns `null` once the
  * run has finished (its channel closed) — the SSE handler then falls back to the db to tell an
- * already-finished run (end-of-stream) from an unknown one (404). Replay of past events is a
- * separate concern (#38), not this hub's.
+ * already-finished run (end-of-stream) from an unknown one (404). Replay of past events (#38) reads
+ * the persisted NDJSON log directly in the route handler — not this hub's concern.
  */
 export class RunEventHub {
   private readonly channels = new Map<string, Channel>();

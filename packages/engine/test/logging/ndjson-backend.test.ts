@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { LogEventSchema } from "../../src/logging/log-event.js";
-import { createNdjsonBackend } from "../../src/logging/ndjson-backend.js";
+import { createNdjsonBackend, readNdjsonLog } from "../../src/logging/ndjson-backend.js";
 import { rootRunTreeDir } from "../../src/persistence/paths.js";
 
 function tmp(): string {
@@ -48,6 +48,35 @@ describe("createNdjsonBackend", () => {
         .slice(1)
         .map((line) => JSON.parse(line).seq);
       expect(seqs).toEqual([1, 2, 3, 4, 5]);
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+});
+
+describe("readNdjsonLog", () => {
+  it("reads the narrative back in seq order, skipping the log-header line", async () => {
+    const projectDir = tmp();
+    try {
+      const backend = createNdjsonBackend(projectDir);
+      await backend.open({ runId: "root-1", format: "path/log@0" });
+      for (let seq = 1; seq <= 3; seq += 1) {
+        await backend.write({ type: "step-finished", seq, ts: "t", run_id: "root-1", node_id: null, status: "succeeded" });
+      }
+      await backend.close();
+
+      const events = readNdjsonLog(projectDir, "root-1");
+      expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
+      for (const event of events) expect(() => LogEventSchema.parse(event)).not.toThrow();
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("returns [] when run.log doesn't exist (backend disabled, or no run at this id)", () => {
+    const projectDir = tmp();
+    try {
+      expect(readNdjsonLog(projectDir, "no-such-run")).toEqual([]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

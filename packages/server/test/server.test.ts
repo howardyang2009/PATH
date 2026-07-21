@@ -267,7 +267,7 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     await res.body?.cancel();
   });
 
-  it("ends the stream immediately for an already-finished run", async () => {
+  it("replays the full persisted history from seq 1 for an already-finished run (no Last-Event-ID)", async () => {
     const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
       root_run_id: string;
     };
@@ -276,8 +276,105 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("text/event-stream");
-    // Live-only: replay is out of scope (#38), so a finished run yields an immediate end-of-stream.
     const frames = await readSseStream(res);
+
+    expect(frames.length).toBeGreaterThan(0);
+    const seqs = frames.map((f) => f.data.seq);
+    expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
+    expect(frames.at(-1)!.data.type).toBe("step-finished");
+  });
+
+  it("replays full history from seq 1 then continues live when connecting fresh (no Last-Event-ID)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    const frames = await readSseStream(res);
+
+    // Proves replay actually ran (not just "happened to connect before anything fired"): seq 1
+    // (the root run's own step-started, already persisted before POST resolved) is present.
+    expect(frames[0]!.data.seq).toBe(1);
+    const seqs = frames.map((f) => f.data.seq);
+    expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
+    expect(frames.at(-1)!.data.type).toBe("step-finished");
+
+    await pollUntilTerminal(root_run_id);
+  });
+
+  it("reconnecting with Last-Event-ID: N replays only seq > N, then continues live with no gap or duplicate", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+
+    const firstRes = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    const reader = firstRes.body!.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+    const firstFrames: SseFrame[] = [];
+    while (firstFrames.length < 1) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      let sep: number;
+      while ((sep = buffer.indexOf("\n\n")) !== -1) {
+        const block = buffer.slice(0, sep);
+        buffer = buffer.slice(sep + 2);
+        const idLine = block.split("\n").find((l) => l.startsWith("id: "));
+        const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+        if (idLine && dataLine) firstFrames.push({ id: idLine.slice(4), data: JSON.parse(dataLine.slice(6)) });
+      }
+    }
+    await reader.cancel(); // simulate the client disconnecting mid-run
+
+    const lastSeenId = Number(firstFrames.at(-1)!.id);
+    const secondRes = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`, {
+      headers: { "Last-Event-ID": String(lastSeenId) },
+    });
+    const secondFrames = await readSseStream(secondRes);
+
+    expect(secondFrames.every((f) => f.data.seq > lastSeenId)).toBe(true);
+    const allSeqs = [...firstFrames.map((f) => Number(f.id)), ...secondFrames.map((f) => f.data.seq)];
+    // Combined, the two connections cover the whole run with no gap and no duplicate.
+    expect(allSeqs).toEqual(Array.from({ length: allSeqs.length }, (_, i) => i + 1));
+    expect(secondFrames.at(-1)!.data.type).toBe("step-finished");
+
+    await pollUntilTerminal(root_run_id);
+  });
+
+  it("running with ndjson disabled: connecting mid-run captures only events from connect time onward, no replay", async () => {
+    const { root_run_id } = (await (await postRun({
+      workflow_path: "two-slow-steps.workflow.json",
+      log_backends: ["db"],
+    })).json()) as { root_run_id: string };
+
+    // Let the run's early events (its own step-started, and the first ~200ms step) fire before any
+    // SSE subscriber exists — with no run.log to replay from, they're gone for good.
+    await new Promise((r) => setTimeout(r, 250));
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    const frames = await readSseStream(res);
+
+    expect(frames.length).toBeGreaterThan(0);
+    // Proves replay is genuinely unavailable (not just untested): the first frame we see is well
+    // past seq 1, unlike the ndjson-enabled fresh-connect test above.
+    expect(frames[0]!.data.seq).toBeGreaterThan(1);
+    expect(frames.at(-1)!.data.type).toBe("step-finished");
+
+    await pollUntilTerminal(root_run_id);
+  });
+
+  it("cannot replay history for a finished run whose ndjson backend was disabled (known v0 limitation)", async () => {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json", log_backends: ["db"] })
+    ).json()) as { root_run_id: string };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    expect(res.status).toBe(200);
+    const frames = await readSseStream(res);
+    // No run.log for this run, and the channel's already closed (run finished) — nothing to
+    // replay or forward, stream ends immediately.
     expect(frames).toEqual([]);
   });
 });

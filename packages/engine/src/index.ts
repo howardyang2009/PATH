@@ -4,6 +4,7 @@ export { composeObservers, ObserverError, type RunObserver, type RunOutcome } fr
 export { collectSecrets, createMaskingObserver, type SecretMasker } from "./secret-mask.js";
 export { LogEventSchema, type LogEvent, type StepStartedEvent, type StepFinishedEvent } from "./logging/log-event.js";
 export { LOG_FORMAT, type LogBackend, type LogFormat } from "./logging/log-backend.js";
+export { readNdjsonLog } from "./logging/ndjson-backend.js";
 export { createLoggingObserver } from "./logging/logging-observer.js";
 export {
   createLogBackends,
@@ -22,7 +23,7 @@ export {
   type ReleaseSlot,
 } from "./llm/processor-semaphore.js";
 export { openDb, SchemaVersionError } from "./persistence/db.js";
-export { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
+export { dbFilePath, pathDir, rootRunTreeDir, runBlobDir } from "./persistence/paths.js";
 export { ensurePathDirGitignore } from "./persistence/gitignore.js";
 export { readJsonBlob } from "./persistence/blob-store.js";
 export { createPersistedObserver } from "./persistence/persisted-observer.js";

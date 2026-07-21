@@ -1,7 +1,8 @@
-import { closeSync, mkdirSync, openSync, writeSync } from "node:fs";
+import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
 import { rootRunTreeDir } from "../persistence/paths.js";
 import type { LogBackend } from "./log-backend.js";
+import { LogEventSchema, type LogEvent } from "./log-event.js";
 
 /**
  * The NDJSON log backend (mvp spec §8.1–8.2): one `run.log` per root run at the run-tree root,
@@ -36,4 +37,23 @@ export function createNdjsonBackend(projectDir: string): LogBackend {
       }
     },
   };
+}
+
+/**
+ * Reads a root run's persisted `run.log` back into its `LogEvent` narrative, in `seq` order,
+ * skipping the leading `log-header` line (server-api-v0.md §5's historical replay). `[]` if the
+ * file doesn't exist — the `ndjson` backend was never enabled for this run (§5's known v0
+ * limitation) or it hasn't written anything yet — not an error.
+ */
+export function readNdjsonLog(projectDir: string, rootRunId: string): LogEvent[] {
+  const logPath = join(rootRunTreeDir(projectDir, rootRunId), "run.log");
+  if (!existsSync(logPath)) return [];
+  const events: LogEvent[] = [];
+  for (const line of readFileSync(logPath, "utf8").split("\n")) {
+    if (line.trim() === "") continue;
+    const parsed: unknown = JSON.parse(line);
+    if ((parsed as { type?: string }).type === "log-header") continue;
+    events.push(LogEventSchema.parse(parsed));
+  }
+  return events;
 }
