@@ -3,12 +3,14 @@
 Resolves wayfinder ticket [#30](https://github.com/howardyang2009/PATH/issues/30), part of
 [Wayfinder map: PATH server API](https://github.com/howardyang2009/PATH/issues/29). This document
 is the normative definition of the `@path/server` v0 HTTP contract. Vocabulary follows
-[CONTEXT.md](../../CONTEXT.md). Versioning scheme, server lifecycle/CLI surface, and SSE
-reconnect/replay semantics are owned by sibling tickets
-([#32](https://github.com/howardyang2009/PATH/issues/32),
-[#33](https://github.com/howardyang2009/PATH/issues/33),
+[CONTEXT.md](../../CONTEXT.md). Server lifecycle/CLI surface and SSE reconnect/replay semantics are
+owned by sibling tickets ([#33](https://github.com/howardyang2009/PATH/issues/33),
 [#31](https://github.com/howardyang2009/PATH/issues/31)) — this document fixes the endpoint list
 and the request/response shapes.
+
+**Versioning ([#32](https://github.com/howardyang2009/PATH/issues/32)):** path-prefixed, mirroring
+the workflow format's self-declaring `path/workflow@0`. Every endpoint below lives under `/v0`; a
+breaking change to the contract ships as `/v1` alongside it, never a silent reshape of `/v0`.
 
 ## 0. Constraints (from the map, not re-litigated here)
 
@@ -35,11 +37,11 @@ and the request/response shapes.
 - A `root_run_id` always equals its own `run_id` for a root run — the two ever diverge only for
   non-root rows returned inside a run tree (§3).
 
-## 2. `POST /runs` — start a run
+## 2. `POST /v0/runs` — start a run
 
 Async only (locked decision): returns as soon as the run is accepted and validated, before
-execution finishes. Client polls `GET /runs/:root_run_id` or streams `GET
-/runs/:root_run_id/events`.
+execution finishes. Client polls `GET /v0/runs/:root_run_id` or streams `GET
+/v0/runs/:root_run_id/events`.
 
 Request body:
 
@@ -68,12 +70,12 @@ Responses:
   { "run_id": "<uuid>", "root_run_id": "<uuid>" }
   ```
   (`run_id` and `root_run_id` are always equal here — the field is duplicated for shape-parity with
-  `GET /runs`/`GET /runs/:id`, which both return the same envelope for non-root run rows.)
+  `GET /v0/runs`/`GET /v0/runs/:id`, which both return the same envelope for non-root run rows.)
 - `400 Bad Request` — `workflow_path` missing/not found, or `loadWorkflowTree` validation failure.
   `error.details` carries the validation issues.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or the file doesn't exist.
 
-## 3. `GET /runs` — list root runs
+## 3. `GET /v0/runs` — list root runs
 
 New capability; the engine has no "list root runs" query today (`getRunsForRoot` requires a known
 `root_run_id`). Requires one small additive `run-store` function: root runs are exactly the rows
@@ -97,9 +99,9 @@ Response `200 OK`:
 ```
 
 Most recent first (`ORDER BY started_at DESC`). This is the root-run summary shape only — no
-`output`/`usage`/full tree; fetch `GET /runs/:root_run_id` for that.
+`output`/`usage`/full tree; fetch `GET /v0/runs/:root_run_id` for that.
 
-## 4. `GET /runs/:root_run_id` — run status + tree
+## 4. `GET /v0/runs/:root_run_id` — run status + tree
 
 Response `200 OK`, one row per `RunRecord` in the tree (`getRunsForRoot`, camelCase fields
 translated to snake_case):
@@ -136,7 +138,7 @@ translated to snake_case):
   server's project root points at).
 - `404 Not Found` if `root_run_id` is unknown.
 
-## 5. `GET /runs/:root_run_id/events` — SSE event stream
+## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 
 `Content-Type: text/event-stream`. Each SSE frame's `data:` payload is one `LogEvent` (the existing
 discriminated union in `logging/log-event.ts`), JSON-encoded verbatim — already snake_case at the
@@ -155,10 +157,18 @@ createLoggingObserver(...))` pair `cli.ts` already wires) that pushes each event
 clients for that `root_run_id` as `runWorkflow` executes — no polling of the db/NDJSON file for
 live events.
 
-Reconnect/replay behavior (what a client sees on connect after some events already happened) is
-[#31](https://github.com/howardyang2009/PATH/issues/31)'s question, not answered here. Note for that
-ticket: reading events already written needs one more small additive query — the db backend
-(`db-backend.ts`) only writes today (`insertLogEvent`, no read-back function).
+**Reconnect/replay ([#31](https://github.com/howardyang2009/PATH/issues/31)):** standard SSE
+mechanism, not a bespoke one. Each frame carries `id: <seq>`; a client's `EventSource` auto-sends
+`Last-Event-ID` on reconnect. Server behavior on connect:
+
+- `Last-Event-ID` header present → replay persisted events with `seq >` that value, then switch to
+  live.
+- Absent → replay the full history from `seq` 1, then switch to live.
+
+Historical replay reads from the **NDJSON backend** (`run.log`, already ordered by `seq`) — not the
+db table, avoiding the read-back query #30 flagged as a gap. **Known v0 limitation:** if a client
+disabled the `ndjson` log backend for that run (via `POST /v0/runs`'s `log_backends`), replay is
+unavailable — the stream only carries events from connect time onward.
 
 `404 Not Found` if `root_run_id` is unknown. Stream closes (client sees end-of-stream) when the run
 reaches a terminal status (`succeeded`/`failed`/`cancelled`) at the root.
@@ -166,6 +176,7 @@ reaches a terminal status (`succeeded`/`failed`/`cancelled`) at the root.
 ## 6. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
 
 - `run-store`: add a "list root runs" query (§3).
-- `db-backend`: add a "read events for root run" query, needed by #31.
 - No blob-serving endpoint in v0 — `input_ref`/`output_ref` are paths into the server's own
   filesystem project root, which a co-located client can already read directly.
+- SSE replay depends on the `ndjson` log backend being enabled for the run (§5) — a db-only read-back
+  query was considered and dropped in favor of reusing the existing NDJSON file.
