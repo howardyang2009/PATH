@@ -3,6 +3,12 @@ import { getRunsForRoot, type LogEvent } from "@path/engine";
 import { sendError } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
+const SSE_HEADERS = {
+  "Content-Type": "text/event-stream",
+  "Cache-Control": "no-cache",
+  Connection: "keep-alive",
+} as const;
+
 /**
  * `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5): the live SSE stream. Attaches to the
  * root run's in-process `RunEventHub` channel and writes each `LogEvent` as one SSE frame —
@@ -33,23 +39,15 @@ export function handleGetRunEvents(
     () => res.end(),
   );
 
+  res.writeHead(200, SSE_HEADERS);
+
   // No open channel: the run row exists but has already reached a terminal status, so there are no
-  // live events to forward (replay is #38). Emit the SSE headers and an immediate end-of-stream.
+  // live events to forward (replay is #38). The SSE headers are out; end the stream immediately.
   if (unsubscribe === null) {
-    res.writeHead(200, sseHeaders());
     res.end();
     return;
   }
 
-  res.writeHead(200, sseHeaders());
   // Client hung up before the run finished — detach so the hub stops forwarding to a dead socket.
   req.on("close", unsubscribe);
-}
-
-function sseHeaders(): Record<string, string> {
-  return {
-    "Content-Type": "text/event-stream",
-    "Cache-Control": "no-cache",
-    Connection: "keep-alive",
-  };
 }
