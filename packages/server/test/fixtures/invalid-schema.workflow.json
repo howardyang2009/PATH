@@ -1,0 +1,7 @@
+{
+  "format": "path/workflow@0",
+  "name": "invalid-schema",
+  "worker": { "type": "engine" },
+  "body": [{ "type": "binary", "id": "step-one", "command": "echo" }],
+  "bogus_field": true
+}

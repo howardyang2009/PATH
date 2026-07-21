@@ -75,6 +75,37 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.1)
 
+  packages/server:
+    dependencies:
+      '@path/engine':
+        specifier: workspace:*
+        version: link:../engine
+      '@path/schema':
+        specifier: workspace:*
+        version: link:../schema
+      better-sqlite3:
+        specifier: ^11.8.1
+        version: 11.10.0
+      zod:
+        specifier: ^3.23.8
+        version: 3.25.76
+    devDependencies:
+      '@types/better-sqlite3':
+        specifier: ^7.6.12
+        version: 7.6.13
+      '@types/node':
+        specifier: ^22.13.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)
+
 packages:
 
   '@ai-hero/sandcastle@0.12.0':

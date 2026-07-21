@@ -1,0 +1,24 @@
+{
+  "format": "path/workflow@0",
+  "name": "two-binary-steps",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "greet",
+      "command": "node",
+      "args": ["-e", "process.stdout.write('hello')"]
+    },
+    {
+      "type": "binary",
+      "id": "shout",
+      "command": "node",
+      "args": [
+        "-e",
+        "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d.toUpperCase()))"
+      ],
+      "publish": { "shouted": "${output}" }
+    }
+  ],
+  "output": { "shouted": "${context.shouted}" }
+}

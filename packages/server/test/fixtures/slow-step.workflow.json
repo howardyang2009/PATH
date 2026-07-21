@@ -1,0 +1,15 @@
+{
+  "format": "path/workflow@0",
+  "name": "slow-step",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "wait",
+      "command": "node",
+      "args": ["-e", "setTimeout(() => process.stdout.write('done'), 300)"],
+      "publish": { "result": "${output}" }
+    }
+  ],
+  "output": { "result": "${context.result}" }
+}
