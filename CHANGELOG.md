@@ -1,6 +1,33 @@
 # Changelog
 
-## Unreleased
+## v0.2.0 — 2026-07-21
+
+The **`@path/server`** map: `@path/engine` becomes reachable over HTTP. A new package exposing a
+v0 HTTP + SSE API (4 endpoints) and a `path-server` CLI, an in-process wrapper that adds no engine
+capability — the door mvp spec §10 held open for "Website/cloud, remote engines, mobile".
+
+### Features
+
+- feat(server): `@path/server` walking skeleton — boots + `POST /v0/runs` + `GET /v0/runs/:root_run_id` (resolves #35)
+- feat(server): `GET /v0/runs` — list root runs (resolves #36)
+- feat(server): `GET /v0/runs/:root_run_id/events` — live SSE stream of a run's narrative (resolves #37)
+- feat(server): SSE reconnect/replay via `Last-Event-ID` + NDJSON — a dropped client resumes with no gap (resolves #38)
+- feat(server): §5 acceptance harness — release-notes pipeline driven end-to-end through the API, all four spec §5 criteria confirmed on a real run (resolves #39)
+
+### Docs
+
+- docs(spec): PATH server API v0 — endpoint contract + assembled spec (resolves #29–#34)
+
+### Other
+
+- refactor(server): dedupe SSE header write in get-run-events
+- refactor: derive `RunStatus` from a single `RUN_STATUSES` const
+- Dogfood: changelog workflow, run end-to-end on this repo
+
+## v0.1.0 — 2026-07-21
+
+The MVP (map #1): `@path/engine` + `path` CLI runs the release-notes acceptance pipeline
+end-to-end on macOS.
 
 ### Features
 
