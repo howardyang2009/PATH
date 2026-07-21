@@ -1,0 +1,21 @@
+{
+  "format": "path/workflow@0",
+  "name": "two-slow-steps",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "first",
+      "command": "node",
+      "args": ["-e", "setTimeout(() => process.stdout.write('one'), 200)"]
+    },
+    {
+      "type": "binary",
+      "id": "second",
+      "command": "node",
+      "args": ["-e", "setTimeout(() => process.stdout.write('two'), 200)"],
+      "publish": { "result": "${output}" }
+    }
+  ],
+  "output": { "result": "${context.result}" }
+}

@@ -57,6 +57,35 @@ async function listRuns(query = ""): Promise<Response> {
   return fetch(`${handle.url}/v0/runs${query}`);
 }
 
+interface SseFrame {
+  id: string;
+  data: { type: string; seq: number };
+}
+
+/** Reads an SSE response body to completion, parsing each `id:`/`data:` frame. */
+async function readSseStream(res: Response): Promise<SseFrame[]> {
+  const reader = res.body!.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  const frames: SseFrame[] = [];
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const block = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      const idLine = block.split("\n").find((l) => l.startsWith("id: "));
+      const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
+      if (idLine && dataLine) {
+        frames.push({ id: idLine.slice(4), data: JSON.parse(dataLine.slice(6)) });
+      }
+    }
+  }
+  return frames;
+}
+
 async function pollUntilTerminal(rootRunId: string): Promise<RunTreeBody> {
   for (;;) {
     const body = (await (await getRun(rootRunId)).json()) as RunTreeBody;
@@ -198,5 +227,57 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toContain("00000000-0000-0000-0000-000000000000");
+  });
+});
+
+describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
+  it("streams live events in seq order, each frame carrying id: <seq>, and closes when the root finishes", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+
+    // Reading to completion only returns once the run reaches a terminal status at the root — the
+    // server ends the stream there (no client-side timeout needed).
+    const frames = await readSseStream(res);
+
+    // Connected mid-run, so we see live events without polling.
+    expect(frames.length).toBeGreaterThan(0);
+    // Each frame's id is its event's seq, and seq is strictly ascending (the ordering truth).
+    for (const frame of frames) expect(frame.id).toBe(String(frame.data.seq));
+    const seqs = frames.map((f) => f.data.seq);
+    expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
+    expect(new Set(seqs).size).toBe(seqs.length);
+    // The run's own lifecycle events flow through: at least one step-started and one step-finished.
+    const types = new Set(frames.map((f) => f.data.type));
+    expect(types.has("step-started") || types.has("step-finished")).toBe(true);
+    // The final frame is the root run finishing.
+    expect(frames.at(-1)!.data.type).toBe("step-finished");
+
+    const finalBody = await pollUntilTerminal(root_run_id);
+    expect(finalBody.status).toBe("succeeded");
+  });
+
+  it("404s for an unknown root_run_id", async () => {
+    const res = await fetch(`${handle.url}/v0/runs/00000000-0000-0000-0000-000000000000/events`);
+    expect(res.status).toBe(404);
+    await res.body?.cancel();
+  });
+
+  it("ends the stream immediately for an already-finished run", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toBe("text/event-stream");
+    // Live-only: replay is out of scope (#38), so a finished run yields an immediate end-of-stream.
+    const frames = await readSseStream(res);
+    expect(frames).toEqual([]);
   });
 });

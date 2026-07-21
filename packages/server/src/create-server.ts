@@ -4,10 +4,13 @@ import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engin
 import type Database from "better-sqlite3";
 import { sendError } from "./http-json.js";
 import { handleGetRun } from "./routes/get-run.js";
+import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
+import { RunEventHub } from "./run-event-hub.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
+const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
@@ -21,6 +24,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, ctx: Run
 
     if (req.method === "GET" && pathname === "/v0/runs") {
       handleListRuns(res, ctx, url.searchParams);
+      return;
+    }
+
+    const eventsMatch = RUN_EVENTS_ROUTE.exec(pathname);
+    if (req.method === "GET" && eventsMatch) {
+      handleGetRunEvents(req, res, ctx, decodeURIComponent(eventsMatch[1]!));
       return;
     }
 
@@ -53,7 +62,7 @@ export async function startPathServer(projectDir: string, port = 0): Promise<Pat
   ensurePathDirGitignore(pathDir(absProjectDir));
   const db: Database.Database = openDb(dbFilePath(absProjectDir));
 
-  const ctx: RunsRouteContext = { projectDir: absProjectDir, db };
+  const ctx: RunsRouteContext = { projectDir: absProjectDir, db, hub: new RunEventHub() };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

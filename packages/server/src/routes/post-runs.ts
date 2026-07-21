@@ -17,6 +17,8 @@ import type Database from "better-sqlite3";
 import { z } from "zod";
 import { createDeferred } from "../deferred.js";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { createLiveLogBackend } from "../live-log-backend.js";
+import type { RunEventHub } from "../run-event-hub.js";
 
 const PostRunsBodySchema = z
   .object({
@@ -44,6 +46,7 @@ function resolveWorkflowPath(projectDir: string, workflowPath: string): string |
 export interface RunsRouteContext {
   projectDir: string;
   db: Database.Database;
+  hub: RunEventHub;
 }
 
 export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
@@ -96,9 +99,12 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       started.resolve({ runId: info.runId, rootRunId: info.rootRunId });
     },
   };
+  // The live-forwarding backend rides alongside the configured db/NDJSON backends so SSE clients
+  // (§5) see every already-masked event in `seq` order — independent of which log_backends the
+  // client persisted to. It never throws, so it can't fail the run.
   const observer = composeObservers(
     createPersistedObserver(ctx.db, ctx.projectDir),
-    createLoggingObserver(backends),
+    createLoggingObserver([...backends, createLiveLogBackend(ctx.hub)]),
     captureObserver,
   );
 
