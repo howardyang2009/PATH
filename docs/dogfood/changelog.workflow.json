@@ -1,0 +1,93 @@
+{
+  "format": "path/workflow@0",
+  "name": "changelog",
+
+  "worker": { "type": "engine" },
+
+  "config": {
+    "repo_path": "../..",
+    "commit_range": "v0.1.0..HEAD",
+    "output_file": "CHANGELOG.md"
+  },
+
+  "body": [
+    {
+      "type": "binary",
+      "id": "gather-changes",
+      "command": "git",
+      "args": ["log", "--no-merges", "--format=%s", "${config.commit_range}"],
+      "cwd": "${config.repo_path}",
+      "publish": { "raw_subjects": "${output}" }
+    },
+
+    {
+      "type": "checkpoint",
+      "id": "have-changes",
+      "condition": { "type": "matches", "path": "context.raw_subjects", "pattern": "\\S" }
+    },
+
+    {
+      "type": "parallel",
+      "id": "bucket",
+      "join": "collect",
+      "branches": [
+        {
+          "id": "features",
+          "body": [
+            {
+              "type": "binary",
+              "id": "grep-features",
+              "input": "${context.raw_subjects}",
+              "command": "sh",
+              "args": ["-c", "grep -E '^feat(\\([^)]*\\))?:' || true"]
+            }
+          ]
+        },
+        {
+          "id": "fixes",
+          "body": [
+            {
+              "type": "binary",
+              "id": "grep-fixes",
+              "input": "${context.raw_subjects}",
+              "command": "sh",
+              "args": ["-c", "grep -E '^fix(\\([^)]*\\))?:' || true"]
+            }
+          ]
+        },
+        {
+          "id": "other",
+          "body": [
+            {
+              "type": "binary",
+              "id": "grep-other",
+              "input": "${context.raw_subjects}",
+              "command": "sh",
+              "args": ["-c", "grep -Ev '^(feat|fix)(\\([^)]*\\))?:' || true"]
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "type": "binary",
+      "id": "format-changelog",
+      "command": "node",
+      "args": ["format-changelog.js"],
+      "publish": { "final_markdown": "${output}" }
+    },
+
+    {
+      "type": "binary",
+      "id": "write-file",
+      "input": "${context.final_markdown}",
+      "command": "sh",
+      "args": ["-c", "cat > \"${config.output_file}\""],
+      "cwd": "${config.repo_path}",
+      "publish": { "file": "${config.output_file}" }
+    }
+  ],
+
+  "output": { "file": "${context.file}" }
+}
