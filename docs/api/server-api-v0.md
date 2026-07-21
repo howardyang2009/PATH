@@ -1,0 +1,171 @@
+# PATH Server API v0 — Endpoint Surface
+
+Resolves wayfinder ticket [#30](https://github.com/howardyang2009/PATH/issues/30), part of
+[Wayfinder map: PATH server API](https://github.com/howardyang2009/PATH/issues/29). This document
+is the normative definition of the `@path/server` v0 HTTP contract. Vocabulary follows
+[CONTEXT.md](../../CONTEXT.md). Versioning scheme, server lifecycle/CLI surface, and SSE
+reconnect/replay semantics are owned by sibling tickets
+([#32](https://github.com/howardyang2009/PATH/issues/32),
+[#33](https://github.com/howardyang2009/PATH/issues/33),
+[#31](https://github.com/howardyang2009/PATH/issues/31)) — this document fixes the endpoint list
+and the request/response shapes.
+
+## 0. Constraints (from the map, not re-litigated here)
+
+- Transport: HTTP + SSE only. No WebSocket, no raw IPC socket.
+- `@path/server` is a new package, imports `@path/engine` **in-process** (`runWorkflow`,
+  `loadWorkflowTree`, log backends) — not a CLI subprocess wrapper.
+- No auth. Localhost-bind only.
+- Single fixed project root per server instance, set at startup — one `.path/` tree, like `path run`.
+- Multiple root runs may execute concurrently; no server-side queueing.
+- No cancel-run endpoint (root runs are never cancelled today — mvp spec §5.6).
+
+## 1. Conventions
+
+- All request/response bodies are JSON, `Content-Type: application/json`.
+- **Field casing is snake_case**, matching the existing wire conventions in this codebase (log-event
+  envelope's `run_id`/`node_id`, the format's `max_iterations`) — not the camelCase used internally
+  in `RunRecord`/`RunResult`. The server translates at the boundary.
+- Errors share one shape:
+  ```json
+  { "error": { "message": "human-readable summary", "details": "<optional>" } }
+  ```
+  `details` carries structured data where available (e.g. zod validation issues from
+  `loadWorkflowTree`), otherwise omitted.
+- A `root_run_id` always equals its own `run_id` for a root run — the two ever diverge only for
+  non-root rows returned inside a run tree (§3).
+
+## 2. `POST /runs` — start a run
+
+Async only (locked decision): returns as soon as the run is accepted and validated, before
+execution finishes. Client polls `GET /runs/:root_run_id` or streams `GET
+/runs/:root_run_id/events`.
+
+Request body:
+
+```json
+{
+  "workflow_path": "release-notes.workflow.json",
+  "input": { "...": "..." },
+  "config": { "...": "..." },
+  "log_backends": ["db", "ndjson"],
+  "llm_concurrency": 4
+}
+```
+
+| Field | Required | Maps to (`RunOptions` / CLI flag) |
+| --- | --- | --- |
+| `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
+| `input` | no | `RunOptions.input` — seeds the root run's context. |
+| `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`. |
+| `log_backends` | no | Same as `path run --log-backends`; default `["db", "ndjson"]`. |
+| `llm_concurrency` | no | Same as `path run --llm-concurrency`; default engine default (4). |
+
+Responses:
+
+- `202 Accepted` — workflow tree loaded and validated, run started:
+  ```json
+  { "run_id": "<uuid>", "root_run_id": "<uuid>" }
+  ```
+  (`run_id` and `root_run_id` are always equal here — the field is duplicated for shape-parity with
+  `GET /runs`/`GET /runs/:id`, which both return the same envelope for non-root run rows.)
+- `400 Bad Request` — `workflow_path` missing/not found, or `loadWorkflowTree` validation failure.
+  `error.details` carries the validation issues.
+- `404 Not Found` — `workflow_path` resolves outside the project root, or the file doesn't exist.
+
+## 3. `GET /runs` — list root runs
+
+New capability; the engine has no "list root runs" query today (`getRunsForRoot` requires a known
+`root_run_id`). Requires one small additive `run-store` function: root runs are exactly the rows
+where `run_id = root_run_id`.
+
+Query params: `limit` (default 50), `status` (optional filter: one of `RunStatus`).
+
+Response `200 OK`:
+
+```json
+{
+  "runs": [
+    {
+      "run_id": "<uuid>",
+      "status": "succeeded",
+      "started_at": "2026-07-21T10:00:00.000Z",
+      "finished_at": "2026-07-21T10:02:31.000Z"
+    }
+  ]
+}
+```
+
+Most recent first (`ORDER BY started_at DESC`). This is the root-run summary shape only — no
+`output`/`usage`/full tree; fetch `GET /runs/:root_run_id` for that.
+
+## 4. `GET /runs/:root_run_id` — run status + tree
+
+Response `200 OK`, one row per `RunRecord` in the tree (`getRunsForRoot`, camelCase fields
+translated to snake_case):
+
+```json
+{
+  "root_run_id": "<uuid>",
+  "status": "succeeded",
+  "output": { "...": "..." },
+  "runs": [
+    {
+      "run_id": "<uuid>",
+      "root_run_id": "<uuid>",
+      "parent_run_id": null,
+      "node_id": null,
+      "worker": { "...": "..." },
+      "status": "succeeded",
+      "started_at": "...",
+      "finished_at": "...",
+      "input_ref": "runs/<root_run_id>/<run_id>/input.json",
+      "output_ref": "runs/<root_run_id>/<run_id>/output.json",
+      "usage": null,
+      "estimated_cost_usd": null
+    }
+  ]
+}
+```
+
+- Top-level `status`/`output` mirror the root row (first entry of `runs`, `parent_run_id: null`) —
+  duplicated at the top for a client that only wants the summary.
+- `input_ref`/`output_ref` are the same project-relative blob paths the engine already stores
+  (`blobRef`) — a client fetches blob content itself from the filesystem, or a future ticket adds a
+  blob-serving endpoint (not in v0: `.path/` is already on disk next to the workflow files the
+  server's project root points at).
+- `404 Not Found` if `root_run_id` is unknown.
+
+## 5. `GET /runs/:root_run_id/events` — SSE event stream
+
+`Content-Type: text/event-stream`. Each SSE frame's `data:` payload is one `LogEvent` (the existing
+discriminated union in `logging/log-event.ts`), JSON-encoded verbatim — already snake_case at the
+envelope level (`run_id`, `node_id`, `seq`, `ts`), so no field translation needed here unlike the
+other endpoints.
+
+```
+data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"step_type":"workflow","worker":{...}}
+
+data: {"type":"step-finished","seq":2,"ts":"...","run_id":"...","node_id":"draft","status":"succeeded"}
+```
+
+Mechanism: since execution is in-process, the server attaches its own live-forwarding `LogBackend`
+(or a third `RunObserver` alongside the existing `composeObservers(createPersistedObserver(...),
+createLoggingObserver(...))` pair `cli.ts` already wires) that pushes each event to connected SSE
+clients for that `root_run_id` as `runWorkflow` executes — no polling of the db/NDJSON file for
+live events.
+
+Reconnect/replay behavior (what a client sees on connect after some events already happened) is
+[#31](https://github.com/howardyang2009/PATH/issues/31)'s question, not answered here. Note for that
+ticket: reading events already written needs one more small additive query — the db backend
+(`db-backend.ts`) only writes today (`insertLogEvent`, no read-back function).
+
+`404 Not Found` if `root_run_id` is unknown. Stream closes (client sees end-of-stream) when the run
+reaches a terminal status (`succeeded`/`failed`/`cancelled`) at the root.
+
+## 6. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
+
+- `run-store`: add a "list root runs" query (§3).
+- `db-backend`: add a "read events for root run" query, needed by #31.
+- No blob-serving endpoint in v0 — `input_ref`/`output_ref` are paths into the server's own
+  filesystem project root, which a co-located client can already read directly.
