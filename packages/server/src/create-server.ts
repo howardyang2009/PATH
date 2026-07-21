@@ -4,16 +4,23 @@ import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engin
 import type Database from "better-sqlite3";
 import { sendError } from "./http-json.js";
 import { handleGetRun } from "./routes/get-run.js";
+import { handleListRuns } from "./routes/list-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 
 async function handleRequest(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
-  const pathname = new URL(req.url ?? "/", "http://localhost").pathname;
+  const url = new URL(req.url ?? "/", "http://localhost");
+  const pathname = url.pathname;
 
   try {
     if (req.method === "POST" && pathname === "/v0/runs") {
       await handlePostRuns(req, res, ctx);
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/v0/runs") {
+      handleListRuns(res, ctx, url.searchParams);
       return;
     }
 

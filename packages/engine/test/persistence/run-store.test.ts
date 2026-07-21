@@ -10,6 +10,7 @@ import {
   finishRun,
   getRunsForRoot,
   insertRun,
+  listRootRuns,
   setRunBlobRefs,
   setRunUsage,
 } from "../../src/persistence/run-store.js";
@@ -120,6 +121,41 @@ describe("run-store", () => {
     expect(deleted).toBe(1);
     expect(getRunsForRoot(db, "a")).toEqual([]);
     expect(getRunsForRoot(db, "b")).toHaveLength(1);
+  });
+
+  it("listRootRuns returns only root runs (run_id = root_run_id), most-recent-first", () => {
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    // A child of `a` shares its tree but is not itself a root run — must be excluded.
+    insertRun(db, {
+      runId: "a-child",
+      rootRunId: "a",
+      parentRunId: "a",
+      nodeId: "greet",
+      worker: { type: "engine" },
+      status: "succeeded",
+    });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "running" });
+
+    expect(listRootRuns(db).map((r) => r.runId)).toEqual(["b", "a"]);
+  });
+
+  it("listRootRuns caps the result at limit (default 50)", () => {
+    for (let i = 0; i < 60; i++) {
+      insertRun(db, { runId: `r${i}`, rootRunId: `r${i}`, parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    }
+    expect(listRootRuns(db)).toHaveLength(50);
+    expect(listRootRuns(db, { limit: 3 })).toHaveLength(3);
+    // Most-recent-first: the last-inserted rows come back.
+    expect(listRootRuns(db, { limit: 3 }).map((r) => r.runId)).toEqual(["r59", "r58", "r57"]);
+  });
+
+  it("listRootRuns filters by status", () => {
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "failed" });
+    insertRun(db, { runId: "c", rootRunId: "c", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+
+    expect(listRootRuns(db, { status: "succeeded" }).map((r) => r.runId)).toEqual(["c", "a"]);
+    expect(listRootRuns(db, { status: "failed" }).map((r) => r.runId)).toEqual(["b"]);
   });
 
   it("deleteAllRuns wipes every row", () => {

@@ -122,6 +122,35 @@ export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRec
   return rows.map(fromDbRow);
 }
 
+export interface ListRootRunsOptions {
+  /** Cap on the number of root runs returned; server-api-v0.md §3 default. */
+  limit?: number;
+  /** Optional filter: return only root runs in this status. */
+  status?: RunStatus;
+}
+
+/**
+ * Lists root runs — the rows whose own id is the tree root (`run_id = root_run_id`), one per run
+ * tree — most-recent-first (server-api-v0.md §3). `getRunsForRoot` needs a known id and returns a
+ * whole tree; this is the complementary "which root runs exist" query. The `rowid DESC` tiebreaker
+ * keeps ordering stable when two roots share a `started_at` millisecond.
+ */
+export function listRootRuns(db: Database.Database, options: ListRootRunsOptions = {}): RunRecord[] {
+  const limit = options.limit ?? 50;
+  const params: { limit: number; status?: RunStatus } = { limit };
+  let statusClause = "";
+  if (options.status !== undefined) {
+    statusClause = " AND status = @status";
+    params.status = options.status;
+  }
+  const rows = db
+    .prepare(
+      `SELECT * FROM runs WHERE run_id = root_run_id${statusClause} ORDER BY started_at DESC, rowid DESC LIMIT @limit`,
+    )
+    .all(params) as RunRowDb[];
+  return rows.map(fromDbRow);
+}
+
 /** Used by `path runs rm <root-run-id>` (mvp spec §6) — deletes one root run's rows. */
 export function deleteRunsForRoot(db: Database.Database, rootRunId: string): number {
   return db.prepare(`DELETE FROM runs WHERE root_run_id = @rootRunId`).run({ rootRunId }).changes;

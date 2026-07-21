@@ -46,6 +46,17 @@ async function getRun(rootRunId: string): Promise<Response> {
   return fetch(`${handle.url}/v0/runs/${rootRunId}`);
 }
 
+interface RootRunSummary {
+  run_id: string;
+  status: string;
+  started_at: string | null;
+  finished_at: string | null;
+}
+
+async function listRuns(query = ""): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs${query}`);
+}
+
 async function pollUntilTerminal(rootRunId: string): Promise<RunTreeBody> {
   for (;;) {
     const body = (await (await getRun(rootRunId)).json()) as RunTreeBody;
@@ -146,6 +157,40 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   it("404s when workflow_path resolves outside the project root", async () => {
     const res = await postRun({ workflow_path: "../../etc/passwd" });
     expect(res.status).toBe(404);
+  });
+
+  it("GET /v0/runs lists root runs most-recent-first, with limit and status filters", async () => {
+    const first = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(first.root_run_id);
+    const second = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(second.root_run_id);
+
+    const res = await listRuns();
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { runs: RootRunSummary[] };
+    // Most-recent-first, and the summary shape only (no tree, no output).
+    expect(body.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
+    expect(Object.keys(body.runs[0]!).sort()).toEqual(["finished_at", "run_id", "started_at", "status"]);
+    expect(body.runs[0]!.status).toBe("succeeded");
+    expect(body.runs[0]!.started_at).toBeTruthy();
+
+    const limited = (await (await listRuns("?limit=1")).json()) as { runs: RootRunSummary[] };
+    expect(limited.runs.map((r) => r.run_id)).toEqual([second.root_run_id]);
+
+    const succeeded = (await (await listRuns("?status=succeeded")).json()) as { runs: RootRunSummary[] };
+    expect(succeeded.runs).toHaveLength(2);
+    const failed = (await (await listRuns("?status=failed")).json()) as { runs: RootRunSummary[] };
+    expect(failed.runs).toHaveLength(0);
+  });
+
+  it("400s GET /v0/runs on an invalid limit or status", async () => {
+    expect((await listRuns("?limit=nope")).status).toBe(400);
+    expect((await listRuns("?limit=0")).status).toBe(400);
+    expect((await listRuns("?status=bogus")).status).toBe(400);
   });
 
   it("404s GET for an unknown root_run_id", async () => {

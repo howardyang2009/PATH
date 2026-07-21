@@ -26,4 +26,10 @@ export { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 export { ensurePathDirGitignore } from "./persistence/gitignore.js";
 export { readJsonBlob } from "./persistence/blob-store.js";
 export { createPersistedObserver } from "./persistence/persisted-observer.js";
-export { getRunsForRoot, type RunRecord, type RunStatus } from "./persistence/run-store.js";
+export {
+  getRunsForRoot,
+  listRootRuns,
+  type ListRootRunsOptions,
+  type RunRecord,
+  type RunStatus,
+} from "./persistence/run-store.js";
