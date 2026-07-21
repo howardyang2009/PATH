@@ -2,7 +2,8 @@ import type Database from "better-sqlite3";
 import type { JsonValue, Worker } from "@path/schema";
 
 /** Run rows exist for step runs only (domain invariant 1); mvp spec §5.7. */
-export type RunStatus = "pending" | "running" | "succeeded" | "failed" | "cancelled";
+export const RUN_STATUSES = ["pending", "running", "succeeded", "failed", "cancelled"] as const;
+export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export interface NewRunRow {
   runId: string;

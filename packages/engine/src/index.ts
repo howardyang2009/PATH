@@ -29,6 +29,7 @@ export { createPersistedObserver } from "./persistence/persisted-observer.js";
 export {
   getRunsForRoot,
   listRootRuns,
+  RUN_STATUSES,
   type ListRootRunsOptions,
   type RunRecord,
   type RunStatus,

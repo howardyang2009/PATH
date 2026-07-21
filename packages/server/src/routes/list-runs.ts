@@ -1,9 +1,7 @@
 import type { ServerResponse } from "node:http";
-import { listRootRuns, type RunStatus } from "@path/engine";
+import { listRootRuns, RUN_STATUSES, type RunStatus } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
-
-const RUN_STATUSES: readonly RunStatus[] = ["pending", "running", "succeeded", "failed", "cancelled"];
 
 /**
  * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50) and
