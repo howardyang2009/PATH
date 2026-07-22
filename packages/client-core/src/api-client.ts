@@ -5,6 +5,9 @@ import type { BlobName, ListRunsResponse, RunTreeResponse, WireError } from "./w
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
 
+/** The default transport: the ambient global `fetch`, wrapped rather than passed by reference. */
+export const defaultFetch: FetchLike = (input, init) => fetch(input, init);
+
 export interface PathApiClientOptions {
   /** Base URL of a running `path-server`, e.g. `http://localhost:8080`. Trailing slash trimmed. */
   baseUrl: string;
@@ -46,7 +49,7 @@ export class PathApiClient {
 
   constructor(options: PathApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, "");
-    this.fetch = options.fetch ?? ((input, init) => fetch(input, init));
+    this.fetch = options.fetch ?? defaultFetch;
   }
 
   /** The base URL joined to a v0 path — exposed so the SSE client can build the events URL. */

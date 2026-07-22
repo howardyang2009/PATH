@@ -1,5 +1,5 @@
 import type { LogEvent } from "@path/engine";
-import type { FetchLike } from "./api-client.js";
+import { defaultFetch, type FetchLike } from "./api-client.js";
 
 /**
  * A pure-TS SSE client for `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5). No DOM, so no
@@ -45,7 +45,7 @@ function isRootTerminal(event: LogEvent): boolean {
 
 export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEventSubscription {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
-  const doFetch = options.fetch ?? ((input, init) => fetch(input, init));
+  const doFetch = options.fetch ?? defaultFetch;
   const reconnect = options.reconnect ?? true;
 
   let lastSeq = options.lastEventId;
@@ -111,23 +111,24 @@ function openStream(
 
 /**
  * Reads SSE frames off a response body, decoding each `data:` line into a `LogEvent` and handing it
- * to `onEvent`. Returns `true` when the stream ends normally (server closed it), stops early when
- * `isClosed()` becomes true. Frame boundary is the blank line (`\n\n`), per the SSE grammar.
+ * to `onEvent`. Returns when the stream ends (server closed it) or `isClosed()` becomes true; the
+ * caller re-checks `closed` to tell the two apart. Frame boundary is the blank line (`\n\n`), per
+ * the SSE grammar.
  */
 async function readFrames(
   res: Response,
   onEvent: (event: LogEvent) => void,
   isClosed: () => boolean,
-): Promise<boolean> {
+): Promise<void> {
   const reader = res.body!.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
   for (;;) {
     const { done, value } = await reader.read();
-    if (done) return true;
+    if (done) return;
     if (isClosed()) {
       await reader.cancel().catch(() => {});
-      return false;
+      return;
     }
     buffer += decoder.decode(value, { stream: true });
     let sep: number;
