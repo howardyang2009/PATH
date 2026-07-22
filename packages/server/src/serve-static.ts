@@ -1,6 +1,6 @@
 import { createReadStream, existsSync, statSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { isAbsolute, join, relative } from "node:path";
+import { extname, isAbsolute, join, relative } from "node:path";
 
 /**
  * Extension → `Content-Type` for the asset kinds a built viewer bundle ships. Anything unlisted
@@ -27,8 +27,7 @@ const CONTENT_TYPES: Record<string, string> = {
 };
 
 function contentTypeFor(filePath: string): string {
-  const dot = filePath.lastIndexOf(".");
-  const ext = dot === -1 ? "" : filePath.slice(dot).toLowerCase();
+  const ext = extname(filePath).toLowerCase();
   return CONTENT_TYPES[ext] ?? "application/octet-stream";
 }
 
