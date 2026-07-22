@@ -57,6 +57,10 @@ async function listRuns(query = ""): Promise<Response> {
   return fetch(`${handle.url}/v0/runs${query}`);
 }
 
+async function getBlob(rootRunId: string, runId: string, name: string): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs/${rootRunId}/blobs/${runId}/${name}`);
+}
+
 interface SseFrame {
   id: string;
   data: { type: string; seq: number };
@@ -227,6 +231,55 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toContain("00000000-0000-0000-0000-000000000000");
+  });
+});
+
+describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", () => {
+  it("serves a child run's input and output blobs as application/json", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    const tree = await pollUntilTerminal(root_run_id);
+    expect(tree.status).toBe("succeeded");
+    const shout = tree.runs.find((r) => r.node_id === "shout")!;
+
+    const outputRes = await getBlob(root_run_id, shout.run_id, "output");
+    expect(outputRes.status).toBe(200);
+    expect(outputRes.headers.get("content-type")).toBe("application/json");
+    expect(await outputRes.json()).toBe("HELLO");
+
+    const inputRes = await getBlob(root_run_id, shout.run_id, "input");
+    expect(inputRes.status).toBe(200);
+    expect(inputRes.headers.get("content-type")).toBe("application/json");
+    expect(await inputRes.json()).toBe("hello");
+  });
+
+  it("404s for an unknown run_id under a known root", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await getBlob(root_run_id, "00000000-0000-0000-0000-000000000000", "output");
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toBeTruthy();
+  });
+
+  it("404s for an unknown root_run_id", async () => {
+    const res = await getBlob("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000", "output");
+    expect(res.status).toBe(404);
+  });
+
+  it("404s for an unknown blob name (only input/output are served)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    const tree = await pollUntilTerminal(root_run_id);
+    const shout = tree.runs.find((r) => r.node_id === "shout")!;
+
+    expect((await getBlob(root_run_id, shout.run_id, "stderr")).status).toBe(404);
+    expect((await getBlob(root_run_id, shout.run_id, "context")).status).toBe(404);
   });
 });
 

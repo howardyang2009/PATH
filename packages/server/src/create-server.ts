@@ -5,6 +5,7 @@ import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engin
 import type Database from "better-sqlite3";
 import { sendError } from "./http-json.js";
 import { handleGetRun } from "./routes/get-run.js";
+import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
@@ -13,6 +14,7 @@ import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
+const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
 
 /**
  * Where `path-server` looks for the built `@path/viewer` bundle when no `staticDir` is passed:
@@ -49,6 +51,18 @@ async function handleRequest(
     const eventsMatch = RUN_EVENTS_ROUTE.exec(pathname);
     if (req.method === "GET" && eventsMatch) {
       handleGetRunEvents(req, res, ctx, decodeURIComponent(eventsMatch[1]!));
+      return;
+    }
+
+    const blobMatch = RUN_BLOB_ROUTE.exec(pathname);
+    if (req.method === "GET" && blobMatch) {
+      handleGetRunBlob(
+        res,
+        ctx,
+        decodeURIComponent(blobMatch[1]!),
+        decodeURIComponent(blobMatch[2]!),
+        decodeURIComponent(blobMatch[3]!),
+      );
       return;
     }
 
