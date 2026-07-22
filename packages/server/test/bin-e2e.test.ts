@@ -17,8 +17,13 @@ beforeEach(() => {
   cpSync(fixturesDir, projectDir, { recursive: true });
 });
 
-afterEach(() => {
-  child?.kill();
+afterEach(async () => {
+  if (child && child.exitCode === null && child.signalCode === null) {
+    const exited = new Promise<void>((resolve) => child!.once("exit", () => resolve()));
+    child.kill();
+    await Promise.race([exited, new Promise((resolve) => setTimeout(resolve, 2000))]);
+    if (child.exitCode === null && child.signalCode === null) child.kill("SIGKILL");
+  }
   rmSync(projectDir, { recursive: true, force: true });
 });
 
