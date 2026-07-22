@@ -1,5 +1,6 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engine";
 import type Database from "better-sqlite3";
 import { sendError } from "./http-json.js";
@@ -8,11 +9,29 @@ import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
 import { RunEventHub } from "./run-event-hub.js";
+import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
 
-async function handleRequest(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
+/**
+ * Where `path-server` looks for the built `@path/viewer` bundle when no `staticDir` is passed:
+ * `packages/viewer/dist`, resolved relative to this package. Absent until the viewer is built —
+ * `serveStatic` no-ops (falls through to a 404) when the directory or its `index.html` is missing.
+ */
+const DEFAULT_STATIC_DIR = fileURLToPath(new URL("../../viewer/dist", import.meta.url));
+
+/** True for the `/v0/*` API namespace, whose unmatched routes keep their JSON 404s (never SPA HTML). */
+function isApiPath(pathname: string): boolean {
+  return pathname === "/v0" || pathname.startsWith("/v0/");
+}
+
+async function handleRequest(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RunsRouteContext,
+  staticDir: string,
+): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const pathname = url.pathname;
 
@@ -39,6 +58,12 @@ async function handleRequest(req: IncomingMessage, res: ServerResponse, ctx: Run
       return;
     }
 
+    // Static assets + SPA fallback for the built viewer bundle — never for `/v0/*`, whose unmatched
+    // routes must keep their JSON 404s so API deep-links don't silently receive HTML.
+    if (req.method === "GET" && !isApiPath(pathname) && serveStatic(staticDir, pathname, res)) {
+      return;
+    }
+
     sendError(res, 404, "not found");
   } catch (err) {
     sendError(res, 500, err instanceof Error ? err.message : String(err));
@@ -55,16 +80,23 @@ export interface PathServerHandle {
 /**
  * Boots `@path/server` against one fixed project root (server-api-v0.md §0): opens the same
  * `.path/path.db` `path run` would, in-process — no subprocess, no per-request project switching.
- * `port` defaults to an OS-assigned ephemeral port. Localhost-bind only, no auth (§0).
+ * `port` defaults to an OS-assigned ephemeral port. Localhost-bind only, no auth (§0). `staticDir`
+ * defaults to the built `@path/viewer` bundle (`packages/viewer/dist`); its assets are served — with
+ * an SPA fallback to `index.html` — from the same origin as the `/v0/*` API (issue #42).
  */
-export async function startPathServer(projectDir: string, port = 0): Promise<PathServerHandle> {
+export async function startPathServer(
+  projectDir: string,
+  port = 0,
+  staticDir: string = DEFAULT_STATIC_DIR,
+): Promise<PathServerHandle> {
   const absProjectDir = resolve(projectDir);
   ensurePathDirGitignore(pathDir(absProjectDir));
   const db: Database.Database = openDb(dbFilePath(absProjectDir));
 
+  const absStaticDir = resolve(staticDir);
   const ctx: RunsRouteContext = { projectDir: absProjectDir, db, hub: new RunEventHub() };
   const server = createServer((req, res) => {
-    handleRequest(req, res, ctx).catch((err) => {
+    handleRequest(req, res, ctx, absStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
     });
   });
