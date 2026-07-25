@@ -1,5 +1,32 @@
 # Changelog
 
+## v0.3.1 — 2026-07-25
+
+Patch: the node-I/O pane could hide an output object that exists. Found by running the LLM-backed
+release-notes acceptance pipeline through `path-server` and watching it in the viewer — the pass
+v0.3.0 shipped without.
+
+### Fixes
+
+- fix(viewer): show a finished run's output when its ref arrived after the last tree read (resolves #51)
+
+  v0.3.0 decided blob absence from the run record's `input_ref`/`output_ref` rather than from a 404,
+  since the route 404s for an unknown root, a run outside the tree and a missing file alike. But refs
+  only enter the snapshot through a tree read, and the tree is re-read only when the stream discovers
+  an *unknown* run — never because a known one finished. Nothing follows the last node of a tree, so
+  its refs never arrived: the pane claimed "no output object yet" about a finished step, and Refresh
+  could not help, because a null ref skipped the request entirely. Absence is now decided by whichever
+  source cannot lie: a **running** run with no ref is still not asked, a **terminal** one is asked
+  regardless and its 404 is trusted.
+
+### Other
+
+- Acceptance: the **release-notes pipeline** (Agent SDK worker, `v0.2.0..v0.3.0`) driven end-to-end
+  through the API and watched in the viewer — parallel LLM fan-out with a collect join, the
+  judge-step pattern, a `while-do` that exited on a passing verdict, a branch, and a real
+  `RELEASE_NOTES.md` on disk. Retires the deviation recorded against map #40; the nested
+  `revise-cycle` workflow stayed unexercised, the judge having passed the draft first time.
+
 ## v0.3.0 — 2026-07-25
 
 The **MVP viewer** map (#40): a read-only web monitor for a live `path-server`. Two new packages —
