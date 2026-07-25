@@ -38,6 +38,11 @@ export interface RunViewState {
 
 export type RunViewListener = (state: RunViewState) => void;
 
+/** A finished run: `step-finished` set it, and nothing after that may move it back. */
+function isTerminal(status: RunStatus): boolean {
+  return status === "succeeded" || status === "failed" || status === "cancelled";
+}
+
 function nodeFromRecord(row: WireRunRecord): RunNodeState {
   return {
     runId: row.run_id,
@@ -81,7 +86,16 @@ export class RunViewModel {
   /** Seed the tree from `GET /v0/runs/:root_run_id`. Merges over any event-created run nodes. */
   hydrate(tree: RunTreeResponse): void {
     for (const row of tree.runs) {
-      this.runs.set(row.run_id, nodeFromRecord(row));
+      const node = nodeFromRecord(row);
+      // A tree read races the run it describes: a re-hydrate taken to learn a new child's parentage
+      // can carry rows older than the events already folded in. Rows win on structure (they are the
+      // only source of `parent_run_id`), but never walk a finished run backwards.
+      const existing = this.runs.get(row.run_id);
+      if (existing && isTerminal(existing.status) && !isTerminal(node.status)) {
+        node.status = existing.status;
+        node.finishedAt ??= existing.finishedAt;
+      }
+      this.runs.set(row.run_id, node);
     }
     this.output = tree.output;
     const root = this.runs.get(this.rootRunId);
@@ -114,7 +128,11 @@ export class RunViewModel {
     };
 
     if (event.type === "step-started") {
-      node.status = "running";
+      // A run is terminal for good — a loop iteration spawns a *new* run, it never restarts one
+      // (CONTEXT.md: a run is one executing instance of a task). Without this guard a full replay
+      // (the default when there is no `Last-Event-ID` to resume from) walks an already-hydrated
+      // `succeeded` run back to `running` and forward again, flickering the status on every open.
+      if (!isTerminal(node.status)) node.status = "running";
       node.worker = event.worker;
       node.startedAt ??= event.ts;
     } else if (event.type === "step-finished") {

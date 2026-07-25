@@ -1,5 +1,7 @@
 import type { PathApiClient, RootRunSummary, RunStatus } from "@path/client-core";
 import { useEffect, useState } from "react";
+import { formatTimestamp } from "./format-time.js";
+import { errorMessage, type Load } from "./load-state.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -13,11 +15,6 @@ const RUNS_LIMIT = 50;
 
 /** The pane's status filter: one `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
-
-type LoadState =
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; runs: RootRunSummary[] };
 
 export interface RunsListProps {
   client: PathApiClient;
@@ -33,7 +30,7 @@ export interface RunsListProps {
  */
 export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [state, setState] = useState<LoadState>({ phase: "loading" });
+  const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
 
   useEffect(() => {
     let cancelled = false;
@@ -41,12 +38,11 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
     client
       .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter })
       .then((res) => {
-        if (!cancelled) setState({ phase: "ready", runs: res.runs });
+        if (!cancelled) setState({ phase: "ready", value: res.runs });
       })
-      .catch((err: unknown) => {
+      .catch((error: unknown) => {
         if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setState({ phase: "error", message });
+        setState({ phase: "error", message: errorMessage(error) });
       });
     return () => {
       cancelled = true;
@@ -74,7 +70,7 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
         </select>
         {/* The row count, as in the #44 prototype's pane header: with a capped window, "how many am
             I looking at" is not answerable by eye. */}
-        {state.phase === "ready" && <span className="runs-count">{state.runs.length}</span>}
+        {state.phase === "ready" && <span className="runs-count">{state.value.length}</span>}
       </div>
 
       {state.phase === "loading" && <p className="pane-note">Loading runs…</p>}
@@ -84,7 +80,7 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
         </p>
       )}
       {state.phase === "ready" &&
-        (state.runs.length === 0 ? (
+        (state.value.length === 0 ? (
           // Two empty states, not one: "No runs yet." is only true of an unfiltered list, and an
           // operator who has just narrowed the filter needs to know which of the two they hit.
           <p className="pane-note">
@@ -92,7 +88,7 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
           </p>
         ) : (
           <ul className="runs">
-            {state.runs.map((run) => (
+            {state.value.map((run) => (
               <li key={run.run_id}>
                 <button
                   type="button"
@@ -105,7 +101,7 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
                 >
                   <span className="run-id">{run.run_id}</span>
                   <StatusPill status={run.status} />
-                  <span className="run-started">{formatStartedAt(run.started_at)}</span>
+                  <span className="run-started">{formatTimestamp(run.started_at)}</span>
                 </button>
               </li>
             ))}
@@ -113,14 +109,4 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
         ))}
     </div>
   );
-}
-
-/**
- * A run that never started has no `started_at` (it is still `pending`) — an em dash keeps the row
- * grid aligned. Rendered in the viewer's locale and time zone: these are wall-clock timestamps an
- * operator compares against their own terminal, not a stable serialization.
- */
-function formatStartedAt(startedAt: string | null): string {
-  if (startedAt === null) return "—";
-  return new Date(startedAt).toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
 }

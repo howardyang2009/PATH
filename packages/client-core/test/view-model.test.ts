@@ -79,6 +79,47 @@ describe("RunViewModel", () => {
     expect(model.getState().narrative.map((e) => e.seq)).toEqual([1, 2, 3]);
   });
 
+  it("never walks a finished run back to running on a full replay", () => {
+    const model = new RunViewModel(ROOT);
+    model.hydrate(tree("succeeded"));
+
+    // No `Last-Event-ID` to resume from means the server replays from seq 1, so the root's own
+    // `step-started` arrives against an already-succeeded run.
+    model.applyEvent(stepStarted(1, ROOT, null));
+
+    expect(model.getState().status).toBe("succeeded");
+    expect(model.getState().runs.get(ROOT)?.worker).toEqual({ type: "engine" });
+  });
+
+  it("takes structure from a re-read tree without regressing a run the events already finished", () => {
+    const model = new RunViewModel(ROOT);
+    model.applyEvent(stepStarted(1, CHILD, "draft"));
+    model.applyEvent(stepFinished(2, CHILD, "draft"));
+
+    const reread = tree("running");
+    reread.runs.push({
+      run_id: CHILD,
+      root_run_id: ROOT,
+      parent_run_id: ROOT,
+      node_id: "draft",
+      worker: { type: "engine" },
+      // The row was read before the engine persisted the finish.
+      status: "running",
+      started_at: "t1",
+      finished_at: null,
+      input_ref: null,
+      output_ref: null,
+      usage: null,
+      estimated_cost_usd: null,
+    });
+    model.hydrate(reread);
+
+    const child = model.getState().runs.get(CHILD);
+    expect(child?.parentRunId).toBe(ROOT);
+    expect(child?.status).toBe("succeeded");
+    expect(child?.finishedAt).toBe("t2");
+  });
+
   it("notifies subscribers on each change and stops after unsubscribe", () => {
     const model = new RunViewModel(ROOT);
     const listener = vi.fn();

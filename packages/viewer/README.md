@@ -13,8 +13,14 @@ Surfaces land pane by pane:
 - **Runs list** (left) — landed ([#46](https://github.com/howardyang2009/PATH/issues/46)): root runs
   most-recent-first, status as color + glyph pill, click to select. Filter by status; the pane shows
   the latest 50 root runs (a monitor's window, not paginated history).
-- **Run detail** (centre) — placeholder; status + run tree + live narrative land under map #40.
-- **Node I/O** (right) — placeholder; lands with the run-tree surface.
+- **Run detail** (centre) — landed: root-run status and the **indented collapsible run tree**
+  (parent run → child runs), live. The pane connects the run through `connectRunViewModel`: tree
+  hydrate, SSE subscribe, replay and the re-read that places a run the stream discovered all happen
+  in client-core, so the pane is a view over a snapshot and holds no fetch logic of its own.
+  Clicking a run in the tree selects it for the node-I/O pane. The narrative log list lands in its
+  own ticket, and with it any "reconnecting" indicator — a dropped stream currently reconnects
+  silently underneath a tree that keeps showing its last state.
+- **Node I/O** (right) — placeholder; masked input/output for the selected run land under map #40.
 
 Colors, glyphs and type come from `src/tokens.css` (the #44 token set); surfaces consume those vars
 and do not re-pick colors. Run status is always **color + glyph, never hue alone**.

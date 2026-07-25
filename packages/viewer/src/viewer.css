@@ -129,12 +129,10 @@
   padding: 0;
 }
 
-.run-row {
-  display: grid;
-  grid-template-columns: 1fr auto;
-  gap: 2px 8px;
+/* One selectable row, in the runs list or the run tree: same hit target, same states. */
+.run-row,
+.tree-row {
   width: 100%;
-  padding: 7px 8px;
   text-align: left;
   font: inherit;
   color: inherit;
@@ -144,18 +142,29 @@
   cursor: pointer;
 }
 
+.run-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  padding: 7px 8px;
+}
+
 /* Mixed from the text color, not set to a ground token: hover must read as a lift in both themes,
    and in dark the ground is *darker* than the pane it sits on. */
-.run-row:hover {
+.run-row:hover,
+.tree-row:hover {
   background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
-.run-row[aria-current="true"] {
+.run-row[aria-current="true"],
+.tree-row[aria-current="true"] {
   background: color-mix(in srgb, var(--accent) 12%, transparent);
   border-color: color-mix(in srgb, var(--accent) 35%, transparent);
 }
 
-.run-row:focus-visible {
+.run-row:focus-visible,
+.tree-row:focus-visible,
+.tree-toggle:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
@@ -182,6 +191,94 @@
   grid-column: 1 / -1;
   font-size: var(--fs-xs);
   color: var(--text-muted);
+}
+
+/* ---------- run detail ---------- */
+
+.run-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  padding: 2px 4px 10px;
+}
+
+.run-head .run-id {
+  font-size: var(--fs-base);
+}
+
+.run-meta {
+  flex-basis: 100%;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ---------- run tree ---------- */
+
+.run-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* Nesting is depth: each level indents against a rule, so a deep run tree stays readable without
+   the rows themselves carrying a computed indent. */
+.run-tree .run-tree {
+  margin-left: 9px;
+  padding-left: 8px;
+  border-left: 1px solid var(--border);
+}
+
+.tree-line {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.tree-toggle,
+.tree-toggle-spacer {
+  flex: none;
+  width: 16px;
+  text-align: center;
+}
+
+.tree-toggle {
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.tree-toggle:hover {
+  color: var(--text);
+}
+
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 5px 8px;
+}
+
+/* The node id is the run's identity in the workflow body — mono, like every other identifier. */
+.node-id {
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The pill sits hard right of the row, so status reads as a column down the tree. */
+.tree-row .pill {
+  margin-left: auto;
 }
 
 /* ---------- status pill ---------- */
