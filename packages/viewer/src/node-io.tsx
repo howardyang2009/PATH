@@ -2,6 +2,7 @@ import type { PathApiClient, RunNodeState } from "@path/client-core";
 import { useState } from "react";
 import { JsonView } from "./json-view.js";
 import { nodeLabel } from "./node-label.js";
+import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunBlob, type BlobLoad } from "./use-run-blob.js";
 
@@ -84,12 +85,8 @@ function BlobBlock({ title, load, blobRef, testId, absentNote }: BlobBlockProps)
       <h3 className="io-title" id={titleId}>
         {title}
       </h3>
-      {load.phase === "loading" && <p className="pane-note">Loading {label}…</p>}
-      {load.phase === "error" && (
-        <p className="pane-note pane-error" role="alert">
-          Failed to load {label}: {load.message}
-        </p>
-      )}
+      {load.phase === "loading" && <PaneLoading what={label} />}
+      {load.phase === "error" && <PaneError what={label} message={load.message} />}
       {load.phase === "ready" &&
         (load.value.present ? (
           <>

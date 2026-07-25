@@ -2,6 +2,7 @@ import type { PathApiClient, RootRunSummary, RunStatus } from "@path/client-core
 import { useEffect, useState } from "react";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
+import { PaneError, PaneLoading } from "./pane-note.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -73,12 +74,8 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
         {state.phase === "ready" && <span className="runs-count">{state.value.length}</span>}
       </div>
 
-      {state.phase === "loading" && <p className="pane-note">Loading runs…</p>}
-      {state.phase === "error" && (
-        <p className="pane-note pane-error" role="alert">
-          Failed to load runs: {state.message}
-        </p>
-      )}
+      {state.phase === "loading" && <PaneLoading what="runs" />}
+      {state.phase === "error" && <PaneError what="runs" message={state.message} />}
       {state.phase === "ready" &&
         (state.value.length === 0 ? (
           // Two empty states, not one: "No runs yet." is only true of an unfiltered list, and an

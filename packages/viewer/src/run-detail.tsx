@@ -1,5 +1,6 @@
 import { formatTimestamp } from "./format-time.js";
 import { Narrative } from "./narrative.js";
+import { PaneError, PaneLoading } from "./pane-note.js";
 import { RunTree } from "./run-tree.js";
 import { StatusPill } from "./status-pill.js";
 import type { RunViewLoad } from "./use-run-view.js";
@@ -22,14 +23,8 @@ export interface RunDetailProps {
  * snapshot to know when the run it is showing has written its output.
  */
 export function RunDetail({ load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
-  if (load.phase === "idle" || load.phase === "loading") return <p className="pane-note">Loading run…</p>;
-  if (load.phase === "error") {
-    return (
-      <p className="pane-note pane-error" role="alert">
-        Failed to load run: {load.message}
-      </p>
-    );
-  }
+  if (load.phase === "idle" || load.phase === "loading") return <PaneLoading what="run" />;
+  if (load.phase === "error") return <PaneError what="run" message={load.message} />;
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
