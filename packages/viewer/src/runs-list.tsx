@@ -97,6 +97,7 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
                 <button
                   type="button"
                   className="run-row"
+                  title={run.run_id}
                   data-run-id={run.run_id}
                   data-testid={`run-row-${run.run_id}`}
                   aria-current={run.run_id === selectedRootRunId ? "true" : undefined}

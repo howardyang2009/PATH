@@ -144,8 +144,10 @@
   cursor: pointer;
 }
 
+/* Mixed from the text color, not set to a ground token: hover must read as a lift in both themes,
+   and in dark the ground is *darker* than the pane it sits on. */
 .run-row:hover {
-  background: var(--ground);
+  background: color-mix(in srgb, var(--text) 7%, transparent);
 }
 
 .run-row[aria-current="true"] {
@@ -158,9 +160,21 @@
   outline-offset: 1px;
 }
 
+/* Run ids are UUIDs and the pane is a 300px rail: truncate rather than wrap, so row height stays
+   uniform and the list stays scannable. The leading characters are the distinguishing ones; the
+   full id is on the row's `title` and in the detail pane. */
 .run-id {
+  min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The detail pane has room for the whole id. */
+.pane-note .run-id {
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 
