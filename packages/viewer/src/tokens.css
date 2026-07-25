@@ -1,0 +1,92 @@
+/*
+ * @path/viewer design tokens — the set pinned by the prototype (issue #44 decision comment).
+ * Themed at the token level: defaults are light; dark is redefined under
+ * `@media (prefers-color-scheme: dark)` AND `:root[data-theme="dark"]` so the viewer's own theme
+ * toggle wins over the OS preference. Surface tickets consume these vars — they do not re-pick colors.
+ *
+ * Run status is always color + glyph, never hue alone (accessibility, per the `dataviz` skill).
+ */
+
+:root {
+  /* Neutrals — cool blue-grey. */
+  --ground: #fbfcfd;
+  --surface: #ffffff;
+  --border: #d8dee4;
+  --text: #1c2128;
+  --text-muted: #656d76;
+
+  /* Accent — indigo, selection/interactive only (not decoration). */
+  --accent: #4c6ef5;
+
+  /* Run-status foreground + soft background pairs. Glyphs live in JS, next to the colors. */
+  --status-running-fg: #1f6feb;
+  --status-running-bg: #ddf0ff;
+  --status-succeeded-fg: #1a7f37;
+  --status-succeeded-bg: #dcfce7;
+  --status-failed-fg: #cf222e;
+  --status-failed-bg: #ffebe9;
+  --status-cancelled-fg: #656d76;
+  --status-cancelled-bg: #eaeef2;
+  --status-pending-fg: #9a6700;
+  --status-pending-bg: #fff8c5;
+
+  /* Type. Mono for JSON/log/ids; system sans for UI chrome. Dense dev-tool scale. */
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 15px;
+  --fs-lg: 19px;
+  --fs-xl: 24px;
+}
+
+:root[data-theme="dark"] {
+  --ground: #0e1116;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #5c7cff;
+
+  --status-running-fg: #58a6ff;
+  --status-running-bg: #12283f;
+  --status-succeeded-fg: #3fb950;
+  --status-succeeded-bg: #12261a;
+  --status-failed-fg: #f85149;
+  --status-failed-bg: #2d1416;
+  --status-cancelled-fg: #8b949e;
+  --status-cancelled-bg: #21262d;
+  --status-pending-fg: #d29922;
+  --status-pending-bg: #2a2213;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e1116;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #5c7cff;
+
+    --status-running-fg: #58a6ff;
+    --status-running-bg: #12283f;
+    --status-succeeded-fg: #3fb950;
+    --status-succeeded-bg: #12261a;
+    --status-failed-fg: #f85149;
+    --status-failed-bg: #2d1416;
+    --status-cancelled-fg: #8b949e;
+    --status-cancelled-bg: #21262d;
+    --status-pending-fg: #d29922;
+    --status-pending-bg: #2a2213;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
