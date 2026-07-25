@@ -14,6 +14,15 @@ import { StatusPill } from "./status-pill.js";
  */
 const RUNS_LIMIT = 50;
 
+/**
+ * How often the pane re-reads `GET /v0/runs` (#50). The list is the one surface with no live feed
+ * behind it — there is a stream per root run, none for the set of them — so a periodic re-read is
+ * what keeps the rail from contradicting the live centre pane, or missing a run launched from the
+ * CLI while the page was open. Seconds, not milliseconds: a status settling a moment late costs
+ * nothing, and this is a monitor, not a dashboard people stare at.
+ */
+export const RUNS_REFRESH_MS = 5000;
+
 /** The pane's status filter: one `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
@@ -35,18 +44,29 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsLis
 
   useEffect(() => {
     let cancelled = false;
-    setState({ phase: "loading" });
-    client
-      .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter })
-      .then((res) => {
-        if (!cancelled) setState({ phase: "ready", value: res.runs });
-      })
-      .catch((error: unknown) => {
-        if (cancelled) return;
-        setState({ phase: "error", message: errorMessage(error) });
-      });
+
+    // A refresh replaces the rows in place: no `loading` phase, so an already-rendered list never
+    // flashes back to "Loading runs…" every few seconds. A *failing* refresh does surface — a frozen
+    // list that still looks healthy is the worse lie.
+    const read = (initial: boolean): void => {
+      if (initial) setState({ phase: "loading" });
+      client
+        .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter })
+        .then((res) => {
+          if (!cancelled) setState({ phase: "ready", value: res.runs });
+        })
+        .catch((error: unknown) => {
+          if (cancelled) return;
+          setState({ phase: "error", message: errorMessage(error) });
+        });
+    };
+
+    read(true);
+    const timer = setInterval(() => read(false), RUNS_REFRESH_MS);
+
     return () => {
       cancelled = true;
+      clearInterval(timer);
     };
   }, [client, statusFilter]);
 

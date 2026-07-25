@@ -1,7 +1,7 @@
 import { PathApiClient, type FetchLike, type RootRunSummary } from "@path/client-core";
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
-import { RunsList } from "../src/runs-list.js";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
 
 /**
  * A client over a recording `fetch` stub — the injected seam the surface is tested through
@@ -144,5 +144,98 @@ describe("RunsList", () => {
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "failed" } });
 
     expect(await screen.findByText("No failed runs.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * `GET /v0/runs` is a one-shot read and there is no stream of *all* runs, so the pane re-reads on an
+ * interval (#50). Without it the rail contradicts the live centre pane: a run that has finished
+ * still reads `running`, and a run launched after page load never appears.
+ */
+describe("RunsList refresh", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Advance past one refresh tick, letting the re-read's promises settle inside `act`. */
+  async function tick(): Promise<void> {
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(RUNS_REFRESH_MS);
+    });
+  }
+
+  it("re-reads the list, so a run that has finished stops reading as running", async () => {
+    const runs = [{ ...RUNNING }];
+    const { client } = stubClient(runs);
+
+    renderList(client);
+    await act(async () => {});
+    expect(pillOf(RUNNING.run_id)).toHaveTextContent("running");
+
+    runs[0] = { ...RUNNING, status: "succeeded", finished_at: "2026-07-25T09:20:31.000Z" };
+    await tick();
+
+    expect(pillOf(RUNNING.run_id)).toHaveTextContent("succeeded");
+  });
+
+  it("picks up a run launched after the page loaded", async () => {
+    const runs = [{ ...SUCCEEDED }];
+    const { client } = stubClient(runs);
+
+    renderList(client);
+    await act(async () => {});
+    expect(screen.queryByTestId(`run-row-${RUNNING.run_id}`)).toBeNull();
+
+    runs.unshift({ ...RUNNING });
+    await tick();
+
+    expect(screen.getByTestId(`run-row-${RUNNING.run_id}`)).toBeInTheDocument();
+  });
+
+  it("keeps the rendered rows on screen while re-reading — no loading flash", async () => {
+    const { client } = stubClient([RUNNING]);
+
+    renderList(client);
+    await act(async () => {});
+
+    await tick();
+
+    expect(screen.queryByText("Loading runs…")).toBeNull();
+    expect(screen.getByTestId(`run-row-${RUNNING.run_id}`)).toBeInTheDocument();
+  });
+
+  it("reports a refresh that fails rather than leaving a frozen list looking healthy", async () => {
+    let fail = false;
+    const fetch: FetchLike = async () => {
+      if (fail) throw new Error("connection refused");
+      return new Response(JSON.stringify({ runs: [RUNNING] }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    };
+    renderList(new PathApiClient({ baseUrl: "", fetch }));
+    await act(async () => {});
+
+    fail = true;
+    await tick();
+
+    expect(screen.getByRole("alert")).toHaveTextContent("connection refused");
+  });
+
+  it("stops re-reading once the pane unmounts", async () => {
+    const { client, urls } = stubClient([RUNNING]);
+
+    const view = renderList(client);
+    await act(async () => {});
+    expect(urls).toHaveLength(1);
+
+    view.unmount();
+    await tick();
+
+    expect(urls).toHaveLength(1);
   });
 });
