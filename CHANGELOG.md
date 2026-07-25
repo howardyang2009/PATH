@@ -1,5 +1,47 @@
 # Changelog
 
+## v0.3.0 — 2026-07-25
+
+The **MVP viewer** map (#40): a read-only web monitor for a live `path-server`. Two new packages —
+`@path/client-core`, the pure-TS core every future surface consumes (typed API client, SSE client
+with `Last-Event-ID` resume, run view-model; zero framework imports), and `@path/viewer`, a React
+web view over it. Four read verbs, no more: **list, open, watch, inspect**. `@path/server` grew the
+two things the map allowed — static serving for the built bundle, and a blob route so a browser can
+read a run's input/output objects it cannot reach on the server's filesystem.
+
+### Features
+
+- feat(client-core): pure-TS core — API client + SSE with `Last-Event-ID` replay + run view-model (resolves #41)
+- feat(server): static file serving + SPA fallback — one process, one origin, no CORS (resolves #42)
+- feat(server): `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — a run's input/output object, already masked (resolves #43)
+- feat(viewer): scaffold the React app shell — Vite + dev proxy + core wiring (resolves #45)
+- feat(viewer): runs-list surface + the three-pane console frame (resolves #46)
+- feat(viewer): run-detail surface — root-run status + live indented run tree (resolves #47)
+- feat(viewer): live-narrative surface — `seq`-ordered SSE event stream + stream liveness (resolves #48)
+- feat(viewer): node-I/O surface — a run's masked input/output objects as mono JSON, with their blob refs (resolves #49)
+
+### Fixes
+
+- fix(viewer): re-read the runs list, which never refreshed after mount — a finished run kept reading as running while the live centre pane disagreed (resolves #50)
+- fix(viewer): run-row legibility against real run ids and the dark theme
+- fix(server): await child exit before `rmSync` in the bin e2e teardown
+
+### Docs
+
+- docs(api): document the blob route as server-api-v0 §4.1, closing the "no blob-serving endpoint in v0" gap
+- prototype(viewer): layout + design-token exploration — pinned Variant A (three-pane console) and the token set (#44)
+
+### Other
+
+- refactor(viewer): share the loading and failure notes across the read surfaces
+- refactor(viewer): apply code-review fixes to the runs-list surface
+- refactor(client-core): drop dead `readFrames` return, dedupe the default fetch
+- refactor(server): use `path.extname` in the serve-static content-type lookup
+- Dogfood: all five map-#40 criteria walked in a browser against a live `path-server` — list, open,
+  live tree + narrative, mid-run reload replaying with no gap, and node I/O (including a running
+  node picking its output up unprompted when the run finished). Driven by the local `changelog`
+  workflow and a purpose-built `slow-demo`, **not** the LLM-backed release-notes pipeline.
+
 ## v0.2.0 — 2026-07-21
 
 The **`@path/server`** map: `@path/engine` becomes reachable over HTTP. A new package exposing a
