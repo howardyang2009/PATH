@@ -3,10 +3,21 @@
 The read-only web viewer for `path-server` — React (DOM) + Vite + TypeScript over the pure-TS
 [`@path/client-core`](../client-core). Part of [wayfinder map #40](https://github.com/howardyang2009/PATH/issues/40).
 
-This package is currently the **scaffold shell** (issue #45): app wiring, dev/prod serve model,
-design tokens, and a smoke screen that lists root runs to prove the core seam end-to-end. The four
-real read surfaces (runs list, run tree, live narrative, node I/O panel) graduate as their own
-tickets.
+## Layout
+
+The app frame is **Variant A, the three-pane console** (pinned by [#44](https://github.com/howardyang2009/PATH/issues/44)):
+`runs list │ run detail │ node I/O`, all three co-visible so nothing drops the live narrative.
+
+Surfaces land pane by pane:
+
+- **Runs list** (left) — landed ([#46](https://github.com/howardyang2009/PATH/issues/46)): root runs
+  most-recent-first, status as color + glyph pill, click to select. Filter by status; the pane shows
+  the latest 50 root runs (a monitor's window, not paginated history).
+- **Run detail** (centre) — placeholder; status + run tree + live narrative land under map #40.
+- **Node I/O** (right) — placeholder; lands with the run-tree surface.
+
+Colors, glyphs and type come from `src/tokens.css` (the #44 token set); surfaces consume those vars
+and do not re-pick colors. Run status is always **color + glyph, never hue alone**.
 
 ## Serve model
 
@@ -26,6 +37,7 @@ One origin, no CORS (matches the localhost single-trust-boundary stance):
 
 ## Test
 
-`pnpm --filter @path/viewer test` — Vitest + React Testing Library (jsdom), component-render
-happy-path. (Playwright was considered and deferred: the smoke screen has no cross-page flow to
-warrant a browser driver yet.)
+`pnpm --filter @path/viewer test` — Vitest + React Testing Library (jsdom). Surfaces are rendered
+against a `PathApiClient` over a stub `fetch`, so the tests cover the real client-core decode path
+without a server. (Playwright was considered and deferred: read-only panes have no cross-page flow
+to warrant a browser driver yet.)

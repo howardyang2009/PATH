@@ -1,5 +1,5 @@
 import { PathApiClient, type FetchLike } from "@path/client-core";
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/App.js";
 
@@ -9,8 +9,19 @@ function stubFetch(body: unknown): FetchLike {
     new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
 }
 
-describe("App smoke screen", () => {
-  it("lists root runs from the client-core seam", async () => {
+describe("App", () => {
+  it("frames the three panes of the pinned console layout", async () => {
+    const client = new PathApiClient({ baseUrl: "", fetch: stubFetch({ runs: [] }) });
+
+    render(<App client={client} />);
+
+    expect(screen.getByRole("region", { name: "Runs" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Run detail" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Node I/O" })).toBeInTheDocument();
+    expect(await screen.findByText("No runs yet.")).toBeInTheDocument();
+  });
+
+  it("owns the selected root run id and exposes it to the other panes", async () => {
     const client = new PathApiClient({
       baseUrl: "",
       fetch: stubFetch({
@@ -19,23 +30,8 @@ describe("App smoke screen", () => {
     });
 
     render(<App client={client} />);
+    fireEvent.click(await screen.findByTestId("run-row-run_abc"));
 
-    expect(await screen.findByText("run_abc")).toBeInTheDocument();
-    expect(screen.getByText("succeeded")).toBeInTheDocument();
-  });
-
-  it("shows an error when the API call fails", async () => {
-    const client = new PathApiClient({
-      baseUrl: "",
-      fetch: async () =>
-        new Response(JSON.stringify({ error: { message: "boom" } }), {
-          status: 500,
-          headers: { "Content-Type": "application/json" },
-        }),
-    });
-
-    render(<App client={client} />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("boom");
+    expect(screen.getByRole("region", { name: "Run detail" })).toHaveTextContent("run_abc");
   });
 });

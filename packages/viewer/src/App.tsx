@@ -1,73 +1,38 @@
-import { type PathApiClient, type RootRunSummary } from "@path/client-core";
-import { useEffect, useState } from "react";
-
-type LoadState =
-  | { phase: "loading" }
-  | { phase: "error"; message: string }
-  | { phase: "ready"; runs: RootRunSummary[] };
+import type { PathApiClient } from "@path/client-core";
+import { useState } from "react";
+import { AppShell } from "./app-shell.js";
+import { RunsList } from "./runs-list.js";
 
 /**
- * The scaffold smoke screen (issue #45): the whole point is to prove the `@path/viewer` →
- * `@path/client-core` → `path-server` seam end-to-end by calling one real endpoint (`GET /v0/runs`)
- * and rendering the result. The four real read surfaces (runs list, run tree, live narrative, I/O
- * panel) graduate as their own tickets under map #40 — this is deliberately not them.
+ * The viewer app: the pinned three-pane console (#44 Variant A) with the runs-list surface in its
+ * left pane (issue #46). The selected root run id is owned here — the runs list lifts it, and the
+ * run-detail and node-I/O surfaces read it once they graduate into their panes (map #40).
  */
 export function App({ client }: { client: PathApiClient }) {
-  const [state, setState] = useState<LoadState>({ phase: "loading" });
-
-  useEffect(() => {
-    let cancelled = false;
-    client
-      .listRuns()
-      .then((res) => {
-        if (!cancelled) setState({ phase: "ready", runs: res.runs });
-      })
-      .catch((err: unknown) => {
-        if (cancelled) return;
-        const message = err instanceof Error ? err.message : String(err);
-        setState({ phase: "error", message });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client]);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   return (
-    <main style={{ padding: "16px", maxWidth: "640px", margin: "0 auto" }}>
-      <h1 style={{ fontSize: "var(--fs-lg)", fontWeight: 600 }}>PATH viewer</h1>
-      <p style={{ color: "var(--text-muted)", fontSize: "var(--fs-sm)" }}>
-        Scaffold smoke screen — lists root runs to prove the core seam. Real surfaces graduate under
-        map #40.
-      </p>
-      {state.phase === "loading" && <p>Loading runs…</p>}
-      {state.phase === "error" && (
-        <p role="alert" style={{ color: "var(--status-failed-fg)" }}>
-          Failed to load runs: {state.message}
+    <AppShell
+      runs={
+        <RunsList client={client} selectedRunId={selectedRunId} onSelect={setSelectedRunId} />
+      }
+      detail={<DetailPlaceholder selectedRunId={selectedRunId} />}
+      io={
+        <p className="pane-note">
+          The node I/O panel lands with the run-tree surface, under map #40.
         </p>
-      )}
-      {state.phase === "ready" && <RunList runs={state.runs} />}
-    </main>
+      }
+    />
   );
 }
 
-/**
- * Bare list of run id + status — enough to prove the seam, no more. The styled runs-list surface
- * (status color/glyph pills over the pinned `tokens.css` set) graduates as its own ticket under
- * map #40; the scaffold deliberately stops at plain text.
- */
-function RunList({ runs }: { runs: RootRunSummary[] }) {
-  if (runs.length === 0) return <p style={{ color: "var(--text-muted)" }}>No runs yet.</p>;
+/** Until the run-detail surface lands, the pane just proves the lifted selection reached it. */
+function DetailPlaceholder({ selectedRunId }: { selectedRunId: string | null }) {
+  if (selectedRunId === null) return <p className="pane-note">Select a run.</p>;
   return (
-    <ul style={{ listStyle: "none", padding: 0, margin: 0, fontFamily: "var(--font-mono)", fontSize: "var(--fs-sm)" }}>
-      {runs.map((run) => (
-        <li
-          key={run.run_id}
-          style={{ display: "flex", gap: "12px", padding: "6px 8px", borderBottom: "1px solid var(--border)" }}
-        >
-          <span style={{ color: "var(--text-muted)" }}>{run.status}</span>
-          <span>{run.run_id}</span>
-        </li>
-      ))}
-    </ul>
+    <p className="pane-note">
+      <span className="run-id">{selectedRunId}</span> selected — status, run tree and live narrative
+      land here under map #40.
+    </p>
   );
 }

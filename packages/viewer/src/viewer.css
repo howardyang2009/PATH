@@ -1,0 +1,233 @@
+/*
+ * @path/viewer component styles. Every color, font and size here resolves to a `tokens.css`
+ * custom property — the token set is pinned by the #44 decision and is not re-picked per surface.
+ * Layout is Variant A: the three-pane console (runs list │ run detail │ node I/O).
+ */
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+}
+
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: none;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+}
+
+.brand {
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.brand-sub {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+/* The three panes: fixed rails around a fluid centre; each pane scrolls on its own so the live
+   narrative never pushes the runs list out of view. */
+.panes {
+  display: grid;
+  grid-template-columns: 300px 1fr 340px;
+  flex: 1;
+  min-height: 0;
+}
+
+.pane {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  background: var(--surface);
+}
+
+.pane + .pane {
+  border-left: 1px solid var(--border);
+}
+
+.pane:nth-child(2) {
+  background: var(--ground);
+}
+
+.pane-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.pane-title {
+  margin: 0;
+  font-size: var(--fs-sm);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.pane-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.pane-note {
+  margin: 6px 4px;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pane-error {
+  color: var(--status-failed-fg);
+}
+
+/* ---------- runs list ---------- */
+
+.runs-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 4px 8px;
+}
+
+.field-label {
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+}
+
+.field {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 6px;
+}
+
+.runs-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.runs {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.run-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  width: 100%;
+  padding: 7px 8px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.run-row:hover {
+  background: var(--ground);
+}
+
+.run-row[aria-current="true"] {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+  border-color: color-mix(in srgb, var(--accent) 35%, transparent);
+}
+
+.run-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.run-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow-wrap: anywhere;
+}
+
+.run-started {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* ---------- status pill ---------- */
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.pill-glyph {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.pill[data-status="running"] {
+  color: var(--status-running-fg);
+  background: var(--status-running-bg);
+}
+
+.pill[data-status="succeeded"] {
+  color: var(--status-succeeded-fg);
+  background: var(--status-succeeded-bg);
+}
+
+.pill[data-status="failed"] {
+  color: var(--status-failed-fg);
+  background: var(--status-failed-bg);
+}
+
+.pill[data-status="cancelled"] {
+  color: var(--status-cancelled-fg);
+  background: var(--status-cancelled-bg);
+}
+
+.pill[data-status="pending"] {
+  color: var(--status-pending-fg);
+  background: var(--status-pending-bg);
+}
+
+/* A running run is the one thing on screen that is still moving — the spin says "live" without
+   adding a second color. Honours the reduced-motion preference. */
+.pill[data-status="running"] .pill-glyph {
+  display: inline-block;
+  animation: pill-spin 1.1s linear infinite;
+}
+
+@keyframes pill-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pill[data-status="running"] .pill-glyph {
+    animation: none;
+  }
+}

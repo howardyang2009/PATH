@@ -3,6 +3,11 @@
 // reconnect/replay, and a framework-agnostic run view-model. No React, no DOM.
 // Normative contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
 
+// Re-exported so surfaces reach the domain status type through this core rather than importing
+// `@path/engine` directly — the engine is a Node package (SQLite, fs) and must not enter a browser
+// bundle's dependency graph, even type-only.
+export type { RunStatus } from "@path/engine";
+
 export type {
   WireRunRecord,
   RunTreeResponse,
