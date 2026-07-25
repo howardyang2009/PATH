@@ -3,6 +3,10 @@
 // reconnect/replay, and a framework-agnostic run view-model. No React, no DOM.
 // Normative contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
 
+// Surfaces get the domain status type from this core, not from `@path/engine` directly: the engine
+// is a Node package (SQLite, fs), and a browser surface should have exactly one seam — this one.
+export type { RunStatus } from "@path/engine";
+
 export type {
   WireRunRecord,
   RunTreeResponse,
