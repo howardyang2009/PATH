@@ -124,6 +124,36 @@ describe("NodeIo", () => {
     await waitFor(() => expect(screen.getByTestId("node-io-input")).toHaveTextContent('"second"'));
   });
 
+  it("asks for a finished run's object even when the snapshot carries no ref (#51)", async () => {
+    // Refs only enter the snapshot through a tree read, and nothing re-reads the tree after the
+    // last node of a tree finishes — so a terminal run with a null ref may still have written its
+    // object. Trusting the ref there hides real output, and Refresh cannot rescue it.
+    const client = stubClient({ blobs: { [`${RUN}/output`]: { wrote: "RELEASE_NOTES.md" } } });
+    render(<NodeIo client={client} run={runState({ status: "succeeded", inputRef: null, outputRef: null })} />);
+
+    await waitFor(() =>
+      expect(screen.getByTestId("node-io-output")).toHaveTextContent('"wrote": "RELEASE_NOTES.md"'),
+    );
+  });
+
+  it("reads a 404 for a finished run as an object it never recorded", async () => {
+    const client = stubClient({ blobs: {} });
+    render(<NodeIo client={client} run={runState({ status: "succeeded", inputRef: null, outputRef: null })} />);
+
+    const output = await screen.findByTestId("node-io-output");
+    await waitFor(() => expect(output).toHaveTextContent(/No output object recorded/i));
+    expect(within(output).queryByRole("alert")).toBeNull();
+  });
+
+  it("still asks for nothing while the run is mid-flight", async () => {
+    const client = stubClient({ blobs: { [`${RUN}/output`]: { premature: true } } });
+    render(<NodeIo client={client} run={runState({ status: "running", outputRef: null })} />);
+
+    const output = await screen.findByTestId("node-io-output");
+    await waitFor(() => expect(output).toHaveTextContent(/No output object yet/i));
+    expect(output).not.toHaveTextContent("premature");
+  });
+
   it("names the run it is showing by node and status", async () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
     render(<NodeIo client={client} run={runState({ status: "failed", outputRef: null })} />);

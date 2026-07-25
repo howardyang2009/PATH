@@ -1,4 +1,4 @@
-import type { PathApiClient, RunNodeState } from "@path/client-core";
+import type { PathApiClient, RunNodeState, RunStatus } from "@path/client-core";
 import { useState } from "react";
 import { JsonView } from "./json-view.js";
 import { nodeLabel } from "./node-label.js";
@@ -26,7 +26,8 @@ export interface NodeIoProps {
  */
 export function NodeIo({ client, run }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
-  const blob = { client, rootRunId: run.rootRunId, runId: run.runId, reloadToken };
+  const settled = isSettled(run.status);
+  const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
 
@@ -60,10 +61,21 @@ export function NodeIo({ client, run }: NodeIoProps) {
         load={output}
         blobRef={run.outputRef}
         testId="node-io-output"
-        absentNote="No output object yet — a run writes its output when it finishes."
+        // Two different absences: a run still going has not written its output, a finished one never
+        // did. Saying "yet" about a finished run promises something that is not coming.
+        absentNote={
+          settled
+            ? "No output object recorded for this run."
+            : "No output object yet — a run writes its output when it finishes."
+        }
       />
     </div>
   );
+}
+
+/** A run past its work: nothing more will be written for it (CONTEXT.md, run statuses). */
+function isSettled(status: RunStatus): boolean {
+  return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
 interface BlobBlockProps {
