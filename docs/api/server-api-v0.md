@@ -133,10 +133,21 @@ translated to snake_case):
 - Top-level `status`/`output` mirror the root row (first entry of `runs`, `parent_run_id: null`) —
   duplicated at the top for a client that only wants the summary.
 - `input_ref`/`output_ref` are the same project-relative blob paths the engine already stores
-  (`blobRef`) — a client fetches blob content itself from the filesystem, or a future ticket adds a
-  blob-serving endpoint (not in v0: `.path/` is already on disk next to the workflow files the
-  server's project root points at).
+  (`blobRef`). A co-located client can read them off disk directly; a browser client cannot, so
+  issue #43 added the blob route below (§4.1) to serve their content over HTTP.
 - `404 Not Found` if `root_run_id` is unknown.
+
+### 4.1 `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — one run's input or output object
+
+Added by issue #43 for browser clients, which cannot read `input_ref`/`output_ref` off the server's
+filesystem. `name` is a fixed enum — `input` or `output` — never a raw filename, so the path cannot
+escape the run's blob directory. Response `200 OK` with the blob's content as `application/json`,
+verbatim: blobs are already secret-masked on disk (masking happens at the persistence boundary), so
+the route serves what it reads.
+
+- `404 Not Found` if `root_run_id` is unknown, `run_id` is not in that root's tree, `name` is not a
+  served blob, or the blob file is absent (a run has no output until it finishes).
+- `context`/`stderr` blobs are deferred (map #40) — they resolve as unknown names.
 
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 
@@ -176,7 +187,7 @@ reaches a terminal status (`succeeded`/`failed`/`cancelled`) at the root.
 ## 6. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
 
 - `run-store`: add a "list root runs" query (§3).
-- No blob-serving endpoint in v0 — `input_ref`/`output_ref` are paths into the server's own
-  filesystem project root, which a co-located client can already read directly.
+- ~~No blob-serving endpoint in v0~~ — closed by issue #43: §4.1 serves `input`/`output` content over
+  HTTP for clients that are not co-located with the server's filesystem.
 - SSE replay depends on the `ndjson` log backend being enabled for the run (§5) — a db-only read-back
   query was considered and dropped in favor of reusing the existing NDJSON file.

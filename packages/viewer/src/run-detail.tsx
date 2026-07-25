@@ -1,12 +1,12 @@
-import type { PathApiClient } from "@path/client-core";
 import { formatTimestamp } from "./format-time.js";
 import { Narrative } from "./narrative.js";
 import { RunTree } from "./run-tree.js";
 import { StatusPill } from "./status-pill.js";
-import { useRunView } from "./use-run-view.js";
+import type { RunViewLoad } from "./use-run-view.js";
 
 export interface RunDetailProps {
-  client: PathApiClient;
+  /** The live snapshot of the watched root run, owned by the app: one connection feeds two panes. */
+  load: RunViewLoad;
   rootRunId: string;
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
@@ -17,12 +17,12 @@ export interface RunDetailProps {
  * The run-detail read surface: root-run status plus the indented run tree, in the centre pane of
  * the pinned console (#44 Variant A), with the live narrative under it (#48). Status, tree and
  * narrative are all live off one connection — the view-model folds the SSE stream in as the run
- * executes, and reopening a run mid-flight replays its history (map #40's watch verb).
+ * executes, and reopening a run mid-flight replays its history (map #40's watch verb). That
+ * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
+ * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
-  const load = useRunView(client, rootRunId);
-
-  if (load.phase === "loading") return <p className="pane-note">Loading run…</p>;
+export function RunDetail({ load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
+  if (load.phase === "idle" || load.phase === "loading") return <p className="pane-note">Loading run…</p>;
   if (load.phase === "error") {
     return (
       <p className="pane-note pane-error" role="alert">

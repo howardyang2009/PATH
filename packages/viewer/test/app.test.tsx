@@ -19,8 +19,8 @@ const TREE = {
       status: "succeeded",
       started_at: "2026-07-25T10:00:00.000Z",
       finished_at: "2026-07-25T10:00:02.000Z",
-      input_ref: null,
-      output_ref: null,
+      input_ref: `runs/${RUN}/${RUN}/input.json`,
+      output_ref: `runs/${RUN}/${RUN}/output.json`,
       usage: null,
       estimated_cost_usd: null,
     },
@@ -56,5 +56,40 @@ describe("App", () => {
     fireEvent.click(await screen.findByTestId(`tree-row-${RUN}`));
 
     expect(screen.getByRole("region", { name: "Node I/O" })).toHaveTextContent(RUN);
+  });
+
+  it("opens a run, selects a node in its tree and shows that run's blobs — the four read verbs", async () => {
+    const client = stubClient({
+      runs: RUNS,
+      tree: TREE,
+      blobs: { [`${RUN}/input`]: { since_tag: "1.3.0" }, [`${RUN}/output`]: { count: 3 } },
+    });
+    render(<App client={client} />);
+
+    fireEvent.click(await screen.findByTestId(`run-row-${RUN}`));
+    fireEvent.click(await screen.findByTestId(`tree-row-${RUN}`));
+
+    expect(await screen.findByTestId("node-io-input")).toHaveTextContent('"since_tag": "1.3.0"');
+    expect(await screen.findByTestId("node-io-output")).toHaveTextContent('"count": 3');
+  });
+
+  it("drops the node selection when the root run changes, so the pane never shows a foreign run", async () => {
+    const other = "run_other";
+    const runs = {
+      runs: [
+        { run_id: RUN, status: "succeeded", started_at: null, finished_at: null },
+        { run_id: other, status: "running", started_at: null, finished_at: null },
+      ],
+    };
+    render(<App client={stubClient({ runs, tree: TREE })} />);
+
+    fireEvent.click(await screen.findByTestId(`run-row-${RUN}`));
+    fireEvent.click(await screen.findByTestId(`tree-row-${RUN}`));
+    expect(await screen.findByTestId("node-io-head")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByTestId(`run-row-${other}`));
+
+    expect(screen.queryByTestId("node-io-head")).toBeNull();
+    expect(screen.getByRole("region", { name: "Node I/O" })).toHaveTextContent("Select a run in the tree.");
   });
 });

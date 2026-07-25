@@ -13,13 +13,22 @@ import { errorMessage, type Load } from "./load-state.js";
  * error state here: client-core reconnects from the high-water seq on its own, so the tree stays on
  * screen and catches up. That drop is still visible — it rides the snapshot as `RunViewState.stream`
  * and the narrative renders it as "reconnecting" (#48).
+ *
+ * `rootRunId` is nullable because the app holds exactly one connection for two panes — the run
+ * detail and the node I/O — and neither has a run to watch until one is selected. A null id is the
+ * `idle` phase, not a load: no request goes out.
  */
-export type RunViewLoad = Load<RunViewState>;
+export type RunViewLoad = Load<RunViewState> | { phase: "idle" };
 
-export function useRunView(client: PathApiClient, rootRunId: string): RunViewLoad {
-  const [load, setLoad] = useState<RunViewLoad>({ phase: "loading" });
+export function useRunView(client: PathApiClient, rootRunId: string | null): RunViewLoad {
+  const [load, setLoad] = useState<RunViewLoad>({ phase: "idle" });
 
   useEffect(() => {
+    if (rootRunId === null) {
+      setLoad({ phase: "idle" });
+      return;
+    }
+
     let cancelled = false;
     let connection: ConnectedRun | null = null;
     let unsubscribe: (() => void) | null = null;

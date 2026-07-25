@@ -1,7 +1,7 @@
 import { PathApiClient, type FetchLike } from "@path/client-core";
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useRunView } from "../src/use-run-view.js";
+import { useRunView, type RunViewLoad } from "../src/use-run-view.js";
 
 const ROOT = "run_root";
 
@@ -69,5 +69,21 @@ describe("useRunView", () => {
     await waitFor(() => expect(signals).toHaveLength(2));
     expect(signals[0]?.aborted).toBe(true);
     expect(signals[1]?.aborted).toBe(false);
+  });
+
+  it("stays idle with no run selected, and opens nothing", async () => {
+    const { client, signals } = trackingClient();
+    const { result, rerender } = renderHook<RunViewLoad, { rootRunId: string | null }>(
+      ({ rootRunId }) => useRunView(client, rootRunId),
+      { initialProps: { rootRunId: null } },
+    );
+
+    expect(result.current.phase).toBe("idle");
+    expect(signals).toHaveLength(0);
+
+    rerender({ rootRunId: ROOT });
+
+    await waitFor(() => expect(result.current.phase).toBe("ready"));
+    expect(signals).toHaveLength(1);
   });
 });

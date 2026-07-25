@@ -2,6 +2,7 @@ import type { PathApiClient } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { RunDetail } from "../src/run-detail.js";
+import { useRunView } from "../src/use-run-view.js";
 import { EventStreamStub, stubClient } from "./stub-server.js";
 
 const ROOT = "run_root";
@@ -44,10 +45,17 @@ const TREE = {
   ],
 };
 
+/**
+ * The pane is a view over a snapshot the app owns (one connection feeds the detail and node-I/O
+ * panes), so the tests connect it the way the app does rather than reaching past `useRunView`.
+ */
+function ConnectedDetail({ client, onSelectRun }: { client: PathApiClient; onSelectRun: () => void }) {
+  const load = useRunView(client, ROOT);
+  return <RunDetail load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={onSelectRun} />;
+}
+
 function renderDetail(client: PathApiClient, onSelectRun = vi.fn()) {
-  const view = render(
-    <RunDetail client={client} rootRunId={ROOT} selectedRunId={null} onSelectRun={onSelectRun} />,
-  );
+  const view = render(<ConnectedDetail client={client} onSelectRun={onSelectRun} />);
   return { ...view, onSelectRun };
 }
 

@@ -496,6 +496,94 @@
   }
 }
 
+/* ---------- node I/O ---------- */
+
+.node-io {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.node-io-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 4px 6px;
+  border-bottom: 1px solid var(--border);
+}
+
+.node-io-head .card-action {
+  margin-left: auto;
+  flex: none;
+}
+
+.node-io-run {
+  margin: -8px 4px 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Where the object on screen lives on the server's disk — the provenance line the #44 prototype
+   pinned under each block. Project-relative, and not fetchable by the browser: it names the
+   artifact, it is not a link. */
+.blob-ref {
+  margin: 4px 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  overflow-wrap: anywhere;
+}
+
+.io-block {
+  min-width: 0;
+}
+
+.io-title {
+  margin: 0 0 6px 4px;
+  font-size: var(--fs-xs);
+  font-weight: 650;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* JSON scrolls on its own axis rather than wrapping: indentation is what carries the structure of a
+   blob, and a wrapped line destroys it. */
+.json {
+  margin: 0;
+  padding: 8px 10px;
+  overflow-x: auto;
+  white-space: pre;
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text);
+}
+
+/* Data colours reuse the pinned status tokens rather than introducing a syntax palette — the token
+   mapping the #44 prototype settled (key / string / number / literal). Structure — braces, commas,
+   indentation — stays plain body text so the values are what stands out. */
+.json-key {
+  color: var(--accent);
+}
+
+.json-string {
+  color: var(--status-succeeded-fg);
+}
+
+.json-number {
+  color: var(--status-pending-fg);
+}
+
+.json-boolean,
+.json-null {
+  color: var(--status-failed-fg);
+}
+
 /* ---------- status pill ---------- */
 
 .pill {

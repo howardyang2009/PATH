@@ -14,13 +14,19 @@ Surfaces land pane by pane:
   most-recent-first, status as color + glyph pill, click to select. Filter by status; the pane shows
   the latest 50 root runs (a monitor's window, not paginated history).
 - **Run detail** (centre) — landed: root-run status and the **indented collapsible run tree**
-  (parent run → child runs), live. The pane connects the run through `connectRunViewModel`: tree
-  hydrate, SSE subscribe, replay and the re-read that places a run the stream discovered all happen
-  in client-core, so the pane is a view over a snapshot and holds no fetch logic of its own.
-  Clicking a run in the tree selects it for the node-I/O pane. The narrative log list lands in its
-  own ticket, and with it any "reconnecting" indicator — a dropped stream currently reconnects
-  silently underneath a tree that keeps showing its last state.
-- **Node I/O** (right) — placeholder; masked input/output for the selected run land under map #40.
+  (parent run → child runs), live. The watched run is connected once, by `App`, through
+  `connectRunViewModel`: tree hydrate, SSE subscribe, replay and the re-read that places a run the
+  stream discovered all happen in client-core, so both live panes are views over one snapshot and
+  hold no fetch logic of their own. Clicking a run in the tree selects it for the node-I/O pane.
+  Under the tree, the **live narrative** renders the `seq`-ordered log-event stream with a liveness
+  indicator, so a dropped and resuming stream is visible rather than silent.
+- **Node I/O** (right) — landed: the selected run's **input and output objects** as mono JSON, read
+  over `GET /v0/runs/:root_run_id/blobs/:run_id/:name`, each with the blob ref it came from. The
+  bytes are already secret-masked at the persistence boundary, so the pane renders them as served.
+  Absence is decided by the run record's `input_ref`/`output_ref`, not by a 404: an unwritten object
+  is never requested, and the ref appearing in a live snapshot re-reads it — so a pane opened
+  mid-run picks up the output the moment the run finishes. **Refresh** re-reads on demand, for a ref
+  whose content changed underneath.
 
 Colors, glyphs and type come from `src/tokens.css` (the #44 token set); surfaces consume those vars
 and do not re-pick colors. Run status is always **color + glyph, never hue alone**.

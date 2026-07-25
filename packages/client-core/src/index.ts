@@ -9,6 +9,10 @@
 // needs to name it.
 export type { LogEvent, RunStatus } from "@path/engine";
 
+// Blob contents and a run's `output` are arbitrary JSON, so a surface that renders them names the
+// type — and names it from here, for the same one-seam reason.
+export type { JsonValue } from "@path/schema";
+
 export type {
   WireRunRecord,
   RunTreeResponse,
