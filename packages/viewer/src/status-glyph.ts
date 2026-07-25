@@ -6,8 +6,8 @@ import type { RunStatus } from "@path/client-core";
  * pairs in `tokens.css`. Keyed by `RunStatus`, so a new status is a type error here rather than a
  * silently blank pill.
  *
- * Key order is the display order of the status filter: the two statuses an operator watches first,
- * then the terminal ones.
+ * Key order is the display order of the status filter: `running` first — the status a monitor is
+ * opened to watch — then the terminal outcomes by how much they demand attention, then `pending`.
  */
 export const STATUS_GLYPH: Record<RunStatus, string> = {
   running: "◐",

@@ -36,8 +36,20 @@ const RUNNING: RootRunSummary = {
 
 function renderList(client: PathApiClient, overrides: Partial<Parameters<typeof RunsList>[0]> = {}) {
   return render(
-    <RunsList client={client} selectedRunId={null} onSelect={() => {}} {...overrides} />,
+    <RunsList
+      client={client}
+      selectedRootRunId={null}
+      onSelectRootRun={() => {}}
+      {...overrides}
+    />,
   );
+}
+
+/** The status pill inside one run's row — reached through the row, as a reader reaches it. */
+function pillOf(rootRunId: string): HTMLElement {
+  const pill = screen.getByTestId(`run-row-${rootRunId}`).querySelector(".pill");
+  if (pill === null) throw new Error(`no status pill in the row for ${rootRunId}`);
+  return pill as HTMLElement;
 }
 
 describe("RunsList", () => {
@@ -54,14 +66,12 @@ describe("RunsList", () => {
     const { client } = stubClient([RUNNING, SUCCEEDED]);
 
     renderList(client);
+    await screen.findByTestId("run-row-run_beta");
 
-    const runningPill = await screen.findByTestId("status-pill-run_beta");
-    expect(runningPill).toHaveTextContent("◐");
-    expect(runningPill).toHaveTextContent("running");
-
-    const succeededPill = screen.getByTestId("status-pill-run_alpha");
-    expect(succeededPill).toHaveTextContent("✓");
-    expect(succeededPill).toHaveTextContent("succeeded");
+    expect(pillOf("run_beta")).toHaveTextContent("◐running");
+    expect(pillOf("run_beta")).toHaveAttribute("data-status", "running");
+    expect(pillOf("run_alpha")).toHaveTextContent("✓succeeded");
+    expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 
   it("shows a loading state until the runs arrive", async () => {
@@ -99,12 +109,14 @@ describe("RunsList", () => {
     const { client } = stubClient([RUNNING, SUCCEEDED]);
     const onSelect = vi.fn();
 
-    const { rerender } = renderList(client, { onSelect });
+    const { rerender } = renderList(client, { onSelectRootRun: onSelect });
     fireEvent.click(await screen.findByTestId("run-row-run_alpha"));
 
     expect(onSelect).toHaveBeenCalledWith("run_alpha");
 
-    rerender(<RunsList client={client} selectedRunId="run_alpha" onSelect={onSelect} />);
+    rerender(
+      <RunsList client={client} selectedRootRunId="run_alpha" onSelectRootRun={onSelect} />,
+    );
     expect(screen.getByTestId("run-row-run_alpha")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("run-row-run_beta")).not.toHaveAttribute("aria-current");
   });

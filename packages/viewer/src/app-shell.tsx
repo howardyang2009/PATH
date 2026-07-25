@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 export interface AppShellProps {
   runs: ReactNode;
   detail: ReactNode;
-  io: ReactNode;
+  nodeIo: ReactNode;
 }
 
 /**
@@ -12,7 +12,7 @@ export interface AppShellProps {
  * watches a run live while inspecting a node, so no tab switch may drop the live narrative. Slots
  * only — each surface graduates into its pane in its own ticket under map #40.
  */
-export function AppShell({ runs, detail, io }: AppShellProps) {
+export function AppShell({ runs, detail, nodeIo }: AppShellProps) {
   return (
     <div className="shell">
       <header className="topbar">
@@ -27,7 +27,7 @@ export function AppShell({ runs, detail, io }: AppShellProps) {
           {detail}
         </Pane>
         <Pane id="pane-io" title="Node I/O">
-          {io}
+          {nodeIo}
         </Pane>
       </div>
     </div>

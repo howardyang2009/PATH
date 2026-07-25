@@ -6,8 +6,8 @@ import { StatusPill } from "./status-pill.js";
 /**
  * How many root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3),
  * so this is a "latest N" window, not pagination — the viewer is a monitor, and paging back through
- * run history is not one of its four read surfaces (map #40). Explicit rather than inherited from
- * the server default so the pane's window is visible in the code that renders it.
+ * run history is not one of its four read surfaces (map #40). Sent explicitly (it happens to equal
+ * the server's own default) so the window the pane renders is the window the pane asked for.
  */
 const RUNS_LIMIT = 50;
 
@@ -22,8 +22,8 @@ type LoadState =
 export interface RunsListProps {
   client: PathApiClient;
   /** The run the app currently has selected — owned above, so the detail pane sees the same id. */
-  selectedRunId: string | null;
-  onSelect: (rootRunId: string) => void;
+  selectedRootRunId: string | null;
+  onSelectRootRun: (rootRunId: string) => void;
 }
 
 /**
@@ -31,7 +31,7 @@ export interface RunsListProps {
  * three-pane console (#44 Variant A). Read-only — no launch or edit affordances (map #40) — and
  * formatting-only: `@path/client-core` owns the wire shapes, this renders them.
  */
-export function RunsList({ client, selectedRunId, onSelect }: RunsListProps) {
+export function RunsList({ client, selectedRootRunId, onSelectRootRun }: RunsListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<LoadState>({ phase: "loading" });
 
@@ -72,6 +72,8 @@ export function RunsList({ client, selectedRunId, onSelect }: RunsListProps) {
             </option>
           ))}
         </select>
+        {/* The row count, as in the #44 prototype's pane header: with a capped window, "how many am
+            I looking at" is not answerable by eye. */}
         {state.phase === "ready" && <span className="runs-count">{state.runs.length}</span>}
       </div>
 
@@ -83,6 +85,8 @@ export function RunsList({ client, selectedRunId, onSelect }: RunsListProps) {
       )}
       {state.phase === "ready" &&
         (state.runs.length === 0 ? (
+          // Two empty states, not one: "No runs yet." is only true of an unfiltered list, and an
+          // operator who has just narrowed the filter needs to know which of the two they hit.
           <p className="pane-note">
             {statusFilter === "all" ? "No runs yet." : `No ${statusFilter} runs.`}
           </p>
@@ -95,11 +99,11 @@ export function RunsList({ client, selectedRunId, onSelect }: RunsListProps) {
                   className="run-row"
                   data-run-id={run.run_id}
                   data-testid={`run-row-${run.run_id}`}
-                  aria-current={run.run_id === selectedRunId ? "true" : undefined}
-                  onClick={() => onSelect(run.run_id)}
+                  aria-current={run.run_id === selectedRootRunId ? "true" : undefined}
+                  onClick={() => onSelectRootRun(run.run_id)}
                 >
                   <span className="run-id">{run.run_id}</span>
-                  <StatusPill status={run.status} testId={`status-pill-${run.run_id}`} />
+                  <StatusPill status={run.status} />
                   <span className="run-started">{formatStartedAt(run.started_at)}</span>
                 </button>
               </li>

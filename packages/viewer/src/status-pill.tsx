@@ -6,9 +6,9 @@ import { STATUS_GLYPH } from "./status-glyph.js";
  * token pair in `viewer.css` — colors are never picked here (#44 decision), and the label always
  * accompanies the color so the status survives without hue.
  */
-export function StatusPill({ status, testId }: { status: RunStatus; testId?: string }) {
+export function StatusPill({ status }: { status: RunStatus }) {
   return (
-    <span className="pill" data-status={status} data-testid={testId}>
+    <span className="pill" data-status={status}>
       <span className="pill-glyph" aria-hidden="true">
         {STATUS_GLYPH[status]}
       </span>
