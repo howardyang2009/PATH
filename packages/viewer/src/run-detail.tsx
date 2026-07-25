@@ -1,5 +1,6 @@
 import type { PathApiClient } from "@path/client-core";
 import { formatTimestamp } from "./format-time.js";
+import { Narrative } from "./narrative.js";
 import { RunTree } from "./run-tree.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunView } from "./use-run-view.js";
@@ -14,9 +15,9 @@ export interface RunDetailProps {
 
 /**
  * The run-detail read surface: root-run status plus the indented run tree, in the centre pane of
- * the pinned console (#44 Variant A). Both the tree and the status are live — the view-model folds
- * the SSE narrative in as the run executes, and reopening a run mid-flight replays its history
- * (map #40's watch verb). The narrative list itself lands in its own ticket.
+ * the pinned console (#44 Variant A), with the live narrative under it (#48). Status, tree and
+ * narrative are all live off one connection — the view-model folds the SSE stream in as the run
+ * executes, and reopening a run mid-flight replays its history (map #40's watch verb).
  */
 export function RunDetail({ client, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
   const load = useRunView(client, rootRunId);
@@ -41,12 +42,22 @@ export function RunDetail({ client, rootRunId, selectedRunId, onSelectRun }: Run
         <span className="run-meta">{formatTimestamp(root?.startedAt ?? null)}</span>
       </header>
 
-      <RunTree
-        rootRunId={rootRunId}
-        runs={state.runs}
-        selectedRunId={selectedRunId}
-        onSelectRun={onSelectRun}
-      />
+      <section className="run-section" aria-labelledby="run-tree-title">
+        <header className="card-head">
+          <h3 className="card-title" id="run-tree-title">
+            Run tree
+          </h3>
+          <span className="card-count">{state.runs.size} runs</span>
+        </header>
+        <RunTree
+          rootRunId={rootRunId}
+          runs={state.runs}
+          selectedRunId={selectedRunId}
+          onSelectRun={onSelectRun}
+        />
+      </section>
+
+      <Narrative events={state.narrative} stream={state.stream} />
     </div>
   );
 }

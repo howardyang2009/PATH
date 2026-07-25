@@ -47,8 +47,18 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
       model.applyEvent(event);
       if (isNewRun) rehydrate();
     },
-    onError: options.onError,
-    onClose: options.onClose,
+    // Stream liveness is state a viewer renders (a "live · SSE" vs "reconnecting" indicator), so it
+    // lands in the view-model snapshot rather than only in these callbacks — issue #48.
+    onOpen: () => model.setStreamPhase("live"),
+    onReconnecting: () => model.setStreamPhase("reconnecting"),
+    onError: (error) => {
+      model.setStreamPhase("failed");
+      options.onError?.(error);
+    },
+    onClose: () => {
+      model.setStreamPhase("closed");
+      options.onClose?.();
+    },
     fetch: client.fetch,
   });
 

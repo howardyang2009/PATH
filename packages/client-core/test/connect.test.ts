@@ -32,8 +32,11 @@ function frame(event: Record<string, unknown>): Uint8Array {
 /** An SSE body that stays open, as the server's does until the root run goes terminal. */
 class EventStream {
   private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+  /** How many times a body has been handed out — one per connect, so reconnects are countable. */
+  opens = 0;
 
   body(): ReadableStream<Uint8Array> {
+    this.opens += 1;
     return new ReadableStream<Uint8Array>({
       start: (controller) => {
         this.controller = controller;
@@ -43,6 +46,12 @@ class EventStream {
 
   push(event: Record<string, unknown>): void {
     this.controller?.enqueue(frame(event));
+  }
+
+  /** End the body without closing the subscription — the transport dropping under a live run. */
+  end(): void {
+    this.controller?.close();
+    this.controller = null;
   }
 }
 
@@ -71,6 +80,19 @@ function stubFetch(trees: WireRunRecord[][], stream: EventStream): { fetch: Fetc
 /** Let the microtask queue drain — the re-read is a promise chain, not a timer. */
 async function settle(): Promise<void> {
   for (let i = 0; i < 10; i++) await Promise.resolve();
+}
+
+/** Resolve when `predicate` holds — the reconnect loop spans several turns of the event loop. */
+function waitFor(predicate: () => boolean): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const started = Date.now();
+    const tick = (): void => {
+      if (predicate()) return resolve();
+      if (Date.now() - started > 2000) return reject(new Error("timed out waiting for condition"));
+      setTimeout(tick, 5);
+    };
+    tick();
+  });
 }
 
 describe("connectRunViewModel", () => {
@@ -110,6 +132,56 @@ describe("connectRunViewModel", () => {
 
     expect(connected.model.getState().runs.get(CHILD)?.status).toBe("succeeded");
     expect(stub.treeReads).toBe(1);
+    connected.close();
+  });
+
+  it("marks the stream live once the subscription is open", async () => {
+    const stream = new EventStream();
+    const stub = stubFetch([[ROOT_ROW]], stream);
+    const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
+
+    const connected = await connectRunViewModel({ client, rootRunId: ROOT });
+    await waitFor(() => connected.model.getState().stream === "live");
+
+    connected.close();
+  });
+
+  it("reports reconnecting on a mid-run drop, then live again", async () => {
+    const stream = new EventStream();
+    const stub = stubFetch([[ROOT_ROW]], stream);
+    const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
+
+    const connected = await connectRunViewModel({ client, rootRunId: ROOT });
+    await waitFor(() => connected.model.getState().stream === "live");
+
+    const phases: string[] = [connected.model.getState().stream];
+    connected.model.subscribe((state) => {
+      if (phases.at(-1) !== state.stream) phases.push(state.stream);
+    });
+
+    // The root run has not finished, so an ended body is a drop, not a completion.
+    stream.end();
+
+    await waitFor(() => stream.opens === 2 && connected.model.getState().stream === "live");
+    expect(phases).toEqual(["live", "reconnecting", "live"]);
+    connected.close();
+  });
+
+  it("marks the stream closed when the root run goes terminal", async () => {
+    const stream = new EventStream();
+    const stub = stubFetch([[ROOT_ROW]], stream);
+    const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
+
+    const connected = await connectRunViewModel({ client, rootRunId: ROOT });
+    await waitFor(() => connected.model.getState().stream === "live");
+
+    // The implicit root step finishing (`node_id: null`) is what closes the stream for good.
+    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: ROOT, node_id: null, status: "succeeded" });
+    await settle();
+    stream.end();
+
+    await waitFor(() => connected.model.getState().stream === "closed");
+    expect(stream.opens).toBe(1);
     connected.close();
   });
 });

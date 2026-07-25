@@ -21,6 +21,14 @@ export interface SubscribeRunEventsOptions {
   rootRunId: string;
   /** Called for each event in `seq` order, across any reconnects. */
   onEvent: (event: LogEvent) => void;
+  /** The stream is connected and delivering — fired on the first connect and on every reconnect. */
+  onOpen?: () => void;
+  /**
+   * The stream dropped mid-run and a reconnect from the high-water `seq` is about to be attempted.
+   * Not an error: it is the liveness signal a viewer shows as "reconnecting" (issue #48). Never
+   * fired when `reconnect` is off — there the drop ends the subscription through `onError`.
+   */
+  onReconnecting?: (error?: unknown) => void;
   /** Terminal completion — the root run finished and the stream closed for good. */
   onClose?: () => void;
   /** A transport/parse error that ended the subscription (only when reconnect is off/exhausted). */
@@ -66,23 +74,34 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
         if (!res.ok || !res.body) {
           throw new Error(`event stream request failed with status ${res.status}`);
         }
+        options.onOpen?.();
         await readFrames(res, deliver, () => closed);
       } catch (error) {
         if (closed) return;
         // Transport dropped — reconnect from the high-water seq (server replays the tail), unless
         // reconnect is disabled, in which case the error ends the subscription.
-        if (reconnect) continue;
+        if (reconnect) {
+          options.onReconnecting?.(error);
+          continue;
+        }
         options.onError?.(error);
         return;
       }
       // The stream ended. A terminal event means the run finished and the server closed for good —
       // a clean completion. Ending without a terminal event is an early close (e.g. proxy timeout):
-      // reconnect and catch up when enabled, otherwise treat it as the end.
+      // reconnect and catch up when enabled.
       if (closed) return;
-      if (terminalSeen || !reconnect) {
+      if (terminalSeen) {
         options.onClose?.();
         return;
       }
+      // With reconnect off there is nothing left to try, and this is *not* a completion: reporting it
+      // as one would tell a viewer the run is done while the rest of the narrative never arrives.
+      if (!reconnect) {
+        options.onError?.(new Error("event stream ended before the root run finished"));
+        return;
+      }
+      options.onReconnecting?.();
     }
   };
 

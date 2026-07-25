@@ -1,5 +1,6 @@
 import type { RunNodeState } from "@path/client-core";
 import { useState } from "react";
+import { nodeLabel } from "./node-label.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
@@ -54,7 +55,7 @@ interface TreeView {
 function RunTreeRow({ run, tree }: { run: RunNodeState; tree: TreeView }) {
   const children = tree.childrenByParent.get(run.runId) ?? [];
   const isCollapsed = tree.collapsed.has(run.runId);
-  const label = runLabel(run);
+  const label = nodeLabel(run.nodeId);
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>
@@ -96,15 +97,6 @@ function RunTreeRow({ run, tree }: { run: RunNodeState; tree: TreeView }) {
       )}
     </li>
   );
-}
-
-/**
- * A run is labelled by the node it ran. The top-level workflow is wrapped in an implicit root step
- * with no node id of its own (CONTEXT.md, "Core execution model"), so its run is labelled as the
- * root rather than left blank.
- */
-function runLabel(run: RunNodeState): string {
-  return run.nodeId ?? "root";
 }
 
 /**

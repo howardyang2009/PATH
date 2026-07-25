@@ -80,6 +80,14 @@
   padding: 8px;
 }
 
+/* The detail pane does not scroll as a whole: its tree and its narrative each scroll on their own,
+   so the narrative can follow the tail without dragging the run head off screen. */
+#pane-detail .pane-body {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
 .pane-note {
   margin: 6px 4px;
   color: var(--text-muted);
@@ -195,6 +203,83 @@
 
 /* ---------- run detail ---------- */
 
+.run-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Tree above, narrative below (#44 Variant A): the tree takes what it needs up to half the pane,
+   and the narrative takes the rest — a long run's log is the thing that keeps growing. */
+.run-section,
+.narrative {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.run-section {
+  flex: 0 1 auto;
+  max-height: 50%;
+}
+
+.narrative {
+  flex: 1 1 auto;
+}
+
+.run-section > .run-tree {
+  min-height: 0;
+  overflow-y: auto;
+  padding: 6px;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.card-title {
+  margin: 0;
+  font-size: var(--fs-base);
+  font-weight: 650;
+}
+
+.card-count {
+  margin-left: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.card-action {
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 2px 8px;
+  cursor: pointer;
+}
+
+.card-action:hover {
+  color: var(--text);
+}
+
+.card-action:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 .run-head {
   display: flex;
   align-items: center;
@@ -279,6 +364,136 @@
 /* The pill sits hard right of the row, so status reads as a column down the tree. */
 .tree-row .pill {
   margin-left: auto;
+}
+
+/* ---------- narrative (log event stream) ---------- */
+
+/* Mono throughout: this is log data, and a fixed advance keeps the seq and time columns aligned. */
+.event-list {
+  list-style: none;
+  margin: 0;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 2px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+}
+
+.event-row {
+  display: grid;
+  grid-template-columns: 4ch 12ch 1fr;
+  gap: 10px;
+  align-items: baseline;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.event-row:hover {
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+}
+
+.event-seq {
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.event-ts {
+  color: var(--text-muted);
+}
+
+/* A failure message carries an exit code and a stderr tail — let it wrap rather than clip. The seq
+   and time columns are fixed widths, so a wrapped row grows without pulling them out of line. */
+.event-msg {
+  overflow-wrap: anywhere;
+}
+
+/* The glyph is the row's status without hue (the same set as the pills, `status-glyph.ts`), so the
+   outcome survives for a reader who cannot separate the colors. */
+.event-glyph {
+  margin-right: 6px;
+  font-size: 11px;
+}
+
+.event-row[data-status="running"] .event-glyph {
+  color: var(--status-running-fg);
+}
+
+.event-row[data-status="succeeded"] .event-glyph {
+  color: var(--status-succeeded-fg);
+}
+
+/* The two outcomes that demand attention tint the message as well as the glyph, so a failed step is
+   findable while scrolling a long run — every other row stays plain body text. */
+.event-row[data-status="failed"] .event-glyph,
+.event-row[data-status="failed"] .event-msg {
+  color: var(--status-failed-fg);
+}
+
+.event-row[data-status="cancelled"] .event-glyph,
+.event-row[data-status="cancelled"] .event-msg {
+  color: var(--status-cancelled-fg);
+}
+
+/* ---------- stream liveness ---------- */
+
+.stream-indicator {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.stream-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.stream-indicator[data-phase="live"] {
+  color: var(--status-running-fg);
+}
+
+.stream-indicator[data-phase="live"] .stream-dot {
+  background: var(--status-running-fg);
+  animation: stream-pulse 1.3s ease-in-out infinite;
+}
+
+/* A drop is transient — the core is already resuming from the high-water seq — so it reads as a
+   warning, not a failure, and pulses faster to say it is working on it. */
+.stream-indicator[data-phase="reconnecting"] {
+  color: var(--status-pending-fg);
+}
+
+.stream-indicator[data-phase="reconnecting"] .stream-dot {
+  background: var(--status-pending-fg);
+  animation: stream-pulse 0.7s ease-in-out infinite;
+}
+
+.stream-indicator[data-phase="failed"] {
+  color: var(--status-failed-fg);
+}
+
+.stream-indicator[data-phase="failed"] .stream-dot {
+  background: var(--status-failed-fg);
+}
+
+@keyframes stream-pulse {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-dot {
+    animation: none;
+  }
 }
 
 /* ---------- status pill ---------- */

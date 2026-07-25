@@ -3,9 +3,11 @@
 // reconnect/replay, and a framework-agnostic run view-model. No React, no DOM.
 // Normative contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
 
-// Surfaces get the domain status type from this core, not from `@path/engine` directly: the engine
-// is a Node package (SQLite, fs), and a browser surface should have exactly one seam — this one.
-export type { RunStatus } from "@path/engine";
+// Surfaces get the domain status and log-event types from this core, not from `@path/engine`
+// directly: the engine is a Node package (SQLite, fs), and a browser surface should have exactly one
+// seam — this one. `LogEvent` is the narrative's element type, so a surface that renders the stream
+// needs to name it.
+export type { LogEvent, RunStatus } from "@path/engine";
 
 export type {
   WireRunRecord,
@@ -35,6 +37,7 @@ export {
   type RunNodeState,
   type RunViewState,
   type RunViewListener,
+  type StreamPhase,
 } from "./view-model.js";
 
 export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "./connect.js";

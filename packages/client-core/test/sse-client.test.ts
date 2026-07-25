@@ -105,6 +105,68 @@ describe("subscribeRunEvents", () => {
     expect(lastEventIds).toEqual([undefined, "2"]);
   });
 
+  it("reports the stream open, and reconnecting when a mid-run drop sends it back", async () => {
+    let connection = 0;
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      if (connection++ === 0) {
+        // Ends without a terminal event: the run is still going, so the core must reconnect.
+        res.write(frame(EVENTS[0]!));
+        res.end();
+        return;
+      }
+      res.write(frame(EVENTS[3]!));
+      res.end();
+    });
+    server = stub.server;
+
+    const phases: string[] = [];
+    let closed = false;
+    subscribeRunEvents({
+      baseUrl: stub.url,
+      rootRunId: "root",
+      onEvent: () => {},
+      onOpen: () => phases.push("open"),
+      onReconnecting: () => phases.push("reconnecting"),
+      onClose: () => {
+        phases.push("closed");
+        closed = true;
+      },
+    });
+
+    await waitFor(() => closed);
+    expect(phases).toEqual(["open", "reconnecting", "open", "closed"]);
+  });
+
+  it("does not call a stream that ended mid-run complete when reconnect is off", async () => {
+    const stub = await startStub((_req, res) => {
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      res.write(frame(EVENTS[0]!));
+      res.end();
+    });
+    server = stub.server;
+
+    let closes = 0;
+    let error: unknown;
+    subscribeRunEvents({
+      baseUrl: stub.url,
+      rootRunId: "root",
+      reconnect: false,
+      onEvent: () => {},
+      onClose: () => {
+        closes++;
+      },
+      onError: (err) => {
+        error = err;
+      },
+    });
+
+    // "Complete" is a claim about the run, not about the socket: the root run never finished here.
+    await waitFor(() => error !== undefined);
+    expect(closes).toBe(0);
+    expect((error as Error).message).toContain("ended before the root run finished");
+  });
+
   it("stops delivering and does not reconnect after close()", async () => {
     let connections = 0;
     const stub = await startStub((_req, res) => {

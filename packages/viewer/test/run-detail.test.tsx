@@ -130,6 +130,64 @@ describe("RunDetail", () => {
     expect(onSelectRun).toHaveBeenCalledWith("run_a");
   });
 
+  it("streams the narrative under the tree as events land", async () => {
+    const stream = new EventStreamStub();
+    renderDetail(stubClient({ tree: TREE, stream }));
+
+    await screen.findByTestId("narrative-empty");
+
+    await act(async () => {
+      stream.push({
+        type: "step-started",
+        seq: 7,
+        ts: "2026-07-25T10:00:05.000Z",
+        run_id: "run_c",
+        node_id: "step-c",
+        step_type: "binary",
+        worker: { type: "engine" },
+      });
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("narrative-events")).toHaveTextContent("step-c started · engine");
+    });
+  });
+
+  it("shows one row per seq when a replay overlaps what is already on screen", async () => {
+    const stream = new EventStreamStub();
+    renderDetail(stubClient({ tree: TREE, stream }));
+    await screen.findByTestId("narrative-empty");
+
+    const event = {
+      type: "step-finished",
+      seq: 9,
+      ts: "2026-07-25T10:00:06.000Z",
+      run_id: "run_a",
+      node_id: "step-a",
+      status: "succeeded",
+    };
+
+    // What a mid-run reload does: the resumed stream replays a seq the view already folded in.
+    await act(async () => {
+      stream.push(event);
+      stream.push(event);
+      await Promise.resolve();
+    });
+
+    await waitFor(() => {
+      expect(screen.getAllByTestId("event-seq-9")).toHaveLength(1);
+    });
+  });
+
+  it("marks the narrative live while the stream is open", async () => {
+    renderDetail(stubClient({ tree: TREE, stream: new EventStreamStub() }));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("stream-indicator")).toHaveAttribute("data-phase", "live");
+    });
+  });
+
   it("reports a run that the server does not know", async () => {
     renderDetail(stubClient({ tree: { error: { message: "run not found" } }, treeStatus: 404 }));
 

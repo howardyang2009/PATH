@@ -131,4 +131,27 @@ describe("RunViewModel", () => {
     model.applyEvent(stepFinished(2, ROOT, null));
     expect(listener).toHaveBeenCalledTimes(1);
   });
+
+  it("carries the event-stream phase, starting at connecting", () => {
+    const model = new RunViewModel(ROOT);
+    expect(model.getState().stream).toBe("connecting");
+
+    const listener = vi.fn();
+    model.subscribe(listener);
+    model.setStreamPhase("live");
+
+    expect(model.getState().stream).toBe("live");
+    expect(listener.mock.lastCall?.[0].stream).toBe("live");
+  });
+
+  it("does not notify when the stream phase is set to the phase it is already in", () => {
+    const model = new RunViewModel(ROOT);
+    model.setStreamPhase("live");
+    const listener = vi.fn();
+    model.subscribe(listener);
+
+    model.setStreamPhase("live");
+
+    expect(listener).not.toHaveBeenCalled();
+  });
 });

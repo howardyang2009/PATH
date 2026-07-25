@@ -10,6 +10,15 @@ import type { RunTreeResponse, WireRunRecord } from "./wire-types.js";
  * or a later React Native one. Pure data-in, snapshot-out.
  */
 
+/**
+ * Liveness of the event stream behind the narrative — what a viewer needs to tell "this run is
+ * quiet" from "we lost the stream". The core reconnects from the high-water `seq` on its own, so
+ * `reconnecting` is a transient state, not an error; `closed` is the terminal one (the root run
+ * finished and the server closed the stream for good), and `failed` means reconnect is off or
+ * exhausted and no more events are coming.
+ */
+export type StreamPhase = "connecting" | "live" | "reconnecting" | "closed" | "failed";
+
 /** One run's live state — the mutable projection of a `WireRunRecord` plus event-driven updates. */
 export interface RunNodeState {
   runId: string;
@@ -34,6 +43,8 @@ export interface RunViewState {
   runs: ReadonlyMap<string, RunNodeState>;
   /** The complete chronological narrative, ordered by `seq` (the ordering truth), deduped. */
   narrative: readonly LogEvent[];
+  /** Liveness of the event stream feeding `narrative`. */
+  stream: StreamPhase;
 }
 
 export type RunViewListener = (state: RunViewState) => void;
@@ -64,6 +75,7 @@ export class RunViewModel {
   private seenSeqs = new Set<number>();
   private output: JsonValue | null = null;
   private rootStatus: RunStatus = "pending";
+  private streamPhase: StreamPhase = "connecting";
   private readonly listeners = new Set<RunViewListener>();
   private snapshot: RunViewState;
 
@@ -100,6 +112,17 @@ export class RunViewModel {
     this.output = tree.output;
     const root = this.runs.get(this.rootRunId);
     this.rootStatus = root?.status ?? tree.status;
+    this.commit();
+  }
+
+  /**
+   * Record the event stream's liveness (`connectRunViewModel` drives this from the SSE client). A
+   * no-op when the phase is unchanged: a reconnect loop can report the same phase repeatedly, and a
+   * snapshot per repeat would re-render every subscriber for nothing.
+   */
+  setStreamPhase(phase: StreamPhase): void {
+    if (this.streamPhase === phase) return;
+    this.streamPhase = phase;
     this.commit();
   }
 
@@ -164,6 +187,7 @@ export class RunViewModel {
       output: this.output,
       runs: new Map(this.runs),
       narrative: [...this.narrative],
+      stream: this.streamPhase,
     };
   }
 

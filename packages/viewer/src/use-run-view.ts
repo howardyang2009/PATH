@@ -11,8 +11,8 @@ import { errorMessage, type Load } from "./load-state.js";
  *
  * Only the initial connect can fail into `phase: "error"`. A transport drop afterwards is not an
  * error state here: client-core reconnects from the high-water seq on its own, so the tree stays on
- * screen and catches up. Surfacing "reconnecting" needs a liveness signal the core does not expose
- * yet — it belongs with the live-narrative surface (map #40), not here.
+ * screen and catches up. That drop is still visible — it rides the snapshot as `RunViewState.stream`
+ * and the narrative renders it as "reconnecting" (#48).
  */
 export type RunViewLoad = Load<RunViewState>;
 
