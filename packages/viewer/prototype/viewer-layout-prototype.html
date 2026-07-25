@@ -1,0 +1,630 @@
+<title>PATH viewer — layout prototype</title>
+<!--
+  THROWAWAY PROTOTYPE — issue #44 (@path/viewer layout + design tokens).
+  Vanilla JS, no build step, fake data, fake SSE stream. Answers: what should the
+  viewer look like? Three structurally-different app-shell variants, switchable via
+  ?variant=A|B|C and the floating bottom bar. Real build reuses the DECISIONS, not this code.
+-->
+<style>
+  /* ---------- DESIGN TOKENS (the thing #44 is pinning) ---------- */
+  :root {
+    /* neutrals — cool, slight blue bias (code-adjacent dev tool) */
+    --bg:        #fbfcfd;
+    --surface:   #ffffff;
+    --surface-2: #f2f5f8;
+    --border:    #e2e7ed;
+    --border-2:  #d3dae2;
+    --text:      #1a2230;
+    --text-2:    #55606e;
+    --text-3:    #8a94a2;
+    /* accent — restrained indigo, only for selection / interactive */
+    --accent:      #4c6ef5;
+    --accent-weak: #e8ecfe;
+    --accent-text: #3550d6;
+    /* status = semantic color, ALWAYS paired with a glyph (never hue alone) */
+    --st-running:   #2f81f7;  --st-running-bg:   #ddeafd;
+    --st-succeeded: #1a7f37;  --st-succeeded-bg: #d9f2e0;
+    --st-failed:    #cf222e;  --st-failed-bg:    #ffdcdc;
+    --st-cancelled: #6e7781;  --st-cancelled-bg: #e6e9ed;
+    --st-pending:   #9a6700;  --st-pending-bg:   #f6ecc9;
+    /* type */
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 19px; --fs-xl: 24px;
+    --radius: 6px;
+    --shadow: 0 1px 2px rgba(20,30,50,.06), 0 4px 12px rgba(20,30,50,.06);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg:#0e1116; --surface:#161b22; --surface-2:#1c222b; --border:#2a313c; --border-2:#39414d;
+      --text:#e6edf3; --text-2:#9aa5b1; --text-3:#6e7781;
+      --accent:#5c7cff; --accent-weak:#1e2740; --accent-text:#9db2ff;
+      --st-running:#58a6ff;   --st-running-bg:#132a45;
+      --st-succeeded:#3fb950; --st-succeeded-bg:#132818;
+      --st-failed:#f85149;    --st-failed-bg:#3a1417;
+      --st-cancelled:#8b949e; --st-cancelled-bg:#21262d;
+      --st-pending:#d29922;   --st-pending-bg:#2b2411;
+      --shadow: 0 1px 2px rgba(0,0,0,.4), 0 6px 18px rgba(0,0,0,.4);
+    }
+  }
+  :root[data-theme="light"] {
+    --bg:#fbfcfd; --surface:#ffffff; --surface-2:#f2f5f8; --border:#e2e7ed; --border-2:#d3dae2;
+    --text:#1a2230; --text-2:#55606e; --text-3:#8a94a2;
+    --accent:#4c6ef5; --accent-weak:#e8ecfe; --accent-text:#3550d6;
+    --st-running:#2f81f7; --st-running-bg:#ddeafd; --st-succeeded:#1a7f37; --st-succeeded-bg:#d9f2e0;
+    --st-failed:#cf222e; --st-failed-bg:#ffdcdc; --st-cancelled:#6e7781; --st-cancelled-bg:#e6e9ed;
+    --st-pending:#9a6700; --st-pending-bg:#f6ecc9;
+  }
+  :root[data-theme="dark"] {
+    --bg:#0e1116; --surface:#161b22; --surface-2:#1c222b; --border:#2a313c; --border-2:#39414d;
+    --text:#e6edf3; --text-2:#9aa5b1; --text-3:#6e7781;
+    --accent:#5c7cff; --accent-weak:#1e2740; --accent-text:#9db2ff;
+    --st-running:#58a6ff; --st-running-bg:#132a45; --st-succeeded:#3fb950; --st-succeeded-bg:#132818;
+    --st-failed:#f85149; --st-failed-bg:#3a1417; --st-cancelled:#8b949e; --st-cancelled-bg:#21262d;
+    --st-pending:#d29922; --st-pending-bg:#2b2411;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font-family: var(--sans); font-size: var(--fs-base); line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  #app { height: 100vh; display: flex; flex-direction: column; }
+
+  /* ---------- shared chrome ---------- */
+  .topbar {
+    display: flex; align-items: center; gap: 12px; padding: 0 16px; height: 46px;
+    border-bottom: 1px solid var(--border); background: var(--surface); flex: none;
+  }
+  .brand { display: flex; align-items: center; gap: 8px; font-weight: 650; letter-spacing: -.01em; }
+  .brand .dot { width: 9px; height: 9px; border-radius: 3px; background: var(--accent); }
+  .brand small { color: var(--text-3); font-weight: 500; font-size: var(--fs-sm); }
+  .topbar .spacer { flex: 1; }
+  .topbar .env {
+    font-family: var(--mono); font-size: var(--fs-xs); color: var(--text-2);
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: 999px; padding: 3px 10px;
+  }
+
+  /* ---------- status pill (color + glyph, redundant) ---------- */
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs); font-weight: 600;
+    padding: 2px 8px 2px 6px; border-radius: 999px; line-height: 1.6; white-space: nowrap;
+  }
+  .pill .g { font-size: 11px; line-height: 1; }
+  .pill.running   { color: var(--st-running);   background: var(--st-running-bg); }
+  .pill.succeeded { color: var(--st-succeeded); background: var(--st-succeeded-bg); }
+  .pill.failed    { color: var(--st-failed);    background: var(--st-failed-bg); }
+  .pill.cancelled { color: var(--st-cancelled); background: var(--st-cancelled-bg); }
+  .pill.pending   { color: var(--st-pending);   background: var(--st-pending-bg); }
+  .pill.running .g { animation: spin 1.1s linear infinite; display:inline-block; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  @media (prefers-reduced-motion: reduce) { .pill.running .g { animation: none; } }
+
+  .mono { font-family: var(--mono); }
+  .rid { font-family: var(--mono); font-size: var(--fs-xs); color: var(--text-3); }
+  .muted { color: var(--text-2); }
+  .eyebrow { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-3); font-weight: 650; }
+
+  /* ---------- runs list rows ---------- */
+  .run-row {
+    display: grid; grid-template-columns: 20px 1fr auto; gap: 10px; align-items: center;
+    padding: 9px 12px; border-radius: var(--radius); cursor: pointer; border: 1px solid transparent;
+  }
+  .run-row:hover { background: var(--surface-2); }
+  .run-row.sel { background: var(--accent-weak); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .run-row .wf { font-weight: 600; }
+  .run-row .meta { font-size: var(--fs-xs); color: var(--text-3); }
+  .glyphdot { font-size: 13px; text-align: center; }
+  .g-running{color:var(--st-running)} .g-succeeded{color:var(--st-succeeded)}
+  .g-failed{color:var(--st-failed)} .g-cancelled{color:var(--st-cancelled)} .g-pending{color:var(--st-pending)}
+
+  /* ---------- run tree (indented collapsible list — NOT a graph) ---------- */
+  .tree { font-size: var(--fs-base); }
+  .tnode { }
+  .trow {
+    display: grid; grid-template-columns: 16px 16px 1fr auto; gap: 6px; align-items: center;
+    padding: 5px 8px; border-radius: 5px; cursor: pointer; border: 1px solid transparent;
+  }
+  .trow:hover { background: var(--surface-2); }
+  .trow.sel { background: var(--accent-weak); border-color: color-mix(in srgb, var(--accent) 30%, transparent); }
+  .trow .tw { font-family: var(--mono); font-size: var(--fs-sm); }
+  .trow .node { color: var(--text); font-weight: 600; }
+  .trow .worker { color: var(--text-3); font-weight: 400; }
+  .caret { color: var(--text-3); width:16px; text-align:center; cursor: pointer; user-select:none; }
+  .caret.leaf { visibility: hidden; }
+  .tchildren { margin-left: 15px; border-left: 1px dashed var(--border-2); padding-left: 4px; }
+
+  /* ---------- narrative (log event stream) ---------- */
+  .narr { display: flex; flex-direction: column; gap: 1px; font-family: var(--mono); font-size: var(--fs-sm); }
+  .ev { display: grid; grid-template-columns: 34px 92px 1fr; gap: 10px; padding: 3px 8px; border-radius: 4px; align-items:baseline; }
+  .ev:hover { background: var(--surface-2); }
+  .ev.fresh { animation: fadein .5s ease; }
+  @keyframes fadein { from { background: var(--accent-weak); } to {} }
+  .ev .seq { color: var(--text-3); text-align: right; }
+  .ev .ts { color: var(--text-3); }
+  .ev .msg { color: var(--text); }
+  .ev .msg b { font-weight: 600; }
+  .ev.t-step-started .msg b { color: var(--st-running); }
+  .ev.t-step-finished .msg b { color: var(--text); }
+  .ev .tag { color: var(--text-2); }
+  .kw { color: var(--accent-text); }
+  .ok { color: var(--st-succeeded); } .bad { color: var(--st-failed); } .warn { color: var(--st-pending); }
+
+  /* ---------- I/O panel (mono JSON) ---------- */
+  .io h4 { margin: 0 0 6px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing:.06em; color: var(--text-3); }
+  pre.json {
+    margin: 0 0 14px; font-family: var(--mono); font-size: var(--fs-sm); line-height: 1.55;
+    background: var(--surface-2); border: 1px solid var(--border); border-radius: var(--radius);
+    padding: 10px 12px; overflow-x: auto; white-space: pre; color: var(--text);
+  }
+  .jk { color: var(--accent-text); } .js { color: var(--st-succeeded); } .jn { color: var(--st-pending); } .jb { color: var(--st-failed); }
+  .blobref { font-size: var(--fs-xs); color: var(--text-3); font-family: var(--mono); word-break: break-all; }
+
+  .panel { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .phead { padding: 10px 14px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .phead h3 { margin:0; font-size: var(--fs-md); font-weight: 650; }
+  .scroll { overflow-y: auto; }
+  .empty { color: var(--text-3); font-size: var(--fs-sm); padding: 24px; text-align: center; }
+
+  /* section titles inside detail */
+  .sec-title { display:flex; align-items:center; gap:8px; padding: 8px 4px; }
+  .sec-title h3 { margin:0; font-size: var(--fs-base); font-weight: 650; }
+  .sec-title .count { font-size: var(--fs-xs); color: var(--text-3); font-family: var(--mono); }
+  .streamdot { width:7px;height:7px;border-radius:50%;background:var(--st-running); animation: pulse 1.2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:1} }
+
+  button.mini {
+    font: inherit; font-size: var(--fs-xs); color: var(--text-2); background: var(--surface-2);
+    border: 1px solid var(--border); border-radius: 5px; padding: 3px 9px; cursor: pointer;
+  }
+  button.mini:hover { border-color: var(--border-2); color: var(--text); }
+  button.mini:focus-visible, .run-row:focus-visible, .trow:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  /* ================= VARIANT A — three-pane IDE console ================= */
+  .vA { display: grid; grid-template-columns: 260px 1fr 340px; flex: 1; min-height: 0; }
+  .vA .col { min-width: 0; display: flex; flex-direction: column; min-height: 0; }
+  .vA .col.list  { border-right: 1px solid var(--border); background: var(--surface); }
+  .vA .col.io    { border-left: 1px solid var(--border); background: var(--surface); }
+  .vA .col.center{ background: var(--bg); }
+  .vA .colhead { padding: 10px 14px; border-bottom: 1px solid var(--border); display:flex; align-items:center; gap:8px; flex:none; }
+  .vA .colhead h3 { margin:0; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing:.05em; color: var(--text-2); }
+  .vA .colbody { padding: 8px; }
+  .vA .center .detail { padding: 16px 18px; display: flex; flex-direction: column; gap: 14px; }
+  .vA .runhdr { display:flex; align-items:center; gap:12px; flex-wrap: wrap; }
+  .vA .runhdr h2 { margin:0; font-size: var(--fs-lg); font-weight: 680; letter-spacing:-.01em; }
+  .vA .split { display: grid; grid-template-rows: auto 1fr; gap: 12px; min-height:0; }
+  .vA .tree-card, .vA .narr-card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); }
+  .vA .tree-card .bd { padding: 8px; }
+  .vA .narr-card .bd { padding: 8px 6px; }
+
+  /* ================= VARIANT B — tabbed workbench ================= */
+  .vB { display: grid; grid-template-columns: 240px 1fr; flex:1; min-height:0; }
+  .vB .rail { border-right: 1px solid var(--border); background: var(--surface); display:flex; flex-direction:column; min-height:0; }
+  .vB .rail .colhead { padding: 10px 14px; border-bottom:1px solid var(--border); flex:none; }
+  .vB .rail .colhead h3 { margin:0; font-size: var(--fs-sm); text-transform:uppercase; letter-spacing:.05em; color:var(--text-2);}
+  .vB .rail .colbody { padding: 8px; }
+  .vB .main { display:flex; flex-direction:column; min-height:0; background: var(--bg); }
+  .vB .runbar { padding: 14px 20px 0; }
+  .vB .runbar .runhdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+  .vB .runbar h2 { margin:0; font-size: var(--fs-xl); font-weight: 700; letter-spacing:-.02em; }
+  .vB .tabs { display:flex; gap:2px; padding: 12px 20px 0; border-bottom: 1px solid var(--border); }
+  .vB .tab {
+    font: inherit; font-size: var(--fs-base); font-weight:600; color: var(--text-2); background:none; border:none;
+    padding: 8px 14px; cursor:pointer; border-bottom: 2px solid transparent; margin-bottom:-1px; display:flex; gap:7px; align-items:center;
+  }
+  .vB .tab .badge { font-size: var(--fs-xs); color: var(--text-3); font-family: var(--mono); }
+  .vB .tab:hover { color: var(--text); }
+  .vB .tab.on { color: var(--accent-text); border-bottom-color: var(--accent); }
+  .vB .tabbody { padding: 18px 20px; overflow-y:auto; }
+  .vB .tabbody.tree { max-width: 720px; }
+  .vB .tabbody.narr { }
+  .vB .io-grid { display:grid; grid-template-columns: 240px 1fr; gap: 18px; }
+  .vB .io-grid .tree-mini { border-right:1px solid var(--border); padding-right: 14px; }
+
+  /* ================= VARIANT C — stacked log explorer ================= */
+  .vC { flex:1; min-height:0; overflow-y:auto; background: var(--bg); }
+  .vC .wrap { max-width: 1180px; margin: 0 auto; padding: 18px; display:flex; flex-direction:column; gap:16px; }
+  .vC table.runs { width:100%; border-collapse: collapse; background: var(--surface); border:1px solid var(--border); border-radius: var(--radius); overflow:hidden; }
+  .vC table.runs th { text-align:left; font-size: var(--fs-xs); text-transform:uppercase; letter-spacing:.05em; color:var(--text-3); font-weight:650; padding: 9px 12px; border-bottom:1px solid var(--border); }
+  .vC table.runs td { padding: 9px 12px; border-bottom:1px solid var(--border); }
+  .vC table.runs tr:last-child td { border-bottom:none; }
+  .vC table.runs tbody tr { cursor:pointer; }
+  .vC table.runs tbody tr:hover { background: var(--surface-2); }
+  .vC table.runs tbody tr.sel { background: var(--accent-weak); }
+  .vC .detail { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  .vC .detail .panel { min-height: 0; }
+  .vC .runhdr { display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding: 2px 2px 6px; }
+  .vC .runhdr h2 { margin:0; font-size: var(--fs-lg); font-weight:680; }
+  .vC .panel .bd { padding: 10px 12px; overflow-y: auto; }
+  /* I/O drawer */
+  .drawer-back { position: fixed; inset:0; background: rgba(10,14,20,.4); display:none; z-index: 40; }
+  .drawer-back.open { display:block; }
+  .drawer {
+    position: fixed; top:0; right:0; height:100vh; width: 420px; max-width: 90vw; background: var(--surface);
+    border-left:1px solid var(--border); box-shadow: var(--shadow); z-index: 41; transform: translateX(100%);
+    transition: transform .18s ease; display:flex; flex-direction:column;
+  }
+  .drawer.open { transform: translateX(0); }
+  @media (prefers-reduced-motion: reduce) { .drawer { transition: none; } }
+  .drawer .dh { padding: 12px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; gap:8px; }
+  .drawer .dh h3 { margin:0; font-size: var(--fs-md); }
+  .drawer .db { padding: 14px 16px; overflow-y:auto; }
+  .drawer .x { margin-left:auto; }
+
+  /* ---------- floating variant switcher ---------- */
+  #switcher {
+    position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 100;
+    display: flex; align-items: center; gap: 4px; background: #10161f; color:#fff;
+    border: 1px solid rgba(255,255,255,.14); border-radius: 999px; padding: 5px 6px; box-shadow: 0 8px 30px rgba(0,0,0,.35);
+    font-family: var(--sans);
+  }
+  #switcher button { background: none; border:none; color:#cdd6e2; cursor:pointer; font-size: 16px; width: 30px; height: 30px; border-radius: 999px; }
+  #switcher button:hover { background: rgba(255,255,255,.12); color:#fff; }
+  #switcher .lbl { font-size: var(--fs-sm); padding: 0 8px; min-width: 172px; text-align:center; }
+  #switcher .lbl b { color:#fff; } #switcher .lbl span { color:#9aa6b6; }
+  #switcher .theme { font-size: 13px; }
+</style>
+
+<div id="app"></div>
+
+<div id="switcher" aria-label="prototype variant switcher">
+  <button id="prev" title="Previous variant (←)">‹</button>
+  <div class="lbl" id="vlabel"></div>
+  <button id="next" title="Next variant (→)">›</button>
+  <button class="theme" id="themebtn" title="Toggle light/dark">◑</button>
+</div>
+
+<script>
+/* =============================== FAKE DATA =============================== */
+const RUNS = [
+  { run_id:"5f2a9c14", wf:"release-notes acceptance", status:"running",   started_at:"2026-07-22T09:14:02Z", finished_at:null, live:true },
+  { run_id:"a1b7e330", wf:"release-notes acceptance", status:"succeeded", started_at:"2026-07-22T08:40:11Z", finished_at:"2026-07-22T08:43:52Z" },
+  { run_id:"c93d0f77", wf:"changelog-summary",        status:"failed",    started_at:"2026-07-22T08:12:30Z", finished_at:"2026-07-22T08:12:58Z" },
+  { run_id:"7e51aa02", wf:"triage-inbox",             status:"cancelled", started_at:"2026-07-21T17:05:44Z", finished_at:"2026-07-21T17:06:20Z" },
+  { run_id:"2d88b410", wf:"release-notes acceptance", status:"succeeded", started_at:"2026-07-21T15:22:09Z", finished_at:"2026-07-21T15:25:41Z" },
+  { run_id:"90ffce6b", wf:"nightly-digest",           status:"pending",   started_at:"2026-07-22T09:20:00Z", finished_at:null },
+];
+
+// run tree for the live run (parent_run_id nesting; step runs only — control nodes are events, not runs)
+const TREE = {
+  "5f2a9c14": [
+    { run_id:"5f2a9c14", parent_run_id:null,       node_id:null,           worker:"release-notes",  status:"running"   },
+    { run_id:"11a0",     parent_run_id:"5f2a9c14", node_id:"fetch-commits", worker:"agent:gpt",      status:"succeeded" },
+    { run_id:"22b1",     parent_run_id:"5f2a9c14", node_id:"draft-notes",   worker:"agent:claude",   status:"succeeded" },
+    { run_id:"33c2",     parent_run_id:"5f2a9c14", node_id:"review-tone",   worker:"agent:claude",   status:"succeeded" },
+    { run_id:"44d3",     parent_run_id:"5f2a9c14", node_id:"review-facts",  worker:"agent:claude",   status:"running"   },
+    { run_id:"55e4",     parent_run_id:"5f2a9c14", node_id:"publish",       worker:"binary:./pub.sh",status:"pending"   },
+    { run_id:"66f5",     parent_run_id:"44d3",     node_id:"cite-check",    worker:"agent:gpt",      status:"running"   },
+  ],
+  "a1b7e330": [
+    { run_id:"a1b7e330", parent_run_id:null,       node_id:null,           worker:"release-notes",  status:"succeeded" },
+    { run_id:"aa10",     parent_run_id:"a1b7e330", node_id:"fetch-commits", worker:"agent:gpt",      status:"succeeded" },
+    { run_id:"aa11",     parent_run_id:"a1b7e330", node_id:"draft-notes",   worker:"agent:claude",   status:"succeeded" },
+    { run_id:"aa12",     parent_run_id:"a1b7e330", node_id:"publish",       worker:"binary:./pub.sh",status:"succeeded" },
+  ],
+  "c93d0f77": [
+    { run_id:"c93d0f77", parent_run_id:null,       node_id:null,           worker:"changelog-summary", status:"failed" },
+    { run_id:"cc10",     parent_run_id:"c93d0f77", node_id:"collect",      worker:"agent:gpt",      status:"succeeded" },
+    { run_id:"cc11",     parent_run_id:"c93d0f77", node_id:"summarize",    worker:"agent:claude",   status:"failed" },
+  ],
+};
+const DEFAULT_TREE = (id) => TREE[id] || [{ run_id:id, parent_run_id:null, node_id:null, worker:"workflow", status:(RUNS.find(r=>r.run_id===id)||{}).status||"pending" }];
+
+// node I/O blobs, keyed by run_id of the step run
+const IO = {
+  "22b1": {
+    input: { version:"1.4.0", commits:["feat: SSE replay via Last-Event-ID","fix: await child exit in teardown","feat: blob route"] },
+    output:{ markdown:"## 1.4.0\n- Live narrative now resumes on reload\n- Faster shutdown\n- Node I/O over HTTP" },
+    input_ref:"runs/5f2a9c14/22b1/input.json", output_ref:"runs/5f2a9c14/22b1/output.json",
+  },
+  "11a0": {
+    input: { repo:"howardyang2009/PATH", since_tag:"1.3.0" },
+    output:{ count:3, shas:["b3bf601","8871a89","d8225e9"] },
+    input_ref:"runs/5f2a9c14/11a0/input.json", output_ref:"runs/5f2a9c14/11a0/output.json",
+  },
+  "44d3": {
+    input: { draft_ref:"runs/5f2a9c14/22b1/output.json", check:"facts" },
+    output: null, // still running
+    input_ref:"runs/5f2a9c14/44d3/input.json", output_ref:"runs/5f2a9c14/44d3/output.json",
+  },
+};
+const DEFAULT_IO = { input:{ note:"(fake) no input blob for this node" }, output:{ note:"(fake) no output blob" }, input_ref:"—", output_ref:"—" };
+
+// full narrative for the live run (LogEvent union); streamed in over time to test density/ordering
+const ALL_EVENTS = [
+  { seq:1,  ts:"09:14:02.100", type:"step-started",     node_id:null,          step_type:"workflow", worker:"release-notes" },
+  { seq:2,  ts:"09:14:02.240", type:"step-started",     node_id:"fetch-commits", step_type:"agent",   worker:"agent:gpt" },
+  { seq:3,  ts:"09:14:03.980", type:"step-finished",    node_id:"fetch-commits", status:"succeeded" },
+  { seq:4,  ts:"09:14:04.010", type:"step-started",     node_id:"draft-notes",   step_type:"agent",   worker:"agent:claude" },
+  { seq:5,  ts:"09:14:09.550", type:"step-finished",    node_id:"draft-notes",   status:"succeeded" },
+  { seq:6,  ts:"09:14:09.600", type:"checkpoint-passed",node_id:"quality-gate" },
+  { seq:7,  ts:"09:14:09.700", type:"step-started",     node_id:"review-tone",   step_type:"agent",   worker:"agent:claude" },
+  { seq:8,  ts:"09:14:09.710", type:"step-started",     node_id:"review-facts",  step_type:"agent",   worker:"agent:claude" },
+  { seq:9,  ts:"09:14:11.220", type:"branch-taken",     node_id:"route",         arm:0 },
+  { seq:10, ts:"09:14:12.870", type:"step-finished",    node_id:"review-tone",   status:"succeeded" },
+  { seq:11, ts:"09:14:12.900", type:"iteration-started",node_id:"cite-loop",     iteration:1 },
+  { seq:12, ts:"09:14:14.400", type:"step-started",     node_id:"cite-check",    step_type:"agent",   worker:"agent:gpt" },
+  { seq:13, ts:"09:14:16.050", type:"join-applied",     node_id:"review",        branches:["tone","facts"], published_keys:["tone_ok","facts_ok"] },
+  { seq:14, ts:"09:14:17.600", type:"iteration-started",node_id:"cite-loop",     iteration:2 },
+  { seq:15, ts:"09:14:19.100", type:"step-started",     node_id:"cite-check",    step_type:"agent",   worker:"agent:gpt" },
+];
+
+/* =============================== HELPERS =============================== */
+const GLYPH = { running:"◐", succeeded:"✓", failed:"✕", cancelled:"⊘", pending:"◌" };
+const esc = (s)=>String(s).replace(/[&<>]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c]));
+function pill(status){ return `<span class="pill ${status}"><span class="g">${GLYPH[status]}</span>${status}</span>`; }
+function glyphDot(status){ return `<span class="glyphdot g-${status}" title="${status}">${GLYPH[status]}</span>`; }
+function ago(iso){ if(!iso) return "—"; const d=new Date(iso); const m=Math.round((Date.now()-d)/60000);
+  if(m<1) return "just now"; if(m<60) return m+"m ago"; const h=Math.round(m/60); if(h<24) return h+"h ago"; return Math.round(h/24)+"d ago"; }
+function dur(a,b){ if(!a) return ""; const end=b?new Date(b):Date.now(); const s=Math.round((end-new Date(a))/1000);
+  return b? (s>=60? Math.floor(s/60)+"m "+(s%60)+"s" : s+"s") : "running"; }
+function jsonHtml(v){
+  const j = JSON.stringify(v, null, 2);
+  return esc(j)
+    .replace(/&quot;([^&]+)&quot;(\s*:)/g,'<span class="jk">"$1"</span>$2')
+    .replace(/: (&quot;[^&]*&quot;)/g,': <span class="js">$1</span>')
+    .replace(/: (-?\d+\.?\d*)/g,': <span class="jn">$1</span>')
+    .replace(/: (true|false|null)/g,': <span class="jb">$1</span>');
+}
+function eventMsg(e){
+  switch(e.type){
+    case "step-started":  return `<span class="tag">step-started</span> <b>${esc(e.node_id||"·root")}</b> <span class="kw">${esc(e.worker||e.step_type)}</span>`;
+    case "step-finished": { const c=e.status==="succeeded"?"ok":e.status==="failed"?"bad":"warn";
+      return `<span class="tag">step-finished</span> <b>${esc(e.node_id)}</b> <span class="${c}">${esc(e.status)}</span>`; }
+    case "checkpoint-passed": return `<span class="tag">checkpoint</span> <b>${esc(e.node_id)}</b> <span class="ok">passed</span>`;
+    case "checkpoint-failed": return `<span class="tag">checkpoint</span> <b>${esc(e.node_id)}</b> <span class="bad">failed</span>`;
+    case "branch-taken":  return `<span class="tag">branch</span> <b>${esc(e.node_id)}</b> arm <span class="kw">${esc(e.arm)}</span>`;
+    case "join-applied":  return `<span class="tag">join</span> <b>${esc(e.node_id)}</b> <span class="muted">[${e.branches.map(esc).join(", ")}] → ${e.published_keys.map(esc).join(", ")}</span>`;
+    case "iteration-started": return `<span class="tag">iteration</span> <b>${esc(e.node_id)}</b> #${e.iteration}`;
+    case "loop-exited":   return `<span class="tag">loop</span> <b>${esc(e.node_id)}</b> ${esc(e.reason)}`;
+    case "run-cancelled": return `<span class="tag">cancelled</span> <b>${esc(e.node_id)}</b>`;
+    default: return `<span class="tag">${esc(e.type)}</span> <b>${esc(e.node_id||"")}</b>`;
+  }
+}
+
+/* =============================== APP STATE =============================== */
+const state = {
+  variant: (new URLSearchParams(location.search).get("variant") || "A").toUpperCase(),
+  selectedRun: "5f2a9c14",
+  selectedNode: "22b1",
+  expanded: new Set(["5f2a9c14","44d3"]),
+  tab: "narrative",         // variant B
+  streamN: 8,               // how many events shown
+  drawerOpen: false,        // variant C
+};
+if(!["A","B","C"].includes(state.variant)) state.variant="A";
+
+let streamTimer = null;
+function startStream(){
+  stopStream();
+  const run = RUNS.find(r=>r.run_id===state.selectedRun);
+  if(!run || !run.live){ state.streamN = 999; return; }
+  streamTimer = setInterval(()=>{
+    if(state.streamN < ALL_EVENTS.length){ state.streamN++; render(); }
+    else { state.streamN = 8; render(); } // loop the fake stream so density is always visible
+  }, 1400);
+}
+function stopStream(){ if(streamTimer){ clearInterval(streamTimer); streamTimer=null; } }
+
+function selectRun(id){ state.selectedRun=id; state.selectedNode=null; state.streamN=8; render(); startStream(); }
+function selectNode(rid){ state.selectedNode=rid; if(state.variant==="C") state.drawerOpen=true; if(state.variant==="B") state.tab="io"; render(); }
+function toggle(id){ if(state.expanded.has(id)) state.expanded.delete(id); else state.expanded.add(id); render(); }
+
+/* =============================== RENDERERS =============================== */
+function runsListHtml(){
+  return RUNS.map(r=>`
+    <div class="run-row ${r.run_id===state.selectedRun?'sel':''}" tabindex="0" data-run="${r.run_id}">
+      ${glyphDot(r.status)}
+      <div><div class="wf">${esc(r.wf)}</div>
+        <div class="meta"><span class="rid">${r.run_id}</span> · ${ago(r.started_at)}${r.finished_at?" · "+dur(r.started_at,r.finished_at):""}</div></div>
+      ${pill(r.status)}
+    </div>`).join("");
+}
+
+function treeHtml(rows, rootId){
+  const byParent = {};
+  rows.forEach(r=>{ const p=r.parent_run_id||"__root"; (byParent[p]=byParent[p]||[]).push(r); });
+  const rootRows = byParent["__root"]||[];
+  function renderNode(r){
+    const kids = byParent[r.run_id]||[];
+    const hasKids = kids.length>0;
+    const open = state.expanded.has(r.run_id);
+    const label = r.node_id
+      ? `<span class="node">${esc(r.node_id)}</span> <span class="worker">${esc(r.worker)}</span>`
+      : `<span class="node">${esc(r.worker)}</span> <span class="worker">workflow · root</span>`;
+    return `<div class="tnode">
+      <div class="trow ${r.run_id===state.selectedNode?'sel':''}" tabindex="0" data-node="${r.run_id}">
+        <span class="caret ${hasKids?'':'leaf'}" data-toggle="${r.run_id}">${hasKids?(open?'▾':'▸'):'·'}</span>
+        ${glyphDot(r.status)}
+        <span>${label}</span>
+        ${pill(r.status)}
+      </div>
+      ${hasKids&&open? `<div class="tchildren">${kids.map(renderNode).join("")}</div>`:""}
+    </div>`;
+  }
+  return `<div class="tree">${rootRows.map(renderNode).join("")}</div>`;
+}
+
+function narrativeHtml(live){
+  const shown = ALL_EVENTS.slice(0, Math.min(state.streamN, ALL_EVENTS.length));
+  return shown.map((e,i)=>{
+    const fresh = live && i===shown.length-1 && state.streamN<=ALL_EVENTS.length;
+    return `<div class="ev t-${e.type} ${fresh?'fresh':''}">
+      <span class="seq">${e.seq}</span><span class="ts">${e.ts}</span><span class="msg">${eventMsg(e)}</span></div>`;
+  }).join("");
+}
+
+function ioHtml(rid){
+  const io = IO[rid] || (rid?DEFAULT_IO:null);
+  if(!io) return `<div class="empty">Select a node in the run tree to inspect its input / output.</div>`;
+  return `<div class="io">
+    <h4>Input</h4>
+    <pre class="json">${jsonHtml(io.input)}</pre>
+    <div class="blobref">${esc(io.input_ref)}</div>
+    <h4 style="margin-top:14px">Output</h4>
+    ${io.output===null? `<div class="empty" style="padding:14px">no output yet — node is still running</div>`
+      : `<pre class="json">${jsonHtml(io.output)}</pre><div class="blobref">${esc(io.output_ref)}</div>`}
+  </div>`;
+}
+
+function runHeaderHtml(r){
+  return `<div class="runhdr">
+    <h2>${esc(r.wf)}</h2> ${pill(r.status)}
+    <span class="rid">${r.run_id}</span>
+    <span class="muted" style="font-size:var(--fs-sm)">started ${ago(r.started_at)} · ${dur(r.started_at,r.finished_at)}</span>
+  </div>`;
+}
+
+const topbar = ()=>`<div class="topbar">
+  <div class="brand"><span class="dot"></span> PATH <small>viewer · read-only</small></div>
+  <span class="spacer"></span>
+  <span class="env mono">localhost:4100 · ./.path</span>
+</div>`;
+
+/* ---- Variant A: three-pane IDE console ---- */
+function viewA(){
+  const r = RUNS.find(x=>x.run_id===state.selectedRun);
+  const rows = DEFAULT_TREE(state.selectedRun);
+  return `${topbar()}
+  <div class="vA">
+    <div class="col list">
+      <div class="colhead"><h3>Runs</h3><span class="rid" style="margin-left:auto">${RUNS.length}</span></div>
+      <div class="colbody scroll">${runsListHtml()}</div>
+    </div>
+    <div class="col center">
+      <div class="detail scroll">
+        ${runHeaderHtml(r)}
+        <div class="tree-card">
+          <div class="phead"><h3 style="font-size:var(--fs-base)">Run tree</h3><span class="rid" style="margin-left:auto">${rows.length} runs · indented, collapsible</span></div>
+          <div class="bd">${treeHtml(rows, state.selectedRun)}</div>
+        </div>
+        <div class="narr-card">
+          <div class="phead"><h3 style="font-size:var(--fs-base)">Narrative</h3>
+            ${r.live?'<span class="streamdot"></span><span class="rid">live · SSE</span>':'<span class="rid">complete</span>'}
+            <span class="rid" style="margin-left:auto">seq 1–${Math.min(state.streamN,ALL_EVENTS.length)}</span></div>
+          <div class="bd"><div class="narr">${narrativeHtml(r.live)}</div></div>
+        </div>
+      </div>
+    </div>
+    <div class="col io">
+      <div class="colhead"><h3>Node I/O</h3>${state.selectedNode?`<span class="rid" style="margin-left:auto">${state.selectedNode}</span>`:''}</div>
+      <div class="colbody scroll">${ioHtml(state.selectedNode)}</div>
+    </div>
+  </div>`;
+}
+
+/* ---- Variant B: tabbed workbench ---- */
+function viewB(){
+  const r = RUNS.find(x=>x.run_id===state.selectedRun);
+  const rows = DEFAULT_TREE(state.selectedRun);
+  const shownN = Math.min(state.streamN,ALL_EVENTS.length);
+  let body="";
+  if(state.tab==="tree") body = `<div class="tabbody tree scroll">${treeHtml(rows,state.selectedRun)}</div>`;
+  else if(state.tab==="narrative") body = `<div class="tabbody narr scroll"><div class="narr">${narrativeHtml(r.live)}</div></div>`;
+  else body = `<div class="tabbody scroll"><div class="io-grid">
+      <div class="tree-mini"><div class="eyebrow" style="margin-bottom:8px">Pick a node</div>${treeHtml(rows,state.selectedRun)}</div>
+      <div>${ioHtml(state.selectedNode)}</div></div></div>`;
+  const tab = (k,label,badge)=>`<button class="tab ${state.tab===k?'on':''}" data-tab="${k}">${label}${badge!=null?`<span class="badge">${badge}</span>`:''}</button>`;
+  return `${topbar()}
+  <div class="vB">
+    <div class="rail">
+      <div class="colhead"><h3>Runs</h3></div>
+      <div class="colbody scroll">${runsListHtml()}</div>
+    </div>
+    <div class="main">
+      <div class="runbar">${runHeaderHtml(r)}</div>
+      <div class="tabs">
+        ${tab("tree","Run tree", rows.length)}
+        ${tab("narrative","Narrative", (r.live?shownN+" · live":shownN))}
+        ${tab("io","Node I/O", state.selectedNode||"—")}
+      </div>
+      ${body}
+    </div>
+  </div>`;
+}
+
+/* ---- Variant C: stacked log explorer + I/O drawer ---- */
+function viewC(){
+  const r = RUNS.find(x=>x.run_id===state.selectedRun);
+  const rows = DEFAULT_TREE(state.selectedRun);
+  const table = `<table class="runs"><thead><tr>
+      <th></th><th>Workflow</th><th>Run</th><th>Started</th><th>Duration</th><th>Status</th></tr></thead><tbody>
+      ${RUNS.map(x=>`<tr class="${x.run_id===state.selectedRun?'sel':''}" data-run="${x.run_id}">
+        <td style="width:22px">${glyphDot(x.status)}</td>
+        <td class="wf" style="font-weight:600">${esc(x.wf)}</td>
+        <td class="rid">${x.run_id}</td>
+        <td class="muted" style="font-size:var(--fs-sm)">${ago(x.started_at)}</td>
+        <td class="mono" style="font-size:var(--fs-sm)">${dur(x.started_at,x.finished_at)}</td>
+        <td>${pill(x.status)}</td></tr>`).join("")}
+    </tbody></table>`;
+  return `${topbar()}
+  <div class="vC">
+    <div class="wrap">
+      <div><div class="eyebrow" style="margin-bottom:6px">Root runs</div>${table}</div>
+      ${runHeaderHtml(r)}
+      <div class="detail">
+        <div class="panel">
+          <div class="phead"><h3 style="font-size:var(--fs-base)">Run tree</h3><span class="rid" style="margin-left:auto">click node → I/O</span></div>
+          <div class="bd">${treeHtml(rows,state.selectedRun)}</div>
+        </div>
+        <div class="panel">
+          <div class="phead"><h3 style="font-size:var(--fs-base)">Narrative</h3>
+            ${r.live?'<span class="streamdot"></span><span class="rid">live</span>':'<span class="rid">complete</span>'}
+            <span class="rid" style="margin-left:auto">${Math.min(state.streamN,ALL_EVENTS.length)} events</span></div>
+          <div class="bd"><div class="narr">${narrativeHtml(r.live)}</div></div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="drawer-back ${state.drawerOpen?'open':''}" data-closedrawer="1"></div>
+  <div class="drawer ${state.drawerOpen?'open':''}">
+    <div class="dh"><h3>Node I/O</h3>${state.selectedNode?`<span class="rid">${state.selectedNode}</span>`:''}
+      <button class="mini x" data-closedrawer="1">Close ✕</button></div>
+    <div class="db">${ioHtml(state.selectedNode)}</div>
+  </div>`;
+}
+
+const VARIANTS = { A:{name:"Three-pane console", fn:viewA}, B:{name:"Tabbed workbench", fn:viewB}, C:{name:"Stacked log explorer", fn:viewC} };
+
+/* =============================== WIRING =============================== */
+function render(){
+  document.getElementById("app").innerHTML = VARIANTS[state.variant].fn();
+  document.getElementById("vlabel").innerHTML = `<b>${state.variant}</b> <span>— ${VARIANTS[state.variant].name}</span>`;
+}
+
+document.getElementById("app").addEventListener("click", (e)=>{
+  const tog = e.target.closest("[data-toggle]"); if(tog){ e.stopPropagation(); toggle(tog.dataset.toggle); return; }
+  const node = e.target.closest("[data-node]"); if(node){ selectNode(node.dataset.node); return; }
+  const run = e.target.closest("[data-run]"); if(run){ selectRun(run.dataset.run); return; }
+  const tab = e.target.closest("[data-tab]"); if(tab){ state.tab=tab.dataset.tab; render(); return; }
+  const close = e.target.closest("[data-closedrawer]"); if(close){ state.drawerOpen=false; render(); return; }
+});
+document.getElementById("app").addEventListener("keydown",(e)=>{
+  if(e.key!=="Enter"&&e.key!==" ") return;
+  const t=e.target;
+  if(t.dataset&&t.dataset.node){ e.preventDefault(); selectNode(t.dataset.node); }
+  else if(t.dataset&&t.dataset.run){ e.preventDefault(); selectRun(t.dataset.run); }
+});
+
+function setVariant(v){ state.variant=v; state.drawerOpen=false;
+  const u=new URL(location); u.searchParams.set("variant",v); history.replaceState(null,"",u); render(); }
+const order=["A","B","C"];
+document.getElementById("prev").onclick=()=>setVariant(order[(order.indexOf(state.variant)+2)%3]);
+document.getElementById("next").onclick=()=>setVariant(order[(order.indexOf(state.variant)+1)%3]);
+document.addEventListener("keydown",(e)=>{
+  const tag=(document.activeElement||{}).tagName;
+  if(["INPUT","TEXTAREA"].includes(tag)||(document.activeElement||{}).isContentEditable) return;
+  if(e.key==="ArrowLeft") document.getElementById("prev").click();
+  if(e.key==="ArrowRight") document.getElementById("next").click();
+});
+document.getElementById("themebtn").onclick=()=>{
+  const cur=document.documentElement.getAttribute("data-theme");
+  const next = cur==="dark"?"light": cur==="light"?"dark": (matchMedia("(prefers-color-scheme: dark)").matches?"light":"dark");
+  document.documentElement.setAttribute("data-theme",next);
+};
+
+render();
+startStream();
+</script>
