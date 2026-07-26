@@ -44,6 +44,52 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/r1/blobs/c2/output");
   });
 
+  it("POST /v0/runs/:id/cancel sends no body and percent-encodes the id", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ root_run_id: "r 1" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.cancelRun("r 1")).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/r%201/cancel");
+    expect(inits[0]?.method).toBe("POST");
+    expect(inits[0]?.body).toBeUndefined();
+    expect(inits[0]?.headers).toEqual({ Accept: "application/json" });
+  });
+
+  it("cancelRun resolves on a 202 whose body is empty, which it never reads", async () => {
+    const stub = stubFetch(() => new Response(null, { status: 202 }));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.cancelRun("r1")).resolves.toBeUndefined();
+  });
+
+  // The messages here are the ones `routes/cancel-run.ts` actually sends: these tests are the only
+  // place the two halves of the route are written down together, so an invented message tests nothing.
+  it.each([
+    [404, "an unknown run", `no run found with id "r1"`],
+    [409, "an already-terminal run", `run "r1" already finished with status "succeeded"`],
+    [409, "a run this process is not executing", `run "r1" is not executing in this server process and cannot be cancelled`],
+  ])("cancelRun surfaces the %i for %s with its status and the server's message", async (status, _case, message) => {
+    const stub = stubFetch(() => json({ error: { message } }, status));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.cancelRun("r1")).rejects.toMatchObject({ name: "PathApiError", status, message });
+  });
+
+  it("cancelRun still raises a status-only PathApiError when the error body is not JSON", async () => {
+    const stub = stubFetch(() => new Response("<html>502</html>", { status: 502 }));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.cancelRun("r1")).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 502,
+      message: "request failed with status 502",
+    });
+  });
+
   it("raises PathApiError carrying the server's error envelope on non-2xx", async () => {
     const stub = stubFetch(() => json({ error: { message: "no run found", details: { id: "nope" } } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });

@@ -36,10 +36,11 @@ export interface ListRunsQuery {
 }
 
 /**
- * A typed client over the read side of the `@path/server` v0 HTTP API (server-api-v0.md §§3–4 and
- * the blob route). Pure TS — no framework, no DOM; every request goes through the injected
- * `fetch`, so the same client drives Node, a browser, or React Native. Decodes the snake_case wire
- * shapes into `./wire-types`, and raises `PathApiError` for any non-2xx status.
+ * A typed client over the `@path/server` v0 HTTP API — the read surfaces (server-api-v0.md §§3–4
+ * and the blob route) plus one action, `cancelRun` (§4.2). Pure TS — no framework, no DOM; every
+ * request goes through the injected `fetch`, so the same client drives Node, a browser, or React
+ * Native. Decodes the snake_case wire shapes into `./wire-types`, and raises `PathApiError` for any
+ * non-2xx status.
  */
 export class PathApiClient {
   /** The normalized base URL (trailing slash trimmed). */
@@ -81,11 +82,42 @@ export class PathApiClient {
     );
   }
 
+  /**
+   * `POST /v0/runs/:root_run_id/cancel` — signal the abort of a root run in flight
+   * (server-api-v0.md §4.2). Best-effort and asynchronous: the 202 says the abort was signalled,
+   * not that the run has stopped, so the caller learns the terminal status from the event stream it
+   * is already watching. The 202 body is `{ root_run_id }`, which the caller passed in, so there is
+   * nothing to hand back. A 404 (unknown run) and a 409 (already terminal, or not executing in this
+   * server process) arrive as `PathApiError`s carrying that status and the server's message.
+   */
+  async cancelRun(rootRunId: string): Promise<void> {
+    await this.post(`/v0/runs/${encodeURIComponent(rootRunId)}/cancel`);
+  }
+
   private async getJson<T>(path: string): Promise<T> {
     const res = await this.fetch(this.url(path), { headers: { Accept: "application/json" } });
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * The write sibling of `getJson`: same `toApiError` envelope decoding on a non-2xx, no request
+   * body — no v0 action takes one. Kept as its own helper rather than a `method` argument on
+   * `getJson`, so reading either one tells you what kind of request it is without tracing a flag.
+   *
+   * The success body is *not* parsed. No v0 action answers with anything its caller does not
+   * already know, so parsing would only add a way to fail: an empty or non-JSON 2xx — a proxy
+   * stripping a body, a future `204` — would raise a bare `SyntaxError` rather than the
+   * `PathApiError` this class promises is its only failure.
+   */
+  private async post(path: string): Promise<void> {
+    const res = await this.fetch(this.url(path), {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
   }
 }
 
