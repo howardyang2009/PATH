@@ -11,6 +11,9 @@
  * cancel it cannot perform. So entries are registered only once `runStarted` has produced the
  * `root_run_id`, and dropped on every outcome (`post-runs.ts`) so a long-lived server accumulates
  * nothing.
+ *
+ * Deliberately not exported from `index.ts`, unlike `RunEventHub`: clients cancel through the route,
+ * not by reaching for this, so it stays an implementation detail the package can reshape freely.
  */
 export class RunControllers {
   private readonly controllers = new Map<string, AbortController>();
