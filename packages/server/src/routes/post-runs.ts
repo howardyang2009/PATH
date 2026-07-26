@@ -130,19 +130,22 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   });
   // Fire-and-forget from the request's point of view: the run keeps executing after the response
   // goes out. Never left unhandled — a rejection here means `runStarted` never fired either, so it
-  // also settles `started` (a no-op if the response already went out). Either way the run is over,
-  // so its controller is dropped on every outcome — a long-lived server accumulates none.
-  runPromise.then(
-    (result) => {
+  // also settles `started` (a no-op if the response already went out).
+  runPromise
+    .then(
+      (result) => {
+        if (result.status === "failed") console.error(`run failed: ${result.error}`);
+      },
+      (err) => {
+        started.reject(err);
+        console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
+      },
+    )
+    // However it ended, the run is over: dropping the controller here rather than in each arm is
+    // what makes "on every outcome" true by construction, so a long-lived server accumulates none.
+    .finally(() => {
       if (registeredRootRunId !== undefined) ctx.controllers.delete(registeredRootRunId);
-      if (result.status === "failed") console.error(`run failed: ${result.error}`);
-    },
-    (err) => {
-      if (registeredRootRunId !== undefined) ctx.controllers.delete(registeredRootRunId);
-      started.reject(err);
-      console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
-    },
-  );
+    });
 
   let ids: { runId: string; rootRunId: string };
   try {

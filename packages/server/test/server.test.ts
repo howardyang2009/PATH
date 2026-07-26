@@ -530,6 +530,28 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
     expect(body.error.message).toContain("cancelled");
   });
 
+  it("404s rather than reading terminality off a child when the tree has no root row", async () => {
+    // A tree whose root row is missing but whose child says `succeeded`. Guessing at any row of the
+    // tree would answer "already finished with status succeeded" — a refused cancel of what may well
+    // be a live run. Unreachable through the engine today; seeded here because the route's whole job
+    // is to never answer off a row that isn't the root's.
+    const rootRunId = "22222222-2222-2222-2222-222222222222";
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      db.prepare(
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at)
+         VALUES (?, ?, ?, 'orphan', NULL, 'succeeded', ?)`,
+      ).run("33333333-3333-3333-3333-333333333333", rootRunId, rootRunId, new Date().toISOString());
+    } finally {
+      db.close();
+    }
+
+    const res = await cancelRun(rootRunId);
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).not.toContain("succeeded");
+  });
+
   it("409s for a `running` row this server process is not executing, saying so distinctly", async () => {
     const foreignId = "11111111-1111-1111-1111-111111111111";
     seedForeignRunningRun(foreignId);
