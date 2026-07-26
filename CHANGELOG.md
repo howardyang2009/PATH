@@ -1,5 +1,63 @@
 # Changelog
 
+## Unreleased
+
+The **cancellation** phase (`docs/delegation-plan-cancellation.md`): stopping a run in flight from the
+CLI, the API and the viewer. A cancelled run ends `cancelled` — a status distinct from `failed`,
+because an operator stopping a run is not the workflow breaking — lands no publishes, and is narrated
+by a `run-cancelled` event carrying its `cause`.
+
+### Features
+
+- feat(engine): external abort — cancel a root run in flight (#52)
+- feat(engine): graceful `^C` — cancel the run in flight, not the process (resolves #53)
+- feat(server): cancel route — `POST /v0/runs/:root_run_id/cancel` (resolves #54)
+- feat(client-core): `cancelRun()` — the seam's first write verb (resolves #55)
+- feat(viewer): Cancel button — the console's first verb (resolves #56)
+
+### Other
+
+- refactor(engine): fold a leaf step's cancellation tail into one helper
+- refactor(server): the cancel route must not read terminality off a non-root row
+- refactor(server): keep the controller registry out of the public API (#54)
+- test(client-core): `waitFor` a condition, not a microtask count (resolves #58) — `settle()` drained a
+  fixed ten microtasks, which was not a timeout but an assertion about how many `await`s deep the
+  production promise chain ran, vetoing refactors in files the test does not name.
+
+- **Acceptance: the release-notes pipeline cancelled mid-fan-out, through the API and under the CLI**
+  (#57). Agent SDK worker, real spend. Both live `prompt` processors took the abort: each got its own
+  `run-cancelled` with `cause: "operator"` and `cause_run_id: null`, a `cancelled` `step-finished`, and
+  a root terminal `step-finished` with the backends closed. `context.json` held only `raw_changes` —
+  neither cancelled step's publish landed. Under the CLI, one `^C` unwound in 2.6s and exited **130**;
+  a second `^C` during the unwind exited in 0.02s. The viewer's pill read cancelled, both narrative
+  lines read "cancelled by the operator" with no phantom sibling run id, and a reload replayed the
+  terminal state from the NDJSON.
+
+  What the pass turned up, which is the part worth writing down:
+
+  - **The first attempt never cancelled anything.** The pipeline died at `revise-loop` on
+    `referenced file "./revise-cycle.workflow.json" is not in the loaded tree`, and the operator's
+    click hit an already-`failed` run. `POST /v0/runs` passes the server's project root where
+    `runWorkflow` expects the workflow file's own directory, so no server-run workflow outside the
+    project root can resolve a nested ref. Filed as **#59**; the CLI derives the directory correctly,
+    which is why this survived to acceptance.
+  - **A forced second `^C` leaves a lying `running` row** — root and both leaf runs frozen, no terminal
+    events, backends never closed. That is the exact state `mvp-spec.md:191` says cancellation exists
+    to prevent, reintroduced by the escape hatch, and nothing reconciles it afterwards. Filed as
+    **#60**.
+  - **The fan-out window is about five seconds wide**, so the cancel had to be fired by a poll loop
+    rather than a human click — `gather-changes` is a local `git log`, and both summarize prompts
+    return fast. The trigger was the same `POST /v0/runs/:root/cancel` the button calls, so the code
+    path under test is unchanged, but no operator will hit this window by hand. Two live processors is
+    also the ceiling this pipeline offers, not an arbitrary "several".
+  - **The old-log replay proves less than the ticket assumed.** The one persisted v0.3-era log in the
+    repo carries zero `run-cancelled` lines, so replaying it cannot exercise `cause`'s default. It
+    replays clean through `readNdjsonLog` — 16 events, no schema error — and that is all it shows. The
+    default itself rests on `packages/engine/test/logging/log-event.test.ts:53`.
+  - The root run carries no `run-cancelled` of its own, only its `cancelled` `step-finished`. By
+    design: `logging-observer.ts:113` scopes the event to the cancelled *step* run, and the root is a
+    workflow-run. Recorded so it does not read as a gap later.
+
 ## v0.3.1 — 2026-07-25
 
 Patch: the node-I/O pane could hide an output object that exists. Found by running the LLM-backed
