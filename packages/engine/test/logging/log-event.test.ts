@@ -40,6 +40,23 @@ describe("LogEventSchema", () => {
     expect(parsed.node_id).toBeNull();
   });
 
+  it("carries the cause of an operator cancellation, which has no cause run behind it (#52)", () => {
+    const parsed = LogEventSchema.parse({
+      type: "run-cancelled",
+      ...envelope,
+      cause: "operator",
+      cause_run_id: null,
+    });
+    expect(parsed).toMatchObject({ type: "run-cancelled", cause: "operator", cause_run_id: null });
+  });
+
+  it("reads a pre-#52 run-cancelled line — written with no cause — back as sibling-failed", () => {
+    // Every persisted NDJSON line is re-validated on replay (readNdjsonLog), so a v0.3-era log must
+    // keep parsing: `cause` defaults to the only cause that existed when it was written.
+    const parsed = LogEventSchema.parse({ type: "run-cancelled", ...envelope, cause_run_id: "run-2" });
+    expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run-2" });
+  });
+
   it("rejects an unknown event type", () => {
     expect(() => LogEventSchema.parse({ type: "branch-taken", ...envelope })).toThrow();
   });

@@ -1005,11 +1005,13 @@ describe("runWorkflow — parallel blocks: collect join (ticket #24)", () => {
     expect(boomStep).toBeDefined();
     expect(sleeperStep).toBeDefined();
 
-    // The sleeper was cancelled best-effort (a distinct status), narrated by run-cancelled.
+    // The sleeper was cancelled best-effort (a distinct status), narrated by run-cancelled — whose
+    // cause is the failing sibling, not the operator (#52).
     expect(observer.runCancelled).toHaveBeenCalledWith({
       runId: sleeperStep!.runId,
       rootRunId: sleeperStep!.rootRunId,
       nodeId: "sleeper",
+      cause: "sibling-failed",
       causeRunId: boomStep!.runId,
     });
     expect(observer.stepFinished).toHaveBeenCalledWith({ runId: sleeperStep!.runId, rootRunId: sleeperStep!.rootRunId, status: "cancelled" });
@@ -1625,5 +1627,230 @@ describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
     expect(result.status).toBe("failed"); // the block fails because a branch failed
     expect(observer.runCancelled).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "ask" }));
     expect(observer.stepFinished).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
+  });
+});
+
+describe("runWorkflow — external abort of a root run (ticket #52)", () => {
+  // A step that outlives any test: the operator's abort is what ends it, never its own completion.
+  const sleeperStep = (id: string) => ({
+    type: "binary" as const,
+    id,
+    command: "node",
+    args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
+    publish: { slow: "${output}" },
+  });
+
+  /**
+   * Aborts once `nodeId`'s run has started — from a timer, not inline: the engine spawns the child
+   * (and registers its abort listener) synchronously after awaiting `stepStarted`, so a timer is what
+   * puts the abort *after* the step is genuinely in flight rather than before it ever runs.
+   */
+  function abortWhenStarted(observer: { stepStarted: ReturnType<typeof vi.fn> }, nodeId: string): AbortController {
+    const controller = new AbortController();
+    observer.stepStarted.mockImplementation((info: { nodeId: string }) => {
+      if (info.nodeId === nodeId) setTimeout(() => controller.abort(), 0);
+    });
+    return controller;
+  }
+
+  it("ends the root run cancelled, narrating the killed binary step as an operator cancellation", async () => {
+    const observer = fakeObserver();
+    const controller = abortWhenStarted(observer, "sleeper");
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "operator-cancel",
+      worker: { type: "engine" },
+      body: [
+        sleeperStep("sleeper"),
+        { type: "binary", id: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer, signal: controller.signal });
+
+    // The root run ends cancelled — not failed (the workflow did not break), and not left running.
+    expect(result.status).toBe("cancelled");
+    const root = observer.runStarted.mock.calls[0]![0];
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+
+    // The killed step's cancellation names its cause: the operator, with no cause run behind it.
+    const sleeper = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper");
+    expect(observer.runCancelled).toHaveBeenCalledWith({
+      runId: sleeper.runId,
+      rootRunId: root.runId,
+      nodeId: "sleeper",
+      cause: "operator",
+      causeRunId: null,
+    });
+    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, status: "cancelled" });
+
+    // Nothing downstream of the abort runs, and the cancelled step's publish never lands (#24).
+    expect(observer.stepStarted.mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
+    expect(observer.contextChanged).not.toHaveBeenCalled();
+  });
+
+  it("cancels a prompt step in flight through the llmWorker seam", async () => {
+    const observer = fakeObserver();
+    const controller = abortWhenStarted(observer, "ask");
+    // Holds the processor open until the abort reaches it — what the Agent SDK worker does for real.
+    const llmWorker: LlmWorker = {
+      async runPrompt(request: PromptRequest): Promise<PromptResult> {
+        await new Promise<void>((resolve) => {
+          if (request.signal?.aborted) {
+            resolve();
+            return;
+          }
+          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { status: "cancelled" };
+      },
+    };
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "operator-cancel-prompt",
+      worker: { type: "llm", model: "claude-sonnet-5" },
+      body: [{ type: "prompt", id: "ask", prompt: "Hi.", publish: { answer: "${output}" } }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer, llmWorker, signal: controller.signal });
+
+    expect(result.status).toBe("cancelled");
+    const root = observer.runStarted.mock.calls[0]![0];
+    const ask = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "ask");
+    expect(observer.runCancelled).toHaveBeenCalledWith({
+      runId: ask.runId,
+      rootRunId: root.runId,
+      nodeId: "ask",
+      cause: "operator",
+      causeRunId: null,
+    });
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer.contextChanged).not.toHaveBeenCalled();
+  });
+
+  it("runs no step at all when the signal is already aborted at launch", async () => {
+    const observer = fakeObserver();
+    const controller = new AbortController();
+    controller.abort();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "pre-aborted",
+      worker: { type: "engine" },
+      body: [{ type: "binary", id: "greet", command: "node", args: ["-e", "process.stdout.write('hi')"] }],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer, signal: controller.signal });
+
+    expect(result.status).toBe("cancelled");
+    // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
+    expect(observer.runStarted).toHaveBeenCalledTimes(1);
+    const root = observer.runStarted.mock.calls[0]![0];
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    // No step ran, so there is no killed run to narrate.
+    expect(observer.stepStarted).not.toHaveBeenCalled();
+    expect(observer.runCancelled).not.toHaveBeenCalled();
+  });
+
+  it("cancels a nested workflow-run's step too, ending the whole tree cancelled", async () => {
+    const observer = fakeObserver();
+    const controller = abortWhenStarted(observer, "sleeper");
+    const childPath = join(fixturesDir, "nested-child.workflow.json");
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      body: [sleeperStep("sleeper")],
+    };
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      body: [{ type: "workflow", id: "call-child", ref: "nested-child.workflow.json", input: {} }],
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, {
+      observer,
+      signal: controller.signal,
+      files: new Map([[childPath, child]]),
+    });
+
+    expect(result.status).toBe("cancelled");
+    // Both workflow-runs end cancelled — the root's own row included.
+    const [root, nested] = observer.runStarted.mock.calls.map((c) => c[0]);
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer.runCancelled).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "sleeper", cause: "operator", causeRunId: null }));
+  });
+
+  it("still calls a cancellation sibling-failed when the failing branch encloses a nested parallel", async () => {
+    // The cause must be read when the kill happens, not at block entry: the inner block starts before
+    // the outer sibling fails, so a cause snapshotted at entry would be null — and null means operator.
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "nested-parallel-cause",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "outer",
+          join: "collect",
+          branches: [
+            {
+              id: "nested",
+              body: [
+                {
+                  type: "parallel",
+                  id: "inner",
+                  join: "collect",
+                  branches: [{ id: "deep-branch", body: [sleeperStep("deep")] }],
+                },
+              ],
+            },
+            { id: "boom", body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    const kaboom = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom");
+    expect(observer.runCancelled).toHaveBeenCalledWith(
+      expect.objectContaining({ nodeId: "deep", cause: "sibling-failed", causeRunId: kaboom.runId }),
+    );
+  });
+
+  it("cancels the in-flight branches of a parallel block as operator cancellations", async () => {
+    const observer = fakeObserver();
+    const controller = abortWhenStarted(observer, "sleep-a");
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "operator-cancel-parallel",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fanout",
+          join: "collect",
+          branches: [
+            { id: "a", body: [sleeperStep("sleep-a")] },
+            { id: "b", body: [sleeperStep("sleep-b")] },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer, signal: controller.signal });
+
+    expect(result.status).toBe("cancelled");
+    // No sibling failed, so neither branch's cancellation points at a cause run.
+    const causes = observer.runCancelled.mock.calls.map((c) => c[0]);
+    expect(causes.length).toBeGreaterThan(0);
+    for (const cancelled of causes) {
+      expect(cancelled).toMatchObject({ cause: "operator", causeRunId: null });
+    }
+    expect(observer.joinApplied).not.toHaveBeenCalled();
   });
 });

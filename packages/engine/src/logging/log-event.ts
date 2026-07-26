@@ -76,14 +76,21 @@ const JoinAppliedSchema = z
   })
   .strict();
 
-// A run cancelled because a sibling parallel branch failed (mvp spec §5.6, §8.1): `run_id`/`node_id`
-// identify the cancelled run and its node; `cause_run_id` is the failing sibling run that triggered
-// the best-effort cancellation.
+// A run cancelled best-effort (mvp spec §5.6, §8.1): `run_id`/`node_id` identify the cancelled run
+// and its node. `cause` says why — `sibling-failed` (a parallel branch failed) or `operator` (a
+// cancel request against the root run, #52) — and `cause_run_id` is the failing sibling run, non-null
+// exactly for `sibling-failed`.
+//
+// `cause` defaults to `sibling-failed`, the only cause that existed before #52: every persisted log
+// line is re-validated on read (readNdjsonLog, getLogEventsForRoot), and that path feeds SSE replay,
+// so a *required* field here would make every already-written `run.log` throw when an operator opens
+// an old run. Old lines keep parsing, and read back as sibling-failed with their `cause_run_id`.
 const RunCancelledSchema = z
   .object({
     type: z.literal("run-cancelled"),
     ...envelope,
-    cause_run_id: z.string(),
+    cause: z.enum(["sibling-failed", "operator"]).default("sibling-failed"),
+    cause_run_id: z.string().nullable(),
   })
   .strict();
 

@@ -1,4 +1,4 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
@@ -68,6 +68,31 @@ describe("readNdjsonLog", () => {
       const events = readNdjsonLog(projectDir, "root-1");
       expect(events.map((e) => e.seq)).toEqual([1, 2, 3]);
       for (const event of events) expect(() => LogEventSchema.parse(event)).not.toThrow();
+    } finally {
+      rmSync(projectDir, { recursive: true, force: true });
+    }
+  });
+
+  it("replays a v0.3-era log whose run-cancelled line has no cause field (#52)", () => {
+    // The dogfood logs under docs/dogfood/.path/ were written before `cause` existed; replay
+    // validates every line, so an old log must still read back — as a sibling-failed cancellation.
+    const projectDir = tmp();
+    try {
+      const dir = rootRunTreeDir(projectDir, "root-1");
+      mkdirSync(dir, { recursive: true });
+      writeFileSync(
+        join(dir, "run.log"),
+        [
+          JSON.stringify({ type: "log-header", format: "path/log@0", run_id: "root-1" }),
+          JSON.stringify({ type: "run-cancelled", seq: 1, ts: "t", run_id: "step-1", node_id: "sleeper", cause_run_id: "step-2" }),
+          "",
+        ].join("\n"),
+      );
+
+      const events = readNdjsonLog(projectDir, "root-1");
+      expect(events).toEqual([
+        { type: "run-cancelled", seq: 1, ts: "t", run_id: "step-1", node_id: "sleeper", cause: "sibling-failed", cause_run_id: "step-2" },
+      ]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });
     }

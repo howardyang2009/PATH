@@ -38,6 +38,8 @@ this document wins. §12 maps every section back to its originating decision.
 - Transactions, chatbot workflow generation, single-file compilation (v2 items).
 - Platforms other than macOS (the code is portable Node, but only macOS is exercised).
 - Run retry, and resume of crash-interrupted runs — MVP failure behavior is fail-fast only (§5.6).
+  Fail-fast is about *failure*: an operator stopping a run is not a failure, and a root run **is**
+  cancellable (§5.6). A stop is truthful, not resumable.
 
 **Deferred with the door held open** — the register of deliberate extension points is §10.
 
@@ -170,7 +172,7 @@ Blocks are thus transparent to one uniform chain, on both their input and output
   run tree, including nested workflows and nested parallels; a branch whose next step can't get a
   slot waits. Binary steps are uncapped.
 
-### 5.6 Failure
+### 5.6 Failure and cancellation
 
 **Fail-fast.** A step failure, a false checkpoint, a condition evaluation error, branch no-match,
 or loop-cap exhaustion fails the run. A failing parallel branch **cancels in-flight siblings
@@ -178,6 +180,16 @@ best-effort** (processor killed); `cancelled` is a distinct run status from `fai
 from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.
 Retry and resume are out of scope (§1).
+
+**External abort.** An operator may **cancel a root run in flight** (`RunOptions.signal`). The abort
+reaches every descendant run and leaf step of the tree, and the root run ends **`cancelled`** — it
+does not die mid-step and it is not left as a lying `running` row. The unit of cancellation is the
+**root run only**: one verb, one controller; cancelling a nested run or a single step is out of
+scope, since it would need an answer to "does the parent continue?" that collides with fail-fast.
+There is no intermediate `cancelling` status — the unwind window is client-local UI state. A signal
+already aborted when the run is launched cancels it before its first step. Cancellation is
+**best-effort** in both causes: the engine asks, and holds no kill deadline and no force path.
+`run-cancelled` names which cause killed a run (`operator` | `sibling-failed`, §8.1).
 
 ### 5.7 Run records
 
@@ -270,7 +282,7 @@ events — workflow-as-step means they are just the workflow step's `step-starte
 | `iteration-started` | `iteration` (1-based), `trace` |
 | `loop-exited` | `reason` (`condition-false` / `max-iterations-exceeded`), `iterations`, final `trace` |
 | `join-applied` | `branches` (ids in apply order), `published_keys` |
-| `run-cancelled` | `cause_run_id` (the failing sibling) |
+| `run-cancelled` | `cause` (`sibling-failed` / `operator`, §5.6), `cause_run_id` (the failing sibling; null for an operator cancel) |
 
 **Trace** = the condition tree annotated per leaf with its dot-path, outcome
 (`true | false | error` + message — strict-semantics evaluation errors surface as `error` leaves,

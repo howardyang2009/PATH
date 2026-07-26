@@ -9,6 +9,7 @@ Glossary for the PATH workflow management system. Terms here are canonical; code
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. The only execution term in PATH: there is no separate "workflow execution" concept.
 - **Processor** — one live instance of a worker that a run executes on (e.g. a local process, a thread, an LLM chat session).
+- **Cancellation** — best-effort abort of a run: the engine asks (kills the child process, tears down the processor) and holds no deadline and no force path. Two **causes**: **operator** — a cancel request against a root run — and **sibling-failed** — a parallel branch failed, so its in-flight siblings are cancelled (mvp spec §5.6). A cancelled run ends `cancelled` (a distinct status from `failed`: an operator stopping a run is not the workflow breaking), lands no publishes, and is narrated by a `run-cancelled` log event carrying its cause.
 - **Workflow** — a composition of steps. A workflow is itself a valid step type ("workflow-as-step"), so executing a workflow means running the task of the step that wraps it. The top-level workflow is wrapped in an implicit root step. A workflow-step's run spawns **child runs** for its inner steps, forming a **run tree**.
 
 ## Composition

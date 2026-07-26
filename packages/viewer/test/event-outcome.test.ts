@@ -43,7 +43,7 @@ describe("eventOutcome", () => {
   });
 
   it("reports a cancelled run as cancelled, not failed", () => {
-    expect(eventOutcome({ ...ENVELOPE, type: "run-cancelled", cause_run_id: "run_b" })).toBe("cancelled");
+    expect(eventOutcome({ ...ENVELOPE, type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run_b" })).toBe("cancelled");
   });
 
   it("passes a checkpoint verdict through as a success", () => {

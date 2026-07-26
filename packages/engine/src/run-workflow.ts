@@ -45,6 +45,17 @@ export interface RunOptions {
    * covers the whole run tree, so nested workflows and nested parallels share it.
    */
   llmConcurrency?: number;
+  /**
+   * External abort (#52): the way an operator stops this root run in flight. Aborting it kills the
+   * in-flight leaf steps of the whole run tree best-effort — a binary step's child process, an LLM
+   * step's processor — and the root run ends `cancelled` rather than dying mid-step or being left as
+   * a lying `running` row. A signal that is already aborted when `runWorkflow` is called cancels the
+   * run before its first step.
+   *
+   * Best-effort, not guaranteed (mvp spec §5.6): cancellation asks, and the engine holds no deadline
+   * and no force path. Cancellation is per **root run** — there is no per-run controller registry.
+   */
+  signal?: AbortSignal;
 }
 
 /**
@@ -60,8 +71,9 @@ interface LlmRuntime {
 // the last-succeeded node's output (useful to a caller even on failure), so `output` is
 // unconditional rather than living only in a success branch.
 export interface RunResult {
-  // `cancelled` (#24) applies only to a *nested* workflow-run whose leaf step the engine killed
-  // because a sibling parallel branch failed (mvp spec §5.6); the root run is never cancelled.
+  // `cancelled` is a run whose leaf steps the engine killed best-effort (mvp spec §5.6): because a
+  // sibling parallel branch failed (#24), or because an operator aborted `RunOptions.signal` (#52) —
+  // which any run in the tree, the root included, may end on.
   status: "succeeded" | "failed" | "cancelled";
   /**
    * On success: the workflow's `output` map, evaluated at successful run end (format doc §6.4) —
@@ -83,10 +95,22 @@ type SeqOutcome =
 // The shared cancellation of one `parallel` block: its branches all run under `signal`, and the
 // first branch to fail `trigger`s the abort so in-flight siblings are killed best-effort. The
 // failing step run's id becomes `causeRunId`, which the sibling run-cancelled events point back at.
+// `causeRunId` stays null when nothing inside the run tree failed — the abort then came from outside
+// it, i.e. an operator cancelling the root run (#52).
 interface Cancellation {
   signal: AbortSignal;
   causeRunId: string | null;
   trigger(causeRunId: string): void;
+}
+
+// Why a killed run was killed, as `run-cancelled` carries it (#52). The two causes are exactly the
+// two sources of an abort: a failing sibling branch, which names the run that failed, and an
+// operator's cancel of the root run, which has no cause run inside the tree at all.
+function cancellationCause(
+  cancellation: Cancellation | undefined,
+): { cause: "sibling-failed" | "operator"; causeRunId: string | null } {
+  const causeRunId = cancellation?.causeRunId ?? null;
+  return causeRunId === null ? { cause: "operator", causeRunId: null } : { cause: "sibling-failed", causeRunId };
 }
 
 // What each node in a sequence reads and writes: the `context` it sees (the run's own for the
@@ -228,7 +252,9 @@ interface WorkflowRunParams {
   // Shared by the entire run tree, so the processor cap spans nested runs too (mvp spec §5.5).
   llm: LlmRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
-  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). Absent for the root run.
+  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). The root run carries the
+  // operator's own `RunOptions.signal` when there is one (#52) — with no `cancellation`, since a run
+  // it kills has no cause run inside the tree.
   signal?: AbortSignal;
   cancellation?: Cancellation;
 }
@@ -278,8 +304,10 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     await observer?.runFinished?.({ runId, rootRunId, status: "succeeded", output });
     return { status: "succeeded", output };
   };
-  // A nested workflow-run whose leaf step a failing sibling parallel branch killed ends cancelled
-  // (mvp spec §5.6) — its own terminal event, distinct from failed; no output contract.
+  // A workflow-run whose leaf step the engine killed — by a failing sibling parallel branch (#24) or
+  // by an operator's abort (#52) — ends cancelled (mvp spec §5.6): its own terminal event, distinct
+  // from failed; no output contract. For the root run this is the `step-finished` of the implicit
+  // root step, so its row lands `cancelled` and the log backends close on it like any other end.
   const cancel = async (): Promise<RunResult> => {
     await observer?.runFinished?.({ runId, rootRunId, status: "cancelled" });
     return { status: "cancelled", output: previousOutput };
@@ -456,6 +484,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     let previous: JsonValue = seedInput;
 
     for (const node of nodes) {
+      // An abort that arrived between two nodes stops the walk here (mvp spec §5.6): starting a step
+      // run only to kill it would put a run in the record that never really ran, and the control
+      // nodes around it — a checkpoint, a while-do's next iteration — have no process to interrupt,
+      // so this is the only place they can notice a cancellation at all.
+      if (exec.signal?.aborted) return { status: "cancelled" };
+
       const stepConfig = isStepNode(node) ? mergeConfig(fileConfig, node.config) : undefined;
 
       let outcome: SeqOutcome;
@@ -564,11 +598,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       else outerSignal.addEventListener("abort", onOuterAbort, { once: true });
     }
 
-    let causeRunId: string | null = exec.cancellation?.causeRunId ?? null;
+    let causeRunId: string | null = null;
     const cancellation: Cancellation = {
       signal: controller.signal,
       get causeRunId() {
-        return causeRunId;
+        // Read through to the enclosing block at read time, not at block entry: an *outer* sibling
+        // may fail after this block started, and its failing run is still this block's cause.
+        return causeRunId ?? exec.cancellation?.causeRunId ?? null;
       },
       trigger(cause: string) {
         if (causeRunId === null) causeRunId = cause; // first failing sibling wins
@@ -806,13 +842,14 @@ async function runPromptNode(
     });
 
     if (result.status === "cancelled") {
-      // A failing sibling parallel branch killed this processor (mvp spec §5.6) — not a failure of
-      // this step, so no publish from it lands and the cause is narrated separately.
+      // A failing sibling parallel branch or an operator's cancel killed this processor (mvp spec
+      // §5.6) — not a failure of this step, so no publish from it lands and the cause is narrated
+      // separately.
       await observer?.runCancelled?.({
         runId: stepRunId,
         rootRunId,
         nodeId: node.id,
-        causeRunId: ctx.cancellation?.causeRunId ?? ctx.parentRunId,
+        ...cancellationCause(ctx.cancellation),
       });
       await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
       return { status: "cancelled" };
@@ -884,13 +921,14 @@ async function runBinaryNode(
   await observer?.stepStderr?.({ runId: stepRunId, rootRunId, stderr: result.stderr });
 
   if ("cancelled" in result) {
-    // A failing sibling parallel branch killed this step (mvp spec §5.6): narrate the cancellation
-    // (its cause the failing sibling run) and end the run `cancelled`, not `failed`. No publish lands.
+    // A failing sibling parallel branch or an operator's cancel killed this step (mvp spec §5.6):
+    // narrate the cancellation with its cause and end the run `cancelled`, not `failed`. No publish
+    // lands.
     await observer?.runCancelled?.({
       runId: stepRunId,
       rootRunId,
       nodeId: node.id,
-      causeRunId: ctx.cancellation?.causeRunId ?? ctx.parentRunId,
+      ...cancellationCause(ctx.cancellation),
     });
     await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
     return { status: "cancelled" };
@@ -932,6 +970,10 @@ export async function runWorkflow(
     identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
     files: options.files,
     observer,
+    // External abort (#52): the operator's signal is the root run's own, and threads down to every
+    // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
+    // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
+    signal: options.signal,
     // One worker and one semaphore for the whole run tree: the cap is engine-wide, spanning
     // nested workflows and nested parallels alike (mvp spec §5.5).
     llm: {

@@ -109,10 +109,11 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
       );
     },
 
-    async runCancelled({ runId, nodeId, causeRunId }) {
-      // The best-effort cancellation of an in-flight sibling (mvp spec §5.6): run_id/node_id are the
-      // cancelled step run and its node, paired with a `cancelled` step-finished for the same run.
-      await emit({ type: "run-cancelled", ...envelope(runId, nodeId), cause_run_id: causeRunId }, false);
+    async runCancelled({ runId, nodeId, cause, causeRunId }) {
+      // A best-effort cancellation (mvp spec §5.6): run_id/node_id are the cancelled step run and its
+      // node, paired with a `cancelled` step-finished for the same run. `cause` distinguishes a
+      // failing sibling branch from an operator stopping the root run (#52).
+      await emit({ type: "run-cancelled", ...envelope(runId, nodeId), cause, cause_run_id: causeRunId }, false);
     },
 
     async runFinished(info) {

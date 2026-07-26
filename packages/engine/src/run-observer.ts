@@ -95,15 +95,17 @@ export interface RunObserver {
     publishedKeys: string[];
   }): void | Promise<void>;
   /**
-   * A run was cancelled best-effort because a sibling parallel branch failed (#24, mvp spec §5.6):
-   * `runId`/`nodeId` identify the cancelled step run and its node; `causeRunId` is the failing
-   * sibling run. Paired with a `cancelled` `stepFinished`/`runFinished` for the same run.
+   * A run the engine killed best-effort (#24, #52, mvp spec §5.6): `runId`/`nodeId` identify the
+   * cancelled step run and its node. `cause` is why — `sibling-failed` (a parallel branch failed,
+   * `causeRunId` naming that run) or `operator` (a cancel request against the root run, which has no
+   * cause run, so `causeRunId` is null). Paired with a `cancelled` `stepFinished` for the same run.
    */
   runCancelled?(info: {
     runId: string;
     rootRunId: string;
     nodeId: string;
-    causeRunId: string;
+    cause: "sibling-failed" | "operator";
+    causeRunId: string | null;
   }): void | Promise<void>;
   /** A workflow-run finished (root or nested). */
   runFinished?(info: { runId: string; rootRunId: string } & RunOutcome): void | Promise<void>;

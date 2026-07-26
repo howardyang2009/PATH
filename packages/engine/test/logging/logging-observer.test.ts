@@ -157,14 +157,14 @@ describe("createLoggingObserver", () => {
     // A cancelled step: its step-started sets node_id, run-cancelled points at the failing sibling,
     // and step-finished carries the cancelled status with no error.
     await observer.stepStarted?.({ runId: "step-slow", rootRunId: "root-1", parentRunId: "root-1", nodeId: "slow", stepType: "binary", worker: { type: "engine" }, input: {} });
-    await observer.runCancelled?.({ runId: "step-slow", rootRunId: "root-1", nodeId: "slow", causeRunId: "step-boom" });
+    await observer.runCancelled?.({ runId: "step-slow", rootRunId: "root-1", nodeId: "slow", cause: "sibling-failed", causeRunId: "step-boom" });
     await observer.stepFinished?.({ runId: "step-slow", rootRunId: "root-1", status: "cancelled" });
     await observer.runFinished?.({ runId: "root-1", rootRunId: "root-1", status: "failed", error: "a branch failed" });
 
     const join = rec.events.find((e) => e.type === "join-applied");
     expect(join).toMatchObject({ run_id: "root-1", node_id: "fanout", branches: ["a", "b"], published_keys: ["ka", "kb"] });
     const cancelled = rec.events.find((e) => e.type === "run-cancelled");
-    expect(cancelled).toMatchObject({ run_id: "step-slow", node_id: "slow", cause_run_id: "step-boom" });
+    expect(cancelled).toMatchObject({ run_id: "step-slow", node_id: "slow", cause: "sibling-failed", cause_run_id: "step-boom" });
     const finished = rec.events.find((e) => e.type === "step-finished" && e.run_id === "step-slow");
     expect(finished).toMatchObject({ status: "cancelled" });
     expect(finished).not.toHaveProperty("error");

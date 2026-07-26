@@ -10,10 +10,10 @@ import { LogEventSchema } from "../../src/logging/log-event.js";
 import { getLogEventsForRoot } from "../../src/logging/log-store.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
-import { rootRunTreeDir } from "../../src/persistence/paths.js";
+import { rootRunTreeDir, runBlobDir } from "../../src/persistence/paths.js";
 import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../../src/persistence/run-store.js";
-import { composeObservers } from "../../src/run-observer.js";
+import { composeObservers, type RunObserver } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 
 let projectDir: string;
@@ -197,6 +197,101 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const rows = getRunsForRoot(db, root);
     expect(rows.find((r) => r.nodeId === "sleeper")?.status).toBe("cancelled");
     expect(rows.find((r) => r.nodeId === "kaboom")?.status).toBe("failed");
+  });
+
+  it("ends an externally aborted root run cancelled in both backends, the run rows and context.json (#52)", async () => {
+    const cancellableWorkflow: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "operator-cancel",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "binary",
+          id: "sleeper",
+          command: "node",
+          args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
+          publish: { slow: "${output}" },
+        },
+      ],
+    };
+    // Abort from a timer once the step's run has started, so the child is killed in flight.
+    const controller = new AbortController();
+    const aborter: RunObserver = {
+      stepStarted({ nodeId }) {
+        if (nodeId === "sleeper") setTimeout(() => controller.abort(), 0);
+      },
+    };
+    const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+    const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), aborter);
+
+    const result = await runWorkflow(cancellableWorkflow, projectDir, { observer, signal: controller.signal });
+    expect(result.status).toBe("cancelled");
+
+    const root = rootRunId();
+    const dbEvents = getLogEventsForRoot(db, root);
+    const fileEvents = readNdjson(root).slice(1);
+    expect(dbEvents).toEqual(fileEvents); // both backends carry it, and run.log was closed
+
+    // The operator cancellation names its cause and has no cause run behind it.
+    expect(dbEvents.find((e) => e.type === "run-cancelled")).toMatchObject({
+      node_id: "sleeper",
+      cause: "operator",
+      cause_run_id: null,
+    });
+    // The root run's terminal event is a cancelled step-finished on the implicit root step.
+    expect(dbEvents.at(-1)).toMatchObject({ type: "step-finished", run_id: root, node_id: null, status: "cancelled" });
+
+    // Both rows land cancelled — no lying `running` row left behind.
+    const rows = getRunsForRoot(db, root);
+    expect(rows.find((r) => r.runId === root)?.status).toBe("cancelled");
+    expect(rows.find((r) => r.nodeId === "sleeper")?.status).toBe("cancelled");
+
+    // A cancelled step lands no publish, so the run's context.json still holds only its input (#24).
+    const context = JSON.parse(readFileSync(join(runBlobDir(projectDir, root, root), "context.json"), "utf8"));
+    expect(context).toEqual({});
+  });
+
+  it("lands no publish from a cancelled step in context.json, wherever the abort arrives (#52)", async () => {
+    const publishingStep = (id: string) => ({
+      type: "binary" as const,
+      id,
+      command: "node",
+      args: ["-e", `setTimeout(()=>process.stdout.write('${id}'),60)`],
+      publish: { [id]: "${output}" },
+    });
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "multi-publish",
+      worker: { type: "engine" },
+      body: [publishingStep("one"), publishingStep("two"), publishingStep("three")],
+    };
+
+    // Each pass aborts at a different point of the walk — before the first spawn, mid-step, between
+    // steps, after the last. What is asserted is timing-independent: whatever the run rows say
+    // happened, `context.json` agrees with them, so a favourable schedule can't make it pass.
+    for (const delayMs of [0, 20, 70, 130, 200, 400]) {
+      let rootId = "";
+      const capture: RunObserver = {
+        runStarted({ runId, parentRunId }) {
+          if (parentRunId === null) rootId = runId;
+        },
+      };
+      const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
+      const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), capture);
+      const controller = new AbortController();
+      const timer = setTimeout(() => controller.abort(), delayMs);
+      const result = await runWorkflow(file, projectDir, { observer, signal: controller.signal });
+      clearTimeout(timer);
+
+      expect(["cancelled", "succeeded"]).toContain(result.status);
+      const rows = getRunsForRoot(db, rootId);
+      const succeeded = rows.filter((r) => r.nodeId !== null && r.status === "succeeded").map((r) => r.nodeId);
+      const context = JSON.parse(readFileSync(join(runBlobDir(projectDir, rootId, rootId), "context.json"), "utf8"));
+      // Exactly the steps that really succeeded published; a cancelled step's key is never there.
+      expect(Object.keys(context).sort()).toEqual([...succeeded].sort());
+      // And nothing is left mid-flight in the record after the abort settles.
+      expect(rows.filter((r) => r.status === "running")).toEqual([]);
+    }
   });
 
   it("selects backends by the log.backends setting — 'none' produces no audit stream", async () => {

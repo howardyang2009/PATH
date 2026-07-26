@@ -20,7 +20,8 @@ breaking change to the contract ships as `/v1` alongside it, never a silent resh
 - No auth. Localhost-bind only.
 - Single fixed project root per server instance, set at startup — one `.path/` tree, like `path run`.
 - Multiple root runs may execute concurrently; no server-side queueing.
-- No cancel-run endpoint (root runs are never cancelled today — mvp spec §5.6).
+- No cancel-run endpoint yet. The engine gained external abort in #52 (a root run *is* cancellable —
+  mvp spec §5.6); exposing it as `POST /v0/runs/:root_run_id/cancel` is #54's, not shipped here.
 
 ## 1. Conventions
 
