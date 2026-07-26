@@ -58,12 +58,14 @@ release decision (and so the version) is open; see `CHANGELOG.md` under Unreleas
 - [x] #56 `@path/viewer` — Cancel button
 - [x] #57 Acceptance — cancel the release-notes pipeline in flight (closes the phase)
 
-Open, all three raised by #57's acceptance run:
+Raised by #57's acceptance run:
 
-- [ ] #59 `@path/server` — `POST /v0/runs` passes the project root where the engine expects the
-      workflow file's directory, so a nested workflow ref never resolves
-- [ ] #60 A forced second `^C` leaves a lying `running` row, with nothing to reconcile it
-- [ ] #61 `@path/engine` CLI — `runs prune` ignores trailing arguments, so `--help` prunes everything
+- [x] #59 `@path/server` — `POST /v0/runs` passed the project root where the engine expects the
+      workflow file's directory, so a nested workflow ref never resolved
+- [x] #61 `@path/engine` CLI — `runs prune` ignored trailing arguments, so `--help` pruned everything
+- [ ] #60 A forced second `^C` leaves a lying `running` row, with nothing to reconcile it —
+      open on a design decision, not on the work: accept and document, write the terminal rows before
+      exiting, or reconcile stale rows on read
 
 ## Maintenance notes
 

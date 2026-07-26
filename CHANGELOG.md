@@ -15,6 +15,25 @@ by a `run-cancelled` event carrying its `cause`.
 - feat(client-core): `cancelRun()` — the seam's first write verb (resolves #55)
 - feat(viewer): Cancel button — the console's first verb (resolves #56)
 
+### Fixes
+
+- fix(server): resolve a nested workflow ref against the workflow's own directory (resolves #59)
+
+  `POST /v0/runs` passed the server's project directory as `runWorkflow`'s second argument, which is
+  not the project directory at all — it is the root workflow file's own directory, and the engine
+  resolves nested `workflow` refs and binary `cwd`s against it. The CLI derives its project dir from
+  the workflow file, so the two are always equal there and nothing caught the difference until a
+  workflow ran through the server from a subdirectory. The test needs a fixture that is *not* at the
+  project root; a root-level one cannot fail.
+
+- fix(engine): the `runs` subcommands must reject input they do not understand (resolves #61)
+
+  `runs prune` discarded whatever followed it, so `path runs prune --help` deleted every run in the
+  project instead of answering. `path run` has rejected unrecognized arguments all along; the
+  destructive verb being the lax one is backwards. `prune` now takes no operands and `rm` exactly one
+  (a second id was previously dropped in silence), and `--help` is answered before dispatch so it can
+  never be read as an operand.
+
 ### Other
 
 - refactor(engine): fold a leaf step's cancellation tail into one helper
