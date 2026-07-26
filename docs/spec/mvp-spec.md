@@ -90,7 +90,8 @@ The invariants implementers must not break:
 `^C` during `path run` **cancels the run** (§5.6) instead of killing the process: the run unwinds
 to `cancelled` and the CLI exits **130** (128 + SIGINT), distinct from the failed run's non-zero
 exit. Cancellation holds no deadline, so a second `^C` exits immediately without waiting for the
-unwind. Cancellation is a signal, not a flag.
+unwind — abandoning it mid-write, with the consequences §5.6 records. Cancellation is a signal,
+not a flag.
 
 Exact flag spellings are implementer's choice; the semantics above are not.
 
@@ -195,6 +196,18 @@ There is no intermediate `cancelling` status — the unwind window is client-loc
 already aborted when the run is launched cancels it before its first step. Cancellation is
 **best-effort** in both causes: the engine asks, and holds no kill deadline and no force path.
 `run-cancelled` names which cause killed a run (`operator` | `sibling-failed`, §8.1).
+
+**The forced exit is the one exception, and it is accepted.** The engine has no force path, but the
+CLI's second `^C` (§3) forces the *process*, which abandons the unwind wherever it had got to. The
+run's rows keep whatever status they last held — typically `running` for the root and its in-flight
+leaves — the terminal `step-finished` is never written, and the backends never close: precisely the
+lying `running` row this section says cancellation avoids. That is the price of the escape hatch,
+and it is deliberate: an operator forcing an exit has decided that getting their terminal back
+outranks a truthful record, and making the force path wait for writes would defeat it. Nothing
+reconciles such rows afterwards — resume of interrupted runs is out of scope (§1) — so a forced run
+stays `running` in `path runs`, in `GET /v0/runs`, and in any viewer over it, until the operator
+removes it with `path runs rm <run-id>` (§3). Cancelling without forcing has none of these
+consequences; this applies to the second `^C` alone.
 
 ### 5.7 Run records
 

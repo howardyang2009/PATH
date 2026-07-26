@@ -63,9 +63,8 @@ Raised by #57's acceptance run:
 - [x] #59 `@path/server` — `POST /v0/runs` passed the project root where the engine expects the
       workflow file's directory, so a nested workflow ref never resolved
 - [x] #61 `@path/engine` CLI — `runs prune` ignored trailing arguments, so `--help` pruned everything
-- [ ] #60 A forced second `^C` leaves a lying `running` row, with nothing to reconcile it —
-      open on a design decision, not on the work: accept and document, write the terminal rows before
-      exiting, or reconcile stale rows on read
+- [x] #60 A forced second `^C` leaves a lying `running` row — accepted as the price of the escape
+      hatch and documented (mvp spec §5.6); the `^C` notice now names the cost and the remedy
 
 ## Maintenance notes
 

@@ -34,6 +34,18 @@ by a `run-cancelled` event carrying its `cause`.
   (a second id was previously dropped in silence), and `--help` is answered before dispatch so it can
   never be read as an operand.
 
+### Docs
+
+- docs(spec): record what a forced second `^C` costs, and accept it (resolves #60)
+
+  The engine has no force path, but the CLI's second `^C` forces the *process*, abandoning the unwind
+  wherever it had got to: rows keep their last status, the terminal `step-finished` is never written,
+  the backends never close. That is the lying `running` row §5.6 says cancellation avoids, and
+  nothing reconciles it afterwards — resume of interrupted runs is out of scope. Accepted as the
+  price of the escape hatch rather than fixed, since making the force path wait for writes would
+  defeat it. §5.6 now says so, and the `^C` notice names both the cost and the remedy
+  (`path runs rm`) at the moment the operator is deciding whether to press again.
+
 ### Other
 
 - refactor(engine): fold a leaf step's cancellation tail into one helper

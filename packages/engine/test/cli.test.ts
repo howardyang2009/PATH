@@ -343,6 +343,11 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     // 128 + SIGINT(2), the shell convention — distinct from the 1 a *failed* run returns.
     expect(code).toBe(130);
     expect(io.error.mock.calls.join("\n")).toMatch(/cancelling/i);
+    // Forcing costs a lying `running` row that nothing reconciles (#60, mvp spec §5.6), so the
+    // notice names both the cost and the remedy while the operator is deciding whether to press
+    // again. Asserted loosely: the two facts must be there, the wording is free to change.
+    expect(io.error.mock.calls.join("\n")).toMatch(/running/);
+    expect(io.error.mock.calls.join("\n")).toMatch(/runs rm/);
     expect(io.log).not.toHaveBeenCalled(); // a cancelled run has no output contract
 
     const rows = readRunRows();

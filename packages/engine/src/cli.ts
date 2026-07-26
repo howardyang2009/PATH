@@ -203,7 +203,10 @@ function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCan
       forceExit(SIGINT_EXIT_CODE);
       return;
     }
-    io.error("cancelling… (Ctrl-C again to force)");
+    // Naming the cost at the moment the operator is deciding whether to press again (#60): forcing
+    // abandons the unwind, so the rows keep whatever status they last held and nothing later fixes
+    // them. `path runs rm` is the remedy, and saying so here is cheaper than being asked.
+    io.error("cancelling… (Ctrl-C again to force — leaves the run's rows `running`; clear with `path runs rm`)");
     controller.abort();
   };
 
