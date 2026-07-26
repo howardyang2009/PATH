@@ -1,0 +1,15 @@
+{
+  "format": "path/workflow@0",
+  "name": "nested-parent",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "workflow",
+      "id": "child-step",
+      "ref": "./child.workflow.json",
+      "input": { "seed": "hi" },
+      "publish": { "childResult": "${output}" }
+    }
+  ],
+  "output": { "childResult": "${context.childResult}" }
+}

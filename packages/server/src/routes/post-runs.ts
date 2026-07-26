@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { isAbsolute, relative, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import {
   composeObservers,
   createLoggingObserver,
@@ -119,7 +119,17 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     captureObserver,
   );
 
-  const runPromise = runWorkflow(rootFile, ctx.projectDir, {
+  // Two different directories meet here, and only one of them is `projectDir`. `projectDir` is where
+  // `.path/` is read and written, which is why the observer and the log backends above take it. What
+  // `runWorkflow` wants second is the *root workflow file's own* directory: it resolves nested
+  // `workflow` refs and binary `cwd`s against it. The CLI never had to tell them apart, because it
+  // derives its project dir from the workflow file (`cli.ts:258`) — so the two are always equal
+  // there. For the server they diverge for any workflow that is not at the project root, and passing
+  // `projectDir` here meant a nested ref resolved beside `.path/` instead of beside the file that
+  // wrote it, so it was never in the loaded tree (#59).
+  const workflowDir = dirname(tree.rootPath);
+
+  const runPromise = runWorkflow(rootFile, workflowDir, {
     input: input as { [key: string]: JsonValue } | undefined,
     operatorConfig: config,
     files: tree.files,

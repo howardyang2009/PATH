@@ -142,6 +142,20 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(finalBody.runs.every((r) => r.root_run_id === started.root_run_id)).toBe(true);
   });
 
+  it("resolves a nested workflow ref against the workflow's own directory, not the project root (#59)", async () => {
+    // The whole point is a workflow that does *not* sit at the project root: `runWorkflow`'s second
+    // argument resolves `./child.workflow.json`, and passing `projectDir` there looked for the child
+    // beside `.path/` instead of beside its parent, so it was never in the loaded tree. A fixture at
+    // the root cannot catch this — the two directories are equal there.
+    const postRes = await postRun({ workflow_path: "nested/parent.workflow.json" });
+    expect(postRes.status).toBe(202);
+    const { root_run_id } = (await postRes.json()) as { root_run_id: string };
+
+    const finalBody = await pollUntilTerminal(root_run_id);
+    expect(finalBody.status).toBe("succeeded");
+    expect(finalBody.output).toEqual({ childResult: { shouted: "HI" } });
+  });
+
   it("reports running (with null output) while the workflow is still executing", async () => {
     const postRes = await postRun({ workflow_path: "slow-step.workflow.json" });
     expect(postRes.status).toBe(202);
