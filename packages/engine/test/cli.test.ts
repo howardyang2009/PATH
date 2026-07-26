@@ -419,3 +419,40 @@ describe("cli main() — LLM processor cap (ticket #25)", () => {
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--llm-concurrency/));
   });
 });
+
+describe("cli main() — runs subcommand argument strictness (ticket #61)", () => {
+  // These must not touch a real project: `prune` deletes every run under the cwd, so a regression
+  // that stops rejecting the argument would otherwise delete whatever the test happened to run in.
+  it("refuses `runs prune --help` rather than pruning the project", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "prune", "--help"], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(expect.stringMatching(/usage: path run/));
+    expect(io.error).not.toHaveBeenCalled();
+  });
+
+  it("refuses any other trailing argument to `runs prune`", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "prune", "--older-than", "7d"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/takes no arguments, got "--older-than"/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("refuses a second id to `runs rm` instead of silently dropping it", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "id-one", "id-two"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/exactly one run id, got 2/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("answers --help with usage and exit 0", async () => {
+    for (const argv of [["--help"], ["-h"], ["run", "--help"]]) {
+      const io = fakeIo();
+      const code = await main(argv, io);
+      expect(code).toBe(0);
+      expect(io.log).toHaveBeenCalledWith(expect.stringMatching(/usage: path run/));
+    }
+  });
+});

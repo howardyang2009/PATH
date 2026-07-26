@@ -328,6 +328,12 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       io.error(RUNS_USAGE);
       return 2;
     }
+    // One id, not a list: a second operand used to be dropped in silence, so an operator who typed
+    // two ids watched one run survive a command they believed had removed it (#61).
+    if (rest.length > 1) {
+      io.error(`runs rm takes exactly one run id, got ${rest.length}\n${RUNS_USAGE}`);
+      return 2;
+    }
 
     // An id is "found" if either store has something for it — an orphaned directory with no db
     // rows (e.g. left by a prior half-finished cleanup) still counts, so `rm` can finish the job
@@ -358,6 +364,14 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   }
 
   if (subcommand === "prune") {
+    // `prune` takes no operands, and used to ignore whatever followed it — so `runs prune --help`,
+    // asked by someone who wanted to know what it does, deleted every run in the project instead of
+    // answering (#61). A destructive verb must be at least as strict about its input as `run` is.
+    if (rest.length > 0) {
+      io.error(`runs prune takes no arguments, got "${rest[0]!}"\n${RUNS_USAGE}`);
+      return 2;
+    }
+
     let deleted = 0;
     if (existsSync(dbFile)) {
       const opened = openDbOrReport(dbFile);
@@ -383,6 +397,14 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
 /** Runs the CLI and returns the process exit code — never calls process.exit itself. */
 export async function main(argv: string[], io: CliIo = consoleIo, overrides: RunOverrides = {}): Promise<number> {
   const [command, ...rest] = argv;
+
+  // Help is answered here, before dispatch, so it can never reach a subcommand and be mistaken for
+  // an operand. There was no help flag at all until #61, which is exactly why `runs prune --help`
+  // was a plausible thing to type — and, until the same ticket, a destructive one.
+  if (command === "--help" || command === "-h" || rest.includes("--help") || rest.includes("-h")) {
+    io.log(`${RUN_USAGE}\n${RUNS_USAGE}`);
+    return 0;
+  }
 
   if (command === "run") {
     return runRunCommand(rest, io, overrides);
