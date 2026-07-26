@@ -1,11 +1,18 @@
 # Changelog
 
-## Unreleased
+## v0.4.0 — 2026-07-26
 
 The **cancellation** phase (`docs/delegation-plan-cancellation.md`): stopping a run in flight from the
-CLI, the API and the viewer. A cancelled run ends `cancelled` — a status distinct from `failed`,
-because an operator stopping a run is not the workflow breaking — lands no publishes, and is narrated
-by a `run-cancelled` event carrying its `cause`.
+CLI, the API and the viewer — the first verb the system offers that changes a run rather than reading
+one. A cancelled run ends `cancelled` — a status distinct from `failed`, because an operator stopping
+a run is not the workflow breaking — lands no publishes, and is narrated by a `run-cancelled` event
+carrying its `cause` (`operator` or `sibling-failed`).
+
+One abort reaches the whole tree: `RunOptions.signal` threads to every descendant run and leaf step,
+so the engine kills live child processes and tears down in-flight Agent SDK sessions alike. The unit
+of cancellation is the root run only. The surfaces are all thin over that one engine capability —
+`^C`, `POST /v0/runs/:root_run_id/cancel`, `cancelRun()`, a button — which is why the acceptance run
+(#57) is what counts as evidence rather than any of their unit tests.
 
 ### Features
 

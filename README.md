@@ -45,11 +45,10 @@ cwd; the engine CLI instead derives its project directory from the workflow file
 
 ## Status (2026-07-26)
 
-Latest release: **v0.3.1** (viewer node-I/O stale-ref fix) — see `CHANGELOG.md` for the full history.
+Latest release: **v0.4.0** (cancellation) — see `CHANGELOG.md` for the full history.
 
 **Cancellation** (delegation plan: `docs/delegation-plan-cancellation.md`) — stopping a run in flight
-from the CLI, the API, and the viewer — is code-complete and has passed its acceptance run. The
-release decision (and so the version) is open; see `CHANGELOG.md` under Unreleased.
+from the CLI, the API, and the viewer — shipped in v0.4.0, acceptance run and all.
 
 - [x] #52 `@path/engine` external abort — cancel a root run in flight
 - [x] #53 `@path/engine` CLI — graceful SIGINT (`^C` cancels the run)
