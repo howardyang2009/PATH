@@ -38,6 +38,7 @@ export {
 
 export {
   RunViewModel,
+  isTerminal,
   type RunNodeState,
   type RunViewState,
   type RunViewListener,

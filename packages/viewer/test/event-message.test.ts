@@ -75,9 +75,14 @@ describe("eventMessage", () => {
   });
 
   it("names the sibling run that caused a cancellation", () => {
-    // The event now carries its cause (#52); rendering the operator cause is #56's, not this row's.
     expect(eventMessage({ ...ENVELOPE, type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run_b" })).toBe(
       "step-a cancelled · cause run_b",
+    );
+  });
+
+  it("attributes an operator cancel to the operator, not a sibling run", () => {
+    expect(eventMessage({ ...ENVELOPE, type: "run-cancelled", cause: "operator", cause_run_id: null })).toBe(
+      "step-a cancelled by the operator",
     );
   });
 

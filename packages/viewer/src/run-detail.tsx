@@ -1,3 +1,5 @@
+import { isTerminal, type PathApiClient } from "@path/client-core";
+import { CancelButton } from "./cancel-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -6,6 +8,7 @@ import { StatusPill } from "./status-pill.js";
 import type { RunViewLoad } from "./use-run-view.js";
 
 export interface RunDetailProps {
+  client: PathApiClient;
   /** The live snapshot of the watched root run, owned by the app: one connection feeds two panes. */
   load: RunViewLoad;
   rootRunId: string;
@@ -22,18 +25,21 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
   if (load.phase === "idle" || load.phase === "loading") return <PaneLoading what="run" />;
   if (load.phase === "error") return <PaneError what="run" message={load.message} />;
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
+  // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
+  const cancellable = !isTerminal(state.status);
 
   return (
     <div className="run-detail">
       <header className="run-head" data-testid="run-head">
         <span className="run-id">{state.rootRunId}</span>
         <StatusPill status={state.status} />
+        {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <span className="run-meta">{formatTimestamp(root?.startedAt ?? null)}</span>
       </header>
 

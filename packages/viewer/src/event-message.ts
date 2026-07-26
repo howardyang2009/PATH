@@ -31,7 +31,10 @@ export function eventMessage(event: LogEvent): string {
       return `join ${label} applied · branches ${event.branches.join(", ")}${published}`;
     }
     case "run-cancelled":
-      return `${label} cancelled · cause ${event.cause_run_id}`;
+      // The operator cause carries no sibling run (#56); naming one for it would print a lie.
+      return event.cause === "operator"
+        ? `${label} cancelled by the operator`
+        : `${label} cancelled · cause ${event.cause_run_id}`;
     case "iteration-started":
       return `while-do ${label} iteration ${event.iteration}`;
     case "loop-exited":

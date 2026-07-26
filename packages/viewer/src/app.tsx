@@ -51,6 +51,7 @@ export function App({ client }: { client: PathApiClient }) {
           <p className="pane-note">Select a run.</p>
         ) : (
           <RunDetail
+            client={client}
             load={load}
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}

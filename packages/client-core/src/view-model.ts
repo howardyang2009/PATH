@@ -49,8 +49,12 @@ export interface RunViewState {
 
 export type RunViewListener = (state: RunViewState) => void;
 
-/** A finished run: `step-finished` set it, and nothing after that may move it back. */
-function isTerminal(status: RunStatus): boolean {
+/**
+ * A finished run: `step-finished` set it, and nothing after that may move it back. Exported so a
+ * surface deciding whether a run can still be acted on (e.g. the viewer's cancel button, #56) names
+ * the one terminality check rather than re-deriving the status set.
+ */
+export function isTerminal(status: RunStatus): boolean {
   return status === "succeeded" || status === "failed" || status === "cancelled";
 }
 
