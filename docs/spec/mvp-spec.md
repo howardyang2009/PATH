@@ -39,7 +39,7 @@ this document wins. §12 maps every section back to its originating decision.
 - Platforms other than macOS (the code is portable Node, but only macOS is exercised).
 - Run retry, and resume of crash-interrupted runs — MVP failure behavior is fail-fast only (§5.6).
   Fail-fast is about *failure*: an operator stopping a run is not a failure, and a root run **is**
-  cancellable (§5.6). A stop is truthful, not resumable.
+  cancellable. What a stop owes is truth about where the run got to, not the ability to resume it.
 
 **Deferred with the door held open** — the register of deliberate extension points is §10.
 

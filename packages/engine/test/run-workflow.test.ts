@@ -1632,7 +1632,7 @@ describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
 
 describe("runWorkflow — external abort of a root run (ticket #52)", () => {
   // A step that outlives any test: the operator's abort is what ends it, never its own completion.
-  const sleeperStep = (id: string) => ({
+  const sleeperNode = (id: string) => ({
     type: "binary" as const,
     id,
     command: "node",
@@ -1661,7 +1661,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       name: "operator-cancel",
       worker: { type: "engine" },
       body: [
-        sleeperStep("sleeper"),
+        sleeperNode("sleeper"),
         { type: "binary", id: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
       ],
     };
@@ -1759,7 +1759,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       format: "path/workflow@0",
       name: "child",
       worker: { type: "engine" },
-      body: [sleeperStep("sleeper")],
+      body: [sleeperNode("sleeper")],
     };
     const parent: WorkflowFile = {
       format: "path/workflow@0",
@@ -1803,7 +1803,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
                   type: "parallel",
                   id: "inner",
                   join: "collect",
-                  branches: [{ id: "deep-branch", body: [sleeperStep("deep")] }],
+                  branches: [{ id: "deep-branch", body: [sleeperNode("deep")] }],
                 },
               ],
             },
@@ -1835,8 +1835,8 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
           id: "fanout",
           join: "collect",
           branches: [
-            { id: "a", body: [sleeperStep("sleep-a")] },
-            { id: "b", body: [sleeperStep("sleep-b")] },
+            { id: "a", body: [sleeperNode("sleep-a")] },
+            { id: "b", body: [sleeperNode("sleep-b")] },
           ],
         },
       ],

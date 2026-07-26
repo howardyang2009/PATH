@@ -103,16 +103,6 @@ interface Cancellation {
   trigger(causeRunId: string): void;
 }
 
-// Why a killed run was killed, as `run-cancelled` carries it (#52). The two causes are exactly the
-// two sources of an abort: a failing sibling branch, which names the run that failed, and an
-// operator's cancel of the root run, which has no cause run inside the tree at all.
-function cancellationCause(
-  cancellation: Cancellation | undefined,
-): { cause: "sibling-failed" | "operator"; causeRunId: string | null } {
-  const causeRunId = cancellation?.causeRunId ?? null;
-  return causeRunId === null ? { cause: "operator", causeRunId: null } : { cause: "sibling-failed", causeRunId };
-}
-
 // What each node in a sequence reads and writes: the `context` it sees (the run's own for the
 // top-level body; a per-branch snapshot copy inside a `parallel` block, so siblings never observe
 // each other's writes — mvp spec §5.3), the `signal`/`cancellation` of any enclosing parallel, and
@@ -739,8 +729,9 @@ async function runWorkflowNode(
 }
 
 // Everything a leaf step run needs from its enclosing workflow-run: the effective config and file
-// worker it inherits, its place in the run tree, the context it interpolates against, and any
-// enclosing `parallel` block's cancellation (#24).
+// worker it inherits, its place in the run tree, the context it interpolates against, the `signal`
+// that kills it in flight — an enclosing `parallel` block's (#24) or the operator's (#52) — and the
+// `cancellation` that says which of the two it was.
 interface LeafStepContext {
   stepConfig: ConfigObject;
   fileDir: string;
@@ -776,6 +767,30 @@ async function finishLeafStep(
   }
   await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "succeeded", output });
   return { status: "succeeded", output };
+}
+
+// The tail every leaf step shares once the engine has killed it instead of letting it finish (mvp
+// spec §5.6): narrate the cancellation with its cause, then end the run `cancelled` rather than
+// `failed` — so no publish from it lands. The cause is read off the enclosing `parallel` block's
+// cancellation at kill time, and the two causes are exactly the two sources of an abort: a cause run
+// there means a sibling branch failed and names it, while none means the abort came from outside the
+// run tree — an operator cancelling the root run (#52), which has no cause run to point at.
+async function cancelLeafStep(
+  observer: RunObserver | undefined,
+  ids: { runId: string; rootRunId: string },
+  nodeId: string,
+  cancellation: Cancellation | undefined,
+): Promise<SeqOutcome> {
+  const causeRunId = cancellation?.causeRunId ?? null;
+  await observer?.runCancelled?.({
+    runId: ids.runId,
+    rootRunId: ids.rootRunId,
+    nodeId,
+    cause: causeRunId === null ? "operator" : "sibling-failed",
+    causeRunId,
+  });
+  await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "cancelled" });
+  return { status: "cancelled" };
 }
 
 /**
@@ -843,16 +858,9 @@ async function runPromptNode(
 
     if (result.status === "cancelled") {
       // A failing sibling parallel branch or an operator's cancel killed this processor (mvp spec
-      // §5.6) — not a failure of this step, so no publish from it lands and the cause is narrated
-      // separately.
-      await observer?.runCancelled?.({
-        runId: stepRunId,
-        rootRunId,
-        nodeId: node.id,
-        ...cancellationCause(ctx.cancellation),
-      });
-      await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
-      return { status: "cancelled" };
+      // §5.6) — not a failure of this step. Awaited here rather than returned, so the processor slot
+      // is only released once the cancellation has been narrated.
+      return await cancelLeafStep(observer, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
     }
 
     // Leaf-only (§5.7): recorded on this run, never rolled up — subtree figures are a read-time SUM.
@@ -883,8 +891,8 @@ async function runPromptNode(
 async function runBinaryNode(
   node: Extract<WorkflowNode, { type: "binary" }>,
   stepInput: JsonValue,
-  // `signal` (from an enclosing `parallel` block, #24) kills the child on a sibling failure, and
-  // `cancellation.causeRunId` is the failing sibling the run-cancelled event points at.
+  // `ctx.signal` kills the child in flight — on a sibling branch's failure (#24) or an operator's
+  // cancel of the root run (#52) — and `ctx.cancellation` is what tells those two apart afterwards.
   ctx: LeafStepContext,
 ): Promise<SeqOutcome> {
   const { rootRunId, observer } = ctx;
@@ -921,17 +929,9 @@ async function runBinaryNode(
   await observer?.stepStderr?.({ runId: stepRunId, rootRunId, stderr: result.stderr });
 
   if ("cancelled" in result) {
-    // A failing sibling parallel branch or an operator's cancel killed this step (mvp spec §5.6):
-    // narrate the cancellation with its cause and end the run `cancelled`, not `failed`. No publish
-    // lands.
-    await observer?.runCancelled?.({
-      runId: stepRunId,
-      rootRunId,
-      nodeId: node.id,
-      ...cancellationCause(ctx.cancellation),
-    });
-    await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "cancelled" });
-    return { status: "cancelled" };
+    // A failing sibling parallel branch or an operator's cancel killed this child process (mvp spec
+    // §5.6) — not a failure of this step.
+    return cancelLeafStep(observer, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
   }
 
   if (!result.success) {

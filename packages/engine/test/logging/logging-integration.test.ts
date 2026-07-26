@@ -271,13 +271,13 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     // happened, `context.json` agrees with them, so a favourable schedule can't make it pass.
     for (const delayMs of [0, 20, 70, 130, 200, 400]) {
       let rootId = "";
-      const capture: RunObserver = {
+      const captureRootId: RunObserver = {
         runStarted({ runId, parentRunId }) {
           if (parentRunId === null) rootId = runId;
         },
       };
       const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
-      const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), capture);
+      const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), captureRootId);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), delayMs);
       const result = await runWorkflow(file, projectDir, { observer, signal: controller.signal });
