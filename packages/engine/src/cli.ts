@@ -29,14 +29,20 @@ export interface CliIo {
 }
 
 /**
- * Engine collaborators the CLI would otherwise construct itself. The acceptance run (#26) uses
- * this to drive the real pipeline — real workflow files, real git, real persistence and logging —
- * with a scripted LLM worker in place of a live Agent SDK processor, which is the one collaborator
- * that costs money and never answers the same way twice.
+ * Collaborators the CLI would otherwise construct itself. The acceptance run (#26) uses this to
+ * drive the real pipeline — real workflow files, real git, real persistence and logging — with a
+ * scripted LLM worker in place of a live Agent SDK processor, which is the one collaborator that
+ * costs money and never answers the same way twice.
  */
 export interface RunOverrides {
   /** Where `prompt` steps execute; defaults to the pinned Agent SDK worker (mvp spec §7). */
   llmWorker?: LlmWorker;
+  /**
+   * How a forced second `^C` leaves the process (#53) — defaults to `process.exit(130)`. The one
+   * place the CLI exits abruptly, and only because the operator asked twice; tests substitute their
+   * own rather than taking the test process down to assert it.
+   */
+  forceExit?: (code: number) => void;
 }
 
 const consoleIo: CliIo = {
@@ -168,6 +174,48 @@ function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
   return { success: true, config };
 }
 
+// Death by SIGINT, the shell convention (128 + 2) — a cancelled run is neither a failed one (1)
+// nor a usage error (2), and a forced second `^C` leaves on the same code it interrupted.
+const SIGINT_EXIT_CODE = 130;
+
+interface SigintCancellation {
+  /** Handed to `RunOptions.signal`: the operator's way into the engine's own unwind (#52). */
+  signal: AbortSignal;
+  /** Removes the listener — the CLI owns the process signal only while a run is in flight. */
+  dispose(): void;
+}
+
+/**
+ * Makes `^C` truthful (#53): the first press *cancels the run* rather than killing the process, so
+ * the run unwinds the engine's normal way — in-flight leaf killed, `run-cancelled` with
+ * `cause: "operator"`, the root's terminal `step-finished` written, backends closed, row
+ * `cancelled`.
+ *
+ * Cancellation is best-effort and holds no deadline (mvp spec §5.6), so the operator needs an
+ * escape hatch from a slow unwind: a second press exits immediately, which is what pressing `^C`
+ * twice already means. That is the only path where the CLI exits by itself — the graceful one
+ * returns an exit code like every other command (`main` never calls `process.exit`).
+ */
+function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCancellation {
+  const controller = new AbortController();
+  const onSigint = () => {
+    if (controller.signal.aborted) {
+      forceExit(SIGINT_EXIT_CODE);
+      return;
+    }
+    io.error("cancelling… (Ctrl-C again to force)");
+    controller.abort();
+  };
+
+  process.on("SIGINT", onSigint);
+  return {
+    signal: controller.signal,
+    dispose: () => {
+      process.off("SIGINT", onSigint);
+    },
+  };
+}
+
 type OpenDbResult = { success: true; db: Database.Database } | { success: false; error: string };
 
 function openDbOrReport(dbFile: string): OpenDbResult {
@@ -225,6 +273,9 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 1;
   }
 
+  // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
+  const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
+
   let runResult;
   try {
     // Persistence (#18) writes run rows + blobs; logging (#19) fans the typed event stream out to
@@ -240,9 +291,18 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
       llmWorker: overrides.llmWorker,
       llmConcurrency: parsed.args.llmConcurrency ?? settings.llmConcurrency,
       warn: (message) => io.error(`warning: ${message}`),
+      signal: sigint.signal,
     });
   } finally {
+    sigint.dispose();
     opened.db.close();
+  }
+
+  // The unwind finished: the run is recorded `cancelled` everywhere, which is what the operator
+  // pressing `^C` was owed. No output is printed — a cancelled run has no output contract.
+  if (runResult.status === "cancelled") {
+    io.error("run cancelled");
+    return SIGINT_EXIT_CODE;
   }
 
   if (runResult.status === "failed") {

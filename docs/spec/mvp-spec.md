@@ -87,6 +87,11 @@ The invariants implementers must not break:
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
   **together** (§6).
 
+`^C` during `path run` **cancels the run** (§5.6) instead of killing the process: the run unwinds
+to `cancelled` and the CLI exits **130** (128 + SIGINT), distinct from the failed run's non-zero
+exit. Cancellation holds no deadline, so a second `^C` exits immediately without waiting for the
+unwind. Cancellation is a signal, not a flag.
+
 Exact flag spellings are implementer's choice; the semantics above are not.
 
 ## 4. Workflow file format v0

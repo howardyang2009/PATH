@@ -1,10 +1,11 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
-import type { LlmWorker } from "../src/llm/llm-worker.js";
+import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
 
 const realFixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -260,6 +261,146 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
     const code = await main(["run", join(projectDir, "workflow.json")], io);
     expect(code).toBe(2);
     expect(io.error.mock.calls.join("\n")).toMatch(/llm\.concurrancy/);
+  });
+});
+
+// `^C` cancels the run instead of killing the process (ticket #53). The press is synthetic —
+// `process.emit("SIGINT")` from inside a scripted prompt step, which is the real listener firing at
+// the one moment that matters (a step genuinely in flight) without a signal being sent for real.
+describe("cli main() — graceful ^C (ticket #53)", () => {
+  let projectDir: string;
+  let sigintListenersBefore: number;
+
+  const ONE_PROMPT_WORKFLOW = {
+    format: "path/workflow@0",
+    name: "sigint-cancel",
+    worker: { type: "llm", model: "claude-sonnet-5" },
+    body: [
+      { type: "prompt", id: "ask", prompt: "Question.", publish: { answer: "${output}" } },
+      { type: "prompt", id: "never", prompt: "Second question." },
+    ],
+    output: { result: "${context.answer}" },
+  };
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-sigint-cli-"));
+    writeFileSync(join(projectDir, "workflow.json"), JSON.stringify(ONE_PROMPT_WORKFLOW), "utf8");
+    sigintListenersBefore = process.listenerCount("SIGINT");
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function runIt(llmWorker: LlmWorker, io = fakeIo(), forceExit?: (code: number) => void) {
+    return main(["run", join(projectDir, "workflow.json")], io, { llmWorker, forceExit });
+  }
+
+  /**
+   * A prompt step that presses `^C` `presses` times the moment it is in flight and then holds its
+   * processor open until the abort reaches it — what a live Agent SDK turn does for real.
+   */
+  function pressingLlmWorker(presses = 1): LlmWorker {
+    return {
+      async runPrompt(request: PromptRequest): Promise<PromptResult> {
+        for (let i = 0; i < presses; i += 1) process.emit("SIGINT");
+        await new Promise<void>((resolve) => {
+          if (request.signal?.aborted) {
+            resolve();
+            return;
+          }
+          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { status: "cancelled" };
+      },
+    };
+  }
+
+  function readRunRows() {
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const rows = db.prepare("SELECT run_id, root_run_id, node_id, status FROM runs").all() as {
+      run_id: string;
+      root_run_id: string;
+      node_id: string | null;
+      status: string;
+    }[];
+    db.close();
+    return rows;
+  }
+
+  function readLogEvents(rootRunId: string): { type: string; [key: string]: unknown }[] {
+    return readFileSync(join(projectDir, ".path", "runs", rootRunId, "run.log"), "utf8")
+      .trimEnd()
+      .split("\n")
+      .map((line) => JSON.parse(line))
+      .filter((event) => event.type !== "log-header");
+  }
+
+  it("cancels the run in flight and exits 130, with the row and the log agreeing", async () => {
+    const io = fakeIo();
+    const code = await runIt(pressingLlmWorker(), io);
+
+    // 128 + SIGINT(2), the shell convention — distinct from the 1 a *failed* run returns.
+    expect(code).toBe(130);
+    expect(io.error.mock.calls.join("\n")).toMatch(/cancelling/i);
+    expect(io.log).not.toHaveBeenCalled(); // a cancelled run has no output contract
+
+    const rows = readRunRows();
+    const root = rows.find((r) => r.run_id === r.root_run_id)!;
+    expect(root.status).toBe("cancelled"); // not the lying `running` row ^C used to leave
+    expect(rows.find((r) => r.node_id === "ask")!.status).toBe("cancelled");
+    expect(rows.find((r) => r.node_id === "never")).toBeUndefined(); // nothing ran after the abort
+
+    // The NDJSON stream tells the same story, and the backends were closed on the root's terminal event.
+    const events = readLogEvents(root.root_run_id);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "run-cancelled", node_id: "ask", cause: "operator", cause_run_id: null }),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "step-finished", run_id: root.run_id, node_id: null, status: "cancelled" });
+  });
+
+  it("removes its SIGINT listener once the run settles", async () => {
+    expect(await runIt(pressingLlmWorker())).toBe(130);
+    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+  });
+
+  it("leaves a run that finishes normally untouched, listener included", async () => {
+    const io = fakeIo();
+    const llmWorker: LlmWorker = {
+      async runPrompt() {
+        return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+      },
+    };
+
+    const code = await runIt(llmWorker, io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ result: "ok" }));
+    expect(io.error).not.toHaveBeenCalled();
+    expect(process.listenerCount("SIGINT")).toBe(sigintListenersBefore);
+    expect(readRunRows().every((r) => r.status === "succeeded")).toBe(true);
+  });
+
+  // Cancellation is best-effort with no deadline (mvp spec §5.6), so a second press is the
+  // operator's escape hatch. Asserted at the seam that decides it — a real second `^C` would take
+  // the test process down with it.
+  it("hands a second ^C straight to the forced exit, with the same code", async () => {
+    const forceExit = vi.fn();
+
+    const code = await runIt(pressingLlmWorker(2), fakeIo(), forceExit);
+
+    expect(forceExit).toHaveBeenCalledTimes(1);
+    expect(forceExit).toHaveBeenCalledWith(130);
+    // The first press still cancelled: a forced exit is an escape from the *wait*, not the cancel.
+    expect(code).toBe(130);
+  });
+
+  it("does not force-exit on the first ^C, however slow the unwind", async () => {
+    const forceExit = vi.fn();
+
+    expect(await runIt(pressingLlmWorker(1), fakeIo(), forceExit)).toBe(130);
+
+    expect(forceExit).not.toHaveBeenCalled();
   });
 });
 

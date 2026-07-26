@@ -45,7 +45,7 @@ In progress — **cancellation** (delegation plan: `docs/delegation-plan-cancell
 run in flight from the CLI, the API, and the viewer:
 
 - [x] #52 `@path/engine` external abort — cancel a root run in flight
-- [ ] #53 `@path/engine` CLI — graceful SIGINT (`^C` cancels the run)
+- [x] #53 `@path/engine` CLI — graceful SIGINT (`^C` cancels the run)
 - [ ] #54 `@path/server` — cancel route (`POST /v0/runs/:root_run_id/cancel`)
 - [ ] #55 `@path/client-core` — `cancelRun()`
 - [ ] #56 `@path/viewer` — Cancel button
