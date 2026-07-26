@@ -77,11 +77,6 @@ function stubFetch(trees: WireRunRecord[][], stream: EventStream): { fetch: Fetc
   };
 }
 
-/** Let the microtask queue drain — the re-read is a promise chain, not a timer. */
-async function settle(): Promise<void> {
-  for (let i = 0; i < 10; i++) await Promise.resolve();
-}
-
 /** Resolve when `predicate` holds — the reconnect loop spans several turns of the event loop. */
 function waitFor(predicate: () => boolean): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -114,7 +109,10 @@ describe("connectRunViewModel", () => {
       step_type: "binary",
       worker: { type: "engine" },
     });
-    await settle();
+    // `runs.has(CHILD)` holds the moment the event folds — the placeholder node the fold creates
+    // carries `parentRunId: null`. The re-read landing is what fills the link in, so that is the
+    // condition to settle on; *which* parent it learned stays an assertion.
+    await waitFor(() => connected.model.getState().runs.get(CHILD)?.parentRunId != null);
 
     expect(connected.model.getState().runs.get(CHILD)?.parentRunId).toBe(ROOT);
     expect(stub.treeReads).toBe(2);
@@ -128,7 +126,9 @@ describe("connectRunViewModel", () => {
 
     const connected = await connectRunViewModel({ client, rootRunId: ROOT });
     stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", status: "succeeded" });
-    await settle();
+    // The re-read decision is made in the same callback turn as the fold, so once the status has
+    // moved, a re-read would already have been issued — `treeReads` staying 1 is decided by then.
+    await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "succeeded");
 
     expect(connected.model.getState().runs.get(CHILD)?.status).toBe("succeeded");
     expect(stub.treeReads).toBe(1);
@@ -177,7 +177,10 @@ describe("connectRunViewModel", () => {
 
     // The implicit root step finishing (`node_id: null`) is what closes the stream for good.
     stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: ROOT, node_id: null, status: "succeeded" });
-    await settle();
+    // The end below is a completion, not a drop, only if the terminal event was seen first — and the
+    // subscription records terminality before handing the event to the fold, so the root status
+    // moving means the stream already knows.
+    await waitFor(() => connected.model.getState().status === "succeeded");
     stream.end();
 
     await waitFor(() => connected.model.getState().stream === "closed");
