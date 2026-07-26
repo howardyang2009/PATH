@@ -23,33 +23,47 @@ pnpm -r run typecheck
 pnpm -r run test
 ```
 
-Run a workflow directly with the engine CLI:
+Run a workflow directly with the engine CLI (from the repo root):
 
 ```bash
-pnpm --filter @path/engine exec path run <workflow.json> [--config <config.json>] [--set key=value]...
-pnpm --filter @path/engine exec path runs rm <root-run-id>   # or: path runs prune
+npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>] [--set key=value]...
+npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune
 ```
 
 Or serve it over HTTP and watch it in the viewer:
 
 ```bash
-pnpm --filter @path/server exec path-server        # boots the v0 API + serves the built viewer
-pnpm --filter @path/viewer run dev                 # viewer dev server, proxies API calls
+pnpm --filter @path/viewer run build               # path-server serves dist/, so build it first
+npx tsx packages/server/bin/path-server.ts . --port 8080   # v0 API + the built viewer
+pnpm --filter @path/viewer run dev                 # or: viewer dev server, proxies API calls
 ```
+
+The bins are TypeScript entry points run through `tsx`; there is no build step and no linked
+`path`/`path-server` on your `PATH`, so `pnpm exec path-server` will not find them. `path-server`'s
+first argument is the project directory — where `.path/` is read and written — and it defaults to the
+cwd; the engine CLI instead derives its project directory from the workflow file's own location.
 
 ## Status (2026-07-26)
 
 Latest release: **v0.3.1** (viewer node-I/O stale-ref fix) — see `CHANGELOG.md` for the full history.
 
-In progress — **cancellation** (delegation plan: `docs/delegation-plan-cancellation.md`), stopping a
-run in flight from the CLI, the API, and the viewer:
+**Cancellation** (delegation plan: `docs/delegation-plan-cancellation.md`) — stopping a run in flight
+from the CLI, the API, and the viewer — is code-complete and has passed its acceptance run. The
+release decision (and so the version) is open; see `CHANGELOG.md` under Unreleased.
 
 - [x] #52 `@path/engine` external abort — cancel a root run in flight
 - [x] #53 `@path/engine` CLI — graceful SIGINT (`^C` cancels the run)
-- [ ] #54 `@path/server` — cancel route (`POST /v0/runs/:root_run_id/cancel`)
-- [ ] #55 `@path/client-core` — `cancelRun()`
-- [ ] #56 `@path/viewer` — Cancel button
-- [ ] #57 Acceptance — cancel the release-notes pipeline in flight (closes the phase)
+- [x] #54 `@path/server` — cancel route (`POST /v0/runs/:root_run_id/cancel`)
+- [x] #55 `@path/client-core` — `cancelRun()`
+- [x] #56 `@path/viewer` — Cancel button
+- [x] #57 Acceptance — cancel the release-notes pipeline in flight (closes the phase)
+
+Open, all three raised by #57's acceptance run:
+
+- [ ] #59 `@path/server` — `POST /v0/runs` passes the project root where the engine expects the
+      workflow file's directory, so a nested workflow ref never resolves
+- [ ] #60 A forced second `^C` leaves a lying `running` row, with nothing to reconcile it
+- [ ] #61 `@path/engine` CLI — `runs prune` ignores trailing arguments, so `--help` prunes everything
 
 ## Maintenance notes
 
