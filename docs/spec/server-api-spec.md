@@ -21,19 +21,18 @@ section back to its originating decision.
 
 - A new package, `@path/server`, TypeScript on Node LTS, alongside `@path/schema` and
   `@path/engine` in the existing monorepo.
-- One HTTP + SSE API surface (4 endpoints, v0): start a run, list runs, get run status/tree, stream
-  run events. Full contract: [docs/api/server-api-v0.md](../api/server-api-v0.md).
+- One HTTP + SSE API surface (v0): start a run, list runs, get run status/tree, stream run events,
+  cancel a run. Full contract: [docs/api/server-api-v0.md](../api/server-api-v0.md).
 - A separate CLI entry point, `path-server`, for starting the server against a fixed project
   directory.
-- No auth, no multi-project routing, no cancel-run capability — v0 keeps the same trust boundary
-  and execution guarantees `@path/engine`'s CLI already has, just reachable over HTTP.
+- No auth, no multi-project routing — v0 keeps the same trust boundary and execution guarantees
+  `@path/engine`'s CLI already has, just reachable over HTTP.
 
 **Out of scope** (ruled out by the map; return only via a redrawn destination):
 
 - Web monitor UI, Flutter multi-platform runner, visual workflow design UI — each is its own future
   map, blocked on this spec existing first.
-- Auth/tokens, multi-project routing, cancel-run — deferred; the door stays open (§6) but nothing
-  here builds it.
+- Auth/tokens, multi-project routing — deferred; the door stays open (§6) but nothing here builds it.
 - Any change to `@path/engine`'s execution semantics. This package is a pure wrapper: it imports
   and calls the engine, it does not extend what the engine can do.
 
@@ -59,9 +58,16 @@ section back to its originating decision.
   persistence and log backends are already keyed per root run (mvp spec §6, §8), and the LLM
   fan-out semaphore is already engine-wide rather than per-run (mvp spec §5.5) — nothing coordinates
   root runs against each other today, and this spec doesn't add anything that would.
-- **Cancellation**: no cancel-run endpoint. Root runs are never cancelled in the engine today (mvp
-  spec §5.6) — exposing cancellation over HTTP would require new engine-level capability, which is
-  explicitly out of scope for a wrapper package.
+- **Cancellation**: `POST /v0/runs/:root_run_id/cancel`, added by
+  [#54](https://github.com/howardyang2009/PATH/issues/54) once the engine gained external abort
+  ([#52](https://github.com/howardyang2009/PATH/issues/52)) — the blocker this spec originally
+  recorded. It stays a wrapper: the route holds the `AbortController` whose signal it handed
+  `runWorkflow`, keyed by `root_run_id`, and signalling it is the whole of what the route does. So
+  the engine's contract is the server's contract — best-effort, root runs only, no force path and no
+  deadline (mvp spec §5.6). The corollary is a real refusal: a run is cancellable only from the
+  process executing it, and `.path/path.db` is shared with `path run`, so a `running` row this
+  server did not start is a `409`, not a cancel. No `cancelling` status was added to the enum; the
+  unwind window is not modelled on the wire or in the db.
 
 ## 3. API contract
 
@@ -73,6 +79,7 @@ Normative: [docs/api/server-api-v0.md](../api/server-api-v0.md). Summary:
 | `GET /v0/runs` | List root runs, most recent first. |
 | `GET /v0/runs/:root_run_id` | Run status + full run tree. |
 | `GET /v0/runs/:root_run_id/events` | SSE stream of `LogEvent`s, with standard `Last-Event-ID` reconnect/replay off the NDJSON backend. |
+| `POST /v0/runs/:root_run_id/cancel` | Cancel a root run in flight (async — `202` once the abort is signalled, not once the run is terminal). |
 
 JSON bodies are snake_case, matching the existing wire conventions in this codebase (the log-event
 envelope, the workflow format's `max_iterations`) rather than the camelCase used in `@path/engine`'s
@@ -119,7 +126,6 @@ capability becomes reachable over HTTP, not that new engine capability gets buil
 | --- | --- |
 | Auth (bearer token) | localhost-only trust boundary stated explicitly (§2); additive header check |
 | Multi-project routing | single-fixed-root today; a project path per request is the additive shape |
-| Cancel-run endpoint | blocked on `@path/engine` gaining external abort capability first |
 | Db-backed SSE replay | v0 replays from NDJSON only; a database read-back query is the door if `ndjson` backend independence is ever needed |
 | Web monitor UI | own future map, consumes this API |
 | Flutter multi-platform runner | own future map, consumes this API |
@@ -130,7 +136,8 @@ capability becomes reachable over HTTP, not that new engine capability gets buil
 | Section | Decision ticket |
 | --- | --- |
 | Destination & scope (§1) | [map #29](https://github.com/howardyang2009/PATH/issues/29) |
-| Transport, package, execution model, auth, project scope, concurrency, cancellation (§2) | pre-chart grilling, recorded on [map #29](https://github.com/howardyang2009/PATH/issues/29) |
+| Transport, package, execution model, auth, project scope, concurrency (§2) | pre-chart grilling, recorded on [map #29](https://github.com/howardyang2009/PATH/issues/29) |
+| Cancellation (§2, §3) | [#54](https://github.com/howardyang2009/PATH/issues/54), unblocked by [#52](https://github.com/howardyang2009/PATH/issues/52) — supersedes the "no cancel-run capability" position recorded on [map #29](https://github.com/howardyang2009/PATH/issues/29) |
 | API endpoint surface (§3) | [#30](https://github.com/howardyang2009/PATH/issues/30) → [docs/api/server-api-v0.md](../api/server-api-v0.md) |
 | Event-stream reconnect/replay (§3) | [#31](https://github.com/howardyang2009/PATH/issues/31) |
 | API versioning (§4) | [#32](https://github.com/howardyang2009/PATH/issues/32) |

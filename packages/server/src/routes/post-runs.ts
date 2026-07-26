@@ -18,6 +18,7 @@ import { z } from "zod";
 import { createDeferred } from "../deferred.js";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import { createLiveLogBackend } from "../live-log-backend.js";
+import type { RunControllers } from "../run-controllers.js";
 import type { RunEventHub } from "../run-event-hub.js";
 
 const PostRunsBodySchema = z
@@ -47,6 +48,7 @@ export interface RunsRouteContext {
   projectDir: string;
   db: Database.Database;
   hub: RunEventHub;
+  controllers: RunControllers;
 }
 
 export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
@@ -94,8 +96,17 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   // Resolved as soon as `runWorkflow`'s `runStarted` hook fires — the async contract (§2): the
   // response goes out before the run finishes, not before it starts.
   const started = createDeferred<{ runId: string; rootRunId: string }>();
+  // The handle `POST /v0/runs/:root_run_id/cancel` (§4.2) aborts. It can only be filed under an id
+  // that exists, which is why registration waits for `runStarted` rather than happening here.
+  const controller = new AbortController();
+  let registeredRootRunId: string | undefined;
   const captureObserver: RunObserver = {
     runStarted(info) {
+      // Fires for every run in the tree, all sharing one `rootRunId` — register on the first only.
+      if (registeredRootRunId === undefined) {
+        registeredRootRunId = info.rootRunId;
+        ctx.controllers.register(info.rootRunId, controller);
+      }
       started.resolve({ runId: info.runId, rootRunId: info.rootRunId });
     },
   };
@@ -114,16 +125,20 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     files: tree.files,
     observer,
     llmConcurrency,
+    signal: controller.signal,
     warn: (message) => console.error(`warning: ${message}`),
   });
   // Fire-and-forget from the request's point of view: the run keeps executing after the response
   // goes out. Never left unhandled — a rejection here means `runStarted` never fired either, so it
-  // also settles `started` (a no-op if the response already went out).
+  // also settles `started` (a no-op if the response already went out). Either way the run is over,
+  // so its controller is dropped on every outcome — a long-lived server accumulates none.
   runPromise.then(
     (result) => {
+      if (registeredRootRunId !== undefined) ctx.controllers.delete(registeredRootRunId);
       if (result.status === "failed") console.error(`run failed: ${result.error}`);
     },
     (err) => {
+      if (registeredRootRunId !== undefined) ctx.controllers.delete(registeredRootRunId);
       started.reject(err);
       console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
     },

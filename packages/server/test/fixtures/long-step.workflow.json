@@ -1,0 +1,18 @@
+{
+  "format": "path/workflow@0",
+  "name": "long-step",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "linger",
+      "command": "node",
+      "args": [
+        "-e",
+        "require('fs').writeFileSync('long-step.alive','');setTimeout(()=>process.stdout.write('done'),10000)"
+      ],
+      "publish": { "result": "${output}" }
+    }
+  ],
+  "output": { "result": "${context.result}" }
+}

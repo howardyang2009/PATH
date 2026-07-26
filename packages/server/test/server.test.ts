@@ -1,7 +1,8 @@
-import { cpSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { dbFilePath, openDb, readNdjsonLog, type LogEvent } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startPathServer, type PathServerHandle } from "../src/create-server.js";
 
@@ -88,6 +89,22 @@ async function readSseStream(res: Response): Promise<SseFrame[]> {
     }
   }
   return frames;
+}
+
+async function cancelRun(rootRunId: string): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs/${rootRunId}/cancel`, { method: "POST" });
+}
+
+/**
+ * Waits until a cancellable fixture's child process is genuinely alive, by watching for the marker
+ * file it writes on startup (in the workflow file's directory — a binary step's default cwd).
+ * A `running` run row is not enough: it is written by `runStarted`, *before* the process spawns, and
+ * a cancel that lands in that window takes the engine's already-aborted fast path and never kills a
+ * process at all — the opposite of what these tests mean to exercise.
+ */
+async function pollUntilStepAlive(marker: string): Promise<void> {
+  const markerPath = join(projectDir, marker);
+  while (!existsSync(markerPath)) await new Promise((r) => setTimeout(r, 10));
 }
 
 async function pollUntilTerminal(rootRunId: string): Promise<RunTreeBody> {
@@ -429,5 +446,139 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     // No run.log for this run, and the channel's already closed (run finished) — nothing to
     // replay or forward, stream ends immediately.
     expect(frames).toEqual([]);
+  });
+});
+
+describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
+  /** Seeds a `running` root run row nothing in this process is executing — a CLI-launched run, or
+   *  one left behind by a crashed server. Written straight to the same `.path/path.db` the server
+   *  opened, which is exactly how `path run` makes such a row appear. */
+  function seedForeignRunningRun(rootRunId: string): void {
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      db.prepare(
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at)
+         VALUES (?, ?, NULL, NULL, NULL, 'running', ?)`,
+      ).run(rootRunId, rootRunId, new Date().toISOString());
+    } finally {
+      db.close();
+    }
+  }
+
+  it("202s, and the run actually ends cancelled with the row and the NDJSON log agreeing", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    // Cancel while the step's child process is genuinely alive, not between nodes — otherwise the
+    // kill path this route exists for never runs.
+    await pollUntilStepAlive("long-step.alive");
+
+    const res = await cancelRun(root_run_id);
+    expect(res.status).toBe(202);
+    expect(await res.json()).toEqual({ root_run_id });
+
+    // The 202 went out before the run was terminal (§4.2) — the real end state arrives later.
+    const finalBody = await pollUntilTerminal(root_run_id);
+    expect(finalBody.status).toBe("cancelled");
+    expect(finalBody.output).toBeNull();
+    const root = finalBody.runs.find((r) => r.parent_run_id === null)!;
+    expect(root.status).toBe("cancelled");
+    expect(finalBody.runs.find((r) => r.node_id === "linger")!.status).toBe("cancelled");
+
+    // The log tells the same story the rows do, and names the operator as the cause.
+    const events: LogEvent[] = readNdjsonLog(projectDir, root_run_id);
+    expect(events).toContainEqual(
+      expect.objectContaining({ type: "run-cancelled", node_id: "linger", cause: "operator", cause_run_id: null }),
+    );
+    expect(events.at(-1)).toMatchObject({ type: "step-finished", node_id: null, status: "cancelled" });
+    // The 10s step was killed, not waited out: the fixture never got to publish its result.
+    expect(events.some((e) => e.type === "step-finished" && e.node_id === "linger" && e.status === "succeeded")).toBe(
+      false,
+    );
+  });
+
+  it("404s for an unknown root_run_id", async () => {
+    const res = await cancelRun("00000000-0000-0000-0000-000000000000");
+    expect(res.status).toBe(404);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("00000000-0000-0000-0000-000000000000");
+  });
+
+  it("409s for a run that already finished, naming the status it actually reached", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
+
+    const res = await cancelRun(root_run_id);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("succeeded");
+  });
+
+  it("409s for a run that already ended cancelled — a cancel is not repeatable once it lands", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilStepAlive("long-step.alive");
+    expect((await cancelRun(root_run_id)).status).toBe(202);
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("cancelled");
+
+    const res = await cancelRun(root_run_id);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("cancelled");
+  });
+
+  it("409s for a `running` row this server process is not executing, saying so distinctly", async () => {
+    const foreignId = "11111111-1111-1111-1111-111111111111";
+    seedForeignRunningRun(foreignId);
+    // It is a real, visible run as far as every read endpoint is concerned.
+    expect(((await (await getRun(foreignId)).json()) as RunTreeBody).status).toBe("running");
+
+    const res = await cancelRun(foreignId);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("not executing in this server process");
+    // Distinct from the already-finished refusal — the operator can tell the two apart.
+    expect(body.error.message).not.toContain("already finished");
+  });
+
+  it("answers 202 again on a repeated cancel of a still-unwinding run (double-click is safe)", async () => {
+    // This fixture's step traps SIGTERM and takes ~600ms to go, so the unwind window the 202
+    // contract exists for is real and observable here rather than a sub-millisecond race.
+    const { root_run_id } = (await (await postRun({ workflow_path: "stubborn-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilStepAlive("stubborn-step.alive");
+
+    const first = await cancelRun(root_run_id);
+    expect(first.status).toBe(202);
+
+    // The 202 really did go out before the run became terminal — it is a signal-sent receipt, not a
+    // finished-cancelling one. Clients learn the terminal status from the stream they're watching.
+    expect(((await (await getRun(root_run_id)).json()) as RunTreeBody).status).toBe("running");
+
+    const second = await cancelRun(root_run_id);
+    expect(second.status).toBe(202);
+    expect(await second.json()).toEqual({ root_run_id });
+
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("cancelled");
+  });
+
+  it("is not swallowed by any other route: GET on the cancel path is a JSON 404, not a cancel", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilStepAlive("long-step.alive");
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/cancel`);
+    expect(res.status).toBe(404);
+    expect(res.headers.get("content-type")).toMatch(/application\/json/);
+    // The run is untouched — a GET must never abort anything.
+    expect(((await (await getRun(root_run_id)).json()) as RunTreeBody).status).toBe("running");
+
+    await cancelRun(root_run_id);
+    await pollUntilTerminal(root_run_id);
   });
 });

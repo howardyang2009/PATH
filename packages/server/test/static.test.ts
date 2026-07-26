@@ -55,6 +55,19 @@ describe("@path/server static file serving + SPA fallback", () => {
     expect(body.error.message).toBeTruthy();
   });
 
+  it("does not swallow the cancel route: it answers JSON, never the SPA index", async () => {
+    const cancelPath = `${handle.url}/v0/runs/00000000-0000-0000-0000-000000000000/cancel`;
+    // The route itself, reached with a static bundle configured — a JSON 404 for an unknown run.
+    const posted = await fetch(cancelPath, { method: "POST" });
+    expect(posted.status).toBe(404);
+    expect(posted.headers.get("content-type")).toMatch(/application\/json/);
+
+    // And the same path under a method it doesn't serve stays inside the API namespace.
+    const got = await fetch(cancelPath);
+    expect(got.status).toBe(404);
+    expect(got.headers.get("content-type")).toMatch(/application\/json/);
+  });
+
   it("does not serve files outside the static root (path traversal is rejected)", async () => {
     const res = await fetch(`${handle.url}/../../etc/passwd`);
     // Normalized away by the URL/fallback; the client never escapes the static root.

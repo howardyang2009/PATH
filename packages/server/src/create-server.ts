@@ -4,16 +4,19 @@ import { fileURLToPath } from "node:url";
 import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engine";
 import type Database from "better-sqlite3";
 import { sendError } from "./http-json.js";
+import { handleCancelRun } from "./routes/cancel-run.js";
 import { handleGetRun } from "./routes/get-run.js";
 import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
+import { RunControllers } from "./run-controllers.js";
 import { RunEventHub } from "./run-event-hub.js";
 import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
+const RUN_CANCEL_ROUTE = /^\/v0\/runs\/([^/]+)\/cancel$/;
 const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
 
 /**
@@ -45,6 +48,12 @@ async function handleRequest(
 
     if (req.method === "GET" && pathname === "/v0/runs") {
       handleListRuns(res, ctx, url.searchParams);
+      return;
+    }
+
+    const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
+    if (req.method === "POST" && cancelMatch) {
+      handleCancelRun(res, ctx, decodeURIComponent(cancelMatch[1]!));
       return;
     }
 
@@ -108,7 +117,12 @@ export async function startPathServer(
   const db: Database.Database = openDb(dbFilePath(absProjectDir));
 
   const absStaticDir = resolve(staticDir);
-  const ctx: RunsRouteContext = { projectDir: absProjectDir, db, hub: new RunEventHub() };
+  const ctx: RunsRouteContext = {
+    projectDir: absProjectDir,
+    db,
+    hub: new RunEventHub(),
+    controllers: new RunControllers(),
+  };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

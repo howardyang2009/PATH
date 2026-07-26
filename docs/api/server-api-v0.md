@@ -20,10 +20,10 @@ breaking change to the contract ships as `/v1` alongside it, never a silent resh
 - No auth. Localhost-bind only.
 - Single fixed project root per server instance, set at startup — one `.path/` tree, like `path run`.
 - Multiple root runs may execute concurrently; no server-side queueing.
-- No cancel-run endpoint yet. The engine gained external abort in
-  [#52](https://github.com/howardyang2009/PATH/issues/52), so a root run *is* cancellable (mvp spec
-  §5.6); exposing it as `POST /v0/runs/:root_run_id/cancel` belongs to
-  [#54](https://github.com/howardyang2009/PATH/issues/54) and is not shipped here.
+- Cancellation is **best-effort and root-only** (mvp spec §5.6), because that is exactly what the
+  engine's external abort ([#52](https://github.com/howardyang2009/PATH/issues/52)) delivers — the
+  server does not promise more than the engine does. No force/kill escalation, no timeout, and no
+  route for cancelling a nested run or a single step. The endpoint is §4.2.
 
 ## 1. Conventions
 
@@ -151,6 +151,42 @@ the route serves what it reads.
 - `404 Not Found` if `root_run_id` is unknown, `run_id` is not in that root's tree, `name` is not a
   served blob, or the blob file is absent (a run has no output until it finishes).
 - `context`/`stderr` blobs are deferred (map #40) — they resolve as unknown names.
+
+### 4.2 `POST /v0/runs/:root_run_id/cancel` — stop a root run in flight
+
+Added by issue [#54](https://github.com/howardyang2009/PATH/issues/54), once the engine could be
+aborted from outside ([#52](https://github.com/howardyang2009/PATH/issues/52)). A **named action**,
+not a mutation of a status field and not a `DELETE` — `DELETE` keeps meaning "remove the record" if
+it ever ships, and the run record is the audit trail, which must survive a cancel. No request body.
+
+Root runs only, and best-effort: this signals the abort the engine already understands and adds no
+force path and no deadline of its own (§0).
+
+Responses:
+
+- `202 Accepted` — the abort was **signalled**:
+  ```json
+  { "root_run_id": "<uuid>" }
+  ```
+  Like `POST /v0/runs` (§2), the response goes out before the run finishes: an in-flight SDK turn can
+  take seconds to unwind and there is no bound to hang a request on. The client learns the real
+  terminal status from the SSE stream (§5) it is already watching, or by polling §4 — not from this
+  response. The status enum is unchanged; there is no `cancelling` status on the wire or in the db,
+  so a client that wants to show the unwind window holds that state locally.
+
+  Repeating the call while the run is still unwinding answers `202` again — aborting an already
+  aborted run is a no-op, so a double click is safe.
+- `404 Not Found` — no run with that `root_run_id`.
+- `409 Conflict` — the run exists but already reached a terminal status; the message names which one.
+- `409 Conflict` — the run's row says `running` but it is **not executing in this server process**,
+  so there is nothing here to abort. Runs are cancellable only from the process running them (spec
+  §2), and `.path/path.db` is shared: a `path run` launched from the CLI appears in §3 and §4, and so
+  does any run left behind by an earlier crashed process. The route refuses rather than reporting a
+  cancel it cannot perform.
+
+Nothing about the run's event stream is special-cased for a cancel — its terminal events (a
+`run-cancelled` naming the `operator` cause, then the root's `step-finished`) flow through §5 exactly
+as a failure's would.
 
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 
