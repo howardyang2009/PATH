@@ -66,12 +66,11 @@ describe("PathApiClient", () => {
     await expect(client.cancelRun("r1")).resolves.toBeUndefined();
   });
 
-  // The messages here are the ones `routes/cancel-run.ts` actually sends: these tests are the only
-  // place the two halves of the route are written down together, so an invented message tests nothing.
+  // One 409 is enough — the client cannot tell an already-terminal run from one this server process
+  // is not executing, and does not try to; that the route sends both is `server.test.ts`'s to prove.
   it.each([
     [404, "an unknown run", `no run found with id "r1"`],
-    [409, "an already-terminal run", `run "r1" already finished with status "succeeded"`],
-    [409, "a run this process is not executing", `run "r1" is not executing in this server process and cannot be cancelled`],
+    [409, "a run that cannot be cancelled", `run "r1" already finished with status "succeeded"`],
   ])("cancelRun surfaces the %i for %s with its status and the server's message", async (status, _case, message) => {
     const stub = stubFetch(() => json({ error: { message } }, status));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
