@@ -133,3 +133,90 @@ describe("handlePostRuns — controller registry lifecycle", () => {
     expect(ctx.controllers.size).toBe(0);
   });
 });
+
+/**
+ * The path `runWorkflow` explicitly does not control: "any other thrown error is a bug and
+ * propagates — it is not swallowed into a failed run". There is no terminal event on it, so the
+ * live backend's `close` never runs, and before #74 the hub channel outlived the run — leaving every
+ * subscribed SSE client hanging, because `res.end()` is wired to the channel's close listener.
+ *
+ * Reproduced by standing in for the engine: drive the observers and backends the way a real run's
+ * `run-started` does, then reject without ever emitting a terminal event.
+ */
+describe("handlePostRuns — a run that rejects without a terminal event", () => {
+  const CRASHED_ROOT = "crashed-root-1";
+
+  function crashingProject(): Project {
+    return {
+      ...project,
+      async run(_rootFile, _workflowDir, opts = {}) {
+        for (const backend of opts.extraBackends ?? []) {
+          await backend.open({ runId: CRASHED_ROOT, format: "path/log@0" });
+        }
+        for (const observer of opts.extraObservers ?? []) {
+          await observer.observe({
+            type: "run-started",
+            runId: CRASHED_ROOT,
+            rootRunId: CRASHED_ROOT,
+            parentRunId: null,
+            nodeId: null,
+            input: {},
+            worker: { type: "engine" },
+          });
+        }
+        throw new Error("engine bug");
+      },
+    };
+  }
+
+  async function postCrashingRun(): Promise<void> {
+    ctx = { ...ctx, project: crashingProject() };
+    const req = Readable.from([
+      Buffer.from(JSON.stringify({ workflow_path: "two-binary-steps.workflow.json" })),
+    ]) as IncomingMessage;
+    await handlePostRuns(req, fakeResponse().res, ctx);
+    // Let the rejection handler and the `.finally()` that follows it take their turns.
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 5));
+  }
+
+  it("leaves no live channel behind", async () => {
+    await postCrashingRun();
+    expect(ctx.hub.subscribe(CRASHED_ROOT, () => {}, () => {})).toBeNull();
+  });
+
+  it("ends its subscribed clients rather than leaving them hanging", async () => {
+    ctx = { ...ctx, project: crashingProject() };
+    let ended = false;
+
+    // Subscribe the moment the channel opens, as a `GET /events` request would.
+    const originalRun = ctx.project.run.bind(ctx.project);
+    ctx = {
+      ...ctx,
+      project: {
+        ...ctx.project,
+        async run(rootFile, workflowDir, opts) {
+          const result = originalRun(rootFile, workflowDir, opts);
+          queueMicrotask(() => {
+            ctx.hub.subscribe(CRASHED_ROOT, () => {}, () => {
+              ended = true;
+            });
+          });
+          return result;
+        },
+      },
+    };
+
+    const req = Readable.from([
+      Buffer.from(JSON.stringify({ workflow_path: "two-binary-steps.workflow.json" })),
+    ]) as IncomingMessage;
+    await handlePostRuns(req, fakeResponse().res, ctx);
+    for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 5));
+
+    expect(ended).toBe(true);
+  });
+
+  it("drops the controller too", async () => {
+    await postCrashingRun();
+    expect(ctx.controllers.size).toBe(0);
+  });
+});

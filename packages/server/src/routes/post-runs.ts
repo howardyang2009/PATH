@@ -134,10 +134,18 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
         console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
       },
     )
-    // However it ended, the run is over: dropping the controller here rather than in each arm is
-    // what makes "on every outcome" true by construction, so a long-lived server accumulates none.
+    // However it ended, the run is over. Tearing both registries down here rather than in each arm
+    // is what makes "on every outcome" true by construction, so a long-lived server accumulates
+    // neither.
     .finally(() => {
-      if (registeredRootRunId !== undefined) ctx.controllers.delete(registeredRootRunId);
+      if (registeredRootRunId === undefined) return; // never started; neither registry has an entry
+      ctx.controllers.delete(registeredRootRunId);
+      // Normally already closed: the root run's terminal event drives the live backend's `close`.
+      // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
+      // with a propagating bug rather than converting it to a failed run. Without it the channel
+      // outlives the run and every subscribed SSE client hangs open, since `res.end()` is wired to
+      // the channel's close listener. Idempotent, so the normal path is unaffected.
+      ctx.hub.close(registeredRootRunId);
     });
 
   let ids: { runId: string; rootRunId: string };
