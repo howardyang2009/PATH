@@ -1,5 +1,88 @@
 # Changelog
 
+## v0.4.1 — 2026-07-27
+
+Patch: one leak fixed, and the interior given the seams the cancellation phase kept revealing it
+lacked. v0.4.0's acceptance run found its bugs by running the whole system, because there was no
+smaller thing to run — `run-workflow.ts` had three exports and no internal joints, five recursions
+walked the same node tree, and the condition language was implemented once to validate and again to
+evaluate. Seven refactors close that gap. The public surface does not move: `runWorkflow`,
+`RunOptions`, `RunResult` and the v0 wire format are unchanged, and every existing test passes
+untouched at each step — 630, 653, 663, 685 as the suites grew.
+
+Two changes are visible from outside despite the patch number, both consequences of #64, and both
+documented in `docs/api/server-api-v0.md`: API-launched runs now honour `.path/settings.json`, which
+they never did though the API doc has always described the request fields as "Same as `path run`";
+and a malformed settings file now fails server startup rather than being skipped.
+
+`@path/client-core` also stops depending on `@path/engine`. A package documented as "pure-TS,
+zero-framework" carried a runtime edge to one shipping better-sqlite3, `node:child_process` and the
+Agent SDK, for five `import type`s naming two pieces of domain vocabulary. Its `dependencies` is one
+entry now.
+
+### Fixes
+
+- fix(server): close the live channel where the run's controller is dropped (resolves #74)
+
+  Two registries tracked one live run and only one was torn down where the run ends. The controller
+  registry was dropped in `post-runs.ts`; the hub channel was opened and closed by the live-forwarding
+  backend, off the root run's `run-started`/`run-finished` — nothing the server controls.
+  `runWorkflow` drives `run-finished` on every path it controls, so normal and failing runs both close
+  cleanly. The gap is the path it explicitly does not control: "any other thrown error is a bug and
+  propagates". No terminal event, so `close` never runs, the channel outlives the run, and every
+  subscribed SSE client hangs open forever — `res.end()` is wired to the channel's close listener. The
+  `.finally()` that already existed to make cleanup true by construction now tears down both.
+  Verified against the defect: reverting the two added lines turns both leak tests red.
+
+### Internal
+
+- feat(engine): a Project module owns the run assembly (resolves #64) — running one workflow correctly
+  took five modules wired in a required order, and the three callers that did it by hand disagreed.
+  Three things stop being *possible* rather than stop being wrong: the directory pair (#59 is no
+  longer expressible — no call site supplies both `projectDir` and `workflowDir`), the
+  persistence-before-logging observer order, and the settings precedence rule.
+
+- refactor(schema): own the runtime vocabulary, not just the workflow format (resolves #66) — schema
+  was the source of truth for what an *author* writes; nothing owned what an *execution* produces, so
+  `RunStatus` lived in the SQLite module, `LogEvent` beside the log backends, and the v0 wire record
+  was declared five times. The server encoded it and the client decoded it from structurally unrelated
+  types in packages with no dependency between them, agreeing only by a prose comment — a renamed
+  field type-checked on both sides and broke at runtime in the browser.
+
+- refactor(schema): one condition grammar, not half a module in each package (resolves #68) — the
+  `${}` tokenizer existed twice and the engine's copy was correct only because the validator had run
+  first, with nothing enforcing that order; an unvalidated string got a silently truncated result
+  instead of an error. One tokenizer, one dot-path walk, one operator list, one declaration per root
+  set.
+
+- refactor(schema): one walk over the node tree, not five (resolves #70) — four of the five recursions
+  ended in `default: break`, so a new block type was silently skipped by id-uniqueness,
+  publish-collision and `workflow`-ref scanning rather than rejected. Verified by simulation: adding a
+  `wait-one` block type produces **0 compile errors before, 2 after**.
+
+- refactor(engine): a run store of run facts, not an insert-then-update dance (resolves #72) —
+  recording one run took four calls in a required order, written out three times. The blob path and
+  the row's ref were built separately from the same pieces, one with the host separator and one always
+  forward slashes; a mismatch left the bytes on disk and the row pointing elsewhere, with no error and
+  no failing test.
+
+- refactor(engine): give the node walk a real interface (resolves #76) — four overlapping context bags
+  become two plus a composition of them, and the walkers move to module scope so `runBranchNode`,
+  `runWhileDoNode` and the rest can be called directly. `merge-config.ts` (11 lines of object spread)
+  had a unit test while the branch, loop and join semantics carrying mvp spec §5.2–5.6 did not; they
+  do now.
+
+- refactor(engine): the Observation union, and one required `observe()` (#62) — a partial adapter no
+  longer compiles, so masking cannot be applied to some of the seam and not the rest.
+
+### Other
+
+- ci: `pnpm typecheck` and the full test suite run on every pull request to `main`, on Node 22 with
+  the pinned pnpm from `packageManager`.
+- chore: `main` is protected — PR-only, `test` required green. A tracked `.githooks/pre-commit`
+  refuses a commit made on `main`, since one made there could never be pushed anyway.
+- docs(context): Observation defined, and Log event as its narrated subset (#62).
+
 ## v0.4.0 — 2026-07-26
 
 The **cancellation** phase (`docs/delegation-plan-cancellation.md`): stopping a run in flight from the
