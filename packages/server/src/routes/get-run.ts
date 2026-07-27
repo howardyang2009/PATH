@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
 import { getRunsForRoot, readJsonBlob, runBlobDir } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
-import { toWireRunRecord } from "../wire-run-record.js";
+import { toWireRunRecord } from "@path/schema";
 import type { RunsRouteContext } from "./post-runs.js";
 
 export function handleGetRun(res: ServerResponse, ctx: RunsRouteContext, rootRunId: string): void {

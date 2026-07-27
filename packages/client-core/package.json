@@ -12,7 +12,6 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@path/engine": "workspace:*",
     "@path/schema": "workspace:*"
   },
   "devDependencies": {

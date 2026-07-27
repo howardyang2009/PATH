@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { LogEventSchema } from "../../src/logging/log-event.js";
+import { LogEventSchema } from "@path/schema";
 import { createNdjsonBackend, readNdjsonLog } from "../../src/logging/ndjson-backend.js";
 import { rootRunTreeDir } from "../../src/persistence/paths.js";
 

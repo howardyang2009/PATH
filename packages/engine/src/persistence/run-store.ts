@@ -1,9 +1,9 @@
 import type Database from "better-sqlite3";
-import type { JsonValue, Worker } from "@path/schema";
+import type { JsonValue, RunRecord, RunStatus, TerminalRunStatus, Worker } from "@path/schema";
 
-/** Run rows exist for step runs only (domain invariant 1); mvp spec §5.7. */
-export const RUN_STATUSES = ["pending", "running", "succeeded", "failed", "cancelled"] as const;
-export type RunStatus = (typeof RUN_STATUSES)[number];
+// `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
+// What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
+export { RUN_STATUSES, type RunStatus, type RunRecord } from "@path/schema";
 
 export interface NewRunRow {
   runId: string;
@@ -29,7 +29,7 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
   });
 }
 
-export function finishRun(db: Database.Database, runId: string, status: "succeeded" | "failed" | "cancelled"): void {
+export function finishRun(db: Database.Database, runId: string, status: TerminalRunStatus): void {
   db.prepare(`UPDATE runs SET status = @status, finished_at = @finishedAt WHERE run_id = @runId`).run({
     status,
     finishedAt: new Date().toISOString(),
@@ -67,21 +67,6 @@ export function setRunUsage(db: Database.Database, runId: string, spend: RunUsag
     cost: spend.estimatedCostUsd,
     runId,
   });
-}
-
-export interface RunRecord {
-  runId: string;
-  rootRunId: string;
-  parentRunId: string | null;
-  nodeId: string | null;
-  worker: Worker | null;
-  status: RunStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
-  inputRef: string | null;
-  outputRef: string | null;
-  usage: JsonValue | null;
-  estimatedCostUsd: number | null;
 }
 
 interface RunRowDb {

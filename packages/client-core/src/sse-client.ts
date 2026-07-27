@@ -1,4 +1,4 @@
-import type { LogEvent } from "@path/engine";
+import type { LogEvent } from "@path/schema";
 import { defaultFetch, type FetchLike } from "./api-client.js";
 
 /**

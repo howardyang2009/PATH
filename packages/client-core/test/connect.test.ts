@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { PathApiClient, type FetchLike } from "../src/api-client.js";
 import { connectRunViewModel } from "../src/connect.js";
-import type { WireRunRecord } from "../src/wire-types.js";
+import type { WireRunRecord } from "@path/schema";
 
 const ROOT = "root-1";
 const CHILD = "child-1";

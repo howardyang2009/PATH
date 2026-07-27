@@ -1,5 +1,15 @@
-// @path/schema — the single source of truth for workflow format v0.
-// Normative reference: docs/format/workflow-format-v0.md; spec: docs/spec/mvp-spec.md §4.
+// @path/schema — the single source of truth for the PATH domain: what an author writes, and the
+// vocabulary its execution produces.
+//
+//   Workflow format v0 — steps, workers, control blocks, conditions, config, interpolation.
+//     Normative reference: docs/format/workflow-format-v0.md; spec: docs/spec/mvp-spec.md §4.
+//   Runtime vocabulary — run status, the log-event stream, condition traces, the run record, and
+//     the v0 wire shapes that carry them. Normative reference: docs/api/server-api-v0.md.
+//
+// The runtime half lives here rather than in @path/engine because a *reader* of a run needs it
+// without needing an engine to read one: `@path/client-core` runs in a browser and would otherwise
+// depend on a package carrying SQLite, child processes and the Agent SDK for two type-only names.
+// The line is what a run *is* (here) versus how a run is *stored* or *executed* (@path/engine).
 
 export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";
@@ -58,3 +68,37 @@ export {
   type InterpolationCheckResult,
 } from "./interpolation.js";
 export { formatIssues } from "./format-issues.js";
+
+// ── Runtime vocabulary ────────────────────────────────────────────────────────────────────────
+export {
+  isTerminal,
+  RUN_STATUSES,
+  RunStatusSchema,
+  TERMINAL_RUN_STATUSES,
+  TerminalRunStatusSchema,
+  type RunStatus,
+  type TerminalRunStatus,
+} from "./run-status.js";
+export type { AllTrace, AnyTrace, ConditionOutcome, LeafTrace, NotTrace, Trace } from "./trace.js";
+export { TraceSchema } from "./trace.js";
+export {
+  LogEventSchema,
+  type JoinAppliedEvent,
+  type LogEvent,
+  type RunCancelledEvent,
+  type StepFinishedEvent,
+  type StepStartedEvent,
+} from "./log-event.js";
+export type { RunRecord } from "./run-record.js";
+export {
+  fromWireRunRecord,
+  toRootRunSummary,
+  toWireRunRecord,
+  type BlobName,
+  type ListRunsResponse,
+  type RootRunSummary,
+  type RunTreeResponse,
+  type StartRunResponse,
+  type WireError,
+  type WireRunRecord,
+} from "./wire-v0.js";

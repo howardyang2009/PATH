@@ -1,4 +1,4 @@
-import type { LogEvent } from "@path/engine";
+import type { LogEvent } from "@path/schema";
 
 type EventListener = (event: LogEvent) => void;
 type CloseListener = () => void;

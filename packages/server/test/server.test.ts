@@ -2,7 +2,8 @@ import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dbFilePath, openDb, readNdjsonLog, type LogEvent } from "@path/engine";
+import { dbFilePath, openDb, readNdjsonLog } from "@path/engine";
+import type { LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startPathServer, type PathServerHandle } from "../src/create-server.js";
 

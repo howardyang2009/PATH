@@ -1,6 +1,7 @@
-import { WorkerSchema } from "@path/schema";
 import { z } from "zod";
-import { TraceSchema } from "../condition.js";
+import { TerminalRunStatusSchema } from "./run-status.js";
+import { TraceSchema } from "./trace.js";
+import { WorkerSchema } from "./worker.js";
 
 /**
  * The typed log-event stream (mvp spec §8.1). Every event shares an envelope — `seq` (monotonic
@@ -39,7 +40,7 @@ const StepFinishedSchema = z
   .object({
     type: z.literal("step-finished"),
     ...envelope,
-    status: z.enum(["succeeded", "failed", "cancelled"]),
+    status: TerminalRunStatusSchema,
     // Present only on a non-success outcome. For a binary step this message carries the exit code
     // and a short stderr tail (mvp spec §8.1); the full stderr lives in a blob (§6).
     error: z.string().optional(),

@@ -1,7 +1,6 @@
-import type { LogEvent } from "@path/engine";
 import { describe, expect, it, vi } from "vitest";
 import { RunViewModel, type RunViewState } from "../src/view-model.js";
-import type { RunTreeResponse } from "../src/wire-types.js";
+import type { LogEvent, RunTreeResponse } from "@path/schema";
 
 const ROOT = "root-1";
 const CHILD = "child-1";
