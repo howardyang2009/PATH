@@ -3,6 +3,7 @@ import { ConfigObjectSchema } from "./config.js";
 import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
+import { childBodies, walkNodes } from "./node-walk.js";
 import { NodeArraySchema } from "./nodes.js";
 import { STEP_ROOTS } from "./roots.js";
 import { WorkerSchema } from "./worker.js";
@@ -36,27 +37,12 @@ function collectIds(nodes: WorkflowNode[], basePath: (string | number)[]): IdOcc
     const nodePath = [...basePath, index];
     found.push({ id: node.id, path: [...nodePath, "id"] });
 
-    switch (node.type) {
-      case "parallel":
-        node.branches.forEach((branch, branchIndex) => {
-          const branchPath = [...nodePath, "branches", branchIndex];
-          found.push({ id: branch.id, path: [...branchPath, "id"] });
-          found.push(...collectIds(branch.body, [...branchPath, "body"]));
-        });
-        break;
-      case "branch":
-        node.arms.forEach((arm, armIndex) => {
-          found.push(...collectIds(arm.body, [...nodePath, "arms", armIndex, "body"]));
-        });
-        if (node.else) {
-          found.push(...collectIds(node.else, [...nodePath, "else"]));
-        }
-        break;
-      case "while-do":
-        found.push(...collectIds(node.body, [...nodePath, "body"]));
-        break;
-      default:
-        break;
+    for (const child of childBodies(node)) {
+      // A parallel branch's own id is not a node's, and is unique on the same terms.
+      if (child.branchId !== undefined) {
+        found.push({ id: child.branchId, path: [...nodePath, ...child.path.slice(0, -1), "id"] });
+      }
+      found.push(...collectIds(child.nodes, [...nodePath, ...child.path]));
     }
   });
 
@@ -64,39 +50,16 @@ function collectIds(nodes: WorkflowNode[], basePath: (string | number)[]): IdOcc
 }
 
 // Publish keys are static strings, so a race between sibling parallel branches writing the same
-// context key is detectable — and rejected — at load time (workflow-format-v0.md §10). Recurses
-// through nested control blocks (a branch's publish may sit inside a nested while-do/branch/
-// parallel) but not into a `workflow` step's ref'd file: that file has its own isolated context.
+// context key is detectable — and rejected — at load time (workflow-format-v0.md §10). Walks nested
+// control blocks but not into a `workflow` step's ref'd file: that file has its own isolated
+// context (childBodies does not descend there).
 function collectPublishKeys(nodes: WorkflowNode[]): string[] {
   const keys: string[] = [];
-
-  for (const node of nodes) {
+  for (const node of walkNodes(nodes)) {
     if ((node.type === "prompt" || node.type === "binary" || node.type === "workflow") && node.publish) {
       keys.push(...Object.keys(node.publish));
     }
-
-    switch (node.type) {
-      case "parallel":
-        for (const branch of node.branches) {
-          keys.push(...collectPublishKeys(branch.body));
-        }
-        break;
-      case "branch":
-        for (const arm of node.arms) {
-          keys.push(...collectPublishKeys(arm.body));
-        }
-        if (node.else) {
-          keys.push(...collectPublishKeys(node.else));
-        }
-        break;
-      case "while-do":
-        keys.push(...collectPublishKeys(node.body));
-        break;
-      default:
-        break;
-    }
   }
-
   return keys;
 }
 
@@ -111,37 +74,21 @@ function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | num
   nodes.forEach((node, index) => {
     const nodePath = [...basePath, index];
 
-    switch (node.type) {
-      case "parallel": {
-        const firstSeenInBranch = new Map<string, number>();
-        node.branches.forEach((branch, branchIndex) => {
-          for (const key of new Set(collectPublishKeys(branch.body))) {
-            if (firstSeenInBranch.has(key)) {
-              collisions.push({ key, path: [...nodePath, "branches", branchIndex] });
-            } else {
-              firstSeenInBranch.set(key, branchIndex);
-            }
+    // Only *concurrent* siblings can race. Branch arms are alternatives (one runs) and while-do
+    // iterations are sequential, so neither collides with itself — `concurrent` is the rule.
+    const firstSeenIn = new Map<string, number>();
+    childBodies(node).forEach((child, childIndex) => {
+      if (child.concurrent) {
+        for (const key of new Set(collectPublishKeys(child.nodes))) {
+          if (firstSeenIn.has(key)) {
+            collisions.push({ key, path: [...nodePath, ...child.path.slice(0, -1)] });
+          } else {
+            firstSeenIn.set(key, childIndex);
           }
-          collisions.push(
-            ...findDuplicatePublishKeys(branch.body, [...nodePath, "branches", branchIndex, "body"]),
-          );
-        });
-        break;
-      }
-      case "branch":
-        node.arms.forEach((arm, armIndex) => {
-          collisions.push(...findDuplicatePublishKeys(arm.body, [...nodePath, "arms", armIndex, "body"]));
-        });
-        if (node.else) {
-          collisions.push(...findDuplicatePublishKeys(node.else, [...nodePath, "else"]));
         }
-        break;
-      case "while-do":
-        collisions.push(...findDuplicatePublishKeys(node.body, [...nodePath, "body"]));
-        break;
-      default:
-        break;
-    }
+      }
+      collisions.push(...findDuplicatePublishKeys(child.nodes, [...nodePath, ...child.path]));
+    });
   });
 
   return collisions;

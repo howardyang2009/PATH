@@ -540,10 +540,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       } else if (node.type === "while-do") {
         outcome = await runWhileDoNode(node, previous, exec);
       } else {
-        // Unreachable for the format as it stands — every declared node type is walked above. The
-        // guard survives for a node type that lands in the format before the engine walks it: it
-        // must fail the run loudly rather than be silently skipped.
-        const unknown = node as { type: string; id: string };
+        // Two guards, deliberately. The `never` assertion is the compile-time one: if the format
+        // gains a node type this dispatch does not walk, the build fails rather than someone
+        // discovering it by running a workflow. The runtime branch below survives anyway, because a
+        // hand-constructed `WorkflowFile` can reach the engine without passing the schema — it must
+        // fail the run loudly rather than be silently skipped.
+        const unwalked: never = node;
+        const unknown = unwalked as { type: string; id: string };
         return {
           status: "failed",
           error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
