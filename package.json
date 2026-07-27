@@ -6,6 +6,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "prepare": "git config core.hooksPath .githooks || true",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
     "sandcastle": "tsx .sandcastle/main.mts"
