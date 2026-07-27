@@ -10,7 +10,7 @@ import { LogEventSchema } from "../../src/logging/log-event.js";
 import { getLogEventsForRoot } from "../../src/logging/log-store.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
-import { rootRunTreeDir, runBlobDir } from "../../src/persistence/paths.js";
+import { dbFilePath, rootRunTreeDir, runBlobDir } from "../../src/persistence/paths.js";
 import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../../src/persistence/run-store.js";
 import { composeObservers, type RunObserver } from "../../src/run-observer.js";
@@ -21,7 +21,7 @@ let db: Database.Database;
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "path-engine-logging-integration-test-"));
-  db = openDb(join(projectDir, ".path", "path.db"));
+  db = openDb(dbFilePath(projectDir));
 });
 
 afterEach(() => {

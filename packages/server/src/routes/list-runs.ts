@@ -26,7 +26,7 @@ export function handleListRuns(res: ServerResponse, ctx: RunsRouteContext, query
   }
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
 
-  const rows = listRootRuns(ctx.db, { limit, status });
+  const rows = listRootRuns(ctx.project.db, { limit, status });
   sendJson(res, 200, {
     runs: rows.map((row) => ({
       run_id: row.runId,

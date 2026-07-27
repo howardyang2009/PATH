@@ -50,7 +50,7 @@ export function handleGetRunEvents(
 ): void {
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns (runStarted has
   // fired), so any id a client could hold is already queryable here.
-  if (getRunsForRoot(ctx.db, rootRunId).length === 0) {
+  if (getRunsForRoot(ctx.project.db, rootRunId).length === 0) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;
   }
@@ -81,7 +81,7 @@ export function handleGetRunEvents(
 
   res.writeHead(200, SSE_HEADERS);
 
-  for (const event of readReplayEvents(ctx.projectDir, rootRunId, afterSeq)) deliver(event);
+  for (const event of readReplayEvents(ctx.project.dir, rootRunId, afterSeq)) deliver(event);
   for (const event of buffered) deliver(event);
   live = true;
 

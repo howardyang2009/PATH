@@ -3,25 +3,14 @@ import { dirname } from "node:path";
 import type Database from "better-sqlite3";
 import type { ConfigObject } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
-import {
-  createLogBackends,
-  DEFAULT_LOG_BACKENDS,
-  isLogBackendId,
-  LOG_BACKEND_IDS,
-  type LogBackendId,
-} from "./logging/backends.js";
+import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
-import { createLoggingObserver } from "./logging/logging-observer.js";
 import { mergeConfig } from "./merge-config.js";
 import { dirExists, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
-import { ensurePathDirGitignore } from "./persistence/gitignore.js";
-import { dbFilePath, pathDir, rootRunTreeDir, runsDir } from "./persistence/paths.js";
-import { createPersistedObserver } from "./persistence/persisted-observer.js";
+import { dbFilePath, rootRunTreeDir, runsDir } from "./persistence/paths.js";
+import { openProject } from "./project.js";
 import { deleteAllRuns, deleteRunsForRoot } from "./persistence/run-store.js";
-import { loadEngineSettings } from "./settings/engine-settings.js";
-import { composeObservers } from "./run-observer.js";
-import { runWorkflow } from "./run-workflow.js";
 
 export interface CliIo {
   log(message: string): void;
@@ -258,47 +247,39 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 1;
   }
 
-  const projectDir = dirname(tree.rootPath);
-  ensurePathDirGitignore(pathDir(projectDir));
-
-  // Engine-level settings (ticket #27), kept strictly apart from the operator *workflow* Config
-  // built above: these are read by the engine, never by a step, and never merge into `${config.x}`.
-  const loadedSettings = loadEngineSettings(projectDir);
-  if (!loadedSettings.success) {
-    io.error(loadedSettings.error);
-    return 2;
-  }
-  const { settings } = loadedSettings;
-
-  const opened = openDbOrReport(dbFilePath(projectDir));
+  // The CLI's project directory *is* the workflow file's own directory — it runs one file, in
+  // place. The server, serving a whole project, must tell them apart (#59); `Project.run` takes
+  // both so neither caller can conflate them.
+  const workflowDir = dirname(tree.rootPath);
+  const opened = openProject(workflowDir);
   if (!opened.success) {
     io.error(opened.error);
-    return 1;
+    // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db
+    // is not.
+    return opened.kind === "settings" ? 2 : 1;
   }
+  const project = opened.project;
 
   // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
   const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
 
   let runResult;
   try {
-    // Persistence (#18) writes run rows + blobs; logging (#19) fans the typed event stream out to
-    // the selected backends. Both hang off the single observer slot via composeObservers.
-    // Nearest wins for both engine settings: CLI flag > engine-settings file > built-in default.
-    const logBackends = parsed.args.logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
-    const backends = createLogBackends(logBackends, { db: opened.db, projectDir });
-    const observer = composeObservers(createPersistedObserver(opened.db, projectDir), createLoggingObserver(backends));
-    runResult = await runWorkflow(rootFile, projectDir, {
+    // The backend list, the observer pair and their order, and settings precedence all belong to
+    // the project (#64). What is left here is what a CLI actually owns: the flags it parsed, the
+    // signal it installed, and where warnings go.
+    runResult = await project.run(rootFile, workflowDir, {
       operatorConfig: operatorConfig.config,
       files: tree.files,
-      observer,
+      logBackends: parsed.args.logBackends,
+      llmConcurrency: parsed.args.llmConcurrency,
       llmWorker: overrides.llmWorker,
-      llmConcurrency: parsed.args.llmConcurrency ?? settings.llmConcurrency,
       warn: (message) => io.error(`warning: ${message}`),
       signal: sigint.signal,
     });
   } finally {
     sigint.dispose();
-    opened.db.close();
+    project.close();
   }
 
   // The unwind finished: the run is recorded `cancelled` everywhere, which is what the operator

@@ -5,7 +5,7 @@ import { toWireRunRecord } from "../wire-run-record.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
 export function handleGetRun(res: ServerResponse, ctx: RunsRouteContext, rootRunId: string): void {
-  const rows = getRunsForRoot(ctx.db, rootRunId);
+  const rows = getRunsForRoot(ctx.project.db, rootRunId);
   if (rows.length === 0) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;
@@ -16,7 +16,7 @@ export function handleGetRun(res: ServerResponse, ctx: RunsRouteContext, rootRun
   const rootRow = rows.find((row) => row.runId === rootRunId) ?? rows[0]!;
   const output =
     rootRow.status === "succeeded" && rootRow.outputRef
-      ? readJsonBlob(runBlobDir(ctx.projectDir, rootRunId, rootRow.runId), "output.json")
+      ? readJsonBlob(runBlobDir(ctx.project.dir, rootRunId, rootRow.runId), "output.json")
       : null;
 
   sendJson(res, 200, {
