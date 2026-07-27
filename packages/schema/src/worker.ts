@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { interpolableString } from "./interpolation.js";
+import { STEP_ROOTS } from "./roots.js";
 
 const EngineWorkerSchema = z
   .object({
@@ -10,7 +11,7 @@ const EngineWorkerSchema = z
 const LlmWorkerSchema = z
   .object({
     type: z.literal("llm"),
-    model: interpolableString(["config", "context"]),
+    model: interpolableString(STEP_ROOTS),
     options: z.record(z.unknown()).optional(),
   })
   .strict();

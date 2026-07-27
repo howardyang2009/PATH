@@ -1,5 +1,14 @@
 import { z } from "zod";
-import { TraceSchema, type Condition, type ConditionOutcome, type JsonValue, type LeafTrace, type Trace } from "@path/schema";
+import {
+  resolveDotPath,
+  TraceSchema,
+  type Condition,
+  type ConditionOutcome,
+  type ConditionRoot,
+  type JsonValue,
+  type LeafTrace,
+  type Trace,
+} from "@path/schema";
 
 /**
  * The condition evaluator (mvp spec §5.2–5.4, §8.1; format §9). Evaluates a zod-validated
@@ -27,51 +36,18 @@ import { TraceSchema, type Condition, type ConditionOutcome, type JsonValue, typ
 export type { AllTrace, AnyTrace, ConditionOutcome, LeafTrace, NotTrace, Trace } from "@path/schema";
 export { TraceSchema } from "@path/schema";
 
-/** The two condition roots (format §9): `context` (written from inside) and `output` (the
- * predecessor node's output object, checkpoint-transparent per §5.4). */
-export interface ConditionRoots {
-  context: JsonValue;
-  output: JsonValue;
-}
+/**
+ * The values a condition reads (format §9): `context` (written from inside) and `output` (the
+ * predecessor node's output object, checkpoint-transparent per §5.4).
+ *
+ * Derived from `CONDITION_ROOTS` rather than restating it, so the deferred third root (`config`,
+ * mvp spec §10) becomes one edit in @path/schema instead of three across two packages.
+ */
+export type ConditionRoots = { [K in ConditionRoot]: JsonValue };
 
 export interface ConditionEvaluation {
   outcome: ConditionOutcome;
   trace: Trace;
-}
-
-interface ResolvedPath {
-  found: boolean;
-  value?: JsonValue;
-  error?: string;
-}
-
-// Resolve a condition dot-path over the roots WITHOUT throwing — unlike ${} interpolation an
-// unresolvable path is data the evaluator reports (an `exists` false, or a strict error leaf),
-// not an exception. Syntax + roots are already load-time validated (format §9, dot-path.ts).
-function resolvePath(roots: ConditionRoots, path: string): ResolvedPath {
-  const segments = path.split(".");
-  const root = segments[0];
-  if (root !== "context" && root !== "output") {
-    return { found: false, error: `invalid condition root "${root}"` };
-  }
-  let current: JsonValue = roots[root];
-  for (const segment of segments.slice(1)) {
-    if (current === null || typeof current !== "object") {
-      return { found: false, error: `segment "${segment}" reaches into a non-object value` };
-    }
-    if (Array.isArray(current)) {
-      const index = Number(segment);
-      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
-        return { found: false, error: `index "${segment}" is out of bounds` };
-      }
-      current = current[index] as JsonValue;
-    } else if (Object.prototype.hasOwnProperty.call(current, segment)) {
-      current = (current as { [key: string]: JsonValue })[segment] as JsonValue;
-    } else {
-      return { found: false, error: `key "${segment}" not found` };
-    }
-  }
-  return { found: true, value: current };
 }
 
 function jsonType(value: JsonValue): string {
@@ -86,7 +62,7 @@ function evaluateLeaf(
 ): LeafTrace {
   const path = condition.path;
   const base = { type: condition.type, path } as const;
-  const resolved = resolvePath(roots, path);
+  const resolved = resolveDotPath(roots, path);
 
   if (condition.type === "exists") {
     return resolved.found
@@ -98,7 +74,7 @@ function evaluateLeaf(
   if (!resolved.found) {
     return { ...base, outcome: "error", message: `path "${path}" does not resolve: ${resolved.error}` };
   }
-  const value = resolved.value as JsonValue;
+  const value = resolved.value;
 
   switch (condition.type) {
     case "equals":

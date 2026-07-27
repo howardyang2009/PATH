@@ -1,35 +1,49 @@
 import { z } from "zod";
 import { checkDotPath } from "./dot-path.js";
 import type { JsonValue } from "./json-value.js";
+import type { InterpolationRoot } from "./roots.js";
 
-export type InterpolationRoot = "config" | "context" | "output";
+export type { InterpolationRoot } from "./roots.js";
 
 export interface InterpolationCheckResult {
   ok: boolean;
   error?: string;
 }
 
-function checkPath(path: string, allowedRoots: readonly InterpolationRoot[]): InterpolationCheckResult {
-  if (path.length === 0) {
-    return { ok: false, error: "empty placeholder: `${}` is not a valid interpolation" };
-  }
-
-  const result = checkDotPath(path, allowedRoots);
-  if (!result.ok) {
-    return { ok: false, error: `${result.error} in "\${${path}}"` };
-  }
-  return { ok: true };
-}
+/**
+ * One piece of an interpolable string (workflow-format-v0.md §5).
+ *
+ * A bare `$` not followed by `{` is inert literal text and arrives inside a `literal` token, so a
+ * consumer never has to know that rule either.
+ */
+export type InterpolationToken =
+  | { kind: "literal"; text: string }
+  /** A `$${` escape: the substituted result is a literal `${`. */
+  | { kind: "escape" }
+  | { kind: "placeholder"; path: string }
+  /** A `${` with no closing `}`. Rejected at load time; a runtime consumer must still handle it. */
+  | { kind: "unclosed"; index: number };
 
 /**
- * Tokenizes an interpolable string, validating `${dot.path}` placeholder syntax and
- * `$${` escaping per workflow-format-v0.md §5. Does not resolve values — that's a runtime concern.
+ * Tokenizes an interpolable string per workflow-format-v0.md §5. **The one place the placeholder
+ * grammar is implemented.**
+ *
+ * It used to be implemented twice: here to validate, and in the engine to substitute. The engine's
+ * copy assumed this one had already run — `const close = value.indexOf("}", i + 2); // close exists`
+ * — an ordering nothing enforced, so a string reaching substitution without passing validation
+ * produced a silently truncated result rather than an error. With one tokenizer the engine no longer
+ * scans for `}` at all, and `unclosed` is a token it must handle rather than a case it cannot see.
+ *
+ * Resolves nothing: what a `path` refers to is the caller's business.
  */
-export function checkInterpolationSyntax(
-  value: string,
-  allowedRoots: readonly InterpolationRoot[],
-): InterpolationCheckResult {
+export function* tokenizeInterpolation(value: string): Generator<InterpolationToken> {
+  let literalStart = 0;
   let i = 0;
+
+  function* flushLiteral(upTo: number): Generator<InterpolationToken> {
+    if (upTo > literalStart) yield { kind: "literal", text: value.slice(literalStart, upTo) };
+  }
+
   while (i < value.length) {
     if (value[i] !== "$") {
       i += 1;
@@ -37,28 +51,56 @@ export function checkInterpolationSyntax(
     }
 
     if (value.startsWith("$${", i)) {
+      yield* flushLiteral(i);
+      yield { kind: "escape" };
       i += 3;
+      literalStart = i;
       continue;
     }
 
     if (value[i + 1] === "{") {
       const close = value.indexOf("}", i + 2);
       if (close === -1) {
-        return { ok: false, error: `unclosed placeholder starting at index ${i} in "${value}"` };
+        yield* flushLiteral(i);
+        yield { kind: "unclosed", index: i };
+        return;
       }
-      const path = value.slice(i + 2, close);
-      const result = checkPath(path, allowedRoots);
-      if (!result.ok) {
-        return result;
-      }
+      yield* flushLiteral(i);
+      yield { kind: "placeholder", path: value.slice(i + 2, close) };
       i = close + 1;
+      literalStart = i;
       continue;
     }
 
-    // A bare `$` not followed by `{` or `${` escape is inert literal text.
+    // A bare `$` not followed by `{` or a `$${` escape is inert literal text.
     i += 1;
   }
 
+  yield* flushLiteral(value.length);
+}
+
+/**
+ * Validates `${dot.path}` placeholder syntax and `$${` escaping (workflow-format-v0.md §5). Does not
+ * resolve values — that's a runtime concern.
+ */
+export function checkInterpolationSyntax(
+  value: string,
+  allowedRoots: readonly InterpolationRoot[],
+): InterpolationCheckResult {
+  for (const token of tokenizeInterpolation(value)) {
+    if (token.kind === "unclosed") {
+      return { ok: false, error: `unclosed placeholder starting at index ${token.index} in "${value}"` };
+    }
+    if (token.kind !== "placeholder") continue;
+
+    if (token.path.length === 0) {
+      return { ok: false, error: "empty placeholder: `${}` is not a valid interpolation" };
+    }
+    const result = checkDotPath(token.path, allowedRoots);
+    if (!result.ok) {
+      return { ok: false, error: `${result.error} in "\${${token.path}}"` };
+    }
+  }
   return { ok: true };
 }
 

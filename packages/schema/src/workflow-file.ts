@@ -4,6 +4,7 @@ import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { NodeArraySchema } from "./nodes.js";
+import { STEP_ROOTS } from "./roots.js";
 import { WorkerSchema } from "./worker.js";
 import { FORMAT_VERSION, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
@@ -17,7 +18,7 @@ const BaseWorkflowFileSchema = z
     worker: WorkerSchema,
     config: ConfigObjectSchema.optional(),
     body: NodeArraySchema,
-    output: z.record(interpolatedJsonValue(["config", "context"])).optional(),
+    output: z.record(interpolatedJsonValue(STEP_ROOTS)).optional(),
   })
   .strict();
 
