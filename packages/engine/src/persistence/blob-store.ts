@@ -1,6 +1,7 @@
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import type { JsonValue } from "@path/schema";
+import { blobRef, runBlobDir } from "./paths.js";
 
 /**
  * Write-temp-then-rename: a same-filesystem rename is atomic, so a reader (or a crash) never
@@ -29,4 +30,25 @@ export function dirExists(dir: string): boolean {
 
 export function removeDir(dir: string): void {
   rmSync(dir, { recursive: true, force: true });
+}
+
+/**
+ * Writes one of a run's blobs and returns the ref that addresses it — **one call producing both**,
+ * which is the point (#72).
+ *
+ * Where the bytes go (`runBlobDir`, host separators) and what the row records (`blobRef`, always
+ * forward slashes) are two values that must address the same file. They were built separately at
+ * each call site, so a mismatch put the blob on disk with a row pointing elsewhere: no error, no
+ * failing test, just a run whose input is unreadable through the API. Derived from one set of
+ * arguments here, they cannot disagree.
+ */
+export function writeRunBlob(
+  projectDir: string,
+  rootRunId: string,
+  runId: string,
+  filename: string,
+  value: JsonValue,
+): string {
+  writeJsonBlob(runBlobDir(projectDir, rootRunId, runId), filename, value);
+  return blobRef(rootRunId, runId, filename);
 }

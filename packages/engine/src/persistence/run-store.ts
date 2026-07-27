@@ -12,12 +12,14 @@ export interface NewRunRow {
   nodeId: string | null;
   worker: Worker | null;
   status: RunStatus;
+  /** Written with the row: the input blob is always on disk before the row exists (#72). */
+  inputRef?: string;
 }
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @worker, @status, @startedAt)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, input_ref)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @worker, @status, @startedAt, @inputRef)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -26,6 +28,7 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     worker: row.worker ? JSON.stringify(row.worker) : null,
     status: row.status,
     startedAt: new Date().toISOString(),
+    inputRef: row.inputRef ?? null,
   });
 }
 
@@ -37,17 +40,13 @@ export function finishRun(db: Database.Database, runId: string, status: Terminal
   });
 }
 
-export function setRunBlobRefs(
-  db: Database.Database,
-  runId: string,
-  refs: { inputRef?: string; outputRef?: string },
-): void {
-  if (refs.inputRef !== undefined) {
-    db.prepare(`UPDATE runs SET input_ref = @ref WHERE run_id = @runId`).run({ ref: refs.inputRef, runId });
-  }
-  if (refs.outputRef !== undefined) {
-    db.prepare(`UPDATE runs SET output_ref = @ref WHERE run_id = @runId`).run({ ref: refs.outputRef, runId });
-  }
+/**
+ * The output ref lands on its own UPDATE because it cannot be known at insert time — a run's output
+ * exists only once the run has succeeded. The *input* ref goes in with the row (`insertRun`), which
+ * is why there is no setter for it (#72).
+ */
+export function setRunOutputRef(db: Database.Database, runId: string, outputRef: string): void {
+  db.prepare(`UPDATE runs SET output_ref = @ref WHERE run_id = @runId`).run({ ref: outputRef, runId });
 }
 
 /**
