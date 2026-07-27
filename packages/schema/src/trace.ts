@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { LEAF_CONDITION_TYPES, type LeafConditionType } from "./condition-type.js";
 import type { JsonValue } from "./json-value.js";
 
 /**
@@ -19,7 +20,8 @@ export type ConditionOutcome = "true" | "false" | "error";
  * outcome) an explanatory message.
  */
 export interface LeafTrace {
-  type: "exists" | "equals" | "one-of" | "matches" | "range" | "valid-json";
+  /** Derived from `Condition`: a leaf trace is always the record of a leaf predicate. */
+  type: LeafConditionType;
   path: string;
   outcome: ConditionOutcome;
   value?: JsonValue;
@@ -46,7 +48,7 @@ const OutcomeSchema = z.enum(["true", "false", "error"]);
 
 const LeafTraceSchema = z
   .object({
-    type: z.enum(["exists", "equals", "one-of", "matches", "range", "valid-json"]),
+    type: z.enum(LEAF_CONDITION_TYPES),
     path: z.string(),
     outcome: OutcomeSchema,
     // The read value is an already-validated JsonValue (it comes from resolving a dot-path over the

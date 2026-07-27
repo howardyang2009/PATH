@@ -48,7 +48,23 @@ export type {
   AnyCondition,
   NotCondition,
   JsonScalar,
+  LeafCondition,
+  LeafConditionType,
 } from "./condition-type.js";
+export { LEAF_CONDITION_TYPES } from "./condition-type.js";
+
+// The dot-path grammar (format §5, §9) — one declaration, and both operations over it: the
+// load-time syntax check and the runtime walk.
+export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathResolution } from "./dot-path.js";
+
+// Which roots are legal where — one declaration each, referenced rather than restated.
+export {
+  CONDITION_ROOTS,
+  INTERPOLATION_ROOTS,
+  PUBLISH_ROOTS,
+  STEP_ROOTS,
+  type ConditionRoot,
+} from "./roots.js";
 
 export { WorkerSchema } from "./worker.js";
 export type { Worker, EngineWorker, LlmWorker } from "./worker-type.js";
@@ -64,8 +80,10 @@ export {
   checkInterpolationSyntax,
   interpolableString,
   interpolatedJsonValue,
-  type InterpolationRoot,
+  tokenizeInterpolation,
   type InterpolationCheckResult,
+  type InterpolationRoot,
+  type InterpolationToken,
 } from "./interpolation.js";
 export { formatIssues } from "./format-issues.js";
 

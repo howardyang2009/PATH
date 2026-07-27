@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/schema";
+import { resolveDotPath as resolvePath, tokenizeInterpolation, type JsonValue } from "@path/schema";
 
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
@@ -42,37 +42,19 @@ function deepUnwrapSecrets(value: JsonValue): JsonValue {
   return unwrapped;
 }
 
-/** Resolves a `${}` dot-path against a scope. Numeric segments index arrays (format doc §5). */
+/**
+ * Resolves a `${}` dot-path against a scope, in the engine's failure mode: interpolation cannot
+ * carry on past an unresolvable path, so this throws where the condition evaluator records a trace
+ * leaf. The walk itself is @path/schema's — one implementation, one error vocabulary, whether the
+ * path came from a placeholder or a predicate.
+ *
+ * Secrets are unwrapped on the way out (format §8.3): a wrapper may sit at any depth inside the
+ * resolved value, and a worker must see real values regardless of how the path addressed them.
+ */
 export function resolveDotPath(scope: InterpolationScope, path: string): JsonValue {
-  const segments = path.split(".");
-  const root = segments[0] ?? "";
-
-  if (!Object.prototype.hasOwnProperty.call(scope, root)) {
-    throw new InterpolationError(`unknown root "${root}" in "\${${path}}"`);
-  }
-
-  let current: JsonValue = unwrapSecret(scope[root] as JsonValue);
-
-  for (const segment of segments.slice(1)) {
-    if (current === null || typeof current !== "object") {
-      throw new InterpolationError(`cannot resolve "${path}": "${segment}" reaches into a non-object value`);
-    }
-
-    if (Array.isArray(current)) {
-      const index = Number(segment);
-      if (!Number.isInteger(index) || index < 0 || index >= current.length) {
-        throw new InterpolationError(`cannot resolve "${path}": index "${segment}" is out of bounds`);
-      }
-      current = unwrapSecret(current[index] as JsonValue);
-    } else {
-      if (!Object.prototype.hasOwnProperty.call(current, segment)) {
-        throw new InterpolationError(`cannot resolve "${path}": key "${segment}" not found`);
-      }
-      current = unwrapSecret((current as { [key: string]: JsonValue })[segment] as JsonValue);
-    }
-  }
-
-  return deepUnwrapSecrets(current);
+  const resolved = resolvePath(scope, path);
+  if (!resolved.found) throw new InterpolationError(`cannot resolve "${path}": ${resolved.error}`);
+  return deepUnwrapSecrets(resolved.value);
 }
 
 // A string that is *exactly* one placeholder gets the referenced value's real type (the
@@ -90,27 +72,31 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
     return resolveDotPath(scope, wholePath);
   }
 
+  // The grammar is @path/schema's (tokenizeInterpolation); this only decides what each token
+  // becomes. An `unclosed` token used to be unreachable *by assumption* — load-time validation had
+  // rejected it — but nothing enforced that a string reached here only via a validated workflow
+  // file, so an unvalidated one produced a silently truncated result. Now it is a token, and an
+  // error.
   let result = "";
-  let i = 0;
-  while (i < value.length) {
-    if (value.startsWith("$${", i)) {
-      result += "${";
-      i += 3;
-      continue;
-    }
-    if (value[i] === "$" && value[i + 1] === "{") {
-      const close = value.indexOf("}", i + 2); // syntax already load-time validated; close exists
-      const path = value.slice(i + 2, close);
-      const resolved = resolveDotPath(scope, path);
-      if (resolved !== null && typeof resolved === "object") {
-        throw new InterpolationError(`cannot splice a non-scalar value at "\${${path}}" into "${value}"`);
+  for (const token of tokenizeInterpolation(value)) {
+    switch (token.kind) {
+      case "literal":
+        result += token.text;
+        break;
+      case "escape":
+        result += "${";
+        break;
+      case "placeholder": {
+        const resolved = resolveDotPath(scope, token.path);
+        if (resolved !== null && typeof resolved === "object") {
+          throw new InterpolationError(`cannot splice a non-scalar value at "\${${token.path}}" into "${value}"`);
+        }
+        result += resolved === null ? "null" : String(resolved);
+        break;
       }
-      result += resolved === null ? "null" : String(resolved);
-      i = close + 1;
-      continue;
+      case "unclosed":
+        throw new InterpolationError(`unclosed placeholder starting at index ${token.index} in "${value}"`);
     }
-    result += value[i];
-    i += 1;
   }
   return result;
 }

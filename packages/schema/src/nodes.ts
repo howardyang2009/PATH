@@ -4,10 +4,9 @@ import { ConfigObjectSchema } from "./config.js";
 import { IdSchema } from "./ids.js";
 import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
+import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
 import { WorkerSchema } from "./worker.js";
 
-const STEP_ROOTS = ["config", "context"] as const;
-const PUBLISH_ROOTS = ["config", "context", "output"] as const;
 
 const commonStepFields = {
   id: IdSchema,

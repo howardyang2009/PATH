@@ -108,6 +108,28 @@ describe("interpolateString", () => {
   it("throws on an unresolvable path", () => {
     expect(() => interpolateString("${context.missing}", scope)).toThrow(InterpolationError);
   });
+
+  /**
+   * The failure the old implementation could not see (#68). Substitution scanned for `}` itself
+   * and assumed one existed, because load-time validation would have rejected the string —
+   * `const close = value.indexOf("}", i + 2); // close exists`. Nothing enforced that ordering, so
+   * a string arriving here unvalidated yielded `close === -1`, `slice(i + 2, -1)`, and a silently
+   * truncated substitution. The grammar is @path/schema's now, and `unclosed` is a token.
+   */
+  it("throws on an unclosed placeholder rather than silently truncating it", () => {
+    expect(() => interpolateString("${config.name", scope)).toThrow(InterpolationError);
+    expect(() => interpolateString("${config.name", scope)).toThrow(/unclosed placeholder starting at index 0/);
+  });
+
+  it("throws on an unclosed placeholder that follows a valid one", () => {
+    expect(() => interpolateString("${config.name} then ${config.na", scope)).toThrow(
+      /unclosed placeholder starting at index 20/,
+    );
+  });
+
+  it("leaves a bare $ and a $${ escape alone while substituting the rest", () => {
+    expect(interpolateString("$5 $${literal} ${config.name}", scope)).toBe("$5 ${literal} path");
+  });
 });
 
 describe("interpolateToString", () => {

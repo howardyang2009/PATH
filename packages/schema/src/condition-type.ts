@@ -60,3 +60,29 @@ export type Condition =
   | AllCondition
   | AnyCondition
   | NotCondition;
+
+/**
+ * A leaf predicate — one that reads a value at a `path`, as opposed to the `all`/`any`/`not`
+ * combinators that only compose other conditions.
+ */
+export type LeafCondition = Extract<Condition, { path: string }>;
+export type LeafConditionType = LeafCondition["type"];
+
+/**
+ * The leaf operator names at runtime. `satisfies` ties it to the union above and the exhaustiveness
+ * check below ties it the other way, so the list cannot drift from the types in either direction —
+ * which is the whole reason it exists rather than being written out wherever an enum is needed.
+ */
+export const LEAF_CONDITION_TYPES = [
+  "exists",
+  "equals",
+  "one-of",
+  "matches",
+  "range",
+  "valid-json",
+] as const satisfies readonly LeafConditionType[];
+
+// Fails to compile if the union grows a leaf operator the list above is missing.
+type _ExhaustiveLeafTypes = Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]> extends never
+  ? true
+  : ["LEAF_CONDITION_TYPES is missing", Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]>];
