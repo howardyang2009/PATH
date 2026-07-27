@@ -1,4 +1,4 @@
-import { ObserverError, type RunObserver } from "../run-observer.js";
+import { type Observation, ObserverError, type RunObserver, type RunOutcome } from "../run-observer.js";
 import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
 import { type LogEvent, LogEventSchema } from "./log-event.js";
 
@@ -15,6 +15,89 @@ interface ManagedBackend {
   backend: LogBackend;
   active: boolean;
   tail: Promise<void>;
+}
+
+/** The shared log-event envelope (mvp spec §8.1) — `seq` is the ordering truth per root run. */
+type Envelope = { seq: number; ts: string; run_id: string; node_id: string | null };
+
+// A `cancelled` step-finished (#24) carries no error — the cause is narrated by run-cancelled.
+function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
+  return outcome.status === "failed" && outcome.error !== undefined
+    ? { type: "step-finished", ...env, status: "failed", error: outcome.error }
+    : { type: "step-finished", ...env, status: outcome.status };
+}
+
+/**
+ * Project one observation onto the log narrative (#62), or `null` when it is not narrated.
+ *
+ * This function is where "what the log stream is" lives. Three kinds of difference between the two
+ * unions are resolved here, and nowhere else:
+ *
+ * - **Payloads are dropped.** `input`, `output` and `context` reach the log only as blob refs on the
+ *   run row (mvp spec §6), so the events carry none of them.
+ * - **Three observations are never narrated.** `step-stderr`, `step-usage` and `context-changed`
+ *   exist for persistence alone; they return `null`.
+ * - **The shapes are not 1:1.** `run-started` and `step-started` both become `step-started`
+ *   (a workflow-run is its file's implicit root step, invariant 2); `run-finished` and
+ *   `step-finished` both become `step-finished`; and `checkpoint-evaluated` splits into
+ *   `checkpoint-passed`/`checkpoint-failed`.
+ *
+ * The `never` guard means a new `Observation` member forces a decision about whether it is narrated.
+ * `envelope` is a factory rather than a value because the choice of `node_id` is part of the
+ * projection: control-node events carry the control node's own id, lifecycle events the run's.
+ */
+export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: string) => Envelope): LogEvent | null {
+  switch (o.type) {
+    case "run-started":
+      return { type: "step-started", ...envelope(o.runId), step_type: WORKFLOW_STEP_TYPE, worker: o.worker };
+    case "step-started":
+      return { type: "step-started", ...envelope(o.runId), step_type: o.stepType, worker: o.worker };
+    case "step-finished":
+    case "run-finished":
+      return finishedEvent(envelope(o.runId), o);
+    case "checkpoint-evaluated":
+      return {
+        type: o.passed ? "checkpoint-passed" : "checkpoint-failed",
+        ...envelope(o.runId, o.nodeId),
+        trace: o.trace,
+      };
+    case "branch-taken":
+      return { type: "branch-taken", ...envelope(o.runId, o.nodeId), arm: o.arm, trace: o.trace };
+    case "branch-no-match":
+      return { type: "branch-no-match", ...envelope(o.runId, o.nodeId), traces: o.traces };
+    case "iteration-started":
+      return { type: "iteration-started", ...envelope(o.runId, o.nodeId), iteration: o.iteration, trace: o.trace };
+    case "loop-exited":
+      return {
+        type: "loop-exited",
+        ...envelope(o.runId, o.nodeId),
+        reason: o.reason,
+        iterations: o.iterations,
+        trace: o.trace,
+      };
+    case "join-applied":
+      // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
+      // the `parallel` node — never a run of its own (a logicer has no run, invariant 1).
+      return {
+        type: "join-applied",
+        ...envelope(o.runId, o.nodeId),
+        branches: o.branches,
+        published_keys: o.publishedKeys,
+      };
+    case "run-cancelled":
+      // Paired with a `cancelled` step-finished for the same run. `cause` distinguishes a failing
+      // sibling branch from an operator stopping the root run (#52).
+      return { type: "run-cancelled", ...envelope(o.runId, o.nodeId), cause: o.cause, cause_run_id: o.causeRunId };
+    // Persistence-only: no log event exists for these (see Observation's docblock).
+    case "step-stderr":
+    case "step-usage":
+    case "context-changed":
+      return null;
+    default: {
+      const exhaustive: never = o;
+      return exhaustive;
+    }
+  }
 }
 
 /**
@@ -150,14 +233,4 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
       await emit({ type: "loop-exited", ...envelope(runId, nodeId), reason, iterations, trace }, false);
     },
   };
-
-  function finishedEvent(
-    env: ReturnType<typeof envelope>,
-    outcome: { status: "succeeded"; output: unknown } | { status: "failed"; error?: string } | { status: "cancelled" },
-  ): LogEvent {
-    // A `cancelled` step-finished (#24) carries no error — the cause is narrated by run-cancelled.
-    return outcome.status === "failed" && outcome.error !== undefined
-      ? { type: "step-finished", ...env, status: "failed", error: outcome.error }
-      : { type: "step-finished", ...env, status: outcome.status };
-  }
 }
