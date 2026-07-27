@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createDbLogBackend } from "../../src/logging/db-backend.js";
-import type { LogEvent } from "../../src/logging/log-event.js";
+import type { LogEvent } from "@path/schema";
 import { getLogEventsForRoot } from "../../src/logging/log-store.js";
 import { openDb } from "../../src/persistence/db.js";
 

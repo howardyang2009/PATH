@@ -1,10 +1,8 @@
 import type { ServerResponse } from "node:http";
-import { getRunsForRoot, type RunStatus } from "@path/engine";
+import { getRunsForRoot } from "@path/engine";
+import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
-
-/** Statuses a run cannot be cancelled out of — it already finished (mvp spec §5.7). */
-const TERMINAL_STATUSES = new Set<RunStatus>(["succeeded", "failed", "cancelled"]);
 
 /**
  * `POST /v0/runs/:root_run_id/cancel` (server-api-v0.md §4.2) — a named action, not a mutation of a
@@ -29,7 +27,7 @@ export function handleCancelRun(res: ServerResponse, ctx: RunsRouteContext, root
     return;
   }
 
-  if (TERMINAL_STATUSES.has(rootRow.status)) {
+  if (isTerminal(rootRow.status)) {
     sendError(res, 409, `run "${rootRunId}" already finished with status "${rootRow.status}"`);
     return;
   }

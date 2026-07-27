@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import type { LogBackend } from "../../src/logging/log-backend.js";
-import { LogEventSchema, type LogEvent } from "../../src/logging/log-event.js";
+import { LogEventSchema, type LogEvent } from "@path/schema";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 
 function recordingBackend(): { backend: LogBackend; events: LogEvent[]; opened: string[]; closed: number } {

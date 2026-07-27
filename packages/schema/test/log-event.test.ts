@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LogEventSchema } from "../../src/logging/log-event.js";
+import { LogEventSchema } from "../src/log-event.js";
 
 const envelope = { seq: 1, ts: "2026-07-19T00:00:00.000Z", run_id: "run-1", node_id: "greet" };
 

@@ -30,9 +30,6 @@ importers:
 
   packages/client-core:
     dependencies:
-      '@path/engine':
-        specifier: workspace:*
-        version: link:../engine
       '@path/schema':
         specifier: workspace:*
         version: link:../schema

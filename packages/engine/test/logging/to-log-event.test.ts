@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LogEventSchema } from "../../src/logging/log-event.js";
+import { LogEventSchema } from "@path/schema";
 import { toLogEvent } from "../../src/logging/logging-observer.js";
 import type { Observation } from "../../src/run-observer.js";
 

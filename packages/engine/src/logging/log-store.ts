@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import { type LogEvent, LogEventSchema } from "./log-event.js";
+import { type LogEvent, LogEventSchema } from "@path/schema";
 
 /**
  * The db log backend's table access (mvp spec §8.2). Envelope columns are denormalized for

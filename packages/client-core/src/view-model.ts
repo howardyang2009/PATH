@@ -1,6 +1,12 @@
-import type { LogEvent, RunStatus } from "@path/engine";
-import type { JsonValue, Worker } from "@path/schema";
-import type { RunTreeResponse, WireRunRecord } from "./wire-types.js";
+import {
+  isTerminal,
+  type JsonValue,
+  type LogEvent,
+  type RunStatus,
+  type RunTreeResponse,
+  type WireRunRecord,
+  type Worker,
+} from "@path/schema";
 
 /**
  * Framework-agnostic view-model for one root run. It assembles the run tree from
@@ -48,15 +54,6 @@ export interface RunViewState {
 }
 
 export type RunViewListener = (state: RunViewState) => void;
-
-/**
- * A finished run: `step-finished` set it, and nothing after that may move it back. Exported so a
- * surface deciding whether a run can still be acted on (e.g. the viewer's cancel button, #56) names
- * the one terminality check rather than re-deriving the status set.
- */
-export function isTerminal(status: RunStatus): boolean {
-  return status === "succeeded" || status === "failed" || status === "cancelled";
-}
 
 function nodeFromRecord(row: WireRunRecord): RunNodeState {
   return {

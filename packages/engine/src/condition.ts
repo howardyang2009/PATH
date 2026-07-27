@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { Condition, JsonValue } from "@path/schema";
+import { TraceSchema, type Condition, type ConditionOutcome, type JsonValue, type LeafTrace, type Trace } from "@path/schema";
 
 /**
  * The condition evaluator (mvp spec §5.2–5.4, §8.1; format §9). Evaluates a zod-validated
@@ -22,57 +22,10 @@ import type { Condition, JsonValue } from "@path/schema";
  * among the eight the masking wrapper never implemented, so no run masked one.
  */
 
-export type ConditionOutcome = "true" | "false" | "error";
-
-/** A leaf predicate's evaluation record: its dot-path, outcome, the value read, and (on a
- * non-true outcome) an explanatory message. */
-export interface LeafTrace {
-  type: "exists" | "equals" | "one-of" | "matches" | "range" | "valid-json";
-  path: string;
-  outcome: ConditionOutcome;
-  value?: JsonValue;
-  message?: string;
-}
-export interface AllTrace {
-  type: "all";
-  outcome: ConditionOutcome;
-  of: Trace[];
-}
-export interface AnyTrace {
-  type: "any";
-  outcome: ConditionOutcome;
-  of: Trace[];
-}
-export interface NotTrace {
-  type: "not";
-  outcome: ConditionOutcome;
-  of: Trace;
-}
-export type Trace = LeafTrace | AllTrace | AnyTrace | NotTrace;
-
-const OutcomeSchema = z.enum(["true", "false", "error"]);
-
-const LeafTraceSchema = z
-  .object({
-    type: z.enum(["exists", "equals", "one-of", "matches", "range", "valid-json"]),
-    path: z.string(),
-    outcome: OutcomeSchema,
-    // The read value is an already-validated JsonValue (it comes from resolving a dot-path over the
-    // JsonValue roots); typed as such so TraceSchema is assignable to z.ZodType<Trace>.
-    value: z.custom<JsonValue>().optional(),
-    message: z.string().optional(),
-  })
-  .strict();
-
-/** The trace as it rides the log-event stream (§8.1); mirrors the condition tree structurally. */
-export const TraceSchema: z.ZodType<Trace> = z.lazy(() =>
-  z.union([
-    LeafTraceSchema,
-    z.object({ type: z.literal("all"), outcome: OutcomeSchema, of: z.array(TraceSchema) }).strict(),
-    z.object({ type: z.literal("any"), outcome: OutcomeSchema, of: z.array(TraceSchema) }).strict(),
-    z.object({ type: z.literal("not"), outcome: OutcomeSchema, of: TraceSchema }).strict(),
-  ]),
-);
+// The trace *shape* lives in @path/schema (trace.ts) — it rides the log-event stream, so a reader
+// replaying a run needs it without needing this evaluator. What lives here is what produces one.
+export type { AllTrace, AnyTrace, ConditionOutcome, LeafTrace, NotTrace, Trace } from "@path/schema";
+export { TraceSchema } from "@path/schema";
 
 /** The two condition roots (format §9): `context` (written from inside) and `output` (the
  * predecessor node's output object, checkpoint-transparent per §5.4). */

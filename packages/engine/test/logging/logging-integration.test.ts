@@ -6,7 +6,7 @@ import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLogBackends } from "../../src/logging/backends.js";
 import type { LogBackend } from "../../src/logging/log-backend.js";
-import { LogEventSchema } from "../../src/logging/log-event.js";
+import { LogEventSchema } from "@path/schema";
 import { getLogEventsForRoot } from "../../src/logging/log-store.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";

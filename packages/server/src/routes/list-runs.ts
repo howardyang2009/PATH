@@ -1,5 +1,6 @@
 import type { ServerResponse } from "node:http";
-import { listRootRuns, RUN_STATUSES, type RunStatus } from "@path/engine";
+import { listRootRuns } from "@path/engine";
+import { RUN_STATUSES, toRootRunSummary, type ListRunsResponse, type RunStatus } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
@@ -27,12 +28,6 @@ export function handleListRuns(res: ServerResponse, ctx: RunsRouteContext, query
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
 
   const rows = listRootRuns(ctx.project.db, { limit, status });
-  sendJson(res, 200, {
-    runs: rows.map((row) => ({
-      run_id: row.runId,
-      status: row.status,
-      started_at: row.startedAt,
-      finished_at: row.finishedAt,
-    })),
-  });
+  const body: ListRunsResponse = { runs: rows.map(toRootRunSummary) };
+  sendJson(res, 200, body);
 }

@@ -3,24 +3,23 @@
 // reconnect/replay, and a framework-agnostic run view-model. No React, no DOM.
 // Normative contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
 
-// Surfaces get the domain status and log-event types from this core, not from `@path/engine`
-// directly: the engine is a Node package (SQLite, fs), and a browser surface should have exactly one
-// seam — this one. `LogEvent` is the narrative's element type, so a surface that renders the stream
-// needs to name it.
-export type { LogEvent, RunStatus } from "@path/engine";
-
-// Blob contents and a run's `output` are arbitrary JSON, so a surface that renders them names the
-// type — and names it from here, for the same one-seam reason.
-export type { JsonValue } from "@path/schema";
-
-export type {
-  WireRunRecord,
-  RunTreeResponse,
-  RootRunSummary,
-  ListRunsResponse,
-  WireError,
-  BlobName,
-} from "./wire-types.js";
+// Surfaces name the domain through this one seam rather than reaching past it. Everything below
+// originates in `@path/schema`, which since #66 owns the runtime vocabulary as well as the workflow
+// format — so this package no longer depends on `@path/engine` at all, and a browser surface no
+// longer sits one import away from SQLite, child processes and the Agent SDK.
+export {
+  isTerminal,
+  type BlobName,
+  type JsonValue,
+  type ListRunsResponse,
+  type LogEvent,
+  type RootRunSummary,
+  type RunRecord,
+  type RunStatus,
+  type RunTreeResponse,
+  type WireError,
+  type WireRunRecord,
+} from "@path/schema";
 
 export {
   PathApiClient,
@@ -38,7 +37,6 @@ export {
 
 export {
   RunViewModel,
-  isTerminal,
   type RunNodeState,
   type RunViewState,
   type RunViewListener,

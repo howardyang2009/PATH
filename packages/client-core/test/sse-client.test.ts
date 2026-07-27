@@ -1,7 +1,8 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-import type { LogEvent } from "@path/engine";
+
 import { afterEach, describe, expect, it } from "vitest";
+import type { LogEvent } from "@path/schema";
 import { subscribeRunEvents } from "../src/sse-client.js";
 
 const EVENTS: LogEvent[] = [

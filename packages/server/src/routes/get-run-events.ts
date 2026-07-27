@@ -1,5 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getRunsForRoot, readNdjsonLog, type LogEvent } from "@path/engine";
+import { getRunsForRoot, readNdjsonLog } from "@path/engine";
+import type { LogEvent } from "@path/schema";
 import { sendError } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
 

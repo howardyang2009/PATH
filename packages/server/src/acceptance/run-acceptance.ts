@@ -1,5 +1,6 @@
 import { resolve } from "node:path";
-import { readNdjsonLog, type LogEvent } from "@path/engine";
+import { readNdjsonLog } from "@path/engine";
+import type { LogEvent } from "@path/schema";
 import type { JsonValue } from "@path/schema";
 
 /**

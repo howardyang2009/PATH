@@ -1,6 +1,6 @@
 import { type Observation, ObserverError, type RunObserver, type RunOutcome } from "../run-observer.js";
 import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
-import { type LogEvent, LogEventSchema } from "./log-event.js";
+import { type LogEvent, LogEventSchema } from "@path/schema";
 
 // Every workflow-run is its file's implicit root step (invariant 2), so its lifecycle events
 // report this step_type: the root run with `node_id: null`, a nested workflow-step's run (#22)

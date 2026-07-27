@@ -9,10 +9,10 @@ blocks, checkpoints), run it locally or over HTTP, and watch it live in a web vi
 
 | Package | What it is |
 |---|---|
-| `@path/schema` | Workflow file format v0 — types + validation |
+| `@path/schema` | The domain: workflow file format v0, plus the runtime vocabulary its execution produces (run status, log events, traces, the v0 wire shapes) |
 | `@path/engine` | Runs workflows locally; `path` CLI |
 | `@path/server` | HTTP + SSE API over the engine; `path-server` CLI |
-| `@path/client-core` | Pure-TS API client + SSE client + run view-model (no framework) |
+| `@path/client-core` | Pure-TS API client + SSE client + run view-model (no framework, no Node) |
 | `@path/viewer` | React web console over `client-core` — read-only run monitor |
 
 ## Getting started

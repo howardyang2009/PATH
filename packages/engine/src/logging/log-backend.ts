@@ -1,4 +1,4 @@
-import type { LogEvent } from "./log-event.js";
+import type { LogEvent } from "@path/schema";
 
 /** The per-stream format tag; mvp spec §8.1 (NDJSON header line) and §8.2 (`open` argument). */
 export const LOG_FORMAT = "path/log@0";

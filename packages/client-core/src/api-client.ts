@@ -1,6 +1,11 @@
-import type { JsonValue } from "@path/schema";
-import type { RunStatus } from "@path/engine";
-import type { BlobName, ListRunsResponse, RunTreeResponse, WireError } from "./wire-types.js";
+import type {
+  BlobName,
+  JsonValue,
+  ListRunsResponse,
+  RunStatus,
+  RunTreeResponse,
+  WireError,
+} from "@path/schema";
 
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
 export type FetchLike = (input: string, init?: RequestInit) => Promise<Response>;
