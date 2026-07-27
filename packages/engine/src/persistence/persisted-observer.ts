@@ -1,76 +1,50 @@
 import type Database from "better-sqlite3";
-import type { RunObserver, RunOutcome } from "../run-observer.js";
-import { writeBlobFile, writeJsonBlob } from "./blob-store.js";
-import { blobRef, runBlobDir } from "./paths.js";
-import { finishRun, insertRun, setRunBlobRefs, setRunUsage } from "./run-store.js";
+import type { RunObserver } from "../run-observer.js";
+import { createRunStore } from "./run-store-writer.js";
 
 /**
- * A `RunObserver` (see run-observer.ts) that persists every run row and blob under `.path/`
- * (mvp spec §5.7, §6). One instance serves an entire run tree: every hook carries its own
- * `rootRunId`, so a nested workflow-run (#22) records under the same root as its parent without
- * the observer holding any per-run state. The run tree in the db (parent/root ids on each row)
- * and on disk (`.path/runs/<root>/<run>/`) mirror the nesting, and each workflow-run keeps its
- * own isolated `context.json`.
+ * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/`
+ * (mvp spec §5.7, §6). One instance serves an entire run tree: every observation carries its own
+ * `rootRunId`, so a nested workflow-run (#22) records under the same root as its parent without the
+ * observer holding any per-run state. The run tree in the db (parent/root ids on each row) and on
+ * disk (`.path/runs/<root>/<run>/`) mirror the nesting, and each workflow-run keeps its own isolated
+ * `context.json`.
+ *
+ * All this file does is decide which observations are run facts and which are narrative. How a fact
+ * is stored — rows, blob paths, refs, and the order they must land in — belongs to the store (#72).
  */
 export function createPersistedObserver(db: Database.Database, projectDir: string): RunObserver {
-  // stepFinished and runFinished share this exact shape: mark the row done, and only a
-  // successful outcome has a real output to persist (mvp spec §5.7 — output_ref is per-row).
-  function finishAndPersistOutput(rootRunId: string, runId: string, outcome: RunOutcome): void {
-    finishRun(db, runId, outcome.status);
-    if (outcome.status === "succeeded") {
-      const dir = runBlobDir(projectDir, rootRunId, runId);
-      writeJsonBlob(dir, "output.json", outcome.output);
-      setRunBlobRefs(db, runId, { outputRef: blobRef(rootRunId, runId, "output.json") });
-    }
-  }
+  const store = createRunStore(db, projectDir);
 
   return {
     observe(o) {
       switch (o.type) {
-        case "run-started": {
+        case "run-started":
           // Root run: parentRunId/nodeId null, worker null. Nested workflow-run (#22): its parent
           // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step.
-          const { runId, rootRunId, parentRunId, nodeId, input } = o;
-          insertRun(db, { runId, rootRunId, parentRunId, nodeId, worker: null, status: "running" });
-          const dir = runBlobDir(projectDir, rootRunId, runId);
-          writeJsonBlob(dir, "input.json", input);
-          writeJsonBlob(dir, "context.json", input); // format doc §6.3: workflow input seeds context
-          setRunBlobRefs(db, runId, { inputRef: blobRef(rootRunId, runId, "input.json") });
+          // A workflow-run's input seeds its context (format doc §6.3), which a leaf step's does not.
+          store.runStarted({ ...o, worker: null, seedsContext: true });
           return;
-        }
 
-        case "step-started": {
-          const { runId, rootRunId, parentRunId, nodeId, worker, input } = o;
-          insertRun(db, { runId, rootRunId, parentRunId, nodeId, worker, status: "running" });
-          const dir = runBlobDir(projectDir, rootRunId, runId);
-          writeJsonBlob(dir, "input.json", input);
-          setRunBlobRefs(db, runId, { inputRef: blobRef(rootRunId, runId, "input.json") });
+        case "step-started":
+          store.runStarted({ ...o, seedsContext: false });
           return;
-        }
 
         case "step-stderr":
-          // Always written, even empty — stderr is captured for audit, never passed downstream
-          // (format doc §4.2); it arrives already secret-scrubbed (#20, #62).
-          writeBlobFile(runBlobDir(projectDir, o.rootRunId, o.runId), "stderr.txt", o.stderr);
+          store.stderrCaptured(o.rootRunId, o.runId, o.stderr);
           return;
 
         case "step-usage":
-          // Leaf-only (mvp spec §5.7): this row is where the tokens were actually spent; no ancestor
-          // row stores a derived total — subtree figures are a read-time SUM over descendants, left to
-          // whatever reads the run tree back rather than computed or stored here.
-          setRunUsage(db, o.runId, { usage: o.usage, estimatedCostUsd: o.estimatedCostUsd });
+          store.usageRecorded(o.runId, o.usage, o.estimatedCostUsd);
           return;
 
         case "context-changed":
-          // Context write-through (mvp spec §6): rewritten atomically on every mutation, so
-          // on-disk state always matches the live blackboard, even if the engine is later killed.
-          // Keyed by the run's own id — each workflow-run has its own context.json (#22).
-          writeJsonBlob(runBlobDir(projectDir, o.rootRunId, o.runId), "context.json", o.context);
+          store.contextChanged(o.rootRunId, o.runId, o.context);
           return;
 
         case "step-finished":
         case "run-finished":
-          finishAndPersistOutput(o.rootRunId, o.runId, o);
+          store.runFinished(o.rootRunId, o.runId, o);
           return;
 
         // Control-node observations have no run of their own (invariant 1), so there is no row to

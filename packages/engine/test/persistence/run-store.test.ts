@@ -11,7 +11,7 @@ import {
   getRunsForRoot,
   insertRun,
   listRootRuns,
-  setRunBlobRefs,
+  setRunOutputRef,
   setRunUsage,
 } from "../../src/persistence/run-store.js";
 
@@ -71,14 +71,34 @@ describe("run-store", () => {
     expect(row?.finishedAt).toBeTruthy();
   });
 
-  it("setRunBlobRefs updates input/output refs independently", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
-    setRunBlobRefs(db, "r1", { inputRef: "runs/r1/r1/input.json" });
-    setRunBlobRefs(db, "r1", { outputRef: "runs/r1/r1/output.json" });
+  // The input ref goes in with the row; only the output ref needs a later UPDATE, because a run's
+  // output does not exist until it has succeeded (#72).
+  it("insertRun records the input ref with the row, so no row is inserted then immediately updated", () => {
+    insertRun(db, {
+      runId: "r1",
+      rootRunId: "r1",
+      parentRunId: null,
+      nodeId: null,
+      worker: null,
+      status: "running",
+      inputRef: "runs/r1/r1/input.json",
+    });
 
     const [row] = getRunsForRoot(db, "r1");
     expect(row?.inputRef).toBe("runs/r1/r1/input.json");
-    expect(row?.outputRef).toBe("runs/r1/r1/output.json");
+    expect(row?.outputRef).toBeNull();
+  });
+
+  it("insertRun leaves the input ref null when there is none", () => {
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    expect(getRunsForRoot(db, "r1")[0]?.inputRef).toBeNull();
+  });
+
+  it("setRunOutputRef records the output ref once the run has succeeded", () => {
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    setRunOutputRef(db, "r1", "runs/r1/r1/output.json");
+
+    expect(getRunsForRoot(db, "r1")[0]?.outputRef).toBe("runs/r1/r1/output.json");
   });
 
   it("setRunUsage records real token counts and the estimated cost on an LLM run row (spec §5.7)", () => {
