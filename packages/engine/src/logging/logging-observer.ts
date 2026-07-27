@@ -168,69 +168,29 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   }
 
   return {
-    async runStarted({ runId, rootRunId, nodeId, worker }) {
-      nodeIdByRun.set(runId, nodeId); // null for the root run; the `workflow` node's id for a nested run (#22)
-      if (runId === rootRunId) await openAll(runId); // backends live per root run, not per nested run
-      await emit({ type: "step-started", ...envelope(runId), step_type: WORKFLOW_STEP_TYPE, worker }, false);
-    },
-
-    async stepStarted({ runId, nodeId, stepType, worker }) {
-      nodeIdByRun.set(runId, nodeId);
-      await emit({ type: "step-started", ...envelope(runId), step_type: stepType, worker }, false);
-    },
-
-    async stepFinished(info) {
-      await emit(finishedEvent(envelope(info.runId), info), false);
-    },
-
-    async joinApplied({ runId, nodeId, branches, publishedKeys }) {
-      // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
-      // the `parallel` node — never a run of its own (a logicer has no run, invariant 1).
-      await emit(
-        { type: "join-applied", ...envelope(runId, nodeId), branches, published_keys: publishedKeys },
-        false,
-      );
-    },
-
-    async runCancelled({ runId, nodeId, cause, causeRunId }) {
-      // A best-effort cancellation (mvp spec §5.6): run_id/node_id are the cancelled step run and its
-      // node, paired with a `cancelled` step-finished for the same run. `cause` distinguishes a
-      // failing sibling branch from an operator stopping the root run (#52).
-      await emit({ type: "run-cancelled", ...envelope(runId, nodeId), cause, cause_run_id: causeRunId }, false);
-    },
-
-    async runFinished(info) {
-      if (info.runId !== info.rootRunId) {
-        // A nested workflow-run finishing is an ordinary step-finished — the root run continues,
-        // so a write failure here still fails the run (not best-effort) and backends stay open.
-        await emit(finishedEvent(envelope(info.runId), info), false);
-        return;
+    async observe(o) {
+      // Backends live per root run, and their lifetime rides the root run's own start and finish —
+      // which the observer contract guarantees bracket every other observation of the tree.
+      if (o.type === "run-started") {
+        nodeIdByRun.set(o.runId, o.nodeId); // null for the root; the `workflow` node's id for a nested run (#22)
+        if (o.runId === o.rootRunId) await openAll(o.runId);
       }
-      if (terminated) return; // idempotent: runWorkflow may re-drive the terminal event while failing
-      terminated = true;
-      await emit(finishedEvent(envelope(info.runId), info), true);
-      await Promise.allSettled(managed.map((mb) => enqueue(mb, () => mb.backend.close())));
-    },
+      if (o.type === "step-started") nodeIdByRun.set(o.runId, o.nodeId);
 
-    async checkpointEvaluated({ runId, nodeId, passed, trace }) {
-      const type = passed ? "checkpoint-passed" : "checkpoint-failed";
-      await emit({ type, ...envelope(runId, nodeId), trace }, false);
-    },
+      // The root run's own finish is the terminal event: best-effort, idempotent (runWorkflow may
+      // re-drive it while failing), and followed by closing every backend. A *nested* workflow-run
+      // finishing is an ordinary step-finished — the root run continues, so a write failure there
+      // still fails the run and the backends stay open.
+      const terminal = o.type === "run-finished" && o.runId === o.rootRunId;
+      if (terminal) {
+        if (terminated) return;
+        terminated = true;
+      }
 
-    async branchTaken({ runId, nodeId, arm, trace }) {
-      await emit({ type: "branch-taken", ...envelope(runId, nodeId), arm, trace }, false);
-    },
+      const event = toLogEvent(o, envelope);
+      if (event !== null) await emit(event, terminal);
 
-    async branchNoMatch({ runId, nodeId, traces }) {
-      await emit({ type: "branch-no-match", ...envelope(runId, nodeId), traces }, false);
-    },
-
-    async iterationStarted({ runId, nodeId, iteration, trace }) {
-      await emit({ type: "iteration-started", ...envelope(runId, nodeId), iteration, trace }, false);
-    },
-
-    async loopExited({ runId, nodeId, reason, iterations, trace }) {
-      await emit({ type: "loop-exited", ...envelope(runId, nodeId), reason, iterations, trace }, false);
+      if (terminal) await Promise.allSettled(managed.map((mb) => enqueue(mb, () => mb.backend.close())));
     },
   };
 }

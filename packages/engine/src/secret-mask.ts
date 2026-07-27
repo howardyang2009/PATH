@@ -1,6 +1,6 @@
 import type { ConfigObject, ConfigValue, JsonValue } from "@path/schema";
 import type { Trace } from "./condition.js";
-import type { Observation, RunObserver, RunOutcome } from "./run-observer.js";
+import type { Observation } from "./run-observer.js";
 
 /**
  * Secret masking at the persistence boundary (mvp spec §8.3, ticket #20).
@@ -31,7 +31,7 @@ interface SecretEntry {
 }
 
 export interface SecretMasker {
-  /** True when no secrets were collected — the caller can skip wrapping the observer entirely. */
+  /** True when no secrets were collected — the engine's emit can then skip masking entirely. */
   readonly isEmpty: boolean;
   /** Load-time warnings (e.g. a suspiciously short secret) surfaced once at run start. */
   readonly warnings: string[];
@@ -183,47 +183,4 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
       return exhaustive;
     }
   }
-}
-
-/**
- * Wraps a `RunObserver` so every payload crossing into it is scrubbed of secret values first — the
- * one choke point where the engine's audit surface (persistence #18 + logging #19) becomes the
- * persistence boundary. Every field the spec lists as persisted is masked: `input` (runStarted /
- * stepStarted), `stderr`, step/run `output` and `error` (the `RunOutcome`), and `context`. Fields
- * that never carry an interpolated secret (ids, worker binding, step type) pass through untouched.
- *
- * The wrapper preserves the inner observer's async contract and error propagation: an
- * `ObserverError` thrown by the inner observer (a log backend write failure) still surfaces so the
- * engine fails the run.
- */
-export function createMaskingObserver(masker: SecretMasker, inner: RunObserver): RunObserver {
-  function maskOutcome<T extends { runId: string; rootRunId: string } & RunOutcome>(info: T): T {
-    if (info.status === "succeeded") return { ...info, output: masker.maskValue(info.output) };
-    if (info.status === "failed" && info.error !== undefined) return { ...info, error: masker.maskString(info.error) };
-    return info;
-  }
-
-  // Each hook is async so a synchronously-thrown inner error normalizes to a rejection — the
-  // engine only ever awaits these, and an `ObserverError` must propagate the same way whether the
-  // inner observer throws sync or returns a rejected promise.
-  return {
-    async runStarted(info) {
-      await inner.runStarted?.({ ...info, input: masker.maskValue(info.input) });
-    },
-    async stepStarted(info) {
-      await inner.stepStarted?.({ ...info, input: masker.maskValue(info.input) });
-    },
-    async stepStderr(info) {
-      await inner.stepStderr?.({ ...info, stderr: masker.maskString(info.stderr) });
-    },
-    async stepFinished(info) {
-      await inner.stepFinished?.(maskOutcome(info));
-    },
-    async contextChanged(info) {
-      await inner.contextChanged?.({ ...info, context: masker.maskValue(info.context) });
-    },
-    async runFinished(info) {
-      await inner.runFinished?.(maskOutcome(info));
-    },
-  };
 }

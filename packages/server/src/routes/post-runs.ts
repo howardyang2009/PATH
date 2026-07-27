@@ -93,21 +93,22 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     projectDir: ctx.projectDir,
   });
 
-  // Resolved as soon as `runWorkflow`'s `runStarted` hook fires — the async contract (§2): the
+  // Resolved as soon as the first `run-started` observation arrives — the async contract (§2): the
   // response goes out before the run finishes, not before it starts.
   const started = createDeferred<{ runId: string; rootRunId: string }>();
   // The handle `POST /v0/runs/:root_run_id/cancel` (§4.2) aborts. It can only be filed under an id
-  // that exists, which is why registration waits for `runStarted` rather than happening here.
+  // that exists, which is why registration waits for `run-started` rather than happening here.
   const controller = new AbortController();
   let registeredRootRunId: string | undefined;
   const captureObserver: RunObserver = {
-    runStarted(info) {
+    observe(o) {
+      if (o.type !== "run-started") return;
       // Fires for every run in the tree, all sharing one `rootRunId` — register on the first only.
       if (registeredRootRunId === undefined) {
-        registeredRootRunId = info.rootRunId;
-        ctx.controllers.register(info.rootRunId, controller);
+        registeredRootRunId = o.rootRunId;
+        ctx.controllers.register(o.rootRunId, controller);
       }
-      started.resolve({ runId: info.runId, rootRunId: info.rootRunId });
+      started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
     },
   };
   // The live-forwarding backend rides alongside the configured db/NDJSON backends so SSE clients
