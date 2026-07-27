@@ -1,0 +1,37 @@
+#!/bin/sh
+#
+# Refuse to commit on main. main is protected on GitHub — a direct push is
+# rejected there anyway, so a commit landing here is work stranded on the
+# wrong branch. Catch it before it happens rather than after.
+#
+# Escape hatches, in order of preference:
+#   git switch -c <branch>          move to a branch, then commit
+#   ALLOW_COMMIT_ON_MAIN=1 git ...  one-off override
+#   git commit --no-verify          skip every hook
+
+branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
+
+case "$branch" in
+main | master) ;;
+*) exit 0 ;;
+esac
+
+if [ -n "$ALLOW_COMMIT_ON_MAIN" ]; then
+	echo "pre-commit: committing on $branch (ALLOW_COMMIT_ON_MAIN set)" >&2
+	exit 0
+fi
+
+cat >&2 <<EOF
+
+  Refusing to commit on '$branch'.
+
+  '$branch' is protected: changes land through a pull request whose CI
+  'test' job is green. Move to a branch first:
+
+      git switch -c <branch>
+
+  Already staged? The staged changes follow you across the switch.
+  To override this once: ALLOW_COMMIT_ON_MAIN=1 git commit ...
+
+EOF
+exit 1
