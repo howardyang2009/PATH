@@ -13,8 +13,8 @@ import {
 } from "./llm/processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
-import { ObserverError, type RunObserver } from "./run-observer.js";
-import { collectSecrets, createMaskingObserver } from "./secret-mask.js";
+import { type Observation, ObserverError, type RunObserver } from "./run-observer.js";
+import { collectSecrets, maskObservation } from "./secret-mask.js";
 
 export interface RunOptions {
   /** The workflow's own input object (format doc §6.1); its top-level keys seed context (§6.3). */
@@ -27,7 +27,7 @@ export interface RunOptions {
    * run the child file (#22); omitted when the workflow has no `workflow` steps.
    */
   files?: Map<string, WorkflowFile>;
-  /** Lifecycle hooks for persistence (#18) and later logging (#19) — see run-observer.ts. */
+  /** The audit seam: one observer receiving every observation of this run tree (see run-observer.ts). */
   observer?: RunObserver;
   /**
    * Load-time diagnostics that aren't run failures — currently the short-secret warning (#20).
@@ -57,6 +57,17 @@ export interface RunOptions {
    */
   signal?: AbortSignal;
 }
+
+/**
+ * The engine's single emit choke point, threaded to every node of the run tree in place of the
+ * observer itself (#62). Two things are guaranteed here and therefore nowhere else:
+ *
+ * - **Secrets are masked** (mvp spec §8.3) before anything crosses the seam. No caller has to apply
+ *   a wrapper, so no caller can forget to — and no wrapper can cover part of the union.
+ * - **The absent observer is handled once.** A run with nothing observing it emits into a no-op, so
+ *   the 24 call sites downstream are plain `await emit(...)` rather than optional chains.
+ */
+type Emit = (o: Observation) => Promise<void>;
 
 /**
  * The LLM execution resources one run tree shares: the worker `prompt` steps run on, and the
@@ -238,7 +249,7 @@ interface WorkflowRunParams {
   incomingConfig: ConfigObject;
   identity: RunIdentity;
   files?: Map<string, WorkflowFile>;
-  observer?: RunObserver;
+  emit: Emit;
   // Shared by the entire run tree, so the processor cap spans nested runs too (mvp spec §5.5).
   llm: LlmRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
@@ -278,7 +289,7 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
  * touching fs/db itself.
  */
 async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
-  const { file, fileDir, input, incomingConfig, identity, files, observer } = params;
+  const { file, fileDir, input, incomingConfig, identity, files, emit } = params;
   const { runId, rootRunId } = identity;
   const context: { [key: string]: JsonValue } = { ...input }; // format doc §6.3
   let previousOutput: JsonValue = input;
@@ -287,11 +298,11 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // declared defaults key by key, nearest wins (format doc §8); worker never crosses (§7).
   const fileConfig = mergeConfig(file.config ?? {}, incomingConfig);
   const fail = async (error: string): Promise<RunResult> => {
-    await observer?.runFinished?.({ runId, rootRunId, status: "failed", error });
+    await emit({ type: "run-finished", runId, rootRunId, status: "failed", error });
     return { status: "failed", output: previousOutput, error };
   };
   const succeed = async (output: JsonValue): Promise<RunResult> => {
-    await observer?.runFinished?.({ runId, rootRunId, status: "succeeded", output });
+    await emit({ type: "run-finished", runId, rootRunId, status: "succeeded", output });
     return { status: "succeeded", output };
   };
   // A workflow-run whose leaf step the engine killed — by a failing sibling parallel branch (#24) or
@@ -299,7 +310,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // from failed; no output contract. For the root run this is the `step-finished` of the implicit
   // root step, so its row lands `cancelled` and the log backends close on it like any other end.
   const cancel = async (): Promise<RunResult> => {
-    await observer?.runFinished?.({ runId, rootRunId, status: "cancelled" });
+    await emit({ type: "run-finished", runId, rootRunId, status: "cancelled" });
     return { status: "cancelled", output: previousOutput };
   };
 
@@ -310,7 +321,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // its parent and the failure travels up the run tree as an ordinary failed step.
   const failFromObserverError = async (err: ObserverError): Promise<RunResult> => {
     try {
-      await observer?.runFinished?.({ runId, rootRunId, status: "failed", error: err.message });
+      await emit({ type: "run-finished", runId, rootRunId, status: "failed", error: err.message });
     } catch {
       // audit is already compromised; the best we can do is still report the run as failed
     }
@@ -325,7 +336,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   }
 
   async function runBody(): Promise<RunResult> {
-    await observer?.runStarted?.({
+    await emit({ type: "run-started",
       runId,
       rootRunId,
       parentRunId: identity.parentRunId,
@@ -342,7 +353,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       signal: params.signal,
       cancellation: params.cancellation,
       onPublish: async () => {
-        await observer?.contextChanged?.({ runId, rootRunId, context });
+        await emit({ type: "context-changed", runId, rootRunId, context });
       },
     });
     if (outcome.status === "failed") return fail(outcome.error);
@@ -369,7 +380,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   async function runCheckpointNode(node: CheckpointNode, incomingOutput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
     const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
     const passed = outcome === "true";
-    await observer?.checkpointEvaluated?.({ runId, rootRunId, nodeId: node.id, passed, trace });
+    await emit({ type: "checkpoint-evaluated", runId, rootRunId, nodeId: node.id, passed, trace });
     if (!passed) {
       return { status: "failed", error: `checkpoint "${node.id}" failed: ${describeConditionFailure(trace)}` };
     }
@@ -392,15 +403,15 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         return { status: "failed", error: `branch "${node.id}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
       }
       if (outcome === "true") {
-        await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: index, trace });
+        await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, arm: index, trace });
         return runSequence(arm.body, incomingOutput, exec);
       }
     }
     if (node.else) {
-      await observer?.branchTaken?.({ runId, rootRunId, nodeId: node.id, arm: "else", trace: null });
+      await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, arm: "else", trace: null });
       return runSequence(node.else, incomingOutput, exec);
     }
-    await observer?.branchNoMatch?.({ runId, rootRunId, nodeId: node.id, traces });
+    await emit({ type: "branch-no-match", runId, rootRunId, nodeId: node.id, traces });
     return { status: "failed", error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
   }
 
@@ -439,17 +450,17 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         return { status: "failed", error: `while-do "${node.id}": condition evaluation error: ${describeConditionFailure(trace)}` };
       }
       if (outcome === "false") {
-        await observer?.loopExited?.({ runId, rootRunId, nodeId: node.id, reason: "condition-false", iterations, trace });
+        await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, reason: "condition-false", iterations, trace });
         return { status: "succeeded", output: iterationOutput };
       }
       // Condition true, but the cap has already been reached: the run fails (post-loop nodes may
       // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
       if (iterations >= maxIterations) {
-        await observer?.loopExited?.({ runId, rootRunId, nodeId: node.id, reason: "max-iterations-exceeded", iterations, trace });
+        await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, reason: "max-iterations-exceeded", iterations, trace });
         return { status: "failed", error: `while-do "${node.id}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
       }
       iterations += 1;
-      await observer?.iterationStarted?.({ runId, rootRunId, nodeId: node.id, iteration: iterations, trace });
+      await emit({ type: "iteration-started", runId, rootRunId, nodeId: node.id, iteration: iterations, trace });
       const bodyOutcome = await runSequence(node.body, iterationOutput, exec);
       if (bodyOutcome.status !== "succeeded") return bodyOutcome;
       iterationOutput = bodyOutcome.output;
@@ -497,7 +508,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
           fileWorker: file.worker,
           rootRunId,
           parentRunId: runId,
-          observer,
+          emit,
           context: exec.context,
           signal: exec.signal,
           cancellation: exec.cancellation,
@@ -509,7 +520,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
             parentRunId: runId,
             rootRunId,
             files,
-            observer,
+            emit,
             llm: params.llm,
             signal: exec.signal,
             cancellation: exec.cancellation,
@@ -653,7 +664,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     }
     Object.assign(exec.context, landed);
     if (publishedKeys.length > 0) await exec.onPublish(landed);
-    await observer?.joinApplied?.({
+    await emit({ type: "join-applied",
       runId,
       rootRunId,
       nodeId: node.id,
@@ -684,7 +695,7 @@ async function runWorkflowNode(
     parentRunId: string;
     rootRunId: string;
     files?: Map<string, WorkflowFile>;
-    observer?: RunObserver;
+    emit: Emit;
     // Shared down the whole run tree so the child's prompt steps queue on the same cap (§5.5).
     llm: LlmRuntime;
     // Inherited from an enclosing `parallel` branch (#24): a sibling failure kills this nested
@@ -715,7 +726,7 @@ async function runWorkflowNode(
     incomingConfig: ctx.stepConfig, // parent's effective config crosses the file boundary (§8)
     identity: { runId: randomUUID(), rootRunId: ctx.rootRunId, parentRunId: ctx.parentRunId, nodeId: node.id },
     files: ctx.files,
-    observer: ctx.observer,
+    emit: ctx.emit,
     llm: ctx.llm,
     signal: ctx.signal,
     cancellation: ctx.cancellation,
@@ -738,7 +749,7 @@ interface LeafStepContext {
   fileWorker: Worker;
   rootRunId: string;
   parentRunId: string;
-  observer?: RunObserver;
+  emit: Emit;
   context: { [key: string]: JsonValue };
   signal?: AbortSignal;
   cancellation?: Cancellation;
@@ -749,7 +760,7 @@ interface LeafStepContext {
 // the step with its own run as the cause; otherwise the (parsed or raw) output succeeds. Keeps the
 // parse/finish shape identical across binary and prompt steps so the two can't drift.
 async function finishLeafStep(
-  observer: RunObserver | undefined,
+  emit: Emit,
   ids: { runId: string; rootRunId: string },
   node: { id: string; parse?: "text" | "json" },
   rawOutput: string,
@@ -761,11 +772,11 @@ async function finishLeafStep(
     } catch (err) {
       if (!(err instanceof OutputParseError)) throw err;
       const parseError = `step "${node.id}": ${err.message}`;
-      await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "failed", error: parseError });
+      await emit({ type: "step-finished", runId: ids.runId, rootRunId: ids.rootRunId, status: "failed", error: parseError });
       return { status: "failed", error: parseError, causeRunId: ids.runId };
     }
   }
-  await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "succeeded", output });
+  await emit({ type: "step-finished", runId: ids.runId, rootRunId: ids.rootRunId, status: "succeeded", output });
   return { status: "succeeded", output };
 }
 
@@ -776,20 +787,20 @@ async function finishLeafStep(
 // there means a sibling branch failed and names it, while none means the abort came from outside the
 // run tree — an operator cancelling the root run (#52), which has no cause run to point at.
 async function cancelLeafStep(
-  observer: RunObserver | undefined,
+  emit: Emit,
   ids: { runId: string; rootRunId: string },
   nodeId: string,
   cancellation: Cancellation | undefined,
 ): Promise<SeqOutcome> {
   const causeRunId = cancellation?.causeRunId ?? null;
-  await observer?.runCancelled?.({
+  await emit({ type: "run-cancelled",
     runId: ids.runId,
     rootRunId: ids.rootRunId,
     nodeId,
     cause: causeRunId === null ? "operator" : "sibling-failed",
     causeRunId,
   });
-  await observer?.stepFinished?.({ runId: ids.runId, rootRunId: ids.rootRunId, status: "cancelled" });
+  await emit({ type: "step-finished", runId: ids.runId, rootRunId: ids.rootRunId, status: "cancelled" });
   return { status: "cancelled" };
 }
 
@@ -808,7 +819,7 @@ async function runPromptNode(
   stepInput: JsonValue,
   ctx: LeafStepContext & { llm: LlmRuntime },
 ): Promise<SeqOutcome> {
-  const { rootRunId, observer } = ctx;
+  const { rootRunId, emit } = ctx;
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.context };
   const effectiveWorker: Worker = node.worker ?? ctx.fileWorker;
 
@@ -834,7 +845,7 @@ async function runPromptNode(
   let result;
   try {
     const stepRunId = randomUUID();
-    await observer?.stepStarted?.({
+    await emit({ type: "step-started",
       runId: stepRunId,
       rootRunId,
       parentRunId: ctx.parentRunId,
@@ -860,12 +871,12 @@ async function runPromptNode(
       // A failing sibling parallel branch or an operator's cancel killed this processor (mvp spec
       // §5.6) — not a failure of this step. Awaited here rather than returned, so the processor slot
       // is only released once the cancellation has been narrated.
-      return await cancelLeafStep(observer, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
+      return await cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
     }
 
     // Leaf-only (§5.7): recorded on this run, never rolled up — subtree figures are a read-time SUM.
     if (result.usage !== null || result.estimatedCostUsd !== null) {
-      await observer?.stepUsage?.({
+      await emit({ type: "step-usage",
         runId: stepRunId,
         rootRunId,
         usage: result.usage,
@@ -874,11 +885,11 @@ async function runPromptNode(
     }
 
     if (result.status === "failed") {
-      await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: result.error });
+      await emit({ type: "step-finished", runId: stepRunId, rootRunId, status: "failed", error: result.error });
       return { status: "failed", error: result.error, causeRunId: stepRunId };
     }
 
-    return finishLeafStep(observer, { runId: stepRunId, rootRunId }, node, result.output);
+    return finishLeafStep(emit, { runId: stepRunId, rootRunId }, node, result.output);
   } finally {
     // The processor is gone by now either way; holding its slot any longer would shrink the cap.
     release();
@@ -895,7 +906,7 @@ async function runBinaryNode(
   // cancel of the root run (#52) — and `ctx.cancellation` is what tells those two apart afterwards.
   ctx: LeafStepContext,
 ): Promise<SeqOutcome> {
-  const { rootRunId, observer } = ctx;
+  const { rootRunId, emit } = ctx;
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.context };
   const effectiveWorker: Worker = node.worker ?? ctx.fileWorker;
 
@@ -915,7 +926,7 @@ async function runBinaryNode(
   }
 
   const stepRunId = randomUUID();
-  await observer?.stepStarted?.({
+  await emit({ type: "step-started",
     runId: stepRunId,
     rootRunId,
     parentRunId: ctx.parentRunId,
@@ -926,20 +937,20 @@ async function runBinaryNode(
   });
 
   const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput, ctx.signal);
-  await observer?.stepStderr?.({ runId: stepRunId, rootRunId, stderr: result.stderr });
+  await emit({ type: "step-stderr", runId: stepRunId, rootRunId, stderr: result.stderr });
 
   if ("cancelled" in result) {
     // A failing sibling parallel branch or an operator's cancel killed this child process (mvp spec
     // §5.6) — not a failure of this step.
-    return cancelLeafStep(observer, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
+    return cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node.id, ctx.cancellation);
   }
 
   if (!result.success) {
-    await observer?.stepFinished?.({ runId: stepRunId, rootRunId, status: "failed", error: result.error });
+    await emit({ type: "step-finished", runId: stepRunId, rootRunId, status: "failed", error: result.error });
     return { status: "failed", error: result.error, causeRunId: stepRunId };
   }
 
-  return finishLeafStep(observer, { runId: stepRunId, rootRunId }, node, result.output);
+  return finishLeafStep(emit, { runId: stepRunId, rootRunId }, node, result.output);
 }
 
 /**
@@ -954,13 +965,19 @@ export async function runWorkflow(
 ): Promise<RunResult> {
   const runId = randomUUID();
 
-  // Collect every `$secret` value in effective config once at run start (mvp spec §8.3, #20) and
-  // wrap the observer so the whole run tree's persisted artifacts are scrubbed at the seam — the
-  // interpolated values handed to workers stay real, only what crosses into persistence is masked.
+  // Collect every `$secret` value in effective config once at run start (mvp spec §8.3, #20), then
+  // scrub at the one point every observation passes through (#62) — the interpolated values handed
+  // to workers stay real, only what crosses into persistence is masked. Masking here rather than in
+  // a wrapper is what makes the guarantee unconditional: there is no hook to leave unimplemented and
+  // no wrapper for a future caller to skip.
   const masker = collectSecrets(collectRunSecrets(file, options));
   for (const warning of masker.warnings) options.warn?.(warning);
-  const observer =
-    options.observer && !masker.isEmpty ? createMaskingObserver(masker, options.observer) : options.observer;
+  const { observer } = options;
+  const emit: Emit = observer
+    ? async (o) => {
+        await observer.observe(masker.isEmpty ? o : maskObservation(masker, o));
+      }
+    : async () => {};
 
   return executeWorkflowRun({
     file,
@@ -969,7 +986,7 @@ export async function runWorkflow(
     incomingConfig: options.operatorConfig ?? {},
     identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
     files: options.files,
-    observer,
+    emit,
     // External abort (#52): the operator's signal is the root run's own, and threads down to every
     // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
     // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.

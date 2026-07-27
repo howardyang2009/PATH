@@ -217,8 +217,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     // Abort from a timer once the step's run has started, so the child is killed in flight.
     const controller = new AbortController();
     const aborter: RunObserver = {
-      stepStarted({ nodeId }) {
-        if (nodeId === "sleeper") setTimeout(() => controller.abort(), 0);
+      observe(o) {
+        if (o.type === "step-started" && o.nodeId === "sleeper") setTimeout(() => controller.abort(), 0);
       },
     };
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
@@ -272,8 +272,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     for (const delayMs of [0, 20, 70, 130, 200, 400]) {
       let rootId = "";
       const captureRootId: RunObserver = {
-        runStarted({ runId, parentRunId }) {
-          if (parentRunId === null) rootId = runId;
+        observe(o) {
+          if (o.type === "run-started" && o.parentRunId === null) rootId = o.runId;
         },
       };
       const backends = createLogBackends(["db", "ndjson"], { db, projectDir });

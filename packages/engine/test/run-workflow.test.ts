@@ -6,6 +6,7 @@ import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/s
 import { describe, expect, it, vi } from "vitest";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
 import { DEFAULT_LLM_CONCURRENCY } from "../src/llm/processor-semaphore.js";
+import { fakeObserver, type FakeObserver } from "./fake-observer.js";
 import type { RunObserver } from "../src/run-observer.js";
 import { runWorkflow } from "../src/run-workflow.js";
 
@@ -172,24 +173,13 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     };
   }
 
-  // Captures every observer payload as it crosses the persistence boundary — this stands in for
-  // what would otherwise be written to disk / a backend.
-  function recordingObserver(): { observer: RunObserver; persisted: () => string } {
-    const seen: unknown[] = [];
-    const capture = (info: unknown) => {
-      seen.push(info);
-    };
-    return {
-      observer: {
-        runStarted: capture,
-        stepStarted: capture,
-        stepStderr: capture,
-        stepFinished: capture,
-        contextChanged: capture,
-        runFinished: capture,
-      },
-      persisted: () => JSON.stringify(seen),
-    };
+  // Captures every observation as it crosses the persistence boundary — this stands in for what
+  // would otherwise be written to disk / a backend. It records the whole union rather than a
+  // hand-listed subset: the version this replaced listed the same six hooks the masking wrapper
+  // implemented, so it could not see the eight that wrapper dropped (#62).
+  function recordingObserver(): { observer: FakeObserver; persisted: () => string } {
+    const observer = fakeObserver();
+    return { observer, persisted: () => JSON.stringify(observer.all()) };
   }
 
   it("hands the worker the real secret but scrubs it from every persisted payload", async () => {
@@ -402,25 +392,6 @@ describe("runWorkflow — workflow output map (ticket #17)", () => {
   });
 });
 
-function fakeObserver(): { [K in keyof Required<RunObserver>]: ReturnType<typeof vi.fn> } {
-  return {
-    runStarted: vi.fn(),
-    stepStarted: vi.fn(),
-    stepStderr: vi.fn(),
-    stepUsage: vi.fn(),
-    stepFinished: vi.fn(),
-    contextChanged: vi.fn(),
-    joinApplied: vi.fn(),
-    runCancelled: vi.fn(),
-    runFinished: vi.fn(),
-    checkpointEvaluated: vi.fn(),
-    branchTaken: vi.fn(),
-    branchNoMatch: vi.fn(),
-    iterationStarted: vi.fn(),
-    loopExited: vi.fn(),
-  };
-}
-
 describe("runWorkflow — nested workflow steps (ticket #22)", () => {
   const parentPath = join(fixturesDir, "parent.workflow.json");
   const childPath = join(fixturesDir, "nested-child.workflow.json");
@@ -608,9 +579,9 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const result = await runWorkflow(file, fixturesDir, { input: { seed: 1 }, observer });
 
     expect(result.status).toBe("succeeded");
-    expect(observer.runStarted).toHaveBeenCalledTimes(1);
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runStarted).toHaveBeenCalledWith({
+    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["run-started"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId, // the root run is its own root
       parentRunId: null,
@@ -619,8 +590,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       worker: { type: "engine" },
     });
 
-    expect(observer.stepStarted).toHaveBeenCalledTimes(1);
-    const stepCall = observer.stepStarted.mock.calls[0]![0];
+    expect(observer["step-started"]).toHaveBeenCalledTimes(1);
+    const stepCall = observer["step-started"].mock.calls[0]![0];
     expect(stepCall.parentRunId).toBe(runId);
     expect(stepCall.rootRunId).toBe(runId);
     expect(stepCall.nodeId).toBe("greet");
@@ -628,14 +599,14 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(stepCall.worker).toEqual({ type: "engine" });
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
-    expect(observer.stepStderr).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, stderr: "" });
-    expect(observer.stepFinished).toHaveBeenCalledWith({
+    expect(observer["step-stderr"]).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, stderr: "" });
+    expect(observer["step-finished"]).toHaveBeenCalledWith({
       runId: stepCall.runId,
       rootRunId: runId,
       status: "succeeded",
       output: "hi",
     });
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId, rootRunId: runId, status: "succeeded", output: {} });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId, rootRunId: runId, status: "succeeded", output: {} });
   });
 
   it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
@@ -650,15 +621,15 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     const result = await runWorkflow(file, fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    const stepCall = observer.stepStarted.mock.calls[0]![0];
-    expect(observer.stepFinished).toHaveBeenCalledWith({
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    const stepCall = observer["step-started"].mock.calls[0]![0];
+    expect(observer["step-finished"]).toHaveBeenCalledWith({
       runId: stepCall.runId,
       rootRunId: runId,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
-    expect(observer.runFinished).toHaveBeenCalledWith({
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId,
       status: "failed",
@@ -677,9 +648,9 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     await runWorkflow(file, fixturesDir, { observer });
 
-    expect(observer.stepStarted).not.toHaveBeenCalled();
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runFinished).toHaveBeenCalledWith({
+    expect(observer["step-started"]).not.toHaveBeenCalled();
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId,
       status: "failed",
@@ -706,8 +677,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 
     await runWorkflow(file, fixturesDir, { observer });
 
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.contextChanged).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["context-changed"]).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
   });
 });
 
@@ -719,7 +690,7 @@ function echoStep(id: string) {
 
 // Look up the input object a given node's step-run started with (control nodes have no step-run).
 function stepInputFor(observer: ReturnType<typeof fakeObserver>, nodeId: string): unknown {
-  return observer.stepStarted.mock.calls.find(([info]) => info.nodeId === nodeId)?.[0].input;
+  return observer["step-started"].mock.calls.find(([info]) => info.nodeId === nodeId)?.[0].input;
 }
 
 describe("runWorkflow — checkpoint nodes (ticket #21)", () => {
@@ -741,8 +712,8 @@ describe("runWorkflow — checkpoint nodes (ticket #21)", () => {
     expect(result.status).toBe("succeeded");
     // transparent: `consume` defaults its input to `produce`'s output, unchanged by the checkpoint.
     expect(stepInputFor(observer, "consume")).toBe("hello");
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["checkpoint-evaluated"]).toHaveBeenCalledWith(
       expect.objectContaining({ runId, rootRunId: runId, nodeId: "gate", passed: true, trace: expect.objectContaining({ outcome: "true" }) }),
     );
   });
@@ -764,7 +735,7 @@ describe("runWorkflow — checkpoint nodes (ticket #21)", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/checkpoint "gate"/);
-    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "gate", passed: false }));
+    expect(observer["checkpoint-evaluated"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "gate", passed: false }));
     expect(stepInputFor(observer, "never")).toBeUndefined();
   });
 
@@ -780,7 +751,7 @@ describe("runWorkflow — checkpoint nodes (ticket #21)", () => {
     const result = await runWorkflow(file, fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    expect(observer.checkpointEvaluated).toHaveBeenCalledWith(
+    expect(observer["checkpoint-evaluated"]).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) }),
     );
   });
@@ -816,8 +787,8 @@ describe("runWorkflow — branch nodes (ticket #21)", () => {
     expect(stepInputFor(observer, "arm-a")).toBeUndefined();
     // the block output (taken arm's last node output) becomes `after`'s default input.
     expect(stepInputFor(observer, "after")).toBe("hello");
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.branchTaken).toHaveBeenCalledWith(
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["branch-taken"]).toHaveBeenCalledWith(
       expect.objectContaining({ runId, rootRunId: runId, nodeId: "route", arm: 1, trace: expect.objectContaining({ outcome: "true" }) }),
     );
   });
@@ -843,7 +814,7 @@ describe("runWorkflow — branch nodes (ticket #21)", () => {
 
     expect(result.status).toBe("succeeded");
     expect(stepInputFor(observer, "fallback")).toBe("base");
-    expect(observer.branchTaken).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "route", arm: "else", trace: null }));
+    expect(observer["branch-taken"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "route", arm: "else", trace: null }));
   });
 
   it("fails the run with branch-no-match when no arm matches and there is no else", async () => {
@@ -869,10 +840,10 @@ describe("runWorkflow — branch nodes (ticket #21)", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/branch "route"/);
-    const noMatch = observer.branchNoMatch.mock.calls[0]?.[0];
+    const noMatch = observer["branch-no-match"].mock.calls[0]![0];
     expect(noMatch).toMatchObject({ nodeId: "route" });
     expect(noMatch.traces).toHaveLength(2); // every arm's trace
-    expect(observer.branchTaken).not.toHaveBeenCalled();
+    expect(observer["branch-taken"]).not.toHaveBeenCalled();
   });
 });
 
@@ -1000,25 +971,25 @@ describe("runWorkflow — parallel blocks: collect join (ticket #24)", () => {
     expect(result.error).toMatch(/boom/);
 
     // The failing branch's step run id is the cause the sibling cancellation points back at.
-    const boomStep = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom");
-    const sleeperStep = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper");
+    const boomStep = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom")!;
+    const sleeperStep = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper")!;
     expect(boomStep).toBeDefined();
     expect(sleeperStep).toBeDefined();
 
     // The sleeper was cancelled best-effort (a distinct status), narrated by run-cancelled — whose
     // cause is the failing sibling, not the operator (#52).
-    expect(observer.runCancelled).toHaveBeenCalledWith({
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith({
       runId: sleeperStep!.runId,
       rootRunId: sleeperStep!.rootRunId,
       nodeId: "sleeper",
       cause: "sibling-failed",
       causeRunId: boomStep!.runId,
     });
-    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: sleeperStep!.runId, rootRunId: sleeperStep!.rootRunId, status: "cancelled" });
+    expect(observer["step-finished"]).toHaveBeenCalledWith({ runId: sleeperStep!.runId, rootRunId: sleeperStep!.rootRunId, status: "cancelled" });
     // No join, hence no publishes landed (§5.6): neither the slow branch's buffered publish nor any
     // context write reached the run.
-    expect(observer.joinApplied).not.toHaveBeenCalled();
-    expect(observer.contextChanged).not.toHaveBeenCalled();
+    expect(observer["join-applied"]).not.toHaveBeenCalled();
+    expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
   it("narrates the join with branch ids in declaration order and the published keys", async () => {
@@ -1043,8 +1014,8 @@ describe("runWorkflow — parallel blocks: collect join (ticket #24)", () => {
 
     const result = await runWorkflow(file, fixturesDir, { observer });
     expect(result.status).toBe("succeeded");
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.joinApplied).toHaveBeenCalledWith({
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["join-applied"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId,
       nodeId: "fanout",
@@ -1093,9 +1064,9 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
     // Body never ran; the block is transparent on the output side (predecessor's output = "5").
     expect(stepInputFor(observer, "body")).toBeUndefined();
     expect(stepInputFor(observer, "after")).toBe(5);
-    expect(observer.iterationStarted).not.toHaveBeenCalled();
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.loopExited).toHaveBeenCalledWith(
+    expect(observer["iteration-started"]).not.toHaveBeenCalled();
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["loop-exited"]).toHaveBeenCalledWith(
       expect.objectContaining({ runId, rootRunId: runId, nodeId: "loop", reason: "condition-false", iterations: 0, trace: expect.objectContaining({ outcome: "false" }) }),
     );
   });
@@ -1123,12 +1094,12 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
 
     expect(result.status).toBe("succeeded");
     // count runs 0 -> 1 -> 2 -> 3; the condition (count <= 2) holds for the first three iterations.
-    expect(observer.iterationStarted).toHaveBeenCalledTimes(3);
+    expect(observer["iteration-started"]).toHaveBeenCalledTimes(3);
     // The block output is the last iteration's `body` output (3); `after` chains off it.
     expect(stepInputFor(observer, "after")).toBe(3);
-    const { runId } = observer.runStarted.mock.calls[0]![0];
-    expect(observer.iterationStarted).toHaveBeenNthCalledWith(1, expect.objectContaining({ nodeId: "loop", iteration: 1 }));
-    expect(observer.loopExited).toHaveBeenCalledWith(
+    const { runId } = observer["run-started"].mock.calls[0]![0];
+    expect(observer["iteration-started"]).toHaveBeenNthCalledWith(1, expect.objectContaining({ nodeId: "loop", iteration: 1 }));
+    expect(observer["loop-exited"]).toHaveBeenCalledWith(
       expect.objectContaining({ runId, rootRunId: runId, nodeId: "loop", reason: "condition-false", iterations: 3 }),
     );
   });
@@ -1156,10 +1127,10 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/while-do "loop"/);
-    expect(observer.iterationStarted).toHaveBeenCalledTimes(2);
+    expect(observer["iteration-started"]).toHaveBeenCalledTimes(2);
     // Post-loop node never runs on a failed loop cap.
     expect(stepInputFor(observer, "after")).toBeUndefined();
-    expect(observer.loopExited).toHaveBeenCalledWith(
+    expect(observer["loop-exited"]).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "loop", reason: "max-iterations-exceeded", iterations: 2, trace: expect.objectContaining({ outcome: "true" }) }),
     );
   });
@@ -1185,8 +1156,8 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/while-do "loop"/);
-    expect(observer.iterationStarted).not.toHaveBeenCalled();
-    expect(observer.loopExited).not.toHaveBeenCalled();
+    expect(observer["iteration-started"]).not.toHaveBeenCalled();
+    expect(observer["loop-exited"]).not.toHaveBeenCalled();
   });
 
   it("resolves an interpolated max_iterations against config before capping the loop", async () => {
@@ -1213,8 +1184,8 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
     // "2" resolved to the integer 2: the loop caps after exactly two completed iterations.
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/max_iterations \(2\)/);
-    expect(observer.iterationStarted).toHaveBeenCalledTimes(2);
-    expect(observer.loopExited).toHaveBeenCalledWith(
+    expect(observer["iteration-started"]).toHaveBeenCalledTimes(2);
+    expect(observer["loop-exited"]).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "loop", reason: "max-iterations-exceeded", iterations: 2 }),
     );
   });
@@ -1241,8 +1212,8 @@ describe("runWorkflow — while-do loops (ticket #23)", () => {
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/while-do "loop": max_iterations resolved to "zero", which is not a positive integer/);
-    expect(observer.iterationStarted).not.toHaveBeenCalled();
-    expect(observer.loopExited).not.toHaveBeenCalled();
+    expect(observer["iteration-started"]).not.toHaveBeenCalled();
+    expect(observer["loop-exited"]).not.toHaveBeenCalled();
   });
 });
 
@@ -1425,13 +1396,13 @@ describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
       { type: "binary", id: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
     ]);
 
-    const observer: RunObserver = { stepUsage: vi.fn(), stepFinished: vi.fn() };
+    const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/error_max_turns/);
     // A step that died mid-conversation still spent tokens: they are recorded before it finishes.
-    expect(observer.stepUsage).toHaveBeenCalledWith(
+    expect(observer["step-usage"]).toHaveBeenCalledWith(
       expect.objectContaining({ usage: { input_tokens: 9, output_tokens: 0 }, estimatedCostUsd: 0.02 }),
     );
   });
@@ -1440,46 +1411,34 @@ describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
     const llm = fakeLlmWorker();
     const file = llmFile([{ type: "prompt", id: "ask", prompt: "Hi." }]);
 
-    const calls: string[] = [];
-    const usageInfo: { runId: string }[] = [];
-    const stepRunIds: string[] = [];
-    const observer: RunObserver = {
-      runStarted: ({ runId }) => {
-        calls.push(`runStarted:${runId}`);
-      },
-      stepStarted: ({ runId }) => {
-        stepRunIds.push(runId);
-        calls.push("stepStarted");
-      },
-      stepUsage: (info) => {
-        usageInfo.push(info);
-        calls.push("stepUsage");
-      },
-      stepFinished: () => {
-        calls.push("stepFinished");
-      },
-      runFinished: () => {
-        calls.push("runFinished");
-      },
-    };
+    const observer = fakeObserver();
 
     const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
 
     expect(result.status).toBe("succeeded");
-    expect(calls.slice(1)).toEqual(["stepStarted", "stepUsage", "stepFinished", "runFinished"]);
+    // Arrival order straight off the seam — usage is reported before the step it belongs to finishes.
+    expect(observer.all().map((o) => o.type)).toEqual([
+      "run-started",
+      "step-started",
+      "step-usage",
+      "step-finished",
+      "run-finished",
+    ]);
     // Attributed to the prompt step's own run — never to the enclosing workflow-run.
-    expect(usageInfo[0]?.runId).toBe(stepRunIds[0]);
-    expect(usageInfo[0]).toMatchObject({ usage: { input_tokens: 1, output_tokens: 2 }, estimatedCostUsd: 0.001 });
+    const stepStarted = observer["step-started"].mock.calls[0]![0];
+    const usage = observer["step-usage"].mock.calls[0]![0];
+    expect(usage.runId).toBe(stepStarted.runId);
+    expect(usage).toMatchObject({ usage: { input_tokens: 1, output_tokens: 2 }, estimatedCostUsd: 0.001 });
   });
 
   it("reports no usage for a step whose worker recorded none", async () => {
     const llm = fakeLlmWorker(() => ({ status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null }));
     const file = llmFile([{ type: "prompt", id: "ask", prompt: "Hi." }]);
-    const observer: RunObserver = { stepUsage: vi.fn() };
+    const observer = fakeObserver();
 
     await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
 
-    expect(observer.stepUsage).not.toHaveBeenCalled();
+    expect(observer["step-usage"]).not.toHaveBeenCalled();
   });
 
   it("spawns a fresh processor per step-run — no conversational state leaks between steps", async () => {
@@ -1621,12 +1580,12 @@ describe("runWorkflow — prompt steps on the LLM worker (ticket #25)", () => {
       },
     ]);
 
-    const observer: RunObserver = { runCancelled: vi.fn(), stepFinished: vi.fn() };
+    const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { llmWorker: llm.worker, observer });
 
     expect(result.status).toBe("failed"); // the block fails because a branch failed
-    expect(observer.runCancelled).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "ask" }));
-    expect(observer.stepFinished).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "ask" }));
+    expect(observer["step-finished"]).toHaveBeenCalledWith(expect.objectContaining({ status: "cancelled" }));
   });
 });
 
@@ -1645,9 +1604,9 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
    * (and registers its abort listener) synchronously after awaiting `stepStarted`, so a timer is what
    * puts the abort *after* the step is genuinely in flight rather than before it ever runs.
    */
-  function abortWhenStarted(observer: { stepStarted: ReturnType<typeof vi.fn> }, nodeId: string): AbortController {
+  function abortWhenStarted(observer: FakeObserver, nodeId: string): AbortController {
     const controller = new AbortController();
-    observer.stepStarted.mockImplementation((info: { nodeId: string }) => {
+    observer["step-started"].mockImplementation((info: { nodeId: string }) => {
       if (info.nodeId === nodeId) setTimeout(() => controller.abort(), 0);
     });
     return controller;
@@ -1670,23 +1629,23 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     // The root run ends cancelled — not failed (the workflow did not break), and not left running.
     expect(result.status).toBe("cancelled");
-    const root = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    const root = observer["run-started"].mock.calls[0]![0];
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
 
     // The killed step's cancellation names its cause: the operator, with no cause run behind it.
-    const sleeper = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper");
-    expect(observer.runCancelled).toHaveBeenCalledWith({
+    const sleeper = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper")!;
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith({
       runId: sleeper.runId,
       rootRunId: root.runId,
       nodeId: "sleeper",
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer.stepFinished).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["step-finished"]).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, status: "cancelled" });
 
     // Nothing downstream of the abort runs, and the cancelled step's publish never lands (#24).
-    expect(observer.stepStarted.mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
-    expect(observer.contextChanged).not.toHaveBeenCalled();
+    expect(observer["step-started"].mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
+    expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
   it("cancels a prompt step in flight through the llmWorker seam", async () => {
@@ -1715,17 +1674,17 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     const result = await runWorkflow(file, fixturesDir, { observer, llmWorker, signal: controller.signal });
 
     expect(result.status).toBe("cancelled");
-    const root = observer.runStarted.mock.calls[0]![0];
-    const ask = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "ask");
-    expect(observer.runCancelled).toHaveBeenCalledWith({
+    const root = observer["run-started"].mock.calls[0]![0];
+    const ask = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "ask")!;
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith({
       runId: ask.runId,
       rootRunId: root.runId,
       nodeId: "ask",
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
-    expect(observer.contextChanged).not.toHaveBeenCalled();
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
   it("runs no step at all when the signal is already aborted at launch", async () => {
@@ -1743,12 +1702,12 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
-    expect(observer.runStarted).toHaveBeenCalledTimes(1);
-    const root = observer.runStarted.mock.calls[0]![0];
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
+    const root = observer["run-started"].mock.calls[0]![0];
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
     // No step ran, so there is no killed run to narrate.
-    expect(observer.stepStarted).not.toHaveBeenCalled();
-    expect(observer.runCancelled).not.toHaveBeenCalled();
+    expect(observer["step-started"]).not.toHaveBeenCalled();
+    expect(observer["run-cancelled"]).not.toHaveBeenCalled();
   });
 
   it("cancels a nested workflow-run's step too, ending the whole tree cancelled", async () => {
@@ -1776,10 +1735,13 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // Both workflow-runs end cancelled — the root's own row included.
-    const [root, nested] = observer.runStarted.mock.calls.map((c) => c[0]);
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, status: "cancelled" });
-    expect(observer.runFinished).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
-    expect(observer.runCancelled).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "sleeper", cause: "operator", causeRunId: null }));
+    const [root, nested] = observer["run-started"].mock.calls.map((c) => c[0]) as [
+      (typeof observer)["run-started"]["mock"]["calls"][number][0],
+      (typeof observer)["run-started"]["mock"]["calls"][number][0],
+    ];
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "sleeper", cause: "operator", causeRunId: null }));
   });
 
   it("still calls a cancellation sibling-failed when the failing branch encloses a nested parallel", async () => {
@@ -1816,8 +1778,8 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     const result = await runWorkflow(file, fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    const kaboom = observer.stepStarted.mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom");
-    expect(observer.runCancelled).toHaveBeenCalledWith(
+    const kaboom = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom")!;
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith(
       expect.objectContaining({ nodeId: "deep", cause: "sibling-failed", causeRunId: kaboom.runId }),
     );
   });
@@ -1846,11 +1808,11 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     // No sibling failed, so neither branch's cancellation points at a cause run.
-    const causes = observer.runCancelled.mock.calls.map((c) => c[0]);
+    const causes = observer["run-cancelled"].mock.calls.map((c) => c[0]);
     expect(causes.length).toBeGreaterThan(0);
     for (const cancelled of causes) {
       expect(cancelled).toMatchObject({ cause: "operator", causeRunId: null });
     }
-    expect(observer.joinApplied).not.toHaveBeenCalled();
+    expect(observer["join-applied"]).not.toHaveBeenCalled();
   });
 });

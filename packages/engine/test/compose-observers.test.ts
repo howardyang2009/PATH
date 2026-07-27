@@ -1,31 +1,70 @@
 import { describe, expect, it, vi } from "vitest";
-import { composeObservers, ObserverError, type RunObserver } from "../src/run-observer.js";
+import { composeObservers, type Observation, ObserverError, type RunObserver } from "../src/run-observer.js";
+
+const started: Observation = {
+  type: "run-started",
+  runId: "r",
+  rootRunId: "r",
+  parentRunId: null,
+  nodeId: null,
+  input: {},
+  worker: { type: "engine" },
+};
+const finished: Observation = { type: "step-finished", runId: "r", rootRunId: "r", status: "succeeded", output: {} };
 
 describe("composeObservers", () => {
-  it("fans each lifecycle hook out to every observer, in order", async () => {
+  it("fans every observation out to every observer, in argument order", async () => {
     const calls: string[] = [];
-    const a: RunObserver = { runStarted: () => void calls.push("a") };
-    const b: RunObserver = { runStarted: () => void calls.push("b") };
+    const a: RunObserver = { observe: () => void calls.push("a") };
+    const b: RunObserver = { observe: () => void calls.push("b") };
 
-    await composeObservers(a, b).runStarted?.({ runId: "r", rootRunId: "r", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
-    expect(calls).toEqual(["a", "b"]);
+    await composeObservers(a, b).observe(started);
+    await composeObservers(a, b).observe(finished);
+    expect(calls).toEqual(["a", "b", "a", "b"]);
   });
 
-  it("tolerates observers that only implement some hooks", async () => {
-    const only = { stepStarted: vi.fn() } satisfies RunObserver;
-    const composed = composeObservers(only);
-    await composed.runFinished?.({ runId: "r", rootRunId: "r", status: "succeeded", output: {} });
-    expect(only.stepStarted).not.toHaveBeenCalled();
+  it("delivers the observation unchanged to each member", async () => {
+    const seen = vi.fn();
+    await composeObservers({ observe: seen }, { observe: seen }).observe(started);
+    expect(seen).toHaveBeenCalledTimes(2);
+    expect(seen).toHaveBeenNthCalledWith(1, started);
+    expect(seen).toHaveBeenNthCalledWith(2, started);
   });
 
   it("propagates an ObserverError thrown by any member so the engine can fail the run", async () => {
     const boom: RunObserver = {
-      stepFinished: () => {
+      observe: () => {
         throw new ObserverError("backend down");
       },
     };
-    await expect(
-      composeObservers({}, boom).stepFinished?.({ runId: "r", rootRunId: "r", status: "succeeded", output: {} }),
-    ).rejects.toBeInstanceOf(ObserverError);
+    await expect(composeObservers({ observe: () => {} }, boom).observe(finished)).rejects.toBeInstanceOf(ObserverError);
+  });
+
+  // The ordering contract composeObservers documents: persistence must have run before a logging
+  // failure aborts the fan-out, or a run whose audit failed would also have no row.
+  it("does not run observers after one that threw", async () => {
+    const before = vi.fn();
+    const after = vi.fn();
+    const boom: RunObserver = {
+      observe: () => {
+        throw new ObserverError("backend down");
+      },
+    };
+    await expect(composeObservers({ observe: before }, boom, { observe: after }).observe(finished)).rejects.toThrow();
+    expect(before).toHaveBeenCalledOnce();
+    expect(after).not.toHaveBeenCalled();
+  });
+
+  it("awaits an async member before starting the next", async () => {
+    const calls: string[] = [];
+    const slow: RunObserver = {
+      observe: async () => {
+        await new Promise((resolve) => setTimeout(resolve, 5));
+        calls.push("slow");
+      },
+    };
+    const fast: RunObserver = { observe: () => void calls.push("fast") };
+    await composeObservers(slow, fast).observe(started);
+    expect(calls).toEqual(["slow", "fast"]);
   });
 });

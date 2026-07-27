@@ -1,5 +1,6 @@
 import type { ConfigObject, ConfigValue, JsonValue } from "@path/schema";
-import type { RunObserver, RunOutcome } from "./run-observer.js";
+import type { Trace } from "./condition.js";
+import type { Observation } from "./run-observer.js";
 
 /**
  * Secret masking at the persistence boundary (mvp spec §8.3, ticket #20).
@@ -30,7 +31,7 @@ interface SecretEntry {
 }
 
 export interface SecretMasker {
-  /** True when no secrets were collected — the caller can skip wrapping the observer entirely. */
+  /** True when no secrets were collected — the engine's emit can then skip masking entirely. */
   readonly isEmpty: boolean;
   /** Load-time warnings (e.g. a suspiciously short secret) surfaced once at run start. */
   readonly warnings: string[];
@@ -121,44 +122,65 @@ export function collectSecrets(configs: ConfigObject[]): SecretMasker {
 }
 
 /**
- * Wraps a `RunObserver` so every payload crossing into it is scrubbed of secret values first — the
- * one choke point where the engine's audit surface (persistence #18 + logging #19) becomes the
- * persistence boundary. Every field the spec lists as persisted is masked: `input` (runStarted /
- * stepStarted), `stderr`, step/run `output` and `error` (the `RunOutcome`), and `context`. Fields
- * that never carry an interpolated secret (ids, worker binding, step type) pass through untouched.
- *
- * The wrapper preserves the inner observer's async contract and error propagation: an
- * `ObserverError` thrown by the inner observer (a log backend write failure) still surfaces so the
- * engine fails the run.
+ * Scrub a condition trace: the `value` each leaf recorded and its explanatory `message`. Per mvp
+ * spec §8.1 a leaf's value is recorded "post-masking" — a condition reads the `context` and
+ * `output` roots, and a step can publish an interpolated secret into either, so a trace is as
+ * capable of carrying one as an output object is.
  */
-export function createMaskingObserver(masker: SecretMasker, inner: RunObserver): RunObserver {
-  function maskOutcome<T extends { runId: string; rootRunId: string } & RunOutcome>(info: T): T {
-    if (info.status === "succeeded") return { ...info, output: masker.maskValue(info.output) };
-    if (info.status === "failed" && info.error !== undefined) return { ...info, error: masker.maskString(info.error) };
-    return info;
+function maskTrace(masker: SecretMasker, trace: Trace): Trace {
+  if (trace.type === "all" || trace.type === "any") {
+    return { ...trace, of: trace.of.map((child) => maskTrace(masker, child)) };
   }
-
-  // Each hook is async so a synchronously-thrown inner error normalizes to a rejection — the
-  // engine only ever awaits these, and an `ObserverError` must propagate the same way whether the
-  // inner observer throws sync or returns a rejected promise.
+  if (trace.type === "not") return { ...trace, of: maskTrace(masker, trace.of) };
   return {
-    async runStarted(info) {
-      await inner.runStarted?.({ ...info, input: masker.maskValue(info.input) });
-    },
-    async stepStarted(info) {
-      await inner.stepStarted?.({ ...info, input: masker.maskValue(info.input) });
-    },
-    async stepStderr(info) {
-      await inner.stepStderr?.({ ...info, stderr: masker.maskString(info.stderr) });
-    },
-    async stepFinished(info) {
-      await inner.stepFinished?.(maskOutcome(info));
-    },
-    async contextChanged(info) {
-      await inner.contextChanged?.({ ...info, context: masker.maskValue(info.context) });
-    },
-    async runFinished(info) {
-      await inner.runFinished?.(maskOutcome(info));
-    },
+    ...trace,
+    ...(trace.value !== undefined ? { value: masker.maskValue(trace.value) } : {}),
+    ...(trace.message !== undefined ? { message: masker.maskString(trace.message) } : {}),
   };
+}
+
+/**
+ * Scrub one observation of every secret value before it crosses the seam into an observer — the
+ * persistence boundary of mvp spec §8.3, applied at the engine's single emit choke point (#62).
+ *
+ * Total over the union **by construction**: the `never` guard means a new `Observation` member
+ * cannot be added without deciding what masking owes it. That is the property this function exists
+ * for. Its predecessor was a hand-written wrapper implementing 6 of 14 hooks, and the 8 it omitted
+ * became silent no-ops for any workflow declaring a secret.
+ *
+ * Members carrying no string payload the engine did not itself construct — ids, worker bindings,
+ * step types, counts, join keys — pass through untouched.
+ */
+export function maskObservation(masker: SecretMasker, o: Observation): Observation {
+  switch (o.type) {
+    case "run-started":
+    case "step-started":
+      return { ...o, input: masker.maskValue(o.input) };
+    case "step-stderr":
+      return { ...o, stderr: masker.maskString(o.stderr) };
+    case "context-changed":
+      return { ...o, context: masker.maskValue(o.context) };
+    case "step-finished":
+    case "run-finished":
+      if (o.status === "succeeded") return { ...o, output: masker.maskValue(o.output) };
+      if (o.status === "failed" && o.error !== undefined) return { ...o, error: masker.maskString(o.error) };
+      return o;
+    case "checkpoint-evaluated":
+    case "iteration-started":
+    case "loop-exited":
+      return { ...o, trace: maskTrace(masker, o.trace) };
+    case "branch-taken":
+      return o.trace === null ? o : { ...o, trace: maskTrace(masker, o.trace) };
+    case "branch-no-match":
+      return { ...o, traces: o.traces.map((trace) => maskTrace(masker, trace)) };
+    // A secret cannot reach these: they carry only ids, counts and engine-chosen enum values.
+    case "step-usage":
+    case "join-applied":
+    case "run-cancelled":
+      return o;
+    default: {
+      const exhaustive: never = o;
+      return exhaustive;
+    }
+  }
 }

@@ -17,8 +17,9 @@ import type { Condition, JsonValue } from "@path/schema";
  * - Errors dominate combination: an `all`/`any` with any `error` child is itself `error`, and
  *   `not` of an `error` is `error`. An overall `error` fails the condition (spec §5.6).
  *
- * The `value` recorded in each leaf is "post-masking" per §8.1; secret masking is #20, so values
- * currently flow through unmasked, consistent with every other event in the stream today.
+ * The `value` recorded in each leaf is "post-masking" per §8.1 — true since #62, which scrubs traces
+ * along with every other observation at the engine's emit. Before that the trace-bearing hooks were
+ * among the eight the masking wrapper never implemented, so no run masked one.
  */
 
 export type ConditionOutcome = "true" | "false" | "error";
