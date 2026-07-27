@@ -57,6 +57,10 @@ export { LEAF_CONDITION_TYPES } from "./condition-type.js";
 // load-time syntax check and the runtime walk.
 export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathResolution } from "./dot-path.js";
 
+// The block grammar's descent (format §3) — stated once, so a node type added to the format cannot
+// be silently skipped by anything that walks a workflow body.
+export { childBodies, walkNodes, type NodeChildBody } from "./node-walk.js";
+
 // Which roots are legal where — one declaration each, referenced rather than restated.
 export {
   CONDITION_ROOTS,

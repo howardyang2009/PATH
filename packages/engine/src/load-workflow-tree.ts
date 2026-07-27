@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
-import { safeParseWorkflowFile, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { safeParseWorkflowFile, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
 
 export interface WorkflowTree {
   /** Absolute path of the entry file passed to `path run`. */
@@ -11,45 +11,17 @@ export interface WorkflowTree {
 
 export type LoadResult = { success: true; tree: WorkflowTree } | { success: false; errors: string[] };
 
-// Recurses through control-node bodies the same way @path/schema's own id/publish-key
-// collectors do — a `workflow` step's ref can sit inside any nesting of blocks.
+// A `workflow` step's ref can sit inside any nesting of control blocks, so this walks the whole
+// body — using @path/schema's descent rather than restating it, which is what let a new block type
+// silently hide a nested file from the loader (#70).
 function collectWorkflowRefs(nodes: WorkflowNode[]): string[] {
   const refs: string[] = [];
-
-  for (const node of nodes) {
-    switch (node.type) {
-      case "workflow":
-        refs.push(node.ref);
-        break;
-      case "parallel":
-        for (const branch of node.branches) {
-          refs.push(...collectWorkflowRefs(branch.body));
-        }
-        break;
-      case "branch":
-        for (const arm of node.arms) {
-          refs.push(...collectWorkflowRefs(arm.body));
-        }
-        if (node.else) {
-          refs.push(...collectWorkflowRefs(node.else));
-        }
-        break;
-      case "while-do":
-        refs.push(...collectWorkflowRefs(node.body));
-        break;
-      default:
-        break;
-    }
+  for (const node of walkNodes(nodes)) {
+    if (node.type === "workflow") refs.push(node.ref);
   }
-
   return refs;
 }
 
-/**
- * Loads and validates the whole file tree reachable from `entryPath` via `workflow` step
- * refs, so authoring errors anywhere in the tree — schema violations, ref cycles,
- * unresolvable refs — surface before any step executes (format doc §10).
- */
 export function loadWorkflowTree(entryPath: string): LoadResult {
   const files = new Map<string, WorkflowFile>();
   const errors: string[] = [];
