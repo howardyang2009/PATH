@@ -63,8 +63,14 @@ Request body:
 | `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
 | `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`. |
-| `log_backends` | no | Same as `path run --log-backends`; default `["db", "ndjson"]`. |
-| `llm_concurrency` | no | Same as `path run --llm-concurrency`; default engine default (4). |
+| `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
+| `llm_concurrency` | no | Same as `path run --llm-concurrency`. Omitted: the project's `.path/settings.json` `"llm.concurrency"`, else the engine default (4). |
+
+The two engine settings resolve the same way here as they do for `path run`, nearest wins: **request
+field > `.path/settings.json` > built-in default** (mvp spec §9). Before #64 the server ignored the
+settings file, so an operator who had configured one saw it apply to `path run` and not to the API.
+A malformed settings file now fails server startup rather than being silently skipped, matching how
+`path run` refuses to start.
 
 Responses:
 

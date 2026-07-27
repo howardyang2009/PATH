@@ -1,17 +1,7 @@
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import {
-  composeObservers,
-  createLoggingObserver,
-  createLogBackends,
-  createPersistedObserver,
-  DEFAULT_LOG_BACKENDS,
-  loadWorkflowTree,
-  LOG_BACKEND_IDS,
-  runWorkflow,
-  type RunObserver,
-} from "@path/engine";
+import { loadWorkflowTree, LOG_BACKEND_IDS, type Project, type RunObserver } from "@path/engine";
 import { ConfigObjectSchema, formatIssues, type JsonValue } from "@path/schema";
 import type Database from "better-sqlite3";
 import { z } from "zod";
@@ -45,8 +35,11 @@ function resolveWorkflowPath(projectDir: string, workflowPath: string): string |
 }
 
 export interface RunsRouteContext {
-  projectDir: string;
-  db: Database.Database;
+  /**
+   * The opened project (#64): its `.path/`, its db, its engine settings, and the one way to run a
+   * workflow against it with the backends and observers already assembled in the right order.
+   */
+  project: Project;
   hub: RunEventHub;
   controllers: RunControllers;
 }
@@ -66,7 +59,7 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, llm_concurrency: llmConcurrency } =
     parsed.data;
 
-  const absPath = resolveWorkflowPath(ctx.projectDir, workflowPath);
+  const absPath = resolveWorkflowPath(ctx.project.dir, workflowPath);
   if (!absPath) {
     sendError(res, 404, `workflow_path "${workflowPath}" resolves outside the project root`);
     return;
@@ -88,11 +81,6 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     return;
   }
 
-  const backends = createLogBackends(logBackendIds ?? DEFAULT_LOG_BACKENDS, {
-    db: ctx.db,
-    projectDir: ctx.projectDir,
-  });
-
   // Resolved as soon as the first `run-started` observation arrives — the async contract (§2): the
   // response goes out before the run finishes, not before it starts.
   const started = createDeferred<{ runId: string; rootRunId: string }>();
@@ -111,31 +99,25 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
     },
   };
-  // The live-forwarding backend rides alongside the configured db/NDJSON backends so SSE clients
-  // (§5) see every already-masked event in `seq` order — independent of which log_backends the
-  // client persisted to. It never throws, so it can't fail the run.
-  const observer = composeObservers(
-    createPersistedObserver(ctx.db, ctx.projectDir),
-    createLoggingObserver([...backends, createLiveLogBackend(ctx.hub)]),
-    captureObserver,
-  );
-
-  // Two different directories meet here, and only one of them is `projectDir`. `projectDir` is where
-  // `.path/` is read and written, which is why the observer and the log backends above take it. What
-  // `runWorkflow` wants second is the *root workflow file's own* directory: it resolves nested
-  // `workflow` refs and binary `cwd`s against it. The CLI never had to tell them apart, because it
-  // derives its project dir from the workflow file (`cli.ts:258`) — so the two are always equal
-  // there. For the server they diverge for any workflow that is not at the project root, and passing
-  // `projectDir` here meant a nested ref resolved beside `.path/` instead of beside the file that
-  // wrote it, so it was never in the loaded tree (#59).
+  // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
+  // binary `cwd`s against. Distinct from the project directory, which is where `.path/` lives and
+  // which the project owns; passing the latter here is what broke nested refs in #59. `Project.run`
+  // takes only this one, so the pair can no longer be crossed (#64).
   const workflowDir = dirname(tree.rootPath);
 
-  const runPromise = runWorkflow(rootFile, workflowDir, {
+  const runPromise = ctx.project.run(rootFile, workflowDir, {
     input: input as { [key: string]: JsonValue } | undefined,
     operatorConfig: config,
     files: tree.files,
-    observer,
+    logBackends: logBackendIds,
     llmConcurrency,
+    // The live-forwarding backend rides alongside the configured db/NDJSON backends so SSE clients
+    // (§5) see every already-masked event in `seq` order — independent of which log_backends the
+    // client persisted to. It never throws, so it can't fail the run.
+    extraBackends: [createLiveLogBackend(ctx.hub)],
+    // Appended after persistence and logging by `Project.run`, which is the point: this resolves
+    // the 202, and a client may `GET` the run the moment it lands.
+    extraObservers: [captureObserver],
     signal: controller.signal,
     warn: (message) => console.error(`warning: ${message}`),
   });

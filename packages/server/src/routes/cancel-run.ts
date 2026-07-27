@@ -23,7 +23,7 @@ export function handleCancelRun(res: ServerResponse, ctx: RunsRouteContext, root
   // `GET /v0/runs/:root_run_id`, which can still report a tree when that row is missing, this route
   // must not fall back to some other row of the tree: a child can read `succeeded` while the tree is
   // still running, and a terminal 409 taken from it would refuse the cancel of a live run.
-  const rootRow = getRunsForRoot(ctx.db, rootRunId).find((row) => row.runId === rootRunId);
+  const rootRow = getRunsForRoot(ctx.project.db, rootRunId).find((row) => row.runId === rootRunId);
   if (!rootRow) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;

@@ -34,13 +34,13 @@ export function handleGetRunBlob(
   }
 
   // The run must belong to the root's tree — an unknown root or a run_id outside it is a 404.
-  const rows = getRunsForRoot(ctx.db, rootRunId);
+  const rows = getRunsForRoot(ctx.project.db, rootRunId);
   if (!rows.some((row) => row.runId === runId)) {
     sendError(res, 404, `no run "${runId}" under root "${rootRunId}"`);
     return;
   }
 
-  const dir = runBlobDir(ctx.projectDir, rootRunId, runId);
+  const dir = runBlobDir(ctx.project.dir, rootRunId, runId);
   if (!existsSync(join(dir, filename))) {
     sendError(res, 404, `no ${name} blob for run "${runId}"`);
     return;

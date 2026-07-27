@@ -4,8 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { dbFilePath, ensurePathDirGitignore, getRunsForRoot, openDb, pathDir } from "@path/engine";
-import type Database from "better-sqlite3";
+import { getRunsForRoot, openProject, type Project } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handlePostRuns, type RunsRouteContext } from "../src/routes/post-runs.js";
 import { RunControllers } from "../src/run-controllers.js";
@@ -20,19 +19,20 @@ const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
  * entry is a slow leak in a long-lived server; a missing one is a refused cancel of a live run.
  */
 let projectDir: string;
-let db: Database.Database;
+let project: Project;
 let ctx: RunsRouteContext;
 
 beforeEach(() => {
   projectDir = mkdtempSync(join(tmpdir(), "path-server-registry-test-"));
   cpSync(fixturesDir, projectDir, { recursive: true });
-  ensurePathDirGitignore(pathDir(projectDir));
-  db = openDb(dbFilePath(projectDir));
-  ctx = { projectDir, db, hub: new RunEventHub(), controllers: new RunControllers() };
+  const opened = openProject(projectDir);
+  if (!opened.success) throw new Error(opened.error);
+  project = opened.project;
+  ctx = { project, hub: new RunEventHub(), controllers: new RunControllers() };
 });
 
 afterEach(() => {
-  db.close();
+  project.close();
   rmSync(projectDir, { recursive: true, force: true });
 });
 
@@ -63,7 +63,7 @@ async function postRun(workflowPath: string): Promise<{ status: number; rootRunI
 /** Waits for the root row to reach a terminal status, then lets the run promise's settle handler run. */
 async function awaitSettled(rootRunId: string): Promise<string> {
   for (;;) {
-    const root = getRunsForRoot(db, rootRunId).find((r) => r.runId === rootRunId);
+    const root = getRunsForRoot(project.db, rootRunId).find((r) => r.runId === rootRunId);
     if (root && root.status !== "pending" && root.status !== "running") {
       // The row is written by the `runFinished` observer, which fires *before* `runWorkflow`'s
       // promise settles — give the `.then` that drops the controller its turn.

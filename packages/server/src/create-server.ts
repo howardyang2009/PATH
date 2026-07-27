@@ -1,8 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { dbFilePath, ensurePathDirGitignore, openDb, pathDir } from "@path/engine";
-import type Database from "better-sqlite3";
+import { openProject } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { handleCancelRun } from "./routes/cancel-run.js";
 import { handleGetRun } from "./routes/get-run.js";
@@ -112,14 +111,16 @@ export async function startPathServer(
   port = 0,
   staticDir: string = DEFAULT_STATIC_DIR,
 ): Promise<PathServerHandle> {
-  const absProjectDir = resolve(projectDir);
-  ensurePathDirGitignore(pathDir(absProjectDir));
-  const db: Database.Database = openDb(dbFilePath(absProjectDir));
+  // One project for the process (#64): `.path/` ensured, engine settings loaded, db opened once —
+  // the same three steps `path run` performs per invocation, now in one place that also owns how a
+  // run's backends and observers are assembled.
+  const opened = openProject(projectDir);
+  if (!opened.success) throw new Error(opened.error);
+  const project = opened.project;
 
   const absStaticDir = resolve(staticDir);
   const ctx: RunsRouteContext = {
-    projectDir: absProjectDir,
-    db,
+    project,
     hub: new RunEventHub(),
     controllers: new RunControllers(),
   };
@@ -143,7 +144,7 @@ export async function startPathServer(
     close: () =>
       new Promise((resolvePromise) => {
         server.close(() => {
-          db.close();
+          project.close();
           resolvePromise();
         });
       }),
