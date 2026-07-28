@@ -31,10 +31,10 @@ export function handleCancelRun(res: ServerResponse, ctx: RunsRouteContext, root
     return;
   }
 
-  // A `running` row this server holds no controller for is a real case, not a theoretical one:
-  // `path run` writes to the same `.path/path.db`, so a CLI-launched run is visible here, and a run
-  // left behind by an earlier crashed process sits in the db as `running` forever.
-  if (!ctx.controllers.abort(rootRunId)) {
+  // A `running` row this server is not executing is a real case, not a theoretical one: `path run`
+  // writes to the same `.path/path.db`, so a CLI-launched run is visible here, and a run left
+  // behind by an earlier crashed process sits in the db as `running` forever.
+  if (!ctx.live.cancel(rootRunId)) {
     sendError(
       res,
       409,
