@@ -22,7 +22,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
     input: { k: "s3cret-value" },
   },
   "step-stderr": { type: "step-stderr", ...ids, stderr: "boom s3cret-value" },
-  "step-usage": { type: "step-usage", ...ids, usage: { in: 1 }, estimatedCostUsd: 0.01 },
+  "step-usage": { type: "step-usage", ...ids, usage: { in: 1, note: "s3cret-value" }, estimatedCostUsd: 0.01 },
   "step-finished": { type: "step-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
   "context-changed": { type: "context-changed", ...ids, context: { k: "s3cret-value" } },
   "join-applied": { type: "join-applied", ...ids, nodeId: "n1", branches: ["a"], publishedKeys: ["k"] },
@@ -35,7 +35,13 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
     passed: false,
     trace: { type: "equals", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
-  "branch-taken": { type: "branch-taken", ...ids, nodeId: "n1", arm: 0, trace: null },
+  "branch-taken": {
+    type: "branch-taken",
+    ...ids,
+    nodeId: "n1",
+    arm: 0,
+    trace: { type: "equals", path: "context.k", outcome: "true", value: "s3cret-value" },
+  },
   "branch-no-match": {
     type: "branch-no-match",
     ...ids,
@@ -59,10 +65,27 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
   },
 };
 
+/**
+ * The members that provably cannot carry a secret: every field is an id, a count, a context key or
+ * a node id the workflow author wrote, or an enum value the engine chose — never a config value.
+ * Naming them is what stops the sweep below from passing vacuously: any *other* member whose sample
+ * does not really hold a secret is a sample that proves nothing.
+ */
+const CANNOT_CARRY_A_SECRET = new Set<Observation["type"]>(["join-applied", "run-cancelled"]);
+
 describe("maskObservation", () => {
   it("leaves no secret in any observation type", () => {
     for (const sample of Object.values(SAMPLES)) {
       expect(JSON.stringify(maskObservation(masker, sample))).not.toContain("s3cret-value");
+    }
+  });
+
+  // Without this, a member could be listed in the switch, return unmasked, and still pass the sweep
+  // above — because its sample never held a secret to begin with.
+  it("proves each sweep is real: every maskable sample carries the secret before masking", () => {
+    for (const [type, sample] of Object.entries(SAMPLES)) {
+      if (CANNOT_CARRY_A_SECRET.has(type as Observation["type"])) continue;
+      expect(JSON.stringify(sample), `sample for "${type}" carries no secret to mask`).toContain("s3cret-value");
     }
   });
 
@@ -113,13 +136,34 @@ describe("maskObservation", () => {
     expect(JSON.stringify(masked)).toContain(TOKEN);
   });
 
-  it("masks every trace of a branch-no-match, and tolerates a null branch-taken trace", () => {
+  it("masks every trace of a branch-no-match, and the one a taken arm recorded", () => {
     expect(maskObservation(masker, SAMPLES["branch-no-match"])).toMatchObject({ traces: [{ value: TOKEN }] });
-    expect(maskObservation(masker, SAMPLES["branch-taken"])).toMatchObject({ trace: null });
+    expect(maskObservation(masker, SAMPLES["branch-taken"])).toMatchObject({ trace: { value: TOKEN } });
   });
 
-  it("passes through observations that carry no maskable payload", () => {
-    for (const type of ["step-usage", "join-applied", "run-cancelled"] as const) {
+  // The else arm has no condition, so it records no trace (#21) — masking must not build one.
+  it("tolerates the null trace an else arm carries", () => {
+    const masked = maskObservation(masker, { ...SAMPLES["branch-taken"], arm: "else", trace: null });
+
+    expect(masked).toMatchObject({ arm: "else", trace: null });
+  });
+
+  // The worker's own report, stored verbatim on the run row (§5.7) — the one payload here the
+  // engine neither built nor validated.
+  it("masks the usage a worker reported, without disturbing its counts", () => {
+    const masked = maskObservation(masker, SAMPLES["step-usage"]);
+
+    expect(masked).toMatchObject({ type: "step-usage", usage: { in: 1, note: TOKEN }, estimatedCostUsd: 0.01 });
+  });
+
+  it("leaves a null usage null rather than masking it into something", () => {
+    const masked = maskObservation(masker, { ...SAMPLES["step-usage"], usage: null });
+
+    expect(masked).toMatchObject({ usage: null });
+  });
+
+  it("passes through, unchanged, the observations that carry no maskable payload", () => {
+    for (const type of CANNOT_CARRY_A_SECRET) {
       expect(maskObservation(masker, SAMPLES[type])).toEqual(SAMPLES[type]);
     }
   });
