@@ -1,13 +1,16 @@
-import type { RunNodeState } from "@path/client-core";
+import { buildRunTree, type RunNodeState, type RunTreeNode } from "@path/client-core";
 import { useState } from "react";
 import { nodeLabel } from "./node-label.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
  * The run tree: an indented, collapsible parent/child list of the runs under one root run — the
- * shape pinned by map #40 (a node-graph canvas is designer territory, not this viewer). A
- * workflow-step's run spawns child runs (CONTEXT.md, workflow-as-step), so what nests here is the
- * run tree, not the workflow body: every row is a run, labelled by the node it ran.
+ * shape pinned by map #40 (a node-graph canvas is designer territory, not this viewer). Every row
+ * is a run, labelled by the node it ran.
+ *
+ * What nests, and in what order, is `buildRunTree`'s — parentage, orphan runs the last tree read
+ * has not placed yet, and execution order are facts about runs, not about this list. What is left
+ * here is the list: indentation, the collapse toggles, and selection.
  */
 export interface RunTreeProps {
   rootRunId: string;
@@ -20,11 +23,10 @@ export interface RunTreeProps {
 export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun }: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
-  const root = runs.get(rootRunId);
+  const root = buildRunTree(rootRunId, runs);
   if (!root) return <p className="pane-note">No runs recorded for this root run.</p>;
 
   const tree: TreeView = {
-    childrenByParent: indexChildren(rootRunId, runs),
     collapsed,
     selectedRunId,
     onSelectRun,
@@ -38,22 +40,21 @@ export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun }: RunTree
 
   return (
     <ul className="run-tree">
-      <RunTreeRow run={root} tree={tree} />
+      <RunTreeRow node={root} tree={tree} />
     </ul>
   );
 }
 
-/** Everything a row needs beyond its own run — one object rather than five parallel props. */
+/** Everything a row needs beyond its own node — one object rather than four parallel props. */
 interface TreeView {
-  childrenByParent: ReadonlyMap<string, RunNodeState[]>;
   collapsed: ReadonlySet<string>;
   selectedRunId: string | null;
   onToggle: (runId: string) => void;
   onSelectRun: (runId: string) => void;
 }
 
-function RunTreeRow({ run, tree }: { run: RunNodeState; tree: TreeView }) {
-  const children = tree.childrenByParent.get(run.runId) ?? [];
+function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
+  const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
   const label = nodeLabel(run.nodeId);
 
@@ -91,42 +92,10 @@ function RunTreeRow({ run, tree }: { run: RunNodeState; tree: TreeView }) {
       {children.length > 0 && !isCollapsed && (
         <ul className="run-tree">
           {children.map((child) => (
-            <RunTreeRow key={child.runId} run={child} tree={tree} />
+            <RunTreeRow key={child.run.runId} node={child} tree={tree} />
           ))}
         </ul>
       )}
     </li>
   );
-}
-
-/**
- * Group every non-root run under its parent, ordered oldest-first so the tree reads in execution
- * order. A run may name a parent the tree does not (yet) contain — the stream is ahead of the last
- * tree read — so it hangs off the root until the re-read places it, rather than vanishing from the
- * tree mid-run.
- */
-function indexChildren(
-  rootRunId: string,
-  runs: ReadonlyMap<string, RunNodeState>,
-): Map<string, RunNodeState[]> {
-  const children = new Map<string, RunNodeState[]>();
-  for (const run of runs.values()) {
-    if (run.runId === rootRunId) continue;
-    const parent = run.parentRunId !== null && runs.has(run.parentRunId) ? run.parentRunId : rootRunId;
-    const siblings = children.get(parent);
-    if (siblings) siblings.push(run);
-    else children.set(parent, [run]);
-  }
-  for (const siblings of children.values()) siblings.sort(byStartOrder);
-  return children;
-}
-
-/** Oldest start first; a run that has not started yet sorts last. Run id breaks ties. */
-function byStartOrder(a: RunNodeState, b: RunNodeState): number {
-  if (a.startedAt !== b.startedAt) {
-    if (a.startedAt === null) return 1;
-    if (b.startedAt === null) return -1;
-    return a.startedAt < b.startedAt ? -1 : 1;
-  }
-  return a.runId < b.runId ? -1 : a.runId > b.runId ? 1 : 0;
 }

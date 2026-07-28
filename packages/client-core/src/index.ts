@@ -44,3 +44,9 @@ export {
 } from "./view-model.js";
 
 export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "./connect.js";
+
+// What a run's events and rows *mean*, as against how a surface draws them. Both answer questions
+// with one right answer — which events say a run stopped, and which run spawned which — so a second
+// surface reaching different answers would be showing a different run, not a differently styled one.
+export { eventOutcome } from "./event-outcome.js";
+export { buildRunTree, type RunTreeNode } from "./run-tree.js";
