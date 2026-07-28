@@ -149,7 +149,10 @@ function maskTrace(masker: SecretMasker, trace: Trace): Trace {
  * became silent no-ops for any workflow declaring a secret.
  *
  * Members carrying no string payload the engine did not itself construct — ids, worker bindings,
- * step types, counts, join keys — pass through untouched.
+ * step types, counts, join keys — pass through untouched. Totality is not the same as coverage:
+ * a member may be *listed* here and still return unmasked, so `test/mask-observation.test.ts`
+ * carries a sample per member that really holds a secret, and names the members that provably
+ * cannot hold one.
  */
 export function maskObservation(masker: SecretMasker, o: Observation): Observation {
   switch (o.type) {
@@ -173,8 +176,14 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
       return o.trace === null ? o : { ...o, trace: maskTrace(masker, o.trace) };
     case "branch-no-match":
       return { ...o, traces: o.traces.map((trace) => maskTrace(masker, trace)) };
-    // A secret cannot reach these: they carry only ids, counts and engine-chosen enum values.
+    // `usage` is the worker's own report, stored verbatim on the run row (§5.7) — the one payload
+    // here the engine neither built nor validated. Its documented content is token counts, and
+    // numbers pass through masking untouched, so scrubbing it costs nothing and does not depend on
+    // trusting a worker to keep it that way.
     case "step-usage":
+      return o.usage === null ? o : { ...o, usage: masker.maskValue(o.usage) };
+    // A secret cannot reach these: every field is an id, a count, a context key or a node id the
+    // workflow author wrote, or an enum value the engine chose — none of them a config value.
     case "join-applied":
     case "run-cancelled":
       return o;
