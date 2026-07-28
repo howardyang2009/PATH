@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
-import { getRunsForRoot, openProject, type Project } from "@path/engine";
+import { openProject, type Project } from "@path/engine";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { handlePostRuns, type RunsRouteContext } from "../src/routes/post-runs.js";
 import { RunControllers } from "../src/run-controllers.js";
@@ -63,7 +63,7 @@ async function postRun(workflowPath: string): Promise<{ status: number; rootRunI
 /** Waits for the root row to reach a terminal status, then lets the run promise's settle handler run. */
 async function awaitSettled(rootRunId: string): Promise<string> {
   for (;;) {
-    const root = getRunsForRoot(project.db, rootRunId).find((r) => r.runId === rootRunId);
+    const root = project.archive.tree(rootRunId)?.root;
     if (root && root.status !== "pending" && root.status !== "running") {
       // The row is written by the `runFinished` observer, which fires *before* `runWorkflow`'s
       // promise settles — give the `.then` that drops the controller its turn.

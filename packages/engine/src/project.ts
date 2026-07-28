@@ -8,6 +8,7 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
+import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import { type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
 import { type EngineSettings, loadEngineSettings } from "./settings/engine-settings.js";
@@ -31,8 +32,12 @@ import { type EngineSettings, loadEngineSettings } from "./settings/engine-setti
 export interface Project {
   /** The absolute project directory: where `.path/` is read and written. Never a workflow's own directory. */
   readonly dir: string;
-  /** The open `.path/path.db`. Exposed because reads (run rows, log events) go straight to it. */
-  readonly db: Database.Database;
+  /**
+   * What this project's runs left behind, read back: rows, blobs and narratives, over the same open
+   * db `run` writes to. The db handle itself used to be public here, which is how every reader
+   * ended up composing `.path/`'s layout for itself — see `run-archive.ts`.
+   */
+  readonly archive: RunArchive;
   /** `.path/settings.json` as loaded at open time (mvp spec §9) — `{}` when the file is absent. */
   readonly settings: EngineSettings;
   /**
@@ -109,7 +114,7 @@ export function openProject(dir: string): OpenProjectResult {
     success: true,
     project: {
       dir: absDir,
-      db,
+      archive: createRunArchive(db, absDir),
       settings,
       async run(rootFile: WorkflowFile, workflowDir: string, opts: ProjectRunOptions = {}): Promise<RunResult> {
         const { logBackends, llmConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;

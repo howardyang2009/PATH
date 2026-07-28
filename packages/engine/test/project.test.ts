@@ -6,7 +6,6 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
 import { pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
-import { getRunsForRoot, listRootRuns } from "../src/persistence/run-store.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 
@@ -46,7 +45,7 @@ describe("openProject", () => {
       expect(readFileSync(join(pathDir(dir), ".gitignore"), "utf8")).toBe("*\n");
       expect(existsSync(join(pathDir(dir), "path.db"))).toBe(true);
       expect(project.dir).toBe(resolve(dir)); // absolute, never a relative caller path
-      expect(listRootRuns(project.db, {})).toEqual([]);
+      expect(project.archive.listRoots()).toEqual([]);
     } finally {
       project.close();
     }
@@ -80,7 +79,7 @@ describe("Project.run — settings precedence", () => {
     const project = open();
     try {
       await project.run(oneStep, dir);
-      const [root] = listRootRuns(project.db, {});
+      const [root] = project.archive.listRoots();
       // Both default backends on: rows in the db log table, and a run.log on disk.
       expect(readNdjsonLog(dir, root!.runId)).not.toHaveLength(0);
     } finally {
@@ -93,7 +92,7 @@ describe("Project.run — settings precedence", () => {
     const project = open();
     try {
       await project.run(oneStep, dir);
-      const [root] = listRootRuns(project.db, {});
+      const [root] = project.archive.listRoots();
       // ndjson deselected by the settings file, so no run.log was written.
       expect(existsSync(join(rootRunTreeDir(dir, root!.runId), "run.log"))).toBe(false);
     } finally {
@@ -106,7 +105,7 @@ describe("Project.run — settings precedence", () => {
     const project = open();
     try {
       await project.run(oneStep, dir, { logBackends: ["db", "ndjson"] });
-      const [root] = listRootRuns(project.db, {});
+      const [root] = project.archive.listRoots();
       expect(readNdjsonLog(dir, root!.runId)).not.toHaveLength(0);
     } finally {
       project.close();
@@ -131,8 +130,8 @@ describe("Project.run — observer assembly", () => {
       const result = await project.run(oneStep, dir);
       expect(result.status).toBe("succeeded");
 
-      const [root] = listRootRuns(project.db, {});
-      const rows = getRunsForRoot(project.db, root!.runId);
+      const [root] = project.archive.listRoots();
+      const rows = project.archive.tree(root!.runId)!.runs;
       expect(rows.length).toBeGreaterThan(0);
       expect(rows.every((r) => r.inputRef !== null)).toBe(true);
       expect(readNdjsonLog(dir, root!.runId).map((e) => e.type)).toContain("step-started");
@@ -150,7 +149,7 @@ describe("Project.run — observer assembly", () => {
       const spy: RunObserver = {
         observe(o: Observation) {
           if (o.type !== "run-started") return;
-          rowsWhenSeen.push(getRunsForRoot(project.db, o.rootRunId).length);
+          rowsWhenSeen.push((project.archive.tree(o.rootRunId)?.runs.length ?? 0));
         },
       };
 
@@ -218,7 +217,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
 
       expect(result.status).toBe("succeeded");
       // ...and the run was still recorded under the project's `.path/`, not the subdirectory's.
-      expect(listRootRuns(project.db, {})).toHaveLength(1);
+      expect(project.archive.listRoots()).toHaveLength(1);
       expect(existsSync(join(sub, ".path"))).toBe(false);
     } finally {
       project.close();
