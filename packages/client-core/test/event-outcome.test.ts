@@ -1,4 +1,4 @@
-import type { LogEvent } from "@path/client-core";
+import type { LogEvent } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { eventOutcome } from "../src/event-outcome.js";
 
