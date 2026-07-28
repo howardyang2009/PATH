@@ -459,7 +459,7 @@ async function runWorkflowNode(
  * Nothing else — every other field the three step runners used to take is reachable through `run`
  * or `exec`, which is why there is one of these instead of three overlapping literals (#76).
  */
-export interface StepContext {
+interface StepContext {
   run: RunContext;
   exec: NodeExecContext;
   /** This step's config: the file's effective config with the step's own shadowing it (format §8). */
@@ -736,13 +736,13 @@ function collectRunSecrets(rootFile: WorkflowFile, options: RunOptions): ConfigO
 // strict evaluation error → the run stops as failed (§5.6). Transparent: forwards its
 // predecessor's output unchanged — the same object its `output` root read (§5.4). The engine has
 // no run for a checkpoint (invariant 1); the event is attributed to this run + the node's id.
-export async function runCheckpointNode(
+async function runCheckpointNode(
   run: RunContext,
   node: CheckpointNode,
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, file, fileConfig, fileDir, files, llm } = run;
+  const { emit, identity } = run;
   const { runId, rootRunId } = identity;
   const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
   const passed = outcome === "true";
@@ -759,13 +759,13 @@ export async function runCheckpointNode(
 // as a nested sequence — transparent to the block's `exec` (same context/cancellation) and seeded
 // by the block's predecessor's output (default-input chain, §5.4); its last node's output becomes
 // the block's output (§5.4).
-export async function runBranchNode(
+async function runBranchNode(
   run: RunContext,
   node: BranchNode,
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, file, fileConfig, fileDir, files, llm } = run;
+  const { emit, identity } = run;
   const { runId, rootRunId } = identity;
   const roots = { context: exec.context, output: incomingOutput };
   const traces: Trace[] = [];
@@ -796,13 +796,13 @@ export async function runBranchNode(
 // The block output is the final executed iteration's last node's output. If the condition is still
 // true after `max_iterations` completed iterations the run fails (§5.2/§5.6); a condition
 // evaluation error fails the run outright (§5.6).
-export async function runWhileDoNode(
+async function runWhileDoNode(
   run: RunContext,
   node: WhileDoNode,
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, file, fileConfig, fileDir, files, llm } = run;
+  const { emit, identity, fileConfig } = run;
   const { runId, rootRunId } = identity;
   let maxIterations: number;
   if (typeof node.max_iterations === "number") {
@@ -848,14 +848,95 @@ export async function runWhileDoNode(
 }
 
 /**
+ * Runs **one node** of a workflow body, whatever kind it is: resolves its effective config and its
+ * input, executes it, and lands its `publish`. `incomingOutput` is what the default-input chain
+ * offers it — its predecessor's output (format doc §6.1).
+ *
+ * This is the engine's node seam, and there is one of it. Seven kinds sit behind it — three step
+ * types executed on a worker, four engine-evaluated logicers and checkpoints (CONTEXT invariant 1)
+ * — and a caller, or a test, needs to know none of that. Which of the seven a node is, what config
+ * it inherits, whether its output publishes: all of that is on this side of the seam.
+ *
+ * It replaces five exported walkers and three private ones (#76 got as far as pulling the control
+ * nodes to module scope, and stopped there). That split followed how far one ticket reached, not
+ * the domain: `branch` was reachable by a test and `binary` was not, though a body may hold either
+ * in the same position. Now every kind is reachable the same way, and none of them is a name a
+ * caller has to learn.
+ */
+export async function runNode(
+  run: RunContext,
+  node: WorkflowNode,
+  incomingOutput: JsonValue,
+  exec: NodeExecContext,
+): Promise<SeqOutcome> {
+  if (!isStepNode(node)) {
+    if (node.type === "parallel") return runParallelNode(run, node, incomingOutput, exec);
+    if (node.type === "checkpoint") return runCheckpointNode(run, node, incomingOutput, exec);
+    if (node.type === "branch") return runBranchNode(run, node, incomingOutput, exec);
+    if (node.type === "while-do") return runWhileDoNode(run, node, incomingOutput, exec);
+    // Two guards, deliberately. The `never` assertion is the compile-time one: if the format gains
+    // a node type this dispatch does not walk, the build fails rather than someone discovering it
+    // by running a workflow. The runtime branch below survives anyway, because a hand-constructed
+    // `WorkflowFile` can reach the engine without passing the schema — it must fail the run loudly
+    // rather than be silently skipped.
+    const unwalked: never = node;
+    const unknown = unwalked as { type: string; id: string };
+    return {
+      status: "failed",
+      error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
+    };
+  }
+
+  // Only steps carry config, an input map and a publish map — the control nodes are transparent to
+  // all three, which is why this half of the function has no counterpart above.
+  const stepConfig = mergeConfig(run.fileConfig, node.config);
+  const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
+  let stepInput: JsonValue;
+  try {
+    stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
+  } catch (err) {
+    return { status: "failed", error: describeInterpolationError(node.id, err) };
+  }
+
+  // One context for all three step types, derived rather than hand-built. These were two literals
+  // constructed side by side, sharing seven identical fields (#76).
+  const step: StepContext = { run, exec, stepConfig };
+  let outcome: SeqOutcome;
+  if (node.type === "workflow") {
+    outcome = await runWorkflowNode(node, stepInput, step);
+  } else if (node.type === "prompt") {
+    outcome = await runPromptNode(node, stepInput, step);
+  } else {
+    outcome = await runBinaryNode(node, stepInput, step);
+  }
+  if (outcome.status !== "succeeded" || !node.publish) return outcome;
+
+  const publishScope: InterpolationScope = { config: configScope(stepConfig), context: exec.context, output: outcome.output };
+  const updates: { [key: string]: JsonValue } = {};
+  try {
+    for (const [key, expr] of Object.entries(node.publish)) {
+      updates[key] = interpolateValue(expr, publishScope);
+    }
+  } catch (err) {
+    return { status: "failed", error: describeInterpolationError(node.id, err) };
+  }
+  // Every entry resolves before any is written, so the publish lands atomically (§5.3), before the
+  // next node starts. A nested workflow-step publishes to *this* run's context only — never the
+  // child's (isolated).
+  Object.assign(exec.context, updates);
+  await exec.onPublish(updates);
+  return outcome;
+}
+
+/**
  * Walks a node sequence strictly in order (mvp spec §5.1), threading the default-input chain: a
  * node with no `input` reads its predecessor's output (`seedInput` for the first node — the
- * block's predecessor's output, format doc §6.1). Each step's `publish` lands atomically on
- * success before the next node starts (§5.3), applied to `exec.context` and surfaced via
- * `exec.onPublish`. Returns the last node's output, or the first non-success outcome (fail-fast).
+ * block's predecessor's output, format doc §6.1). Returns the last node's output, or the first
+ * non-success outcome (fail-fast).
  *
- * This one function serves both the top-level body and each `parallel` branch — the block is
- * transparent to one uniform chain (§5.4).
+ * What one node does is `runNode`'s; what a sequence does is this: order, the chain, and where an
+ * abort can be noticed. This one function serves the top-level body, each `parallel` branch, each
+ * branch arm and each loop iteration — every block is transparent to one uniform chain (§5.4).
  */
 export async function runSequence(
   run: RunContext,
@@ -863,8 +944,6 @@ export async function runSequence(
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, file, fileConfig, fileDir, files, llm } = run;
-  const { runId, rootRunId } = identity;
   let previous: JsonValue = seedInput;
 
   for (const node of nodes) {
@@ -874,70 +953,9 @@ export async function runSequence(
     // so this is the only place they can notice a cancellation at all.
     if (exec.signal?.aborted) return { status: "cancelled" };
 
-    const stepConfig = isStepNode(node) ? mergeConfig(fileConfig, node.config) : undefined;
-
-    let outcome: SeqOutcome;
-    if (isStepNode(node)) {
-      const scope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context };
-      let stepInput: JsonValue;
-      try {
-        stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : previous;
-      } catch (err) {
-        return { status: "failed", error: describeInterpolationError(node.id, err) };
-      }
-      // One context for all three, derived rather than hand-built. These were two literals
-      // constructed side by side, sharing seven identical fields (#76).
-      const step: StepContext = { run, exec, stepConfig: stepConfig! };
-      if (node.type === "workflow") {
-        outcome = await runWorkflowNode(node, stepInput, step);
-      } else if (node.type === "prompt") {
-        outcome = await runPromptNode(node, stepInput, step);
-      } else {
-        outcome = await runBinaryNode(node, stepInput, step);
-      }
-    } else if (node.type === "parallel") {
-      // Every branch's first node defaults to the block's predecessor's output (§5.4).
-      outcome = await runParallelNode(run, node, previous, exec);
-    } else if (node.type === "checkpoint") {
-      outcome = await runCheckpointNode(run, node, previous, exec);
-    } else if (node.type === "branch") {
-      outcome = await runBranchNode(run, node, previous, exec);
-    } else if (node.type === "while-do") {
-      outcome = await runWhileDoNode(run, node, previous, exec);
-    } else {
-      // Two guards, deliberately. The `never` assertion is the compile-time one: if the format
-      // gains a node type this dispatch does not walk, the build fails rather than someone
-      // discovering it by running a workflow. The runtime branch below survives anyway, because a
-      // hand-constructed `WorkflowFile` can reach the engine without passing the schema — it must
-      // fail the run loudly rather than be silently skipped.
-      const unwalked: never = node;
-      const unknown = unwalked as { type: string; id: string };
-      return {
-        status: "failed",
-        error: `node type "${unknown.type}" (node "${unknown.id}") is not supported by this engine`,
-      };
-    }
-
+    const outcome = await runNode(run, node, previous, exec);
     if (outcome.status !== "succeeded") return outcome;
-    const output = outcome.output;
-
-    if (isStepNode(node) && node.publish) {
-      const publishScope: InterpolationScope = { config: configScope(stepConfig!), context: exec.context, output };
-      const updates: { [key: string]: JsonValue } = {};
-      try {
-        for (const [key, expr] of Object.entries(node.publish)) {
-          updates[key] = interpolateValue(expr, publishScope);
-        }
-      } catch (err) {
-        return { status: "failed", error: describeInterpolationError(node.id, err) };
-      }
-      // Every entry resolves before any is written, so the publish lands atomically (§5.3). A
-      // nested workflow-step publishes to *this* run's context only — never the child's (isolated).
-      Object.assign(exec.context, updates);
-      await exec.onPublish(updates);
-    }
-
-    previous = output;
+    previous = outcome.output;
   }
 
   return { status: "succeeded", output: previous };
@@ -952,13 +970,13 @@ export async function runSequence(
  * `{ "<branch-id>": <that branch's last node's output> }`, deterministic regardless of completion
  * order.
  */
-export async function runParallelNode(
+async function runParallelNode(
   run: RunContext,
   node: Extract<WorkflowFile["body"][number], { type: "parallel" }>,
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, file, fileConfig, fileDir, files, llm } = run;
+  const { emit, identity } = run;
   const { runId, rootRunId } = identity;
   const controller = new AbortController();
   // A nested parallel inherits its enclosing block's cancellation: if the outer block aborts, this
