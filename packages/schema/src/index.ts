@@ -111,6 +111,13 @@ export {
   type StepFinishedEvent,
   type StepStartedEvent,
 } from "./log-event.js";
+export {
+  createEventFrameDecoder,
+  encodeEventFrame,
+  eventStreamHeaders,
+  type EventFrame,
+  type EventFrameDecoder,
+} from "./event-frame.js";
 export type { RunRecord } from "./run-record.js";
 export {
   fromWireRunRecord,

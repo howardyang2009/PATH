@@ -1,4 +1,4 @@
-import type { LogEvent } from "@path/schema";
+import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 import { defaultFetch, type FetchLike } from "./api-client.js";
 
 /**
@@ -123,16 +123,16 @@ function openStream(
   lastEventId: number | undefined,
   signal: AbortSignal,
 ): Promise<Response> {
-  const headers: Record<string, string> = { Accept: "text/event-stream" };
-  if (lastEventId !== undefined) headers["Last-Event-ID"] = String(lastEventId);
-  return doFetch(`${baseUrl}/v0/runs/${encodeURIComponent(rootRunId)}/events`, { headers, signal });
+  return doFetch(`${baseUrl}/v0/runs/${encodeURIComponent(rootRunId)}/events`, {
+    headers: eventStreamHeaders(lastEventId),
+    signal,
+  });
 }
 
 /**
- * Reads SSE frames off a response body, decoding each `data:` line into a `LogEvent` and handing it
- * to `onEvent`. Returns when the stream ends (server closed it) or `isClosed()` becomes true; the
- * caller re-checks `closed` to tell the two apart. Frame boundary is the blank line (`\n\n`), per
- * the SSE grammar.
+ * Reads a response body to its end, handing each decoded event to `onEvent`. Returns when the
+ * stream ends (server closed it) or `isClosed()` becomes true; the caller re-checks `closed` to
+ * tell the two apart. The frame grammar itself is `@path/schema`'s — this owns only the transport.
  */
 async function readFrames(
   res: Response,
@@ -140,8 +140,8 @@ async function readFrames(
   isClosed: () => boolean,
 ): Promise<void> {
   const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const text = new TextDecoder();
+  const frames = createEventFrameDecoder();
   for (;;) {
     const { done, value } = await reader.read();
     if (done) return;
@@ -149,16 +149,6 @@ async function readFrames(
       await reader.cancel().catch(() => {});
       return;
     }
-    buffer += decoder.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const block = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const dataLine = block.split("\n").find((line) => line.startsWith("data:"));
-      if (dataLine) {
-        const json = dataLine.slice(dataLine.indexOf(":") + 1).trimStart();
-        onEvent(JSON.parse(json) as LogEvent);
-      }
-    }
+    for (const frame of frames.push(text.decode(value, { stream: true }))) onEvent(frame.event);
   }
 }
