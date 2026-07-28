@@ -1,16 +1,12 @@
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type Database from "better-sqlite3";
 import type { ConfigObject } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
 import { mergeConfig } from "./merge-config.js";
-import { dirExists, removeDir } from "./persistence/blob-store.js";
-import { openDb, SchemaVersionError } from "./persistence/db.js";
-import { dbFilePath, rootRunTreeDir, runsDir } from "./persistence/paths.js";
 import { openProject } from "./project.js";
-import { deleteAllRuns, deleteRunsForRoot } from "./persistence/run-store.js";
+import { openRunArchive } from "./run-archive.js";
 
 export interface CliIo {
   log(message: string): void;
@@ -208,17 +204,6 @@ function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCan
   };
 }
 
-type OpenDbResult = { success: true; db: Database.Database } | { success: false; error: string };
-
-function openDbOrReport(dbFile: string): OpenDbResult {
-  try {
-    return { success: true, db: openDb(dbFile) };
-  } catch (err) {
-    const error = err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
-    return { success: false, error };
-  }
-}
-
 async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides): Promise<number> {
   const parsed = parseRunArgs(rest);
   if (!parsed.success) {
@@ -303,8 +288,6 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
 // whatever repo the cwd is inside.
 async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   const [subcommand, ...rest] = args;
-  const projectDir = process.cwd();
-  const dbFile = dbFilePath(projectDir);
 
   if (subcommand === "rm") {
     const rootRunId = rest[0];
@@ -319,30 +302,24 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    // An id is "found" if either store has something for it — an orphaned directory with no db
-    // rows (e.g. left by a prior half-finished cleanup) still counts, so `rm` can finish the job
-    // rather than reporting "not found" while silently deleting it anyway.
-    const treeDir = rootRunTreeDir(projectDir, rootRunId);
-    const dirExisted = dirExists(treeDir);
-
-    let deleted = 0;
-    if (existsSync(dbFile)) {
-      const opened = openDbOrReport(dbFile);
-      if (!opened.success) {
-        io.error(opened.error);
-        return 1;
-      }
-      deleted = deleteRunsForRoot(opened.db, rootRunId);
-      opened.db.close();
-    }
-
-    if (deleted === 0 && !dirExisted) {
-      io.error(`no run found with id "${rootRunId}"`);
+    const opened = openRunArchive(process.cwd());
+    if (!opened.success) {
+      io.error(opened.error);
       return 1;
     }
+    try {
+      // "Found" means either store held something — an orphaned directory with no rows still
+      // counts, so `rm` finishes a half-done cleanup rather than reporting "not found" while
+      // deleting it anyway. Which stores there are, and that they go together (mvp spec §6), is
+      // the archive's business.
+      if (!opened.archive.remove(rootRunId)) {
+        io.error(`no run found with id "${rootRunId}"`);
+        return 1;
+      }
+    } finally {
+      opened.close();
+    }
 
-    // Rows and directory are deleted together (mvp spec §6) so the two stores never drift.
-    removeDir(treeDir);
     io.log(`removed run ${rootRunId}`);
     return 0;
   }
@@ -356,19 +333,17 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    let deleted = 0;
-    if (existsSync(dbFile)) {
-      const opened = openDbOrReport(dbFile);
-      if (!opened.success) {
-        io.error(opened.error);
-        return 1;
-      }
-      deleted = deleteAllRuns(opened.db);
-      opened.db.close();
+    const opened = openRunArchive(process.cwd());
+    if (!opened.success) {
+      io.error(opened.error);
+      return 1;
     }
-    // Always remove the runs tree, even if the db was already missing — an orphaned directory
-    // shouldn't survive a prune just because its rows happened to be gone already.
-    removeDir(runsDir(projectDir));
+    let deleted: number;
+    try {
+      deleted = opened.archive.prune();
+    } finally {
+      opened.close();
+    }
 
     io.log(`pruned ${deleted} run(s)`);
     return 0;

@@ -1,15 +1,17 @@
-import { existsSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { join } from "node:path";
-import { getRunsForRoot, readJsonBlob, runBlobDir } from "@path/engine";
+import type { RunBlobName } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
-/** The only blob names this route serves — a fixed enum, so `name` is never a raw filename. */
-const BLOB_FILENAME: Record<string, string> = {
-  input: "input.json",
-  output: "output.json",
-};
+/**
+ * The only blob names this route serves — a fixed set, so `name` is never a raw filename. Which
+ * file each one is stored as is the archive's business, not this route's.
+ */
+const SERVED_BLOBS: RunBlobName[] = ["input", "output"];
+
+function toBlobName(name: string): RunBlobName | undefined {
+  return SERVED_BLOBS.find((served) => served === name);
+}
 
 /**
  * `GET /v0/runs/:root_run_id/blobs/:run_id/:name` (name ∈ {input, output}) — returns the run's
@@ -27,24 +29,25 @@ export function handleGetRunBlob(
   runId: string,
   name: string,
 ): void {
-  const filename = BLOB_FILENAME[name];
-  if (filename === undefined) {
+  const blobName = toBlobName(name);
+  if (blobName === undefined) {
     sendError(res, 404, `unknown blob name "${name}" (expected "input" or "output")`);
     return;
   }
 
-  // The run must belong to the root's tree — an unknown root or a run_id outside it is a 404.
-  const rows = getRunsForRoot(ctx.project.db, rootRunId);
-  if (!rows.some((row) => row.runId === runId)) {
+  // The run must belong to the root's tree — an unknown root or a run_id outside it is a 404, and
+  // a different one from "that run has no such blob", so the two are asked separately.
+  const tree = ctx.project.archive.tree(rootRunId);
+  if (!tree?.has(runId)) {
     sendError(res, 404, `no run "${runId}" under root "${rootRunId}"`);
     return;
   }
 
-  const dir = runBlobDir(ctx.project.dir, rootRunId, runId);
-  if (!existsSync(join(dir, filename))) {
+  const blob = tree.blob(runId, blobName);
+  if (blob === undefined) {
     sendError(res, 404, `no ${name} blob for run "${runId}"`);
     return;
   }
 
-  sendJson(res, 200, readJsonBlob(dir, filename));
+  sendJson(res, 200, blob);
 }

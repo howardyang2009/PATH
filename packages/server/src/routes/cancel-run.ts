@@ -1,5 +1,4 @@
 import type { ServerResponse } from "node:http";
-import { getRunsForRoot } from "@path/engine";
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
@@ -17,11 +16,11 @@ import type { RunsRouteContext } from "./post-runs.js";
  * different reason, because "cannot cancel" is not one condition.
  */
 export function handleCancelRun(res: ServerResponse, ctx: RunsRouteContext, rootRunId: string): void {
-  // The root row is the one whose own id is the root id (an invariant of the run tree, §1). Unlike
-  // `GET /v0/runs/:root_run_id`, which can still report a tree when that row is missing, this route
-  // must not fall back to some other row of the tree: a child can read `succeeded` while the tree is
-  // still running, and a terminal 409 taken from it would refuse the cancel of a live run.
-  const rootRow = getRunsForRoot(ctx.project.db, rootRunId).find((row) => row.runId === rootRunId);
+  // Unlike `GET /v0/runs/:root_run_id`, which can still report a tree when the root row is missing,
+  // this route must not fall back to some other row of the tree: a child can read `succeeded` while
+  // the tree is still running, and a terminal 409 taken from it would refuse the cancel of a live
+  // run. `RunTree.root` is exactly that row, or null.
+  const rootRow = ctx.project.archive.tree(rootRunId)?.root;
   if (!rootRow) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;

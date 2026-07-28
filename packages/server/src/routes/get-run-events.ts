@@ -1,5 +1,4 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { getRunsForRoot, readNdjsonLog } from "@path/engine";
 import type { LogEvent } from "@path/schema";
 import { sendError } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
@@ -27,16 +26,6 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
 }
 
 /**
- * The persisted replay slice for a reconnect: `readNdjsonLog`'s full narrative, filtered to
- * `seq >` `afterSeq` (or left whole, if `afterSeq` is `undefined` — a fresh connect replays from
- * seq 1). An empty `run.log` read (§5's known v0 limitation, or no events yet) just yields `[]`.
- */
-function readReplayEvents(projectDir: string, rootRunId: string, afterSeq: number | undefined): LogEvent[] {
-  const events = readNdjsonLog(projectDir, rootRunId);
-  return afterSeq === undefined ? events : events.filter((event) => event.seq > afterSeq);
-}
-
-/**
  * `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5): the SSE event stream, with standard
  * reconnect/replay semantics. Each frame carries `id: <seq>` + a `data:` line with the event
  * JSON-encoded verbatim (already snake_case). On connect: replay persisted history from `run.log`
@@ -51,7 +40,8 @@ export function handleGetRunEvents(
 ): void {
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns (runStarted has
   // fired), so any id a client could hold is already queryable here.
-  if (getRunsForRoot(ctx.project.db, rootRunId).length === 0) {
+  const tree = ctx.project.archive.tree(rootRunId);
+  if (!tree) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;
   }
@@ -82,7 +72,10 @@ export function handleGetRunEvents(
 
   res.writeHead(200, SSE_HEADERS);
 
-  for (const event of readReplayEvents(ctx.project.dir, rootRunId, afterSeq)) deliver(event);
+  // The persisted narrative, sliced to what this client hasn't seen — `undefined` replays it whole,
+  // which is a fresh connect. A run with no `run.log` (§5's known v0 limitation, or nothing written
+  // yet) replays nothing and goes straight to live.
+  for (const event of tree.events(afterSeq)) deliver(event);
   for (const event of buffered) deliver(event);
   live = true;
 
