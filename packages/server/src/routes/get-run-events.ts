@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import type { LogEvent } from "@path/schema";
+import { encodeEventFrame } from "@path/schema";
 import { sendError } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
@@ -8,10 +8,6 @@ const SSE_HEADERS = {
   "Cache-Control": "no-cache",
   Connection: "keep-alive",
 } as const;
-
-function writeFrame(res: ServerResponse, event: LogEvent): void {
-  res.write(`id: ${event.seq}\ndata: ${JSON.stringify(event)}\n\n`);
-}
 
 /**
  * Parses the `Last-Event-ID` request header (server-api-v0.md §5) into the seq to replay after —
@@ -27,9 +23,9 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
 
 /**
  * `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5): the SSE event stream, with standard
- * reconnect/replay semantics. Each frame carries `id: <seq>` + a `data:` line with the event JSON
- * encoded verbatim (already snake_case). Which events a subscriber gets, and in what order, is
- * `LiveRuns.stream`'s guarantee; what this route owns is the 404, the frame syntax, and the socket.
+ * reconnect/replay semantics. Which events a subscriber gets, and in what order, is
+ * `LiveRuns.stream`'s guarantee; the frame grammar is `encodeEventFrame`'s. What this route owns is
+ * the 404, the `Last-Event-ID` header, and the socket.
  */
 export function handleGetRunEvents(
   req: IncomingMessage,
@@ -47,7 +43,7 @@ export function handleGetRunEvents(
   res.writeHead(200, SSE_HEADERS);
 
   const unsubscribe = ctx.live.stream(rootRunId, parseLastEventId(req), {
-    onEvent: (event) => writeFrame(res, event),
+    onEvent: (event) => res.write(encodeEventFrame(event)),
     onEnd: () => res.end(),
   });
 

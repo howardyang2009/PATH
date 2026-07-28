@@ -1,6 +1,6 @@
 import { resolve } from "node:path";
 import { readNdjsonLog } from "@path/engine";
-import type { LogEvent } from "@path/schema";
+import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 import type { JsonValue } from "@path/schema";
 
 /**
@@ -52,9 +52,11 @@ export interface AcceptanceOptions {
 }
 
 /**
- * Reads SSE `data:` frames off a response, parsing each into its `LogEvent`, until `until` is
- * satisfied (then aborts `controller` to disconnect mid-stream) or the stream ends. The reconnect
- * seq is taken from the event body's `seq`, which the server also echoes as the frame's `id:`.
+ * Reads a response's events until `until` is satisfied (then aborts `controller` to disconnect
+ * mid-stream) or the stream ends. The reconnect seq is taken from the event body's `seq`, which the
+ * server also echoes as the frame's `id:`. The frame grammar is `@path/schema`'s, the same
+ * definition the server encodes with — an acceptance run that decoded the wire its own way could
+ * pass while a real client could not read a byte of it.
  */
 async function readFrames(
   res: Response,
@@ -62,21 +64,14 @@ async function readFrames(
   controller: AbortController | undefined,
 ): Promise<{ frames: LogEvent[]; ended: boolean }> {
   const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
+  const text = new TextDecoder();
+  const decoder = createEventFrameDecoder();
   const frames: LogEvent[] = [];
   try {
     for (;;) {
       const { done, value } = await reader.read();
       if (done) return { frames, ended: true };
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
-        const block = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-        if (dataLine) frames.push(JSON.parse(dataLine.slice(6)) as LogEvent);
-      }
+      for (const frame of decoder.push(text.decode(value, { stream: true }))) frames.push(frame.event);
       if (until && until(frames)) {
         controller?.abort();
         return { frames, ended: false };
@@ -90,9 +85,7 @@ async function readFrames(
 }
 
 async function openEventStream(url: string, rootRunId: string, lastEventId: number | undefined, signal: AbortSignal | undefined): Promise<Response> {
-  const headers: Record<string, string> = { Accept: "text/event-stream" };
-  if (lastEventId !== undefined) headers["Last-Event-ID"] = String(lastEventId);
-  return fetch(`${url}/v0/runs/${rootRunId}/events`, { headers, signal });
+  return fetch(`${url}/v0/runs/${rootRunId}/events`, { headers: eventStreamHeaders(lastEventId), signal });
 }
 
 interface RunTreeBody {

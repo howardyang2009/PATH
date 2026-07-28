@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { dbFilePath, openDb, readNdjsonLog } from "@path/engine";
-import type { LogEvent } from "@path/schema";
+import { createEventFrameDecoder, type EventFrame, type LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { startPathServer, type PathServerHandle } from "../src/create-server.js";
 
@@ -63,31 +63,20 @@ async function getBlob(rootRunId: string, runId: string, name: string): Promise<
   return fetch(`${handle.url}/v0/runs/${rootRunId}/blobs/${runId}/${name}`);
 }
 
-interface SseFrame {
-  id: string;
-  data: { type: string; seq: number };
-}
 
-/** Reads an SSE response body to completion, parsing each `id:`/`data:` frame. */
-async function readSseStream(res: Response): Promise<SseFrame[]> {
+/**
+ * Reads an SSE response body to completion. Decoded with the same codec a real client uses, so
+ * these assertions are about what a client would actually see on the wire.
+ */
+async function readSseStream(res: Response): Promise<EventFrame[]> {
   const reader = res.body!.getReader();
-  const decoder = new TextDecoder();
-  let buffer = "";
-  const frames: SseFrame[] = [];
+  const text = new TextDecoder();
+  const decoder = createEventFrameDecoder();
+  const frames: EventFrame[] = [];
   for (;;) {
     const { done, value } = await reader.read();
     if (done) break;
-    buffer += decoder.decode(value, { stream: true });
-    let sep: number;
-    while ((sep = buffer.indexOf("\n\n")) !== -1) {
-      const block = buffer.slice(0, sep);
-      buffer = buffer.slice(sep + 2);
-      const idLine = block.split("\n").find((l) => l.startsWith("id: "));
-      const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-      if (idLine && dataLine) {
-        frames.push({ id: idLine.slice(4), data: JSON.parse(dataLine.slice(6)) });
-      }
-    }
+    frames.push(...decoder.push(text.decode(value, { stream: true })));
   }
   return frames;
 }
@@ -332,15 +321,15 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     // Connected mid-run, so we see live events without polling.
     expect(frames.length).toBeGreaterThan(0);
     // Each frame's id is its event's seq, and seq is strictly ascending (the ordering truth).
-    for (const frame of frames) expect(frame.id).toBe(String(frame.data.seq));
-    const seqs = frames.map((f) => f.data.seq);
+    for (const frame of frames) expect(frame.id).toBe(String(frame.event.seq));
+    const seqs = frames.map((f) => f.event.seq);
     expect(seqs).toEqual([...seqs].sort((a, b) => a - b));
     expect(new Set(seqs).size).toBe(seqs.length);
     // The run's own lifecycle events flow through: at least one step-started and one step-finished.
-    const types = new Set(frames.map((f) => f.data.type));
+    const types = new Set(frames.map((f) => f.event.type));
     expect(types.has("step-started") || types.has("step-finished")).toBe(true);
     // The final frame is the root run finishing.
-    expect(frames.at(-1)!.data.type).toBe("step-finished");
+    expect(frames.at(-1)!.event.type).toBe("step-finished");
 
     const finalBody = await pollUntilTerminal(root_run_id);
     expect(finalBody.status).toBe("succeeded");
@@ -364,9 +353,9 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     const frames = await readSseStream(res);
 
     expect(frames.length).toBeGreaterThan(0);
-    const seqs = frames.map((f) => f.data.seq);
+    const seqs = frames.map((f) => f.event.seq);
     expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
-    expect(frames.at(-1)!.data.type).toBe("step-finished");
+    expect(frames.at(-1)!.event.type).toBe("step-finished");
   });
 
   it("replays full history from seq 1 then continues live when connecting fresh (no Last-Event-ID)", async () => {
@@ -379,10 +368,10 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
 
     // Proves replay actually ran (not just "happened to connect before anything fired"): seq 1
     // (the root run's own step-started, already persisted before POST resolved) is present.
-    expect(frames[0]!.data.seq).toBe(1);
-    const seqs = frames.map((f) => f.data.seq);
+    expect(frames[0]!.event.seq).toBe(1);
+    const seqs = frames.map((f) => f.event.seq);
     expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
-    expect(frames.at(-1)!.data.type).toBe("step-finished");
+    expect(frames.at(-1)!.event.type).toBe("step-finished");
 
     await pollUntilTerminal(root_run_id);
   });
@@ -394,21 +383,13 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
 
     const firstRes = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
     const reader = firstRes.body!.getReader();
-    const decoder = new TextDecoder();
-    let buffer = "";
-    const firstFrames: SseFrame[] = [];
+    const text = new TextDecoder();
+    const decoder = createEventFrameDecoder();
+    const firstFrames: EventFrame[] = [];
     while (firstFrames.length < 1) {
       const { done, value } = await reader.read();
       if (done) break;
-      buffer += decoder.decode(value, { stream: true });
-      let sep: number;
-      while ((sep = buffer.indexOf("\n\n")) !== -1) {
-        const block = buffer.slice(0, sep);
-        buffer = buffer.slice(sep + 2);
-        const idLine = block.split("\n").find((l) => l.startsWith("id: "));
-        const dataLine = block.split("\n").find((l) => l.startsWith("data: "));
-        if (idLine && dataLine) firstFrames.push({ id: idLine.slice(4), data: JSON.parse(dataLine.slice(6)) });
-      }
+      firstFrames.push(...decoder.push(text.decode(value, { stream: true })));
     }
     await reader.cancel(); // simulate the client disconnecting mid-run
 
@@ -418,11 +399,11 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     });
     const secondFrames = await readSseStream(secondRes);
 
-    expect(secondFrames.every((f) => f.data.seq > lastSeenId)).toBe(true);
-    const allSeqs = [...firstFrames.map((f) => Number(f.id)), ...secondFrames.map((f) => f.data.seq)];
+    expect(secondFrames.every((f) => f.event.seq > lastSeenId)).toBe(true);
+    const allSeqs = [...firstFrames.map((f) => Number(f.id)), ...secondFrames.map((f) => f.event.seq)];
     // Combined, the two connections cover the whole run with no gap and no duplicate.
     expect(allSeqs).toEqual(Array.from({ length: allSeqs.length }, (_, i) => i + 1));
-    expect(secondFrames.at(-1)!.data.type).toBe("step-finished");
+    expect(secondFrames.at(-1)!.event.type).toBe("step-finished");
 
     await pollUntilTerminal(root_run_id);
   });
@@ -443,8 +424,8 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     expect(frames.length).toBeGreaterThan(0);
     // Proves replay is genuinely unavailable (not just untested): the first frame we see is well
     // past seq 1, unlike the ndjson-enabled fresh-connect test above.
-    expect(frames[0]!.data.seq).toBeGreaterThan(1);
-    expect(frames.at(-1)!.data.type).toBe("step-finished");
+    expect(frames[0]!.event.seq).toBeGreaterThan(1);
+    expect(frames.at(-1)!.event.type).toBe("step-finished");
 
     await pollUntilTerminal(root_run_id);
   });
