@@ -8,9 +8,8 @@ import { handleGetRun } from "./routes/get-run.js";
 import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
+import { createLiveRuns } from "./live-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
-import { RunControllers } from "./run-controllers.js";
-import { RunEventHub } from "./run-event-hub.js";
 import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
@@ -119,11 +118,7 @@ export async function startPathServer(
   const project = opened.project;
 
   const absStaticDir = resolve(staticDir);
-  const ctx: RunsRouteContext = {
-    project,
-    hub: new RunEventHub(),
-    controllers: new RunControllers(),
-  };
+  const ctx: RunsRouteContext = { project, live: createLiveRuns(project) };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

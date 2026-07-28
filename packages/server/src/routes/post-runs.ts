@@ -1,15 +1,11 @@
 import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { loadWorkflowTree, LOG_BACKEND_IDS, type Project, type RunObserver } from "@path/engine";
+import { loadWorkflowTree, LOG_BACKEND_IDS, type Project } from "@path/engine";
 import { ConfigObjectSchema, formatIssues, type JsonValue } from "@path/schema";
-import type Database from "better-sqlite3";
 import { z } from "zod";
-import { createDeferred } from "../deferred.js";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { createLiveLogBackend } from "../live-log-backend.js";
-import type { RunControllers } from "../run-controllers.js";
-import type { RunEventHub } from "../run-event-hub.js";
+import type { LiveRuns } from "../live-runs.js";
 
 const PostRunsBodySchema = z
   .object({
@@ -36,12 +32,12 @@ function resolveWorkflowPath(projectDir: string, workflowPath: string): string |
 
 export interface RunsRouteContext {
   /**
-   * The opened project (#64): its `.path/`, its db, its engine settings, and the one way to run a
-   * workflow against it with the backends and observers already assembled in the right order.
+   * The opened project (#64): its `.path/`, its engine settings, what its runs left behind
+   * (`project.archive`), and the one way to run a workflow against it.
    */
   project: Project;
-  hub: RunEventHub;
-  controllers: RunControllers;
+  /** The runs this process is executing: starting, cancelling, and watching them. */
+  live: LiveRuns;
 }
 
 export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
@@ -81,79 +77,22 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     return;
   }
 
-  // Resolved as soon as the first `run-started` observation arrives — the async contract (§2): the
-  // response goes out before the run finishes, not before it starts.
-  const started = createDeferred<{ runId: string; rootRunId: string }>();
-  // The handle `POST /v0/runs/:root_run_id/cancel` (§4.2) aborts. It can only be filed under an id
-  // that exists, which is why registration waits for `run-started` rather than happening here.
-  const controller = new AbortController();
-  let registeredRootRunId: string | undefined;
-  const captureObserver: RunObserver = {
-    observe(o) {
-      if (o.type !== "run-started") return;
-      // Fires for every run in the tree, all sharing one `rootRunId` — register on the first only.
-      if (registeredRootRunId === undefined) {
-        registeredRootRunId = o.rootRunId;
-        ctx.controllers.register(o.rootRunId, controller);
-      }
-      started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
-    },
-  };
-  // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
-  // binary `cwd`s against. Distinct from the project directory, which is where `.path/` lives and
-  // which the project owns; passing the latter here is what broke nested refs in #59. `Project.run`
-  // takes only this one, so the pair can no longer be crossed (#64).
-  const workflowDir = dirname(tree.rootPath);
-
-  const runPromise = ctx.project.run(rootFile, workflowDir, {
-    input: input as { [key: string]: JsonValue } | undefined,
-    operatorConfig: config,
-    files: tree.files,
-    logBackends: logBackendIds,
-    llmConcurrency,
-    // The live-forwarding backend rides alongside the configured db/NDJSON backends so SSE clients
-    // (§5) see every already-masked event in `seq` order — independent of which log_backends the
-    // client persisted to. It never throws, so it can't fail the run.
-    extraBackends: [createLiveLogBackend(ctx.hub)],
-    // Appended after persistence and logging by `Project.run`, which is the point: this resolves
-    // the 202, and a client may `GET` the run the moment it lands.
-    extraObservers: [captureObserver],
-    signal: controller.signal,
-    warn: (message) => console.error(`warning: ${message}`),
-  });
-  // Fire-and-forget from the request's point of view: the run keeps executing after the response
-  // goes out. Never left unhandled — a rejection here means `runStarted` never fired either, so it
-  // also settles `started` (a no-op if the response already went out).
-  runPromise
-    .then(
-      (result) => {
-        if (result.status === "failed") console.error(`run failed: ${result.error}`);
-      },
-      (err) => {
-        started.reject(err);
-        console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
-      },
-    )
-    // However it ended, the run is over. Tearing both registries down here rather than in each arm
-    // is what makes "on every outcome" true by construction, so a long-lived server accumulates
-    // neither.
-    .finally(() => {
-      if (registeredRootRunId === undefined) return; // never started; neither registry has an entry
-      ctx.controllers.delete(registeredRootRunId);
-      // Normally already closed: the root run's terminal event drives the live backend's `close`.
-      // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
-      // with a propagating bug rather than converting it to a failed run. Without it the channel
-      // outlives the run and every subscribed SSE client hangs open, since `res.end()` is wired to
-      // the channel's close listener. Idempotent, so the normal path is unaffected.
-      ctx.hub.close(registeredRootRunId);
-    });
-
-  let ids: { runId: string; rootRunId: string };
+  let ids;
   try {
-    ids = await started.promise;
+    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
+    // binary `cwd`s against. Distinct from the project directory, which is where `.path/` lives;
+    // passing the latter here is what broke nested refs in #59.
+    ids = await ctx.live.start(rootFile, dirname(tree.rootPath), {
+      input: input as { [key: string]: JsonValue } | undefined,
+      operatorConfig: config,
+      files: tree.files,
+      logBackends: logBackendIds,
+      llmConcurrency,
+    });
   } catch (err) {
     sendError(res, 500, `run failed to start: ${err instanceof Error ? err.message : String(err)}`);
     return;
   }
+
   sendJson(res, 202, { run_id: ids.runId, root_run_id: ids.rootRunId });
 }
