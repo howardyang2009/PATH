@@ -2,6 +2,32 @@ import { describe, expect, it } from "vitest";
 import type { RunRecord } from "../src/run-record.js";
 import { toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
 
+/**
+ * The wire shape must carry every field of the domain record, under its snake_case name — checked
+ * at compile time, because the one drift the code cannot catch by itself is a field added to
+ * `RunRecord` and forgotten on the wire. `fromDbRow` fails to compile when that happens, but
+ * `toWireRunRecord` does not: it builds a `WireRunRecord`, which simply doesn't have the field yet,
+ * so a new column reaches the db and never reaches the API. This is `pnpm typecheck`'s business —
+ * `tsconfig.json` covers `test` as well as `src`.
+ *
+ * The assertion is here rather than in `wire-v0.ts`, and `WireRunRecord` stays written out by hand:
+ * a *derived* wire type would let a domain rename silently rename a field of the published v0 API
+ * (server-api-v0.md §4). A test that fails and names the field is the outcome we want; a contract
+ * that quietly follows the domain is not.
+ */
+type CamelToSnake<S extends string> = S extends `${infer Head}${infer Tail}`
+  ? Head extends Uppercase<Head>
+    ? Head extends Lowercase<Head> // digits and separators are both, and pass through unchanged
+      ? `${Head}${CamelToSnake<Tail>}`
+      : `_${Lowercase<Head>}${CamelToSnake<Tail>}`
+    : `${Head}${CamelToSnake<Tail>}`
+  : S;
+
+type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Assert<T extends true> = T;
+
+type _WireCarriesEveryRecordField = Assert<Equal<keyof WireRunRecord, CamelToSnake<keyof RunRecord>>>;
+
 const record: RunRecord = {
   runId: "run-1",
   rootRunId: "root-1",
@@ -86,13 +112,10 @@ describe("the v0 wire record", () => {
     ]);
   });
 
-  // Before #66 this shape was declared once in @path/server to encode and once in
-  // @path/client-core to decode, in packages with no dependency between them — so a field renamed
-  // on one side type-checked cleanly on both and broke only at runtime, in the browser.
-  it("carries no field the domain record does not have, and drops none it does", () => {
-    const wire = toWireRunRecord(record);
-    expect(Object.keys(wire)).toHaveLength(Object.keys(record).length);
-  });
+  // "carries no field the domain record does not have, and drops none it does" used to be asserted
+  // here by comparing key counts against the fixture above. `_WireCarriesEveryRecordField` states it
+  // at compile time instead, over the types themselves — so it no longer depends on this file's
+  // fixture being complete, and it fails in both directions rather than only when a field is added.
 });
 
 describe("toRootRunSummary", () => {
