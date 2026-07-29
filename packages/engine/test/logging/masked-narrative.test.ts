@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { ConfigValue, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { createLogBackends } from "../../src/logging/backends.js";
-import { getLogEventsForRoot } from "../../src/logging/log-store.js";
+import { getLogEventsForRoot } from "../../src/logging/db-backend.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
 import { dbFilePath } from "../../src/persistence/paths.js";
