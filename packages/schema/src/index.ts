@@ -75,6 +75,7 @@ export type { Worker, EngineWorker, LlmWorker } from "./worker-type.js";
 
 export { ConfigValueSchema, ConfigObjectSchema } from "./config.js";
 export type { ConfigValue, ConfigObject, SecretWrapper } from "./config-value-type.js";
+export { isSecretWrapper, mapSecrets } from "./secret.js";
 
 export type { JsonValue } from "./json-value.js";
 

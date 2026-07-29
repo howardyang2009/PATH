@@ -1,4 +1,4 @@
-import { resolveDotPath as resolvePath, tokenizeInterpolation, type JsonValue } from "@path/schema";
+import { mapSecrets, resolveDotPath as resolvePath, tokenizeInterpolation, type JsonValue } from "@path/schema";
 
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
@@ -8,40 +8,6 @@ export type InterpolationScope = { [root: string]: JsonValue };
 // catch this at each call site and translate it into its own Result (`fail(...)`).
 export class InterpolationError extends Error {}
 
-// A config value may carry the `{"$secret": "<value>"}` wrapper (format doc §8.3). Interpolation
-// resolves to the real value ("workers receive real values" — masking is a persistence-boundary
-// concern, ticket #20); this unwrap is transparent regardless of which root it's found under.
-function unwrapSecret(value: JsonValue): JsonValue {
-  if (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 1 &&
-    typeof (value as { $secret?: unknown }).$secret === "string"
-  ) {
-    return (value as { $secret: string }).$secret;
-  }
-  return value;
-}
-
-// A `$secret` wrapper can sit at any nesting depth inside a config value (ConfigValueSchema
-// allows it anywhere), not just at the exact leaf a dot-path lands on — a bare-root or
-// ancestor-path interpolation (`${config}`, `${config.nested}`) returns a whole sub-tree that
-// must have every wrapper inside it unwrapped too, or a worker would see the wrapper shape
-// instead of the real value depending on how the path happened to address it.
-function deepUnwrapSecrets(value: JsonValue): JsonValue {
-  const unwrapped = unwrapSecret(value);
-  if (Array.isArray(unwrapped)) return unwrapped.map(deepUnwrapSecrets);
-  if (unwrapped !== null && typeof unwrapped === "object") {
-    const result: { [key: string]: JsonValue } = {};
-    for (const [key, item] of Object.entries(unwrapped)) {
-      result[key] = deepUnwrapSecrets(item);
-    }
-    return result;
-  }
-  return unwrapped;
-}
-
 /**
  * Resolves a `${}` dot-path against a scope, in the engine's failure mode: interpolation cannot
  * carry on past an unresolvable path, so this throws where the condition evaluator records a trace
@@ -50,11 +16,14 @@ function deepUnwrapSecrets(value: JsonValue): JsonValue {
  *
  * Secrets are unwrapped on the way out (format §8.3): a wrapper may sit at any depth inside the
  * resolved value, and a worker must see real values regardless of how the path addressed them.
+ * Where a wrapper may sit is @path/schema's answer (`mapSecrets`); interpolation only says what to
+ * do when one is reached — hand back the real value, because masking is a persistence-boundary
+ * concern (ticket #20) and not a dataflow restriction.
  */
 export function resolveDotPath(scope: InterpolationScope, path: string): JsonValue {
   const resolved = resolvePath(scope, path);
   if (!resolved.found) throw new InterpolationError(`cannot resolve "${path}": ${resolved.error}`);
-  return deepUnwrapSecrets(resolved.value);
+  return mapSecrets(resolved.value, (secret) => secret);
 }
 
 // A string that is *exactly* one placeholder gets the referenced value's real type (the

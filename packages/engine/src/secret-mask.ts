@@ -1,4 +1,4 @@
-import type { ConfigObject, ConfigValue, JsonValue } from "@path/schema";
+import { mapSecrets, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Observation } from "./run-observer.js";
 
@@ -41,34 +41,21 @@ export interface SecretMasker {
   maskValue(value: JsonValue): JsonValue;
 }
 
-// The sole-key `{"$secret": "..."}` shape (config-value-type.ts). A multi-key object that merely
-// happens to contain a `$secret` key is a plain object, not a wrapper.
-function isSecretWrapper(value: ConfigValue): value is { $secret: string } {
-  return (
-    value !== null &&
-    typeof value === "object" &&
-    !Array.isArray(value) &&
-    Object.keys(value).length === 1 &&
-    typeof (value as { $secret?: unknown }).$secret === "string"
-  );
-}
-
-// A `$secret` wrapper can sit at any depth in a config value, so walk the whole structure. The
-// first key a given value is seen under wins its token (`same value under two keys → first key
-// wins`), so never overwrite an existing entry.
+// Where a `$secret` may sit is @path/schema's answer (`mapSecrets`); collection only says what to
+// do when one is reached. The first key a given value is seen under wins its token (`same value
+// under two keys → first key wins`), so never overwrite an existing entry. The mapped tree is
+// discarded — this walk is here to record, not to transform.
 function collectFromValue(path: string, value: ConfigValue, into: Map<string, SecretEntry>): void {
-  if (isSecretWrapper(value)) {
-    const secret = value.$secret;
-    if (!into.has(secret)) into.set(secret, { key: path, value: secret, token: `[secret:${path}]` });
-    return;
-  }
-  if (Array.isArray(value)) {
-    value.forEach((item, i) => collectFromValue(`${path}.${i}`, item, into));
-    return;
-  }
-  if (value !== null && typeof value === "object") {
-    for (const [key, item] of Object.entries(value)) collectFromValue(`${path}.${key}`, item, into);
-  }
+  // ConfigValue and JsonValue are structurally compatible (the `$secret` wrapper is just a plain
+  // object shape) but not nominally assignable across their recursive unions.
+  mapSecrets(
+    value as unknown as JsonValue,
+    (secret, secretPath) => {
+      if (!into.has(secret)) into.set(secret, { key: secretPath, value: secret, token: `[secret:${secretPath}]` });
+      return secret;
+    },
+    path,
+  );
 }
 
 /**
