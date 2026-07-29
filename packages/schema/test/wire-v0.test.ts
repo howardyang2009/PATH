@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { RunRecord } from "../src/run-record.js";
-import { fromWireRunRecord, toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
+import { toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
 
 const record: RunRecord = {
   runId: "run-1",
@@ -34,12 +34,38 @@ const emptyRecord: RunRecord = {
 };
 
 describe("the v0 wire record", () => {
-  it("round-trips a full record through the wire and back", () => {
-    expect(fromWireRunRecord(toWireRunRecord(record))).toEqual(record);
+  it("maps every field of a full record onto its wire name", () => {
+    expect(toWireRunRecord(record)).toEqual({
+      run_id: "run-1",
+      root_run_id: "root-1",
+      parent_run_id: "root-1",
+      node_id: "greet",
+      worker: { type: "engine" },
+      status: "succeeded",
+      started_at: "2026-07-27T10:00:00.000Z",
+      finished_at: "2026-07-27T10:00:01.000Z",
+      input_ref: "root-1/run-1/input.json",
+      output_ref: "root-1/run-1/output.json",
+      usage: { input_tokens: 1, output_tokens: 2 },
+      estimated_cost_usd: 0.001,
+    });
   });
 
-  it("round-trips a record whose every optional field is null", () => {
-    expect(fromWireRunRecord(toWireRunRecord(emptyRecord))).toEqual(emptyRecord);
+  it("carries a record whose every optional field is null across as null, not as absent", () => {
+    expect(toWireRunRecord(emptyRecord)).toEqual({
+      run_id: "root-1",
+      root_run_id: "root-1",
+      parent_run_id: null,
+      node_id: null,
+      worker: null,
+      status: "pending",
+      started_at: null,
+      finished_at: null,
+      input_ref: null,
+      output_ref: null,
+      usage: null,
+      estimated_cost_usd: null,
+    });
   });
 
   it("spells every field snake_case on the wire (server-api-v0.md §1)", () => {

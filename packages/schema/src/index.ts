@@ -120,7 +120,6 @@ export {
 } from "./event-frame.js";
 export type { RunRecord } from "./run-record.js";
 export {
-  fromWireRunRecord,
   toRootRunSummary,
   toWireRunRecord,
   type BlobName,

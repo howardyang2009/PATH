@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { loadWorkflowTree, LOG_BACKEND_IDS, type Project } from "@path/engine";
-import { ConfigObjectSchema, formatIssues, type JsonValue } from "@path/schema";
+import { ConfigObjectSchema, formatIssues, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import type { LiveRuns } from "../live-runs.js";
@@ -94,5 +94,6 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     return;
   }
 
-  sendJson(res, 202, { run_id: ids.runId, root_run_id: ids.rootRunId });
+  const started: StartRunResponse = { run_id: ids.runId, root_run_id: ids.rootRunId };
+  sendJson(res, 202, started);
 }
