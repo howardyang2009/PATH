@@ -1,11 +1,11 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { openDb } from "../../src/persistence/db.js";
 import { readJsonBlob } from "../../src/persistence/blob-store.js";
-import { runBlobDir } from "../../src/persistence/paths.js";
+import { pathDir, runBlobDir } from "../../src/persistence/paths.js";
 import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../../src/persistence/run-store.js";
 
@@ -21,6 +21,11 @@ afterEach(() => {
   db.close();
   rmSync(projectDir, { recursive: true, force: true });
 });
+
+/** Resolve a ref the way a reader would: it is relative to `.path/`, forward-slash-joined. */
+function fileForRef(ref: string): string {
+  return join(pathDir(projectDir), ...ref.split("/"));
+}
 
 describe("createPersistedObserver", () => {
   it("records the root run row and its input/context blobs on runStarted", async () => {
@@ -161,6 +166,65 @@ describe("createPersistedObserver", () => {
     const [row] = getRunsForRoot(db, "root-1");
     expect(row?.status).toBe("failed");
     expect(row?.outputRef).toBeNull();
+  });
+
+  /**
+   * The defect the write side exists to make unrepresentable (#72). The blob's directory and the
+   * row's ref were built separately, from the same pieces, with different separator conventions —
+   * so they could address different files with no error and no failing test. Comparing the ref to
+   * a literal would not catch that; resolving it does.
+   */
+  it("records an input ref that resolves to the file it just wrote", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: { seed: 1 }, worker: { type: "engine" } });
+
+    const [row] = getRunsForRoot(db, "root-1");
+    expect(row?.inputRef).not.toBeNull();
+    expect(existsSync(fileForRef(row!.inputRef!))).toBe(true);
+    expect(JSON.parse(readFileSync(fileForRef(row!.inputRef!), "utf8"))).toEqual({ seed: 1 });
+  });
+
+  it("records an output ref that resolves to the file it just wrote", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "succeeded", output: { done: true } });
+
+    const [row] = getRunsForRoot(db, "root-1");
+    expect(JSON.parse(readFileSync(fileForRef(row!.outputRef!), "utf8"))).toEqual({ done: true });
+  });
+
+  it("seeds no context for a leaf step run — only a workflow-run's input seeds one", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+    await observer.observe({ type: "step-started",
+      runId: "step-1",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      nodeId: "greet",
+      stepType: "binary",
+      worker: { type: "engine" },
+      input: "hi",
+    });
+
+    const dir = runBlobDir(projectDir, "root-1", "step-1");
+    expect(existsSync(join(dir, "input.json"))).toBe(true);
+    expect(existsSync(join(dir, "context.json"))).toBe(false);
+  });
+
+  it("writes no output.json for a failed run — not merely a null ref", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "failed", error: "boom" });
+
+    expect(existsSync(join(runBlobDir(projectDir, "root-1", "root-1"), "output.json"))).toBe(false);
+  });
+
+  it("captures empty stderr — it is audit, not a payload", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, input: {}, worker: { type: "engine" } });
+    await observer.observe({ type: "step-stderr", runId: "root-1", rootRunId: "root-1", stderr: "" });
+
+    expect(readFileSync(join(runBlobDir(projectDir, "root-1", "root-1"), "stderr.txt"), "utf8")).toBe("");
   });
 
   it("records an LLM step run's usage and estimated cost on its own row (mvp spec §5.7)", async () => {

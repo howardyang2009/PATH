@@ -5,7 +5,7 @@ import type Database from "better-sqlite3";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
-import { dbFilePath, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
+import { dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
 import {
   deleteAllRuns,
   deleteRunsForRoot,
@@ -62,11 +62,6 @@ export interface ListRootsOptions {
 
 /** The blobs a run's directory holds that are readable back through the archive. */
 export type RunBlobName = "input" | "output";
-
-const BLOB_FILENAME: Record<RunBlobName, string> = {
-  input: "input.json",
-  output: "output.json",
-};
 
 /**
  * One root run's tree as it was persisted: its rows, its blobs, and its narrative, addressed by run
@@ -145,7 +140,7 @@ function makeTree(projectDir: string, rootRunId: string, runs: RunRecord[]): Run
   function blob(runId: string, name: RunBlobName): JsonValue | undefined {
     if (!runs.some((run) => run.runId === runId)) return undefined;
     const blobDir = runBlobDir(projectDir, rootRunId, runId);
-    const filename = BLOB_FILENAME[name];
+    const filename = RUN_BLOB_FILE[name];
     if (!existsSync(join(blobDir, filename))) return undefined;
     return readJsonBlob(blobDir, filename);
   }
