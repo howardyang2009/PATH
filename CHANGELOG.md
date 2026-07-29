@@ -1,5 +1,87 @@
 # Changelog
 
+## v0.4.2 — 2026-07-28
+
+Patch: six candidates from an architecture review, five built and one refused. v0.4.1 gave the
+engine's *interior* the seams it lacked; this pass asks the same question of the parts that already
+had owners and finds the things that had none. Each of the five is the same move — something the
+codebase already did, done in one place instead of at every call site: reading a run back
+(`RunArchive`), running one over HTTP (`LiveRuns`), framing an event on the wire
+(`encodeEventFrame`), running one node of a body (`runNode`), and saying what a run's events mean
+(`eventOutcome`, `buildRunTree`).
+
+The v0 wire format, every HTTP status and the CLI's surface are unchanged, so the outward-facing
+change is confined to what the workspace packages export to each other: `Project.db` is now
+`Project.archive`, `@path/engine` no longer exports `getRunsForRoot`, `listRootRuns`, `readJsonBlob`
+or `runBlobDir`, `@path/server` no longer exports `RunEventHub`, and `@path/schema` gains the event
+stream's frame codec. Every existing test passes untouched at each step, and the suite grows 685 →
+754 as the seams become reachable.
+
+The sixth candidate — collapsing the three exhaustive switches over `Observation` behind one
+per-variant table — is **not built**, and #91 records why so the next review does not re-derive it.
+Investigating it found a real bug instead, which is this release's one fix.
+
+### Fixes
+
+- fix(engine): mask the usage a worker reports (resolves #91)
+
+  `step-usage.usage` is a `JsonValue` supplied by the LLM worker (mvp spec §5.7, §7) and written
+  verbatim to the run row. It sat in `maskObservation`'s pass-through group under the comment
+  "carry only ids, counts and engine-chosen enum values" — an assumption about what a worker puts
+  there, not a guarantee, and it is the one payload crossing that seam the engine neither builds nor
+  validates. Token counts are numbers and numbers pass through masking untouched, so scrubbing it
+  costs nothing.
+
+  The sweep over all fourteen members asserting no secret survives could not have caught it: the
+  `step-usage` sample carried no secret to begin with, so it passed vacuously. **Totality is not
+  coverage** — a member can be listed in the switch and still return unmasked. A second test now
+  requires every sample to hold the secret before masking, with `CANNOT_CARRY_A_SECRET` naming the
+  two members that provably cannot.
+
+### Internal
+
+- refactor(engine): give the read side of `.path/` an owner (resolves #81) — `Project` owned
+  assembling a run *into* `.path/` (#64); reading one back and deleting one had no owner, so five
+  server routes and two CLI subcommands each composed the same three stores by hand. `Project.db`
+  was public purely to let them, which made the engine's on-disk layout part of `@path/server`'s
+  contract with nothing in the type system saying the two must move together. `RunArchive` is that
+  owner: `rows.find((row) => row.runId === rootRunId)` was written four times, the blob filenames
+  lived in an HTTP route, and `path runs rm` carried its own copy of the operator-error policy.
+
+- refactor(server): give the live run one owner (resolves #83) — starting a run over HTTP was never
+  one call to `Project.run`: it is a run started, an id answered before the run finishes, a
+  controller filed, a live channel opened, and both torn down however the run ends. Five modules
+  held a share of it and none of it was reachable without binding a port — `post-runs-registry.test.ts`
+  drove a route handler with a hand-built request and response purely to reach a `Map`. Three
+  guarantees that were comments a caller upheld are now `LiveRuns`' interface.
+
+- refactor(schema): one event-frame codec, not four (resolves #85) — the framing the log stream
+  travels in was written four times, and they had already drifted: one copy accepted `data:` with or
+  without the space and the other three sliced a fixed six characters, so a server emitting the
+  compact form would have been read by the browser client and silently ignored by everything else,
+  including the acceptance harness whose job is to catch that. The same failure `wire-v0.ts` was
+  created to end, one layer up.
+
+- refactor(engine): one node seam, not five of seven (resolves #87) — #76 pulled the control-node
+  walkers to module scope and stopped, leaving `branch` reachable by a test and `binary` not, though
+  a body may hold either in the same position. `runParallelNode` was exported with no direct caller
+  anywhere. `runNode` owns everything about one node — which of the seven kinds it is, its config,
+  its input, its publish — and the four kinds that had no direct test now have one.
+
+- refactor(client-core): the run's meaning belongs to the core (resolves #89) — a package documented
+  as "the core every viewer/designer/mobile surface consumes" could not tell a surface which events
+  mean a run stopped, or which run spawned which. Both moved; `eventMessage`, `nodeLabel` and
+  `STATUS_GLYPH` stayed, because English copy and glyphs are where a second surface differing is
+  correct rather than drift.
+
+### Other
+
+- docs: candidate 6 declined and the reasoning recorded (#91) — the three switches ask three
+  different questions, the table would need four field-kind categories plus an escape hatch for
+  `step-finished` alone, and locality gets worse: one file per policy becomes one row spanning three
+  concerns. The review's premise was also wrong on a fact — `test/fake-observer.ts` is
+  compile-checked, not an unguarded fourth copy.
+
 ## v0.4.1 — 2026-07-27
 
 Patch: one leak fixed, and the interior given the seams the cancellation phase kept revealing it
