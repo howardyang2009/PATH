@@ -12,8 +12,10 @@ import type { Worker } from "./worker-type.js";
  * renamed on one side type-checked cleanly on both and broke only at runtime, in the browser.
  *
  * Field casing is snake_case (§1), which is the whole reason a translation exists: the domain speaks
- * camelCase (`RunRecord`) and the wire speaks snake_case. `toWireRunRecord` and `fromWireRunRecord`
- * are that translation, in both directions, beside the two shapes they map between.
+ * camelCase (`RunRecord`) and the wire speaks snake_case. `toWireRunRecord` is that translation,
+ * beside the two shapes it maps between. There is no inverse: the server encodes, and the client
+ * projects the wire record straight onto its own view state (`client-core/view-model.ts`) rather
+ * than decoding back to a domain record it has no other use for.
  */
 
 /** One `RunRecord` on the wire (server-api-v0.md §4), snake_case. */
@@ -85,24 +87,6 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     output_ref: row.outputRef,
     usage: row.usage,
     estimated_cost_usd: row.estimatedCostUsd,
-  };
-}
-
-/** Wire → domain record. The inverse of `toWireRunRecord`; a client decodes with it. */
-export function fromWireRunRecord(wire: WireRunRecord): RunRecord {
-  return {
-    runId: wire.run_id,
-    rootRunId: wire.root_run_id,
-    parentRunId: wire.parent_run_id,
-    nodeId: wire.node_id,
-    worker: wire.worker,
-    status: wire.status,
-    startedAt: wire.started_at,
-    finishedAt: wire.finished_at,
-    inputRef: wire.input_ref,
-    outputRef: wire.output_ref,
-    usage: wire.usage,
-    estimatedCostUsd: wire.estimated_cost_usd,
   };
 }
 
