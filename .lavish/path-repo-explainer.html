@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PATH — repository explainer</title>
+<style>
+/*
+ * Design source: @path/viewer's own token set (packages/viewer/src/tokens.css),
+ * copied verbatim so this explainer looks like the product it describes.
+ */
+:root {
+  --ground: #fbfcfd;
+  --surface: #ffffff;
+  --border: #d8dee4;
+  --text: #1c2128;
+  --text-muted: #656d76;
+  --accent: #4c6ef5;
+
+  --status-running-fg: #1f6feb;
+  --status-running-bg: #ddf0ff;
+  --status-succeeded-fg: #1a7f37;
+  --status-succeeded-bg: #dcfce7;
+  --status-failed-fg: #cf222e;
+  --status-failed-bg: #ffebe9;
+  --status-cancelled-fg: #656d76;
+  --status-cancelled-bg: #eaeef2;
+  --status-pending-fg: #9a6700;
+  --status-pending-bg: #fff8c5;
+
+  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+  --fs-xs: 11px;
+  --fs-sm: 12px;
+  --fs-base: 13px;
+  --fs-md: 15px;
+  --fs-lg: 19px;
+  --fs-xl: 24px;
+}
+:root[data-theme="dark"] {
+  --ground: #0e1116;
+  --surface: #161b22;
+  --border: #30363d;
+  --text: #e6edf3;
+  --text-muted: #8b949e;
+  --accent: #5c7cff;
+  --status-running-fg: #58a6ff;   --status-running-bg: #12283f;
+  --status-succeeded-fg: #3fb950; --status-succeeded-bg: #12261a;
+  --status-failed-fg: #f85149;    --status-failed-bg: #2d1416;
+  --status-cancelled-fg: #8b949e; --status-cancelled-bg: #21262d;
+  --status-pending-fg: #d29922;   --status-pending-bg: #2a2213;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --ground: #0e1116;
+    --surface: #161b22;
+    --border: #30363d;
+    --text: #e6edf3;
+    --text-muted: #8b949e;
+    --accent: #5c7cff;
+    --status-running-fg: #58a6ff;   --status-running-bg: #12283f;
+    --status-succeeded-fg: #3fb950; --status-succeeded-bg: #12261a;
+    --status-failed-fg: #f85149;    --status-failed-bg: #2d1416;
+    --status-cancelled-fg: #8b949e; --status-cancelled-bg: #21262d;
+    --status-pending-fg: #d29922;   --status-pending-bg: #2a2213;
+  }
+}
+
+/* layout safety */
+*, *::before, *::after { box-sizing: border-box; }
+:where(.grid, .flex) > * { min-width: 0; }
+:where(p, h1, h2, h3, h4, li, dd, td, th, .badge) { overflow-wrap: anywhere; }
+:where(img, svg, video, canvas) { max-width: 100%; height: auto; }
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+  line-height: 1.55;
+}
+.wrap { max-width: 1080px; margin: 0 auto; padding: 32px 20px 96px; }
+
+/* ---- masthead ---- */
+.masthead { border-bottom: 1px solid var(--border); padding-bottom: 24px; margin-bottom: 8px; }
+.eyebrow {
+  font-family: var(--font-mono); font-size: var(--fs-xs); letter-spacing: .08em;
+  text-transform: uppercase; color: var(--text-muted);
+}
+h1 { font-size: var(--fs-xl); margin: 6px 0 8px; letter-spacing: -.01em; }
+.lede { font-size: var(--fs-md); color: var(--text-muted); max-width: 68ch; margin: 0; }
+
+.statbar {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 1px; background: var(--border); border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; margin: 24px 0 0;
+}
+.stat { background: var(--surface); padding: 12px 14px; }
+.stat dt { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .06em; margin: 0; }
+.stat dd { margin: 4px 0 0; font-size: var(--fs-lg); font-family: var(--font-mono); }
+.stat dd small { font-family: var(--font-sans); font-size: var(--fs-xs); color: var(--text-muted); display: block; }
+
+/* ---- sections ---- */
+section { margin-top: 44px; }
+h2 {
+  font-size: var(--fs-lg); margin: 0 0 4px; letter-spacing: -.01em;
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+}
+h2 .num { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--accent); }
+h3 { font-size: var(--fs-md); margin: 24px 0 8px; }
+.sub { color: var(--text-muted); margin: 0 0 18px; max-width: 72ch; }
+
+/* ---- the equation ---- */
+.equation {
+  display: flex; align-items: stretch; gap: 10px; flex-wrap: wrap;
+  padding: 20px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--surface);
+}
+.term { flex: 1 1 150px; min-width: 0; }
+.term .word { font-size: var(--fs-md); font-weight: 650; font-family: var(--font-mono); }
+.term .gloss { color: var(--text-muted); font-size: var(--fs-sm); }
+.op { align-self: center; font-size: var(--fs-lg); color: var(--accent); font-family: var(--font-mono); }
+
+/* ---- cards ---- */
+.cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
+.card {
+  border: 1px solid var(--border); border-radius: 8px; background: var(--surface);
+  padding: 14px 15px; min-width: 0;
+}
+.card h4 { margin: 0 0 6px; font-size: var(--fs-base); font-family: var(--font-mono); }
+.card p { margin: 0; color: var(--text-muted); font-size: var(--fs-sm); }
+.card.rule { border-left: 3px solid var(--accent); }
+
+.badge {
+  display: inline-block; font-family: var(--font-mono); font-size: var(--fs-xs);
+  padding: 1px 7px; border-radius: 999px; white-space: nowrap;
+}
+.b-exec { color: var(--status-running-fg); background: var(--status-running-bg); }
+.b-engine { color: var(--status-pending-fg); background: var(--status-pending-bg); }
+.b-ok { color: var(--status-succeeded-fg); background: var(--status-succeeded-bg); }
+.b-fail { color: var(--status-failed-fg); background: var(--status-failed-bg); }
+.b-off { color: var(--status-cancelled-fg); background: var(--status-cancelled-bg); }
+
+/* ---- tables ---- */
+.tablewrap { overflow-x: auto; border: 1px solid var(--border); border-radius: 8px; background: var(--surface); }
+table { border-collapse: collapse; width: 100%; font-size: var(--fs-sm); }
+th, td { text-align: left; padding: 9px 12px; border-bottom: 1px solid var(--border); vertical-align: top; }
+th { font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); font-weight: 600; }
+tbody tr:last-child td { border-bottom: none; }
+td code, th code, p code, li code, .card code { font-family: var(--font-mono); font-size: .95em; }
+.mono { font-family: var(--font-mono); }
+.muted { color: var(--text-muted); }
+
+/* ---- diagram ---- */
+.mermaid { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; padding: 16px; overflow-x: auto; }
+.caption { color: var(--text-muted); font-size: var(--fs-xs); margin: 8px 2px 0; }
+
+/* ---- callout ---- */
+.callout {
+  border: 1px solid var(--border); border-left: 3px solid var(--status-pending-fg);
+  background: var(--surface); border-radius: 8px; padding: 14px 16px; margin-top: 16px;
+}
+.callout strong { color: var(--status-pending-fg); }
+
+/* ---- pipeline ---- */
+.pipeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.stage { border: 1px solid var(--border); border-radius: 8px; background: var(--surface); padding: 14px 15px; min-width: 0; }
+.stage .step-n { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--accent); }
+.stage h4 { margin: 2px 0 6px; font-size: var(--fs-base); }
+.stage ul { margin: 8px 0 0; padding-left: 16px; color: var(--text-muted); font-size: var(--fs-sm); }
+
+/* ---- code surface ---- */
+.codeframe { border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.codeframe > div { overflow-x: auto; }
+
+ul.tight { margin: 8px 0 0; padding-left: 18px; }
+ul.tight li { margin-bottom: 4px; }
+
+footer { margin-top: 56px; padding-top: 18px; border-top: 1px solid var(--border); color: var(--text-muted); font-size: var(--fs-sm); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="masthead">
+  <div class="eyebrow">Repository explainer · generated from source, docs, and the graphify knowledge graph</div>
+  <h1>PATH — a workflow management system</h1>
+  <p class="lede">
+    Author a workflow as JSON — steps, workers, parallel/branch/while-do blocks, checkpoints — then run it
+    locally through the <code>path</code> CLI or over HTTP, and watch it live in a React console.
+    TypeScript pnpm monorepo, five packages, no build step: the bins run through <code>tsx</code>.
+  </p>
+  <dl class="statbar">
+    <div class="stat"><dt>Packages</dt><dd>5<small>schema · engine · server · client-core · viewer</small></dd></div>
+    <div class="stat"><dt>Latest release</dt><dd>v0.4.2<small>2026-07-28</small></dd></div>
+    <div class="stat"><dt>Source files</dt><dd>245<small>220 code · 25 docs</small></dd></div>
+    <div class="stat"><dt>Graph nodes</dt><dd>1,176<small>2,637 edges · 94 communities</small></dd></div>
+    <div class="stat"><dt>Biggest file</dt><dd>49&nbsp;KB<small>engine/src/run-workflow.ts</small></dd></div>
+  </dl>
+</header>
+
+<!-- ============================================================ -->
+<section id="model">
+  <h2><span class="num">01</span> The core equation</h2>
+  <p class="sub">
+    Everything in PATH's vocabulary hangs off one decomposition. <code>CONTEXT.md</code> is canonical —
+    code, specs, and issues use these terms exactly.
+  </p>
+
+  <div class="equation">
+    <div class="term">
+      <div class="word">Step</div>
+      <div class="gloss"><em>what</em> to do. One input object, one output object. Never says who runs it.</div>
+    </div>
+    <div class="op">+</div>
+    <div class="term">
+      <div class="word">Worker</div>
+      <div class="gloss"><em>who / where</em> it executes — local engine, LLM subagent. Inherited downward unless overridden.</div>
+    </div>
+    <div class="op">=</div>
+    <div class="term">
+      <div class="word">Task</div>
+      <div class="gloss">A step bound to a worker.</div>
+    </div>
+    <div class="op">→</div>
+    <div class="term">
+      <div class="word">Run</div>
+      <div class="gloss">One executing instance of that task, on a <strong>Processor</strong> (a live worker instance).</div>
+    </div>
+  </div>
+
+  <div class="callout">
+    <strong>Invariant 2 is the one that surprises people.</strong> There is no separate "workflow execution" concept.
+    A workflow is itself a valid step type — <em>workflow-as-step</em> — so executing a workflow means running the
+    task of the step that wraps it. The top-level workflow gets an implicit root step, and a workflow-step's run
+    spawns child runs, forming the <strong>run tree</strong>.
+  </div>
+
+  <h3>Node grammar — what can sit in a workflow body</h3>
+  <div class="cards">
+    <div class="card">
+      <h4>Step <span class="badge b-exec">has a run</span></h4>
+      <p>The only node type that executes on a worker. Everything else is engine-evaluated.</p>
+    </div>
+    <div class="card">
+      <h4>Parallel <span class="badge b-engine">logicer</span></h4>
+      <p>Join modes: <code>collect</code> (MVP), <code>wait-one</code> and <code>do-not-wait</code> deferred.</p>
+    </div>
+    <div class="card">
+      <h4>Branch <span class="badge b-engine">logicer</span></h4>
+      <p>Routes. Picks an arm by condition — does not assert.</p>
+    </div>
+    <div class="card">
+      <h4>While-do <span class="badge b-engine">logicer</span></h4>
+      <p>Mandatory max-iterations bound; exceeding it fails the run.</p>
+    </div>
+    <div class="card">
+      <h4>Checkpoint <span class="badge b-engine">engine-evaluated</span></h4>
+      <p>Fail-fast assertion. True continues, false stops the run as <span class="badge b-fail">failed</span>.
+      Never exercises judgment.</p>
+    </div>
+    <div class="card rule">
+      <h4>The judge-step pattern</h4>
+      <p>Any check that needs judgment (human or LLM) becomes a normal <em>step</em> that outputs a verdict,
+      followed by a checkpoint that tests it. <code>branch</code> routes; <code>checkpoint</code> asserts.</p>
+    </div>
+  </div>
+  <p class="caption">Blocks nest arbitrarily (the <em>nested block grammar</em>); checkpoints may appear anywhere in a sequence. Source: <code>CONTEXT.md</code>, <code>packages/schema/src/nodes.ts</code>.</p>
+</section>
+
+<!-- ============================================================ -->
+<section id="packages">
+  <h2><span class="num">02</span> Package architecture</h2>
+  <p class="sub">
+    Dependencies point one way: everything knows the domain, nothing depends on the UI.
+    <code>@path/client-core</code> is deliberately framework-free <em>and</em> Node-free — that is the seam that
+    makes the viewer swappable.
+  </p>
+
+  <pre class="mermaid">
+flowchart TD
+  schema["@path/schema&#10;domain vocabulary + Zod schemas"]
+  engine["@path/engine&#10;runs workflows locally&#10;path CLI"]
+  server["@path/server&#10;HTTP + SSE API&#10;path-server CLI"]
+  core["@path/client-core&#10;pure TS: API client, SSE client, view-model"]
+  viewer["@path/viewer&#10;React read-only run monitor"]
+
+  engine --> schema
+  server --> engine
+  server --> schema
+  core --> schema
+  viewer --> core
+  viewer -. "HTTP + SSE over the wire" .-> server
+  server -. "serves the built viewer from dist/" .-> viewer
+  </pre>
+  <p class="caption">Solid edges are workspace dependencies; dotted edges are runtime relationships that cross a process boundary.</p>
+
+  <div class="tablewrap" style="margin-top:16px">
+    <table>
+      <thead>
+        <tr><th>Package</th><th>Role</th><th>Notable source</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="mono">@path/schema</td>
+          <td>The domain: workflow file format v0, plus the runtime vocabulary its execution produces — run status, log events, traces, the v0 wire shapes.</td>
+          <td class="mono muted">workflow-file.ts · nodes.ts · conditions.ts · log-event.ts · wire-v0.ts</td>
+        </tr>
+        <tr>
+          <td class="mono">@path/engine</td>
+          <td>Runs workflows locally. Owns execution, persistence, logging backends, LLM workers, secret masking. Ships the <code>path</code> CLI.</td>
+          <td class="mono muted">run-workflow.ts (49&nbsp;KB) · run-observer.ts · secret-mask.ts · run-archive.ts</td>
+        </tr>
+        <tr>
+          <td class="mono">@path/server</td>
+          <td>HTTP + SSE API over the engine. Also serves the built viewer. Ships the <code>path-server</code> CLI.</td>
+          <td class="mono muted">create-server.ts · live-runs.ts · run-event-hub.ts · routes/</td>
+        </tr>
+        <tr>
+          <td class="mono">@path/client-core</td>
+          <td>Pure TypeScript — no framework, no Node. API client, SSE client, and the run view-model that folds an event stream into UI state.</td>
+          <td class="mono muted">api-client.ts · sse-client.ts · view-model.ts · run-tree.ts</td>
+        </tr>
+        <tr>
+          <td class="mono">@path/viewer</td>
+          <td>React web console over client-core. Read-only run monitor, plus the one write action: cancel.</td>
+          <td class="mono muted">app.tsx · narrative.tsx · run-tree.tsx · cancel-button.tsx</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="flow">
+  <h2><span class="num">03</span> How a run actually flows</h2>
+  <p class="sub">
+    From a JSON file on disk to a pixel in the browser. The single most important node on this path is the
+    masking choke point — every observation passes through it, so masking is not something an observer can be
+    partial about.
+  </p>
+
+  <pre class="mermaid">
+flowchart TD
+  wf["workflow.json&#10;format: path/workflow@0"] --> load["loadWorkflowTree()&#10;resolve refs, validate, detect cycles"]
+  load --> exec["runWorkflow()&#10;engine execution core"]
+  exec --> tree["run tree&#10;root run spawns child runs"]
+  exec --> obs["Observation&#10;full typed record, carries payloads"]
+
+  obs --> mask{"secret masking&#10;ONE emit point"}
+  mask --> blob["blob store&#10;input · output · context · stderr"]
+  mask --> ev["Log event&#10;narrated subset, payloads stripped to blob refs"]
+
+  ev --> sqlite["SQLite log table"]
+  ev --> ndjson["NDJSON file, one per root run"]
+  ev --> hub["run-event-hub&#10;server fan-out"]
+  hub --> sse["SSE&#10;GET /v0/runs/:id/events"]
+  sse --> vm["RunViewModel&#10;client-core folds events into state"]
+  vm --> ui["viewer&#10;run tree + narrative + JSON panes"]
+  </pre>
+  <p class="caption">Sources: <code>packages/engine/src/run-workflow.ts</code>, <code>run-observer.ts</code>, <code>secret-mask.ts</code>, <code>packages/server/src/run-event-hub.ts</code>, <code>packages/client-core/src/view-model.ts</code>.</p>
+
+  <h3>A real workflow file</h3>
+  <p class="sub">Four LLM prompts fanned out in parallel and collected. The worker is declared once at the top and inherited by every step below it — inheritance is invariant 5.</p>
+  <div class="codeframe"><div id="workflow-file"></div></div>
+  <p class="caption"><code>packages/engine/test/fixtures/llm-fanout.workflow.json</code></p>
+</section>
+
+<!-- ============================================================ -->
+<section id="audit">
+  <h2><span class="num">04</span> The audit chain — three stages of narrowing</h2>
+  <p class="sub">
+    PATH keeps three progressively narrower records of what happened. Knowing which one you are looking at
+    tells you what is guaranteed to be in it.
+  </p>
+
+  <div class="pipeline">
+    <div class="stage">
+      <div class="step-n">STAGE 1 — widest</div>
+      <h4>Observation</h4>
+      <p class="muted">Every typed record of run activity the engine emits to its observer. The engine's <em>only</em> audit seam.</p>
+      <ul>
+        <li>Carries payloads: <code>input</code>, <code>output</code>, <code>context</code>, <code>stderr</code></li>
+        <li>Three exist for persistence alone and are never narrated: <code>step-stderr</code>, <code>step-usage</code>, <code>context-changed</code></li>
+        <li>Already secret-masked when it crosses the seam</li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="step-n">STAGE 2 — narrated subset</div>
+      <h4>Log event</h4>
+      <p class="muted">The append-only subset that reaches a log backend, payloads stripped to blob refs on the run row.</p>
+      <ul>
+        <li>Envelope: <code>seq</code> (monotonic per root run — the ordering truth), <code>ts</code>, <code>type</code>, <code>run_id</code>, <code>node_id</code></li>
+        <li>Covers step lifecycle and control-node activity: <code>branch-taken</code>, <code>checkpoint-passed</code>/<code>-failed</code>, <code>iteration-started</code>, <code>loop-exited</code>, <code>join-applied</code>, <code>run-cancelled</code></li>
+        <li>Projection is <em>not</em> one-to-one — a workflow-run's start and a leaf step's start are both <code>step-started</code></li>
+      </ul>
+    </div>
+    <div class="stage">
+      <div class="step-n">STAGE 3 — per-predicate</div>
+      <h4>Trace</h4>
+      <p class="muted">The evaluation record carried by condition-bearing log events.</p>
+      <ul>
+        <li>The condition tree annotated per leaf</li>
+        <li>Each leaf's dot-path, outcome (<code>true</code> / <code>false</code> / <code>error</code>), and the actual value read</li>
+        <li>Values are post-masking</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>Backends and secrets</h3>
+  <div class="cards">
+    <div class="card">
+      <h4>Log backend</h4>
+      <p>A dumb sink implementing <code>open</code> / <code>write</code> / <code>close</code>, instantiated per root run.
+      The engine serializes writes and delivers fully-formed, already-masked events. Fan-out is engine-level config.
+      MVP default: SQLite log table + per-root-run NDJSON, both on. <strong>A backend write failure fails the run.</strong></p>
+    </div>
+    <div class="card rule">
+      <h4>Secret</h4>
+      <p>A config value wrapped as <code>{"$secret": ...}</code>. Secrecy rides the value through shallow-merge
+      inheritance. Every secret is scrubbed from all persisted artifacts — log events, input/output objects,
+      <code>context.json</code>, error strings, stderr, condition trace values — replaced with
+      <code>[secret:&lt;key&gt;]</code>. Workers still receive real values: masking is an audit-surface concern,
+      not a dataflow restriction.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="data">
+  <h2><span class="num">05</span> Config vs. context — the rule worth memorizing</h2>
+  <p class="sub">Two key-value stores that look alike and behave nothing alike.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead>
+        <tr><th style="width:16%">&nbsp;</th><th>Config</th><th>Context</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <th>Direction</th>
+          <td>Flows <strong>in from outside</strong> — author at design time, operator at launch time.</td>
+          <td>Written <strong>from inside</strong> — produced by steps at runtime.</td>
+        </tr>
+        <tr>
+          <th>Typical content</th>
+          <td>API tokens, model names, endpoints, flags.</td>
+          <td>A computed temp dir, a branch name, accumulated results.</td>
+        </tr>
+        <tr>
+          <th>Scope</th>
+          <td>Declared per step; inherited from the enclosing workflow when unspecified.</td>
+          <td>One workflow-run, isolated. A nested workflow-step starts with a fresh, empty context.</td>
+        </tr>
+        <tr>
+          <th>Crossing a boundary</th>
+          <td>Shallow-merge inheritance downward; secret wrappers ride along.</td>
+          <td>Exchanges data with the parent <em>only</em> through the step's input and output objects.</td>
+        </tr>
+        <tr>
+          <th>Can a step create it?</th>
+          <td><span class="badge b-fail">No</span> — config never originates from execution.</td>
+          <td><span class="badge b-ok">Yes</span> — that is the whole point.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="api">
+  <h2><span class="num">06</span> The v0 HTTP surface</h2>
+  <p class="sub">
+    Small on purpose. <code>POST /v0/runs</code> returns before the run finishes — the client then polls the run
+    row or streams events.
+  </p>
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th>Route</th><th>Does</th><th>Note</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">POST /v0/runs</td><td>Start a run</td><td class="muted">Responds before execution finishes</td></tr>
+        <tr><td class="mono">GET /v0/runs</td><td>List root runs</td><td class="muted">No output/usage/tree — fetch the run for that</td></tr>
+        <tr><td class="mono">GET /v0/runs/:root_run_id</td><td>Run status + tree</td><td class="muted">Authoritative queryable step record</td></tr>
+        <tr><td class="mono">GET /v0/runs/:root_run_id/blobs/:run_id/:name</td><td>One run's input or output object</td><td class="muted">Where stripped payloads live</td></tr>
+        <tr><td class="mono">POST /v0/runs/:root_run_id/cancel</td><td>Stop a root run in flight</td><td class="muted">Best-effort; no deadline, no force path</td></tr>
+        <tr><td class="mono">GET /v0/runs/:root_run_id/events</td><td>SSE event stream</td><td class="muted">Replayable by <code>seq</code> via <code>Last-Event-ID</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Cancellation is honest about being best-effort.</strong> The engine asks — kills the child process, tears
+    down the processor — and holds no deadline and no force path. Two causes: <em>operator</em> (a cancel request
+    against a root run) and <em>sibling-failed</em> (a parallel branch failed, so in-flight siblings are cancelled).
+    A cancelled run ends <span class="badge b-off">cancelled</span>, a distinct status from
+    <span class="badge b-fail">failed</span> — an operator stopping a run is not the workflow breaking.
+    It lands no publishes and is narrated by a <code>run-cancelled</code> event carrying its cause.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="graph">
+  <h2><span class="num">07</span> What the knowledge graph says about coupling</h2>
+  <p class="sub">
+    From the graphify build over this repo: 1,176 nodes, 2,637 edges, 94 communities. The most-connected nodes
+    match the stated architecture — no hidden god object.
+  </p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:22%">Node</th><th style="width:12%">Edges</th><th>What its reach means</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">JsonValue</td>
+          <td class="mono">61 <span class="muted">· 21 communities</span></td>
+          <td>Universal payload type. Storage, CLI, conditions, interpolation, masking, and the viewer all speak it. High betweenness (0.056) is inherent to being the data lingua franca, not a design smell.</td>
+        </tr>
+        <tr>
+          <td class="mono">LogEvent</td>
+          <td class="mono">42 <span class="muted">· 14 communities</span></td>
+          <td>The audit spine end to end: engine emits, SQLite and NDJSON persist, SSE streams, viewer renders. Its reach is the audit chain made visible.</td>
+        </tr>
+        <tr>
+          <td class="mono">PathApiClient</td>
+          <td class="mono">31 <span class="muted">· 8 communities</span></td>
+          <td>The sole viewer→server door. Viewer components reference it directly, which confirms the client-core seam holds — the viewer never talks HTTP itself.</td>
+        </tr>
+        <tr>
+          <td class="mono">RunStatus</td>
+          <td class="mono">28</td>
+          <td>Shared status vocabulary across engine, persistence, wire, and UI pills.</td>
+        </tr>
+        <tr>
+          <td class="mono">WorkflowFile</td>
+          <td class="mono">24</td>
+          <td>The parse boundary — everything downstream of loading is typed against it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>Two honest caveats about the graph itself.</strong>
+    (1) Health check flagged 318 dangling-endpoint edges and 272 collapsed duplicates — TypeScript re-export chains
+    collapse <code>imports</code> + <code>re_exports</code> between the same pair into one edge, so the edge count
+    <em>understates</em> real coupling. (2) Doc extraction was shallow: 25 markdown files yielded 30 nodes and zero
+    edges, so every doc sits as an isolated island. The code side (AST, 1,149 nodes / 3,227 edges) is solid; the
+    doc-to-code links are not there yet.
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="run">
+  <h2><span class="num">08</span> Running it</h2>
+  <p class="sub">
+    No build step and no linked binaries on your <code>PATH</code> — <code>pnpm exec path-server</code> will not
+    find anything. The bins are TypeScript entry points run through <code>tsx</code>.
+  </p>
+
+  <div class="cards">
+    <div class="card">
+      <h4>Verify the workspace</h4>
+      <p class="mono" style="color:var(--text)">pnpm install<br>pnpm -r run typecheck<br>pnpm -r run test</p>
+    </div>
+    <div class="card">
+      <h4>Run a workflow directly</h4>
+      <p class="mono" style="color:var(--text)">npx tsx packages/engine/bin/path.ts run &lt;workflow.json&gt;<br>&nbsp;&nbsp;[--config &lt;config.json&gt;] [--set key=value]</p>
+    </div>
+    <div class="card">
+      <h4>Serve it and watch</h4>
+      <p class="mono" style="color:var(--text)">pnpm --filter @path/viewer run build<br>npx tsx packages/server/bin/path-server.ts . --port 8080</p>
+    </div>
+    <div class="card rule">
+      <h4>Project-directory gotcha</h4>
+      <p><code>path-server</code>'s first argument is the project directory — where <code>.path/</code> is read and
+      written, defaulting to cwd. The engine CLI instead derives its project directory from the
+      <em>workflow file's own location</em>. These differ, and issue #59 was exactly this mismatch.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============================================================ -->
+<section id="status">
+  <h2><span class="num">09</span> Where the project stands</h2>
+  <p class="sub">The release history reads as one repeated move: take something the codebase already did at every call site, and do it once in one place.</p>
+
+  <div class="tablewrap">
+    <table>
+      <thead><tr><th style="width:14%">Release</th><th>Theme</th><th>What landed</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="mono">v0.4.0</td>
+          <td>Cancellation</td>
+          <td>Stopping a run in flight from the CLI (<code>^C</code>), the API (cancel route), and the viewer (Cancel button) — acceptance run included. Issues #52–#57.</td>
+        </tr>
+        <tr>
+          <td class="mono">v0.4.1</td>
+          <td>Engine interior seams</td>
+          <td>Gave the engine's interior the seams it lacked.</td>
+        </tr>
+        <tr>
+          <td class="mono">v0.4.2</td>
+          <td>Owners for the ownerless</td>
+          <td>Six architecture-review candidates, five built and one refused: <code>RunArchive</code> (reading a run back), <code>LiveRuns</code> (running one over HTTP), <code>encodeEventFrame</code> (framing an event on the wire), <code>runNode</code> (running one node of a body), and <code>eventOutcome</code>/<code>buildRunTree</code> (saying what a run's events mean).</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <strong>v0.4.2 is source-compatible where it counts.</strong> The v0 wire format, every HTTP status, and the CLI
+    surface are unchanged. The break is confined to what workspace packages export to each other:
+    <code>Project.db</code> is now <code>Project.archive</code>, and <code>@path/engine</code> no longer exports
+    <code>getRunsForRoot</code>, <code>listRootRuns</code>, or <code>readJsonBlob</code>.
+  </div>
+
+  <h3>Known rough edges, accepted deliberately</h3>
+  <ul class="tight">
+    <li><strong>#60</strong> — a forced second <code>^C</code> leaves a lying <code>running</code> row. Accepted as the price of the escape hatch and documented in mvp spec §5.6; the <code>^C</code> notice now names the cost and the remedy.</li>
+    <li><strong>Long agent cycles</strong> — the "limit hit mid-merge" failure mode can recur. Recovery: check <code>git status</code> for a half-finished merge before rerunning the loop.</li>
+  </ul>
+</section>
+
+<footer>
+  Built from <code>README.md</code>, <code>CONTEXT.md</code>, <code>CHANGELOG.md</code>, <code>docs/api/server-api-v0.md</code>,
+  <code>docs/spec/mvp-spec.md</code>, the package sources, and <code>graphify-out/GRAPH_REPORT.md</code>.
+  Styled with <code>@path/viewer</code>'s own design tokens.
+</footer>
+
+</div>
+
+<!-- ---------- Mermaid, theme-aware ---------- -->
+<script type="module">
+  import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.15.0/dist/mermaid.esm.min.mjs";
+
+  const darkQuery = window.matchMedia("(prefers-color-scheme: dark)");
+
+  const paint = document.createElement("canvas").getContext("2d");
+  function toRgba(color) {
+    paint.clearRect(0, 0, 1, 1);
+    paint.fillStyle = "#000";
+    paint.fillStyle = color;
+    paint.fillRect(0, 0, 1, 1);
+    return paint.getImageData(0, 0, 1, 1).data;
+  }
+
+  function compositeRgba(foreground, background) {
+    const foregroundAlpha = foreground[3] / 255;
+    const backgroundAlpha = background[3] / 255;
+    const alpha = foregroundAlpha + backgroundAlpha * (1 - foregroundAlpha);
+    if (alpha === 0) return [0, 0, 0, 0];
+    return [
+      (foreground[0] * foregroundAlpha + background[0] * backgroundAlpha * (1 - foregroundAlpha)) / alpha,
+      (foreground[1] * foregroundAlpha + background[1] * backgroundAlpha * (1 - foregroundAlpha)) / alpha,
+      (foreground[2] * foregroundAlpha + background[2] * backgroundAlpha * (1 - foregroundAlpha)) / alpha,
+      alpha * 255,
+    ];
+  }
+
+  function pageIsDark() {
+    const root = document.documentElement;
+    const rootBackground = toRgba(getComputedStyle(root).backgroundColor);
+    const bodyBackground = document.body ? toRgba(getComputedStyle(document.body).backgroundColor) : [0, 0, 0, 0];
+    const [r, g, b, a] = compositeRgba(bodyBackground, rootBackground);
+    if (a > 0) {
+      return (0.2126 * r + 0.7152 * g + 0.0722 * b) / 255 < 0.5;
+    }
+    const colorScheme = getComputedStyle(root).colorScheme;
+    if (colorScheme.includes("dark") && !colorScheme.includes("light")) return true;
+    if (colorScheme.includes("light") && !colorScheme.includes("dark")) return false;
+    return darkQuery.matches;
+  }
+
+  window.__pathPageIsDark = pageIsDark;
+
+  const diagrams = [...document.querySelectorAll(".mermaid")].map((el) => ({ el, src: el.textContent }));
+  let applied;
+  let rendering = false;
+  let queued = false;
+  function queueRender() {
+    queued = true;
+    if (rendering) return;
+    void render();
+  }
+  async function render() {
+    rendering = true;
+    try {
+      while (queued) {
+        queued = false;
+        const theme = pageIsDark() ? "dark" : "default";
+        if (theme === applied) continue;
+        mermaid.initialize({ startOnLoad: false, theme, securityLevel: "strict" });
+        for (const { el, src } of diagrams) {
+          el.removeAttribute("data-processed");
+          el.textContent = src;
+        }
+        try {
+          await mermaid.run({ nodes: diagrams.map((d) => d.el) });
+        } catch (error) {
+          console.error("Mermaid diagram render failed:", error);
+          return;
+        }
+        applied = theme;
+      }
+    } finally {
+      rendering = false;
+      if (queued) queueRender();
+    }
+  }
+
+  if (document.readyState === "complete") queueRender();
+  else window.addEventListener("load", queueRender, { once: true });
+  const themeObserver = new MutationObserver(queueRender);
+  for (const el of [document.documentElement, document.body]) {
+    if (!el) continue;
+    themeObserver.observe(el, { attributes: true, attributeFilter: ["data-theme", "class", "style"] });
+  }
+  document.addEventListener("change", queueRender, true);
+  document.addEventListener(
+    "transitionend",
+    ({ propertyName }) => {
+      if (propertyName === "background-color") queueRender();
+    },
+    true,
+  );
+  darkQuery.addEventListener("change", queueRender);
+</script>
+
+<!-- ---------- code surface ---------- -->
+<script type="module">
+  import { File } from "https://esm.sh/@pierre/diffs@1.2.10?bundle";
+
+  const workflowJson = `{
+  "format": "path/workflow@0",
+  "name": "llm-fanout",
+  "worker": { "type": "llm", "model": "claude-sonnet-5" },
+  "body": [
+    {
+      "type": "parallel",
+      "id": "fanout",
+      "join": "collect",
+      "branches": [
+        { "id": "a", "body": [{ "type": "prompt", "id": "ask-a", "prompt": "Question a." }] },
+        { "id": "b", "body": [{ "type": "prompt", "id": "ask-b", "prompt": "Question b." }] },
+        { "id": "c", "body": [{ "type": "prompt", "id": "ask-c", "prompt": "Question c." }] },
+        { "id": "d", "body": [{ "type": "prompt", "id": "ask-d", "prompt": "Question d." }] }
+      ]
+    }
+  ]
+}
+`;
+
+  const container = document.querySelector("#workflow-file");
+  let rendered;
+
+  function draw() {
+    const dark = window.__pathPageIsDark ? window.__pathPageIsDark() : matchMedia("(prefers-color-scheme: dark)").matches;
+    const themeType = dark ? "dark" : "light";
+    if (themeType === rendered) return;
+    container.innerHTML = "";
+    new File({
+      theme: { light: "github-light", dark: "github-dark" },
+      themeType,
+      overflow: "wrap",
+    }).render({
+      containerWrapper: container,
+      file: { name: "packages/engine/test/fixtures/llm-fanout.workflow.json", contents: workflowJson },
+    });
+    rendered = themeType;
+  }
+
+  if (document.readyState === "complete") draw();
+  else window.addEventListener("load", draw, { once: true });
+  matchMedia("(prefers-color-scheme: dark)").addEventListener("change", draw);
+  new MutationObserver(draw).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-theme", "class", "style"],
+  });
+</script>
+
+</body>
+</html>
