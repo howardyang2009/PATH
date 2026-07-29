@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { ConfigValue } from "./config-value-type.js";
+import { hasOnlySecretKey } from "./secret.js";
 
 const SecretWrapperSchema = z
   .object({
@@ -8,12 +9,12 @@ const SecretWrapperSchema = z
   .strict();
 
 // A sole `$secret` key must be a well-formed wrapper (string value) — never falls through to
-// being treated as an ordinary object with an oddly-named key.
+// being treated as an ordinary object with an oddly-named key. The sole-key rule itself is
+// secret.ts's, so this and `isSecretWrapper` cannot drift apart on what counts as a wrapper.
 const PlainConfigObjectSchema = z.lazy(() =>
-  z.record(ConfigValueSchema).refine(
-    (obj) => !(Object.keys(obj).length === 1 && Object.prototype.hasOwnProperty.call(obj, "$secret")),
-    { message: '"$secret" wrapper value must be a string' },
-  ),
+  z.record(ConfigValueSchema).refine((obj) => !hasOnlySecretKey(obj), {
+    message: '"$secret" wrapper value must be a string',
+  }),
 );
 
 /**
