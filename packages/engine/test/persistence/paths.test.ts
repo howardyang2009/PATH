@@ -29,7 +29,7 @@ describe("persistence paths", () => {
   // The one non-obvious rule in this file: a ref is a *stored string*, read back on any OS, so it
   // never carries the host separator — unlike every path helper above. That a ref addresses the file
   // the blob was actually written to is covered where the two are produced together
-  // (run-store-writer.test.ts), which is the pairing that used to be hand-maintained.
+  // (persisted-observer.test.ts), which is the pairing that used to be hand-maintained.
   it("computes a blob ref relative to .path/, always forward-slash-joined regardless of host OS", () => {
     const ref = blobRef("root-1", "child-2", "output.json");
     expect(ref).toBe("runs/root-1/child-2/output.json");

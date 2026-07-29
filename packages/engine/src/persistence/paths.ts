@@ -32,6 +32,18 @@ export function runBlobDir(projectDir: string, rootRunId: string, runId: string)
 }
 
 /**
+ * The blobs a run's directory holds, spelled once. The write side records them and the archive
+ * reads them back, and a filename each side spells for itself is a filename they can disagree
+ * about — the same class of defect as a ref and a directory built separately (#72).
+ */
+export const RUN_BLOB_FILE = {
+  input: "input.json",
+  output: "output.json",
+  context: "context.json",
+  stderr: "stderr.txt",
+} as const;
+
+/**
  * A blob ref stored in a run row, relative to `.path/` — keeps the db portable (mvp spec §6).
  * Always forward-slash-joined (unlike the filesystem-path helpers above, which use the host's
  * native separator): it's a stored string read back on any OS, not used directly for I/O.
