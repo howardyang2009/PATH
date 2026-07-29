@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { BranchNode, CheckpointNode, JsonValue, WhileDoNode, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LlmWorker } from "../src/llm/llm-worker.js";
+import type { LlmWorker, PromptRequest } from "../src/llm/llm-worker.js";
 import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode, runSequence, type NodeExecContext, type RunContext } from "../src/run-workflow.js";
@@ -39,6 +39,23 @@ afterEach(() => {
 const noLlm: LlmWorker = {
   runPrompt: async () => ({ status: "failed", error: "no llm here", usage: null, estimatedCostUsd: null }),
 };
+
+/** A worker that records what it was asked, so a test can assert what crossed the seam. */
+function recordingWorker(into: PromptRequest[]): LlmWorker {
+  return {
+    runPrompt: async (request) => {
+      into.push(request);
+      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+    },
+  };
+}
+
+/** A worker that always answers the same thing, for tests about what the engine does with it. */
+function answeringWorker(output: string): LlmWorker {
+  return {
+    runPrompt: async () => ({ status: "succeeded", output, usage: null, estimatedCostUsd: null }),
+  };
+}
 
 function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
   const observed: Observation[] = [];
@@ -85,6 +102,22 @@ describe("runNode — checkpoint", () => {
     expect(outcome.status === "failed" && outcome.error).toMatch(/checkpoint "gate" failed/);
     expect(observed[0]).toMatchObject({ passed: false });
   });
+
+  // Strict semantics: a predicate that could not be evaluated is not "false", but the run stops
+  // either way — the trace is what tells the two apart afterwards.
+  it("fails the run when the condition errors, recording the error in the trace", async () => {
+    const { run, observed } = makeRun();
+    const erroring: CheckpointNode = {
+      type: "checkpoint",
+      id: "gate",
+      condition: { type: "equals", path: "context.absent", value: 1 },
+    };
+
+    const outcome = await runNode(run, erroring, {}, makeExec({}));
+
+    expect(outcome.status).toBe("failed");
+    expect(observed[0]).toMatchObject({ nodeId: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) });
+  });
 });
 
 describe("runNode — branch", () => {
@@ -123,6 +156,8 @@ describe("runNode — branch", () => {
     const noMatch = observed.find((o) => o.type === "branch-no-match");
     expect(noMatch).toMatchObject({ nodeId: "route" });
     expect(noMatch && "traces" in noMatch && noMatch.traces).toHaveLength(2);
+    // No arm was taken, so nothing may narrate one.
+    expect(observed.find((o) => o.type === "branch-taken")).toBeUndefined();
   });
 });
 
@@ -162,6 +197,60 @@ describe("runNode — while-do", () => {
 
     expect(outcome.status).toBe("failed");
     expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({ reason: "max-iterations-exceeded" });
+  });
+
+  // Zero iterations is not a special case — the block is transparent on the output side, forwarding
+  // its predecessor's output exactly as a checkpoint does.
+  it("runs zero iterations and forwards its input when the condition is false from the start", async () => {
+    const { run, observed } = makeRun();
+    const outcome = await runNode(run, loop, { carried: 1 }, makeExec({ count: 9 }));
+
+    expect(outcome).toEqual({ status: "succeeded", output: { carried: 1 } });
+    expect(observed.filter((o) => o.type === "iteration-started")).toHaveLength(0);
+    expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({
+      reason: "condition-false",
+      iterations: 0,
+      trace: expect.objectContaining({ outcome: "false" }),
+    });
+  });
+
+  // Strict semantics again: an unevaluable condition is not a quiet exit, and the loop narrates
+  // neither an iteration nor an exit — it never got as far as deciding either.
+  it("fails the run when the condition evaluation errors, narrating no iteration and no exit", async () => {
+    const { run, observed } = makeRun();
+    const erroring: WhileDoNode = { ...loop, condition: { type: "equals", path: "context.absent", value: 1 } };
+
+    const outcome = await runNode(run, erroring, {}, makeExec({}));
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/while-do "spin"/);
+    expect(observed.filter((o) => o.type === "iteration-started")).toHaveLength(0);
+    expect(observed.filter((o) => o.type === "loop-exited")).toHaveLength(0);
+  });
+
+  it("resolves an interpolated max_iterations against config before capping", async () => {
+    const { run, observed } = makeRun({ fileConfig: { cap: "1" } });
+    const capped: WhileDoNode = { ...loop, condition: { type: "range", path: "context.count", max: 100 }, max_iterations: "${config.cap}" };
+
+    const outcome = await runNode(run, capped, {}, makeExec({ count: 0 }));
+
+    // "1" resolved to the integer 1: capped after exactly one completed iteration.
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/max_iterations \(1\)/);
+    expect(observed.filter((o) => o.type === "iteration-started")).toHaveLength(1);
+  });
+
+  it("fails the run when an interpolated max_iterations is not a positive integer", async () => {
+    const { run, observed } = makeRun({ fileConfig: { cap: "zero" } });
+    const bad: WhileDoNode = { ...loop, max_iterations: "${config.cap}" };
+
+    const outcome = await runNode(run, bad, {}, makeExec({ count: 0 }));
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(
+      /while-do "spin": max_iterations resolved to "zero", which is not a positive integer/,
+    );
+    expect(observed).toEqual([]);
   });
 });
 
@@ -225,6 +314,131 @@ describe("runNode — parallel", () => {
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/parallel "fan", branch "right"/);
     expect(exec.context).toEqual({});
+  });
+
+  /**
+   * A node script that rendezvous with a sibling through a shared dir: write my flag, then poll for
+   * the sibling's — succeeding only if both run concurrently. Run sequentially, the first would wait
+   * out its deadline and exit non-zero. So a *success* is a genuine proof of concurrency (§5.2).
+   */
+  const rendezvous = (dir: string, me: string, other: string): Node => ({
+    type: "binary",
+    id: me,
+    command: "node",
+    args: [
+      "-e",
+      "const fs=require('fs'),dir=process.argv[1],me=process.argv[2],other=process.argv[3];fs.writeFileSync(dir+'/'+me,'1');const end=Date.now()+3000;(function p(){if(fs.existsSync(dir+'/'+other)){process.stdout.write(me);return;}if(Date.now()>end){process.exit(1);}setTimeout(p,10);})();",
+      dir,
+      me,
+      other,
+    ],
+  });
+
+  it("runs its branches concurrently, not one after another", async () => {
+    const { run } = makeRun();
+    const node: Node = {
+      type: "parallel",
+      id: "fan",
+      join: "collect",
+      branches: [
+        { id: "alpha", body: [rendezvous(fileDir, "a", "b")] },
+        { id: "beta", body: [rendezvous(fileDir, "b", "a")] },
+      ],
+    };
+
+    expect(await runNode(run, node, "seed", makeExec())).toEqual({
+      status: "succeeded",
+      output: { alpha: "a", beta: "b" },
+    });
+  });
+
+  it("gives each branch a snapshot of context at block entry — a sibling's publish is never visible", async () => {
+    const { run } = makeRun();
+    const node: Node = {
+      type: "parallel",
+      id: "fan",
+      join: "collect",
+      branches: [
+        { id: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
+        // Reads a key its sibling publishes; against the entry snapshot it does not exist, so this
+        // branch fails — proving siblings never observe each other's writes (§5.3).
+        { id: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", makeExec());
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/written/);
+  });
+
+  it("kills an in-flight sibling when a branch fails, narrating it as sibling-failed", async () => {
+    const { run, observed } = makeRun();
+    const node: Node = {
+      type: "parallel",
+      id: "fan",
+      join: "collect",
+      branches: [
+        // Sleeps well past the sibling's failure; it must be killed, not allowed to finish.
+        {
+          id: "slow",
+          body: [
+            {
+              type: "binary",
+              id: "sleeper",
+              command: "node",
+              args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
+              publish: { slow: "${output}" },
+            },
+          ],
+        },
+        { id: "boom", body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", makeExec());
+
+    expect(outcome.status).toBe("failed");
+    const started = observed.filter((o) => o.type === "step-started");
+    const sleeper = started.find((o) => "nodeId" in o && o.nodeId === "sleeper")!;
+    const kaboom = started.find((o) => "nodeId" in o && o.nodeId === "kaboom")!;
+
+    // The failing branch's step run is the cause the sibling's cancellation points back at — an
+    // operator cancel would carry `cause: "operator"` and a null cause run instead (#52).
+    expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
+      runId: sleeper.runId,
+      nodeId: "sleeper",
+      cause: "sibling-failed",
+      causeRunId: kaboom.runId,
+    });
+    // No join, hence no publishes landed (§5.6).
+    expect(observed.filter((o) => o.type === "join-applied")).toHaveLength(0);
+  });
+
+  it("holds concurrent processors to the semaphore's cap across the branches (§5.5)", async () => {
+    let live = 0;
+    let peakLive = 0;
+    const worker: LlmWorker = {
+      async runPrompt() {
+        live += 1;
+        peakLive = Math.max(peakLive, live);
+        try {
+          await new Promise((r) => setTimeout(r, 20));
+          return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+        } finally {
+          live -= 1;
+        }
+      },
+    };
+    const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
+    const ask = (id: string) => ({
+      id,
+      body: [{ type: "prompt" as const, id: `ask-${id}`, prompt: "Hi.", worker: { type: "llm" as const, model: "m" } }],
+    });
+    const node: Node = { type: "parallel", id: "fan", join: "collect", branches: [ask("a"), ask("b"), ask("c"), ask("d")] };
+
+    expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
+    expect(peakLive).toBe(2); // every branch ran, but never more than the cap at once
   });
 });
 
@@ -326,6 +540,142 @@ describe("runNode — prompt step", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/needs an llm worker/);
+  });
+
+  it("hands the worker an interpolated model, the step's input object, and the file's directory", async () => {
+    const requests: PromptRequest[] = [];
+    const { run } = makeRun({
+      fileConfig: { model: "claude-opus-4-8", subject: "the release" },
+      llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) },
+    });
+    const node: Node = {
+      type: "prompt",
+      id: "summarize",
+      prompt: "Summarize ${config.subject}.",
+      input: { version: "${context.version}" },
+      worker: { type: "llm", model: "${config.model}", options: { mcpServers: { docs: { type: "stdio" } } } },
+    };
+
+    expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe("succeeded");
+    expect(requests[0]).toMatchObject({
+      nodeId: "summarize",
+      model: "claude-opus-4-8",
+      prompt: "Summarize the release.",
+      input: { version: "1.2.0" },
+      cwd: fileDir,
+    });
+    // The options bag is worker-side: no engine code interprets it (§7).
+    expect(requests[0]?.options).toEqual({ mcpServers: { docs: { type: "stdio" } } });
+  });
+
+  it("lets a step-level llm worker override the file's engine worker", async () => {
+    const requests: PromptRequest[] = [];
+    const { run } = makeRun({ llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) } });
+    const node: Node = { type: "prompt", id: "ask", prompt: "Hi.", worker: { type: "llm", model: "claude-haiku-4-5" } };
+
+    expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
+    expect(requests[0]?.model).toBe("claude-haiku-4-5");
+  });
+
+  it("applies parse: json to the processor's output", async () => {
+    const { run } = makeRun({ llm: { worker: answeringWorker('{"verdict":"pass"}'), semaphore: createProcessorSemaphore(1) } });
+    const node: Node = { ...(promptNode as object), parse: "json" } as Node;
+
+    // Parsed, so the output is dot-path addressable rather than an opaque string.
+    expect(await runNode(run, node, "seed", makeExec({ word: "hi" }))).toEqual({
+      status: "succeeded",
+      output: { verdict: "pass" },
+    });
+  });
+
+  it("fails the step when the output is not the JSON its parse declares", async () => {
+    const { run } = makeRun({ llm: { worker: answeringWorker("not json"), semaphore: createProcessorSemaphore(1) } });
+    const node: Node = { ...(promptNode as object), id: "judge", parse: "json" } as Node;
+
+    const outcome = await runNode(run, node, "seed", makeExec({ word: "hi" }));
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/step "judge"/);
+    expect(outcome.status === "failed" && outcome.error).toMatch(/json/i);
+  });
+
+  // A step that died mid-conversation still spent tokens, and the run row records what was spent.
+  it("records what a failed processor spent, then fails the step with the worker's error", async () => {
+    const worker: LlmWorker = {
+      runPrompt: async () => ({
+        status: "failed",
+        error: 'prompt step "ask" ended with SDK result "error_max_turns"',
+        usage: { input_tokens: 9 },
+        estimatedCostUsd: 0.02,
+      }),
+    };
+    const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
+
+    const outcome = await runNode(run, promptNode, "seed", makeExec({ word: "hi" }));
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/error_max_turns/);
+    expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished"]);
+    expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ usage: { input_tokens: 9 }, estimatedCostUsd: 0.02 });
+  });
+
+  it("reports no usage at all for a processor that recorded none", async () => {
+    const { run, observed } = makeRun({ llm: { worker: answeringWorker("ok"), semaphore: createProcessorSemaphore(1) } });
+
+    expect((await runNode(run, promptNode, "seed", makeExec({ word: "hi" }))).status).toBe("succeeded");
+    expect(observed.filter((o) => o.type === "step-usage")).toHaveLength(0);
+  });
+
+  it("spawns a fresh processor per step-run — no conversational state leaks between steps", async () => {
+    const requests: PromptRequest[] = [];
+    const worker: LlmWorker = {
+      runPrompt: async (request) => {
+        requests.push(request);
+        return { status: "succeeded", output: `answered:${request.nodeId}`, usage: null, estimatedCostUsd: null };
+      },
+    };
+    const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
+    const ask = (id: string): Node => ({ type: "prompt", id, prompt: `${id} question.`, worker: { type: "llm", model: "m" } });
+
+    const outcome = await runSequence(run, [ask("first"), ask("second")], "seed", makeExec());
+
+    expect(outcome.status).toBe("succeeded");
+    expect(requests).toHaveLength(2); // one processor per step-run, not one reused session
+    // The second reads exactly what its input map built — here the default-input chain, which
+    // carries the predecessor's *output*, not its conversation.
+    expect(requests[1]?.input).toBe("answered:first");
+  });
+
+  it("is cancelled through the worker's signal when a sibling parallel branch fails", async () => {
+    const worker: LlmWorker = {
+      runPrompt: async (request) => {
+        // Hold the processor open until the sibling's failure aborts it.
+        await new Promise<void>((resolve) => {
+          if (request.signal?.aborted) return resolve();
+          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+        });
+        return { status: "cancelled" };
+      },
+    };
+    const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
+    const node: Node = {
+      type: "parallel",
+      id: "fan",
+      join: "collect",
+      branches: [
+        {
+          id: "slow",
+          body: [{ type: "prompt", id: "ask", prompt: "Hi.", worker: { type: "llm", model: "m" }, publish: { answer: "${output}" } }],
+        },
+        { id: "boom", body: [{ type: "binary", id: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
+      ],
+    };
+    const exec = makeExec();
+
+    expect((await runNode(run, node, "seed", exec)).status).toBe("failed");
+    expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({ nodeId: "ask" });
+    expect(observed.find((o) => o.type === "step-finished" && o.status === "cancelled")).toBeDefined();
+    expect(exec.context).toEqual({});
   });
 });
 
