@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLogBackends } from "../../src/logging/backends.js";
 import type { LogBackend } from "../../src/logging/log-backend.js";
 import { LogEventSchema } from "@path/schema";
-import { getLogEventsForRoot } from "../../src/logging/log-store.js";
+import { getLogEventsForRoot } from "../../src/logging/db-backend.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
 import { dbFilePath, rootRunTreeDir, runBlobDir } from "../../src/persistence/paths.js";
