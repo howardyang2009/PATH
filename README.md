@@ -43,27 +43,48 @@ The bins are TypeScript entry points run through `tsx`; there is no build step a
 first argument is the project directory — where `.path/` is read and written — and it defaults to the
 cwd; the engine CLI instead derives its project directory from the workflow file's own location.
 
-## Status (2026-07-26)
+## Status (2026-07-30)
 
-Latest release: **v0.4.0** (cancellation) — see `CHANGELOG.md` for the full history.
+Latest release: **v0.4.2** (2026-07-28) — see `CHANGELOG.md` for the full history. `main` is green:
+`pnpm -r run typecheck` clean, 760 tests passing (schema 174, engine 377, viewer 89, server 78,
+client-core 42).
 
-**Cancellation** (delegation plan: `docs/delegation-plan-cancellation.md`) — stopping a run in flight
-from the CLI, the API, and the viewer — shipped in v0.4.0, acceptance run and all.
+The MVP is done — all three wayfinder maps are closed (#1 spec, #29 server API, #40 viewer) and the
+release-notes pipeline passes its acceptance run (mvp spec §11). The last three releases were the
+**cancellation** phase and then two passes over the codebase's own shape:
 
-- [x] #52 `@path/engine` external abort — cancel a root run in flight
-- [x] #53 `@path/engine` CLI — graceful SIGINT (`^C` cancels the run)
-- [x] #54 `@path/server` — cancel route (`POST /v0/runs/:root_run_id/cancel`)
-- [x] #55 `@path/client-core` — `cancelRun()`
-- [x] #56 `@path/viewer` — Cancel button
-- [x] #57 Acceptance — cancel the release-notes pipeline in flight (closes the phase)
+- **v0.4.0** — cancellation (delegation plan: `docs/delegation-plan-cancellation.md`): stopping a run
+  in flight from the CLI (`^C`), the API (`POST /v0/runs/:root_run_id/cancel`) and the viewer,
+  acceptance run and all.
+- **v0.4.1** — one SSE channel leak fixed (#74), and the engine's *interior* given the seams the
+  cancellation phase kept revealing it lacked: `Project` owns run assembly (#64), `@path/schema` owns
+  the runtime vocabulary (#66) and one condition grammar (#68), one walk over the node tree (#70).
+- **v0.4.2** — first architecture review: five deepenings built (`RunArchive`, `LiveRuns`, the
+  event-frame codec, `runNode`, `eventOutcome`/`buildRunTree`), a sixth refused with its reasons filed
+  (#91), and a real masking bug shipped as the fix it turned up.
 
-Raised by #57's acceptance run:
+**Unreleased on `main`** — a second architecture review. Its finding: every recent deepening
+added an owner and left the module it superseded in place, still exported and still tested. Six
+landed, two were declined with the reasons filed so the next review does not re-derive them:
 
-- [x] #59 `@path/server` — `POST /v0/runs` passed the project root where the engine expects the
-      workflow file's directory, so a nested workflow ref never resolved
-- [x] #61 `@path/engine` CLI — `runs prune` ignored trailing arguments, so `--help` pruned everything
-- [x] #60 A forced second `^C` leaves a lying `running` row — accepted as the price of the escape
-      hatch and documented (mvp spec §5.6); the `^C` notice now names the cost and the remedy
+- [x] #94 the binary step's process driver is not the run-tree walk
+- [x] #96 withdraw the surface each deepening superseded
+- [x] #98 one owner for what a `$secret` is
+- [x] #100 the write side of `.path/` is one module, not two
+- [x] #102 pin node semantics at the seam, not twice
+- [x] #104 the `db` log backend is one sink that knows its table
+- [x] #106 **declined** — a shared load seam in the viewer; the three load paths share eight lines of
+      guard boilerplate and differ in the substance
+- [x] #107 **declined** — the run row's four shapes each pass the deletion test; the real hazard (a
+      new domain field reaching the db and never the API) is now a compile-time assertion instead
+
+### What's next
+
+- #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
+  The one known product gap: the audit record is complete, the API just cannot serve it.
+- #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. Stays
+  open; each door graduates into its own wayfinder map when its trigger fires. First three: `$env`
+  secret sourcing, an API-endpoint step type, then retry/resume.
 
 ## Maintenance notes
 
