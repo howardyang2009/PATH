@@ -62,7 +62,7 @@ Request body:
 | --- | --- | --- |
 | `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
-| `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`. |
+| `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, and the same `$secret`/`$env` wrappers (format doc §8.3), validated here by `ConfigObjectSchema`. `$env` names a variable of the **server process**; the argument for why that adds no power is in the server spec §2. |
 | `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
 | `llm_concurrency` | no | Same as `path run --llm-concurrency`. Omitted: the project's `.path/settings.json` `"llm.concurrency"`, else the engine default (4). |
 

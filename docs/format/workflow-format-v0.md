@@ -201,6 +201,13 @@ interpolable (e.g. `"model": "${config.model}"`).
 Config is a JSON object of **literal values** — no interpolation inside config; it is a source,
 not a consumer. A `${...}` string in config is that string, never a reference.
 
+**One bounded exception, and it is named.** A value may be a sole-key `$` **wrapper** (§8.3):
+`{"$secret": …}` marks a value for redaction, `{"$env": "NAME"}` sources one from the environment,
+and they compose one way round — `{"$secret": {"$env": "NAME"}}`. Nothing else in config is
+indirect: no other key means anything, and a sole `$`-prefixed key that names no known wrapper is a
+**load error** rather than data (§8.3, §10). The format version does not move for this — a file
+carrying wrappers is still `path/workflow@0`.
+
 ### 8.2 Composition
 
 Composition is a **shallow merge per top-level key, nearest wins**:
@@ -238,7 +245,7 @@ once at run start, before anything is persisted — masking is by value, so a `{
 "NAME"}}` collected before resolution would scrub the *name* and let the credential through. The
 resolved value is what a worker receives and what the masker redacts.
 
-- **Unset variables refuse the run**, in one failure naming **every** one of them rather than the
+- **Unset variables fail the run**, in one failure naming **every** one of them rather than the
   first, before the first step runs. The run is still recorded: it starts, ends `failed`, and its
   error says which variables were missing and under which config keys.
 - **The whole tree is checked**, every file loaded with the root included. A nested
@@ -300,7 +307,9 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
 - malformed config wrappers, and sole `$`-prefixed config keys that name no known wrapper (§8.3)
 
 Authoring errors surface at load, never mid-run. (Path *resolvability* against runtime data is
-necessarily a runtime concern.)
+necessarily a runtime concern.) An **unset `$env` variable is not a load failure**: the wrapper is
+well-formed and the environment is not the file's to validate. It fails the run at start, before the
+first step (§8.3) — operator config, which can carry wrappers too, has no load to fail at.
 
 ## 11. Deferred and owned elsewhere
 
