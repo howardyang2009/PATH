@@ -27,10 +27,15 @@ describe("isSecretWrapper", () => {
     expect(isSecretWrapper({ $secret: "sk-live-1", note: "not a wrapper" })).toBe(false);
   });
 
-  it("rejects a $secret whose value is not a string", () => {
+  it("rejects a $secret whose value is neither a string nor an $env wrapper", () => {
     expect(isSecretWrapper({ $secret: 42 })).toBe(false);
     expect(isSecretWrapper({ $secret: null })).toBe(false);
     expect(isSecretWrapper({ $secret: { $secret: "nested" } })).toBe(false);
+    expect(isSecretWrapper({ $secret: { $env: 3 } })).toBe(false);
+  });
+
+  it("accepts a $secret holding an $env wrapper — the composed source-and-mark form", () => {
+    expect(isSecretWrapper({ $secret: { $env: "GITHUB_TOKEN" } })).toBe(true);
   });
 
   it("rejects arrays, null and scalars", () => {
@@ -83,6 +88,15 @@ describe("mapSecrets", () => {
     // The secret is the value, not more structure: a visit that returns another wrapper is handed
     // back as-is rather than being re-visited, which would not terminate.
     expect(mapSecrets({ $secret: "one" }, () => ({ $secret: "two" }))).toEqual({ $secret: "two" });
+  });
+
+  it("leaves an unresolved $secret-over-$env wrapper standing rather than inventing a value", () => {
+    // Env resolution runs before secret collection (map #113), so an unresolved composed wrapper
+    // should never reach this walk. If one does, there is no secret value yet to unwrap or collect
+    // — and falling through to the plain-object walk would hand a worker the wrapper shape.
+    const value = { token: { $secret: { $env: "GITHUB_TOKEN" } } };
+
+    expect(mapSecrets(value, () => "REPLACED")).toEqual(value);
   });
 
   it("visits every occurrence, so a value repeated under two keys is reported twice", () => {

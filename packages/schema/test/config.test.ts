@@ -42,6 +42,30 @@ describe("ConfigValueSchema", () => {
     expect(result.success).toBe(true);
   });
 
+  it("accepts the $env wrapper as a config value", () => {
+    expect(ConfigValueSchema.safeParse({ $env: "GITHUB_TOKEN" }).success).toBe(true);
+  });
+
+  it("accepts an $env wrapper nested inside a $secret wrapper", () => {
+    // The composed form: sources from the environment *and* marks the sourced value secret.
+    expect(ConfigValueSchema.safeParse({ $secret: { $env: "GITHUB_TOKEN" } }).success).toBe(true);
+  });
+
+  it("rejects an $env wrapper whose value is not a string", () => {
+    expect(ConfigValueSchema.safeParse({ $env: 3 }).success).toBe(false);
+  });
+
+  it("rejects a $secret wrapper holding a malformed $env wrapper", () => {
+    expect(ConfigValueSchema.safeParse({ $secret: { $env: 3 } }).success).toBe(false);
+    expect(ConfigValueSchema.safeParse({ $secret: { $env: "X", other: 1 } }).success).toBe(false);
+  });
+
+  it("treats an $env object with extra keys as a plain config object, not a wrapper", () => {
+    // Same rule as $secret above: an object that happens to have an $env key alongside others is
+    // just a regular config object, not an env marking — and it is valid as one.
+    expect(ConfigValueSchema.safeParse({ $env: "GITHUB_TOKEN", other: "field" }).success).toBe(true);
+  });
+
   it("allows $secret values nested anywhere in the config tree", () => {
     const result = ConfigValueSchema.safeParse({
       credentials: { token: { $secret: "sk-abc123" } },

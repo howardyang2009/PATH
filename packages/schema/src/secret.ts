@@ -1,5 +1,7 @@
 import type { SecretWrapper } from "./config-value-type.js";
+import { isEnvWrapper } from "./env.js";
 import type { JsonValue } from "./json-value.js";
+import { hasOnlyKey, isPlainObject, mapWrappers } from "./wrapper.js";
 
 /**
  * What a `{"$secret": "<value>"}` config value *is* (workflow-format-v0.md §8.3), in one place:
@@ -16,57 +18,52 @@ import type { JsonValue } from "./json-value.js";
 /**
  * True when `$secret` is the object's only key — the sole-key rule on its own, regardless of what
  * the key holds. `@path/schema`-internal: it exists so `ConfigValueSchema` can reject a sole-key
- * `$secret` object whose value is not a string rather than letting it pass as an ordinary object
+ * `$secret` object whose value is not well-formed rather than letting it pass as an ordinary object
  * with an oddly-named key.
  */
-export function hasOnlySecretKey(value: object): boolean {
-  return Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, "$secret");
+export function hasOnlySecretKey(value: object): value is Record<"$secret", JsonValue> {
+  return hasOnlyKey(value, "$secret");
 }
 
 /**
  * True when the value is a well-formed wrapper. A multi-key object that merely happens to carry a
  * `$secret` key is a plain object, not a wrapper.
+ *
+ * The value is a literal secret or an `{"$env": "NAME"}` wrapper naming where to source one — the
+ * composed form, which `env.ts` resolves before this walk ever runs.
  */
 export function isSecretWrapper(value: unknown): value is SecretWrapper {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    hasOnlySecretKey(value) &&
-    typeof (value as SecretWrapper).$secret === "string"
-  );
-}
-
-function childPath(path: string, segment: string | number): string {
-  return path === "" ? String(segment) : `${path}.${segment}`;
+  if (!isPlainObject(value) || !hasOnlySecretKey(value)) return false;
+  return typeof value.$secret === "string" || isEnvWrapper(value.$secret);
 }
 
 /**
  * Deep-walks a value and replaces every `$secret` wrapper in it with whatever `visit` returns for
  * that secret, leaving every other leaf untouched. `path` is the dot-path the wrapper was found
- * under, extended from `basePath` with object keys and array indices as segments.
- *
- * A wrapper can sit at any nesting depth, not only at the leaf a dot-path lands on: a bare-root or
- * ancestor interpolation (`${config}`, `${config.nested}`) resolves to a whole sub-tree, and a
- * secret declared anywhere inside it is still a secret. Walking only the addressed leaf is how a
- * worker ends up seeing the wrapper shape instead of the real value depending on how the path
- * happened to address it.
+ * under, extended from `basePath` with object keys and array indices as segments. Where a wrapper
+ * may sit is `wrapper.ts`'s descent, shared with `mapEnv`; this states only what to do on reaching
+ * one.
  *
  * The wrapper's own string is not walked into — it is the secret, not more structure.
+ *
+ * A wrapper still holding an unresolved `{"$env": "NAME"}` is handed back as it stands: there is no
+ * secret value yet to unwrap or collect, and this walk will not invent one. `env.ts`'s resolution
+ * runs first (map #113) precisely so that the masker collects the *resolved* token rather than a
+ * variable name — so an unresolved wrapper reaching here means that step was skipped, and what a
+ * worker then receives is the wrapper shape either way. Claiming it keeps the two walks agreeing
+ * that a composed wrapper is one wrapper, not a plain object with an odd key.
  */
 export function mapSecrets(
   value: JsonValue,
   visit: (secret: string, path: string) => JsonValue,
   basePath = "",
 ): JsonValue {
-  if (isSecretWrapper(value)) return visit(value.$secret, basePath);
-  if (Array.isArray(value)) return value.map((item, i) => mapSecrets(item, visit, childPath(basePath, i)));
-  if (value !== null && typeof value === "object") {
-    const result: { [key: string]: JsonValue } = {};
-    for (const [key, item] of Object.entries(value)) {
-      result[key] = mapSecrets(item, visit, childPath(basePath, key));
-    }
-    return result;
-  }
-  return value;
+  return mapWrappers(
+    value,
+    (node, path) => {
+      if (!isSecretWrapper(node)) return undefined;
+      return typeof node.$secret === "string" ? visit(node.$secret, path) : (node as unknown as JsonValue);
+    },
+    basePath,
+  );
 }
