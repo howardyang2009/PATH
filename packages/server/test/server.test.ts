@@ -408,29 +408,32 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     await pollUntilTerminal(root_run_id);
   });
 
-  it("running with ndjson disabled: connecting mid-run captures only events from connect time onward, no replay", async () => {
+  it("running with ndjson disabled: connecting mid-run still replays from seq 1, out of log_events", async () => {
     const { root_run_id } = (await (await postRun({
       workflow_path: "two-slow-steps.workflow.json",
       log_backends: ["db"],
     })).json()) as { root_run_id: string };
 
     // Let the run's early events (its own step-started, and the first ~200ms step) fire before any
-    // SSE subscriber exists — with no run.log to replay from, they're gone for good.
+    // SSE subscriber exists. There is no run.log, but every one of them is in `log_events`.
     await new Promise((r) => setTimeout(r, 250));
 
     const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
     const frames = await readSseStream(res);
 
-    expect(frames.length).toBeGreaterThan(0);
-    // Proves replay is genuinely unavailable (not just untested): the first frame we see is well
-    // past seq 1, unlike the ndjson-enabled fresh-connect test above.
-    expect(frames[0]!.event.seq).toBeGreaterThan(1);
+    // Replay reaches back past the connect point, and the db replay meeting live events leaves no
+    // gap and no duplicate across the join (`stream`'s lastSeq high-water mark).
+    expect(frames[0]!.event.seq).toBe(1);
+    const seqs = frames.map((f) => f.event.seq);
+    expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
     expect(frames.at(-1)!.event.type).toBe("step-finished");
+    // No run.log was written — this narrative can only have come from the table.
+    expect(readNdjsonLog(projectDir, root_run_id)).toEqual([]);
 
     await pollUntilTerminal(root_run_id);
   });
 
-  it("cannot replay history for a finished run whose ndjson backend was disabled (known v0 limitation)", async () => {
+  it("replays a finished run whose ndjson backend was disabled, from log_events", async () => {
     const { root_run_id } = (await (
       await postRun({ workflow_path: "two-binary-steps.workflow.json", log_backends: ["db"] })
     ).json()) as { root_run_id: string };
@@ -439,9 +442,29 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`);
     expect(res.status).toBe(200);
     const frames = await readSseStream(res);
-    // No run.log for this run, and the channel's already closed (run finished) — nothing to
-    // replay or forward, stream ends immediately.
-    expect(frames).toEqual([]);
+
+    // No run.log and no open channel — the whole narrative comes out of the audit table.
+    expect(readNdjsonLog(projectDir, root_run_id)).toEqual([]);
+    expect(frames.length).toBeGreaterThan(0);
+    const seqs = frames.map((f) => f.event.seq);
+    expect(seqs).toEqual(Array.from({ length: seqs.length }, (_, i) => i + 1));
+    expect(frames.at(-1)!.event.type).toBe("step-finished");
+  });
+
+  it("Last-Event-ID slices a db-only replay the same way it slices an ndjson one", async () => {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json", log_backends: ["db"] })
+    ).json()) as { root_run_id: string };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/events`, {
+      headers: { "Last-Event-ID": "2" },
+    });
+    const frames = await readSseStream(res);
+
+    expect(frames.length).toBeGreaterThan(0);
+    expect(frames[0]!.event.seq).toBe(3);
+    expect(frames.every((f) => f.event.seq > 2)).toBe(true);
   });
 });
 

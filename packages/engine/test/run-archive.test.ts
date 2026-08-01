@@ -4,6 +4,8 @@ import { join } from "node:path";
 import type { JsonValue, LogEvent } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { createDbLogBackend } from "../src/logging/db-backend.js";
+import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
 import { dbFilePath, rootRunTreeDir, runsDir } from "../src/persistence/paths.js";
@@ -71,6 +73,14 @@ function writeNdjsonLog(rootRunId: string, events: LogEvent[]): void {
     ...events.map((event) => JSON.stringify(event)),
   ];
   writeFileSync(join(treeDir, "run.log"), `${lines.join("\n")}\n`, "utf8");
+}
+
+/** The same events through the db backend — a run whose `log_backends` did not include `ndjson`. */
+async function writeDbLog(rootRunId: string, events: LogEvent[]): Promise<void> {
+  const backend = createDbLogBackend(db);
+  await backend.open({ runId: rootRunId, format: LOG_FORMAT });
+  for (const event of events) await backend.write(event);
+  await backend.close();
 }
 
 describe("run archive — tree", () => {
@@ -165,10 +175,62 @@ describe("run archive — events", () => {
     expect(archive.tree("root-1")!.events(9)).toEqual([]);
   });
 
-  it("is empty for a run whose ndjson backend was never enabled", () => {
+  it("replays out of log_events for a run whose ndjson backend was off", async () => {
+    seedTree();
+    await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child")]);
+
+    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1, 2]);
+  });
+
+  it("slices a db replay the same way it slices an ndjson one", async () => {
+    seedTree();
+    await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child"), stepStarted(3, "root-1")]);
+
+    expect(archive.tree("root-1")!.events(1).map((event) => event.seq)).toEqual([2, 3]);
+    expect(archive.tree("root-1")!.events(9)).toEqual([]);
+  });
+
+  it("prefers run.log when both backends recorded the run", async () => {
+    seedTree();
+    writeNdjsonLog("root-1", [stepStarted(1, "root-1")]);
+    // Deliberately divergent — only the source that won shows up. In production the two agree; what
+    // is pinned here is which one is read, so the default configuration keeps reading the file.
+    await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child")]);
+
+    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1]);
+  });
+
+  it("falls back to log_events when run.log holds only its header", async () => {
+    seedTree();
+    writeNdjsonLog("root-1", []);
+    await writeDbLog("root-1", [stepStarted(1, "root-1")]);
+
+    // An existing-but-empty file is not a narrative, so an in-flight run whose first event has not
+    // reached disk still replays rather than reporting nothing.
+    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1]);
+  });
+
+  it("is empty for a run no log backend recorded", () => {
     seedTree();
 
     expect(archive.tree("root-1")!.events()).toEqual([]);
+  });
+
+  it("passes db events through untouched — they were masked before the write seam", async () => {
+    seedTree();
+    const masked: LogEvent = {
+      type: "step-finished",
+      seq: 1,
+      ts: new Date().toISOString(),
+      run_id: "root-1",
+      node_id: "greet",
+      status: "failed",
+      error: "exit 1: token=***",
+    };
+    await writeDbLog("root-1", [masked]);
+
+    // No second masking pass on read: what `write` stored is what replays, redactions included.
+    expect(archive.tree("root-1")!.events()).toEqual([masked]);
   });
 });
 

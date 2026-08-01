@@ -2,6 +2,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { JsonValue, LogEvent, RunRecord, RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
+import { getLogEventsForRoot } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
@@ -91,9 +92,12 @@ export interface RunTree {
   blob(runId: string, name: RunBlobName): JsonValue | undefined;
   /**
    * The persisted Log event narrative in `seq` order, sliced to `seq > afterSeq` when given — the
-   * replay an SSE client gets on connect or reconnect (server-api-v0.md §5). `[]` when the `ndjson`
-   * backend was never enabled for this run, which is a run without a persisted narrative, not an
-   * error.
+   * replay an SSE client gets on connect or reconnect (server-api-v0.md §5). `[]` only when *no*
+   * log backend recorded this run, which is a run without a persisted narrative, not an error.
+   *
+   * Either backend of §8.2 can serve it: `run.log` is authoritative when it exists, and the
+   * `log_events` table answers when it doesn't. A run configured `log_backends: ["db"]` is a
+   * supported configuration, not a degraded one, so its narrative replays like any other.
    */
   events(afterSeq?: number): LogEvent[];
 }
@@ -113,7 +117,7 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     tree(rootRunId: string): RunTree | null {
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
-      return makeTree(dir, rootRunId, runs);
+      return makeTree(db, dir, rootRunId, runs);
     },
 
     remove(rootRunId: string): boolean {
@@ -134,7 +138,7 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
   };
 }
 
-function makeTree(projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
+function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
   const root = runs.find((run) => run.runId === rootRunId) ?? null;
 
   function blob(runId: string, name: RunBlobName): JsonValue | undefined {
@@ -155,7 +159,18 @@ function makeTree(projectDir: string, rootRunId: string, runs: RunRecord[]): Run
     output: () => (root?.status === "succeeded" && root.outputRef ? blob(root.runId, "output") : undefined),
     blob,
     events(afterSeq?: number): LogEvent[] {
-      const events = readNdjsonLog(projectDir, rootRunId);
+      // `run.log` first, `log_events` second. With both backends on (§8.2's default) the two hold
+      // the same narrative, so reading the file keeps every replay in the default configuration
+      // byte-identical to what it was before the table became readable — including acceptance
+      // §5.2, which uses `run.log` on disk as the yardstick the stream must match. The fallback is
+      // reached exactly when the ndjson backend was off, where the alternative is `[]`.
+      //
+      // Emptiness, not the file's existence, is the switch: a run whose `run.log` is still just its
+      // header replays from the table rather than from nothing, and a run with neither backend on
+      // finds both empty and is genuinely empty.
+      const ndjson = readNdjsonLog(projectDir, rootRunId);
+      // Already masked at write (`log_events` rows come only from `write`), so no second pass here.
+      const events = ndjson.length > 0 ? ndjson : getLogEventsForRoot(db, rootRunId);
       return afterSeq === undefined ? events : events.filter((event) => event.seq > afterSeq);
     },
   };
