@@ -50,9 +50,9 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
 /**
  * Reads one root run's narrative back in `seq` order, revalidating each stored event.
  *
- * The product reads a narrative from the NDJSON file (`readNdjsonLog`), not from here — this is how
- * the table itself is read back, which is what makes it an audit record rather than a write-only
- * side effect (§8.2).
+ * `RunArchive.events()` reaches for this when a run has no `run.log` to replay — the ndjson backend
+ * was off — so the table is both the audit record §8.2 rests on and the second source SSE replay
+ * can be served from. Events were masked before reaching `write`, so what comes back is masked.
  */
 export function getLogEventsForRoot(db: Database.Database, rootRunId: string): LogEvent[] {
   const rows = db
