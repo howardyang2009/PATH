@@ -1,5 +1,7 @@
 import type { SecretWrapper } from "./config-value-type.js";
+import { isEnvWrapper } from "./env.js";
 import type { JsonValue } from "./json-value.js";
+import { hasOnlyKey } from "./wrapper-key.js";
 
 /**
  * What a `{"$secret": "<value>"}` config value *is* (workflow-format-v0.md §8.3), in one place:
@@ -20,21 +22,20 @@ import type { JsonValue } from "./json-value.js";
  * with an oddly-named key.
  */
 export function hasOnlySecretKey(value: object): boolean {
-  return Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, "$secret");
+  return hasOnlyKey(value, "$secret");
 }
 
 /**
  * True when the value is a well-formed wrapper. A multi-key object that merely happens to carry a
  * `$secret` key is a plain object, not a wrapper.
+ *
+ * The value is a literal secret or an `{"$env": "NAME"}` wrapper naming where to source one — the
+ * composed form, which `env.ts` resolves before this walk ever runs.
  */
 export function isSecretWrapper(value: unknown): value is SecretWrapper {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    !Array.isArray(value) &&
-    hasOnlySecretKey(value) &&
-    typeof (value as SecretWrapper).$secret === "string"
-  );
+  if (typeof value !== "object" || value === null || Array.isArray(value) || !hasOnlySecretKey(value)) return false;
+  const inner = (value as SecretWrapper).$secret;
+  return typeof inner === "string" || isEnvWrapper(inner);
 }
 
 function childPath(path: string, segment: string | number): string {
@@ -53,13 +54,20 @@ function childPath(path: string, segment: string | number): string {
  * happened to address it.
  *
  * The wrapper's own string is not walked into — it is the secret, not more structure.
+ *
+ * A wrapper still holding an unresolved `{"$env": "NAME"}` is handed back untouched: there is no
+ * secret value yet to unwrap or collect, and `env.ts`'s resolution runs before this walk precisely
+ * so that the masker collects the *resolved* token rather than a variable name. Leaving it standing
+ * is the safe reading — falling through to the plain-object walk would hand a worker the wrapper.
  */
 export function mapSecrets(
   value: JsonValue,
   visit: (secret: string, path: string) => JsonValue,
   basePath = "",
 ): JsonValue {
-  if (isSecretWrapper(value)) return visit(value.$secret, basePath);
+  if (isSecretWrapper(value)) {
+    return typeof value.$secret === "string" ? visit(value.$secret, basePath) : (value as unknown as JsonValue);
+  }
   if (Array.isArray(value)) return value.map((item, i) => mapSecrets(item, visit, childPath(basePath, i)));
   if (value !== null && typeof value === "object") {
     const result: { [key: string]: JsonValue } = {};
