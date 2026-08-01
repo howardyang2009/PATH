@@ -83,8 +83,9 @@ landed, two were declined with the reasons filed so the next review does not re-
 - #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
   The one known product gap: the audit record is complete, the API just cannot serve it.
 - #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. Stays
-  open; each door graduates into its own wayfinder map when its trigger fires. First three: `$env`
-  secret sourcing, an API-endpoint step type, then retry/resume.
+  open; each door graduates into its own wayfinder map when its trigger fires. It orders three for
+  build: `$env` secret sourcing has landed on `main` (map #113) and its §10 row is retired, leaving
+  an API-endpoint step type, then retry/resume.
 
 ## Maintenance notes
 

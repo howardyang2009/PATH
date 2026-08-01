@@ -87,6 +87,9 @@ The invariants implementers must not break:
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
   **together** (§6).
 
+Operator config carries the same `$secret`/`$env` wrappers a file's config does; what that means on
+the command line is §8.3's, not this section's.
+
 `^C` during `path run` **cancels the run** (§5.6) instead of killing the process: the run unwinds
 to `cancelled` and the CLI exits **130** (128 + SIGINT), distinct from the failed run's non-zero
 exit. Cancellation holds no deadline, so a second `^C` exits immediately without waiting for the
@@ -110,7 +113,8 @@ Summary for orientation only — the format doc wins on any detail:
   `publish` writes step output to context; workflow input seeds child context; top-level `output`
   map is the workflow's output contract; opt-in `parse: "json"`.
 - Workers tagged `engine` | `llm` (§7 of the format doc); config = literal values, shallow-merge
-  nearest-wins across file boundaries.
+  nearest-wins across file boundaries, with `$secret`/`$env` sole-key wrappers the one bounded
+  exception to literalness and the `$`-sole-key namespace reserved.
 - Conditions: zod-validated predicate trees (`exists`, `equals`, `one-of`, `matches`, `range`,
   `valid-json`; `all`/`any`/`not`), roots `context`/`output`, strict error semantics.
 - Load-time whole-tree validation: schema, ids, `ref` cycles, `${}` syntax — authoring errors
@@ -343,9 +347,32 @@ interface LogBackend {
 
 - **Marking:** a config value may be wrapped as `{"$secret": "<value>"}`. The wrapper is the
   marking; because config composes by shallow merge per top-level key, secrecy travels with the
-  value across every file boundary and operator override. (`$env` sourcing indirection has since
-  landed and composes by nesting, `{"$secret": {"$env": "NAME"}}` — format doc §8.3, which also
-  reserves the `$`-sole-key namespace so further wrappers stay additive.)
+  value across every file boundary and operator override.
+- **Sourcing:** `{"$env": "NAME"}` sources a value from the environment and composes with the
+  marking by nesting — `{"$secret": {"$env": "NAME"}}`. Normative: **format doc §8.3**, which owns
+  the wrapper shape, the one-way nesting, where a wrapper may sit, what an unset or empty variable
+  does, and the reserved `$`-sole-key namespace. What follows is this section's, because it is the
+  masker's:
+- **Resolution runs at run start, *before* secret collection.** Forced, not stylistic: the masker
+  collects **values**, so a `{"$secret": {"$env": "TOKEN"}}` collected before resolution would have
+  it scrubbing the literal string `TOKEN` while the credential reached disk unmasked. Workers get
+  the resolved value; the masker redacts that same value. One environment snapshot per run, taken
+  here, is what stops two steps disagreeing about one wrapper. A variable that is not set fails the
+  run before its first step, naming every missing variable at once (format doc §8.3) — so a secret
+  that never arrived is a failed run, never a `[secret:key]`-shaped hole in the artifacts.
+- **An env-sourced secret is a secret like any other**, including the sharp edges: it joins the
+  collected set, an empty one (`FOO=`, which counts as set) trips the short-secret warning below,
+  and masking skips a zero-length value rather than replacing between every character.
+- **Operator config carries wrappers too, and that is the point on the command line.** `--set` and
+  `--config` values reach the same resolution: `--set 'token={"$secret":{"$env":"NAME"}}'` is a real
+  wrapper, since a `--set` value is read as JSON when it parses as JSON and as a bare string
+  otherwise. Letting the *shell* expand it instead — `--set token=$TOKEN` — puts the secret in argv,
+  readable by every process on the machine, and in shell history; naming the variable keeps only the
+  name there. One asymmetry, stated because it surprises: operator config is **not** schema-checked
+  by the CLI, so format doc §8.3's reserved-`$key` load error does not fire for it — a misspelled
+  `--set 'token={"$evn":"NAME"}'` is an ordinary object that fails later, or reaches a worker. Files
+  are validated at load and the server validates posted config
+  ([server API spec](server-api-spec.md) §2); `--set`/`--config` are the gap.
 - **Redaction: persistence-boundary scrubbing by value.** At run start the engine collects all
   `$secret` values in effective config; everything persisted — log events and traces, input/output
   object files, `context.json` write-throughs, run-row error strings, captured stderr — is
@@ -357,7 +384,8 @@ interface LogBackend {
   restriction.
 - **Documented limits:** transformed secrets (base64, embedded in emitted JSON) escape string
   matching — accepted, no taint-tracking in MVP. `$secret` values shorter than ~6 chars risk mass
-  false-replacement → load-time warning.
+  false-replacement → a warning, emitted at run start with the rest of the collection: an
+  env-sourced secret has no value to measure at load.
 
 ## 9. Implementation freedoms
 
@@ -384,7 +412,6 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | Templates / `extends` | strict unknown-field rejection + `@`-versioning keep it additive |
 | Session reuse / processor pooling | fresh-processor rule is the contract; pooling is opt-in later |
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
-| `$env` secret sourcing | composes with `$secret` |
 | Retry/resume | write-through `context.json` + truthful crash snapshots |
 | Remote log backends | async `LogBackend` seam |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |
@@ -423,3 +450,4 @@ workflow's NOTES.md.
 | Execution semantics (§5) | [#11](https://github.com/howardyang2009/PATH/issues/11) |
 | Agent SDK spike (§7) | [#13](https://github.com/howardyang2009/PATH/issues/13) → findings doc |
 | Logging & secrets (§8) | [#14](https://github.com/howardyang2009/PATH/issues/14) |
+| `$env` config sourcing (§3, §8.3) | [#113](https://github.com/howardyang2009/PATH/issues/113) → format doc §8.3 |
