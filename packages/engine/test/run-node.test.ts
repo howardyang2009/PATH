@@ -67,6 +67,8 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       fileConfig: {},
       identity: { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null },
       emit: async (o) => void observed.push(o),
+      // An empty environment by default: a test about `$env` resolution hands over its own (#116).
+      env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
       ...overrides,
     },

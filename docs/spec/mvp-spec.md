@@ -181,7 +181,11 @@ Blocks are thus transparent to one uniform chain, on both their input and output
 ### 5.6 Failure and cancellation
 
 **Fail-fast.** A step failure, a false checkpoint, a condition evaluation error, branch no-match,
-or loop-cap exhaustion fails the run. A failing parallel branch **cancels in-flight siblings
+or loop-cap exhaustion fails the run. So does a **run-start config failure** — an `$env` wrapper
+naming a variable that is not set (format doc §8.3) — which lands before the first step rather than
+at load: the run is started and recorded, then ends `failed` naming every unset variable at once.
+Operator config is a run input rather than a file, so half of what is checked has no load to fail
+at, and a client watching a run needs a run to watch. A failing parallel branch **cancels in-flight siblings
 best-effort** (processor killed); `cancelled` is a distinct run status from `failed`; no publishes
 from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.

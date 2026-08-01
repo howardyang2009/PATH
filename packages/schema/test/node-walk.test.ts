@@ -78,6 +78,15 @@ describe("childBodies", () => {
     expect(bodies.some((b) => b.concurrent)).toBe(false);
   });
 
+  it("reports no children for a node type it does not know", () => {
+    // A hand-constructed file can reach a walk without passing the schema, and a caller sweeping one
+    // (`collectRunConfigs` in @path/engine) must get a list rather than the node back. Rejecting the
+    // unknown type is the executor's job; the walk only says where children are.
+    const unknown = { type: "telepathy", id: "guess" } as unknown as WorkflowNode;
+    expect(childBodies(unknown)).toEqual([]);
+    expect([...walkNodes([unknown])].map((n) => n.id)).toEqual(["guess"]);
+  });
+
   it("reports a while-do body as sequential — iterations do not race", () => {
     const loop: WorkflowNode = {
       type: "while-do",

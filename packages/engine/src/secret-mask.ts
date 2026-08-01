@@ -86,8 +86,9 @@ export function collectSecrets(configs: ConfigObject[]): SecretMasker {
   function maskString(text: string): string {
     let out = text;
     for (const entry of entries) {
-      // A zero-length value can't occur (schema requires a string, and a "" wrapper would loop),
-      // but guard defensively — split("") would explode every character.
+      // Reachable since `$env` sourcing (#116): `{"$secret": {"$env": "FOO"}}` with `FOO=` resolves
+      // to "", an empty value being a set one. Skipping it is the only sane masking — split("")
+      // would explode every character — and the short-secret warning above already flags it.
       if (entry.value.length === 0) continue;
       out = out.split(entry.value).join(entry.token);
     }

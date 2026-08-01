@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
 import { DEFAULT_LLM_CONCURRENCY } from "../src/llm/processor-semaphore.js";
 import { fakeObserver, type FakeObserver } from "./fake-observer.js";
@@ -203,6 +203,181 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
 
     await runWorkflow(file, fixturesDir, { warn });
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pin/));
+  });
+});
+
+describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
+  const VALUE = "env-sourced-token-value";
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  // A binary step that writes the config value it was given to stdout and publishes it, so what the
+  // worker actually received is what the run's output carries.
+  function envEchoFile(config: ConfigObject, path = "config.token"): WorkflowFile {
+    return {
+      format: "path/workflow@0",
+      name: "env-echo",
+      worker: { type: "engine" },
+      config,
+      body: [
+        {
+          type: "binary",
+          id: "echo",
+          command: "node",
+          args: ["-e", "process.stdout.write(process.argv[1])", `\${${path}}`],
+          publish: { seen: "${output}" },
+        },
+      ],
+      output: { seen: "${context.seen}" },
+    };
+  }
+
+  it("resolves a plain wrapper into the value the worker receives", async () => {
+    vi.stubEnv("PATH_TEST_TOKEN", VALUE);
+    const result = await runWorkflow(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } }), fixturesDir);
+
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seen: VALUE });
+  });
+
+  it("resolves a wrapper nested deep inside a config value", async () => {
+    vi.stubEnv("PATH_TEST_TOKEN", VALUE);
+    const file = envEchoFile({ creds: { headers: [{ auth: { $env: "PATH_TEST_TOKEN" } }] } }, "config.creds.headers.0.auth");
+
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.output).toEqual({ seen: VALUE });
+  });
+
+  it("resolves operator config alongside the file's own", async () => {
+    vi.stubEnv("PATH_TEST_TOKEN", VALUE);
+    const file = envEchoFile({ token: "file-default" });
+
+    const result = await runWorkflow(file, fixturesDir, { operatorConfig: { token: { $env: "PATH_TEST_TOKEN" } } });
+    expect(result.output).toEqual({ seen: VALUE });
+  });
+
+  it("resolves a step's own config inside a control block", async () => {
+    // The run-start sweep and the step's effective config both have to reach a step nested in a
+    // branch arm — a top-level `file.body` loop sees neither.
+    vi.stubEnv("PATH_TEST_TOKEN", VALUE);
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "env-in-block",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "branch",
+          id: "pick",
+          arms: [],
+          else: [
+            {
+              type: "binary",
+              id: "echo",
+              command: "node",
+              args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
+              config: { token: { $env: "PATH_TEST_TOKEN" } },
+              publish: { seen: "${output}" },
+            },
+          ],
+        },
+      ],
+      output: { seen: "${context.seen}" },
+    };
+
+    const result = await runWorkflow(file, fixturesDir);
+    expect(result.output).toEqual({ seen: VALUE });
+  });
+
+  it("masks the resolved value of a composed wrapper, never the variable name", async () => {
+    // The ordering this ticket exists for: masking is by value (§8.3), so the masker must collect
+    // what `$env` resolved to. Collecting first would scrub the string "PATH_TEST_TOKEN" and let the
+    // credential itself through to disk.
+    vi.stubEnv("PATH_TEST_TOKEN", VALUE);
+    const observer = fakeObserver();
+    const file = envEchoFile({ token: { $secret: { $env: "PATH_TEST_TOKEN" } } });
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.output).toEqual({ seen: VALUE }); // the worker got the real value
+    const persisted = JSON.stringify(observer.all());
+    expect(persisted).not.toContain(VALUE);
+    expect(persisted).toContain("[secret:token]");
+  });
+
+  it("warns about a short env-sourced secret, which resolution is what makes visible", async () => {
+    vi.stubEnv("PATH_TEST_TOKEN", "ab");
+    const warn = vi.fn();
+
+    await runWorkflow(envEchoFile({ pin: { $secret: { $env: "PATH_TEST_TOKEN" } } }, "config.pin"), fixturesDir, { warn });
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pin/));
+  });
+
+  it("fails the run before its first step, naming every unset variable in one failure", async () => {
+    vi.stubEnv("PATH_TEST_MISSING_A", undefined);
+    vi.stubEnv("PATH_TEST_MISSING_B", undefined);
+    const observer = fakeObserver();
+    const file = envEchoFile({ token: { $env: "PATH_TEST_MISSING_A" }, other: { $env: "PATH_TEST_MISSING_B" } });
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("PATH_TEST_MISSING_A");
+    expect(result.error).toContain("PATH_TEST_MISSING_B");
+    // Recorded as a run, not swallowed: a caller watching this run has one to watch, and it ends
+    // failed without any step having run.
+    expect(observer["run-started"]).toHaveBeenCalledTimes(1);
+    expect(observer["step-started"]).not.toHaveBeenCalled();
+    expect(observer["run-finished"]).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
+  });
+
+  it("still cancels a run whose signal was already aborted, unset variables notwithstanding", async () => {
+    // Spec §5.6: a signal already aborted when the run is launched cancels it before its first step.
+    // A config failure the operator has already walked away from does not turn that into a failure.
+    vi.stubEnv("PATH_TEST_MISSING_A", undefined);
+    const controller = new AbortController();
+    controller.abort();
+
+    const file = envEchoFile({ token: { $env: "PATH_TEST_MISSING_A" } });
+    const result = await runWorkflow(file, fixturesDir, { signal: controller.signal });
+
+    expect(result.status).toBe("cancelled");
+  });
+
+  it("counts an empty variable as set rather than failing the run", async () => {
+    vi.stubEnv("PATH_TEST_TOKEN", "");
+    const result = await runWorkflow(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } }), fixturesDir);
+
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seen: "" });
+  });
+
+  it("fails on a variable a nested file declares even where the parent's config shadows it", async () => {
+    // The accepted cost of the whole-tree sweep, pinned so it stays a decision: the child's own
+    // `token` can never be read — the parent's effective config shadows it at the file boundary —
+    // and the run still refuses to start. A run that starts and dies at step 14 is worse.
+    vi.stubEnv("PATH_TEST_MISSING_A", undefined);
+    const child: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "child",
+      worker: { type: "engine" },
+      config: { token: { $env: "PATH_TEST_MISSING_A" } },
+      body: [{ type: "binary", id: "noop", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
+    };
+    const childPath = join(fixturesDir, "env-child.workflow.json");
+    const parent: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "parent",
+      worker: { type: "engine" },
+      config: { token: "parent-wins" },
+      body: [{ type: "workflow", id: "sub", ref: "env-child.workflow.json", input: {} }],
+    };
+
+    const result = await runWorkflow(parent, fixturesDir, { files: new Map([[childPath, child]]) });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("PATH_TEST_MISSING_A");
   });
 });
 
