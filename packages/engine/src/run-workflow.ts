@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import type { BranchNode, CheckpointNode, ConfigObject, JsonValue, WhileDoNode, Worker, WorkflowFile } from "@path/schema";
+import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
 import { runBinaryStep } from "./binary-worker.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
@@ -13,6 +13,7 @@ import {
 } from "./llm/processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
+import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
 import { type Observation, ObserverError, type RunObserver } from "./run-observer.js";
 import { collectSecrets, maskObservation } from "./secret-mask.js";
 
@@ -159,6 +160,13 @@ interface WorkflowRunParams {
   identity: RunIdentity;
   files?: Map<string, WorkflowFile>;
   emit: Emit;
+  /** The environment snapshot every `$env` in this run tree resolves against — taken once (#116). */
+  env: EnvSource;
+  /**
+   * A run-start config failure the root run is to end on before its first node — currently unset
+   * `$env` variables (#116). The run is still started and recorded; see `runBody`.
+   */
+  runStartFailure?: string;
   // Shared by the entire run tree, so the processor cap spans nested runs too (mvp spec §5.5).
   llm: LlmRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
@@ -190,6 +198,8 @@ export interface RunContext {
   fileConfig: ConfigObject;
   identity: RunIdentity;
   emit: Emit;
+  /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
+  env: EnvSource;
   files?: Map<string, WorkflowFile>;
   /** Shared by the whole run tree, so the processor cap spans nested runs too (mvp spec §5.5). */
   llm: LlmRuntime;
@@ -230,9 +240,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   let previousOutput: JsonValue = input;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
-  // declared defaults key by key, nearest wins (format doc §8); worker never crosses (§7).
-  const fileConfig = mergeConfig(file.config ?? {}, incomingConfig);
-  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, llm: params.llm };
+  // declared defaults key by key, nearest wins (format doc §8); worker never crosses (§7). One of
+  // the two points a run materializes effective config, so one of the two that resolve `$env`
+  // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
+  // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
+  const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
+  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm };
   const fail = async (error: string): Promise<RunResult> => {
     await emit({ type: "run-finished", runId, rootRunId, status: "failed", error });
     return { status: "failed", output: previousOutput, error };
@@ -280,6 +293,20 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       input,
       worker: file.worker,
     });
+
+    // A run-start config failure (#116) lands *here* rather than at load: the run exists, is
+    // recorded, and ends `failed` before its first node. Two reasons it is a run and not a load
+    // error. Operator config is a run input, not a file, so half of what is checked has no load to
+    // fail at. And a caller watching a run needs a run to watch — the server answers `POST /v0/runs`
+    // only once `run-started` lands (`live-runs.ts`), so a failure with no events would hang the
+    // request rather than report itself. Audit-first, the same reading as a failed log backend
+    // write: the row is what survives.
+    //
+    // An operator who aborted before the run started gets `cancelled` regardless, as spec §5.6
+    // promises — the sequence walk below is what ends it that way, so this must not pre-empt it.
+    if (params.runStartFailure !== undefined && params.signal?.aborted !== true) {
+      return fail(params.runStartFailure);
+    }
 
     // The whole body is one node sequence walked against this run's own context; a top-level
     // publish is a context write-through (mvp spec §6). The implicit root step's default input is
@@ -342,6 +369,9 @@ async function runWorkflowNode(
     identity: { runId: randomUUID(), rootRunId: ctx.run.identity.rootRunId, parentRunId: ctx.run.identity.runId, nodeId: node.id },
     files: ctx.run.files,
     emit: ctx.run.emit,
+    // The root run's snapshot, so every file in the tree resolves `$env` against one environment
+    // (#116). No `runStartFailure`: unset variables are the root run's own check, over the whole tree.
+    env: ctx.run.env,
     llm: ctx.run.llm,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
@@ -581,13 +611,26 @@ export async function runWorkflow(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const runId = randomUUID();
+  const configs = collectRunConfigs(file, options);
+
+  // One snapshot for the whole run (#116). The environment is read here and nowhere else, so a
+  // variable changed mid-run cannot make a step's config disagree with what the masker collected
+  // from the same wrapper at run start.
+  const env: EnvSource = { ...process.env };
+
+  // Resolve every `$env` **before** collecting, not stylistically: masking is by value (mvp spec
+  // §8.3), so `{"$secret": {"$env": "TOKEN"}}` must already carry the real value here or the masker
+  // collects the literal string `TOKEN` and the credential itself reaches disk unmasked. Unset
+  // variables fail the run before its first node, naming every one of them (#116, see
+  // `runStartFailure` below).
+  const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
 
   // Collect every `$secret` value in effective config once at run start (mvp spec §8.3, #20), then
   // scrub at the one point every observation passes through (#62) — the interpolated values handed
   // to workers stay real, only what crosses into persistence is masked. Masking here rather than in
   // a wrapper is what makes the guarantee unconditional: there is no hook to leave unimplemented and
   // no wrapper for a future caller to skip.
-  const masker = collectSecrets(collectRunSecrets(file, options));
+  const masker = collectSecrets(resolvedConfigs);
   for (const warning of masker.warnings) options.warn?.(warning);
   const { observer } = options;
   const emit: Emit = observer
@@ -604,6 +647,8 @@ export async function runWorkflow(
     identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
     files: options.files,
     emit,
+    env,
+    runStartFailure: unset.length > 0 ? describeUnsetEnv(unset) : undefined,
     // External abort (#52): the operator's signal is the root run's own, and threads down to every
     // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
     // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
@@ -617,10 +662,26 @@ export async function runWorkflow(
   });
 }
 
-// Every config object a run's secrets can ride in on: operator overrides first (they win a token
-// key on a duplicated value — nearest config), then each reachable file's declared config and each
-// of its steps' configs, since secrecy rides a value through inheritance to any of them.
-function collectRunSecrets(rootFile: WorkflowFile, options: RunOptions): ConfigObject[] {
+/**
+ * Every config object a run can read, in one sweep: operator overrides first (they win a token key
+ * on a duplicated value — nearest config), then each reachable file's declared config and each of
+ * its steps' configs, since a value rides inheritance to any of them.
+ *
+ * Two run-start readings share it: masking collects `$secret` values from all of them (#20), and
+ * `$env` resolution checks all of them (#116).
+ *
+ * **Whole-tree, and deliberately so for `$env`.** A file in the loaded tree declaring `{"$env":
+ * "OPENAI_KEY"}` forces the variable to be set *even when a parent's config shadows that key* and
+ * the declaration can therefore never be read. Harmless for masking; for failing a run it is a real
+ * cost, accepted because the alternative — resolving per file as the run reaches it — is a run that
+ * starts and dies at step 14 for a variable already missing at step 1. `test/run-workflow.test.ts`
+ * pins it so it stays a decision.
+ *
+ * The descent is @path/schema's (`walkNodes`), not `file.body`: a step's config can sit inside any
+ * nesting of control blocks, and a hand-rolled top-level loop silently skipped every one of them —
+ * an unmasked secret, and a wrapper handed to a worker in place of a credential.
+ */
+function collectRunConfigs(rootFile: WorkflowFile, options: RunOptions): ConfigObject[] {
   const configs: ConfigObject[] = [];
   if (options.operatorConfig) configs.push(options.operatorConfig);
 
@@ -628,7 +689,7 @@ function collectRunSecrets(rootFile: WorkflowFile, options: RunOptions): ConfigO
   if (!files.includes(rootFile)) files.push(rootFile);
   for (const file of files) {
     if (file.config) configs.push(file.config);
-    for (const node of file.body) {
+    for (const node of walkNodes(file.body)) {
       if ("config" in node && node.config) configs.push(node.config);
     }
   }
@@ -792,8 +853,9 @@ export async function runNode(
   }
 
   // Only steps carry config, an input map and a publish map — the control nodes are transparent to
-  // all three, which is why this half of the function has no counterpart above.
-  const stepConfig = mergeConfig(run.fileConfig, node.config);
+  // all three, which is why this half of the function has no counterpart above. The second of the
+  // two points effective config is materialized, and so the second that resolves `$env` (#116).
+  const stepConfig = resolveConfigEnv(mergeConfig(run.fileConfig, node.config), run.env).config;
   const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
   let stepInput: JsonValue;
   try {

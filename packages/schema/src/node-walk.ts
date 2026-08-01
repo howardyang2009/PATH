@@ -56,9 +56,15 @@ export function childBodies(node: WorkflowNode): NodeChildBody[] {
     case "workflow":
     case "checkpoint":
       return [];
+    // Two guards, as at the engine's node dispatch. The `never` assignment is the compile-time one:
+    // a node type added to the format must say where its children are or nothing builds. The `[]` is
+    // the runtime one — a hand-constructed file can reach a walk without passing the schema, and a
+    // caller sweeping it (`collectRunConfigs`) must find no children rather than be handed a node
+    // where it expects a list. Rejecting the unknown type is the executor's job, not the walk's.
     default: {
       const exhaustive: never = node;
-      return exhaustive;
+      void exhaustive;
+      return [];
     }
   }
 }

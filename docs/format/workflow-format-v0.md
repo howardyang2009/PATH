@@ -233,6 +233,24 @@ A wrapper may sit **at any depth** inside a config value — inside objects and 
 only at the value a dot-path lands on. `${config}` and `${config.nested}` resolve to whole
 sub-trees, and a wrapper declared anywhere inside one still means what it means.
 
+**When `$env` is read, and what an unset variable does.** Every `$env` in a run's config is resolved
+once at run start, before anything is persisted — masking is by value, so a `{"$secret": {"$env":
+"NAME"}}` collected before resolution would scrub the *name* and let the credential through. The
+resolved value is what a worker receives and what the masker redacts.
+
+- **Unset variables refuse the run**, in one failure naming **every** one of them rather than the
+  first, before the first step runs. The run is still recorded: it starts, ends `failed`, and its
+  error says which variables were missing and under which config keys.
+- **The whole tree is checked**, every file loaded with the root included. A nested
+  file declaring `{"$env": "OPENAI_KEY"}` therefore requires that variable **even when a parent's
+  config shadows the key** and the declaration can never be read. Accepted deliberately: a run that
+  starts and dies at step 14 for a variable that was already missing at step 1 is worse.
+- **Empty counts as set.** `FOO=` exports an empty value, and only an absent name is unset — the
+  engine cannot know whether an empty value is meaningful. An empty `$secret` still trips
+  mvp-spec §8.3's short-secret warning, which fires on env-sourced values like any other.
+- **The environment is read once per run**, so a variable changed mid-run cannot make two steps
+  disagree about the same wrapper.
+
 **Sole key, or it is not a wrapper.** The marker must be the object's only key: `{"$secret": "x",
 "note": "y"}` is an ordinary config object that happens to have a `$secret` field, not a marking.
 Otherwise an author's ordinary object would silently become a wrapper the moment it grew a field
