@@ -275,11 +275,9 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     // reaches the log stream. The one artifact class the happy path cannot reach.
     //
     // The surface is the `step-finished` **log event**, not a run row: `runs` (persistence/db.ts)
-    // has `status` and no error column, and `finishRun` writes only status and finished_at. So
-    // mvp spec §8.3's and `secret-mask.ts`'s "run-row error strings" names something that does not
-    // exist — the error is persisted in the log stream alone. Recorded here rather than papered
-    // over: the wording is stale, not the masking, and reconciling it is a docs change (#118's
-    // neighbourhood), not this ticket's.
+    // has `status` and no error column, and `finishRun` writes only status and finished_at. §8.3
+    // used to say "run-row error strings", which named nothing that exists; #124 corrected it to
+    // this event. Whether the row should carry an error at all is §10's deferred register now.
     const code = await runProbe(["--set", "exit_code=3"]);
 
     expect(code).toBe(1);
@@ -298,17 +296,20 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     }
   });
 
-  it("prints the *unmasked* error on the CLI's own stderr — the seam's stated edge", async () => {
+  it("prints the *masked* error on the CLI's own stderr — the operator's terminal, and CI's log", async () => {
     await expect(runProbe(["--set", "exit_code=3"])).resolves.toBe(1);
 
-    // Pinned as a boundary, not endorsed. Masking is a *persistence*-boundary concern (mvp spec
-    // §8.3): the engine scrubs at its observation emit, and `secret-mask.ts` states outright that
-    // "the RunResult returned to the caller is unmasked". `cli.ts` prints `runResult.error`, so a
-    // credential on a failed step's stderr reaches the operator's terminal — and in CI, the build
-    // log, which is an audit surface nobody chose. Changing that is a decision about the RunResult
-    // contract, out of this ticket's scope and not among map #113's locked ones; this assertion is
-    // here so the change is deliberate when it comes, and so the gap is not mistaken for covered.
-    expect(harness.stderr.join("\n")).toContain(TOKEN);
+    // This assertion used to pin the opposite, as the seam's stated edge (#117). #123 settled it:
+    // the CLI's stderr is an audit surface, because under `$env` the operator is often a secret
+    // store rather than a person and the terminal is often a retained CI build log. So
+    // `RunResult.error` is masked at the run's return — the one field beyond the persistence
+    // boundary that is. Its counterweight, `RunResult.output` staying real, needs a workflow whose
+    // output map *is* a secret; this probe's is `probe_id`, so it is pinned where a file can be
+    // shaped for it: `run-workflow.test.ts`, "hands the worker the real secret…".
+    const printed = harness.stderr.join("\n");
+    expect(printed).toContain("run failed:");
+    expect(printed).toContain(TOKEN_MASK);
+    expect(printed).not.toContain(TOKEN);
   });
 });
 
@@ -333,6 +334,17 @@ describe("acceptance: an unset variable refuses the run (ticket #117)", () => {
     expect(runs).toHaveLength(1);
     expect(runs[0]!.parent_run_id).toBeNull();
     expect(runs[0]!.status).toBe("failed");
+
+    // And *why* it failed is on the record too, in the log stream: the root run's `run-finished`
+    // narrates as a failed `step-finished` carrying the message. Pinned on both backends because
+    // the run row cannot hold it — it has status and no error column (#124), which is the whole of
+    // what §8.3 means by the error being persisted in the log stream alone.
+    for (const events of [readLogEvents(), readNdjsonLogEvents()]) {
+      const failed = events.filter((event) => event.type === "step-finished" && event.status === "failed");
+      expect(failed).toHaveLength(1);
+      expect(failed[0]!.error).toContain("PATH_ACCEPTANCE_TOKEN");
+      expect(failed[0]!.error).toContain('config key "token"');
+    }
   });
 
   it("names every missing variable in one failure, not just the first", async () => {

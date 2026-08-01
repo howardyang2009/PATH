@@ -45,9 +45,10 @@ Four shapes carry weight and none is incidental:
 - **`probe_id` is env-sourced but not secret.** Map #113 rejected "env is always secret" because
   masking is by value: an env-sourced model name would get its literal string scrubbed out of every
   log event in the run. The probe pins the distinction by carrying both kinds through the same step.
-- **`exit_code` is an operator knob, not a second pipeline.** `--set exit_code=3` fails the step
-  with the credential on its stderr, which is the only way to reach a run's **error string** — the
-  one artifact class the happy path cannot produce.
+- **`exit_code` is an operator knob, not a second pipeline.** `--set exit_code=3` fails the step with
+  the credential on its stderr, which is the only way to reach a **secret-bearing error string** —
+  the one artifact class the happy path cannot produce. (The unset-variable case reaches an error
+  string too, but never one carrying a value: it names variables and config keys.)
 
 The checkpoint's pattern (`^[A-Za-z0-9._-]+$`) is the one assertion the workflow file can make about
 the value on its own: conditions cannot read `config` (deferred, mvp spec §10), so it cannot compare
@@ -68,28 +69,27 @@ have their payloads stripped, so without a condition-bearing event there is no t
 | Failed-step **error strings** are masked | the `step-finished` event carrying `status: "failed"`, both backends, under `--set exit_code=3` |
 | An env-sourced value **not** marked secret stays literal | `probe_id` in `stderr.txt` and in the run's printed output |
 | Nothing else on the audit surface leaks | every file under `.path/`, `path.db` included, swept for the raw value |
-| An unset variable refuses the run before step 1 | run fails, error names the variable and its config key; no receipt; one `failed` run row |
+| An unset variable refuses the run before step 1 | run fails, error names the variable and its config key; no receipt; one `failed` run row, and the message on both log backends |
 | Two unset variables are named together | `2 environment variables are not set`, both named |
-| The CLI's own stderr is *not* masked | pinned as a known edge — see below |
+| The CLI's own stderr **is** masked | `run failed:` carries `[secret:token]`, never the token (#123 — see "The edge this file used to pin") |
 
-## A surface the spec names that does not exist
+## A surface the spec named that does not exist — since corrected (#124)
 
-Ticket #117 and mvp-spec §8.3 both list **"run-row error strings"** among the artifacts masking
-covers, and `secret-mask.ts`'s header repeats it. There is no such thing to mask: `runs`
+Ticket #117 and mvp-spec §8.3 both listed **"run-row error strings"** among the artifacts masking
+covers, and `secret-mask.ts`'s header repeated it. There is no such thing to mask: `runs`
 (`persistence/db.ts`) carries `status` and no error column, and `finishRun` writes only `status` and
 `finished_at`. A failed step's error is persisted in the **log stream** alone — the `step-finished`
-event, which is what the probe asserts, on both backends.
+event, which is what the probe asserts, on both backends. The masking that reaches the real surface
+was always complete; the wording was stale, and #124 corrected §8.3 and the header to name the event.
 
-So the row above is not the named surface under a different name; the named surface is absent, and
-the masking that reaches the real one is complete. The wording is what is stale. Two consequences
-worth carrying forward, neither of them this ticket's to fix:
-
-- Reconciling spec §8.3 and `secret-mask.ts` with the schema is a docs correction, adjacent to #118.
-- On the **unset-variable** path the failure is persisted nowhere — the run row says `failed` and
-  the message naming the missing variables exists only on the CLI's stderr. The probe therefore
-  verifies that message off-disk, which is the only place it is. Map #113 already parks "how a
-  missing-variable failure surfaces in the server/SSE/viewer path" in Not-yet-specified; this is
-  the same hole seen from the CLI.
+One claim made here at the time was itself wrong, and is worth recording rather than quietly
+deleting: the **unset-variable** failure is *not* persisted nowhere. The engine's `run-finished`
+observation narrates as a failed `step-finished` (`logging-observer.ts`), so the message naming the
+missing variables reaches both backends like any other run error — the probe now asserts exactly
+that, alongside the `failed` run row. What is true is the narrower thing: a reader holding a run row
+cannot say *why* the run failed without joining the log stream. Whether the row should answer that
+itself is now in mvp-spec §10's deferred register, next to map #113's parked "how a missing-variable
+failure surfaces in the server/SSE/viewer path".
 
 ## Automated, and how the variable is set
 
@@ -103,11 +103,17 @@ value, so a short or common one would over-replace and let "the artifact does no
 for the wrong reason. It is never written into a workflow file, a `--config` file, or a `--set`
 argument; `$env` is precisely what keeps it out of all three.
 
-## Known edge, pinned rather than fixed
+## The edge this file used to pin, since closed (#123)
 
-`path run` prints `run failed: <error>` on **its own stderr, unmasked**. Masking is a
-*persistence*-boundary concern (mvp spec §8.3) — the engine scrubs at its observation emit, and the
-`RunResult` handed back to the caller is documented as unmasked — so a credential on a failed step's
-stderr reaches the operator's terminal, and in CI the build log. The test pins this as a boundary so
-that changing it is deliberate and so the gap is not mistaken for covered. Fixing it is a decision
-about the `RunResult` contract: not one of map #113's locked decisions, and outside ticket #117.
+`path run` printed `run failed: <error>` on **its own stderr, unmasked** — masking was a
+*persistence*-boundary concern only, and the `RunResult` handed back to the caller was documented as
+unmasked, so a credential on a failed step's stderr reached the operator's terminal and, in CI, the
+build log. Ticket #117 pinned that as a boundary rather than endorsing it; #123 decided the terminal
+*is* an audit surface (under `$env` the operator is often a secret store and the terminal often a
+retained log) and masked `RunResult.error` at the run's return.
+
+What did **not** change: the `output` of a **succeeded** run. It is the run's product, the CLI prints
+it, and masking it would hand an operator `[secret:key]` where their pipeline's answer belongs. So a
+workflow whose output map *is* a secret still prints the real value — deliberately. A failed or
+cancelled run has no output contract, so what it returns is masked along with its error; that pair is
+pinned in `run-workflow.test.ts`, where a file can be shaped for it.

@@ -8,12 +8,23 @@ import type { Observation } from "./run-observer.js";
  * A `{"$secret": "<value>"}` config value carries a real secret to workers and spawned processes,
  * but must never reach disk or a backend. At run start the engine collects every secret value in
  * effective config; then every persisted artifact — log events, input/output object files,
- * `context.json` write-throughs, run-row error strings, captured stderr — is string-scrubbed *by
- * value* before it crosses the observer seam, each occurrence replaced with `[secret:<config-key>]`.
+ * `context.json` write-throughs, the error a failed `step-finished` carries, captured stderr — is
+ * string-scrubbed *by value* before it crosses the observer seam, each occurrence replaced with
+ * `[secret:<config-key>]`. That event is the only *record* of a failed run's error — the run row has
+ * status and no error column (#124) — though the text itself can also sit in `stderr.txt`, since a
+ * binary step's error is the tail of its stderr. Masking is by value across every artifact for
+ * exactly that reason: the same string reaches disk through more than one door.
  *
  * Masking is an audit-surface concern, not a dataflow restriction: the interpolated values handed
- * to workers stay real (see interpolate.ts), and the `RunResult` returned to the caller is unmasked
- * — only the observer payloads (the persistence boundary) are scrubbed.
+ * to workers stay real (see interpolate.ts), and a *succeeded* run returns its `output` — the run's
+ * product — to the caller unmasked.
+ *
+ * One surface beyond the persistence boundary is scrubbed (#123): what a finished run hands back,
+ * that product excepted. `RunResult.error` always, and `RunResult.output` when the run did not
+ * succeed. The CLI prints both on its own stderr or stdout, which under `$env` is routinely a CI
+ * build log — retained and read by people who never held the credential. `run-workflow.ts` applies
+ * it at the run's return, where the masker already lives; nothing here is exported for a caller to
+ * apply itself.
  *
  * Documented limits: a transformed secret (base64 etc.) escapes string matching — accepted, no taint
  * tracking. A very short secret risks mass false-replacement, so it triggers a load-time warning.

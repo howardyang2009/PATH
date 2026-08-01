@@ -375,17 +375,34 @@ interface LogBackend {
   ([server API spec](server-api-spec.md) §2); `--set`/`--config` are the gap.
 - **Redaction: persistence-boundary scrubbing by value.** At run start the engine collects all
   `$secret` values in effective config; everything persisted — log events and traces, input/output
-  object files, `context.json` write-throughs, run-row error strings, captured stderr — is
-  string-scrubbed before hitting any backend or disk. Required, not hygiene: `${config.token}`
+  object files, `context.json` write-throughs, the `error` a failed `step-finished` event carries,
+  captured stderr — is string-scrubbed before hitting any backend or disk. That event is the only
+  *record of a run's error*: §5.7's row content has no error among it (#124). Not the only place the
+  text can appear — a binary step's error is the tail of its stderr, which is also persisted as
+  `stderr.txt` (§6) — which is why masking is by value across every artifact rather than per-field. Required, not hygiene: `${config.token}`
   legally splices into prompts/argv/inputs, so secrets propagate into artifacts; path-based
   redaction leaks.
 - **Replacement token:** `[secret:<config-key>]` (same value under two keys → first key wins).
 - **Workers receive real values** — masking is an audit-surface concern, not a dataflow
   restriction.
+- **What a finished run hands its caller is masked too — everything but the product (#123).** A
+  run's `error` carries text the engine did not compose from workflow authorship (a failed step's
+  error is the tail of its stderr, where a client prints a rejected credential), and every caller
+  prints it: the CLI on its own stderr, the server on its console. Under `$env` that terminal is
+  routinely a CI build log — retained, searchable, read by people who never held the credential,
+  which is the exposure `$secret` exists to close. So `error` is always masked, and so is the
+  returned `output` of a run that did **not** succeed: a failed or cancelled run has no output
+  contract, and what comes back is the run's input kept for debugging. A **succeeded** run's output
+  is the exception and the point of the rule: it is the product, the CLI prints it, and an operator
+  is owed their pipeline's answer rather than `[secret:key]`. The run-start unset-variable failure
+  rides the same `error` field and names variables, not values — nothing in it to scrub.
 - **Documented limits:** transformed secrets (base64, embedded in emitted JSON) escape string
   matching — accepted, no taint-tracking in MVP. `$secret` values shorter than ~6 chars risk mass
   false-replacement → a warning, emitted at run start with the rest of the collection: an
-  env-sourced secret has no value to measure at load.
+  env-sourced secret has no value to measure at load. A thrown **bug** also escapes: the engine
+  re-throws rather than swallowing one into a failed run, so its message and stack reach the caller
+  — and the CLI's or the server's console — unscrubbed. Closing it would mean catching at the run
+  boundary, which changes what a bug is; a failed *run* is the masked path.
 
 ## 9. Implementation freedoms
 
@@ -414,6 +431,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
 | Retry/resume | write-through `context.json` + truthful crash snapshots |
 | Remote log backends | async `LogBackend` seam |
+| A failed run's error on the run row | additive to §5.7's row content; today the error is the log stream's alone (§8.3), so a run row must be joined to it to say *why* (#124, and map #113's parked server/SSE/viewer question) |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |
 
 ## 11. Acceptance
