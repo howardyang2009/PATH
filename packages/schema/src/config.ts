@@ -34,9 +34,9 @@ const PlainConfigObjectSchema = z.lazy(() =>
 
 /**
  * Config values are literal JSON — never interpolated (workflow-format-v0.md §8) — except for two
- * wrappers: `{"$secret": "<value>"}` marks a value for persistence-boundary redaction (spec §8.3),
- * and `{"$env": "<NAME>"}` sources one from the environment at run start. They compose by nesting,
- * `{"$secret": {"$env": "NAME"}}` being a value that is both sourced and masked.
+ * wrappers: `{"$secret": "<value>"}` marks a value for persistence-boundary redaction
+ * (mvp-spec.md §8.3), and `{"$env": "<NAME>"}` sources one from the environment at run start. They
+ * compose by nesting, `{"$secret": {"$env": "NAME"}}` being a value that is both sourced and masked.
  */
 export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
   z.union([
