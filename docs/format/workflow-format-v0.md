@@ -196,8 +196,14 @@ interpolable (e.g. `"model": "${config.model}"`).
 
 ## 8. Config
 
+### 8.1 Literal values
+
 Config is a JSON object of **literal values** — no interpolation inside config; it is a source,
-not a consumer. Composition is a **shallow merge per top-level key, nearest wins**:
+not a consumer. A `${...}` string in config is that string, never a reference.
+
+### 8.2 Composition
+
+Composition is a **shallow merge per top-level key, nearest wins**:
 
 ```
 step config  >  enclosing workflow's effective config  >  file's own config (defaults)
@@ -207,6 +213,54 @@ Operator launch-time values (CLI flags/file) override the top-level file's defau
 At a workflow-step boundary the parent's effective config flows into the child file and shadows the
 child's declared defaults key by key — context is isolated; config deliberately is not. Steps never
 write config.
+
+### 8.3 Value wrappers and the reserved `$` namespace
+
+Two wrappers are the one exception to §8.1's literalness. Both are **sole-key objects** standing
+where a literal value would:
+
+| Wrapper | Means |
+| --- | --- |
+| `{"$secret": "<value>"}` | Marks the value for persistence-boundary redaction (mvp-spec §8.3). |
+| `{"$env": "<NAME>"}` | Sources the value from environment variable `NAME` at run start. |
+
+They **compose by nesting**, not side by side: `{"$secret": {"$env": "NAME"}}` is a value that is
+both sourced and masked. `$env` is the source and `$secret` the marking laid over it, so that is the
+only nesting order — masking is by value, and "env is always secret" would scrub an env-sourced
+model name out of every log event in the run. The author says which sourced values are secret.
+
+A wrapper may sit **at any depth** inside a config value — inside objects and arrays alike — not
+only at the value a dot-path lands on. `${config}` and `${config.nested}` resolve to whole
+sub-trees, and a wrapper declared anywhere inside one still means what it means.
+
+**Sole key, or it is not a wrapper.** The marker must be the object's only key: `{"$secret": "x",
+"note": "y"}` is an ordinary config object that happens to have a `$secret` field, not a marking.
+Otherwise an author's ordinary object would silently become a wrapper the moment it grew a field
+with that name.
+
+**The `$`-sole-key namespace is reserved.** A sole-key object whose key begins with `$` and is not a
+known wrapper **fails at load**, naming the key and listing what is known:
+
+```
+config.token: "$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")
+```
+
+Config is a free-form key/value map, so §1's strict unknown-field rejection cannot reach inside it;
+without the reservation a misspelled `{"$evn": "TOKEN"}` would validate as an ordinary object and
+the worker would receive the *wrapper* — a variable name leaked into an artifact, a credential
+missing from a step, silently. The reservation is also what keeps a future sourcing wrapper
+additive rather than ambiguous.
+
+Two boundaries follow from the sole-key rule and are deliberate:
+
+- **Multi-key objects are untouched.** `{"$foo": 1, "bar": 2}` is a plain config object.
+- **A config object's own keys are field names, not wrapper positions.** `"config": {"$evn":
+  "TOKEN"}` declares a config field awkwardly named `$evn`. Reserving there would make a one-field
+  config mean something different from a two-field one.
+
+The cost is stated rather than papered over: a config value that legitimately wants a sole
+`$`-prefixed key is **unexpressible** in v0, and there is no escape hatch. One would be additive if
+something concrete is ever blocked by this.
 
 ## 9. Conditions
 
@@ -225,6 +279,7 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
 - duplicate `publish` keys across sibling branches of one `parallel` block (per the execution
   semantics: publish keys are static, so the race is detectable — and rejected — at load)
 - malformed `${}` syntax in interpolable positions, and `${}` roots other than the allowed ones
+- malformed config wrappers, and sole `$`-prefixed config keys that name no known wrapper (§8.3)
 
 Authoring errors surface at load, never mid-run. (Path *resolvability* against runtime data is
 necessarily a runtime concern.)
@@ -239,6 +294,9 @@ necessarily a runtime concern.)
   post-MVP; strict unknown-field rejection plus the `@`-version rule keeps the door open safely.
 - **Deferred by earlier decisions**: `wait-one`/`do-not-wait` joins; API/MCP/skill step types;
   `config` as a condition root; input declarations (§2).
+- **Escape hatch for a literal sole `$`-prefixed config key** (§8.3): parked until something
+  concrete is blocked by the reservation. Further sourcing wrappers (`$file`, `$keychain`) are
+  additive for the same reason — the reservation is what keeps them unambiguous.
 
 ## 12. Authoring & navigation
 

@@ -339,8 +339,9 @@ interface LogBackend {
 
 - **Marking:** a config value may be wrapped as `{"$secret": "<value>"}`. The wrapper is the
   marking; because config composes by shallow merge per top-level key, secrecy travels with the
-  value across every file boundary and operator override. (`$env` sourcing indirection is a later
-  additive that would compose with `$secret`.)
+  value across every file boundary and operator override. (`$env` sourcing indirection has since
+  landed and composes by nesting, `{"$secret": {"$env": "NAME"}}` — format doc §8.3, which also
+  reserves the `$`-sole-key namespace so further wrappers stay additive.)
 - **Redaction: persistence-boundary scrubbing by value.** At run start the engine collects all
   `$secret` values in effective config; everything persisted — log events and traces, input/output
   object files, `context.json` write-throughs, run-row error strings, captured stderr — is
