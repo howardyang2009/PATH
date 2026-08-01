@@ -8,8 +8,10 @@ import type { Observation } from "./run-observer.js";
  * A `{"$secret": "<value>"}` config value carries a real secret to workers and spawned processes,
  * but must never reach disk or a backend. At run start the engine collects every secret value in
  * effective config; then every persisted artifact — log events, input/output object files,
- * `context.json` write-throughs, run-row error strings, captured stderr — is string-scrubbed *by
- * value* before it crosses the observer seam, each occurrence replaced with `[secret:<config-key>]`.
+ * `context.json` write-throughs, the error a failed `step-finished` carries, captured stderr — is
+ * string-scrubbed *by value* before it crosses the observer seam, each occurrence replaced with
+ * `[secret:<config-key>]`. That event is where a failed run's error lives, and the only place: the
+ * run row has status and no error column (#124).
  *
  * Masking is an audit-surface concern, not a dataflow restriction: the interpolated values handed
  * to workers stay real (see interpolate.ts), and a *succeeded* run returns its `output` — the run's

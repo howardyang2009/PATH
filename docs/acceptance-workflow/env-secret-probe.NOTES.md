@@ -68,28 +68,27 @@ have their payloads stripped, so without a condition-bearing event there is no t
 | Failed-step **error strings** are masked | the `step-finished` event carrying `status: "failed"`, both backends, under `--set exit_code=3` |
 | An env-sourced value **not** marked secret stays literal | `probe_id` in `stderr.txt` and in the run's printed output |
 | Nothing else on the audit surface leaks | every file under `.path/`, `path.db` included, swept for the raw value |
-| An unset variable refuses the run before step 1 | run fails, error names the variable and its config key; no receipt; one `failed` run row |
+| An unset variable refuses the run before step 1 | run fails, error names the variable and its config key; no receipt; one `failed` run row, and the message on both log backends |
 | Two unset variables are named together | `2 environment variables are not set`, both named |
-| The CLI's own stderr is *not* masked | pinned as a known edge — see below |
+| The CLI's own stderr **is** masked | `run failed:` carries `[secret:token]`, never the token (#123 — see below) |
 
-## A surface the spec names that does not exist
+## A surface the spec named that does not exist — since corrected (#124)
 
-Ticket #117 and mvp-spec §8.3 both list **"run-row error strings"** among the artifacts masking
-covers, and `secret-mask.ts`'s header repeats it. There is no such thing to mask: `runs`
+Ticket #117 and mvp-spec §8.3 both listed **"run-row error strings"** among the artifacts masking
+covers, and `secret-mask.ts`'s header repeated it. There is no such thing to mask: `runs`
 (`persistence/db.ts`) carries `status` and no error column, and `finishRun` writes only `status` and
 `finished_at`. A failed step's error is persisted in the **log stream** alone — the `step-finished`
-event, which is what the probe asserts, on both backends.
+event, which is what the probe asserts, on both backends. The masking that reaches the real surface
+was always complete; the wording was stale, and #124 corrected §8.3 and the header to name the event.
 
-So the row above is not the named surface under a different name; the named surface is absent, and
-the masking that reaches the real one is complete. The wording is what is stale. Two consequences
-worth carrying forward, neither of them this ticket's to fix:
-
-- Reconciling spec §8.3 and `secret-mask.ts` with the schema is a docs correction, adjacent to #118.
-- On the **unset-variable** path the failure is persisted nowhere — the run row says `failed` and
-  the message naming the missing variables exists only on the CLI's stderr. The probe therefore
-  verifies that message off-disk, which is the only place it is. Map #113 already parks "how a
-  missing-variable failure surfaces in the server/SSE/viewer path" in Not-yet-specified; this is
-  the same hole seen from the CLI.
+One claim made here at the time was itself wrong, and is worth recording rather than quietly
+deleting: the **unset-variable** failure is *not* persisted nowhere. The engine's `run-finished`
+observation narrates as a failed `step-finished` (`logging-observer.ts`), so the message naming the
+missing variables reaches both backends like any other run error — the probe now asserts exactly
+that, alongside the `failed` run row. What is true is the narrower thing: a reader holding a run row
+cannot say *why* the run failed without joining the log stream. Whether the row should answer that
+itself is now in mvp-spec §10's deferred register, next to map #113's parked "how a missing-variable
+failure surfaces in the server/SSE/viewer path".
 
 ## Automated, and how the variable is set
 

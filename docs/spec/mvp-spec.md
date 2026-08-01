@@ -375,8 +375,10 @@ interface LogBackend {
   ([server API spec](server-api-spec.md) §2); `--set`/`--config` are the gap.
 - **Redaction: persistence-boundary scrubbing by value.** At run start the engine collects all
   `$secret` values in effective config; everything persisted — log events and traces, input/output
-  object files, `context.json` write-throughs, run-row error strings, captured stderr — is
-  string-scrubbed before hitting any backend or disk. Required, not hygiene: `${config.token}`
+  object files, `context.json` write-throughs, the `error` a failed `step-finished` event carries,
+  captured stderr — is string-scrubbed before hitting any backend or disk. That event is where a
+  failed run's error is persisted, and the only place it is: the run row (§5.7) has no error column,
+  and `finishRun` writes status and timestamp alone (#124). Required, not hygiene: `${config.token}`
   legally splices into prompts/argv/inputs, so secrets propagate into artifacts; path-based
   redaction leaks.
 - **Replacement token:** `[secret:<config-key>]` (same value under two keys → first key wins).
@@ -428,6 +430,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
 | Retry/resume | write-through `context.json` + truthful crash snapshots |
 | Remote log backends | async `LogBackend` seam |
+| A failed run's error on the run row | the error is persisted in the log stream alone — the failed `step-finished` event (§8.3), which covers the run-start unset-variable failure too. The `runs` table carries status and no error, so a reader holding a run row must join the log stream to say *why* it failed; the question is whether the row should answer that itself. Additive to §5.7 (#124) |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |
 
 ## 11. Acceptance
