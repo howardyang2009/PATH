@@ -12,13 +12,15 @@ import type { Observation } from "./run-observer.js";
  * value* before it crosses the observer seam, each occurrence replaced with `[secret:<config-key>]`.
  *
  * Masking is an audit-surface concern, not a dataflow restriction: the interpolated values handed
- * to workers stay real (see interpolate.ts), and `RunResult.output` — the run's product — is
- * returned to the caller unmasked.
+ * to workers stay real (see interpolate.ts), and a *succeeded* run returns its `output` — the run's
+ * product — to the caller unmasked.
  *
- * One surface beyond the persistence boundary is scrubbed, and only one: `RunResult.error` (#123).
- * The CLI prints it on its own stderr, which under `$env` is routinely a CI build log — retained
- * and read by people who never held the credential. `run-workflow.ts` applies it at the run's
- * return, where the masker already lives; nothing here is exported for a caller to apply itself.
+ * One surface beyond the persistence boundary is scrubbed (#123): what a finished run hands back,
+ * that product excepted. `RunResult.error` always, and `RunResult.output` when the run did not
+ * succeed. The CLI prints both on its own stderr or stdout, which under `$env` is routinely a CI
+ * build log — retained and read by people who never held the credential. `run-workflow.ts` applies
+ * it at the run's return, where the masker already lives; nothing here is exported for a caller to
+ * apply itself.
  *
  * Documented limits: a transformed secret (base64 etc.) escapes string matching — accepted, no taint
  * tracking. A very short secret risks mass false-replacement, so it triggers a load-time warning.

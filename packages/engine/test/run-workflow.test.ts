@@ -209,7 +209,7 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     return file;
   }
 
-  it("masks the secret out of RunResult.error, the one field the CLI prints on failure (#123)", async () => {
+  it("masks the secret out of RunResult.error, the field every caller prints on failure (#123)", async () => {
     const result = await runWorkflow(secretLeakFailingFile(), fixturesDir);
 
     expect(result.status).toBe("failed");
@@ -219,17 +219,33 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     expect(result.error).not.toContain(SECRET);
   });
 
+  it("masks `output` on a run that did not succeed — there is no product to be owed (#123)", async () => {
+    // A run that fails carries its *input* back as `output` (there is no output contract on a failed
+    // run), so this is what a caller handing the engine a value that is also a declared secret gets
+    // back. Real on success, masked otherwise: the rule is about the product, and a failed run has
+    // none.
+    const result = await runWorkflow(secretLeakFailingFile(), fixturesDir, { input: { carried: SECRET } });
+
+    expect(result.status).toBe("failed");
+    expect(result.output).toEqual({ carried: "[secret:apiKey]" });
+  });
+
   it("leaves the run-start failure message intact — it names variables, never values (#123)", async () => {
     const file = secretLeakFile();
-    file.config = { apiKey: { $secret: { $env: "PATH_TEST_UNSET_SECRET_123" } } };
+    // A *set* secret beside the unset variable, deliberately: with only the unset one the masker
+    // collects an unresolved wrapper, `maskString` coerces it to "[object Object]" and scrubs
+    // nothing — the test would pass against a masker that cannot garble anything. The set secret is
+    // what makes the pass mean something.
+    file.config = { apiKey: { $secret: SECRET }, other: { $secret: { $env: "PATH_TEST_UNSET_SECRET_123" } } };
 
     const result = await runWorkflow(file, fixturesDir);
 
-    // The unset-variable message rides the same masked `error` field. Nothing to scrub — but it is
-    // on the path, so this pins that masking does not garble it.
+    // The unset-variable message rides the same masked `error` field. It names variables and config
+    // keys, never values, so a live masker has nothing in it to scrub — this pins that.
     expect(result.status).toBe("failed");
     expect(result.error).toContain("PATH_TEST_UNSET_SECRET_123");
-    expect(result.error).toContain('config key "apiKey"');
+    expect(result.error).toContain('config key "other"');
+    expect(result.error).not.toContain("[secret:");
   });
 
   it("emits a load-time warning for a short secret", async () => {

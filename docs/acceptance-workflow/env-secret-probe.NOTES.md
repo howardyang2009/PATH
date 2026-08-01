@@ -112,7 +112,8 @@ build log. Ticket #117 pinned that as a boundary rather than endorsing it; #123 
 *is* an audit surface (under `$env` the operator is often a secret store and the terminal often a
 retained log) and masked `RunResult.error` at the run's return.
 
-What did **not** change: `RunResult.output`. It is the run's product, the CLI prints it on success,
-and masking it would hand an operator `[secret:key]` where their pipeline's answer belongs. So a
-workflow whose output map *is* a secret still prints the real value — deliberately. The two
-assertions sit side by side in `env-secret.test.ts` for that reason.
+What did **not** change: the `output` of a **succeeded** run. It is the run's product, the CLI prints
+it, and masking it would hand an operator `[secret:key]` where their pipeline's answer belongs. So a
+workflow whose output map *is* a secret still prints the real value — deliberately. A failed or
+cancelled run has no output contract, so what it returns is masked along with its error; that pair is
+pinned in `run-workflow.test.ts`, where a file can be shaped for it.
