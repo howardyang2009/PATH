@@ -103,11 +103,16 @@ value, so a short or common one would over-replace and let "the artifact does no
 for the wrong reason. It is never written into a workflow file, a `--config` file, or a `--set`
 argument; `$env` is precisely what keeps it out of all three.
 
-## Known edge, pinned rather than fixed
+## The edge this file used to pin, since closed (#123)
 
-`path run` prints `run failed: <error>` on **its own stderr, unmasked**. Masking is a
-*persistence*-boundary concern (mvp spec §8.3) — the engine scrubs at its observation emit, and the
-`RunResult` handed back to the caller is documented as unmasked — so a credential on a failed step's
-stderr reaches the operator's terminal, and in CI the build log. The test pins this as a boundary so
-that changing it is deliberate and so the gap is not mistaken for covered. Fixing it is a decision
-about the `RunResult` contract: not one of map #113's locked decisions, and outside ticket #117.
+`path run` printed `run failed: <error>` on **its own stderr, unmasked** — masking was a
+*persistence*-boundary concern only, and the `RunResult` handed back to the caller was documented as
+unmasked, so a credential on a failed step's stderr reached the operator's terminal and, in CI, the
+build log. Ticket #117 pinned that as a boundary rather than endorsing it; #123 decided the terminal
+*is* an audit surface (under `$env` the operator is often a secret store and the terminal often a
+retained log) and masked `RunResult.error` at the run's return.
+
+What did **not** change: `RunResult.output`. It is the run's product, the CLI prints it on success,
+and masking it would hand an operator `[secret:key]` where their pipeline's answer belongs. So a
+workflow whose output map *is* a secret still prints the real value — deliberately. The two
+assertions sit side by side in `env-secret.test.ts` for that reason.

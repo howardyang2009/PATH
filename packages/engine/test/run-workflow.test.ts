@@ -186,7 +186,8 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     const { observer, persisted } = recordingObserver();
     const result = await runWorkflow(secretLeakFile(), fixturesDir, { observer });
 
-    // The spawned process received the real value: the unmasked RunResult carries it through.
+    // The spawned process received the real value, and `RunResult.output` — the run's product, and
+    // what the CLI prints on success — still carries it. Only `error` is masked (#123).
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ result: SECRET });
 
@@ -194,6 +195,41 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     const dump = persisted();
     expect(dump).not.toContain(SECRET);
     expect(dump).toContain("[secret:apiKey]");
+  });
+
+  // A failing variant of the same step: the secret still reaches stderr, and the non-zero exit puts
+  // the tail of that stderr into the run's error string.
+  function secretLeakFailingFile(): WorkflowFile {
+    const file = secretLeakFile();
+    (file.body[0] as { args: string[] }).args = [
+      "-e",
+      "process.stderr.write('E'+process.argv[1]);process.exit(3)",
+      "${config.apiKey}",
+    ];
+    return file;
+  }
+
+  it("masks the secret out of RunResult.error, the one field the CLI prints on failure (#123)", async () => {
+    const result = await runWorkflow(secretLeakFailingFile(), fixturesDir);
+
+    expect(result.status).toBe("failed");
+    // The caller's copy is masked too, not only the persisted one: `cli.ts` prints `runResult.error`
+    // on its own stderr, which in CI is a retained build log — an audit surface nobody chose.
+    expect(result.error).toContain("[secret:apiKey]");
+    expect(result.error).not.toContain(SECRET);
+  });
+
+  it("leaves the run-start failure message intact — it names variables, never values (#123)", async () => {
+    const file = secretLeakFile();
+    file.config = { apiKey: { $secret: { $env: "PATH_TEST_UNSET_SECRET_123" } } };
+
+    const result = await runWorkflow(file, fixturesDir);
+
+    // The unset-variable message rides the same masked `error` field. Nothing to scrub — but it is
+    // on the path, so this pins that masking does not garble it.
+    expect(result.status).toBe("failed");
+    expect(result.error).toContain("PATH_TEST_UNSET_SECRET_123");
+    expect(result.error).toContain('config key "apiKey"');
   });
 
   it("emits a load-time warning for a short secret", async () => {

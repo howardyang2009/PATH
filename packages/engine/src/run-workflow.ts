@@ -93,6 +93,11 @@ export interface RunResult {
    * the workflow has no output *contract* on a failed run.
    */
   output: JsonValue;
+  /**
+   * Present on failure. **Masked** (mvp spec §8.3, #123): the only field here that is, because it is
+   * the only one carrying text the engine did not construct, and every caller prints it somewhere —
+   * the CLI on its own stderr, which in CI is a build log. `output` above stays real.
+   */
   error?: string;
 }
 
@@ -639,7 +644,7 @@ export async function runWorkflow(
       }
     : async () => {};
 
-  return executeWorkflowRun({
+  const result = await executeWorkflowRun({
     file,
     fileDir,
     input: options.input ?? {},
@@ -660,6 +665,28 @@ export async function runWorkflow(
       semaphore: createProcessorSemaphore(options.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY),
     },
   });
+
+  // `error` is masked on the way out too (#123), and it is the *only* field of `RunResult` that is.
+  // Two halves of one decision:
+  //
+  // - **Why `error`.** It is the one field carrying text the engine did not construct — a failed
+  //   step's error is the tail of its stderr, where a client prints a rejected credential. `cli.ts`
+  //   prints it verbatim on its own stderr, which under `$env` is routinely a CI build log:
+  //   retained, searchable, and read by people who never held the credential. That is an audit
+  //   surface, so the persistence boundary is not the whole of it.
+  // - **Why not `output`.** It is the run's product and is deliberately real — the CLI prints it on
+  //   success, and a masked one would hand an operator `[secret:key]` where their pipeline's answer
+  //   belongs. Workers still get real values (mvp spec §8.3); this narrows one return field, not
+  //   the dataflow.
+  //
+  // Applied here rather than in the CLI because the masker is the run's, is built here, and is not
+  // exported (see index.ts) — a CLI-side mask would need it to cross that line. Nested runs need no
+  // masking of their own: a child's error is spliced into its parent's, so the root's `error` is
+  // where every one of them surfaces. The run-start `$env` failure rides this path too; it names
+  // variables and never values, so there is nothing in it to scrub — it is masked because it is on
+  // the path, not because it needs to be.
+  if (masker.isEmpty || result.error === undefined) return result;
+  return { ...result, error: masker.maskString(result.error) };
 }
 
 /**

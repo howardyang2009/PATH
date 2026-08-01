@@ -298,17 +298,28 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     }
   });
 
-  it("prints the *unmasked* error on the CLI's own stderr — the seam's stated edge", async () => {
+  it("prints the *masked* error on the CLI's own stderr — the operator's terminal, and CI's log", async () => {
     await expect(runProbe(["--set", "exit_code=3"])).resolves.toBe(1);
 
-    // Pinned as a boundary, not endorsed. Masking is a *persistence*-boundary concern (mvp spec
-    // §8.3): the engine scrubs at its observation emit, and `secret-mask.ts` states outright that
-    // "the RunResult returned to the caller is unmasked". `cli.ts` prints `runResult.error`, so a
-    // credential on a failed step's stderr reaches the operator's terminal — and in CI, the build
-    // log, which is an audit surface nobody chose. Changing that is a decision about the RunResult
-    // contract, out of this ticket's scope and not among map #113's locked ones; this assertion is
-    // here so the change is deliberate when it comes, and so the gap is not mistaken for covered.
-    expect(harness.stderr.join("\n")).toContain(TOKEN);
+    // This assertion used to pin the opposite, as the seam's stated edge (#117). #123 settled it:
+    // the CLI's stderr is an audit surface, because under `$env` the operator is often a secret
+    // store rather than a person and the terminal is often a retained CI build log. So
+    // `RunResult.error` is masked at the run's return — the one field beyond the persistence
+    // boundary that is.
+    const printed = harness.stderr.join("\n");
+    expect(printed).toContain("run failed:");
+    expect(printed).toContain(TOKEN_MASK);
+    expect(printed).not.toContain(TOKEN);
+  });
+
+  it("still prints the run's real output on success — masking narrows `error`, not the product", async () => {
+    await expect(runProbe()).resolves.toBe(0);
+
+    // The counterweight to the test above, and the reason `RunResult.output` was left alone: the
+    // CLI's success path prints the output map, which is what the run is *for*. Here it carries no
+    // credential (`probe_id` is `{"$env": ...}` unmarked), but a workflow whose output map is a
+    // secret would print the real value — deliberately.
+    expect(JSON.parse(harness.stdout.join("\n"))).toEqual({ probe_id: PROBE_ID });
   });
 });
 

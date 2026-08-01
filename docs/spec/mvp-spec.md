@@ -382,6 +382,15 @@ interface LogBackend {
 - **Replacement token:** `[secret:<config-key>]` (same value under two keys → first key wins).
 - **Workers receive real values** — masking is an audit-surface concern, not a dataflow
   restriction.
+- **The returned error is masked too, and it is the only thing outside persistence that is (#123).**
+  A run's `error` is the one string handed back that the engine did not construct — a failed step's
+  error is the tail of its stderr, which is where a client prints a rejected credential — and every
+  caller prints it: the CLI on its own stderr, the server on its console. Under `$env` that terminal
+  is routinely a CI build log: retained, searchable, read by people who never held the credential,
+  which is the exposure `$secret` exists to close. The run's **output** is *not* masked: it is the
+  product, the CLI prints it on success, and an operator is owed their pipeline's answer rather than
+  `[secret:key]`. The run-start unset-variable failure rides the same field and names variables, not
+  values — nothing in it to scrub.
 - **Documented limits:** transformed secrets (base64, embedded in emitted JSON) escape string
   matching — accepted, no taint-tracking in MVP. `$secret` values shorter than ~6 chars risk mass
   false-replacement → a warning, emitted at run start with the rest of the collection: an
