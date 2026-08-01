@@ -305,21 +305,13 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     // the CLI's stderr is an audit surface, because under `$env` the operator is often a secret
     // store rather than a person and the terminal is often a retained CI build log. So
     // `RunResult.error` is masked at the run's return — the one field beyond the persistence
-    // boundary that is.
+    // boundary that is. Its counterweight, `RunResult.output` staying real, needs a workflow whose
+    // output map *is* a secret; this probe's is `probe_id`, so it is pinned where a file can be
+    // shaped for it: `run-workflow.test.ts`, "hands the worker the real secret…".
     const printed = harness.stderr.join("\n");
     expect(printed).toContain("run failed:");
     expect(printed).toContain(TOKEN_MASK);
     expect(printed).not.toContain(TOKEN);
-  });
-
-  it("still prints the run's real output on success — masking narrows `error`, not the product", async () => {
-    await expect(runProbe()).resolves.toBe(0);
-
-    // The counterweight to the test above, and the reason `RunResult.output` was left alone: the
-    // CLI's success path prints the output map, which is what the run is *for*. Here it carries no
-    // credential (`probe_id` is `{"$env": ...}` unmarked), but a workflow whose output map is a
-    // secret would print the real value — deliberately.
-    expect(JSON.parse(harness.stdout.join("\n"))).toEqual({ probe_id: PROBE_ID });
   });
 });
 

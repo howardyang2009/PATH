@@ -93,11 +93,7 @@ export interface RunResult {
    * the workflow has no output *contract* on a failed run.
    */
   output: JsonValue;
-  /**
-   * Present on failure. **Masked** (mvp spec §8.3, #123): the only field here that is, because it is
-   * the only one carrying text the engine did not construct, and every caller prints it somewhere —
-   * the CLI on its own stderr, which in CI is a build log. `output` above stays real.
-   */
+  /** Present on failure, and **masked** — the only field here that is; see `runWorkflow`'s return. */
   error?: string;
 }
 
