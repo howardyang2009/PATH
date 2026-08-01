@@ -45,9 +45,10 @@ Four shapes carry weight and none is incidental:
 - **`probe_id` is env-sourced but not secret.** Map #113 rejected "env is always secret" because
   masking is by value: an env-sourced model name would get its literal string scrubbed out of every
   log event in the run. The probe pins the distinction by carrying both kinds through the same step.
-- **`exit_code` is an operator knob, not a second pipeline.** `--set exit_code=3` fails the step
-  with the credential on its stderr, which is the only way to reach a run's **error string** — the
-  one artifact class the happy path cannot produce.
+- **`exit_code` is an operator knob, not a second pipeline.** `--set exit_code=3` fails the step with
+  the credential on its stderr, which is the only way to reach a **secret-bearing error string** —
+  the one artifact class the happy path cannot produce. (The unset-variable case reaches an error
+  string too, but never one carrying a value: it names variables and config keys.)
 
 The checkpoint's pattern (`^[A-Za-z0-9._-]+$`) is the one assertion the workflow file can make about
 the value on its own: conditions cannot read `config` (deferred, mvp spec §10), so it cannot compare
@@ -70,7 +71,7 @@ have their payloads stripped, so without a condition-bearing event there is no t
 | Nothing else on the audit surface leaks | every file under `.path/`, `path.db` included, swept for the raw value |
 | An unset variable refuses the run before step 1 | run fails, error names the variable and its config key; no receipt; one `failed` run row, and the message on both log backends |
 | Two unset variables are named together | `2 environment variables are not set`, both named |
-| The CLI's own stderr **is** masked | `run failed:` carries `[secret:token]`, never the token (#123 — see below) |
+| The CLI's own stderr **is** masked | `run failed:` carries `[secret:token]`, never the token (#123 — see "The edge this file used to pin") |
 
 ## A surface the spec named that does not exist — since corrected (#124)
 

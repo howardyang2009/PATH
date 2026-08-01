@@ -10,8 +10,10 @@ import type { Observation } from "./run-observer.js";
  * effective config; then every persisted artifact — log events, input/output object files,
  * `context.json` write-throughs, the error a failed `step-finished` carries, captured stderr — is
  * string-scrubbed *by value* before it crosses the observer seam, each occurrence replaced with
- * `[secret:<config-key>]`. That event is where a failed run's error lives, and the only place: the
- * run row has status and no error column (#124).
+ * `[secret:<config-key>]`. That event is the only *record* of a failed run's error — the run row has
+ * status and no error column (#124) — though the text itself can also sit in `stderr.txt`, since a
+ * binary step's error is the tail of its stderr. Masking is by value across every artifact for
+ * exactly that reason: the same string reaches disk through more than one door.
  *
  * Masking is an audit-surface concern, not a dataflow restriction: the interpolated values handed
  * to workers stay real (see interpolate.ts), and a *succeeded* run returns its `output` — the run's
