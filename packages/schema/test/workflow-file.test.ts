@@ -272,6 +272,18 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 
+  it("reports a readable error for a misspelled config wrapper, dot-pathed to the value", () => {
+    // The worked example in the format doc (§8.3) — pinned here because that is the text an author
+    // reads when a `$env` typo would otherwise have handed the worker the wrapper.
+    const result = safeParseWorkflowFile({ ...minimal, config: { token: { $evn: "TOKEN" } } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toEqual([
+        'config.token: "$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")',
+      ]);
+    }
+  });
+
   it("reports a readable error for a wrong format version", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@1" });
     expect(result.success).toBe(false);

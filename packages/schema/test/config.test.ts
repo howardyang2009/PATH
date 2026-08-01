@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ConfigObjectSchema, ConfigValueSchema } from "../src/config.js";
+import { formatIssues } from "../src/format-issues.js";
 
 describe("ConfigValueSchema", () => {
   it("accepts JSON literal scalars", () => {
@@ -64,6 +65,35 @@ describe("ConfigValueSchema", () => {
     // Same rule as $secret above: an object that happens to have an $env key alongside others is
     // just a regular config object, not an env marking — and it is valid as one.
     expect(ConfigValueSchema.safeParse({ $env: "GITHUB_TOKEN", other: "field" }).success).toBe(true);
+  });
+
+  it("rejects an unknown sole $-prefixed key, naming it and what is known", () => {
+    // Asserted through formatIssues because that is the text an author actually reads at load.
+    const result = ConfigValueSchema.safeParse({ $evn: "GITHUB_TOKEN" });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    expect(formatIssues(result.error)).toEqual([
+      '"$evn" is a reserved key — a sole "$"-prefixed key names a config wrapper (known: "$secret", "$env")',
+    ]);
+  });
+
+  it("reserves the $-sole-key namespace at any depth, not only at the top level", () => {
+    const result = ConfigObjectSchema.safeParse({ credentials: [{ token: { $evn: "X" } }] });
+    expect(result.success).toBe(false);
+    if (result.success) return;
+    // The dot-path leads the author to the offending value rather than to the config root.
+    expect(formatIssues(result.error)).toEqual([expect.stringContaining("credentials.0.token: ")]);
+  });
+
+  it("leaves a config object's own keys alone — those are field names, not wrapper positions", () => {
+    // `config: {"$evn": "TOKEN"}` declares an awkwardly named field. Reserving here would make a
+    // one-field config mean something different from a two-field one.
+    expect(ConfigObjectSchema.safeParse({ $evn: "TOKEN" }).success).toBe(true);
+  });
+
+  it("leaves multi-key objects alone — a plain object carrying a $-key is still a plain object", () => {
+    // The line `isSecretWrapper` already draws: the marking must be the sole key to be a marking.
+    expect(ConfigValueSchema.safeParse({ $foo: 1, bar: 2 }).success).toBe(true);
   });
 
   it("allows $secret values nested anywhere in the config tree", () => {

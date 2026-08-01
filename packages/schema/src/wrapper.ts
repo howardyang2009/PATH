@@ -17,7 +17,18 @@ import type { JsonValue } from "./json-value.js";
  * ordinary object would silently become a wrapper the moment it grew a field with that name.
  */
 export function hasOnlyKey<K extends string>(value: object, key: K): value is Record<K, JsonValue> {
-  return Object.keys(value).length === 1 && Object.prototype.hasOwnProperty.call(value, key);
+  return soleKey(value) === key;
+}
+
+/**
+ * The object's only key, or `undefined` when it has none or more than one — the same sole-key rule
+ * read the other way round, for the caller that must answer *which* key rather than check a known
+ * one. `ConfigValueSchema` needs it to reject a sole `$`-prefixed key it does not recognise, and
+ * asking here keeps that rule stated once.
+ */
+export function soleKey(value: object): string | undefined {
+  const keys = Object.keys(value);
+  return keys.length === 1 ? keys[0] : undefined;
 }
 
 /** A JSON object rather than an array or `null` — the only shape a wrapper can take. */
