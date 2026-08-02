@@ -31,7 +31,6 @@ this document wins. §12 maps every section back to its originating decision.
 
 **Out of scope** (ruled out by the map; return only via a redrawn destination):
 
-- Workflow/step template mechanics (`extends`); nested files + config inheritance are the v0 reuse story.
 - Online design UI; PATH website/cloud (remote db/storage/log tables).
 - Remote engine workers; human/person workers.
 - Scheduling, todo-list features, run-path optimization.
@@ -42,6 +41,12 @@ this document wins. §12 maps every section back to its originating decision.
   cancellable. What a stop owes is truth about where the run got to, not the ability to resume it.
 
 **Deferred with the door held open** — the register of deliberate extension points is §10.
+
+Workflow/step template mechanics (`extends`) belong to that register, not to the list above. They
+are **not in v0**: nested workflow files (structural reuse) and config inheritance (value reuse) are
+the v0 reuse story, and nothing has yet wanted more. But `extends` adds a field to a format that
+rejects unknown fields and carries an `@`-version, so it arrives as an addition rather than a
+redrawn destination — which is what the two lists disagreed about until now.
 
 ## 2. Domain model
 
@@ -426,7 +431,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | Function-in-binary step | v-next shape: in-process JS-module call, not FFI |
 | `config` as a condition root | additive third root |
 | Input declarations on workflows | additive top-level field |
-| Templates / `extends` | strict unknown-field rejection + `@`-versioning keep it additive |
+| Templates / `extends` | nested files (structural reuse) + config inheritance (value reuse) are the v0 story; strict unknown-field rejection + `@`-versioning keep an addition to them safe (§1) |
 | Session reuse / processor pooling | fresh-processor rule is the contract; pooling is opt-in later |
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
 | Retry/resume | write-through `context.json` + truthful crash snapshots |
