@@ -1,0 +1,4 @@
+# Run artifacts of github-release-notes.workflow.json: the curl body and the notes it produced.
+# The committed, readable artifact of a run is github-release-notes.sample-output.md.
+issues.json
+release-notes-enriched.md
