@@ -426,7 +426,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | Deferred | Where the door is |
 |---|---|
 | `wait-one` / `do-not-wait` joins | `join` field stays in the format (`collect` only in v0) |
-| API-endpoint step type | curl via `binary` today; promote in v-next |
+| API-endpoint step type | curl via `binary` today; a real HTTP workflow (#129) did **not** promote it — `--config -` answers argv and needs no shell; the open cost is status-and-body. Trigger in #109 |
 | MCP/skill step types | live as LLM-worker `options`; revisit only for engine-direct calls |
 | Function-in-binary step | v-next shape: in-process JS-module call, not FFI |
 | `config` as a condition root | additive third root |

@@ -467,6 +467,13 @@ part of the measurement and no qualifying reader read the file. If #135 wants `Q
 who has not read #131 or #133 needs to read the workflow and answer the question; that reading would
 convert this entry, and the paragraph above is what it would be confirming or overturning.
 
+> **Converted at [#135](https://github.com/howardyang2009/PATH/issues/135): `unobservable` → `fine`.**
+> The reading above was overturned — a human observer answered that an upstream node publishing
+> `since_date` is ordinary authoring rather than an HTTP-specific locatability cost. Provenance and
+> caveats (the observer is the map's author, and scored after the stakes were disclosed) are in
+> [api-door-verdict.md §4](api-door-verdict.md). This paragraph is left as written; #134's record is
+> not rewritten.
+
 ---
 
 ## 3. Unanticipated — pain the rubric did not pre-register
