@@ -1,5 +1,122 @@
 # Changelog
 
+## v0.4.3 — 2026-08-02
+
+Minor: the first of #109's three deferred doors is shipped, and the second architecture-review pass
+that had been sitting merged-but-unreleased on `main` ships with it. `$env` is the feature — a config
+value can name an environment variable instead of carrying a literal, and can compose with `$secret`
+so the sourced value is both usable and masked. What it earns is narrower than "run non-interactive",
+which already worked: a secret becomes **addressable** (`${config.token}` into argv, prompt, input)
+and **maskable** (it joins the collected-secret set) without ever sitting in a workflow file, a
+`--config` file on disk, or `--set` in shell history.
+
+The format stays `path/workflow@0`. Two things about it change for an author. `$secret`'s value
+widens from `string` to `string | {"$env": "NAME"}` — one-way nesting, `$env` inside `$secret` and
+never the reverse. And the `$`-sole-key namespace is now **reserved**: any sole-key object whose key
+starts with `$` and is not a known wrapper is a load error, where before `{"$evn": "TOKEN"}` passed
+silently as literal data and the worker got the wrapper instead of the token. That is the one change
+here that can reject a file which loaded in v0.4.2.
+
+Resolution is eager and fails the whole run before step 1, naming **every** missing variable at once
+— CI wants one failure listing everything, not step 14 dying several LLM calls in. It runs *before*
+secret collection, forced by masking-by-value (§8.3): the masker must collect the resolved token,
+never the literal variable name. Ownership went the way #98 set — `@path/schema` owns the shape and
+the one depth walk (`wrapper.ts`, `env.ts`, `secret.ts`), each engine reader keeps only its visitor
+(`resolve-env.ts`, `secret-mask.ts`).
+
+The audit surface tightened where the acceptance case found it thin: `RunResult.error`, and a
+non-succeeded run's `output`, are now masked at the run's return. A succeeded run's output stays
+real — it is the pipeline's answer, and handing an operator `[secret:key]` where it belongs would be
+the wrong trade. One limit is documented rather than closed: a thrown *bug* escapes masking, because
+the engine re-throws rather than swallowing it into a failed run, so its message and stack reach the
+CLI's caller and the server's console unscrubbed (§8.3).
+
+Suite 754 → 827 across the release, every existing test passing untouched at each step.
+
+### Features
+
+- feat(schema,engine): `$env` secret sourcing (map #113, built by #114/#115/#116/#117, docs #118) —
+  `{"$env": "NAME"}` sources a config value from the environment; `{"$secret": {"$env": "NAME"}}`
+  sources *and* marks secret. `mvp-spec` §10's `$env` row is retired, §8.3 carries the shipped rule,
+  and format §8.3 is normative for the wrapper and the `$`-sole-key reservation. Masking stays
+  by-value deliberately — "env is always secret" was rejected, because an env-sourced model name
+  would get its literal string scrubbed out of every log event and input file in the run.
+
+- feat(engine): mask what a finished run hands back (resolves #123, #124) — `path run` printed
+  `run failed: ${result.error}` unmasked, so a credential that reached a failed step's stderr reached
+  the operator's terminal and, in CI, the retained build log. Under `$env` the operator is frequently
+  a secret store rather than a person, which is the exposure `$secret` exists to close. Masked at the
+  run's return in `runWorkflow`, where the masker already lives; `@path/server`'s console is closed by
+  the same change without `live-runs.ts` touching the masker.
+
+### Fixes
+
+- feat(engine): replay a run's narrative from `log_events` when the NDJSON backend is off
+  (resolves #110) — `RunArchive.events()` read `run.log` and nothing else, so a run configured
+  `log_backends: ["db"]` — a supported configuration under §8.2, not a degraded one — had no SSE
+  replay at all, though every event of it was already in the table. A mid-run subscriber saw only
+  what arrived after it connected, and a finished run streamed `[]`. NDJSON stays authoritative
+  where it exists, so every replay in the default configuration is byte-identical to before.
+
+### Internal
+
+- refactor(engine): the binary step's process driver is not the run-tree walk (resolves #94) — spawn,
+  stdio wiring, exit-code interpretation, SIGTERM on abort and EPIPE tolerance sat inline in the
+  module that walks the run tree, while their peer for `prompt` steps had its own module. The cost
+  was testability: the driver's sharpest edges — a killed child exits null and that is a cancellation,
+  not a non-zero-exit failure (§5.6) — had no test that named them.
+
+- refactor(engine,schema): withdraw the surface each deepening superseded (resolves #96) — `Project`
+  owns observer and log-backend assembly, `runWorkflow` owns the run's resources, `openProject` owns
+  the archive, and every ingredient of all three was still exported, so a consumer could assemble by
+  hand around the owner. Two rules now stated in the index: assembly is not exported, and a seam's
+  vocabulary stays even when its default adapter goes private.
+
+- refactor(schema,engine): one owner for what a `$secret` is (resolves #98) — the sole-key rule and
+  the any-depth rule were written four times across two packages; `unwrapSecret` and `isSecretWrapper`
+  were byte-identical under two names, neither importing the schema that already defined the shape.
+  `mapSecrets` is the one walk, and the two engine readers become the line that differs. This is what
+  made the `$env` wrapper cheap a release later.
+
+- refactor(engine): the write side of `.path/` is one module, not two (resolves #100) — a `RunStore`
+  interface whose five methods were four one-line delegations, and whose seam could not be stated.
+  `run-store-writer.ts` is gone; the #72 guarantees survive verbatim with their docblock, and
+  `paths.ts` now spells the four blob filenames once instead of `run-archive.ts` keeping a second map
+  they could disagree about.
+
+- refactor(engine): the db log backend is one sink that knows its table (resolves #104) — a 28-line
+  backend with no implementation without its store, and a 31-line store with no caller but the
+  backend. Merged, and `insertLogEvent` is private, which is the point rather than a side effect: the
+  sink is the only way a row reaches `log_events`, and the engine assembles the envelope, the `seq`
+  and the masking before it.
+
+- test(engine): pin node semantics at the seam, not twice (resolves #102) — #87 shipped `runNode` so
+  node semantics were reachable without driving a whole run, but `run-workflow.test.ts` never shrank,
+  so branch, loop, join and prompt semantics were pinned in two places. 61 cases there become 35, 24
+  at the seam become 40. What is left is what only a whole run has: secret masking, nested trees,
+  observer ordering, config inheritance, and the caps that span nested runs.
+
+- test(schema): make a wire field the domain gained a compile error (resolves #107) — a new field on
+  `RunRecord` failed to compile at `fromDbRow` but not at `toWireRunRecord`, so a new column could
+  reach the db and never reach the API. `keyof WireRunRecord` must now equal the snake-cased
+  `keyof RunRecord`; verified by adding a field to each side in turn. `WireRunRecord` stays written
+  out by hand — a *derived* wire type would let a domain rename silently rename a field of the v0
+  contract (server-api-v0.md §4).
+
+### Docs
+
+- docs(readme): status through v0.4.2 and what's open (#111) — the Status block still named v0.4.0 as
+  the latest release and listed the cancellation tickets as the frontier. Now one line per release,
+  the two declined review candidates named so the next reader finds them rather than re-deriving
+  them, and a What's-next pointing at #109's v-next register.
+
+### Other
+
+- The `$env` map (#113) closed with its parked questions rehomed rather than dropped: unset vs empty
+  is decided in §8.3 (`FOO=` counts as set and trips the short-secret warning; only a genuinely unset
+  variable fails the run), whether a run *row* should carry its error is in §10's deferred register
+  via #124, and whether a run-start failure *reads* well graduates with a viewer to look at it.
+
 ## v0.4.2 — 2026-07-28
 
 Patch: six candidates from an architecture review, five built and one refused. v0.4.1 gave the
