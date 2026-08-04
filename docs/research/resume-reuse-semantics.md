@@ -100,6 +100,14 @@ pooling lands, reuse-of-recorded-output must be re-examined; the two features in
 
 ### 4. The unit is the run, keyed on `(node, input object)`; per-subtree is its collapsed form
 
+> **Superseded in part by [#146](https://github.com/howardyang2009/PATH/issues/146)**
+> ([resume-invalidation-semantics.md](resume-invalidation-semantics.md)): the key this finding
+> proposes — `(node, input object)`, gated by an equality check — is narrowed to `(node id,
+> status)`, dropping the input-object comparison. #146 was #145's own delegate for *how* to
+> compute "still holds"; it answers "trivially, by status alone." The unit-is-the-run and
+> per-subtree-collapse claims below are unaffected — only the equality-gate mechanism changes.
+> Left as originally written for the historical record.
+
 A workflow-run succeeded means every child run succeeded (fail-fast), and by invariant 3 it has a
 single output object. Two reuse granularities are conceivable — reuse the parent's output object and
 skip the whole subtree, or walk the tree reusing child-by-child. Under **unchanged inputs** they
