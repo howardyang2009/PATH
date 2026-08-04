@@ -36,9 +36,14 @@ this document wins. §12 maps every section back to its originating decision.
 - Scheduling, todo-list features, run-path optimization.
 - Transactions, chatbot workflow generation, single-file compilation (v2 items).
 - Platforms other than macOS (the code is portable Node, but only macOS is exercised).
-- Run retry, and resume of crash-interrupted runs — MVP failure behavior is fail-fast only (§5.6).
-  Fail-fast is about *failure*: an operator stopping a run is not a failure, and a root run **is**
-  cancellable. What a stop owes is truth about where the run got to, not the ability to resume it.
+- Automatic in-run retry (backoff, `drain-then-fail`, `tolerate-failures`, per-branch `on-failure`)
+  — a failure policy §5.6 rejects deliberately, independent of resume below.
+
+**Resume of crash-interrupted runs is no longer ruled out.** Its semantics are settled
+([map #142](https://github.com/howardyang2009/PATH/issues/142),
+[resume-door-verdict.md](../research/resume-door-verdict.md)); the CLI/format/engine surface is
+tracked at [the next map](https://github.com/howardyang2009/PATH/issues/158) and is not yet built.
+§5.6 states what a stop still owes in the meantime.
 
 **Deferred with the door held open** — the register of deliberate extension points is §10.
 
@@ -198,7 +203,9 @@ at, and a client watching a run needs a run to watch. A failing parallel branch 
 best-effort** (processor killed); `cancelled` is a distinct run status from `failed`; no publishes
 from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.
-Retry and resume are out of scope (§1).
+Automatic in-run retry stays out of scope (§1). Resume — an operator-initiated re-run of a stopped
+tree, cause-blind, reusing every recorded `succeeded` output — is settled at the semantics level and
+not yet built; see [resume-door-verdict.md](../research/resume-door-verdict.md) and §1.
 
 **External abort.** An operator may **cancel a root run in flight** (`RunOptions.signal`). The abort
 reaches every descendant run and leaf step of the tree, and the root run ends **`cancelled`** — it
@@ -208,7 +215,11 @@ scope, since it would need an answer to "does the parent continue?" that collide
 There is no intermediate `cancelling` status — the unwind window is client-local UI state. A signal
 already aborted when the run is launched cancels it before its first step. Cancellation is
 **best-effort** in both causes: the engine asks, and holds no kill deadline and no force path.
-`run-cancelled` names which cause killed a run (`operator` | `sibling-failed`, §8.1).
+`run-cancelled` names which cause killed a run (`operator` | `sibling-failed`, §8.1). What a stop
+owes is truth about where the run got to, not the ability to resume it — and that truthfulness is
+now the precondition resume's reuse mechanism depends on
+([resume-door-verdict.md §4.2](../research/resume-door-verdict.md)): a resumed run trusts a
+run's recorded status without re-verifying it.
 
 **The forced exit is the one exception, and it is accepted.** The engine has no force path, but the
 CLI's second `^C` (§3) forces the *process*, which abandons the unwind wherever it had got to. The
@@ -217,7 +228,8 @@ leaves — the terminal `step-finished` is never written, and the backends never
 lying `running` row this section says cancellation avoids. That is the price of the escape hatch,
 and it is deliberate: an operator forcing an exit has decided that getting their terminal back
 outranks a truthful record, and making the force path wait for writes would defeat it. Nothing
-reconciles such rows afterwards — resume of interrupted runs is out of scope (§1) — so a forced run
+reconciles such rows afterwards — no startup reconcile pass exists, and resume does not own building
+one ([resume-door-verdict.md §5](../research/resume-door-verdict.md)) — so a forced run
 stays `running` in `path runs`, in `GET /v0/runs`, and in any viewer over it, until the operator
 removes it with `path runs rm <run-id>` (§3). Cancelling without forcing has none of these
 consequences; this applies to the second `^C` alone.
@@ -232,6 +244,13 @@ are recorded **leaf-only** — on the prompt-step runs where tokens were actuall
 stores derived totals. Subtree/whole-run figures are a read-time SUM over descendants (the CLI
 may display them), so ground truth exists exactly once and nothing can drift. Control-node
 activity is recorded as typed log events (§8), attributed to the enclosing workflow-step's run.
+
+**Amendment for a successor run** (resume, §1, §5.6): a reused node's usage/`estimated_cost_usd`
+row lives only in the *original* tree — a successor run's own descendants do not include it. The
+SUM traverses the reuse-marker link into the original tree for every reused node rather than
+duplicating rows into the new tree, which would create two ground truths for the same spend, the
+exact failure this section's "exactly once" rule exists to prevent
+([resume-door-verdict.md §4.3](../research/resume-door-verdict.md)).
 
 ## 6. Persistence
 
@@ -434,7 +453,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | Templates / `extends` | nested files (structural reuse) + config inheritance (value reuse) are the v0 story; strict unknown-field rejection + `@`-versioning keep an addition to them safe (§1) |
 | Session reuse / processor pooling | fresh-processor rule is the contract; pooling is opt-in later |
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
-| Retry/resume | write-through `context.json` + truthful crash snapshots |
+| Retry/resume | Semantics settled — map [#142](https://github.com/howardyang2009/PATH/issues/142), verdict [resume-door-verdict.md](../research/resume-door-verdict.md). Automatic in-run retry stays out of scope; resume is one cause-blind operator verb. CLI/format/engine surface tracked at [#158](https://github.com/howardyang2009/PATH/issues/158) |
 | Remote log backends | async `LogBackend` seam |
 | A failed run's error on the run row | additive to §5.7's row content; today the error is the log stream's alone (§8.3), so a run row must be joined to it to say *why* (#124, and map #113's parked server/SSE/viewer question) |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |
