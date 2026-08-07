@@ -40,6 +40,7 @@ describe("openDb", () => {
         "output_ref",
         "usage",
         "estimated_cost_usd",
+        "resumed_from_root_run_id",
       ]),
     );
     db.close();
@@ -70,5 +71,15 @@ describe("openDb", () => {
 
     expect(() => openDb(dbFile)).toThrow(SchemaVersionError);
     expect(() => openDb(dbFile)).toThrow(/999/);
+  });
+
+  it("refuses to open a pre-#169 version-2 db (no resumed_from_root_run_id column)", () => {
+    const dbFile = join(dir, "path.db");
+    const raw = new Database(dbFile);
+    raw.pragma("user_version = 2");
+    raw.close();
+
+    expect(() => openDb(dbFile)).toThrow(SchemaVersionError);
+    expect(() => openDb(dbFile)).toThrow(/2/);
   });
 });

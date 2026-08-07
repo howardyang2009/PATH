@@ -19,6 +19,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
     output_ref: null,
     usage: null,
     estimated_cost_usd: null,
+    resumed_from_root_run_id: null,
     ...overrides,
   };
 }

@@ -41,6 +41,7 @@ const record: RunRecord = {
   outputRef: "root-1/run-1/output.json",
   usage: { input_tokens: 1, output_tokens: 2 },
   estimatedCostUsd: 0.001,
+  resumedFromRootRunId: null,
 };
 
 /** The nullable half, so the round trip is exercised on both shapes of a row. */
@@ -57,6 +58,7 @@ const emptyRecord: RunRecord = {
   outputRef: null,
   usage: null,
   estimatedCostUsd: null,
+  resumedFromRootRunId: null,
 };
 
 describe("the v0 wire record", () => {
@@ -74,6 +76,7 @@ describe("the v0 wire record", () => {
       output_ref: "root-1/run-1/output.json",
       usage: { input_tokens: 1, output_tokens: 2 },
       estimated_cost_usd: 0.001,
+      resumed_from_root_run_id: null,
     });
   });
 
@@ -91,6 +94,7 @@ describe("the v0 wire record", () => {
       output_ref: null,
       usage: null,
       estimated_cost_usd: null,
+      resumed_from_root_run_id: null,
     });
   });
 
@@ -103,6 +107,7 @@ describe("the v0 wire record", () => {
       "node_id",
       "output_ref",
       "parent_run_id",
+      "resumed_from_root_run_id",
       "root_run_id",
       "run_id",
       "started_at",
