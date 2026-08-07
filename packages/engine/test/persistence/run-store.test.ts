@@ -94,6 +94,28 @@ describe("run-store", () => {
     expect(getRunsForRoot(db, "r1")[0]?.inputRef).toBeNull();
   });
 
+  // Meaningful only on root rows (#168): set once at a successor root run's insert time to the
+  // immediate predecessor's root run id.
+  it("insertRun records resumedFromRootRunId on a successor root run and reads it back", () => {
+    insertRun(db, { runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, {
+      runId: "root-2",
+      rootRunId: "root-2",
+      parentRunId: null,
+      nodeId: null,
+      worker: null,
+      status: "running",
+      resumedFromRootRunId: "root-1",
+    });
+
+    expect(getRunsForRoot(db, "root-2")[0]?.resumedFromRootRunId).toBe("root-1");
+  });
+
+  it("insertRun leaves resumedFromRootRunId null when there is none", () => {
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    expect(getRunsForRoot(db, "r1")[0]?.resumedFromRootRunId).toBeNull();
+  });
+
   it("setRunOutputRef records the output ref once the run has succeeded", () => {
     insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
     setRunOutputRef(db, "r1", "runs/r1/r1/output.json");
@@ -154,9 +176,20 @@ describe("run-store", () => {
       worker: { type: "engine" },
       status: "succeeded",
     });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, {
+      runId: "b",
+      rootRunId: "b",
+      parentRunId: null,
+      nodeId: null,
+      worker: null,
+      status: "running",
+      resumedFromRootRunId: "a",
+    });
 
-    expect(listRootRuns(db).map((r) => r.runId)).toEqual(["b", "a"]);
+    const rows = listRootRuns(db);
+    expect(rows.map((r) => r.runId)).toEqual(["b", "a"]);
+    expect(rows.find((r) => r.runId === "b")?.resumedFromRootRunId).toBe("a");
+    expect(rows.find((r) => r.runId === "a")?.resumedFromRootRunId).toBeNull();
   });
 
   it("listRootRuns caps the result at limit (default 50)", () => {

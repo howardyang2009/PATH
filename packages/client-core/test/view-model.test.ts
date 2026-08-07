@@ -32,6 +32,7 @@ function tree(status: RunViewState["status"], output: RunTreeResponse["output"] 
         output_ref: null,
         usage: null,
         estimated_cost_usd: null,
+        resumed_from_root_run_id: null,
       },
     ],
   };
@@ -110,6 +111,7 @@ describe("RunViewModel", () => {
       output_ref: null,
       usage: null,
       estimated_cost_usd: null,
+      resumed_from_root_run_id: null,
     });
     model.hydrate(reread);
 

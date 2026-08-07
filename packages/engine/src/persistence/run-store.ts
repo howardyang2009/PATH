@@ -14,12 +14,14 @@ export interface NewRunRow {
   status: RunStatus;
   /** Written with the row: the input blob is always on disk before the row exists (#72). */
   inputRef?: string;
+  /** Meaningful only on a root row (#168): the predecessor's root run id for a resumed tree. */
+  resumedFromRootRunId?: string | null;
 }
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, input_ref)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @worker, @status, @startedAt, @inputRef)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, input_ref, resumed_from_root_run_id)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -29,6 +31,7 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     status: row.status,
     startedAt: new Date().toISOString(),
     inputRef: row.inputRef ?? null,
+    resumedFromRootRunId: row.resumedFromRootRunId ?? null,
   });
 }
 
@@ -81,6 +84,7 @@ interface RunRowDb {
   output_ref: string | null;
   usage: string | null;
   estimated_cost_usd: number | null;
+  resumed_from_root_run_id: string | null;
 }
 
 function fromDbRow(row: RunRowDb): RunRecord {
@@ -97,6 +101,7 @@ function fromDbRow(row: RunRowDb): RunRecord {
     outputRef: row.output_ref,
     usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
     estimatedCostUsd: row.estimated_cost_usd,
+    resumedFromRootRunId: row.resumed_from_root_run_id,
   };
 }
 

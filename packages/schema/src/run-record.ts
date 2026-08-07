@@ -31,4 +31,6 @@ export interface RunRecord {
   outputRef: string | null;
   usage: JsonValue | null;
   estimatedCostUsd: number | null;
+  /** Null except on a root row created by resuming a prior tree — that predecessor's root run id (#168). */
+  resumedFromRootRunId: string | null;
 }

@@ -11,8 +11,13 @@ import Database from "better-sqlite3";
  * Bumped to 2 in #19 to add the `log_events` table (the db log backend, mvp spec §8.2) — an
  * existing pre-#19 db (version 1, no log table) refuses to open with a clear message rather than
  * silently lacking the table a run would then fail to write to.
+ *
+ * Bumped to 3 in #169 to add `runs.resumed_from_root_run_id` (meaningful only on root rows — the
+ * immediate predecessor's root run id, set once at a successor root run's insert time; #168's
+ * resume feature). Same precedent as the #19 bump: an existing pre-#169 db refuses to open rather
+ * than silently lacking the column a resumed run would then fail to write to.
  */
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export class SchemaVersionError extends Error {}
 
@@ -29,7 +34,8 @@ const RUNS_TABLE_DDL = `
     input_ref TEXT,
     output_ref TEXT,
     usage TEXT,
-    estimated_cost_usd REAL
+    estimated_cost_usd REAL,
+    resumed_from_root_run_id TEXT
   );
   CREATE INDEX IF NOT EXISTS runs_root_run_id_idx ON runs (root_run_id);
 `;
