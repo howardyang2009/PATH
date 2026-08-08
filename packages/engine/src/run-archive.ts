@@ -10,6 +10,7 @@ import { dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "
 import {
   deleteAllRuns,
   deleteRunsForRoot,
+  existingRunIds,
   getRunsForRoot,
   listRootRuns,
 } from "./persistence/run-store.js";
@@ -38,6 +39,13 @@ import {
 export interface RunArchive {
   /** Root runs, most recent first (server-api-v0.md §3). */
   listRoots(options?: ListRootsOptions): RunRecord[];
+  /**
+   * Which of the given run ids still have rows — the storage fact behind `path runs`' `resumed-from`
+   * column (#174), where a predecessor that has been `rm`'d must render `(deleted)` while one merely
+   * off the current page renders live. Pagination and existence are different questions, so a
+   * listing that has already capped its rows can still ask this about any id.
+   */
+  existingRunIds(ids: readonly string[]): Set<string>;
   /**
    * One root run's tree, or `null` when no rows exist for this id — the single "is this run known"
    * question every read path asks first.
@@ -112,6 +120,10 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
   return {
     listRoots(options: ListRootsOptions = {}): RunRecord[] {
       return listRootRuns(db, options);
+    },
+
+    existingRunIds(ids: readonly string[]): Set<string> {
+      return existingRunIds(db, ids);
     },
 
     tree(rootRunId: string): RunTree | null {

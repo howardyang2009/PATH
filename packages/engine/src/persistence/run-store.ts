@@ -141,6 +141,23 @@ export function listRootRuns(db: Database.Database, options: ListRootRunsOptions
   return rows.map(fromDbRow);
 }
 
+/**
+ * Which of the given run ids still have a row, as a set. Used to tell a live predecessor from a
+ * deleted one when rendering `resumed-from` (#174): a run's `resumedFromRootRunId` names a root that
+ * may since have been `runs rm`'d, and existence — not membership of any listing page — is what
+ * decides whether it renders live or `(deleted)`. Duplicates and an empty input are handled here so
+ * callers can pass the raw column straight through.
+ */
+export function existingRunIds(db: Database.Database, ids: readonly string[]): Set<string> {
+  const unique = [...new Set(ids)];
+  if (unique.length === 0) return new Set();
+  const placeholders = unique.map(() => "?").join(", ");
+  const rows = db
+    .prepare(`SELECT run_id FROM runs WHERE run_id IN (${placeholders})`)
+    .all(...unique) as { run_id: string }[];
+  return new Set(rows.map((row) => row.run_id));
+}
+
 /** Used by `path runs rm <root-run-id>` (mvp spec §6) — deletes one root run's rows. */
 export function deleteRunsForRoot(db: Database.Database, rootRunId: string): number {
   return db.prepare(`DELETE FROM runs WHERE root_run_id = @rootRunId`).run({ rootRunId }).changes;
