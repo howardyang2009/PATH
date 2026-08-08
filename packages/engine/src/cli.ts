@@ -38,7 +38,7 @@ const consoleIo: CliIo = {
 const RUN_USAGE =
   "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
-  "usage: path runs [--limit <n>] [--status <status>] | path runs rm <root-run-id> | path runs prune";
+  "usage: path runs [--limit <n>] [--status <status>] | path runs rm [--force] <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -435,15 +435,25 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   const [subcommand, ...rest] = args;
 
   if (subcommand === "rm") {
-    const rootRunId = rest[0];
+    // `--force` overrides the live-reuse-marker block (#175). Splitting flags from operands keeps the
+    // existing "exactly one id" check counting ids, not the flag — `rm --force <id>` and `rm <id>`
+    // both carry one operand.
+    const force = rest.includes("--force");
+    const unknownFlag = rest.find((arg) => arg.startsWith("--") && arg !== "--force");
+    if (unknownFlag !== undefined) {
+      io.error(`unknown flag "${unknownFlag}"\n${RUNS_USAGE}`);
+      return 2;
+    }
+    const operands = rest.filter((arg) => !arg.startsWith("--"));
+    const rootRunId = operands[0];
     if (!rootRunId) {
       io.error(RUNS_USAGE);
       return 2;
     }
     // One id, not a list: a second operand used to be dropped in silence, so an operator who typed
     // two ids watched one run survive a command they believed had removed it (#61).
-    if (rest.length > 1) {
-      io.error(`runs rm takes exactly one run id, got ${rest.length}\n${RUNS_USAGE}`);
+    if (operands.length > 1) {
+      io.error(`runs rm takes exactly one run id, got ${operands.length}\n${RUNS_USAGE}`);
       return 2;
     }
 
@@ -453,6 +463,18 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 1;
     }
     try {
+      // The guard reads before deleting: a live successor tree still reusing this tree's data blocks
+      // the delete by default, so `rm` never silently strands a reference a later resume or cost
+      // query would read from (#175). An id with no rows has no blockers, so a not-found id still
+      // falls through to `remove`'s own "no run found" below rather than being masked by the guard.
+      const blockers = opened.archive.blockingSuccessors(rootRunId);
+      if (blockers.length > 0 && !force) {
+        io.error(
+          `refusing to remove ${rootRunId}: live successor run(s) reuse its data: ${blockers.join(", ")}\n` +
+            `re-run with --force to delete it anyway — those successors would keep a dangling reference`,
+        );
+        return 1;
+      }
       // "Found" means either store held something — an orphaned directory with no rows still
       // counts, so `rm` finishes a half-done cleanup rather than reporting "not found" while
       // deleting it anyway. Which stores there are, and that they go together (mvp spec §6), is
@@ -461,11 +483,17 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
         io.error(`no run found with id "${rootRunId}"`);
         return 1;
       }
+      io.log(`removed run ${rootRunId}`);
+      // `--force` deletes exactly the named tree, no cascade — so the successors it just orphaned are
+      // named here (they were blockers until the delete landed), or the dangling reference stays
+      // invisible until something later reads through it.
+      if (blockers.length > 0) {
+        io.log(`orphaned successor run(s): ${blockers.join(", ")}`);
+      }
     } finally {
       opened.close();
     }
 
-    io.log(`removed run ${rootRunId}`);
     return 0;
   }
 

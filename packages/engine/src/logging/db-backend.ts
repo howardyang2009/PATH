@@ -1,4 +1,4 @@
-import { type LogEvent, LogEventSchema } from "@path/schema";
+import { type LogEvent, LogEventSchema, type ReuseMarkerEvent } from "@path/schema";
 import type Database from "better-sqlite3";
 import type { LogBackend } from "./log-backend.js";
 
@@ -59,4 +59,20 @@ export function getLogEventsForRoot(db: Database.Database, rootRunId: string): L
     .prepare(`SELECT event FROM log_events WHERE root_run_id = @rootRunId ORDER BY seq`)
     .all({ rootRunId }) as { event: string }[];
   return rows.map((row) => LogEventSchema.parse(JSON.parse(row.event)));
+}
+
+/** One reuse-marker as the `rm` guard reads it (#175): which root run holds it, and which run in the
+ * *original* tree its data lives in. `holderRootRunId` is the marker's own `root_run_id` column — the
+ * successor tree that reused the node — and `originalRunId` its `original_run_id` payload, the run the
+ * marker back-references. `runs rm` resolves the latter against the tree it is about to delete to know
+ * whether a live successor still depends on that tree's data. Project-wide: the `type` column is
+ * denormalized precisely so this scan need not open every tree's log. */
+export function reuseMarkerReferences(db: Database.Database): { holderRootRunId: string; originalRunId: string }[] {
+  const rows = db
+    .prepare(`SELECT root_run_id, event FROM log_events WHERE type = 'reuse-marker'`)
+    .all() as { root_run_id: string; event: string }[];
+  return rows.map((row) => {
+    const event = LogEventSchema.parse(JSON.parse(row.event)) as ReuseMarkerEvent;
+    return { holderRootRunId: row.root_run_id, originalRunId: event.original_run_id };
+  });
 }

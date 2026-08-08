@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import type { JsonValue, LogEvent, RunRecord, RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
-import { getLogEventsForRoot } from "./logging/db-backend.js";
+import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
@@ -51,6 +51,17 @@ export interface RunArchive {
    * question every read path asks first.
    */
   tree(rootRunId: string): RunTree | null;
+  /**
+   * The live successor trees that would be orphaned by deleting `rootRunId` — every *other* root run
+   * still holding a reuse-marker whose `original_run_id` points at a run inside this tree (#175). The
+   * back-reference is resolved by membership: a marker blocks iff the run it names is one of this
+   * tree's own rows, which is the `original_run_id → root-run-id` resolution in its collapsed form
+   * (the run belongs to exactly one root). Root run ids only, sorted, deduplicated. A holder whose
+   * own rows are already gone (its tree was `rm`'d, leaving orphaned log rows `rm` does not clear) is
+   * not live and does not block. `runs rm` refuses by default when this is non-empty and names these
+   * in its `--force` output; the archive computes the fact and leaves the policy to the CLI.
+   */
+  blockingSuccessors(rootRunId: string): string[];
   /**
    * Removes one root run's rows *and* its on-disk tree, which mvp spec §6 requires happen together
    * so the two stores never drift. `false` when neither store held anything for the id — an
@@ -130,6 +141,21 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
       return makeTree(db, dir, rootRunId, runs);
+    },
+
+    blockingSuccessors(rootRunId: string): string[] {
+      const targetRunIds = new Set(getRunsForRoot(db, rootRunId).map((run) => run.runId));
+      if (targetRunIds.size === 0) return [];
+      const holders = new Set(
+        reuseMarkerReferences(db)
+          .filter((ref) => ref.holderRootRunId !== rootRunId && targetRunIds.has(ref.originalRunId))
+          .map((ref) => ref.holderRootRunId),
+      );
+      if (holders.size === 0) return [];
+      // A holder whose tree was `rm`'d leaves its log rows behind (rm clears `runs`, not `log_events`),
+      // so a dead holder can still name this tree — existence in `runs` is what makes it a live block.
+      const live = existingRunIds(db, [...holders]);
+      return [...holders].filter((id) => live.has(id)).sort();
     },
 
     remove(rootRunId: string): boolean {
