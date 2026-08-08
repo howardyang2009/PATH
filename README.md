@@ -51,10 +51,10 @@ The bins are TypeScript entry points run through `tsx`; there is no build step a
 first argument is the project directory — where `.path/` is read and written — and it defaults to the
 cwd; the engine CLI instead derives its project directory from the workflow file's own location.
 
-## Status (2026-07-30)
+## Status (2026-08-08)
 
-Latest release: **v0.4.2** (2026-07-28) — see `CHANGELOG.md` for the full history. `main` is green:
-`pnpm -r run typecheck` clean, 760 tests passing (schema 174, engine 377, viewer 89, server 78,
+Latest release: **v0.4.3** (2026-08-02) — see `CHANGELOG.md` for the full history. `main` is green:
+`pnpm -r run typecheck` clean, 899 tests passing (schema 201, engine 488, viewer 89, server 79,
 client-core 42).
 
 The MVP is done — all three wayfinder maps are closed (#1 spec, #29 server API, #40 viewer) and the
@@ -70,30 +70,35 @@ release-notes pipeline passes its acceptance run (mvp spec §11). The last three
 - **v0.4.2** — first architecture review: five deepenings built (`RunArchive`, `LiveRuns`, the
   event-frame codec, `runNode`, `eventOutcome`/`buildRunTree`), a sixth refused with its reasons filed
   (#91), and a real masking bug shipped as the fix it turned up.
+- **v0.4.3** — the second architecture review (every recent deepening left the module it superseded
+  in place; six withdrawals landed, two declined with reasons filed) ships alongside the first of
+  #109's deferred doors: `$env` config sourcing (map #113), a config value that names an environment
+  variable and composes with `$secret` so the sourced value is both addressable and masked.
 
-**Unreleased on `main`** — a second architecture review. Its finding: every recent deepening
-added an owner and left the module it superseded in place, still exported and still tested. Six
-landed, two were declined with the reasons filed so the next review does not re-derive them:
+**Unreleased on `main`** — **resume** (map #142 → #158 → #168), the second of #109's deferred doors.
+A crash-interrupted or cancelled run re-runs as a *successor* that reuses every node whose recorded
+run already succeeded and re-runs the rest — `path run <workflow.json> --resume <root-run-id>`. All
+of #168's tickets landed:
 
-- [x] #94 the binary step's process driver is not the run-tree walk
-- [x] #96 withdraw the surface each deepening superseded
-- [x] #98 one owner for what a `$secret` is
-- [x] #100 the write side of `.path/` is one module, not two
-- [x] #102 pin node semantics at the seam, not twice
-- [x] #104 the `db` log backend is one sink that knows its table
-- [x] #106 **declined** — a shared load seam in the viewer; the three load paths share eight lines of
-      guard boilerplate and differ in the substance
-- [x] #107 **declined** — the run row's four shapes each pass the deletion test; the real hazard (a
-      new domain field reaching the db and never the API) is now a compile-time assertion instead
+- [x] #172 the reuse plan — which node ids reuse a prior run, matched by `(node id, succeeded)`
+- [x] #173 `Project.resume` — the engine-side successor run, original tree read-only throughout
+- [x] #174 `path runs` — the bare listing, with each run's `resumed-from` lineage
+- [x] #175 `runs rm --force` — the guard on deleting a tree a live reuse-marker still points at
+- [x] #176 cost-SUM crossing tree boundaries — a reused node's spend summed from the original tree
+- [x] #177 `path run --resume` — the CLI flag and its successor-run reporting
+- [x] #178 the acceptance exercise (kill mid-`while-do`, resume, assert no re-bill) + doc de-staling
+
+Resume is **at-least-once**: a re-run step that already had an external effect can fire it again —
+idempotency is the workflow author's burden (mvp spec §5.6).
 
 ### What's next
 
 - #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
   The one known product gap: the audit record is complete, the API just cannot serve it.
 - #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. Stays
-  open; each door graduates into its own wayfinder map when its trigger fires. It ordered three for
-  build: `$env` secret sourcing landed on `main` (map #113), and **resume** has now shipped too (map
-  #158 — `path run --resume`), leaving an API-endpoint step type and automatic in-run retry deferred.
+  open; each door graduates into its own wayfinder map when its trigger fires. Two of its ordered
+  three have shipped — `$env` (map #113, v0.4.3) and resume (map #158/#168, unreleased on `main`) —
+  leaving an API-endpoint step type and automatic in-run retry deferred.
 
 ## Maintenance notes
 
