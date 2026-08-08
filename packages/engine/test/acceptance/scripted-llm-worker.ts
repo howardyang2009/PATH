@@ -21,6 +21,17 @@ export interface ScriptedLlmWorker extends LlmWorker {
   readonly maxConcurrent: number;
 }
 
+export interface ScriptedWorkerOptions {
+  /**
+   * Fired synchronously the instant a prompt call is recorded — *before* it settles — so a test can
+   * act while a chosen prompt is genuinely in flight. The resume acceptance run (#178) uses it to
+   * abort the run mid-`while-do`, the same real cancellation `^C` drives (mvp spec §5.6): the
+   * hook aborts, the worker then observes the abort on its own request signal and returns
+   * `cancelled`, exactly as a live processor's would.
+   */
+  onCall?: (call: ScriptedCall & { callNumber: number }) => void;
+}
+
 /** Fixed per-call spend, so `usage`/`estimated_cost_usd` assertions have a known expected value. */
 export const SCRIPTED_USAGE: JsonValue = { input_tokens: 1200, output_tokens: 340 };
 export const SCRIPTED_COST_USD = 0.0042;
@@ -34,7 +45,10 @@ export const SCRIPTED_COST_USD = 0.0042;
  * Each call holds its slot for a turn of the event loop before resolving, so two branches that the
  * engine genuinely runs at once overlap here and `maxConcurrent` can observe it.
  */
-export function createScriptedLlmWorker(script: Record<string, ScriptedHandler>): ScriptedLlmWorker {
+export function createScriptedLlmWorker(
+  script: Record<string, ScriptedHandler>,
+  options: ScriptedWorkerOptions = {},
+): ScriptedLlmWorker {
   const calls: ScriptedCall[] = [];
   const callsPerNode = new Map<string, number>();
   let inFlight = 0;
@@ -62,7 +76,12 @@ export function createScriptedLlmWorker(script: Record<string, ScriptedHandler>)
 
       const callNumber = (callsPerNode.get(request.nodeId) ?? 0) + 1;
       callsPerNode.set(request.nodeId, callNumber);
-      calls.push({ nodeId: request.nodeId, model: request.model, input: request.input });
+      const call: ScriptedCall = { nodeId: request.nodeId, model: request.model, input: request.input };
+      calls.push(call);
+
+      // The kill seam (#178): fired before the wait below, so an abort it triggers is already live
+      // when this call re-checks its signal — the prompt is cancelled mid-flight, not after settling.
+      options.onCall?.({ ...call, callNumber });
 
       inFlight += 1;
       maxConcurrent = Math.max(maxConcurrent, inFlight);

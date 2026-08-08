@@ -27,8 +27,16 @@ Run a workflow directly with the engine CLI (from the repo root):
 
 ```bash
 npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>] [--set key=value]...
+npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id>   # re-run a stopped tree
+npx tsx packages/engine/bin/path.ts runs                     # list root runs (--limit, --status)
 npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune
 ```
+
+`--resume` re-runs a stopped tree as a *successor* run: it reuses every node that already succeeded
+and re-runs the rest. Resume is **at-least-once** — a re-run step that already had an external effect
+(a `git push`, an API `POST`) can fire it again, and the engine cannot detect or prevent the
+duplicate. Making steps idempotent is the workflow author's job (mvp spec §5.6,
+`docs/research/resume-side-effect-contract.md`).
 
 Or serve it over HTTP and watch it in the viewer:
 
@@ -83,9 +91,9 @@ landed, two were declined with the reasons filed so the next review does not re-
 - #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
   The one known product gap: the audit record is complete, the API just cannot serve it.
 - #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. Stays
-  open; each door graduates into its own wayfinder map when its trigger fires. It orders three for
-  build: `$env` secret sourcing has landed on `main` (map #113) and its §10 row is retired, leaving
-  an API-endpoint step type, then retry/resume.
+  open; each door graduates into its own wayfinder map when its trigger fires. It ordered three for
+  build: `$env` secret sourcing landed on `main` (map #113), and **resume** has now shipped too (map
+  #158 — `path run --resume`), leaving an API-endpoint step type and automatic in-run retry deferred.
 
 ## Maintenance notes
 
