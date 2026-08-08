@@ -13,6 +13,7 @@ import {
   existingRunIds,
   getRunsForRoot,
   listRootRuns,
+  rootRunIdOf,
 } from "./persistence/run-store.js";
 
 /**
@@ -62,6 +63,23 @@ export interface RunArchive {
    * in its `--force` output; the archive computes the fact and leaves the policy to the CLI.
    */
   blockingSuccessors(rootRunId: string): string[];
+  /**
+   * A root run's whole-tree cost as a read-time SUM of `estimated_cost_usd` over its own descendant
+   * rows, amended for resume (#176): for every node this tree reused, the SUM also reaches into the
+   * *original* tree via the reuse-marker rather than stopping at the successor's own — necessarily
+   * absent — row for that node. Without the amendment a resumed tree's total silently undercounts
+   * the reused LLM spend the moment any resume has happened.
+   *
+   * Each reuse-marker's `original_run_id` names where the reused node's real data lives (leaf or a
+   * collapsed workflow-run, resolved through that row's own tree), and its whole recorded subtree is
+   * summed — costs are leaf-only, so a collapsed subtree contributes exactly its own leaves. Markers
+   * fire once per reuse decision over disjoint subtrees, so nothing is double-counted; a marker
+   * whose original tree has since been `rm`'d contributes 0, the data being genuinely gone.
+   *
+   * `0` for an unknown id (no rows, nothing spent) and for a tree with no LLM spend. Regression:
+   * with nothing reused there are no markers, so the answer equals a from-scratch run's own SUM.
+   */
+  cost(rootRunId: string): number;
   /**
    * Removes one root run's rows *and* its on-disk tree, which mvp spec §6 requires happen together
    * so the two stores never drift. `false` when neither store held anything for the id — an
@@ -158,6 +176,16 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       return [...holders].filter((id) => live.has(id)).sort();
     },
 
+    cost(rootRunId: string): number {
+      const runs = getRunsForRoot(db, rootRunId);
+      if (runs.length === 0) return 0;
+      let total = sumCost(runs);
+      for (const ref of reuseMarkerReferences(db)) {
+        if (ref.holderRootRunId === rootRunId) total += subtreeCost(db, ref.originalRunId);
+      }
+      return total;
+    },
+
     remove(rootRunId: string): boolean {
       const treeDir = rootRunTreeDir(dir, rootRunId);
       const dirExisted = dirExists(treeDir);
@@ -174,6 +202,40 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       return deleted;
     },
   };
+}
+
+/** SUM of `estimated_cost_usd` over the given rows, a null (a non-LLM or non-leaf row) counting 0. */
+function sumCost(runs: readonly RunRecord[]): number {
+  return runs.reduce((total, run) => total + (run.estimatedCostUsd ?? 0), 0);
+}
+
+/**
+ * The cost recorded under one run in its own tree — that run and every transitive descendant. Given
+ * a reuse-marker's `original_run_id` (a leaf, or a workflow-run whose whole subtree the successor
+ * collapsed), this sums the real spend the successor reused. `0` when the original tree is gone.
+ */
+function subtreeCost(db: Database.Database, originalRunId: string): number {
+  const originRootRunId = rootRunIdOf(db, originalRunId);
+  if (originRootRunId === null) return 0;
+  const runs = getRunsForRoot(db, originRootRunId);
+  const childrenOf = new Map<string, RunRecord[]>();
+  for (const run of runs) {
+    if (run.parentRunId === null) continue;
+    const siblings = childrenOf.get(run.parentRunId) ?? [];
+    siblings.push(run);
+    childrenOf.set(run.parentRunId, siblings);
+  }
+  const byId = new Map(runs.map((run) => [run.runId, run]));
+  const start = byId.get(originalRunId);
+  if (start === undefined) return 0;
+  const subtree: RunRecord[] = [];
+  const stack: RunRecord[] = [start];
+  while (stack.length > 0) {
+    const run = stack.pop()!;
+    subtree.push(run);
+    for (const child of childrenOf.get(run.runId) ?? []) stack.push(child);
+  }
+  return sumCost(subtree);
 }
 
 function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {

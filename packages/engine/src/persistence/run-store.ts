@@ -112,6 +112,20 @@ export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRec
   return rows.map(fromDbRow);
 }
 
+/**
+ * The root run id of the tree a run belongs to, or `null` when no row has that id. Used by the
+ * cost-SUM (#176) to reach a reuse-marker's `original_run_id` back to its tree so the marker's
+ * whole recorded subtree can be summed — a marker may name a leaf or a collapsed workflow-run, and
+ * either resolves through the row's own `root_run_id`. `null` when the original tree has since been
+ * `rm`'d, which the caller reads as "no recorded data to reach", not an error.
+ */
+export function rootRunIdOf(db: Database.Database, runId: string): string | null {
+  const row = db.prepare(`SELECT root_run_id FROM runs WHERE run_id = @runId`).get({ runId }) as
+    | { root_run_id: string }
+    | undefined;
+  return row ? row.root_run_id : null;
+}
+
 export interface ListRootRunsOptions {
   /** Cap on the number of root runs returned; server-api-v0.md §3 default. */
   limit?: number;
