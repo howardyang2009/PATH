@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { WorkflowFile } from "@path/schema";
@@ -36,6 +36,13 @@ const oneStep: WorkflowFile = {
   worker: { type: "engine" },
   body: [{ type: "binary", id: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
 };
+
+// A binary step that emits `text` on stdout, or (when `text` is undefined) exits 1 — the two halves
+// of a run driven to a stopping point and then resumed past it.
+function emit(id: string, text?: string): WorkflowFile["body"][number] {
+  const script = text !== undefined ? `process.stdout.write('${text}')` : "process.exit(1)";
+  return { type: "binary", id, command: "node", args: ["-e", script], publish: { [`from_${id}`]: "${output}" } };
+}
 
 describe("openProject", () => {
   it("ensures .path/ exists and is self-gitignored, then opens the db", () => {
@@ -184,6 +191,102 @@ describe("Project.run — observer assembly", () => {
   });
 });
 
+describe("Project.resume (#173)", () => {
+  // v1 stops at `b` (exit 1) after `a` succeeds; v2 is the same tree with `b` fixed to succeed. On
+  // resume against v2, `a` reuses its recorded output and only `b` re-runs.
+  const v1: WorkflowFile = {
+    format: "path/workflow@0",
+    name: "resumable",
+    worker: { type: "engine" },
+    body: [emit("a", "A_OUT"), emit("b")],
+    output: { a: "${context.from_a}", b: "${context.from_b}" },
+  };
+  const v2: WorkflowFile = { ...v1, body: [emit("a", "A_OUT"), emit("b", "B_OUT")] };
+
+  it("returns found:false for an unknown root run id, without throwing", async () => {
+    const project = open();
+    try {
+      const result = await project.resume(v2, "no-such-root", dir);
+      expect(result).toEqual({ found: false, error: 'no run found with root run id "no-such-root"' });
+    } finally {
+      project.close();
+    }
+  });
+
+  it("treats a non-root (child) run id as not found — only a tree's root resumes", async () => {
+    const project = open();
+    try {
+      const first = await project.run(v1, dir);
+      expect(first.status).toBe("failed");
+      const rootId = project.archive.listRoots()[0]!.runId;
+      // `b`'s own run id is a child of the tree, never a root — resuming from it must not resume the tree.
+      const childId = project.archive.tree(rootId)!.runs.find((r) => r.nodeId === "b")!.runId;
+
+      const result = await project.resume(v2, childId, dir);
+      expect(result.found).toBe(false);
+    } finally {
+      project.close();
+    }
+  });
+
+  it("resumes a stopped run: fresh successor tree, reuses the succeeded node, re-runs the failed one", async () => {
+    const project = open();
+    try {
+      const first = await project.run(v1, dir);
+      expect(first.status).toBe("failed");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      const result = await project.resume(v2, originalRootId, dir);
+      if (!result.found) throw new Error("expected found:true");
+
+      // Succeeded, and the reused output flows the default-input chain into the workflow output
+      // exactly like a freshly produced one would.
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual({ a: "A_OUT", b: "B_OUT" });
+
+      // The successor is its own root run — a fresh id, distinct from the predecessor, with its own tree.
+      expect(result.rootRunId).not.toBe(originalRootId);
+      expect(existsSync(rootRunTreeDir(dir, result.rootRunId))).toBe(true);
+      const successor = project.archive.tree(result.rootRunId)!;
+      expect(successor.root).not.toBeNull();
+
+      // `a` reused (no row written for it), `b` re-ran (row present) — the reuse is real, not a re-run.
+      expect(successor.runs.some((r) => r.nodeId === "a")).toBe(false);
+      expect(successor.runs.some((r) => r.nodeId === "b")).toBe(true);
+      // And its narrative carries the reuse-marker where the reused node's step-lifecycle would sit.
+      const reuseEvents = readNdjsonLog(dir, result.rootRunId).filter((e) => e.type === "reuse-marker");
+      expect(reuseEvents).toHaveLength(1);
+
+      // The successor's root row records the lineage; the predecessor's does not.
+      expect(successor.root!.resumedFromRootRunId).toBe(originalRootId);
+      expect(project.archive.tree(originalRootId)!.root!.resumedFromRootRunId).toBeNull();
+    } finally {
+      project.close();
+    }
+  });
+
+  it("leaves the original tree byte-identical — rows, blobs and run.log all untouched", async () => {
+    const project = open();
+    try {
+      await project.run(v1, dir);
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      const rowsBefore = JSON.stringify(project.archive.tree(originalRootId)!.runs);
+      const treeBefore = snapshot(rootRunTreeDir(dir, originalRootId));
+
+      const result = await project.resume(v2, originalRootId, dir);
+      if (!result.found) throw new Error("expected found:true");
+
+      // On-disk tree — blobs and run.log — is byte-for-byte what it was before the resume.
+      expect(snapshot(rootRunTreeDir(dir, originalRootId))).toEqual(treeBefore);
+      // ...and the original rows are unchanged too (no status flipped, no ref rewritten).
+      expect(JSON.stringify(project.archive.tree(originalRootId)!.runs)).toBe(rowsBefore);
+    } finally {
+      project.close();
+    }
+  });
+});
+
 describe("Project — the projectDir / workflowDir distinction (#59)", () => {
   it("resolves a nested workflow ref against the workflow's own directory, not the project's", async () => {
     // The shape that broke: the workflow lives in a subdirectory, `.path/` at the project root.
@@ -224,3 +327,18 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     }
   });
 });
+
+// A recursive content snapshot of a directory: relative path → bytes, for an unchanged-check.
+function snapshot(root: string): { [rel: string]: string } {
+  const out: { [rel: string]: string } = {};
+  const walk = (d: string, rel: string): void => {
+    for (const entry of readdirSync(d)) {
+      const abs = join(d, entry);
+      const childRel = rel ? `${rel}/${entry}` : entry;
+      if (statSync(abs).isDirectory()) walk(abs, childRel);
+      else out[childRel] = readFileSync(abs, "utf8");
+    }
+  };
+  walk(root, "");
+  return out;
+}

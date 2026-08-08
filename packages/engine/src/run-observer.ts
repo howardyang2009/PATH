@@ -62,6 +62,13 @@ export type Observation =
       nodeId: string | null;
       input: JsonValue;
       worker: Worker;
+      /**
+       * The predecessor's root run id (#173), set only on a resumed tree's **root** run-started —
+       * the one identity fact that marks this fresh root run as a successor of another (#168). Absent
+       * for an ordinary run and for every nested run, whose predecessor is the tree's, not its own.
+       * Persistence records it on the root row's `resumed_from_root_run_id`; no other observer reads it.
+       */
+      resumedFromRootRunId?: string;
     }
   /** A leaf step run begins — its input/command/cwd are resolved and it's about to execute. */
   | {
