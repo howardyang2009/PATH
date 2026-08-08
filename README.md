@@ -30,6 +30,7 @@ npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>]
 npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id>   # re-run a stopped tree
 npx tsx packages/engine/bin/path.ts runs                     # list root runs (--limit, --status)
 npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune
+npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another project's .path/, git-style
 ```
 
 `--resume` re-runs a stopped tree as a *successor* run: it reuses every node that already succeeded
