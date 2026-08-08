@@ -9,7 +9,7 @@ import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
 import { dbFilePath, rootRunTreeDir, runsDir } from "../src/persistence/paths.js";
-import { finishRun, insertRun, setRunOutputRef } from "../src/persistence/run-store.js";
+import { finishRun, insertRun, setRunOutputRef, setRunUsage } from "../src/persistence/run-store.js";
 import { createRunArchive, openRunArchive, type RunArchive } from "../src/run-archive.js";
 
 let dir: string;
@@ -357,6 +357,106 @@ describe("run archive — blockingSuccessors (rm reuse-marker guard, #175)", () 
 
   it("is empty for an id no rows exist for", () => {
     expect(archive.blockingSuccessors("never-ran")).toEqual([]);
+  });
+});
+
+/** A leaf prompt-step run carrying recorded spend, as the persisted observer would write it. */
+function seedLeaf(opts: {
+  runId: string;
+  rootRunId: string;
+  parentRunId: string;
+  nodeId: string;
+  cost: number;
+}): void {
+  insertRun(db, {
+    runId: opts.runId,
+    rootRunId: opts.rootRunId,
+    parentRunId: opts.parentRunId,
+    nodeId: opts.nodeId,
+    worker: { type: "llm", model: "claude" },
+    status: "succeeded",
+  });
+  setRunUsage(db, opts.runId, { usage: { input_tokens: 1 }, estimatedCostUsd: opts.cost });
+}
+
+describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)", () => {
+  it("sums estimated_cost_usd over a tree's own descendant rows", () => {
+    seedTree("root-1"); // root + one non-leaf child, both null cost
+    seedLeaf({ runId: "leaf-a", rootRunId: "root-1", parentRunId: "root-1", nodeId: "a", cost: 0.5 });
+    seedLeaf({ runId: "leaf-b", rootRunId: "root-1", parentRunId: "root-1", nodeId: "b", cost: 0.25 });
+
+    expect(archive.cost("root-1")).toBeCloseTo(0.75);
+  });
+
+  it("is 0 for a tree with no LLM spend, and for an unknown id", () => {
+    seedTree("root-1"); // engine rows only, no usage
+    expect(archive.cost("root-1")).toBe(0);
+    expect(archive.cost("never-ran")).toBe(0);
+  });
+
+  it("reaches into the original tree via a reuse-marker for a reused leaf", async () => {
+    // Original tree: a leaf that cost real money.
+    seedTree("orig");
+    seedLeaf({ runId: "orig-leaf", rootRunId: "orig", parentRunId: "orig", nodeId: "a", cost: 0.4 });
+    // Successor reused that leaf (no row of its own for it) and ran a fresh leaf.
+    seedTree("succ");
+    seedLeaf({ runId: "succ-leaf", rootRunId: "succ", parentRunId: "succ", nodeId: "b", cost: 0.1 });
+    await writeDbLog("succ", [reuseMarker(1, "orig-leaf")]);
+
+    expect(archive.cost("succ")).toBeCloseTo(0.5); // 0.1 own + 0.4 reached
+  });
+
+  it("sums a whole collapsed subtree when a reuse-marker names a workflow-run", async () => {
+    // Original tree: a nested workflow-run with two leaves under it.
+    seedTree("orig");
+    insertRun(db, {
+      runId: "orig-wf",
+      rootRunId: "orig",
+      parentRunId: "orig",
+      nodeId: "loop",
+      worker: { type: "engine" },
+      status: "succeeded",
+    });
+    seedLeaf({ runId: "orig-wf-1", rootRunId: "orig", parentRunId: "orig-wf", nodeId: "x", cost: 0.2 });
+    seedLeaf({ runId: "orig-wf-2", rootRunId: "orig", parentRunId: "orig-wf", nodeId: "y", cost: 0.3 });
+    seedTree("succ");
+    await writeDbLog("succ", [reuseMarker(1, "orig-wf")]);
+
+    // The successor collapsed the whole subtree; its cost still reaches both original leaves.
+    expect(archive.cost("succ")).toBeCloseTo(0.5);
+  });
+
+  it("counts a marker whose original tree was deleted as 0, not an error", async () => {
+    seedTree("succ");
+    seedLeaf({ runId: "succ-leaf", rootRunId: "succ", parentRunId: "succ", nodeId: "b", cost: 0.1 });
+    await writeDbLog("succ", [reuseMarker(1, "gone-leaf")]);
+
+    expect(archive.cost("succ")).toBeCloseTo(0.1); // reached subtree contributes 0
+  });
+
+  it("regression: with nothing reused, a resumed tree's total equals a from-scratch run's", async () => {
+    // From-scratch run of the same shape.
+    seedTree("scratch");
+    seedLeaf({ runId: "scratch-a", rootRunId: "scratch", parentRunId: "scratch", nodeId: "a", cost: 0.5 });
+    seedLeaf({ runId: "scratch-b", rootRunId: "scratch", parentRunId: "scratch", nodeId: "b", cost: 0.25 });
+    // A resumed tree that reused nothing (no markers), same two leaves rerun fresh.
+    seedTree("resumed");
+    seedLeaf({ runId: "resumed-a", rootRunId: "resumed", parentRunId: "resumed", nodeId: "a", cost: 0.5 });
+    seedLeaf({ runId: "resumed-b", rootRunId: "resumed", parentRunId: "resumed", nodeId: "b", cost: 0.25 });
+
+    expect(archive.cost("resumed")).toBeCloseTo(archive.cost("scratch"));
+  });
+
+  it("does not let one tree's marker leak into another tree's total", async () => {
+    seedTree("orig");
+    seedLeaf({ runId: "orig-leaf", rootRunId: "orig", parentRunId: "orig", nodeId: "a", cost: 0.4 });
+    seedTree("succ");
+    await writeDbLog("succ", [reuseMarker(1, "orig-leaf")]);
+    // An unrelated tree with its own spend and no markers.
+    seedTree("other");
+    seedLeaf({ runId: "other-leaf", rootRunId: "other", parentRunId: "other", nodeId: "z", cost: 0.9 });
+
+    expect(archive.cost("other")).toBeCloseTo(0.9);
   });
 });
 
