@@ -6,6 +6,8 @@ import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
+import { createDbLogBackend } from "../src/logging/db-backend.js";
+import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { dbFilePath } from "../src/persistence/paths.js";
 import { finishRun, insertRun } from "../src/persistence/run-store.js";
@@ -634,5 +636,115 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/usage: path runs/));
     expect(io.log).not.toHaveBeenCalled();
+  });
+});
+
+describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
+  let projectDir: string;
+  let cwd: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-rm-guard-"));
+    cwd = process.cwd();
+    process.chdir(projectDir);
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function seedRoot(runId: string, childNodeId = "greet"): void {
+    const db = openDb(dbFilePath(projectDir));
+    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, {
+      runId: `${runId}-child`,
+      rootRunId: runId,
+      parentRunId: runId,
+      nodeId: childNodeId,
+      worker: { type: "engine" },
+      status: "succeeded",
+    });
+    db.close();
+  }
+
+  /** Write a reuse-marker into `holder`'s log naming a run in the original tree — what a resume does. */
+  async function seedReuseMarker(holderRootRunId: string, originalRunId: string): Promise<void> {
+    const db = openDb(dbFilePath(projectDir));
+    const backend = createDbLogBackend(db);
+    await backend.open({ runId: holderRootRunId, format: LOG_FORMAT });
+    await backend.write({
+      type: "reuse-marker",
+      seq: 1,
+      ts: new Date().toISOString(),
+      run_id: holderRootRunId,
+      node_id: "greet",
+      original_run_id: originalRunId,
+    });
+    await backend.close();
+    db.close();
+  }
+
+  it("refuses by default when a live successor reuses the target, and deletes nothing", async () => {
+    seedRoot("target");
+    seedRoot("successor");
+    await seedReuseMarker("successor", "target-child");
+
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "target"], io);
+
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/refusing to remove target.*successor/s));
+    expect(io.log).not.toHaveBeenCalled();
+    // The target still exists — a refused delete removes nothing.
+    const check = fakeIo();
+    await main(["runs"], check);
+    expect((check.log.mock.calls.at(-1)![0] as string)).toContain("target");
+  });
+
+  it("--force overrides the block, deletes only the named tree, and names the orphaned successor", async () => {
+    seedRoot("target");
+    seedRoot("successor");
+    await seedReuseMarker("successor", "target-child");
+
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "--force", "target"], io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith("removed run target");
+    expect(io.log).toHaveBeenCalledWith("orphaned successor run(s): successor");
+    // No cascade: the successor it orphaned is still present.
+    const check = fakeIo();
+    await main(["runs"], check);
+    const listing = check.log.mock.calls.at(-1)![0] as string;
+    expect(listing).toContain("successor");
+    expect(listing).not.toMatch(/^target /m);
+  });
+
+  it("deletes with no orphan note when nothing reuses the target", async () => {
+    seedRoot("target");
+
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "target"], io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith("removed run target");
+    expect(io.log).not.toHaveBeenCalledWith(expect.stringMatching(/orphaned/));
+  });
+
+  it("still reports a not-found id, even under --force", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "--force", "never-ran"], io);
+
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/no run found with id "never-ran"/));
+  });
+
+  it("rejects an unknown flag with a usage error", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "rm", "--frce", "target"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/unknown flag "--frce"/));
   });
 });

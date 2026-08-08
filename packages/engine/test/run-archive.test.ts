@@ -296,6 +296,70 @@ describe("run archive — remove and prune", () => {
   });
 });
 
+/** A reuse-marker as a resumed tree writes it: the successor's log, pointing at a run in the original
+ * tree. `holderRootRunId` is what `writeDbLog` stamps as the row's `root_run_id`. */
+function reuseMarker(seq: number, originalRunId: string): LogEvent {
+  return {
+    type: "reuse-marker",
+    seq,
+    ts: new Date().toISOString(),
+    run_id: "successor-root",
+    node_id: "greet",
+    original_run_id: originalRunId,
+  };
+}
+
+describe("run archive — blockingSuccessors (rm reuse-marker guard, #175)", () => {
+  it("names a live successor that reuses a run inside the target tree", async () => {
+    seedTree("target"); // rows: target, target-child
+    seedTree("successor");
+    await writeDbLog("successor", [reuseMarker(1, "target-child")]);
+
+    expect(archive.blockingSuccessors("target")).toEqual(["successor"]);
+  });
+
+  it("is empty when the target holds no run any live successor reuses", async () => {
+    seedTree("target");
+    seedTree("successor");
+    // Marker points at a run in some *other* tree, not the target.
+    await writeDbLog("successor", [reuseMarker(1, "elsewhere-child")]);
+
+    expect(archive.blockingSuccessors("target")).toEqual([]);
+  });
+
+  it("does not count a tree's own reuse-marker against deleting itself", async () => {
+    seedTree("target");
+    // A marker inside the target's own log, pointing at its own run, is not a successor dependency.
+    await writeDbLog("target", [reuseMarker(1, "target-child")]);
+
+    expect(archive.blockingSuccessors("target")).toEqual([]);
+  });
+
+  it("ignores a marker whose holder tree is already gone (orphaned log rows)", async () => {
+    seedTree("target");
+    seedTree("dead");
+    await writeDbLog("dead", [reuseMarker(1, "target-child")]);
+    // `rm` clears `runs` but not `log_events`, so the marker survives while its holder does not.
+    archive.remove("dead");
+
+    expect(archive.blockingSuccessors("target")).toEqual([]);
+  });
+
+  it("returns each live successor once, sorted, when several reuse the target", async () => {
+    seedTree("target");
+    seedTree("s-b");
+    seedTree("s-a");
+    await writeDbLog("s-b", [reuseMarker(1, "target"), reuseMarker(2, "target-child")]);
+    await writeDbLog("s-a", [reuseMarker(1, "target-child")]);
+
+    expect(archive.blockingSuccessors("target")).toEqual(["s-a", "s-b"]);
+  });
+
+  it("is empty for an id no rows exist for", () => {
+    expect(archive.blockingSuccessors("never-ran")).toEqual([]);
+  });
+});
+
 describe("openRunArchive", () => {
   it("opens a project's own db", () => {
     seedTree();
