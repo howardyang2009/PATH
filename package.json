@@ -9,7 +9,9 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
-    "sandcastle": "tsx .sandcastle/main.mts"
+    "sandcastle": "tsx .sandcastle/main.mts",
+    "path": "tsx packages/engine/bin/path.ts",
+    "release-notes": "pnpm path run docs/acceptance-workflow/release-notes.workflow.json"
   },
   "devDependencies": {
     "@ai-hero/sandcastle": "^0.12.0",

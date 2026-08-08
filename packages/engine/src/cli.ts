@@ -38,7 +38,7 @@ const consoleIo: CliIo = {
 const RUN_USAGE =
   "usage: path run <workflow.json> [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
-  "usage: path runs [--limit <n>] [--status <status>] | path runs rm [--force] <root-run-id> | path runs prune";
+  "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -401,6 +401,28 @@ function reportResume(result: ResumeResult, io: CliIo): number {
   return reportOutcome(result.status, result.error, io);
 }
 
+// `-C <dir>` (git's own flag for "run as if started in <dir>") can appear anywhere in a `runs`
+// invocation's args, ahead of or behind the subcommand — `path runs -C foo rm <id>` and
+// `path runs rm -C foo <id>` both mean the same thing, so it's stripped before the rest of parsing
+// ever sees it rather than pinned to one position.
+type ExtractDirFlagResult = { success: true; dir: string; rest: string[] } | { success: false; error: string };
+
+function extractDirFlag(args: string[]): ExtractDirFlagResult {
+  const rest: string[] = [];
+  let dir = process.cwd();
+  for (let i = 0; i < args.length; i += 1) {
+    if (args[i] === "-C") {
+      const value = args[i + 1];
+      if (!value) return { success: false, error: `-C requires a directory argument\n${RUNS_USAGE}` };
+      dir = value;
+      i += 1;
+    } else {
+      rest.push(args[i]!);
+    }
+  }
+  return { success: true, dir, rest };
+}
+
 type ListRootsArgsResult = { success: true; options: ListRootsOptions } | { success: false; error: string };
 
 // The bare `path runs` listing (#174) reuses the same `--limit`/`--status` filters `listRoots`
@@ -449,14 +471,14 @@ function formatRunsTable(rows: readonly [string, string, string][]): string {
 // `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`
 // operate on. The `resumed-from` cell asks the archive which predecessor ids still have rows —
 // existence, not presence on this page, is what tells a live predecessor from a `(deleted)` one.
-function runRunsListCommand(args: string[], io: CliIo): number {
+function runRunsListCommand(args: string[], dir: string, io: CliIo): number {
   const parsed = parseRunsListArgs(args);
   if (!parsed.success) {
     io.error(parsed.error);
     return 2;
   }
 
-  const opened = openRunArchive(process.cwd());
+  const opened = openRunArchive(dir);
   if (!opened.success) {
     io.error(opened.error);
     return 1;
@@ -485,9 +507,15 @@ function runRunsListCommand(args: string[], io: CliIo): number {
 
 // `path runs rm`/`path runs prune` take no workflow-file argument (mvp spec §3) — they operate
 // on the `.path/` found in the current working directory, like `git` subcommands operate on
-// whatever repo the cwd is inside.
+// whatever repo the cwd is inside — or on `-C <dir>` when given one, again like `git -C`.
 async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
-  const [subcommand, ...rest] = args;
+  const dirFlag = extractDirFlag(args);
+  if (!dirFlag.success) {
+    io.error(dirFlag.error);
+    return 2;
+  }
+  const dir = dirFlag.dir;
+  const [subcommand, ...rest] = dirFlag.rest;
 
   if (subcommand === "rm") {
     // `--force` overrides the live-reuse-marker block (#175). Splitting flags from operands keeps the
@@ -512,7 +540,7 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    const opened = openRunArchive(process.cwd());
+    const opened = openRunArchive(dir);
     if (!opened.success) {
       io.error(opened.error);
       return 1;
@@ -561,7 +589,7 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    const opened = openRunArchive(process.cwd());
+    const opened = openRunArchive(dir);
     if (!opened.success) {
       io.error(opened.error);
       return 1;
@@ -580,7 +608,7 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   // No subcommand, or a leading flag — the bare listing (#174). A word that is neither `rm`, `prune`
   // nor a flag is a mistyped subcommand, and still earns the usage error.
   if (subcommand === undefined || subcommand.startsWith("--")) {
-    return runRunsListCommand(args, io);
+    return runRunsListCommand(dirFlag.rest, dir, io);
   }
 
   io.error(RUNS_USAGE);
