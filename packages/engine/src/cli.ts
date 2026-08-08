@@ -454,12 +454,12 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   return { success: true, options: { limit, status } };
 }
 
-const RUNS_TABLE_HEADERS = ["root run id", "status", "resumed-from"] as const;
+const RUNS_TABLE_HEADERS = ["root-run-id", "status", "started", "finished", "resumed-from"] as const;
 
 // Space-aligned columns (#174): the root run id is never truncated, so its column is as wide as the
 // longest id on the page. Every column but the last is padded to its width; the last carries no
 // trailing padding.
-function formatRunsTable(rows: readonly [string, string, string][]): string {
+function formatRunsTable(rows: readonly [string, string, string, string, string][]): string {
   const widths = RUNS_TABLE_HEADERS.map((header, col) =>
     Math.max(header.length, ...rows.map((row) => row[col]!.length)),
   );
@@ -490,11 +490,11 @@ function runRunsListCommand(args: string[], dir: string, io: CliIo): number {
       .filter((id): id is string => id !== null);
     const live = opened.archive.existingRunIds(predecessorIds);
 
-    const rows = roots.map((run): [string, string, string] => {
+    const rows = roots.map((run): [string, string, string, string, string] => {
       const predecessor = run.resumedFromRootRunId;
       const resumedFrom =
         predecessor === null ? "-" : live.has(predecessor) ? predecessor : `${predecessor} (deleted)`;
-      return [run.runId, run.status, resumedFrom];
+      return [run.runId, run.status, run.startedAt ?? "-", run.finishedAt ?? "-", resumedFrom];
     });
 
     io.log(formatRunsTable(rows));
