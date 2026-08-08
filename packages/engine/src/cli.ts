@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ConfigObject } from "@path/schema";
+import type { ConfigObject, JsonValue } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
@@ -36,13 +36,15 @@ const consoleIo: CliIo = {
 };
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
+  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE = "usage: path runs rm <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
   configFile?: string;
   setPairs: [string, string][];
+  contextFile?: string;
+  setContextPairs: [string, string][];
   logBackends?: LogBackendId[];
   llmConcurrency?: number;
 }
@@ -58,6 +60,8 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
+  let contextFile: string | undefined;
+  const setContextPairs: [string, string][] = [];
   let logBackends: LogBackendId[] | undefined;
   let llmConcurrency: number | undefined;
 
@@ -73,6 +77,17 @@ function parseRunArgs(argv: string[]): ParseResult {
       const eq = pair?.indexOf("=") ?? -1;
       if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${RUN_USAGE}` };
       setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+      i += 1;
+    } else if (flag === "--context") {
+      const value = rest[i + 1];
+      if (!value) return { success: false, error: `--context requires a path argument\n${RUN_USAGE}` };
+      contextFile = value;
+      i += 1;
+    } else if (flag === "--set-context") {
+      const pair = rest[i + 1];
+      const eq = pair?.indexOf("=") ?? -1;
+      if (!pair || eq <= 0) return { success: false, error: `--set-context requires a key=value argument\n${RUN_USAGE}` };
+      setContextPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
       i += 1;
     } else if (flag === "--log-backends") {
       const value = rest[i + 1];
@@ -91,7 +106,10 @@ function parseRunArgs(argv: string[]): ParseResult {
     }
   }
 
-  return { success: true, args: { workflowPath, configFile, setPairs, logBackends, llmConcurrency } };
+  return {
+    success: true,
+    args: { workflowPath, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
+  };
 }
 
 type LlmConcurrencyResult = { success: true; value: number } | { success: false; error: string };
@@ -127,26 +145,36 @@ function parseLogBackends(value: string | undefined): LogBackendsResult {
 
 type ConfigResult = { success: true; config: ConfigObject } | { success: false; error: string };
 
-function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
+// Shared by `--config`/`--set` and `--context`/`--set-context` (ADR 0003: "one merge algorithm
+// serves both flag pairs"): a whole-object file loads first, then repeatable `key=value` pairs
+// override individual top-level keys, each JSON.parse-or-raw-string-fallback, nearest-wins via
+// `mergeConfig`. `fileFlag`/`pairFlag` name the flags in error messages, so the two call sites can't
+// drift on validation wording the way two copy-pasted functions eventually would.
+function buildKeyedConfig(
+  fileFlag: string,
+  file: string | undefined,
+  pairFlag: string,
+  pairs: [string, string][],
+): ConfigResult {
   let config: ConfigObject = {};
 
-  if (args.configFile) {
+  if (file) {
     let raw: unknown;
     try {
-      raw = JSON.parse(readFileSync(args.configFile, "utf8"));
+      raw = JSON.parse(readFileSync(file, "utf8"));
     } catch (err) {
       return {
         success: false,
-        error: `cannot read --config file "${args.configFile}": ${err instanceof Error ? err.message : String(err)}`,
+        error: `cannot read ${fileFlag} file "${file}": ${err instanceof Error ? err.message : String(err)}`,
       };
     }
     if (raw === null || typeof raw !== "object" || Array.isArray(raw)) {
-      return { success: false, error: `--config file "${args.configFile}" must contain a JSON object` };
+      return { success: false, error: `${fileFlag} file "${file}" must contain a JSON object` };
     }
     config = mergeConfig(config, raw as ConfigObject);
   }
 
-  for (const [key, value] of args.setPairs) {
+  for (const [key, value] of pairs) {
     let parsedValue: ConfigObject[string];
     try {
       parsedValue = JSON.parse(value);
@@ -157,6 +185,26 @@ function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
   }
 
   return { success: true, config };
+}
+
+function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
+  return buildKeyedConfig("--config", args.configFile, "--set", args.setPairs);
+}
+
+type ContextResult =
+  | { success: true; context: { [key: string]: JsonValue } }
+  | { success: false; error: string };
+
+// The starting-context seed for a fresh (non-`--resume`) run (ADR 0003), feeding `RunOptions.input`
+// instead of operator config.
+function buildContextSeed(args: ParsedRunArgs): ContextResult {
+  const result = buildKeyedConfig("--context", args.contextFile, "--set-context", args.setContextPairs);
+  if (!result.success) return result;
+
+  // A context seed is plain JSON data (format doc §6.3) — never `$secret`/`$env` wrappers, which are
+  // a `config`-only concept (spec §8.3). `--context`/`--set-context` only ever produce plain JSON
+  // values, so this narrowing is exact, not a runtime assumption.
+  return { success: true, context: result.config as { [key: string]: JsonValue } };
 }
 
 // Death by SIGINT, the shell convention (128 + 2) — a cancelled run is neither a failed one (1)
@@ -217,6 +265,12 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 2;
   }
 
+  const contextSeed = buildContextSeed(parsed.args);
+  if (!contextSeed.success) {
+    io.error(contextSeed.error);
+    return 2;
+  }
+
   const loadResult = loadWorkflowTree(parsed.args.workflowPath);
   if (!loadResult.success) {
     io.error(loadResult.errors.join("\n"));
@@ -255,6 +309,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     // signal it installed, and where warnings go.
     runResult = await project.run(rootFile, workflowDir, {
       operatorConfig: operatorConfig.config,
+      input: contextSeed.context,
       files: tree.files,
       logBackends: parsed.args.logBackends,
       llmConcurrency: parsed.args.llmConcurrency,

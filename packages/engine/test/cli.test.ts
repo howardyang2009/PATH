@@ -116,6 +116,64 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   });
 });
 
+describe("cli main() — --context / --set-context (ticket #171)", () => {
+  function contextEcho() {
+    return join(fixtures, "context-echo.workflow.json");
+  }
+
+  it("--set-context seeds the run's starting context, readable via ${context.x}", async () => {
+    const io = fakeIo();
+    const code = await main(["run", contextEcho(), "--set-context", "greeting=operator-value"], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "operator-value" }));
+  });
+
+  it("--context loads a whole object that seeds the starting context", async () => {
+    const io = fakeIo();
+    const code = await main(["run", contextEcho(), "--context", join(fixtures, "context-override.json")], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "context-file-value" }));
+  });
+
+  it("--set-context wins over --context when both touch the same key", async () => {
+    const io = fakeIo();
+    const code = await main(
+      [
+        "run",
+        contextEcho(),
+        "--context",
+        join(fixtures, "context-override.json"),
+        "--set-context",
+        "greeting=set-context-value",
+      ],
+      io,
+    );
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "set-context-value" }));
+  });
+
+  it("reports a clear error for a malformed --set-context argument", async () => {
+    const io = fakeIo();
+    const code = await main(["run", contextEcho(), "--set-context", "no-equals-sign"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--set-context/));
+  });
+
+  it("reports a clear error when --context points at a missing file", async () => {
+    const io = fakeIo();
+    const code = await main(["run", contextEcho(), "--context", join(fixtures, "nope.json")], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--context/));
+  });
+
+  it("reports a clear error when --context file is not a JSON object", async () => {
+    const io = fakeIo();
+    const code = await main(["run", contextEcho(), "--context", join(fixtures, "context-array.json")], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--context.*must contain a JSON object/));
+  });
+});
+
 describe("cli main() — log.backends setting (ticket #19)", () => {
   it("accepts --log-backends to select the audit stream and still runs the workflow", async () => {
     const io = fakeIo();
