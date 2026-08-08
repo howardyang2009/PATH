@@ -1,0 +1,15 @@
+{
+  "format": "path/workflow@0",
+  "name": "context-echo",
+  "worker": { "type": "engine" },
+  "body": [
+    {
+      "type": "binary",
+      "id": "echo",
+      "command": "node",
+      "args": ["-e", "process.stdout.write(process.argv[1])", "${context.greeting}"],
+      "publish": { "seen": "${output}" }
+    }
+  ],
+  "output": { "seen": "${context.seen}" }
+}
