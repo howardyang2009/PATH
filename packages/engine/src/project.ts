@@ -1,16 +1,18 @@
 import { resolve } from "node:path";
-import type { WorkflowFile } from "@path/schema";
+import type { JsonValue, WorkflowFile } from "@path/schema";
 import type Database from "better-sqlite3";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
+import { readJsonBlob } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
-import { dbFilePath, pathDir } from "./persistence/paths.js";
+import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
+import { getRunsForRoot } from "./persistence/run-store.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
-import { type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
+import { type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
 import { type EngineSettings, loadEngineSettings } from "./settings/engine-settings.js";
 
 /**
@@ -50,9 +52,46 @@ export interface Project {
    * argument means no call site supplies both, so they can no longer be crossed.
    */
   run(rootFile: WorkflowFile, workflowDir: string, opts?: ProjectRunOptions): Promise<RunResult>;
+  /**
+   * Resume a prior root run (#173): re-run `rootFile` as a **successor** of the tree rooted at
+   * `rootRunId`, reusing every node whose recorded run still matches (#170/#172) and restoring each
+   * re-entered workflow-run's context from the original tree. The one call site the CLI (and later a
+   * server route) converges on for resume's engine-side behaviour.
+   *
+   * The successor is an ordinary root run in every structural sense: its own fresh root run id, its
+   * own `.path/runs/<new-root>/` directory, its own db rows and log backend — opened exactly as
+   * `run` opens any root run. The only trace of the lineage is `resumed_from_root_run_id` on the
+   * successor's root row, set to `rootRunId`. The original tree is **read-only** throughout — its
+   * rows, blobs and `run.log` are byte-identical before and after.
+   *
+   * Returns a discriminated result and never throws on operator input: `found: false` when
+   * `rootRunId` names no known root run, otherwise `found: true` carrying the successor's own root
+   * run id and the run outcome. (An engine-invariant breach — a resumed run that emits no root
+   * `run-started` — throws rather than masquerading as `found: false`; it is not reachable from input.)
+   */
+  resume(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, opts?: ProjectRunOptions): Promise<ResumeResult>;
   /** Closes the db. A `Project` outlives one run (the server holds one per process) and must be closed once. */
   close(): void;
 }
+
+/**
+ * The outcome of `Project.resume` (#173) — a Result, not a throw, because "no such root run" is an
+ * ordinary operator input, not an exceptional one, and the CLI (and a server route) branch on it the
+ * same way they branch on a failed run.
+ *
+ * `found: false` is the unknown-root-run-id case alone. `found: true` carries the **successor's** own
+ * fresh root run id — never the predecessor's — plus the same status/output/error a `RunResult` would,
+ * so a caller prints or exits on a resumed run exactly as it does on a fresh one.
+ */
+export type ResumeResult =
+  | { found: false; error: string }
+  | {
+      found: true;
+      rootRunId: string;
+      status: "succeeded" | "failed" | "cancelled";
+      output: JsonValue;
+      error?: string;
+    };
 
 /**
  * `RunOptions` minus the audit seam, which is the `Project`'s to compose, plus the two engine
@@ -110,34 +149,102 @@ export function openProject(dir: string): OpenProjectResult {
 
   const settings = loaded.settings;
 
+  /**
+   * The assembly `run` and `resume` share (#173): backend selection, the persistence-before-logging
+   * observer pair, settings precedence, and the `runWorkflow` call. The only thing that varies
+   * between the two is the `resume` input and any observer a caller wants appended after the built-in
+   * pair — so those are the only two parameters, and everything load-bearing is spelled once.
+   */
+  function execute(
+    rootFile: WorkflowFile,
+    workflowDir: string,
+    opts: ProjectRunOptions,
+    resume: ResumeInput | undefined,
+    appendObservers: RunObserver[],
+  ): Promise<RunResult> {
+    const { logBackends, llmConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
+
+    // Nearest wins, one rule for every caller: explicit override (a CLI flag, a request field)
+    // beats `.path/settings.json`, which beats the built-in default.
+    const backendIds = logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
+    const backends = createLogBackends(backendIds, { db, projectDir: absDir });
+
+    // Persistence first, deliberately. A log backend write failure raises `ObserverError`, which
+    // aborts the remaining observers for that observation — so with logging first, a run whose
+    // audit failed would also have no run row. The row is what survives a failed audit.
+    const observer = composeObservers(
+      createPersistedObserver(db, absDir),
+      createLoggingObserver([...backends, ...extraBackends]),
+      ...extraObservers,
+      ...appendObservers,
+    );
+
+    return runWorkflow(rootFile, workflowDir, {
+      ...runOptions,
+      observer,
+      llmConcurrency: llmConcurrency ?? settings.llmConcurrency,
+      resume,
+    });
+  }
+
   return {
     success: true,
     project: {
       dir: absDir,
       archive: createRunArchive(db, absDir),
       settings,
-      async run(rootFile: WorkflowFile, workflowDir: string, opts: ProjectRunOptions = {}): Promise<RunResult> {
-        const { logBackends, llmConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
+      run(rootFile: WorkflowFile, workflowDir: string, opts: ProjectRunOptions = {}): Promise<RunResult> {
+        return execute(rootFile, workflowDir, opts, undefined, []);
+      },
+      async resume(
+        rootFile: WorkflowFile,
+        rootRunId: string,
+        workflowDir: string,
+        opts: ProjectRunOptions = {},
+      ): Promise<ResumeResult> {
+        // The whole original tree's rows (#170's `planReuse` input), read once. A `rootRunId` that
+        // names no root run yields no rows — `getRunsForRoot` keys on `root_run_id`, so a non-root
+        // (child) id returns nothing too — which is exactly the `found: false` case. The root row's
+        // own presence is the second half of "known root run": a set of rows without it is not a tree
+        // this can resume from.
+        const originalRuns = getRunsForRoot(db, rootRunId);
+        if (originalRuns.length === 0 || !originalRuns.some((r) => r.parentRunId === null)) {
+          return { found: false, error: `no run found with root run id "${rootRunId}"` };
+        }
 
-        // Nearest wins, one rule for every caller: explicit override (a CLI flag, a request field)
-        // beats `.path/settings.json`, which beats the built-in default.
-        const backendIds = logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
-        const backends = createLogBackends(backendIds, { db, projectDir: absDir });
+        // The successor's own root run id, captured off its `run-started` (the root one — a nested
+        // run's `parentRunId` is non-null). `runWorkflow` mints it internally and returns only a
+        // `RunResult`, so an appended observer is how the caller learns which fresh tree it wrote.
+        let successorRootRunId: string | undefined;
+        const capture: RunObserver = {
+          observe(o) {
+            if (o.type === "run-started" && o.parentRunId === null) successorRootRunId = o.runId;
+          },
+        };
 
-        // Persistence first, deliberately. A log backend write failure raises `ObserverError`, which
-        // aborts the remaining observers for that observation — so with logging first, a run whose
-        // audit failed would also have no run row. The row is what survives a failed audit.
-        const observer = composeObservers(
-          createPersistedObserver(db, absDir),
-          createLoggingObserver([...backends, ...extraBackends]),
-          ...extraObservers,
-        );
+        // Read blobs straight out of the original tree, never the successor's: each original run
+        // carries the original `rootRunId`, so `runBlobDir` addresses `.path/runs/<orig-root>/…`.
+        // This is the only door into the original tree, and it is read-only (resume-restore-semantics.md §4).
+        const resume: ResumeInput = {
+          originalRuns,
+          readBlob: (record, filename) => readJsonBlob(runBlobDir(absDir, record.rootRunId, record.runId), filename),
+        };
 
-        return runWorkflow(rootFile, workflowDir, {
-          ...runOptions,
-          observer,
-          llmConcurrency: llmConcurrency ?? settings.llmConcurrency,
-        });
+        const result = await execute(rootFile, workflowDir, opts, resume, [capture]);
+
+        // `run-started` precedes every other observation of a tree (run-observer.ts), and the root
+        // run always starts, so by here the capture has fired — a missing id would be an engine bug,
+        // not an operator error, so assert rather than fold it into `found: false`.
+        if (successorRootRunId === undefined) {
+          throw new Error("internal error: resumed run emitted no root run-started");
+        }
+        return {
+          found: true,
+          rootRunId: successorRootRunId,
+          status: result.status,
+          output: result.output,
+          ...(result.error !== undefined ? { error: result.error } : {}),
+        };
       },
       close(): void {
         db.close();

@@ -204,6 +204,10 @@ interface WorkflowRunParams {
   // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
   // run's own original counterpart (the run it corresponds to, if any). Absent for a fresh run.
   resume?: { input: ResumeInput; counterpart: RunRecord | undefined };
+  // The predecessor's root run id, stamped on this run's `run-started` (#173). Set only on the root
+  // run of a resumed tree — a nested run's predecessor is the tree's, not its own, so it never
+  // carries one. It is the successor-identity fact persistence records on the root row.
+  resumedFromRootRunId?: string;
 }
 
 /**
@@ -355,6 +359,9 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       nodeId: identity.nodeId,
       input,
       worker: file.worker,
+      // Set only on a resumed tree's root run (#173) — persistence writes it to the root row's
+      // `resumed_from_root_run_id`. Undefined everywhere else, including nested resumed runs.
+      ...(params.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: params.resumedFromRootRunId } : {}),
     });
 
     // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
@@ -723,6 +730,11 @@ export async function runWorkflow(
   const masker = collectSecrets(resolvedConfigs);
   for (const warning of masker.warnings) options.warn?.(warning);
   const { observer } = options;
+
+  // The original tree's own root run (`parentRunId === null`), found once: it is both the root run's
+  // resume counterpart (#172) and — being the predecessor of this fresh root run — the successor
+  // identity fact stamped on its `run-started` (#173).
+  const originalRoot = options.resume?.originalRuns.find((r) => r.parentRunId === null);
   const emit: Emit = observer
     ? async (o) => {
         await observer.observe(masker.isEmpty ? o : maskObservation(masker, o));
@@ -749,12 +761,14 @@ export async function runWorkflow(
       worker: options.llmWorker ?? createAgentSdkWorker(),
       semaphore: createProcessorSemaphore(options.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY),
     },
-    // Resume (#172): the root run's original counterpart is the original tree's own root run
-    // (`parentRunId === null`). From there `executeWorkflowRun` plans reuse and restores context,
-    // recursing into every non-succeeded nested workflow-run.
-    resume: options.resume
-      ? { input: options.resume, counterpart: options.resume.originalRuns.find((r) => r.parentRunId === null) }
-      : undefined,
+    // Resume (#172): the root run's original counterpart is the original tree's own root run.
+    // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
+    // non-succeeded nested workflow-run.
+    resume: options.resume ? { input: options.resume, counterpart: originalRoot } : undefined,
+    // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
+    // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
+    // never carry one.
+    resumedFromRootRunId: originalRoot?.runId,
   });
 
   // What the caller gets back is masked too (#123) — everything except a *succeeded* run's `output`.
