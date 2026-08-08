@@ -244,6 +244,13 @@ describe("run archive — listRoots", () => {
     expect(archive.listRoots({ limit: 1 }).map((run) => run.runId)).toEqual(["root-2"]);
     expect(archive.listRoots({ status: "failed" }).map((run) => run.runId)).toEqual(["root-1"]);
   });
+
+  it("existingRunIds answers which predecessor ids still have rows, independent of any listing page", () => {
+    seedTree("root-1");
+
+    expect(archive.existingRunIds(["root-1", "removed"])).toEqual(new Set(["root-1"]));
+    expect(archive.existingRunIds([])).toEqual(new Set());
+  });
 });
 
 describe("run archive — remove and prune", () => {

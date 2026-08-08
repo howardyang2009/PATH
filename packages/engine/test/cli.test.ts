@@ -6,6 +6,9 @@ import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
+import { openDb } from "../src/persistence/db.js";
+import { dbFilePath } from "../src/persistence/paths.js";
+import { finishRun, insertRun } from "../src/persistence/run-store.js";
 
 const realFixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -517,5 +520,119 @@ describe("cli main() — runs subcommand argument strictness (ticket #61)", () =
       expect(code).toBe(0);
       expect(io.log).toHaveBeenCalledWith(expect.stringMatching(/usage: path run/));
     }
+  });
+});
+
+describe("cli main() — runs bare listing (ticket #174)", () => {
+  let projectDir: string;
+  let cwd: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-runs-list-"));
+    // The bare listing reads the `.path/` under the cwd, like `rm`/`prune` — point the cwd at a
+    // throwaway project so the assertions own every row.
+    cwd = process.cwd();
+    process.chdir(projectDir);
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function seedRoot(runId: string, status: string, resumedFromRootRunId?: string): void {
+    const db = openDb(dbFilePath(projectDir));
+    insertRun(db, {
+      runId,
+      rootRunId: runId,
+      parentRunId: null,
+      nodeId: null,
+      worker: { type: "engine" },
+      status: "running",
+      resumedFromRootRunId: resumedFromRootRunId ?? null,
+    });
+    if (status !== "running") finishRun(db, runId, status as "succeeded" | "failed" | "cancelled");
+    db.close();
+  }
+
+  it("lists roots most-recent-first with space-aligned columns and every resumed-from form", async () => {
+    seedRoot("run-aaa", "running");
+    seedRoot("run-bbb", "succeeded", "run-aaa"); // live predecessor
+    seedRoot("run-ccc", "failed", "ghost"); // predecessor no longer in `runs`
+
+    const io = fakeIo();
+    const code = await main(["runs"], io);
+
+    expect(code).toBe(0);
+    expect(io.error).not.toHaveBeenCalled();
+    expect(io.log).toHaveBeenCalledWith(
+      [
+        "root run id  status     resumed-from",
+        "run-ccc      failed     ghost (deleted)",
+        "run-bbb      succeeded  run-aaa",
+        "run-aaa      running    -",
+      ].join("\n"),
+    );
+  });
+
+  it("renders a predecessor off the current --limit page as live, not deleted", async () => {
+    seedRoot("older-root", "succeeded"); // the predecessor, pushed off the page by --limit 1
+    seedRoot("newer-root", "succeeded", "older-root");
+
+    const io = fakeIo();
+    const code = await main(["runs", "--limit", "1"], io);
+
+    expect(code).toBe(0);
+    const output = io.log.mock.calls.at(-1)![0] as string;
+    expect(output).toContain("newer-root   succeeded  older-root");
+    expect(output).not.toMatch(/older-root +succeeded/); // capped off the page
+    expect(output).not.toContain("(deleted)"); // liveness is existence, not page membership
+  });
+
+  it("filters by --status", async () => {
+    seedRoot("ok-run", "succeeded");
+    seedRoot("bad-run", "failed");
+
+    const io = fakeIo();
+    const code = await main(["runs", "--status", "failed"], io);
+
+    expect(code).toBe(0);
+    const output = io.log.mock.calls.at(-1)![0] as string;
+    expect(output).toContain("bad-run");
+    expect(output).not.toContain("ok-run");
+  });
+
+  it("prints only the header for a project with no runs", async () => {
+    const io = fakeIo();
+    const code = await main(["runs"], io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith("root run id  status  resumed-from");
+  });
+
+  it("rejects an unknown --status value with a usage error", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "--status", "bogus"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--status requires one of/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("rejects a non-positive --limit with a usage error", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "--limit", "0"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--limit requires a positive integer/));
+  });
+
+  it("still reports a mistyped subcommand as a usage error", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "bogus"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/usage: path runs/));
+    expect(io.log).not.toHaveBeenCalled();
   });
 });

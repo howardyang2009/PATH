@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
 import { dirname } from "node:path";
-import type { ConfigObject, JsonValue } from "@path/schema";
+import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
 import { mergeConfig } from "./merge-config.js";
 import { openProject } from "./project.js";
-import { openRunArchive } from "./run-archive.js";
+import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
 
 export interface CliIo {
   log(message: string): void;
@@ -37,7 +37,8 @@ const consoleIo: CliIo = {
 
 const RUN_USAGE =
   "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
-const RUNS_USAGE = "usage: path runs rm <root-run-id> | path runs prune";
+const RUNS_USAGE =
+  "usage: path runs [--limit <n>] [--status <status>] | path runs rm <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -112,16 +113,23 @@ function parseRunArgs(argv: string[]): ParseResult {
   };
 }
 
-type LlmConcurrencyResult = { success: true; value: number } | { success: false; error: string };
+type PositiveIntResult = { success: true; value: number } | { success: false; error: string };
+
+// The one positive-integer flag check, shared by `--llm-concurrency`'s memory cap and `runs`'
+// `--limit` page size (#174). `flag`/`usage` name the offending flag and its command's usage, so the
+// two call sites can't drift on the wording the way two copy-pasted checks eventually would.
+function parsePositiveInt(flag: string, value: string | undefined, usage: string): PositiveIntResult {
+  const parsed = Number(value);
+  if (!value || !Number.isInteger(parsed) || parsed <= 0) {
+    return { success: false, error: `${flag} requires a positive integer\n${usage}` };
+  }
+  return { success: true, value: parsed };
+}
 
 // The engine-wide LLM processor cap (mvp spec §5.5, §7): a positive integer overriding the default
 // of 4. The ceiling is memory (~400 MB per live processor), so this is the operator's memory knob.
-function parseLlmConcurrency(value: string | undefined): LlmConcurrencyResult {
-  const parsed = Number(value);
-  if (!value || !Number.isInteger(parsed) || parsed <= 0) {
-    return { success: false, error: `--llm-concurrency requires a positive integer\n${RUN_USAGE}` };
-  }
-  return { success: true, value: parsed };
+function parseLlmConcurrency(value: string | undefined): PositiveIntResult {
+  return parsePositiveInt("--llm-concurrency", value, RUN_USAGE);
 }
 
 type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
@@ -338,6 +346,88 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   return 0;
 }
 
+type ListRootsArgsResult = { success: true; options: ListRootsOptions } | { success: false; error: string };
+
+// The bare `path runs` listing (#174) reuses the same `--limit`/`--status` filters `listRoots`
+// already implements, validated here the way `run`'s flags are — `--status` against the domain's own
+// status set, so an unknown status is refused rather than silently matching nothing.
+function parseRunsListArgs(args: string[]): ListRootsArgsResult {
+  let limit: number | undefined;
+  let status: RunStatus | undefined;
+
+  for (let i = 0; i < args.length; i += 1) {
+    const flag = args[i];
+    if (flag === "--limit") {
+      const parsed = parsePositiveInt("--limit", args[i + 1], RUNS_USAGE);
+      if (!parsed.success) return parsed;
+      limit = parsed.value;
+      i += 1;
+    } else if (flag === "--status") {
+      const value = args[i + 1];
+      if (!value || !RUN_STATUSES.includes(value as RunStatus)) {
+        return { success: false, error: `--status requires one of ${RUN_STATUSES.join(", ")}\n${RUNS_USAGE}` };
+      }
+      status = value as RunStatus;
+      i += 1;
+    } else {
+      return { success: false, error: `unrecognized argument "${flag}"\n${RUNS_USAGE}` };
+    }
+  }
+
+  return { success: true, options: { limit, status } };
+}
+
+const RUNS_TABLE_HEADERS = ["root run id", "status", "resumed-from"] as const;
+
+// Space-aligned columns (#174): the root run id is never truncated, so its column is as wide as the
+// longest id on the page. Every column but the last is padded to its width; the last carries no
+// trailing padding.
+function formatRunsTable(rows: readonly [string, string, string][]): string {
+  const widths = RUNS_TABLE_HEADERS.map((header, col) =>
+    Math.max(header.length, ...rows.map((row) => row[col]!.length)),
+  );
+  const line = (cols: readonly string[]): string =>
+    cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");
+  return [line(RUNS_TABLE_HEADERS), ...rows.map(line)].join("\n");
+}
+
+// `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`
+// operate on. The `resumed-from` cell asks the archive which predecessor ids still have rows —
+// existence, not presence on this page, is what tells a live predecessor from a `(deleted)` one.
+function runRunsListCommand(args: string[], io: CliIo): number {
+  const parsed = parseRunsListArgs(args);
+  if (!parsed.success) {
+    io.error(parsed.error);
+    return 2;
+  }
+
+  const opened = openRunArchive(process.cwd());
+  if (!opened.success) {
+    io.error(opened.error);
+    return 1;
+  }
+  try {
+    const roots = opened.archive.listRoots(parsed.options);
+    const predecessorIds = roots
+      .map((run) => run.resumedFromRootRunId)
+      .filter((id): id is string => id !== null);
+    const live = opened.archive.existingRunIds(predecessorIds);
+
+    const rows = roots.map((run): [string, string, string] => {
+      const predecessor = run.resumedFromRootRunId;
+      const resumedFrom =
+        predecessor === null ? "-" : live.has(predecessor) ? predecessor : `${predecessor} (deleted)`;
+      return [run.runId, run.status, resumedFrom];
+    });
+
+    io.log(formatRunsTable(rows));
+  } finally {
+    opened.close();
+  }
+
+  return 0;
+}
+
 // `path runs rm`/`path runs prune` take no workflow-file argument (mvp spec §3) — they operate
 // on the `.path/` found in the current working directory, like `git` subcommands operate on
 // whatever repo the cwd is inside.
@@ -402,6 +492,12 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
 
     io.log(`pruned ${deleted} run(s)`);
     return 0;
+  }
+
+  // No subcommand, or a leading flag — the bare listing (#174). A word that is neither `rm`, `prune`
+  // nor a flag is a mistyped subcommand, and still earns the usage error.
+  if (subcommand === undefined || subcommand.startsWith("--")) {
+    return runRunsListCommand(args, io);
   }
 
   io.error(RUNS_USAGE);

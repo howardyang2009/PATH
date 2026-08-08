@@ -7,6 +7,7 @@ import { openDb } from "../../src/persistence/db.js";
 import {
   deleteAllRuns,
   deleteRunsForRoot,
+  existingRunIds,
   finishRun,
   getRunsForRoot,
   insertRun,
@@ -209,6 +210,17 @@ describe("run-store", () => {
 
     expect(listRootRuns(db, { status: "succeeded" }).map((r) => r.runId)).toEqual(["c", "a"]);
     expect(listRootRuns(db, { status: "failed" }).map((r) => r.runId)).toEqual(["b"]);
+  });
+
+  it("existingRunIds returns only the ids that still have a row, deduping the input", () => {
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+
+    expect(existingRunIds(db, ["a", "b", "gone", "a"])).toEqual(new Set(["a", "b"]));
+  });
+
+  it("existingRunIds is empty for an empty input, running no query", () => {
+    expect(existingRunIds(db, [])).toEqual(new Set());
   });
 
   it("deleteAllRuns wipes every row", () => {
