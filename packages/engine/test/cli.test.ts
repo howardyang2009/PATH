@@ -179,6 +179,124 @@ describe("cli main() — --context / --set-context (ticket #171)", () => {
   });
 });
 
+describe("cli main() — --resume (ticket #177)", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-resume-cli-"));
+    cpSync(join(realFixtures, "resumable.workflow.json"), join(projectDir, "workflow.json"));
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  const workflow = () => join(projectDir, "workflow.json");
+
+  // Combining a context seed with --resume is a hard validation error, not a silent drop (ADR 0003):
+  // a resumed run's starting context is already fully determined by restore-by-load.
+  it("rejects --context combined with --resume as a validation error (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "whatever", "--context", join(fixtures, "context-override.json")], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--context.*--resume|--resume.*--context/));
+  });
+
+  it("rejects --set-context combined with --resume as a validation error (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "whatever", "--set-context", "k=v"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--set-context|--context/));
+  });
+
+  it("reports a clear error when --resume has no id argument (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--resume/));
+  });
+
+  it("exits 1 with a clear error when --resume names an unknown root run id", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "no-such-root"], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/no run found.*no-such-root/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("prints the successor's root run id and exits 1 when the resumed run itself fails again", async () => {
+    const firstIo = fakeIo();
+    expect(await main(["run", workflow()], firstIo)).toBe(1);
+
+    const db = openDb(dbFilePath(projectDir));
+    const originalRoot = (
+      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        root_run_id: string;
+      }
+    ).root_run_id;
+    db.close();
+
+    // Resume without fixing the config, so step-b fails again — the successor id must still print on
+    // this non-success outcome (#168 story 24), so the operator can inspect it or chain a further
+    // --resume regardless of how it ended.
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot], io);
+    expect(code).toBe(1);
+    const successorRoot = io.log.mock.calls.at(-1)![0] as string;
+    expect(successorRoot).not.toBe(originalRoot);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/run failed/));
+  });
+
+  it("resumes a failed run, reuses the succeeded step, and prints the successor's root run id", async () => {
+    // First run fails at step-b (config mode defaults to "fail"); step-a succeeds.
+    const firstIo = fakeIo();
+    const firstCode = await main(["run", workflow()], firstIo);
+    expect(firstCode).toBe(1);
+
+    const db = openDb(dbFilePath(projectDir));
+    const originalRoot = (
+      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        root_run_id: string;
+      }
+    ).root_run_id;
+    db.close();
+
+    // Resume with a corrected config — --set feeds every rerun (criterion 3), so step-b now passes.
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot, "--set", "mode=ok"], io);
+    expect(code).toBe(0);
+
+    // The one stdout line is the successor's own fresh root run id, distinct from the predecessor.
+    const successorRoot = io.log.mock.calls.at(-1)![0] as string;
+    expect(successorRoot).not.toBe(originalRoot);
+
+    const after = openDb(dbFilePath(projectDir));
+    try {
+      const successorRows = after
+        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_id: string | null; status: string }[];
+      // step-a was reused: it has no run row of its own in the successor tree. step-b reran and
+      // succeeded. The successor's root row records the immediate predecessor it resumed from.
+      expect(successorRows.some((r) => r.node_id === "step-a")).toBe(false);
+      expect(successorRows.find((r) => r.node_id === "step-b")?.status).toBe("succeeded");
+
+      const successorRootRow = after
+        .prepare("SELECT resumed_from_root_run_id FROM runs WHERE run_id = ?")
+        .get(successorRoot) as { resumed_from_root_run_id: string | null };
+      expect(successorRootRow.resumed_from_root_run_id).toBe(originalRoot);
+
+      // The original tree is untouched: its rows still read exactly as the failed run left them.
+      const originalRows = after
+        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
+        .all(originalRoot) as { node_id: string | null; status: string }[];
+      expect(originalRows.find((r) => r.node_id === "step-a")?.status).toBe("succeeded");
+      expect(originalRows.find((r) => r.node_id === "step-b")?.status).toBe("failed");
+    } finally {
+      after.close();
+    }
+  });
+});
+
 describe("cli main() — log.backends setting (ticket #19)", () => {
   it("accepts --log-backends to select the audit stream and still runs the workflow", async () => {
     const io = fakeIo();

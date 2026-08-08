@@ -5,7 +5,7 @@ import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
 import { mergeConfig } from "./merge-config.js";
-import { openProject } from "./project.js";
+import { openProject, type ProjectRunOptions, type ResumeResult } from "./project.js";
 import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
 
 export interface CliIo {
@@ -36,12 +36,13 @@ const consoleIo: CliIo = {
 };
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
+  "usage: path run <workflow.json> [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [--limit <n>] [--status <status>] | path runs rm [--force] <root-run-id> | path runs prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
+  resumeRootRunId?: string;
   configFile?: string;
   setPairs: [string, string][];
   contextFile?: string;
@@ -59,6 +60,7 @@ function parseRunArgs(argv: string[]): ParseResult {
   const [workflowPath, ...rest] = argv;
   if (!workflowPath) return { success: false, error: RUN_USAGE };
 
+  let resumeRootRunId: string | undefined;
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
   let contextFile: string | undefined;
@@ -68,7 +70,12 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
-    if (flag === "--config") {
+    if (flag === "--resume") {
+      const value = rest[i + 1];
+      if (!value) return { success: false, error: `--resume requires a root run id argument\n${RUN_USAGE}` };
+      resumeRootRunId = value;
+      i += 1;
+    } else if (flag === "--config") {
       const value = rest[i + 1];
       if (!value) return { success: false, error: `--config requires a path argument\n${RUN_USAGE}` };
       configFile = value;
@@ -107,9 +114,20 @@ function parseRunArgs(argv: string[]): ParseResult {
     }
   }
 
+  // A resumed run's starting context is already fully determined by restore-by-load from the
+  // original tree (ADR 0003) — a supplied `--context`/`--set-context` seed has nothing to do but be
+  // silently discarded or fought over, so combining either with `--resume` is refused outright
+  // rather than quietly dropped (this repo treats silently-discarded operator state as a failure).
+  if (resumeRootRunId !== undefined && (contextFile !== undefined || setContextPairs.length > 0)) {
+    return {
+      success: false,
+      error: `--context/--set-context cannot be combined with --resume: a resumed run's context is restored from the original tree\n${RUN_USAGE}`,
+    };
+  }
+
   return {
     success: true,
-    args: { workflowPath, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
+    args: { workflowPath, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
   };
 }
 
@@ -310,40 +328,77 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
   const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
 
+  // The backend list, the observer pair and their order, and settings precedence all belong to the
+  // project (#64). What is left here is what a CLI actually owns: the flags it parsed, the signal it
+  // installed, and where warnings go. `input` is the fresh-run context seed only — a resumed run
+  // restores its context from the original tree instead, so `resume` never carries an `input`.
+  const projectOptions: ProjectRunOptions = {
+    operatorConfig: operatorConfig.config,
+    files: tree.files,
+    logBackends: parsed.args.logBackends,
+    llmConcurrency: parsed.args.llmConcurrency,
+    llmWorker: overrides.llmWorker,
+    warn: (message) => io.error(`warning: ${message}`),
+    signal: sigint.signal,
+  };
+
+  if (parsed.args.resumeRootRunId !== undefined) {
+    let resumeResult: ResumeResult;
+    try {
+      resumeResult = await project.resume(rootFile, parsed.args.resumeRootRunId, workflowDir, projectOptions);
+    } finally {
+      sigint.dispose();
+      project.close();
+    }
+    return reportResume(resumeResult, io);
+  }
+
   let runResult;
   try {
-    // The backend list, the observer pair and their order, and settings precedence all belong to
-    // the project (#64). What is left here is what a CLI actually owns: the flags it parsed, the
-    // signal it installed, and where warnings go.
-    runResult = await project.run(rootFile, workflowDir, {
-      operatorConfig: operatorConfig.config,
-      input: contextSeed.context,
-      files: tree.files,
-      logBackends: parsed.args.logBackends,
-      llmConcurrency: parsed.args.llmConcurrency,
-      llmWorker: overrides.llmWorker,
-      warn: (message) => io.error(`warning: ${message}`),
-      signal: sigint.signal,
-    });
+    runResult = await project.run(rootFile, workflowDir, { ...projectOptions, input: contextSeed.context });
   } finally {
     sigint.dispose();
     project.close();
   }
 
-  // The unwind finished: the run is recorded `cancelled` everywhere, which is what the operator
-  // pressing `^C` was owed. No output is printed — a cancelled run has no output contract.
-  if (runResult.status === "cancelled") {
+  // A fresh run prints its output on success; a cancelled/failed one has no output contract.
+  if (runResult.status === "succeeded") {
+    io.log(typeof runResult.output === "string" ? runResult.output : JSON.stringify(runResult.output));
+    return 0;
+  }
+  return reportOutcome(runResult.status, runResult.error, io);
+}
+
+// Maps a settled run's terminal status to its stderr narration and exit code, shared by fresh and
+// resumed runs (#177) so the two can't drift on how a cancel or failure reads. `cancelled` (the
+// unwind the operator's `^C` was owed) and `failed` narrate identically for both; success returns 0
+// and prints nothing, leaving each caller to own its happy-path output — a fresh run prints the
+// workflow output, a resumed run has already printed the successor's root run id.
+function reportOutcome(status: RunStatus, error: string | undefined, io: CliIo): number {
+  if (status === "cancelled") {
     io.error("run cancelled");
     return SIGINT_EXIT_CODE;
   }
+  if (status === "failed") {
+    io.error(`run failed: ${error}`);
+    return 1;
+  }
+  return 0;
+}
 
-  if (runResult.status === "failed") {
-    io.error(`run failed: ${runResult.error}`);
+// A resumed run's CLI outcome (#177). An unknown root run id is an ordinary operator mistake — a
+// typo — so it exits 1 with the engine's own "no run found" message, never silently doing something
+// else. Otherwise the successor's fresh root run id is printed on *every* outcome (succeeded,
+// failed, cancelled alike), so the operator can inspect it or chain a further `--resume` regardless
+// of how it ended; the exit code and any error/cancel message then mirror a fresh run's.
+function reportResume(result: ResumeResult, io: CliIo): number {
+  if (!result.found) {
+    io.error(result.error);
     return 1;
   }
 
-  io.log(typeof runResult.output === "string" ? runResult.output : JSON.stringify(runResult.output));
-  return 0;
+  io.log(result.rootRunId);
+  return reportOutcome(result.status, result.error, io);
 }
 
 type ListRootsArgsResult = { success: true; options: ListRootsOptions } | { success: false; error: string };

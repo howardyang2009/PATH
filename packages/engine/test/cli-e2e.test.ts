@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
-import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -154,6 +154,87 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     await expect(runCli(["runs", "rm", "never-existed"], projectDir)).rejects.toMatchObject({
       code: 1,
       stderr: expect.stringContaining("no run found"),
+    });
+  });
+});
+
+describe("path run --resume (ticket #177, real dev-mode process)", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-resume-e2e-"));
+    cpSync(join(realFixtures, "resumable.workflow.json"), join(projectDir, "workflow.json"));
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function originalRootRunId(): string {
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    const id = (
+      db
+        .prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1")
+        .get() as { root_run_id: string }
+    ).root_run_id;
+    db.close();
+    return id;
+  }
+
+  it("resumes a real failed run end to end, reusing the succeeded step and printing the successor id", async () => {
+    // The first run fails at step-b (config mode defaults to "fail"); step-a has already succeeded.
+    await expect(runCli(["run", join(projectDir, "workflow.json")], projectDir)).rejects.toMatchObject({ code: 1 });
+    const originalRoot = originalRootRunId();
+
+    // Resume with a corrected config: --set feeds every rerun, so step-b now passes.
+    const { stdout } = await runCli(
+      ["run", join(projectDir, "workflow.json"), "--resume", originalRoot, "--set", "mode=ok"],
+      projectDir,
+    );
+    const successorRoot = stdout.trim();
+    expect(successorRoot).not.toBe(originalRoot);
+
+    const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+    try {
+      // step-a was reused — no run row of its own in the successor tree; step-b reran and succeeded.
+      const successorRows = db
+        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_id: string | null; status: string }[];
+      expect(successorRows.some((r) => r.node_id === "step-a")).toBe(false);
+      expect(successorRows.find((r) => r.node_id === "step-b")?.status).toBe("succeeded");
+
+      const successorRootRow = db
+        .prepare("SELECT status, resumed_from_root_run_id FROM runs WHERE run_id = ?")
+        .get(successorRoot) as { status: string; resumed_from_root_run_id: string | null };
+      expect(successorRootRow.status).toBe("succeeded");
+      expect(successorRootRow.resumed_from_root_run_id).toBe(originalRoot);
+
+      // The original tree is untouched by the resume: its rows still read as the failed run left them.
+      const originalRows = db
+        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
+        .all(originalRoot) as { node_id: string | null; status: string }[];
+      expect(originalRows.find((r) => r.node_id === "step-a")?.status).toBe("succeeded");
+      expect(originalRows.find((r) => r.node_id === "step-b")?.status).toBe("failed");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("exits 1 with a clear error when --resume names an unknown root run id", async () => {
+    await expect(
+      runCli(["run", join(projectDir, "workflow.json"), "--resume", "no-such-root"], projectDir),
+    ).rejects.toMatchObject({
+      code: 1,
+      stderr: expect.stringContaining("no run found"),
+    });
+  });
+
+  it("exits 2 when --context is combined with --resume", async () => {
+    await expect(
+      runCli(["run", join(projectDir, "workflow.json"), "--resume", "whatever", "--set-context", "k=v"], projectDir),
+    ).rejects.toMatchObject({
+      code: 2,
+      stderr: expect.stringMatching(/--set-context|--context/),
     });
   });
 });
