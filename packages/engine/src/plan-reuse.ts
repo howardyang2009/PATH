@@ -11,23 +11,25 @@ export type ReusePlan = Map<string, RunRecord>;
  * (resume-reuse-semantics.md): a node id reuses iff `originalRuns` holds a `succeeded` run at that
  * id — matched by id alone, never by comparing input, config, or the step's own definition.
  *
- * `originalRuns` is scoped to the root run's direct children before matching, not searched whole:
- * node ids are unique only within one file (release-notes.test.ts), so a nested workflow-run's own
- * descendants can carry an id that coincidentally collides with one in this file. Since `walkNodes`
- * never descends into a `workflow` step's ref (node-walk.ts), a succeeded workflow-run's whole
- * subtree is collapsed for free — nothing inside it is a candidate, and nothing inside it is ever
- * inspected.
+ * `originalRuns` is scoped to one workflow-run's direct children before matching, not searched
+ * whole: node ids are unique only within one file (release-notes.test.ts), so a nested workflow-run's
+ * own descendants can carry an id that coincidentally collides with one in this file. `parentRunId`
+ * names that workflow-run — the original root run when omitted (the top-level call), or a re-entered
+ * nested workflow-run's original counterpart when the engine recurses into it (#172). Since
+ * `walkNodes` never descends into a `workflow` step's ref (node-walk.ts), a succeeded workflow-run's
+ * whole subtree is collapsed for free — nothing inside it is a candidate, and nothing inside it is
+ * ever inspected.
  *
  * A `while-do` body's node id repeats once per iteration, so more than one succeeded row can share
  * an id — which recorded attempt answers a single re-read node is undefined, so an id with more than
  * one succeeded candidate does not reuse rather than guessing at one.
  */
-export function planReuse(originalRuns: RunRecord[], tree: WorkflowFile): ReusePlan {
+export function planReuse(originalRuns: RunRecord[], tree: WorkflowFile, parentRunId?: string): ReusePlan {
   const plan: ReusePlan = new Map();
-  const rootRun = originalRuns.find((run) => run.parentRunId === null);
-  if (!rootRun) return plan;
+  const scopeRunId = parentRunId ?? originalRuns.find((run) => run.parentRunId === null)?.runId;
+  if (scopeRunId === undefined) return plan;
 
-  const candidates = originalRuns.filter((run) => run.parentRunId === rootRun.runId);
+  const candidates = originalRuns.filter((run) => run.parentRunId === scopeRunId);
   for (const node of walkNodes(tree.body)) {
     if (!RUN_PRODUCING_TYPES.has(node.type)) continue;
     const succeeded = candidates.filter((candidate) => candidate.nodeId === node.id && candidate.status === "succeeded");

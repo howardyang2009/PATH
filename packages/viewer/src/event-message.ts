@@ -39,6 +39,10 @@ export function eventMessage(event: LogEvent): string {
       return `while-do ${label} iteration ${event.iteration}`;
     case "loop-exited":
       return `while-do ${label} exited after ${event.iterations} iterations · ${event.reason}`;
+    case "reuse-marker":
+      // A resumed run reused this node's recorded work (#172); the pointer is where the real record
+      // lives, so a watcher can follow it rather than hit a silent gap in the narrative.
+      return `${label} reused from ${event.original_run_id}`;
     default: {
       // Exhaustiveness guard: adding a member to the union fails to compile until it is handled.
       const unhandled: never = event;

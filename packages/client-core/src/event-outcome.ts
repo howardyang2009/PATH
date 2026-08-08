@@ -31,6 +31,11 @@ export function eventOutcome(event: LogEvent): RunStatus | null {
     case "join-applied":
     case "iteration-started":
       return null;
+    case "reuse-marker":
+      // A reused node's recorded run succeeded originally, but the marker only points at where the
+      // real record lives (#172) — it has no run row of its own here and asserts no outcome for the
+      // successor tree's own progress, so it routes like the other pure-control-flow events.
+      return null;
     default: {
       // Exhaustiveness guard: a new event type must decide what it means before it can render.
       const unhandled: never = event;

@@ -116,6 +116,16 @@ const LoopExitedSchema = z
   })
   .strict();
 
+// A resumed tree reused one node's recorded work instead of re-running it (#172,
+// resume-restore-semantics.md §6): no `step-started`/`step-finished` fires for the node, so this
+// marker is the only place the resumed tree's own log records it happened — §8.1's "complete
+// narrative" would otherwise have a silent gap exactly where the reused subtree is. Fires **once
+// per reuse decision** (a reused workflow-run collapses its whole subtree into this one event, not
+// one per descendant). The envelope's `run_id` is the nearest re-entered workflow-run ancestor in
+// the successor tree, `node_id` the reused node's own id; `original_run_id` back-references the run
+// in the *original* tree that holds the real data, so a reader follows the pointer instead of a gap.
+const ReuseMarkerSchema = z.object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() }).strict();
+
 export const LogEventSchema = z.discriminatedUnion("type", [
   StepStartedSchema,
   StepFinishedSchema,
@@ -127,6 +137,7 @@ export const LogEventSchema = z.discriminatedUnion("type", [
   RunCancelledSchema,
   IterationStartedSchema,
   LoopExitedSchema,
+  ReuseMarkerSchema,
 ]);
 
 export type LogEvent = z.infer<typeof LogEventSchema>;
@@ -134,3 +145,4 @@ export type StepStartedEvent = z.infer<typeof StepStartedSchema>;
 export type StepFinishedEvent = z.infer<typeof StepFinishedSchema>;
 export type JoinAppliedEvent = z.infer<typeof JoinAppliedSchema>;
 export type RunCancelledEvent = z.infer<typeof RunCancelledSchema>;
+export type ReuseMarkerEvent = z.infer<typeof ReuseMarkerSchema>;

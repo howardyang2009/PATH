@@ -124,6 +124,17 @@ export type Observation =
   /** A workflow-run finished (root or nested). */
   | ({ type: "run-finished"; runId: string; rootRunId: string } & RunOutcome)
   /**
+   * A resumed tree reused a node's recorded work instead of re-running it (#172,
+   * resume-restore-semantics.md §6). No `step-started`/`step-finished` is emitted for the reused
+   * node and no run row is written — this marker is its whole trace. `runId` is the enclosing
+   * re-entered workflow-run (the reuse decision was taken while walking that run's body), `nodeId`
+   * the reused node's own id, and `originalRunId` the run in the *original* tree that holds the real
+   * data. Fires once per reuse decision — a reused workflow-run collapses its whole subtree into this
+   * single event, never one per descendant. Narrated to the log alone (see logging/logging-observer);
+   * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
+   */
+  | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; originalRunId: string }
+  /**
    * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
    * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run
    * of its own (invariant 1). `passed` is the condition outcome; a strict-error evaluation is

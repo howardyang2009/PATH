@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
+import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
 import { runBinaryStep } from "./binary-worker.js";
+import { planReuse, type ReusePlan } from "./plan-reuse.js";
+import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
@@ -57,6 +59,28 @@ export interface RunOptions {
    * and no force path. Cancellation is per **root run** — there is no per-run controller registry.
    */
   signal?: AbortSignal;
+  /**
+   * Resume a prior tree (#172): reuse the recorded work of every succeeded run whose node id still
+   * matches (#170's `planReuse`), and restore each re-entered workflow-run's context blackboard from
+   * the original tree, rather than re-running the whole pipeline from scratch. Absent for an ordinary
+   * fresh run. The original tree is only ever **read** here, never written — this run is a *successor*
+   * with its own root run id and its own `.path/runs/` tree (resume-restore-semantics.md §4).
+   */
+  resume?: ResumeInput;
+}
+
+/**
+ * What a successor run needs from the original tree to resume it (#172). The engine core does no I/O
+ * of its own, so both halves are supplied by the caller: the run rows to plan reuse from, and a
+ * reader that loads a blob (a reused run's `output.json`, a re-entered workflow-run's `context.json`)
+ * out of the read-only original tree. Every read happens once, at the point of reuse
+ * (resume-restore-semantics.md) — nothing is copied into the new tree ahead of time.
+ */
+export interface ResumeInput {
+  /** Every run row of the original tree — `planReuse`'s input (#170), the whole tree not just the root. */
+  originalRuns: RunRecord[];
+  /** Loads one blob of an original run by filename (`RUN_BLOB_FILE.output` / `.context`). */
+  readBlob: (run: RunRecord, filename: string) => JsonValue;
 }
 
 /**
@@ -177,6 +201,9 @@ interface WorkflowRunParams {
   // it kills has no cause run inside the tree.
   signal?: AbortSignal;
   cancellation?: Cancellation;
+  // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
+  // run's own original counterpart (the run it corresponds to, if any). Absent for a fresh run.
+  resume?: { input: ResumeInput; counterpart: RunRecord | undefined };
 }
 
 /**
@@ -205,6 +232,22 @@ export interface RunContext {
   files?: Map<string, WorkflowFile>;
   /** Shared by the whole run tree, so the processor cap spans nested runs too (mvp spec §5.5). */
   llm: LlmRuntime;
+  /** This workflow-run's resume state (#172), when the run is being resumed; absent for a fresh run. */
+  resume?: RunResume;
+}
+
+/**
+ * One workflow-run's resume state (#172): the whole-tree read inputs, this run's own original
+ * counterpart, and the reuse plan computed for *this* run's direct children. `runNode` consults
+ * `plan` to decide whether a node reuses; `runWorkflowNode` uses `input`/`counterpart` to find a
+ * non-reused nested workflow-run's own counterpart before recursing into it.
+ */
+interface RunResume {
+  input: ResumeInput;
+  /** The original run this successor workflow-run corresponds to, or undefined for a fresh (added) run. */
+  counterpart: RunRecord | undefined;
+  /** Node ids of this run's direct children that reuse, each pointing at the original run it reuses. */
+  plan: ReusePlan;
 }
 
 type WorkflowNode = WorkflowFile["body"][number];
@@ -238,7 +281,25 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
 async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
   const { file, fileDir, input, incomingConfig, identity, files, emit } = params;
   const { runId, rootRunId } = identity;
-  const context: { [key: string]: JsonValue } = { ...input }; // format doc §6.3
+
+  // Resume (#172): a re-entered workflow-run restores its context blackboard from its original
+  // counterpart's recorded `context.json` verbatim (restore-by-load, resume-restore-semantics.md
+  // §1–2) instead of seeding fresh from input. A run with no counterpart — added since, or a
+  // while-do body's nested run whose iteration can't be told apart — is a first attempt and seeds
+  // fresh (invariant 4). The reuse plan is this run's own, scoped to its counterpart's children.
+  const resumeCounterpart = params.resume?.counterpart;
+  const restoredContext =
+    params.resume && resumeCounterpart
+      ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
+      : undefined;
+  const context: { [key: string]: JsonValue } = restoredContext ? { ...restoredContext } : { ...input }; // format doc §6.3
+  const resume: RunResume | undefined = params.resume
+    ? {
+        input: params.resume.input,
+        counterpart: resumeCounterpart,
+        plan: resumeCounterpart ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId) : new Map(),
+      }
+    : undefined;
   let previousOutput: JsonValue = input;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
@@ -247,7 +308,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
   const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
-  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm };
+  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm, resume };
   const fail = async (error: string): Promise<RunResult> => {
     await emit({ type: "run-finished", runId, rootRunId, status: "failed", error });
     return { status: "failed", output: previousOutput, error };
@@ -296,6 +357,14 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       worker: file.worker,
     });
 
+    // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
+    // (its run-started seed). A re-entered workflow-run's real starting context is the restored one,
+    // so write it straight through as a fresh, self-sufficient `context.json` under the new tree
+    // (resume-restore-semantics.md §1) — overwriting the input-seed with what actually resumes.
+    if (restoredContext !== undefined) {
+      await emit({ type: "context-changed", runId, rootRunId, context });
+    }
+
     // A run-start config failure (#116) lands *here* rather than at load: the run exists, is
     // recorded, and ends `failed` before its first node. Two reasons it is a run and not a load
     // error. Operator config is a run input, not a file, so half of what is checked has no load to
@@ -339,6 +408,19 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   }
 }
 
+// The original nested workflow-run a non-reused `workflow` node re-enters (#172), or undefined to
+// start fresh. Matched by (parent run, node id) within the original tree — exactly one answer
+// re-enters and restores; zero (a node added since) or more than one (a while-do body's workflow
+// step, one run per iteration — which to restore is undefined) both start fresh, mirroring
+// planReuse's refusal to guess among multiple candidates. A node that *reused* never reaches here:
+// runNode short-circuits it before dispatch, so this only runs for a genuinely re-entered run.
+function findNestedCounterpart(resume: RunResume, nodeId: string): RunRecord | undefined {
+  if (!resume.counterpart) return undefined;
+  const parentRunId = resume.counterpart.runId;
+  const matches = resume.input.originalRuns.filter((r) => r.parentRunId === parentRunId && r.nodeId === nodeId);
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
 // A `workflow` step: resolve `ref` against the loaded tree and run the child file as a nested
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
 // isolated — CONTEXT invariant); the parent's effective config crosses the boundary but its
@@ -377,6 +459,12 @@ async function runWorkflowNode(
     llm: ctx.run.llm,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
+    // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
+    // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
+    // its already-succeeded grandchildren reuse rather than re-running from scratch.
+    resume: ctx.run.resume
+      ? { input: ctx.run.resume.input, counterpart: findNestedCounterpart(ctx.run.resume, node.id) }
+      : undefined,
   });
 
   if (childResult.status === "cancelled") return { status: "cancelled" };
@@ -661,6 +749,12 @@ export async function runWorkflow(
       worker: options.llmWorker ?? createAgentSdkWorker(),
       semaphore: createProcessorSemaphore(options.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY),
     },
+    // Resume (#172): the root run's original counterpart is the original tree's own root run
+    // (`parentRunId === null`). From there `executeWorkflowRun` plans reuse and restores context,
+    // recursing into every non-succeeded nested workflow-run.
+    resume: options.resume
+      ? { input: options.resume, counterpart: options.resume.originalRuns.find((r) => r.parentRunId === null) }
+      : undefined,
   });
 
   // What the caller gets back is masked too (#123) — everything except a *succeeded* run's `output`.
@@ -890,24 +984,45 @@ export async function runNode(
   // all three, which is why this half of the function has no counterpart above. The second of the
   // two points effective config is materialized, and so the second that resolves `$env` (#116).
   const stepConfig = resolveConfigEnv(mergeConfig(run.fileConfig, node.config), run.env).config;
-  const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
-  let stepInput: JsonValue;
-  try {
-    stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
-  } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.id, err) };
-  }
 
-  // One context for all three step types, derived rather than hand-built. These were two literals
-  // constructed side by side, sharing seven identical fields (#76).
-  const step: StepContext = { run, exec, stepConfig };
+  // Resume reuse (#172): a node whose recorded run this successor tree reuses does not execute at
+  // all — its output is the original run's recorded `output.json`, read once from the read-only
+  // original tree, and a `reuse-marker` is its whole trace (no step-started/step-finished, no run
+  // row). A reused `workflow` node collapses its whole subtree here: the plan holds only that node,
+  // and returning without `runWorkflowNode` means nothing inside it is ever walked — so the marker
+  // fires once per reuse decision, never once per descendant. Everything downstream treats the
+  // reused output identically to a freshly produced one, so the `publish` block below is shared.
+  const reused = run.resume?.plan.get(node.id);
   let outcome: SeqOutcome;
-  if (node.type === "workflow") {
-    outcome = await runWorkflowNode(node, stepInput, step);
-  } else if (node.type === "prompt") {
-    outcome = await runPromptNode(node, stepInput, step);
+  if (run.resume && reused) {
+    const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
+    await run.emit({
+      type: "reuse-marker",
+      runId: run.identity.runId,
+      rootRunId: run.identity.rootRunId,
+      nodeId: node.id,
+      originalRunId: reused.runId,
+    });
+    outcome = { status: "succeeded", output };
   } else {
-    outcome = await runBinaryNode(node, stepInput, step);
+    const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
+    let stepInput: JsonValue;
+    try {
+      stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
+    } catch (err) {
+      return { status: "failed", error: describeInterpolationError(node.id, err) };
+    }
+
+    // One context for all three step types, derived rather than hand-built. These were two literals
+    // constructed side by side, sharing seven identical fields (#76).
+    const step: StepContext = { run, exec, stepConfig };
+    if (node.type === "workflow") {
+      outcome = await runWorkflowNode(node, stepInput, step);
+    } else if (node.type === "prompt") {
+      outcome = await runPromptNode(node, stepInput, step);
+    } else {
+      outcome = await runBinaryNode(node, stepInput, step);
+    }
   }
   if (outcome.status !== "succeeded" || !node.publish) return outcome;
 

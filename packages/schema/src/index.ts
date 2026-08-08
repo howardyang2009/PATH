@@ -109,6 +109,7 @@ export {
   LogEventSchema,
   type JoinAppliedEvent,
   type LogEvent,
+  type ReuseMarkerEvent,
   type RunCancelledEvent,
   type StepFinishedEvent,
   type StepStartedEvent,
