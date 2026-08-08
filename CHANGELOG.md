@@ -1,5 +1,110 @@
 # Changelog
 
+## v0.4.4 — 2026-08-08
+
+Minor: `path run --resume <root-run-id>` ships end to end, closing the third of #109's deferred
+doors. A stopped tree — failed, cancelled, or forced-killed — re-runs as a **successor run**: every
+node that reached `succeeded` is reused verbatim, everything else runs again, and the original tree
+is opened for reading only, never written. The side-effect contract is at-least-once, stated plainly
+now in `README.md` and `mvp-spec.md` §3 — a step whose real-world effect landed just before a kill
+runs again on resume, because the engine has no way to know the effect already happened.
+
+The door took three wayfinder maps to open (#142 → #158 → #168) before a line of resume code
+existed: #142 settled *what resume means* against a frozen bar, using a real kill-and-measure
+exercise (forced `^C` mid-`while-do`, $0.91 gross re-burn, $0 residual after manual salvage) rather
+than argument; #158 charted the CLI/format/engine surface across five grilling tickets, each
+decided and posted as a closed issue comment rather than a redundant ADR where the record didn't
+need one; #168 filed the implementation as one spec, synthesized from a deep read of the shipped
+codebase rather than another interview. Two ADRs came out of the middle map and hold for the
+surface that shipped: **ADR 0002** — `rm --force` overrides a live reuse-marker block but never
+cascades, deleting exactly the named tree and naming every successor it orphans; **ADR 0003** — a
+resumed run's context is restored by load from the original tree, so `--context`/`--set-context`
+combined with `--resume` is a hard validation error, not silent-ignore.
+
+What actually reuses: a node id matched against the original tree's `RunRecord[]`, scoped to one
+file's own children so a succeeded workflow-run's whole subtree collapses without being individually
+inspected (`planReuse`, #170). A reused node emits one `reuse-marker` — a new `Observation`/`LogEvent`
+member that persistence drops (no run row) but logging keeps, so the narrative stays complete without
+a phantom row claiming work that didn't happen (#172). Cost crosses the reuse boundary the same way:
+`RunArchive.cost` sums a tree's own rows, then for every reuse-marker it holds, reaches into the
+**original** tree via the marker's `original_run_id` — a resume with nothing reused matches a
+from-scratch run's total exactly (#176). `path runs`, previously only a landing pad for `rm`/`prune`,
+gets its first bare listing: root runs most-recent-first, a `resumed-from` cell that is `-` (no
+predecessor), the predecessor's id verbatim (still live), or `<id> (deleted)` (no longer has rows) —
+liveness is existence in the `runs` table, not presence on the current `--limit` page (#174). `rm`
+without `--force` now blocks when some other live successor tree holds a reuse-marker into the one
+being deleted (#175).
+
+The dogfood exercise that closed a different, declined door rode along in this range: a 12-node
+GitHub-enrichment pipeline, written in format v0 exactly as it stands, ran live against
+`v0.4.1..v0.4.3` and correctly resolved 24 of 24 commit-subject references against the GitHub API on
+the first authenticated attempt (#133/#139). It supplied the human observation the API-endpoint
+door's rubric was missing; weighed against the frozen bar, the door **stays shut** — the decisive
+route (token in argv) came back `fine` because `curl --config -` keeps the credential off the process
+table (#135/#141). `extends`/templates is reclassified from a self-contradicting spec (ruled-out in
+§1, deferred in §10) to a settled **door**: still not in v0, arriving as an addition rather than a
+redrawn destination when it comes (#128).
+
+Suite 827 → 899 across the release (schema 201, client-core 42, engine 416 → 488, viewer 89, server
+79), every existing test passing untouched at each step.
+
+### Features
+
+- feat(schema): `resumed_from_root_run_id` column, schema version 3 (#169) — nullable, root rows
+  only; carries the tree-level "resumed from" relationship, kept deliberately separate from the
+  node-level reuse-marker (ADR 0001 precedent), since a multi-hop resume chain can have the two
+  naming different trees for the same resume.
+- feat(engine): reuse-plan pure function (#170) — `planReuse` matches an original tree's run rows
+  against a re-read `WorkflowFile` by node id; a node id with more than one succeeded candidate (a
+  revisited `while-do` body) does not reuse, since which attempt answers a single re-read node is
+  undefined.
+- feat(cli): `path run --context <file>` / `--set-context key=value` (#171) — seeds or overrides a
+  fresh run's starting context, sharing one merge algorithm with `--config`/`--set` (ADR 0003).
+  Combined with `--resume`, both flags are a hard CLI validation error.
+- feat(engine): consume reuse plan on resume (#172) — reused nodes short-circuit with a
+  `reuse-marker` and the original run's `output.json`; every non-succeeded workflow-run in the tree,
+  root or nested, restores its context by loading the original's `context.json` verbatim.
+- feat(engine): `Project.resume(rootFile, rootRunId, workflowDir, opts)` (#173) — the one call site
+  `run` and a future server route both converge on; returns a discriminated `ResumeResult` rather
+  than throwing on an unknown root run id, and stamps `resumed_from_root_run_id` on the successor's
+  root row at insert, never a post-hoc `UPDATE`.
+- feat(cli): `path runs` bare listing subcommand (#174) — root runs most-recent-first, full
+  untruncated ids, the three-form `resumed-from` cell described above.
+- feat(cli): `path runs rm --force` reuse-marker guard (#175) — blocks a delete by default when a
+  live successor tree still references the target via reuse-marker; `--force` overrides with no
+  cascade and names every tree it orphans.
+- feat(engine): `RunArchive.cost` sums crossing tree boundaries (#176) — a root run's whole-tree
+  spend, reaching into an original tree through every reuse-marker the successor holds; a deleted
+  original tree contributes 0 rather than erroring.
+- feat(cli): `path run --resume <root-run-id>` (#177) — the workflow file argument stays mandatory
+  (no persisted workflow path exists in the schema); the successor's fresh root run id prints on
+  every outcome — succeeded, failed, cancelled alike — so an operator can chain a further `--resume`
+  regardless of how it ended.
+- feat(cli): `path runs`/`rm`/`prune` accept `-C <dir>` (#190), matching `git -C`, to target another
+  project's `.path/` without `cd`ing there.
+- feat(cli): `path runs` gains `started`/`finished` columns (#191) — `RunRecord.startedAt`/
+  `finishedAt`, ISO 8601, `-` when null; the id column header becomes `root-run-id`.
+- feat(dogfood): the GitHub-enrichment workflow, built in format v0 and run live (#133/#139) — no
+  engine, schema, or format change; supplied the missing human-observation route for the
+  API-endpoint door's rubric.
+
+### Fixes
+
+- test(engine): resume acceptance exercise (#178) — the release-notes acceptance pipeline now drives
+  a genuine mid-`while-do` cancellation via `AbortController`, then `path run --resume` through the
+  real CLI, asserting reused nodes are not re-billed (re-burn `== 3 × SCRIPTED_COST_USD`, the three
+  LLM steps that truly re-ran).
+
+### Internal
+
+- docs(spec): `extends` reclassified from a self-contradicting out-of-scope/deferred-door split to a
+  settled door (#128) — §1 states the positive rule directly instead of pointing back at a bullet
+  that disagreed with §10.
+- docs(research): the API-endpoint door stays shut, on the evidence (#135/#141) — `Q2`/`Q3` collapse
+  under the rubric's own weighing rule, leaving 2 of 3 contributory-route hits, not 3.
+- docs(readme): status line refreshed for the shipped resume work (#189) — release list, unreleased
+  section, and the `#109` door queue all brought current with `main`.
+
 ## v0.4.3 — 2026-08-02
 
 Minor: the first of #109's three deferred doors is shipped, and the second architecture-review pass
