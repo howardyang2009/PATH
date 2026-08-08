@@ -39,11 +39,13 @@ this document wins. §12 maps every section back to its originating decision.
 - Automatic in-run retry (backoff, `drain-then-fail`, `tolerate-failures`, per-branch `on-failure`)
   — a failure policy §5.6 rejects deliberately, independent of resume below.
 
-**Resume of crash-interrupted runs is no longer ruled out.** Its semantics are settled
+**Resume of crash-interrupted runs has shipped.** Its semantics were settled first
 ([map #142](https://github.com/howardyang2009/PATH/issues/142),
-[resume-door-verdict.md](../research/resume-door-verdict.md)); the CLI/format/engine surface is
-tracked at [the next map](https://github.com/howardyang2009/PATH/issues/158) and is not yet built.
-§5.6 states what a stop still owes in the meantime.
+[resume-door-verdict.md](../research/resume-door-verdict.md)); the CLI/engine surface was then built
+by [map #158](https://github.com/howardyang2009/PATH/issues/158) and lands as `path run --resume
+<root-run-id>` (§3): one cause-blind operator verb that re-runs a stopped tree as a successor run,
+reusing every recorded `succeeded` output and re-running the rest. It is **at-least-once** for every
+node it re-runs — §3 and §5.6 state what that owes the workflow author.
 
 **Deferred with the door held open** — the register of deliberate extension points is §10.
 
@@ -94,6 +96,19 @@ The invariants implementers must not break:
 - `path run <workflow.json>` — validate the whole file tree, then execute a root run. Operator
   launch-time config values are supplied via CLI flags and/or a config file and override the
   top-level file's config defaults per format §8 (shallow merge, nearest wins).
+- `path run <workflow.json> --resume <root-run-id>` — re-run a stopped tree as a **successor** run
+  (§5.6): reuse every node whose recorded run is `succeeded`, re-run every node that is not. A
+  resumed run restores its context from the original tree, so it takes no context seed — combining
+  `--resume` with `--context`/`--set-context` is rejected. **At-least-once, and the author's burden:**
+  every re-run node runs a second time, and if a `binary` command or a `prompt` step's worker-side
+  tool call already produced an external effect (a `git push`, an API `POST`, a sent message) before
+  the run stopped, resume can fire it again. PATH observes only stdout/stderr/exit-code (or the LLM's
+  structured result) — never world-state — so it cannot detect or prevent a duplicated effect and
+  does not gate resume on step type. Idempotency, or avoiding externally-visible effects, is the
+  workflow author's obligation, not an engine guarantee
+  ([resume-side-effect-contract.md](../research/resume-side-effect-contract.md)).
+- `path runs [--limit <n>] [--status <status>]` — list root runs, most recent first, showing each
+  run's status and which root run (if any) it resumed from.
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
   **together** (§6).
 
@@ -204,8 +219,13 @@ best-effort** (processor killed); `cancelled` is a distinct run status from `fai
 from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.
 Automatic in-run retry stays out of scope (§1). Resume — an operator-initiated re-run of a stopped
-tree, cause-blind, reusing every recorded `succeeded` output — is settled at the semantics level and
-not yet built; see [resume-door-verdict.md](../research/resume-door-verdict.md) and §1.
+tree, cause-blind, reusing every recorded `succeeded` output — has shipped as `path run --resume`
+(§3); see [resume-door-verdict.md](../research/resume-door-verdict.md) and §1. Because it is
+**cause-blind**, every not-`succeeded` node re-runs regardless of *why* it stopped, so resume is
+**at-least-once**: a re-run node that already had an external side effect can fire it again, and the
+engine — blind to world-state — neither detects nor prevents the duplicate. Idempotency is the
+workflow author's burden, not an engine guarantee, and it holds identically for `binary` and
+`prompt` steps ([resume-side-effect-contract.md](../research/resume-side-effect-contract.md)).
 
 **External abort.** An operator may **cancel a root run in flight** (`RunOptions.signal`). The abort
 reaches every descendant run and leaf step of the tree, and the root run ends **`cancelled`** — it
@@ -453,7 +473,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 | Templates / `extends` | nested files (structural reuse) + config inheritance (value reuse) are the v0 story; strict unknown-field rejection + `@`-versioning keep an addition to them safe (§1) |
 | Session reuse / processor pooling | fresh-processor rule is the contract; pooling is opt-in later |
 | `llm-call` worker type; local-runtime workers | message-shaped worker contract |
-| Retry/resume | Semantics settled — map [#142](https://github.com/howardyang2009/PATH/issues/142), verdict [resume-door-verdict.md](../research/resume-door-verdict.md). Automatic in-run retry stays out of scope; resume is one cause-blind operator verb. CLI/format/engine surface tracked at [#158](https://github.com/howardyang2009/PATH/issues/158) |
+| Automatic in-run retry | Stays deferred — backoff, `drain-then-fail`, `tolerate-failures`, per-branch `on-failure` (§1, §5.6). Distinct from resume, which **shipped**: map [#142](https://github.com/howardyang2009/PATH/issues/142) settled the semantics, [#158](https://github.com/howardyang2009/PATH/issues/158) built the surface, and `path run --resume` (§3) is the one cause-blind operator verb it landed as |
 | Remote log backends | async `LogBackend` seam |
 | A failed run's error on the run row | additive to §5.7's row content; today the error is the log stream's alone (§8.3), so a run row must be joined to it to say *why* (#124, and map #113's parked server/SSE/viewer question) |
 | Website/cloud, remote engines, mobile | shared `@path/schema`; IPC/HTTP boundary |

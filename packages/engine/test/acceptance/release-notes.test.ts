@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { main, type CliIo } from "../../src/cli.js";
+import { loadWorkflowTree } from "../../src/load-workflow-tree.js";
+import { openProject } from "../../src/project.js";
 import {
   createScriptedLlmWorker,
   SCRIPTED_COST_USD,
@@ -132,6 +134,8 @@ interface RunRow {
   output_ref: string | null;
   usage: string | null;
   estimated_cost_usd: number | null;
+  // A successor run's root row links back to the tree it resumed (#177); null on a fresh run.
+  resumed_from_root_run_id: string | null;
 }
 
 function readRuns(projectDir: string): RunRow[] {
@@ -404,5 +408,141 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
     expect(workflowRuns.filter((row) => row.run_id !== root.run_id)).toHaveLength(2);
     // ...and the spend of a run that ultimately failed is still accounted for.
     expect(leaves.filter(isLlmRun).every((row) => row.usage !== null)).toBe(true);
+  });
+});
+
+/** The reuse-markers (#172) a resumed root run wrote, read straight from the `db` log backend. */
+function readReuseMarkers(projectDir: string, rootRunId: string): { nodeId: string; originalRunId: string }[] {
+  const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
+  try {
+    const rows = db
+      .prepare("SELECT event FROM log_events WHERE root_run_id = ? AND type = 'reuse-marker' ORDER BY seq")
+      .all(rootRunId) as { event: string }[];
+    return rows.map((row) => {
+      const event = JSON.parse(row.event) as { node_id: string; original_run_id: string };
+      return { nodeId: event.node_id, originalRunId: event.original_run_id };
+    });
+  } finally {
+    db.close();
+  }
+}
+
+/**
+ * Runs the real pipeline through the engine's own assembly (`openProject` + `Project.run` — the very
+ * pieces `path run` composes under the hood) and lands a genuine cancellation one `while-do`
+ * iteration in: an `AbortController`, the operator's own `RunOptions.signal` (mvp spec §5.6), fires
+ * the instant the first `revise` prompt is in flight, so the run unwinds to `cancelled` exactly as a
+ * `^C` would. This mirrors #144's kill methodology — a SIGINT delivered deep in the LLM stretch —
+ * driving the same cancellation path without the process-signal plumbing a deterministic in-process
+ * acceptance run cannot use (a real SIGINT would take vitest itself down). Returns the killed run's
+ * root id — the `--resume` target — and its worker, for the re-burn assertion.
+ */
+async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: ScriptedLlmWorker }> {
+  const controller = new AbortController();
+  const worker = createScriptedLlmWorker(happyPathScript(), {
+    onCall: ({ nodeId, callNumber }) => {
+      // The first `revise` prompt runs inside the while-do's first nested revise-cycle — killing here
+      // is a kill mid-iteration, after the pre-loop work (summaries, draft, judge-draft) succeeded.
+      if (nodeId === "revise" && callNumber === 1) controller.abort();
+    },
+  });
+
+  const loaded = loadWorkflowTree(join(harness.projectDir, "release-notes.workflow.json"));
+  if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+  const rootFile = loaded.tree.files.get(loaded.tree.rootPath)!;
+  const opened = openProject(harness.projectDir);
+  if (!opened.success) throw new Error(opened.error);
+  try {
+    const result = await opened.project.run(rootFile, harness.projectDir, {
+      operatorConfig: { commit_range: "HEAD~3..HEAD" },
+      files: loaded.tree.files,
+      llmWorker: worker,
+      signal: controller.signal,
+    });
+    expect(result.status).toBe("cancelled");
+  } finally {
+    opened.project.close();
+  }
+
+  const rootRunId = readRuns(harness.projectDir).find((row) => row.parent_run_id === null)!.run_id;
+  return { rootRunId, worker };
+}
+
+/**
+ * #178: the acceptance pipeline killed mid-`while-do` and resumed. The kill (above) mirrors #144's
+ * methodology against the real pipeline; the resume drives the real `path run --resume` surface
+ * (#177). The contract under test is resume's whole point — the successor completes, and every node
+ * whose work already landed is reused rather than re-billed.
+ */
+describe("acceptance: resume after a mid-while-do kill (#178)", () => {
+  // Pre-loop nodes that succeeded before the kill: everything up to and including judge-draft. On
+  // resume these must reuse — no fresh execution, no fresh spend.
+  const REUSED_NODES = ["gather-changes", "summarize-features", "summarize-fixes", "draft-notes", "judge-draft"];
+
+  it("completes on --resume, reusing pre-loop nodes instead of re-running them", async () => {
+    const { rootRunId: killedRootRunId } = await killMidFirstRevise();
+    // The killed run left no output file — it stopped inside the loop, before write-file.
+    expect(existsSync(join(harness.projectDir, "RELEASE_NOTES.md"))).toBe(false);
+
+    // Resume through the real CLI. A fresh worker, so its `calls` count only what the successor ran.
+    const resumeWorker = createScriptedLlmWorker(happyPathScript());
+    const code = await main(
+      ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
+      harness.io,
+      { llmWorker: resumeWorker },
+    );
+
+    expect(code).toBe(0);
+    expect(harness.stderr).toEqual([]);
+    // The successor completed the pipeline the kill interrupted: the file is written, from a draft
+    // that went once through the loop the resumed run re-ran.
+    expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toBe(FINAL_NOTES);
+
+    // reportResume prints the successor's own fresh root run id, and only that, on success (#177).
+    const successorRootRunId = harness.stdout.join("\n").trim();
+    expect(successorRootRunId).not.toBe(killedRootRunId);
+
+    // Reused nodes did not execute again: the successor's worker was asked only for the loop it
+    // re-ran and the format step past it. The five pre-loop nodes are absent from its calls.
+    const resumedNodeIds = resumeWorker.calls.map((call) => call.nodeId);
+    expect(resumedNodeIds).toEqual(["revise", "judge", "format-short"]);
+    for (const reused of REUSED_NODES) expect(resumedNodeIds).not.toContain(reused);
+  });
+
+  it("records the reuse of every succeeded pre-loop node and re-bills none of them", async () => {
+    const { rootRunId: killedRootRunId } = await killMidFirstRevise();
+
+    const resumeWorker = createScriptedLlmWorker(happyPathScript());
+    await expect(
+      main(
+        ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
+        harness.io,
+        { llmWorker: resumeWorker },
+      ),
+    ).resolves.toBe(0);
+    const successorRootRunId = harness.stdout.join("\n").trim();
+
+    // Every pre-loop node reused, each with a marker back-referencing the killed tree's own run — the
+    // narrative record of "not re-run" (#172). One marker per node, no more.
+    const markers = readReuseMarkers(harness.projectDir, successorRootRunId);
+    expect(markers.map((marker) => marker.nodeId).sort()).toEqual([...REUSED_NODES].sort());
+    expect(markers.every((marker) => marker.originalRunId.length > 0)).toBe(true);
+
+    // The successor is a successor: its root row links back to the killed run, and it is a fresh tree.
+    const successorRuns = readRuns(harness.projectDir).filter((row) => row.root_run_id === successorRootRunId);
+    const successorRoot = successorRuns.find((row) => row.parent_run_id === null)!;
+    expect(successorRoot.resumed_from_root_run_id).toBe(killedRootRunId);
+
+    // Not re-billed, as a number (#144's re-burn made a metric): a reused node writes no row in the
+    // successor tree at all, so the only spend the successor carries is the three LLM steps it truly
+    // re-ran — the loop's revise + judge, and format-short. The five reused nodes contribute nothing.
+    const { leaves } = classifyRuns(successorRuns);
+    const llmLeaves = leaves.filter(isLlmRun);
+    expect(llmLeaves).toHaveLength(3);
+    for (const reused of REUSED_NODES) {
+      expect(successorRuns.some((row) => row.node_id === reused)).toBe(false);
+    }
+    const reburn = llmLeaves.reduce((sum, row) => sum + (row.estimated_cost_usd ?? 0), 0);
+    expect(reburn).toBeCloseTo(3 * SCRIPTED_COST_USD);
   });
 });
