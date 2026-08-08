@@ -183,8 +183,10 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
       return o.usage === null ? o : { ...o, usage: masker.maskValue(o.usage) };
     // A secret cannot reach these: every field is an id, a count, a context key or a node id the
     // workflow author wrote, or an enum value the engine chose — none of them a config value.
+    // `reuse-marker` carries only run ids and a node id (#172) — no payload the engine did not build.
     case "join-applied":
     case "run-cancelled":
+    case "reuse-marker":
       return o;
     default: {
       const exhaustive: never = o;

@@ -101,9 +101,13 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
 
         // Control-node observations have no run of their own (invariant 1), so there is no row to
         // write: they are narrative, and the log stream is where they live. `run-cancelled` included
-        // — the cancelled row is written by the `cancelled` step-finished paired with it.
+        // — the cancelled row is written by the `cancelled` step-finished paired with it. A
+        // `reuse-marker` (#172) is narrative too and writes no row by design: the reused node's real
+        // row already lives in the original tree, and the marker back-references it rather than
+        // duplicating it (resume-restore-semantics.md §5 — reference, never copy).
         case "join-applied":
         case "run-cancelled":
+        case "reuse-marker":
         case "checkpoint-evaluated":
         case "branch-taken":
         case "branch-no-match":

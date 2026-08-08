@@ -1,0 +1,330 @@
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
+import type Database from "better-sqlite3";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type { LlmWorker } from "../src/llm/llm-worker.js";
+import type { Observation } from "../src/run-observer.js";
+import { writeRunBlob } from "../src/persistence/blob-store.js";
+import { openDb } from "../src/persistence/db.js";
+import { RUN_BLOB_FILE, runBlobDir } from "../src/persistence/paths.js";
+import { createPersistedObserver } from "../src/persistence/persisted-observer.js";
+import { getRunsForRoot } from "../src/persistence/run-store.js";
+import { fakeObserver, type FakeObserver } from "./fake-observer.js";
+import { runWorkflow, type ResumeInput } from "../src/run-workflow.js";
+
+/**
+ * Engine consumption of the reuse plan (#172): a resumed run reuses a succeeded node's recorded
+ * `output.json` instead of re-executing it, restores each re-entered workflow-run's `context.json`
+ * from the original tree, and narrates every reuse decision with a single `reuse-marker` — while
+ * never opening the original tree for writing. The plan itself is #170's pure `planReuse`; this
+ * suite drives what the walker does with it.
+ */
+
+// A run row of the original tree, with the fields planReuse and the restore path read.
+function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+  return {
+    rootRunId: "orig-root",
+    worker: null,
+    startedAt: "t0",
+    finishedAt: null,
+    inputRef: null,
+    outputRef: null,
+    usage: null,
+    estimatedCostUsd: null,
+    resumedFromRootRunId: null,
+    ...overrides,
+  };
+}
+
+/** An llm worker that records which nodes actually executed and answers a per-node canned output. */
+function recordingWorker(outputs: { [nodeId: string]: string }, ran: string[]): LlmWorker {
+  return {
+    runPrompt: async (request) => {
+      ran.push(request.nodeId);
+      return { status: "succeeded", output: outputs[request.nodeId] ?? `ran-${request.nodeId}`, usage: null, estimatedCostUsd: null };
+    },
+  };
+}
+
+/** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked for. */
+function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {
+  return (record, filename) => {
+    const key = `${record.runId}/${filename}`;
+    reads.push(key);
+    if (!(key in blobs)) throw new Error(`no such original blob: ${key}`);
+    return blobs[key]!;
+  };
+}
+
+function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
+  return { format: "path/workflow@0", name: "resumed", worker: { type: "llm", model: "m" }, body, ...(output ? { output } : {}) };
+}
+
+function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
+  return observer.all().filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
+}
+
+function startedNodeIds(observer: FakeObserver): (string | null)[] {
+  return observer
+    .all()
+    .filter((o): o is Extract<Observation, { type: "step-started" }> => o.type === "step-started")
+    .map((o) => o.nodeId);
+}
+
+describe("resume — reusing a node's recorded output (#172)", () => {
+  it("reuses a succeeded node (marker, no execution, no step-started) and runs a non-reused one ordinarily", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const file = tree(
+      [
+        { type: "prompt", id: "a", prompt: "hi", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", prompt: "yo", publish: { fromB: "${output}" } },
+      ],
+      { a: "${context.fromA}", b: "${context.fromB}" },
+    );
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "failed" }),
+        ],
+        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+      },
+    });
+
+    // a reused, b executed
+    expect(ran).toEqual(["b"]);
+    expect(result.status).toBe("succeeded");
+    // The reused output flows the default-input chain and the workflow output exactly like a fresh one.
+    expect(result.output).toEqual({ a: "REUSED_A", b: "FRESH_B" });
+
+    // Exactly one reuse-marker, for a, pointing at the original run; run_id is this successor's root run.
+    const m = markers(observer);
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ nodeId: "a", originalRunId: "a-run" });
+
+    // No step-started/step-finished for the reused node; the executed one has both.
+    expect(startedNodeIds(observer)).toEqual(["b"]);
+    expect(observer.all().some((o) => o.type === "step-finished")).toBe(true);
+  });
+
+  it("threads a reused output into the next node's default input just like a produced one", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const inputs: JsonValue[] = [];
+    const worker: LlmWorker = {
+      runPrompt: async (request) => {
+        ran.push(request.nodeId);
+        inputs.push(request.input);
+        return { status: "succeeded", output: "FRESH_B", usage: null, estimatedCostUsd: null };
+      },
+    };
+    const file = tree([
+      { type: "prompt", id: "a", prompt: "hi" },
+      { type: "prompt", id: "b", prompt: "yo" },
+    ]);
+
+    await runWorkflow(file, "/tmp", {
+      llmWorker: worker,
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+        ],
+        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+      },
+    });
+
+    expect(ran).toEqual(["b"]);
+    expect(inputs).toEqual(["REUSED_A"]); // b's default input is a's reused output
+  });
+
+  it("collapses a reused workflow-run's whole subtree — one marker, nothing inside walked", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const nestedPath = join("/tmp", "nested.workflow.json");
+    const nested = tree([{ type: "prompt", id: "inner", prompt: "deep" }], { r: "${output}" });
+    const file = tree([{ type: "workflow", id: "sub", ref: "./nested.workflow.json" }]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      files: new Map([[nestedPath, nested]]),
+      llmWorker: recordingWorker({}, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
+          // A descendant inside the collapsed subtree: it must never be walked, so its blob is never read.
+          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", status: "succeeded" }),
+        ],
+        readBlob: reader({ "orig-root/context.json": {}, "sub-run/output.json": { r: "SUB" } }, reads),
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual([]); // nothing inside the collapsed subtree executed
+    // One marker for the reuse decision, not one per descendant.
+    const m = markers(observer);
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ nodeId: "sub", originalRunId: "sub-run" });
+    // The descendant's blob was never touched — the subtree was never walked.
+    expect(reads.some((key) => key.startsWith("inner-run/"))).toBe(false);
+  });
+
+  it("restores context and reuses inside a re-entered nested workflow-run, not just the root", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const nestedPath = join("/tmp", "nested.workflow.json");
+    const nested = tree([
+      { type: "prompt", id: "x", prompt: "hi", publish: { fromX: "${output}" } },
+      { type: "prompt", id: "y", prompt: "yo" },
+    ]);
+    const file = tree([{ type: "workflow", id: "sub", ref: "./nested.workflow.json" }]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      files: new Map([[nestedPath, nested]]),
+      llmWorker: recordingWorker({ y: "FRESH_Y" }, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          // sub failed originally, so it re-enters rather than reusing — its succeeded child x reuses.
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "failed" }),
+          run({ runId: "x-run", parentRunId: "sub-run", nodeId: "x", status: "succeeded" }),
+          run({ runId: "y-run", parentRunId: "sub-run", nodeId: "y", status: "failed" }),
+        ],
+        readBlob: reader(
+          {
+            "orig-root/context.json": {},
+            "sub-run/context.json": { restored: "CTX" },
+            "x-run/output.json": "REUSED_X",
+          },
+          reads,
+        ),
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["y"]); // x reused inside the nested run; only y ran fresh
+
+    // The nested run re-entered: there is a run-started for the `sub` node with a fresh run id.
+    const subStarted = observer
+      .all()
+      .find((o): o is Extract<Observation, { type: "run-started" }> => o.type === "run-started" && o.nodeId === "sub");
+    expect(subStarted).toBeDefined();
+
+    // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered ancestor.
+    const m = markers(observer);
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ nodeId: "x", originalRunId: "x-run", runId: subStarted!.runId });
+
+    // The nested run's restored context was read from the original tree (restore-by-load) and lands
+    // in the new tree. `restored` exists only in the original `context.json` — never in the workflow
+    // input or any publish — so its presence in the new tree's nested context proves the restore,
+    // and `fromX` proves the reused node still published into that restored blackboard.
+    expect(reads).toContain("sub-run/context.json");
+    const nestedContexts = observer
+      .all()
+      .filter((o): o is Extract<Observation, { type: "context-changed" }> => o.type === "context-changed" && o.runId === subStarted!.runId)
+      .map((o) => o.context);
+    expect(nestedContexts.length).toBeGreaterThan(0);
+    expect(nestedContexts.at(-1)).toEqual({ restored: "CTX", fromX: "REUSED_X" });
+  });
+
+  it("re-runs a from-scratch tree normally when there is nothing to resume from", async () => {
+    const ran: string[] = [];
+    const observer = fakeObserver();
+    const file = tree([{ type: "prompt", id: "a", prompt: "hi" }]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      llmWorker: recordingWorker({ a: "FRESH" }, ran),
+      resume: { originalRuns: [], readBlob: reader({}, []) },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["a"]); // no original root run → empty plan → everything runs
+    expect(markers(observer)).toHaveLength(0);
+  });
+});
+
+describe("resume — the original tree is read-only (#172)", () => {
+  let origDir: string;
+  let newDir: string;
+  let newDb: Database.Database;
+
+  beforeEach(() => {
+    origDir = mkdtempSync(join(tmpdir(), "path-engine-resume-orig-"));
+    newDir = mkdtempSync(join(tmpdir(), "path-engine-resume-new-"));
+    newDb = openDb(join(newDir, ".path", "path.db"));
+  });
+
+  afterEach(() => {
+    newDb.close();
+    rmSync(origDir, { recursive: true, force: true });
+    rmSync(newDir, { recursive: true, force: true });
+  });
+
+  it("writes only under the new tree, never opening the original tree's blobs or rows for writing", async () => {
+    // A real original tree on disk: a succeeded node's output, and the root's context.
+    writeRunBlob(origDir, "orig-root", "a-run", RUN_BLOB_FILE.output, "REUSED_A");
+    writeRunBlob(origDir, "orig-root", "orig-root", RUN_BLOB_FILE.context, {});
+    const before = snapshot(origDir);
+
+    const observer = createPersistedObserver(newDb, newDir);
+    const ran: string[] = [];
+    const file = tree(
+      [
+        { type: "prompt", id: "a", prompt: "hi", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", prompt: "yo", publish: { fromB: "${output}" } },
+      ],
+      { out: "${context.fromA}" },
+    );
+
+    const result = await runWorkflow(file, newDir, {
+      observer,
+      llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+        ],
+        readBlob: (record, filename) => JSON.parse(readFileSync(join(runBlobDir(origDir, record.rootRunId, record.runId), filename), "utf8")) as JsonValue,
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    // The original tree is byte-for-byte unchanged — no row and no blob was opened for writing.
+    expect(snapshot(origDir)).toEqual(before);
+
+    // The successor got its own tree under the new project dir, keyed on a fresh root run id.
+    const newRootId = (newDb.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id LIMIT 1").get() as { root_run_id: string } | undefined)?.root_run_id;
+    expect(newRootId).toBeDefined();
+    expect(newRootId).not.toBe("orig-root");
+    expect(getRunsForRoot(newDb, newRootId!).length).toBeGreaterThan(0);
+  });
+});
+
+// A recursive content snapshot of a directory: relative path → bytes, for an unchanged-check.
+function snapshot(dir: string): { [rel: string]: string } {
+  const out: { [rel: string]: string } = {};
+  const walk = (d: string, rel: string): void => {
+    for (const entry of readdirSync(d)) {
+      const abs = join(d, entry);
+      const childRel = rel ? `${rel}/${entry}` : entry;
+      if (statSync(abs).isDirectory()) walk(abs, childRel);
+      else out[childRel] = readFileSync(abs, "utf8");
+    }
+  };
+  walk(dir, "");
+  return out;
+}

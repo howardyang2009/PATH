@@ -24,6 +24,7 @@ export const OBSERVATION_TYPES = [
   "branch-no-match",
   "iteration-started",
   "loop-exited",
+  "reuse-marker",
 ] as const satisfies readonly Observation["type"][];
 
 // Fails to compile if the union grows a member the list above is missing.

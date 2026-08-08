@@ -111,8 +111,15 @@ describe("toLogEvent", () => {
     ).toMatchObject({ cause: "operator", cause_run_id: null });
   });
 
+  it("narrates a reuse-marker with the reused node's id and the original run back-reference (#172)", () => {
+    const { event, asked } = project({ type: "reuse-marker", ...ids, nodeId: "n9", originalRunId: "orig-run" });
+    expect(event).toMatchObject({ type: "reuse-marker", node_id: "n9", original_run_id: "orig-run", run_id: "r1" });
+    expect(asked).toEqual(["n9"]); // attributed to the reused node's own id
+  });
+
   it("emits only events that validate against the log-event schema", () => {
     const every: Observation[] = [
+      { type: "reuse-marker", ...ids, nodeId: "n1", originalRunId: "orig-run" },
       { type: "run-started", ...ids, parentRunId: null, nodeId: null, input: {}, worker },
       { type: "step-started", ...ids, parentRunId: "r0", nodeId: "n1", stepType: "binary", worker, input: {} },
       { type: "step-finished", ...ids, status: "succeeded", output: {} },
