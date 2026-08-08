@@ -675,6 +675,12 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     db.close();
   }
 
+  // `started`/`finished` are real `new Date().toISOString()` values (run-store.ts), so table tests
+  // split each line into cells on the 2+-space column separator and check timestamp cells by shape
+  // rather than by exact string.
+  const ISO_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{3}Z$/;
+  const cellsOf = (line: string): string[] => line.trim().split(/\s{2,}/);
+
   it("lists roots most-recent-first with space-aligned columns and every resumed-from form", async () => {
     seedRoot("run-aaa", "running");
     seedRoot("run-bbb", "succeeded", "run-aaa"); // live predecessor
@@ -685,14 +691,14 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
 
     expect(code).toBe(0);
     expect(io.error).not.toHaveBeenCalled();
-    expect(io.log).toHaveBeenCalledWith(
-      [
-        "root run id  status     resumed-from",
-        "run-ccc      failed     ghost (deleted)",
-        "run-bbb      succeeded  run-aaa",
-        "run-aaa      running    -",
-      ].join("\n"),
-    );
+    const lines = (io.log.mock.calls.at(-1)![0] as string).split("\n");
+    expect(lines).toHaveLength(4);
+    expect(cellsOf(lines[0]!)).toEqual(["root-run-id", "status", "started", "finished", "resumed-from"]);
+
+    const [ccc, bbb, aaa] = lines.slice(1).map(cellsOf);
+    expect(ccc).toEqual(["run-ccc", "failed", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "ghost (deleted)"]);
+    expect(bbb).toEqual(["run-bbb", "succeeded", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "run-aaa"]);
+    expect(aaa).toEqual(["run-aaa", "running", expect.stringMatching(ISO_RE), "-", "-"]);
   });
 
   it("renders a predecessor off the current --limit page as live, not deleted", async () => {
@@ -703,8 +709,16 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs", "--limit", "1"], io);
 
     expect(code).toBe(0);
-    const output = io.log.mock.calls.at(-1)![0] as string;
-    expect(output).toContain("newer-root   succeeded  older-root");
+    const lines = (io.log.mock.calls.at(-1)![0] as string).split("\n");
+    expect(lines).toHaveLength(2);
+    expect(cellsOf(lines[1]!)).toEqual([
+      "newer-root",
+      "succeeded",
+      expect.stringMatching(ISO_RE),
+      expect.stringMatching(ISO_RE),
+      "older-root",
+    ]);
+    const output = lines.join("\n");
     expect(output).not.toMatch(/older-root +succeeded/); // capped off the page
     expect(output).not.toContain("(deleted)"); // liveness is existence, not page membership
   });
@@ -727,7 +741,7 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs"], io);
 
     expect(code).toBe(0);
-    expect(io.log).toHaveBeenCalledWith("root run id  status  resumed-from");
+    expect(io.log).toHaveBeenCalledWith("root-run-id  status  started  finished  resumed-from");
   });
 
   it("rejects an unknown --status value with a usage error", async () => {
