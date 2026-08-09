@@ -297,6 +297,104 @@ describe("cli main() — --resume (ticket #177)", () => {
   });
 });
 
+// `-C <dir>` relocates the `.path/` store away from the workflow file's own directory (ticket #201,
+// ADR 0005) so many workflows can pool their runs in one central place. It is store-only: the
+// workflow file (and the engine's nested-ref/binary-cwd resolution) still keys off the workflow
+// path, never `<dir>`.
+describe("cli main() — -C store relocation (ticket #201)", () => {
+  let workflowHome: string;
+  let storeDir: string;
+
+  beforeEach(() => {
+    workflowHome = mkdtempSync(join(tmpdir(), "path-engine-c-workflow-"));
+    storeDir = mkdtempSync(join(tmpdir(), "path-engine-c-store-"));
+    cpSync(join(realFixtures, "two-binary-steps.workflow.json"), join(workflowHome, "workflow.json"));
+  });
+
+  afterEach(() => {
+    rmSync(workflowHome, { recursive: true, force: true });
+    rmSync(storeDir, { recursive: true, force: true });
+  });
+
+  const workflow = () => join(workflowHome, "workflow.json");
+
+  it("writes .path into the -C dir and leaves the workflow's own directory clean", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "-C", storeDir], io);
+    expect(code).toBe(0);
+    expect(io.error).not.toHaveBeenCalled();
+    // The store moved: db lives under -C, and no .path was created beside the workflow file.
+    expect(existsSync(join(storeDir, ".path", "path.db"))).toBe(true);
+    expect(existsSync(join(workflowHome, ".path"))).toBe(false);
+  });
+
+  it("accepts -C ahead of the workflow positional (appears anywhere)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", "-C", storeDir, workflow()], io);
+    expect(code).toBe(0);
+    expect(existsSync(join(storeDir, ".path", "path.db"))).toBe(true);
+    expect(existsSync(join(workflowHome, ".path"))).toBe(false);
+  });
+
+  it("still finds the workflow by its own path — -C does not re-root the positional", async () => {
+    // The workflow lives under workflowHome, not under storeDir. A git-`-C` (chdir) reading would
+    // resolve the workflow relative to storeDir and fail to find it; store-only resolves it as given.
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "-C", storeDir], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ shouted: "HELLO" }));
+  });
+
+  it("defaults to .path beside the workflow file when -C is absent", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow()], io);
+    expect(code).toBe(0);
+    expect(existsSync(join(workflowHome, ".path", "path.db"))).toBe(true);
+    expect(existsSync(join(storeDir, ".path"))).toBe(false);
+  });
+
+  it("reports a clear error when -C has no dir argument (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "-C"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/-C/));
+  });
+
+  it("governs --resume too: predecessor and successor both live in the -C store", async () => {
+    cpSync(join(realFixtures, "resumable.workflow.json"), join(workflowHome, "workflow.json"));
+
+    // First run fails at step-b; its store must land under -C, not beside the workflow.
+    expect(await main(["run", workflow(), "-C", storeDir], fakeIo())).toBe(1);
+    expect(existsSync(join(workflowHome, ".path"))).toBe(false);
+
+    const db = openDb(dbFilePath(storeDir));
+    const originalRoot = (
+      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        root_run_id: string;
+      }
+    ).root_run_id;
+    db.close();
+
+    // Resume against the same -C store: the successor reads the predecessor from it and writes back
+    // into it, all under -C.
+    const io = fakeIo();
+    expect(await main(["run", workflow(), "-C", storeDir, "--resume", originalRoot, "--set", "mode=ok"], io)).toBe(0);
+    const successorRoot = io.log.mock.calls.at(-1)![0] as string;
+    expect(successorRoot).not.toBe(originalRoot);
+
+    const after = openDb(dbFilePath(storeDir));
+    try {
+      const successorRootRow = after.prepare("SELECT resumed_from_root_run_id FROM runs WHERE run_id = ?").get(successorRoot) as {
+        resumed_from_root_run_id: string | null;
+      };
+      expect(successorRootRow.resumed_from_root_run_id).toBe(originalRoot);
+    } finally {
+      after.close();
+    }
+    expect(existsSync(join(workflowHome, ".path"))).toBe(false);
+  });
+});
+
 describe("cli main() — log.backends setting (ticket #19)", () => {
   it("accepts --log-backends to select the audit stream and still runs the workflow", async () => {
     const io = fakeIo();
