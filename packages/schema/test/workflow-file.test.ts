@@ -222,6 +222,55 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
     expect(result.success).toBe(true);
   });
 
+  it("allows the same publish key across wait-one sibling branches (only the winner lands)", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "race",
+          join: "wait-one",
+          branches: [
+            { id: "a", body: [{ type: "binary", id: "x", command: "echo", publish: { answer: "${output}" } }] },
+            { id: "b", body: [{ type: "binary", id: "y", command: "echo", publish: { answer: "${output}" } }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("still rejects a collect same-key collision nested inside a wait-one block", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: "race",
+          join: "wait-one",
+          branches: [
+            {
+              id: "a",
+              body: [
+                {
+                  type: "parallel",
+                  id: "inner",
+                  join: "collect",
+                  branches: [
+                    { id: "i", body: [{ type: "binary", id: "x", command: "echo", publish: { dup: "${output}" } }] },
+                    { id: "j", body: [{ type: "binary", id: "y", command: "echo", publish: { dup: "${output}" } }] },
+                  ],
+                },
+              ],
+            },
+            { id: "b", body: [{ type: "binary", id: "z", command: "echo", publish: { dup: "${output}" } }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
   it("does not flag the same publish key used in different parallel blocks", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,

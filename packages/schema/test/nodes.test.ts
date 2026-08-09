@@ -134,12 +134,36 @@ describe("parallel node", () => {
     expect(result.success).toBe(true);
   });
 
-  it("rejects a join value other than collect", () => {
+  it("validates a parallel block with the wait-one join", () => {
+    const result = NodeSchema.safeParse({
+      type: "parallel",
+      id: "race",
+      join: "wait-one",
+      branches: [
+        { id: "fast", body: [{ type: "prompt", id: "a", prompt: "hi" }] },
+        { id: "slow", body: [{ type: "prompt", id: "b", prompt: "hi" }] },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a single-branch wait-one race (branches.min(1))", () => {
+    expect(
+      NodeSchema.safeParse({
+        type: "parallel",
+        id: "race",
+        join: "wait-one",
+        branches: [{ id: "only", body: [{ type: "prompt", id: "x", prompt: "hi" }] }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a join value that is neither collect nor wait-one", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
         id: "p",
-        join: "wait-one",
+        join: "first-done",
         branches: [{ id: "a", body: [{ type: "prompt", id: "x", prompt: "hi" }] }],
       }).success,
     ).toBe(false);
