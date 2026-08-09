@@ -1,6 +1,6 @@
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
@@ -359,6 +359,25 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
     const code = await main(["run", workflow(), "-C"], io);
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/-C/));
+  });
+
+  it("records the source-workflow identity on the root row, path relative to the -C store (#202)", async () => {
+    const io = fakeIo();
+    expect(await main(["run", workflow(), "-C", storeDir], io)).toBe(0);
+
+    const db = openDb(dbFilePath(storeDir));
+    try {
+      const root = db
+        .prepare("SELECT workflow_id, workflow_name, workflow_path FROM runs WHERE run_id = root_run_id")
+        .get() as { workflow_id: string; workflow_name: string; workflow_path: string };
+      // id + name come from the file itself; the path is resolved relative to the *store* dir, so a
+      // central store distinguishes this workflow from another by where its file lives.
+      expect(root.workflow_id).toBe("9a4d7499-777a-42a8-8711-6b99756a674c");
+      expect(root.workflow_name).toBe("two-binary-steps");
+      expect(root.workflow_path).toBe(join(relative(storeDir, workflowHome), "workflow.json"));
+    } finally {
+      db.close();
+    }
   });
 
   it("governs --resume too: predecessor and successor both live in the -C store", async () => {
@@ -761,7 +780,15 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     rmSync(projectDir, { recursive: true, force: true });
   });
 
-  function seedRoot(runId: string, status: string, resumedFromRootRunId?: string): void {
+  // Source-workflow identity is optional so the resumed-from/column tests can seed roots with and
+  // without it (#202) — a root left without one renders "-" in the `workflow` column, exactly as a
+  // pre-identity tree does.
+  function seedRoot(
+    runId: string,
+    status: string,
+    resumedFromRootRunId?: string,
+    workflow?: { id?: string; name?: string; path?: string },
+  ): void {
     const db = openDb(dbFilePath(projectDir));
     insertRun(db, {
       runId,
@@ -771,6 +798,9 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
       worker: { type: "engine" },
       status: "running",
       resumedFromRootRunId: resumedFromRootRunId ?? null,
+      workflowId: workflow?.id ?? null,
+      workflowName: workflow?.name ?? null,
+      workflowPath: workflow?.path ?? null,
     });
     if (status !== "running") finishRun(db, runId, status as "succeeded" | "failed" | "cancelled");
     db.close();
@@ -783,8 +813,8 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
   const cellsOf = (line: string): string[] => line.trim().split(/\s{2,}/);
 
   it("lists roots most-recent-first with space-aligned columns and every resumed-from form", async () => {
-    seedRoot("run-aaa", "running");
-    seedRoot("run-bbb", "succeeded", "run-aaa"); // live predecessor
+    seedRoot("run-aaa", "running", undefined, { name: "greeter" });
+    seedRoot("run-bbb", "succeeded", "run-aaa"); // live predecessor, no recorded identity
     seedRoot("run-ccc", "failed", "ghost"); // predecessor no longer in `runs`
 
     const io = fakeIo();
@@ -794,12 +824,12 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     expect(io.error).not.toHaveBeenCalled();
     const lines = (io.log.mock.calls.at(-1)![0] as string).split("\n");
     expect(lines).toHaveLength(4);
-    expect(cellsOf(lines[0]!)).toEqual(["root-run-id", "status", "started", "finished", "resumed-from"]);
+    expect(cellsOf(lines[0]!)).toEqual(["root-run-id", "workflow", "status", "started", "finished", "resumed-from"]);
 
     const [ccc, bbb, aaa] = lines.slice(1).map(cellsOf);
-    expect(ccc).toEqual(["run-ccc", "failed", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "ghost (deleted)"]);
-    expect(bbb).toEqual(["run-bbb", "succeeded", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "run-aaa"]);
-    expect(aaa).toEqual(["run-aaa", "running", expect.stringMatching(ISO_RE), "-", "-"]);
+    expect(ccc).toEqual(["run-ccc", "-", "failed", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "ghost (deleted)"]);
+    expect(bbb).toEqual(["run-bbb", "-", "succeeded", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "run-aaa"]);
+    expect(aaa).toEqual(["run-aaa", "greeter", "running", expect.stringMatching(ISO_RE), "-", "-"]);
   });
 
   it("renders a predecessor off the current --limit page as live, not deleted", async () => {
@@ -814,6 +844,7 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     expect(lines).toHaveLength(2);
     expect(cellsOf(lines[1]!)).toEqual([
       "newer-root",
+      "-",
       "succeeded",
       expect.stringMatching(ISO_RE),
       expect.stringMatching(ISO_RE),
@@ -842,7 +873,34 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs"], io);
 
     expect(code).toBe(0);
-    expect(io.log).toHaveBeenCalledWith("root-run-id  status  started  finished  resumed-from");
+    expect(io.log).toHaveBeenCalledWith("root-run-id  workflow  status  started  finished  resumed-from");
+  });
+
+  it("filters by --workflow on the source workflow's human name (#202)", async () => {
+    seedRoot("access-1", "succeeded", undefined, { id: "guid-access", name: "access-workflow" });
+    seedRoot("foo-1", "succeeded", undefined, { id: "guid-foo", name: "foo-workflow" });
+
+    const io = fakeIo();
+    const code = await main(["runs", "--workflow", "access-workflow"], io);
+
+    expect(code).toBe(0);
+    const output = io.log.mock.calls.at(-1)![0] as string;
+    expect(output).toContain("access-1");
+    expect(output).not.toContain("foo-1");
+  });
+
+  it("filters by --workflow-id on the durable GUID, disambiguating two same-named workflows (#202)", async () => {
+    // Two roots share the human name `dup` but carry distinct GUIDs — the GUID is what separates them.
+    seedRoot("dup-a", "succeeded", undefined, { id: "guid-a", name: "dup" });
+    seedRoot("dup-b", "succeeded", undefined, { id: "guid-b", name: "dup" });
+
+    const io = fakeIo();
+    const code = await main(["runs", "--workflow-id", "guid-b"], io);
+
+    expect(code).toBe(0);
+    const output = io.log.mock.calls.at(-1)![0] as string;
+    expect(output).toContain("dup-b");
+    expect(output).not.toContain("dup-a");
   });
 
   it("rejects an unknown --status value with a usage error", async () => {
@@ -851,6 +909,15 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
 
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--status requires one of/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("rejects --workflow with no name argument", async () => {
+    const io = fakeIo();
+    const code = await main(["runs", "--workflow"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--workflow requires a name argument/));
     expect(io.log).not.toHaveBeenCalled();
   });
 

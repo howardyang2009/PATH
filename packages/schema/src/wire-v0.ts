@@ -34,6 +34,9 @@ export interface WireRunRecord {
   usage: JsonValue | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  workflow_path: string | null;
 }
 
 /** `GET /v0/runs/:root_run_id` — run status + full tree (server-api-v0.md §4). */
@@ -91,6 +94,9 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     usage: row.usage,
     estimated_cost_usd: row.estimatedCostUsd,
     resumed_from_root_run_id: row.resumedFromRootRunId,
+    workflow_id: row.workflowId,
+    workflow_name: row.workflowName,
+    workflow_path: row.workflowPath,
   };
 }
 

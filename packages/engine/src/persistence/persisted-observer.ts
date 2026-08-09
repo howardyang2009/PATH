@@ -49,13 +49,31 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       input: JsonValue;
       // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
       resumedFromRootRunId?: string;
+      // Present only on the root run-started (#202); the row records the source-workflow identity
+      // trio verbatim. Undefined on every nested run, which leaves those columns null.
+      workflowId?: string;
+      workflowName?: string;
+      workflowPath?: string;
     },
     seedsContext: boolean,
   ): void {
     const { runId, rootRunId, parentRunId, nodeId, nodeName, worker, input, resumedFromRootRunId } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
-    insertRun(db, { runId, rootRunId, parentRunId, nodeId, nodeName, worker, status: "running", inputRef, resumedFromRootRunId });
+    insertRun(db, {
+      runId,
+      rootRunId,
+      parentRunId,
+      nodeId,
+      nodeName,
+      worker,
+      status: "running",
+      inputRef,
+      resumedFromRootRunId,
+      workflowId: fact.workflowId,
+      workflowName: fact.workflowName,
+      workflowPath: fact.workflowPath,
+    });
   }
 
   /** A run ended. Only a successful outcome has an output to persist (mvp spec §5.7). */

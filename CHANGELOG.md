@@ -1,5 +1,65 @@
 # Changelog
 
+## Unreleased
+
+Two coupled breaks land together (ADR 0006 → ADR 0007): the **workflow format** and the **audit
+tables**. The workflow and every node/branch now carry a two-part identity — a durable UUIDv4 `id`
+(the stable machine identity: the reuse/resume key and the `node_id` a run row and log event carry)
+plus a human `name` (the readable identity: it keys `collect`/`wait-one` output, is what the log
+stream narrates, names the node in error messages, and stays unique across the whole file). The old
+human node `id` **becomes** `name`; the `id` field is repurposed for the GUID, so `id` is required
+everywhere. Format bumps to `path/workflow@1`; a file still on `@0` is rejected at load with a
+targeted message naming the codemod, not a generic schema error. Renaming a node's `name` no longer
+breaks resume, because the match is on the stable GUID — the payoff of ADR 0006, now concrete.
+
+Both breaks are clean-slate: the store resets on the DB bump (v3 → v4, new `node_name` columns on
+`runs` and `log_events`), so no old row ever carries a stale human `node_id`. There is no runtime
+auto-stamp — the single sanctioned write-back is a one-time committed codemod
+(`scripts/migrate-workflow-format-v1.ts`) that rewrote this repo's own fixtures and
+`docs/**/*.workflow.json`.
+
+On top of that, #202 lands the half ADR 0006 deferred: each **root run** now records the producing
+workflow's **source-workflow identity** — its durable GUID `workflow_id`, human `workflow_name`, and
+store-relative `workflow_path` (root-only, null on every nested row). `path runs list` grows a
+`workflow` column and `--workflow <name>` / `--workflow-id <guid>` filters, so a central `-C` store
+(ADR 0005) segments runs by the workflow that produced them instead of listing an anonymous pile of
+run-ids. ADR 0006 costed the columns as part of the same v3 → v4 bump; the work split across two
+tickets, so they land as a second clean-slate DB break (v4 → v5) — same reading, no backfill.
+
+Suite 899 → 928 (schema 201 → 211, client-core 42, engine 488 → 507, viewer 89, server 79),
+typecheck green across all five packages.
+
+### Breaking Changes
+
+- **Format `path/workflow@0` → `path/workflow@1`** (#204) — required GUID `id` on the workflow and
+  every node/branch, and the node/branch human `id` renamed to `name`. No backward compatibility: a
+  missing `id` is a load error, an `@0` file is rejected with a run-the-codemod message. Existing
+  files are migrated by `scripts/migrate-workflow-format-v1.ts` (fill-once, never regenerated).
+- **DB schema 3 → 4** (#204) — `node_id` now stores the GUID and a `node_name` column is added to
+  both `runs` and `log_events`. Bump-and-break with no migration (pre-1.0); an existing `path.db`
+  refuses to open. Blobs under `.path/runs/` are unaffected.
+- **DB schema 4 → 5** (#202) — three source-workflow columns (`workflow_id`, `workflow_name`,
+  `workflow_path`) added to `runs`, recorded root-only. Same bump-and-break, clean-slate reading; an
+  existing `path.db` refuses to open, blobs unaffected.
+- **`wait-one` output contract** (#204) — the block output field renames `id` → `name`:
+  `{ winner: { name, output } }`. A step reading `output.winner.id` via interpolation now reads
+  `.name`. `collect` output stays `{ branch-name: output }` — keyed by `name`, unchanged in shape.
+
+### Features
+
+- feat(schema): durable GUID `id` + human `name` on the workflow and every node/branch (#204) — `id`
+  is a UUIDv4 (machine identity, reuse key), `name` the readable label (output keys, log narration,
+  error text, whole-file uniqueness); symmetric across workflow and node, per ADR 0006.
+- feat(engine): audit keys on the GUID, narrates the name (#204) — `nodeName` threaded through
+  `RunIdentity`, every `Observation`, the log-event envelope, run rows, and the db/ndjson backends;
+  `node_id`/`node_name` are both null exactly at the implicit root step. Error messages switch from
+  `id` to `name` (`binary-worker`, `agent-sdk-worker`, `run-workflow`).
+- feat(engine): source-workflow identity on the root run (#202) — the root `run-started` carries the
+  producing workflow's `workflowId`/`workflowName` (from the file) plus a launcher-supplied
+  `workflowPath`, persisted root-only to the new `runs` columns and surfaced on `RunRecord` and the
+  v0 wire record. `path runs list` gains a `workflow` column and `--workflow`/`--workflow-id` filters;
+  the CLI records the workflow path relative to the (possibly `-C`-relocated) store dir.
+
 ## v0.4.4 — 2026-08-08
 
 Minor: `path run --resume <root-run-id>` ships end to end, closing the third of #109's deferred

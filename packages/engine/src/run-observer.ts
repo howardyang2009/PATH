@@ -70,6 +70,17 @@ export type Observation =
        * Persistence records it on the root row's `resumed_from_root_run_id`; no other observer reads it.
        */
       resumedFromRootRunId?: string;
+      /**
+       * The producing workflow's source identity (#202, ADR 0006): its durable GUID `id`, human
+       * `name`, and the launcher-supplied path (relative to the store dir). Set **only on the root
+       * run's** run-started — a nested workflow-run's own file identity is not recorded, its producing
+       * node already being named by `nodeId`/`nodeName`. Persistence writes the trio to the root row's
+       * `workflow_id`/`workflow_name`/`workflow_path`. `workflowPath` is absent when the launcher
+       * supplied none (a server-hosted run); the GUID/name are always present on the root.
+       */
+      workflowId?: string;
+      workflowName?: string;
+      workflowPath?: string;
     }
   /** A leaf step run begins — its input/command/cwd are resolved and it's about to execute. */
   | {

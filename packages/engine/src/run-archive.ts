@@ -96,6 +96,10 @@ export interface ListRootsOptions {
   limit?: number;
   /** Optional filter: only root runs in this status. */
   status?: RunStatus;
+  /** Optional filter (#202): only root runs whose source workflow has this human `name` (exact). */
+  workflowName?: string;
+  /** Optional filter (#202): only root runs whose source workflow has this GUID `id` (exact). */
+  workflowId?: string;
 }
 
 /** The blobs a run's directory holds that are readable back through the archive. */

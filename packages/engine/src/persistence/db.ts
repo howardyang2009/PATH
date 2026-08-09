@@ -22,8 +22,16 @@ import Database from "better-sqlite3";
  * `log_events` so the run tree and log stream stay human-readable without re-loading the workflow.
  * Bump-and-break with no migration (pre-1.0): the store is a clean slate, so no old row carries a
  * stale human `node_id`. Blobs under `.path/runs/` are unaffected.
+ *
+ * Bumped to 5 in #202 for source-workflow identity (ADR 0006): a root run now records the producing
+ * workflow's `workflow_id` (GUID), `workflow_name` (human label) and `workflow_path` (path relative
+ * to the store dir) so a central `-C` store (ADR 0005) can tell one workflow's runs from another's
+ * rather than listing an anonymous pile of run-ids. Root-only — the three columns are null on every
+ * nested row, whose own producing node is already carried by `node_id`/`node_name`. ADR 0006 costed
+ * this as part of the same v3→v4 bump; the work split across two tickets (#204 shipped v4), so it
+ * lands as v5. Same bump-and-break, clean-slate reading: no backfill, no old root row left null.
  */
-export const SCHEMA_VERSION = 4;
+export const SCHEMA_VERSION = 5;
 
 export class SchemaVersionError extends Error {}
 
@@ -42,7 +50,10 @@ const RUNS_TABLE_DDL = `
     output_ref TEXT,
     usage TEXT,
     estimated_cost_usd REAL,
-    resumed_from_root_run_id TEXT
+    resumed_from_root_run_id TEXT,
+    workflow_id TEXT,
+    workflow_name TEXT,
+    workflow_path TEXT
   );
   CREATE INDEX IF NOT EXISTS runs_root_run_id_idx ON runs (root_run_id);
 `;

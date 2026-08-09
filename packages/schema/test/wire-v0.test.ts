@@ -43,6 +43,9 @@ const record: RunRecord = {
   usage: { input_tokens: 1, output_tokens: 2 },
   estimatedCostUsd: 0.001,
   resumedFromRootRunId: null,
+  workflowId: "018f3a2b-0000-7000-8000-000000000001",
+  workflowName: "release-notes",
+  workflowPath: "release-notes.workflow.json",
 };
 
 /** The nullable half, so the round trip is exercised on both shapes of a row. */
@@ -61,6 +64,9 @@ const emptyRecord: RunRecord = {
   usage: null,
   estimatedCostUsd: null,
   resumedFromRootRunId: null,
+  workflowId: null,
+  workflowName: null,
+  workflowPath: null,
 };
 
 describe("the v0 wire record", () => {
@@ -80,6 +86,9 @@ describe("the v0 wire record", () => {
       usage: { input_tokens: 1, output_tokens: 2 },
       estimated_cost_usd: 0.001,
       resumed_from_root_run_id: null,
+      workflow_id: "018f3a2b-0000-7000-8000-000000000001",
+      workflow_name: "release-notes",
+      workflow_path: "release-notes.workflow.json",
     });
   });
 
@@ -99,6 +108,9 @@ describe("the v0 wire record", () => {
       usage: null,
       estimated_cost_usd: null,
       resumed_from_root_run_id: null,
+      workflow_id: null,
+      workflow_name: null,
+      workflow_path: null,
     });
   });
 
@@ -119,6 +131,9 @@ describe("the v0 wire record", () => {
       "status",
       "usage",
       "worker",
+      "workflow_id",
+      "workflow_name",
+      "workflow_path",
     ]);
   });
 

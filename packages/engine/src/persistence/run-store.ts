@@ -17,12 +17,18 @@ export interface NewRunRow {
   inputRef?: string;
   /** Meaningful only on a root row (#168): the predecessor's root run id for a resumed tree. */
   resumedFromRootRunId?: string | null;
+  /** Source-workflow identity, meaningful only on a root row (#202, ADR 0006): the producing workflow's GUID `id`. */
+  workflowId?: string | null;
+  /** Root-only (#202): the producing workflow's human `name`. */
+  workflowName?: string | null;
+  /** Root-only (#202): the producing `workflow.json` path, relative to the store dir. */
+  workflowPath?: string | null;
 }
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker, status, started_at, input_ref, resumed_from_root_run_id)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker, status, started_at, input_ref, resumed_from_root_run_id, workflow_id, workflow_name, workflow_path)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId, @workflowId, @workflowName, @workflowPath)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -34,6 +40,9 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     startedAt: new Date().toISOString(),
     inputRef: row.inputRef ?? null,
     resumedFromRootRunId: row.resumedFromRootRunId ?? null,
+    workflowId: row.workflowId ?? null,
+    workflowName: row.workflowName ?? null,
+    workflowPath: row.workflowPath ?? null,
   });
 }
 
@@ -88,6 +97,9 @@ interface RunRowDb {
   usage: string | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  workflow_id: string | null;
+  workflow_name: string | null;
+  workflow_path: string | null;
 }
 
 function fromDbRow(row: RunRowDb): RunRecord {
@@ -106,6 +118,9 @@ function fromDbRow(row: RunRowDb): RunRecord {
     usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
     estimatedCostUsd: row.estimated_cost_usd,
     resumedFromRootRunId: row.resumed_from_root_run_id,
+    workflowId: row.workflow_id,
+    workflowName: row.workflow_name,
+    workflowPath: row.workflow_path,
   };
 }
 
@@ -135,6 +150,10 @@ export interface ListRootRunsOptions {
   limit?: number;
   /** Optional filter: return only root runs in this status. */
   status?: RunStatus;
+  /** Optional filter (#202): only root runs whose source workflow has this human `name` (exact). */
+  workflowName?: string;
+  /** Optional filter (#202): only root runs whose source workflow has this GUID `id` (exact). */
+  workflowId?: string;
 }
 
 /**
@@ -145,15 +164,26 @@ export interface ListRootRunsOptions {
  */
 export function listRootRuns(db: Database.Database, options: ListRootRunsOptions = {}): RunRecord[] {
   const limit = options.limit ?? 50;
-  const params: { limit: number; status?: RunStatus } = { limit };
-  let statusClause = "";
+  const params: { limit: number; status?: RunStatus; workflowName?: string; workflowId?: string } = { limit };
+  let filterClause = "";
   if (options.status !== undefined) {
-    statusClause = " AND status = @status";
+    filterClause += " AND status = @status";
     params.status = options.status;
+  }
+  // Root-only columns (#202): a nested row's `workflow_name`/`workflow_id` is always null, and a
+  // root row's own id equals its root id — so `run_id = root_run_id` already scopes the filter to
+  // roots, and matching a non-null value can never pick up a nested row.
+  if (options.workflowName !== undefined) {
+    filterClause += " AND workflow_name = @workflowName";
+    params.workflowName = options.workflowName;
+  }
+  if (options.workflowId !== undefined) {
+    filterClause += " AND workflow_id = @workflowId";
+    params.workflowId = options.workflowId;
   }
   const rows = db
     .prepare(
-      `SELECT * FROM runs WHERE run_id = root_run_id${statusClause} ORDER BY started_at DESC, rowid DESC LIMIT @limit`,
+      `SELECT * FROM runs WHERE run_id = root_run_id${filterClause} ORDER BY started_at DESC, rowid DESC LIMIT @limit`,
     )
     .all(params) as RunRowDb[];
   return rows.map(fromDbRow);

@@ -134,7 +134,10 @@ translated to snake_case):
       "input_ref": "runs/<root_run_id>/<run_id>/input.json",
       "output_ref": "runs/<root_run_id>/<run_id>/output.json",
       "usage": null,
-      "estimated_cost_usd": null
+      "estimated_cost_usd": null,
+      "workflow_id": "<uuid>",
+      "workflow_name": "release-notes",
+      "workflow_path": "release-notes.workflow.json"
     }
   ]
 }
@@ -142,6 +145,10 @@ translated to snake_case):
 
 - Top-level `status`/`output` mirror the root row (first entry of `runs`, `parent_run_id: null`) —
   duplicated at the top for a client that only wants the summary.
+- `workflow_id`/`workflow_name`/`workflow_path` carry the producing workflow's source identity
+  (ADR 0006, #202) and are **root-only** — non-null on the root row (`parent_run_id: null`), null on
+  every nested row. `workflow_path` is relative to the store dir, and null for a server-hosted run
+  that supplied no path; the GUID/name still identify it.
 - `input_ref`/`output_ref` are the same project-relative blob paths the engine already stores
   (`blobRef`). A co-located client can read them off disk directly; a browser client cannot, so
   issue #43 added the blob route below (§4.1) to serve their content over HTTP.
