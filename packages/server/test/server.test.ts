@@ -169,8 +169,11 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const elapsed = Date.now() - start;
     expect(a.status).toBe(202);
     expect(b.status).toBe(202);
-    // Each step alone sleeps 300ms; queued execution would take ~600ms to both accept.
-    expect(elapsed).toBeLessThan(250);
+    // Each step alone sleeps 300ms; serialized execution would delay the second accept to ~600ms.
+    // Concurrent accepts return in tens of ms, so the discriminator is the ~600ms queued floor, not
+    // any tight budget: assert comfortably below it. A 250ms bar had no CI headroom (a slow runner
+    // measured 319ms while genuinely concurrent, still nowhere near the 600ms serialized signal).
+    expect(elapsed).toBeLessThan(500);
 
     const idsA = (await a.json()) as { root_run_id: string };
     const idsB = (await b.json()) as { root_run_id: string };
