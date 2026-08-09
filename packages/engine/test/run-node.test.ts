@@ -444,6 +444,112 @@ describe("runNode — parallel", () => {
   });
 });
 
+describe("runNode — parallel wait-one", () => {
+  // A binary that writes `text` after `ms`, publishing it under `answer` — the slow loser of a race.
+  const sleepThenPublish = (id: string, ms: number, text: string): Node => ({
+    type: "binary",
+    id,
+    command: "node",
+    args: ["-e", `setTimeout(()=>process.stdout.write(${JSON.stringify(text)}),${ms})`],
+    publish: { answer: "${output}" },
+  });
+  const failFast = (id: string): Node => ({ type: "binary", id, command: "node", args: ["-e", "process.exit(1)"] });
+
+  it("keeps the first branch to succeed, landing only its publishes and naming it the winner", async () => {
+    const { run, observed } = makeRun();
+    const exec = makeExec();
+    const node: Node = {
+      type: "parallel",
+      id: "race",
+      join: "wait-one",
+      branches: [
+        // The fast branch resolves at once; the slow one sleeps well past it and must be cancelled.
+        { id: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
+        { id: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", exec);
+
+    // Stable winner-keyed output (§3), and only the winner's buffered publish landed (§4).
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "fast", output: "FAST" } } });
+    expect(exec.context).toEqual({ answer: "FAST" });
+    expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
+      nodeId: "race",
+      branches: ["fast"],
+      publishedKeys: ["answer"],
+      winner: "fast",
+    });
+    // The loser is cancelled best-effort with the new cause — nothing failed, so it is not sibling-failed.
+    expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
+      nodeId: "s",
+      cause: "sibling-succeeded",
+      causeRunId: null,
+    });
+  });
+
+  it("ignores a failing branch and lets a still-running branch win the race", async () => {
+    const { run, observed } = makeRun();
+    const exec = makeExec();
+    const node: Node = {
+      type: "parallel",
+      id: "race",
+      join: "wait-one",
+      branches: [
+        // Fails immediately; under wait-one this cancels nothing and the race continues (§2).
+        { id: "boom", body: [failFast("kab")] },
+        // Succeeds only after a delay — proof the race outlived the failure rather than ending on it.
+        { id: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", exec);
+
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "winner", output: "W" } } });
+    expect(exec.context).toEqual({ answer: "W" });
+    // The failure cancelled nothing — no sibling-failed anywhere.
+    expect(observed.some((o) => o.type === "run-cancelled" && o.cause === "sibling-failed")).toBe(false);
+  });
+
+  it("fails the block with a synthetic aggregate when every branch fails", async () => {
+    const { run, observed } = makeRun();
+    const exec = makeExec();
+    const node: Node = {
+      type: "parallel",
+      id: "race",
+      join: "wait-one",
+      branches: [
+        { id: "a", body: [failFast("x")] },
+        { id: "b", body: [failFast("y")] },
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", exec);
+
+    expect(outcome.status).toBe("failed");
+    expect(outcome.status === "failed" && outcome.error).toMatch(/all 2 wait-one branches failed/);
+    // No winner, so no join and no publishes (§2, §8).
+    expect(observed.filter((o) => o.type === "join-applied")).toHaveLength(0);
+    expect(exec.context).toEqual({});
+  });
+
+  it("treats a single-branch race as a degenerate one-runner win (branches.min(1))", async () => {
+    const { run } = makeRun();
+    const exec = makeExec();
+    const node: Node = {
+      type: "parallel",
+      id: "race",
+      join: "wait-one",
+      branches: [{ id: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
+    };
+
+    const outcome = await runNode(run, node, "seed", exec);
+
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "only", output: "O" } } });
+    expect(exec.context).toEqual({ answer: "O" });
+  });
+});
+
 describe("runNode — binary step", () => {
   it("seeds a step with no input map from its predecessor's output (§6.1)", async () => {
     const { run } = makeRun();

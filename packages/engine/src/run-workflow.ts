@@ -130,15 +130,20 @@ export type SeqOutcome =
   | { status: "failed"; error: string; causeRunId?: string }
   | { status: "cancelled" };
 
-// The shared cancellation of one `parallel` block: its branches all run under `signal`, and the
-// first branch to fail `trigger`s the abort so in-flight siblings are killed best-effort. The
-// failing step run's id becomes `causeRunId`, which the sibling run-cancelled events point back at.
-// `causeRunId` stays null when nothing inside the run tree failed — the abort then came from outside
-// it, i.e. an operator cancelling the root run (#52).
+// The shared cancellation of one `parallel` block: its branches all run under `signal`, and either a
+// branch failing (`collect`) or a branch winning the race (`wait-one`) aborts the in-flight siblings
+// best-effort. `cause` records which — `sibling-failed` or `sibling-succeeded` (wait-one-join.md §5)
+// — and is null until one fires (an outside abort, an operator cancelling the root run, leaves it
+// null). For `sibling-failed` the failing step run's id becomes `causeRunId`, which the losers'
+// run-cancelled events point back at; a win has no cause run, so `causeRunId` stays null there too.
 export interface Cancellation {
   signal: AbortSignal;
   causeRunId: string | null;
+  cause: "sibling-failed" | "sibling-succeeded" | null;
+  /** A `collect` branch failed: cancel in-flight siblings, `causeRunId` naming the failing run. */
   trigger(causeRunId: string): void;
+  /** A `wait-one` branch won the race: cancel the still-running losers (no cause run). */
+  triggerWin(): void;
 }
 
 // What each node in a sequence reads and writes: the `context` it sees (the run's own for the
@@ -525,9 +530,11 @@ async function finishLeafStep(
 // The tail every leaf step shares once the engine has killed it instead of letting it finish (mvp
 // spec §5.6): narrate the cancellation with its cause, then end the run `cancelled` rather than
 // `failed` — so no publish from it lands. The cause is read off the enclosing `parallel` block's
-// cancellation at kill time, and the two causes are exactly the two sources of an abort: a cause run
-// there means a sibling branch failed and names it, while none means the abort came from outside the
-// run tree — an operator cancelling the root run (#52), which has no cause run to point at.
+// cancellation at kill time. Three sources of an abort: a `collect` sibling failing
+// (`sibling-failed`, its run named by `causeRunId`), a `wait-one` sibling winning the race
+// (`sibling-succeeded`, no cause run — wait-one-join.md §5), or the abort coming from outside the run
+// tree, i.e. an operator cancelling the root run (#52) — the block has recorded no cause, so `cause`
+// is null and this reads as `operator` with no cause run to point at.
 async function cancelLeafStep(
   emit: Emit,
   ids: { runId: string; rootRunId: string },
@@ -535,11 +542,12 @@ async function cancelLeafStep(
   cancellation: Cancellation | undefined,
 ): Promise<SeqOutcome> {
   const causeRunId = cancellation?.causeRunId ?? null;
+  const cause = cancellation?.cause ?? "operator";
   await emit({ type: "run-cancelled",
     runId: ids.runId,
     rootRunId: ids.rootRunId,
     nodeId,
-    cause: causeRunId === null ? "operator" : "sibling-failed",
+    cause,
     causeRunId,
   });
   await emit({ type: "step-finished", runId: ids.runId, rootRunId: ids.rootRunId, status: "cancelled" });
@@ -1090,23 +1098,147 @@ export async function runSequence(
   return { status: "succeeded", output: previous };
 }
 
+type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
+type ParallelBranch = ParallelNode["branches"][number];
+
+// One branch's run: which branch, how it ended, and the publishes it buffered (landed only if it is
+// the collect join's all-succeeded set, or the wait-one join's winner — wait-one-join.md §4).
+interface BranchResult {
+  branch: ParallelBranch;
+  outcome: SeqOutcome;
+  buffer: { [key: string]: JsonValue };
+}
+
+// The winning branch of a `wait-one` race, with the output and buffered publishes only it lands (§3, §4).
+interface WaitOneWinner {
+  branch: ParallelBranch;
+  output: JsonValue;
+  buffer: { [key: string]: JsonValue };
+}
+
+// True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
+// i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
+// no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does
+// not qualify. Losers were `cancelled`, never `succeeded`, so their nodes are absent from the plan
+// and they fail this test — which is what lets resume start no loser (wait-one-join.md §7).
+function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
+  let sawRunProducing = false;
+  for (const inner of walkNodes(branch.body)) {
+    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
+      sawRunProducing = true;
+      if (!plan.has(inner.id)) return false;
+    }
+  }
+  return sawRunProducing;
+}
+
+// A fully-reused branch's recorded completion time: the latest `finishedAt` among its reused runs,
+// since the branch reaches `succeeded` when its last node does. Null when no reused run carries a
+// finish time — the tie-break below then falls back to declaration order.
+function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
+  let completedAt: string | null = null;
+  for (const inner of walkNodes(branch.body)) {
+    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
+      const record = plan.get(inner.id);
+      const finishedAt = record?.finishedAt ?? null;
+      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;
+    }
+  }
+  return completedAt;
+}
+
+// The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). Usually exactly
+// one branch is a reused winner (the losers were `cancelled`, so absent from the plan), and it is
+// returned directly. Best-effort cancellation is asynchronous, though, so a photo-finish can leave
+// **two** branches recorded `succeeded`; the live run resolved that by `seq` (§6), the ordering truth
+// — which a `RunRecord` does not carry. Resume reproduces it from the recorded completion time (a
+// lower `seq` was emitted no later, so the branch that finished first is the recorded winner), and
+// declaration order breaks an exact timestamp collision — the case `seq` exists for but resume cannot
+// see. Picking the first-*declared* winner instead would land a different branch than the original
+// run's `join-applied` named, breaking resume determinism (ADR 0001).
+function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelBranch | undefined {
+  const winners = node.branches.filter((branch) => branchIsReusedWinner(branch, plan));
+  if (winners.length <= 1) return winners[0];
+  return [...winners].sort((a, b) => {
+    const ca = reusedBranchCompletion(a, plan);
+    const cb = reusedBranchCompletion(b, plan);
+    if (ca !== cb) {
+      if (ca === null) return 1;
+      if (cb === null) return -1;
+      return ca < cb ? -1 : 1;
+    }
+    return node.branches.indexOf(a) - node.branches.indexOf(b);
+  })[0];
+}
+
+// Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
+// lands (wait-one-join.md §4); the block output is the stable `{ winner: { id, output } }` shape so a
+// downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
+// the winner id (§8).
+async function landWaitOneWinner(
+  run: RunContext,
+  node: ParallelNode,
+  winner: WaitOneWinner,
+  exec: NodeExecContext,
+): Promise<SeqOutcome> {
+  const { runId, rootRunId } = run.identity;
+  const landed = winner.buffer;
+  const publishedKeys = Object.keys(landed);
+  Object.assign(exec.context, landed);
+  if (publishedKeys.length > 0) await exec.onPublish(landed);
+  await run.emit({
+    type: "join-applied",
+    runId,
+    rootRunId,
+    nodeId: node.id,
+    branches: [winner.branch.id],
+    publishedKeys,
+    winner: winner.branch.id,
+  });
+  return { status: "succeeded", output: { winner: { id: winner.branch.id, output: winner.output } } };
+}
+
 /**
- * Runs a `parallel` block with the `collect` join (mvp spec §5.2–5.4, §5.6): every branch runs
- * concurrently against its own snapshot of context taken at block entry (siblings never see each
- * other's writes), its publishes buffer and land — at the join, in branch declaration order —
- * only if *all* branches succeed. A failing branch fails the block and cancels in-flight siblings
- * best-effort; no publishes from a failed or cancelled branch land. The block output is
- * `{ "<branch-id>": <that branch's last node's output> }`, deterministic regardless of completion
- * order.
+ * Runs a `parallel` block (mvp spec §5.2–5.4, §5.6). Every branch runs concurrently against its own
+ * snapshot of context taken at block entry (siblings never see each other's writes), and its
+ * publishes buffer rather than touch the parent context mid-run. The `join` decides what lands:
+ *
+ * - `collect` — waits for *all* branches; a failing branch fails the block and cancels in-flight
+ *   siblings (`sibling-failed`); on all-succeed every buffer lands in branch declaration order and
+ *   the output is `{ "<branch-id>": <that branch's last node's output> }`.
+ * - `wait-one` — races the branches; the first to `succeed` is the winner, and the still-running
+ *   losers are cancelled (`sibling-succeeded`); a branch that *fails* cancels nothing and the race
+ *   continues; if every branch fails the block fails with a synthetic aggregate error. Only the
+ *   winner's buffer lands and the output is `{ winner: { id, output } }` (wait-one-join.md §2–§5).
  */
 async function runParallelNode(
   run: RunContext,
-  node: Extract<WorkflowFile["body"][number], { type: "parallel" }>,
+  node: ParallelNode,
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   const { emit, identity } = run;
   const { runId, rootRunId } = identity;
+
+  // Resume short-circuit (wait-one-join.md §7): replaying a decided race, the winner's steps reuse as
+  // `succeeded` while the losers were `cancelled`. Cause-blind resume would re-run the losers — pure
+  // waste, and at-least-once it could re-fire their side effects. So the join re-evaluates: find the
+  // reused winner and run *only* it, starting no loser at all.
+  if (node.join === "wait-one" && run.resume) {
+    const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
+    if (reusedWinner) {
+      const buffer: { [key: string]: JsonValue } = {};
+      const outcome = await runSequence(run, reusedWinner.body, seedInput, {
+        context: { ...exec.context },
+        onPublish: async (updates) => void Object.assign(buffer, updates),
+      });
+      // The winner reused as `succeeded` in the original tree; its replay reuses those runs and so
+      // cannot do otherwise. A non-success here would be an engine bug, not a data-flow outcome.
+      if (outcome.status !== "succeeded") return outcome;
+      return landWaitOneWinner(run, node, { branch: reusedWinner, output: outcome.output, buffer }, exec);
+    }
+  }
+
   const controller = new AbortController();
   // A nested parallel inherits its enclosing block's cancellation: if the outer block aborts, this
   // one aborts too, so this block's own in-flight steps are killed as well.
@@ -1118,6 +1250,7 @@ async function runParallelNode(
   }
 
   let causeRunId: string | null = null;
+  let cause: Cancellation["cause"] = null;
   const cancellation: Cancellation = {
     signal: controller.signal,
     get causeRunId() {
@@ -1125,13 +1258,28 @@ async function runParallelNode(
       // may fail after this block started, and its failing run is still this block's cause.
       return causeRunId ?? exec.cancellation?.causeRunId ?? null;
     },
-    trigger(cause: string) {
-      if (causeRunId === null) causeRunId = cause; // first failing sibling wins
+    get cause() {
+      return cause ?? exec.cancellation?.cause ?? null;
+    },
+    trigger(triggerRunId: string) {
+      if (cause === null) {
+        causeRunId = triggerRunId; // first failing sibling wins
+        cause = "sibling-failed";
+      }
+      controller.abort();
+    },
+    triggerWin() {
+      if (cause === null) cause = "sibling-succeeded"; // first winner wins; no cause run
       controller.abort();
     },
   };
 
-  const branchResults = await Promise.all(
+  // The winner of a `wait-one` race: the first branch to complete `succeeded`. Because the event loop
+  // serializes branch completions, the first callback to see `succeeded` here is the lowest-`seq` one
+  // (§6), so no secondary tie-break is needed.
+  let winner: WaitOneWinner | null = null;
+
+  const branchResults: BranchResult[] = await Promise.all(
     node.branches.map(async (branch) => {
       // Each branch runs against a snapshot copy of context (§5.3): its publishes go to the copy
       // (so later nodes in the same branch see them) and buffer for the join — never touching the
@@ -1146,14 +1294,31 @@ async function runParallelNode(
           Object.assign(buffer, updates);
         },
       });
-      if (outcome.status === "failed") {
-        cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
+      if (node.join === "collect") {
+        if (outcome.status === "failed") {
+          cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
+        }
+      } else if (outcome.status === "succeeded" && winner === null) {
+        // First to succeed wins; a losing branch's failure is ignored and cancels nothing (§2).
+        winner = { branch, output: outcome.output, buffer };
+        cancellation.triggerWin(); // cancel the still-running losers best-effort
       }
       return { branch, outcome, buffer };
     }),
   );
 
   if (outerSignal) outerSignal.removeEventListener("abort", onOuterAbort);
+
+  if (node.join === "wait-one") {
+    // An outside abort (an enclosing block failing, an operator cancelling the root run) outranks a
+    // local win: the whole subtree is coming down, so the winner's publishes must not land.
+    if (outerSignal?.aborted) return { status: "cancelled" };
+    if (winner !== null) return landWaitOneWinner(run, node, winner, exec);
+    // No winner. A cancelled branch means we were aborted from outside; otherwise every branch
+    // failed, and the block fails with a synthetic aggregate distinct from any one branch's error (§2).
+    if (branchResults.some((r) => r.outcome.status === "cancelled")) return { status: "cancelled" };
+    return { status: "failed", error: `parallel "${node.id}": all ${node.branches.length} wait-one branches failed` };
+  }
 
   // A failing branch fails the block (and thus the run); no publishes land. Report the
   // first-declared failure for determinism.

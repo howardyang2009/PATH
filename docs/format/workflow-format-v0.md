@@ -107,10 +107,12 @@ Config crosses the boundary (§8); **worker does not** — every file declares i
 Every slot a block owns holds a **body** (non-empty node array) — one nesting rule everywhere; a
 multi-step branch never forces a nested file.
 
-**`parallel`** — `join` is `"collect"` (the only v0 value; `wait-one` / `do-not-wait` are deferred
-by the MVP logicer decision but the field stays). `branches` is a non-empty array of
-`{ "id", "body" }`; the id names the branch for logs and gives the collect join a stable key
-(collect's merged-output shape is #11's).
+**`parallel`** — `join` is `"collect"` or `"wait-one"` (`do-not-wait` stays deferred, see
+[wait-one-join.md](../spec/wait-one-join.md) §10). `branches` is a non-empty array of
+`{ "id", "body" }`; the id names the branch for logs and gives `collect` a stable output key.
+`wait-one` **races** the branches and keeps the first to succeed, cancelling the rest; only the
+winner's publishes land, so two branches publishing one context key is allowed there (§4.1) where
+`collect` rejects it. Its output is keyed under a stable `winner` (§3); the join semantics are #11's.
 
 **`branch`** — `arms` is a non-empty array of `{ "when": <condition>, "body" }`, plus an optional
 top-level `else` body. Arm ordering/matching semantics and whether `else` is mandatory are #11's.
@@ -301,8 +303,10 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
 - unknown `format` versions; any schema violation (strict zod, unknown fields rejected)
 - duplicate or pattern-violating ids/names; empty bodies
 - reference cycles between workflow files; unresolvable `ref` paths
-- duplicate `publish` keys across sibling branches of one `parallel` block (per the execution
-  semantics: publish keys are static, so the race is detectable — and rejected — at load)
+- duplicate `publish` keys across sibling branches of one `collect` `parallel` block (per the
+  execution semantics: publish keys are static, so the race is detectable — and rejected — at load).
+  A `wait-one` block is exempt: only the winner's publishes land, so the same key across branches is
+  deterministic ([wait-one-join.md](../spec/wait-one-join.md) §4.1)
 - malformed `${}` syntax in interpolable positions, and `${}` roots other than the allowed ones
 - malformed config wrappers, and sole `$`-prefixed config keys that name no known wrapper (§8.3)
 
@@ -319,7 +323,8 @@ first step (§8.3) — operator config, which can carry wrappers too, has no loa
 - **Templates / step reuse**: nothing in v0 — nested workflow files (structural reuse) and config
   inheritance (value reuse) are the v0 reuse story. `extends`/template mechanics would be additive
   post-MVP; strict unknown-field rejection plus the `@`-version rule keeps the door open safely.
-- **Deferred by earlier decisions**: `wait-one`/`do-not-wait` joins; API/MCP/skill step types;
+- **Deferred by earlier decisions**: `do-not-wait` join (the `wait-one` join has since shipped —
+  [wait-one-join.md](../spec/wait-one-join.md)); API/MCP/skill step types;
   `config` as a condition root; input declarations (§2).
 - **Escape hatch for a literal sole `$`-prefixed config key** (§8.3): parked until something
   concrete is blocked by the reservation. Further sourcing wrappers (`$file`, `$keychain`) are

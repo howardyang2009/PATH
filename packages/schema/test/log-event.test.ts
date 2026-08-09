@@ -50,6 +50,37 @@ describe("LogEventSchema", () => {
     expect(parsed).toMatchObject({ type: "run-cancelled", cause: "operator", cause_run_id: null });
   });
 
+  it("carries the sibling-succeeded cause of a wait-one loser, which has no cause run behind it", () => {
+    const parsed = LogEventSchema.parse({
+      type: "run-cancelled",
+      ...envelope,
+      cause: "sibling-succeeded",
+      cause_run_id: null,
+    });
+    expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-succeeded", cause_run_id: null });
+  });
+
+  it("carries the winner id on a wait-one join-applied event", () => {
+    const parsed = LogEventSchema.parse({
+      type: "join-applied",
+      ...envelope,
+      branches: ["fast"],
+      published_keys: ["answer"],
+      winner: "fast",
+    });
+    expect(parsed).toMatchObject({ type: "join-applied", winner: "fast" });
+  });
+
+  it("omits winner on a collect join-applied event", () => {
+    const parsed = LogEventSchema.parse({
+      type: "join-applied",
+      ...envelope,
+      branches: ["a", "b"],
+      published_keys: [],
+    });
+    expect(parsed).not.toHaveProperty("winner");
+  });
+
   it("reads a pre-#52 run-cancelled line — written with no cause — back as sibling-failed", () => {
     // Every persisted NDJSON line is re-validated on replay (readNdjsonLog), so a v0.3-era log must
     // keep parsing: `cause` defaults to the only cause that existed when it was written.

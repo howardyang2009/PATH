@@ -43,6 +43,73 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     expect(result.error).toMatch(/\b3\b/);
   });
 
+  it("acceptance: races two binary sleeps under wait-one — the shorter wins, the longer is cancelled sibling-succeeded", async () => {
+    // The real file, through the real schema: two branches publishing the same key `answer` — which
+    // `collect` would reject at load, but `wait-one` allows because only the winner's publish lands.
+    const file = parseWorkflowFile({
+      format: "path/workflow@0",
+      name: "race-two-sleeps",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "race",
+          join: "wait-one",
+          branches: [
+            {
+              id: "fast",
+              body: [
+                {
+                  type: "binary",
+                  id: "quick",
+                  command: "node",
+                  args: ["-e", "setTimeout(()=>process.stdout.write('FAST'),10)"],
+                  publish: { answer: "${output}" },
+                },
+              ],
+            },
+            {
+              id: "slow",
+              body: [
+                {
+                  type: "binary",
+                  id: "sluggish",
+                  command: "node",
+                  args: ["-e", "setTimeout(()=>process.stdout.write('SLOW'),5000)"],
+                  publish: { answer: "${output}" },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+      output: { answer: "${context.answer}" },
+    });
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    // The winner landed; the loser's publish never did.
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ answer: "FAST" });
+
+    const all = observer.all();
+    // The join names the winner and lands only its key.
+    expect(all.find((o) => o.type === "join-applied")).toMatchObject({
+      nodeId: "race",
+      branches: ["fast"],
+      publishedKeys: ["answer"],
+      winner: "fast",
+    });
+    // The longer branch was cancelled best-effort, with the new cause and no cause run behind it.
+    const cancelled = all.find((o) => o.type === "run-cancelled");
+    expect(cancelled).toMatchObject({ nodeId: "sluggish", cause: "sibling-succeeded", causeRunId: null });
+    // And it ends `cancelled`, a distinct status from `failed`, so nothing of its lands.
+    expect(
+      all.some((o) => o.type === "step-finished" && o.status === "cancelled" && o.runId === cancelled!.runId),
+    ).toBe(true);
+  });
+
   it("respects a step's own cwd override", async () => {
     const file: WorkflowFile = {
       format: "path/workflow@0",

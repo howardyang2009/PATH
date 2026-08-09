@@ -83,6 +83,8 @@ export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: st
         ...envelope(o.runId, o.nodeId),
         branches: o.branches,
         published_keys: o.publishedKeys,
+        // Present only on a `wait-one` win (wait-one-join.md §8); JSON.stringify drops it when absent.
+        winner: o.winner,
       };
     case "run-cancelled":
       // Paired with a `cancelled` step-finished for the same run. `cause` distinguishes a failing

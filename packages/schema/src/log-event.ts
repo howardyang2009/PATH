@@ -68,19 +68,23 @@ const BranchNoMatchSchema = z.object({ type: z.literal("branch-no-match"), ...en
 // A `parallel` collect join applied at block end (mvp spec §5.2–5.4, §8.1): control events carry
 // the enclosing workflow-step's run id + the `parallel` node's id (envelope), plus the branch ids
 // in apply order and the context keys those branches published.
+// `winner` is the winning branch id, present only for a `wait-one` join (wait-one-join.md §8); a
+// `collect` join lands every branch and has no single winner, so it omits the field.
 const JoinAppliedSchema = z
   .object({
     type: z.literal("join-applied"),
     ...envelope,
     branches: z.array(z.string()),
     published_keys: z.array(z.string()),
+    winner: z.string().optional(),
   })
   .strict();
 
 // A run cancelled best-effort (mvp spec §5.6, §8.1): `run_id`/`node_id` identify the cancelled run
-// and its node. `cause` says why — `sibling-failed` (a parallel branch failed) or `operator` (a
-// cancel request against the root run, #52) — and `cause_run_id` is the failing sibling run, non-null
-// exactly for `sibling-failed`.
+// and its node. `cause` says why — `sibling-failed` (a `collect` branch failed), `sibling-succeeded`
+// (a `wait-one` branch won the race, so the still-running losers are cancelled — wait-one-join.md §5),
+// or `operator` (a cancel request against the root run, #52). `cause_run_id` is the failing sibling
+// run, non-null exactly for `sibling-failed`; it is null for `sibling-succeeded` and `operator`.
 //
 // `cause` defaults to `sibling-failed`, the only cause that existed before #52: every persisted log
 // line is re-validated on read (readNdjsonLog, getLogEventsForRoot), and that path feeds SSE replay,
@@ -90,7 +94,7 @@ const RunCancelledSchema = z
   .object({
     type: z.literal("run-cancelled"),
     ...envelope,
-    cause: z.enum(["sibling-failed", "operator"]).default("sibling-failed"),
+    cause: z.enum(["sibling-failed", "sibling-succeeded", "operator"]).default("sibling-failed"),
     cause_run_id: z.string().nullable(),
   })
   .strict();

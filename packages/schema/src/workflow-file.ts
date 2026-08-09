@@ -74,11 +74,17 @@ function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | num
   nodes.forEach((node, index) => {
     const nodePath = [...basePath, index];
 
+    // A `wait-one` parallel lands only the winner's publishes, so two branches publishing the same
+    // key is deterministic — and is the headline race-two-sources pattern (wait-one-join.md §4.1).
+    // The same-key ban is correct only for `collect`, where all branches land and two writes to one
+    // key would be a last-writer race. Recursion still descends into a wait-one block's branches.
+    const collisionsAllowed = node.type === "parallel" && node.join === "wait-one";
+
     // Only *concurrent* siblings can race. Branch arms are alternatives (one runs) and while-do
     // iterations are sequential, so neither collides with itself — `concurrent` is the rule.
     const firstSeenIn = new Map<string, number>();
     childBodies(node).forEach((child, childIndex) => {
-      if (child.concurrent) {
+      if (child.concurrent && !collisionsAllowed) {
         for (const key of new Set(collectPublishKeys(child.nodes))) {
           if (firstSeenIn.has(key)) {
             collisions.push({ key, path: [...nodePath, ...child.path.slice(0, -1)] });
