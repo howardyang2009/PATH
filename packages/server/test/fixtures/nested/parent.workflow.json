@@ -1,15 +1,25 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "27f98a33-4507-46f9-97b7-88b350e40a21",
   "name": "nested-parent",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "workflow",
-      "id": "child-step",
+      "id": "906577b4-2dee-456b-a923-972e4c880b2f",
+      "name": "child-step",
       "ref": "./child.workflow.json",
-      "input": { "seed": "hi" },
-      "publish": { "childResult": "${output}" }
+      "input": {
+        "seed": "hi"
+      },
+      "publish": {
+        "childResult": "${output}"
+      }
     }
   ],
-  "output": { "childResult": "${context.childResult}" }
+  "output": {
+    "childResult": "${context.childResult}"
+  }
 }

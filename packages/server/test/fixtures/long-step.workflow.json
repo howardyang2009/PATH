@@ -1,18 +1,26 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "07468a24-d2b8-48f6-a77a-a6138d623bf0",
   "name": "long-step",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "linger",
+      "id": "c08505cd-a8e5-4341-a101-6bde027e0747",
+      "name": "linger",
       "command": "node",
       "args": [
         "-e",
         "require('fs').writeFileSync('long-step.alive','');setTimeout(()=>process.stdout.write('done'),10000)"
       ],
-      "publish": { "result": "${output}" }
+      "publish": {
+        "result": "${output}"
+      }
     }
   ],
-  "output": { "result": "${context.result}" }
+  "output": {
+    "result": "${context.result}"
+  }
 }

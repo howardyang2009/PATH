@@ -36,9 +36,9 @@ function asUsage(usage: unknown): JsonValue | null {
   return usage === undefined ? null : (usage as JsonValue);
 }
 
-function describeError(message: SdkResultMessage, nodeId: string): string {
+function describeError(message: SdkResultMessage, nodeName: string): string {
   const detail = message.errors?.length ? `: ${message.errors.join("; ")}` : "";
-  return `prompt step "${nodeId}" ended with SDK result "${message.subtype}"${detail}`;
+  return `prompt step "${nodeName}" ended with SDK result "${message.subtype}"${detail}`;
 }
 
 /**
@@ -98,7 +98,7 @@ export function createAgentSdkWorker(options: AgentSdkWorkerOptions = {}): LlmWo
           const usage = asUsage(message.usage);
           const estimatedCostUsd = message.total_cost_usd ?? null;
           if (message.subtype !== "success") {
-            return { status: "failed", error: describeError(message, request.nodeId), usage, estimatedCostUsd };
+            return { status: "failed", error: describeError(message, request.nodeName), usage, estimatedCostUsd };
           }
           // Returning here abandons the generator, which tears the session down: the processor
           // does not outlive the step-run (§5.5).
@@ -107,7 +107,7 @@ export function createAgentSdkWorker(options: AgentSdkWorkerOptions = {}): LlmWo
 
         return {
           status: "failed",
-          error: `prompt step "${request.nodeId}": the processor ended with no result message`,
+          error: `prompt step "${request.nodeName}": the processor ended with no result message`,
           usage: null,
           estimatedCostUsd: null,
         };
@@ -117,7 +117,7 @@ export function createAgentSdkWorker(options: AgentSdkWorkerOptions = {}): LlmWo
         if (request.signal?.aborted) return { status: "cancelled" };
         return {
           status: "failed",
-          error: `prompt step "${request.nodeId}": ${err instanceof Error ? err.message : String(err)}`,
+          error: `prompt step "${request.nodeName}": ${err instanceof Error ? err.message : String(err)}`,
           usage: null,
           estimatedCostUsd: null,
         };

@@ -13,16 +13,18 @@ Worked example: the acceptance pipeline in
 
 - A workflow file is a single **JSON** document (UTF-8). JSON is the only syntax in v0.
 - Recommended file naming: `<name>.workflow.json`.
-- Every file declares `"format": "path/workflow@0"` — identity and version in one required string,
+- Every file declares `"format": "path/workflow@1"` — identity and version in one required string,
   exact-match validated. An engine that does not speak the declared version **fails at load**; there
-  are no format migrations pre-1.0 (mirrors the persistence decision).
+  are no format migrations pre-1.0 (mirrors the persistence decision). A file still carrying the
+  pre-identity `"path/workflow@0"` is rejected with a targeted message naming the codemod (ADR 0007).
 - Validation is **strict**: unknown fields anywhere are rejected.
 
 ## 2. Top-level workflow object
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `format` | yes | Exactly `"path/workflow@0"`. |
+| `format` | yes | Exactly `"path/workflow@1"`. |
+| `id` | yes | Durable GUID (UUIDv4) — the stable machine identity (§3, ADR 0006). |
 | `name` | yes | Workflow name, pattern `^[a-z][a-z0-9-]*$`. |
 | `worker` | yes | Default worker for the file's steps (§7). Steps override atomically. |
 | `config` | no | The file's config defaults (§8). |
@@ -38,9 +40,13 @@ input keys is a possible additive extension.
 - **Discriminator**: every tagged union in the format discriminates on a single field named
   `type` — body nodes, workers, and conditions alike. There is no second-level tag: step kinds and
   control constructs form **one flat node union**.
-- **Ids**: every body node (steps, blocks, checkpoints) carries a required `id`, pattern
-  `^[a-z][a-z0-9-]*$`, **unique across the whole file** (all nesting levels). Parallel branch ids
-  share the same pattern and the same uniqueness scope.
+- **Identity — `id` + `name`** (ADR 0006/0007): the workflow and every body node (steps, blocks,
+  checkpoints) and every parallel branch carry two identifiers. `id` is a durable **GUID** (UUIDv4) —
+  the stable machine identity, assigned once by the codemod and never regenerated; it is the
+  reuse/resume key and the `node_id` a run row and log event carry. `name` is the human label,
+  pattern `^[a-z][a-z0-9-]*$`, **unique across the whole file** (all nesting levels) — it keys
+  `collect`/`wait-one` output objects, is what the log stream narrates, and is what error messages
+  name. Parallel branch names share the same pattern and the same uniqueness scope.
 - The step-vs-control distinction (only steps have workers/tasks/runs) remains a domain rule
   enforced by the schema, not an extra nesting level in the JSON.
 
@@ -59,7 +65,7 @@ input keys is a possible additive extension.
 | `checkpoint` | control | `condition` |
 
 Step-type-specific fields sit **directly on the node** (no `payload` wrapper). Future step types
-must choose field names that do not collide with engine-owned fields (`type`, `id`, `worker`,
+must choose field names that do not collide with engine-owned fields (`type`, `id`, `name`, `worker`,
 `config`, `input`, `parse`, `publish`).
 
 ### 4.1 Common step fields
@@ -68,7 +74,8 @@ All three step types additionally accept:
 
 | Field | Required | Meaning |
 | --- | --- | --- |
-| `id` | yes | §3. |
+| `id` | yes | Durable GUID (§3). |
+| `name` | yes | Human label, unique across the file (§3). |
 | `worker` | no | Atomic override of the inherited worker (§7). |
 | `config` | no | Key-level override/extension of the inherited config (§8). |
 | `input` | no | Builds the step's input object (§6.1). Absent = previous node's output object. |
@@ -109,10 +116,12 @@ multi-step branch never forces a nested file.
 
 **`parallel`** — `join` is `"collect"` or `"wait-one"` (`do-not-wait` stays deferred, see
 [wait-one-join.md](../spec/wait-one-join.md) §10). `branches` is a non-empty array of
-`{ "id", "body" }`; the id names the branch for logs and gives `collect` a stable output key.
+`{ "id", "name", "body" }` (GUID + human name, §3); the `name` labels the branch for logs and gives
+`collect` a stable output key — `collect` outputs `{ "<branch-name>": <output> }`.
 `wait-one` **races** the branches and keeps the first to succeed, cancelling the rest; only the
 winner's publishes land, so two branches publishing one context key is allowed there (§4.1) where
-`collect` rejects it. Its output is keyed under a stable `winner` (§3); the join semantics are #11's.
+`collect` rejects it. Its output is the stable `{ "winner": { "name", "output" } }` shape (§3), the
+winner named by its human `name`; the join semantics are #11's.
 
 **`branch`** — `arms` is a non-empty array of `{ "when": <condition>, "body" }`, plus an optional
 top-level `else` body. Arm ordering/matching semantics and whether `else` is mandatory are #11's.
@@ -207,8 +216,8 @@ not a consumer. A `${...}` string in config is that string, never a reference.
 `{"$secret": …}` marks a value for redaction, `{"$env": "NAME"}` sources one from the environment,
 and they compose one way round — `{"$secret": {"$env": "NAME"}}`. Nothing else in config is
 indirect: no other key means anything, and a sole `$`-prefixed key that names no known wrapper is a
-**load error** rather than data (§8.3, §10). The format version does not move for this — a file
-carrying wrappers is still `path/workflow@0`.
+**load error** rather than data (§8.3, §10). The format version did not move for the wrappers — a
+file carrying them is at the current `path/workflow@1`.
 
 ### 8.2 Composition
 

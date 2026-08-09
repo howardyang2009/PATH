@@ -10,6 +10,7 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
     rootRunId: ROOT,
     parentRunId: ROOT,
     nodeId: "step",
+    nodeName: "step",
     worker: { type: "engine" },
     status: "running",
     startedAt: null,

@@ -1,6 +1,16 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "3616cbbf-cee6-40fa-a434-c71374fbef85",
   "name": "missing-ref",
-  "worker": { "type": "engine" },
-  "body": [{ "type": "workflow", "id": "gone", "ref": "./does-not-exist.workflow.json" }]
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "workflow",
+      "id": "02a61084-2ba4-4a63-8bdf-8f4f8d025fd2",
+      "name": "gone",
+      "ref": "./does-not-exist.workflow.json"
+    }
+  ]
 }

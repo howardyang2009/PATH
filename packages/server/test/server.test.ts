@@ -18,6 +18,7 @@ interface RunTreeBody {
     root_run_id: string;
     parent_run_id: string | null;
     node_id: string | null;
+    node_name: string | null;
     status: string;
   }[];
 }
@@ -127,7 +128,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const root = finalBody.runs.find((r) => r.parent_run_id === null)!;
     expect(root.run_id).toBe(started.root_run_id);
     expect(root.node_id).toBeNull();
-    expect(new Set(finalBody.runs.map((r) => r.node_id))).toEqual(new Set([null, "greet", "shout"]));
+    expect(new Set(finalBody.runs.map((r) => r.node_name))).toEqual(new Set([null, "greet", "shout"]));
     expect(finalBody.runs.every((r) => r.status === "succeeded")).toBe(true);
     expect(finalBody.runs.every((r) => r.root_run_id === started.root_run_id)).toBe(true);
   });
@@ -265,7 +266,7 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     };
     const tree = await pollUntilTerminal(root_run_id);
     expect(tree.status).toBe("succeeded");
-    const shout = tree.runs.find((r) => r.node_id === "shout")!;
+    const shout = tree.runs.find((r) => r.node_name === "shout")!;
 
     const outputRes = await getBlob(root_run_id, shout.run_id, "output");
     expect(outputRes.status).toBe(200);
@@ -300,7 +301,7 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
-    const shout = tree.runs.find((r) => r.node_id === "shout")!;
+    const shout = tree.runs.find((r) => r.node_name === "shout")!;
 
     expect((await getBlob(root_run_id, shout.run_id, "stderr")).status).toBe(404);
     expect((await getBlob(root_run_id, shout.run_id, "context")).status).toBe(404);
@@ -505,12 +506,12 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
     expect(finalBody.output).toBeNull();
     const root = finalBody.runs.find((r) => r.parent_run_id === null)!;
     expect(root.status).toBe("cancelled");
-    expect(finalBody.runs.find((r) => r.node_id === "linger")!.status).toBe("cancelled");
+    expect(finalBody.runs.find((r) => r.node_name === "linger")!.status).toBe("cancelled");
 
     // The log tells the same story the rows do, and names the operator as the cause.
     const events: LogEvent[] = readNdjsonLog(projectDir, root_run_id);
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "run-cancelled", node_id: "linger", cause: "operator", cause_run_id: null }),
+      expect.objectContaining({ type: "run-cancelled", node_name: "linger", cause: "operator", cause_run_id: null }),
     );
     expect(events.at(-1)).toMatchObject({ type: "step-finished", node_id: null, status: "cancelled" });
     // The 10s step was killed, not waited out: the fixture never got to publish its result.

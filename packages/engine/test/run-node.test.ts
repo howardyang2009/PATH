@@ -19,7 +19,8 @@ import { runNode, runSequence, type NodeExecContext, type RunContext } from "../
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "walkers",
   worker: { type: "engine" },
   body: [],
@@ -65,7 +66,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       file,
       fileDir,
       fileConfig: {},
-      identity: { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null },
+      identity: { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null },
       emit: async (o) => void observed.push(o),
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
@@ -81,11 +82,11 @@ function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
 function echo(id: string, text: string): Node {
-  return { type: "binary", id, command: "node", args: ["-e", `process.stdout.write(${JSON.stringify(text)})`] };
+  return { type: "binary", id, name: id, command: "node", args: ["-e", `process.stdout.write(${JSON.stringify(text)})`] };
 }
 
 describe("runNode — checkpoint", () => {
-  const node: CheckpointNode = { type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.ready" } };
+  const node: CheckpointNode = { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.ready" } };
 
   it("forwards its predecessor's output unchanged when the condition holds (§5.4)", async () => {
     const { run, observed } = makeRun();
@@ -93,7 +94,7 @@ describe("runNode — checkpoint", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { carried: 1 } });
     expect(observed.map((o) => o.type)).toEqual(["checkpoint-evaluated"]);
-    expect(observed[0]).toMatchObject({ nodeId: "gate", passed: true });
+    expect(observed[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", passed: true });
   });
 
   it("fails the run when the condition does not hold (§5.2), naming the checkpoint", async () => {
@@ -111,21 +112,21 @@ describe("runNode — checkpoint", () => {
     const { run, observed } = makeRun();
     const erroring: CheckpointNode = {
       type: "checkpoint",
-      id: "gate",
+      id: "gate", name: "gate",
       condition: { type: "equals", path: "context.absent", value: 1 },
     };
 
     const outcome = await runNode(run, erroring, {}, makeExec({}));
 
     expect(outcome.status).toBe("failed");
-    expect(observed[0]).toMatchObject({ nodeId: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) });
+    expect(observed[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) });
   });
 });
 
 describe("runNode — branch", () => {
   const branch = (withElse: boolean): BranchNode => ({
     type: "branch",
-    id: "route",
+    id: "route", name: "route",
     arms: [
       { when: { type: "equals", path: "context.pick", value: "a" }, body: [echo("arm-a", "A")] },
       { when: { type: "equals", path: "context.pick", value: "b" }, body: [echo("arm-b", "B")] },
@@ -138,7 +139,7 @@ describe("runNode — branch", () => {
     const outcome = await runNode(run, branch(true), {}, makeExec({ pick: "b" }));
 
     expect(outcome).toEqual({ status: "succeeded", output: "B" });
-    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({ nodeId: "route", arm: 1 });
+    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({ nodeId: "route", nodeName: "route", arm: 1 });
   });
 
   it("takes the else fallback when no arm matches, and reports it as the arm", async () => {
@@ -166,13 +167,13 @@ describe("runNode — branch", () => {
 describe("runNode — while-do", () => {
   const loop: WhileDoNode = {
     type: "while-do",
-    id: "spin",
+    id: "spin", name: "spin",
     condition: { type: "range", path: "context.count", max: 1 },
     max_iterations: 5,
     body: [
       {
         type: "binary",
-        id: "bump",
+        id: "bump", name: "bump",
         command: "node",
         args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
         parse: "json",
@@ -259,11 +260,11 @@ describe("runNode — while-do", () => {
 describe("runNode — parallel", () => {
   const parallel = (secondBranchBody: Node[]): Node => ({
     type: "parallel",
-    id: "fan",
+    id: "fan", name: "fan",
     join: "collect",
     branches: [
-      { id: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
-      { id: "right", body: secondBranchBody },
+      { id: "left", name: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
+      { id: "right", name: "right", body: secondBranchBody },
     ],
   });
 
@@ -273,7 +274,7 @@ describe("runNode — parallel", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { left: "L", right: "R" } });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "fan",
+      nodeId: "fan", nodeName: "fan",
       branches: ["left", "right"],
       publishedKeys: ["from_left"],
     });
@@ -288,7 +289,7 @@ describe("runNode — parallel", () => {
       parallel([
         {
           type: "binary",
-          id: "peek",
+          id: "peek", name: "peek",
           command: "node",
           args: ["-e", `process.stdout.write(${JSON.stringify("R")})`],
         },
@@ -308,7 +309,7 @@ describe("runNode — parallel", () => {
     const exec = makeExec();
     const outcome = await runNode(
       run,
-      parallel([{ type: "binary", id: "boom", command: "node", args: ["-e", "process.exit(3)"] }]),
+      parallel([{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }]),
       "seed",
       exec,
     );
@@ -326,6 +327,7 @@ describe("runNode — parallel", () => {
   const rendezvous = (dir: string, me: string, other: string): Node => ({
     type: "binary",
     id: me,
+    name: me,
     command: "node",
     args: [
       "-e",
@@ -340,11 +342,11 @@ describe("runNode — parallel", () => {
     const { run } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
-        { id: "alpha", body: [rendezvous(fileDir, "a", "b")] },
-        { id: "beta", body: [rendezvous(fileDir, "b", "a")] },
+        { id: "alpha", name: "alpha", body: [rendezvous(fileDir, "a", "b")] },
+        { id: "beta", name: "beta", body: [rendezvous(fileDir, "b", "a")] },
       ],
     };
 
@@ -358,13 +360,13 @@ describe("runNode — parallel", () => {
     const { run } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
-        { id: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
+        { id: "writer", name: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
         // Reads a key its sibling publishes; against the entry snapshot it does not exist, so this
         // branch fails — proving siblings never observe each other's writes (§5.3).
-        { id: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
+        { id: "reader", name: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
       ],
     };
 
@@ -378,23 +380,23 @@ describe("runNode — parallel", () => {
     const { run, observed } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
         // Sleeps well past the sibling's failure; it must be killed, not allowed to finish.
         {
-          id: "slow",
+          id: "slow", name: "slow",
           body: [
             {
               type: "binary",
-              id: "sleeper",
+              id: "sleeper", name: "sleeper",
               command: "node",
               args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
               publish: { slow: "${output}" },
             },
           ],
         },
-        { id: "boom", body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+        { id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
       ],
     };
 
@@ -409,7 +411,7 @@ describe("runNode — parallel", () => {
     // operator cancel would carry `cause: "operator"` and a null cause run instead (#52).
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
       runId: sleeper.runId,
-      nodeId: "sleeper",
+      nodeId: "sleeper", nodeName: "sleeper",
       cause: "sibling-failed",
       causeRunId: kaboom.runId,
     });
@@ -435,9 +437,10 @@ describe("runNode — parallel", () => {
     const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
     const ask = (id: string) => ({
       id,
-      body: [{ type: "prompt" as const, id: `ask-${id}`, prompt: "Hi.", worker: { type: "llm" as const, model: "m" } }],
+      name: id,
+      body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: "Hi.", worker: { type: "llm" as const, model: "m" } }],
     });
-    const node: Node = { type: "parallel", id: "fan", join: "collect", branches: [ask("a"), ask("b"), ask("c"), ask("d")] };
+    const node: Node = { type: "parallel", id: "fan", name: "fan", join: "collect", branches: [ask("a"), ask("b"), ask("c"), ask("d")] };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(peakLive).toBe(2); // every branch ran, but never more than the cap at once
@@ -449,40 +452,41 @@ describe("runNode — parallel wait-one", () => {
   const sleepThenPublish = (id: string, ms: number, text: string): Node => ({
     type: "binary",
     id,
+    name: id,
     command: "node",
     args: ["-e", `setTimeout(()=>process.stdout.write(${JSON.stringify(text)}),${ms})`],
     publish: { answer: "${output}" },
   });
-  const failFast = (id: string): Node => ({ type: "binary", id, command: "node", args: ["-e", "process.exit(1)"] });
+  const failFast = (id: string): Node => ({ type: "binary", id, name: id, command: "node", args: ["-e", "process.exit(1)"] });
 
   it("keeps the first branch to succeed, landing only its publishes and naming it the winner", async () => {
     const { run, observed } = makeRun();
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race",
+      id: "race", name: "race",
       join: "wait-one",
       branches: [
         // The fast branch resolves at once; the slow one sleeps well past it and must be cancelled.
-        { id: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
-        { id: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
+        { id: "fast", name: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
+        { id: "slow", name: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
       ],
     };
 
     const outcome = await runNode(run, node, "seed", exec);
 
     // Stable winner-keyed output (§3), and only the winner's buffered publish landed (§4).
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "fast", output: "FAST" } } });
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "fast", output: "FAST" } } });
     expect(exec.context).toEqual({ answer: "FAST" });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "race",
+      nodeId: "race", nodeName: "race",
       branches: ["fast"],
       publishedKeys: ["answer"],
       winner: "fast",
     });
     // The loser is cancelled best-effort with the new cause — nothing failed, so it is not sibling-failed.
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
-      nodeId: "s",
+      nodeId: "s", nodeName: "s",
       cause: "sibling-succeeded",
       causeRunId: null,
     });
@@ -493,19 +497,19 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race",
+      id: "race", name: "race",
       join: "wait-one",
       branches: [
         // Fails immediately; under wait-one this cancels nothing and the race continues (§2).
-        { id: "boom", body: [failFast("kab")] },
+        { id: "boom", name: "boom", body: [failFast("kab")] },
         // Succeeds only after a delay — proof the race outlived the failure rather than ending on it.
-        { id: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
+        { id: "winner", name: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
       ],
     };
 
     const outcome = await runNode(run, node, "seed", exec);
 
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "winner", output: "W" } } });
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "winner", output: "W" } } });
     expect(exec.context).toEqual({ answer: "W" });
     // The failure cancelled nothing — no sibling-failed anywhere.
     expect(observed.some((o) => o.type === "run-cancelled" && o.cause === "sibling-failed")).toBe(false);
@@ -516,11 +520,11 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race",
+      id: "race", name: "race",
       join: "wait-one",
       branches: [
-        { id: "a", body: [failFast("x")] },
-        { id: "b", body: [failFast("y")] },
+        { id: "a", name: "a", body: [failFast("x")] },
+        { id: "b", name: "b", body: [failFast("y")] },
       ],
     };
 
@@ -538,14 +542,14 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race",
+      id: "race", name: "race",
       join: "wait-one",
-      branches: [{ id: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
+      branches: [{ id: "only", name: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
     };
 
     const outcome = await runNode(run, node, "seed", exec);
 
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { id: "only", output: "O" } } });
+    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "only", output: "O" } } });
     expect(exec.context).toEqual({ answer: "O" });
   });
 });
@@ -554,7 +558,7 @@ describe("runNode — binary step", () => {
   it("seeds a step with no input map from its predecessor's output (§6.1)", async () => {
     const { run } = makeRun();
     const echoStdin = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))";
-    const node: Node = { type: "binary", id: "cat", command: "node", args: ["-e", echoStdin] };
+    const node: Node = { type: "binary", id: "cat", name: "cat", command: "node", args: ["-e", echoStdin] };
 
     expect(await runNode(run, node, "carried", makeExec())).toEqual({ status: "succeeded", output: "carried" });
   });
@@ -577,7 +581,7 @@ describe("runNode — binary step", () => {
     const exec = makeExec();
     const node: Node = {
       type: "binary",
-      id: "boom",
+      id: "boom", name: "boom",
       command: "node",
       args: ["-e", "process.exit(3)"],
       publish: { greeting: "${output}" },
@@ -591,7 +595,7 @@ describe("runNode — binary step", () => {
     const { run } = makeRun({ fileConfig: { greeting: "file", other: "kept" } });
     const node: Node = {
       type: "binary",
-      id: "show",
+      id: "show", name: "show",
       command: "node",
       args: ["-e", "process.stdout.write(process.argv[1] + process.argv[2])", "${config.greeting}", "${config.other}"],
       config: { greeting: "step" },
@@ -616,7 +620,7 @@ describe("runNode — binary step", () => {
 describe("runNode — prompt step", () => {
   const promptNode: Node = {
     type: "prompt",
-    id: "ask",
+    id: "ask", name: "ask",
     prompt: "say ${context.word}",
     worker: { type: "llm", model: "test-model" },
   };
@@ -658,7 +662,7 @@ describe("runNode — prompt step", () => {
     });
     const node: Node = {
       type: "prompt",
-      id: "summarize",
+      id: "summarize", name: "summarize",
       prompt: "Summarize ${config.subject}.",
       input: { version: "${context.version}" },
       worker: { type: "llm", model: "${config.model}", options: { mcpServers: { docs: { type: "stdio" } } } },
@@ -666,7 +670,7 @@ describe("runNode — prompt step", () => {
 
     expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe("succeeded");
     expect(requests[0]).toMatchObject({
-      nodeId: "summarize",
+      nodeName: "summarize",
       model: "claude-opus-4-8",
       prompt: "Summarize the release.",
       input: { version: "1.2.0" },
@@ -679,7 +683,7 @@ describe("runNode — prompt step", () => {
   it("lets a step-level llm worker override the file's engine worker", async () => {
     const requests: PromptRequest[] = [];
     const { run } = makeRun({ llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) } });
-    const node: Node = { type: "prompt", id: "ask", prompt: "Hi.", worker: { type: "llm", model: "claude-haiku-4-5" } };
+    const node: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", worker: { type: "llm", model: "claude-haiku-4-5" } };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(requests[0]?.model).toBe("claude-haiku-4-5");
@@ -698,7 +702,7 @@ describe("runNode — prompt step", () => {
 
   it("fails the step when the output is not the JSON its parse declares", async () => {
     const { run } = makeRun({ llm: { worker: answeringWorker("not json"), semaphore: createProcessorSemaphore(1) } });
-    const node: Node = { ...(promptNode as object), id: "judge", parse: "json" } as Node;
+    const node: Node = { ...(promptNode as object), id: "judge", name: "judge", parse: "json" } as Node;
 
     const outcome = await runNode(run, node, "seed", makeExec({ word: "hi" }));
 
@@ -739,11 +743,11 @@ describe("runNode — prompt step", () => {
     const worker: LlmWorker = {
       runPrompt: async (request) => {
         requests.push(request);
-        return { status: "succeeded", output: `answered:${request.nodeId}`, usage: null, estimatedCostUsd: null };
+        return { status: "succeeded", output: `answered:${request.nodeName}`, usage: null, estimatedCostUsd: null };
       },
     };
     const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
-    const ask = (id: string): Node => ({ type: "prompt", id, prompt: `${id} question.`, worker: { type: "llm", model: "m" } });
+    const ask = (id: string): Node => ({ type: "prompt", id, name: id, prompt: `${id} question.`, worker: { type: "llm", model: "m" } });
 
     const outcome = await runSequence(run, [ask("first"), ask("second")], "seed", makeExec());
 
@@ -768,14 +772,14 @@ describe("runNode — prompt step", () => {
     const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
     const node: Node = {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
         {
-          id: "slow",
-          body: [{ type: "prompt", id: "ask", prompt: "Hi.", worker: { type: "llm", model: "m" }, publish: { answer: "${output}" } }],
+          id: "slow", name: "slow",
+          body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", worker: { type: "llm", model: "m" }, publish: { answer: "${output}" } }],
         },
-        { id: "boom", body: [{ type: "binary", id: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
+        { id: "boom", name: "boom", body: [{ type: "binary", id: "fail", name: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
       ],
     };
     const exec = makeExec();
@@ -790,7 +794,8 @@ describe("runNode — prompt step", () => {
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@0",
+    format: "path/workflow@1",
+    id: "wf-id",
     name: "child",
     worker: { type: "engine" },
     body: [echo("inner", "done")],
@@ -799,7 +804,7 @@ describe("runNode — workflow step", () => {
 
   it("runs the referenced file as a nested run under this one, seeded only by its input", async () => {
     const { run, observed } = makeRun({ files: new Map([[childPath(), child]]) });
-    const node: Node = { type: "workflow", id: "nested", ref: "child.json", input: { name: "world" } };
+    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: { name: "world" } };
 
     const outcome = await runNode(run, node, "seed", makeExec({ parent_only: "invisible" }));
 
@@ -807,14 +812,14 @@ describe("runNode — workflow step", () => {
     // The nested run is a run of its own, filed under this run and this node (#22).
     expect(observed.find((o) => o.type === "run-started")).toMatchObject({
       parentRunId: "run-1",
-      nodeId: "nested",
+      nodeId: "nested", nodeName: "nested",
       input: { name: "world" },
     });
   });
 
   it("fails when the ref is not in the loaded tree, rather than reading the disk itself", async () => {
     const { run } = makeRun({ files: new Map() });
-    const node: Node = { type: "workflow", id: "nested", ref: "child.json", input: {} };
+    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
 
     const outcome = await runNode(run, node, "seed", makeExec());
 
@@ -829,7 +834,7 @@ describe("runNode — a node type this engine does not walk", () => {
   it("fails the run, naming the type and the node", async () => {
     const { run } = makeRun();
 
-    const outcome = await runNode(run, { type: "mystery", id: "m" } as unknown as Node, "seed", makeExec());
+    const outcome = await runNode(run, { type: "mystery", id: "m", name: "m" } as unknown as Node, "seed", makeExec());
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/node type "mystery" \(node "m"\)/);
@@ -843,7 +848,7 @@ describe("runSequence", () => {
     const appendTwo = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-two'))";
     const outcome = await runSequence(
       run,
-      [echo("first", "one"), { type: "binary", id: "second", command: "node", args: ["-e", appendTwo] }],
+      [echo("first", "one"), { type: "binary", id: "second", name: "second", command: "node", args: ["-e", appendTwo] }],
       "seed",
       makeExec(),
     );
@@ -855,7 +860,7 @@ describe("runSequence", () => {
     const { run, observed } = makeRun();
     const outcome = await runSequence(
       run,
-      [{ type: "binary", id: "boom", command: "node", args: ["-e", "process.exit(3)"] }, echo("never", "x")],
+      [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }, echo("never", "x")],
       "seed",
       makeExec(),
     );

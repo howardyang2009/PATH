@@ -1,16 +1,30 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "246ceca6-b42f-4bf8-aa53-ead76955d735",
   "name": "config-echo",
-  "worker": { "type": "engine" },
-  "config": { "greeting": "file-default" },
+  "worker": {
+    "type": "engine"
+  },
+  "config": {
+    "greeting": "file-default"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "echo",
+      "id": "5380a541-e94a-4d48-8444-bb3671df8533",
+      "name": "echo",
       "command": "node",
-      "args": ["-e", "process.stdout.write(process.argv[1])", "${config.greeting}"],
-      "publish": { "seen": "${output}" }
+      "args": [
+        "-e",
+        "process.stdout.write(process.argv[1])",
+        "${config.greeting}"
+      ],
+      "publish": {
+        "seen": "${output}"
+      }
     }
   ],
-  "output": { "seen": "${context.seen}" }
+  "output": {
+    "seen": "${context.seen}"
+  }
 }

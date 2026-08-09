@@ -12,6 +12,7 @@ import { createPersistedObserver } from "../../src/persistence/persisted-observe
 import { getRunsForRoot, type RunRecord } from "../../src/persistence/run-store.js";
 import { composeObservers } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
+import { stampNames } from "../stamp-names.js";
 import { createScriptedLlmWorker, SCRIPTED_COST_USD, SCRIPTED_USAGE } from "../acceptance/scripted-llm-worker.js";
 
 /**
@@ -37,6 +38,7 @@ function echoToken(id: string): WorkflowFile["body"][number] {
   return {
     type: "binary",
     id,
+    name: id,
     command: "node",
     args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
   };
@@ -47,21 +49,22 @@ function echoToken(id: string): WorkflowFile["body"][number] {
 
 /** checkpoint-evaluated, branch-taken, context-changed. */
 const controls: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "controls",
   worker: { type: "engine" },
   body: [
     {
       type: "binary",
-      id: "seed",
+      id: "seed", name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
       publish: { pick: "b" },
     },
-    { type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.pick" } },
+    { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.pick" } },
     {
       type: "branch",
-      id: "route",
+      id: "route", name: "route",
       arms: [
         { when: { type: "equals", path: "context.pick", value: "b" }, body: [echoToken("arm-b")] },
       ],
@@ -72,13 +75,14 @@ const controls: WorkflowFile = {
 
 /** iteration-started, loop-exited. */
 const loop: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "loop",
   worker: { type: "engine" },
   body: [
     {
       type: "binary",
-      id: "seed",
+      id: "seed", name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write('0')"],
       parse: "json",
@@ -86,13 +90,13 @@ const loop: WorkflowFile = {
     },
     {
       type: "while-do",
-      id: "spin",
+      id: "spin", name: "spin",
       condition: { type: "range", path: "context.count", max: 1 },
       max_iterations: 4,
       body: [
         {
           type: "binary",
-          id: "bump",
+          id: "bump", name: "bump",
           command: "node",
           args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
           parse: "json",
@@ -105,21 +109,22 @@ const loop: WorkflowFile = {
 
 /** join-applied — every branch succeeds, so the collect join applies at block end. */
 const parallelJoin: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "parallel-join",
   worker: { type: "engine" },
   body: [
     {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
         {
-          id: "left",
+          id: "left", name: "left",
           body: [
             {
               type: "binary",
-              id: "l",
+              id: "l", name: "l",
               command: "node",
               args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
               publish: { left: "${output}" },
@@ -127,11 +132,11 @@ const parallelJoin: WorkflowFile = {
           ],
         },
         {
-          id: "right",
+          id: "right", name: "right",
           body: [
             {
               type: "binary",
-              id: "r",
+              id: "r", name: "r",
               command: "node",
               args: ["-e", "process.stdout.write('r')"],
               publish: { right: "${output}" },
@@ -145,22 +150,23 @@ const parallelJoin: WorkflowFile = {
 
 /** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is killed. */
 const parallelCancel: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "parallel-cancel",
   worker: { type: "engine" },
   body: [
     {
       type: "parallel",
-      id: "fan",
+      id: "fan", name: "fan",
       join: "collect",
       branches: [
         {
-          id: "doomed",
-          body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(3)"] }],
+          id: "doomed", name: "doomed",
+          body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(3)"] }],
         },
         {
-          id: "victim",
-          body: [{ type: "binary", id: "sleeper", command: "node", args: ["-e", "setTimeout(() => {}, 5000)"] }],
+          id: "victim", name: "victim",
+          body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(() => {}, 5000)"] }],
         },
       ],
     },
@@ -169,20 +175,21 @@ const parallelCancel: WorkflowFile = {
 
 /** branch-no-match — no arm matches and there is no `else`, which fails the run (§5.2). */
 const noMatch: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "branch-no-match",
   worker: { type: "engine" },
   body: [
     {
       type: "binary",
-      id: "seed",
+      id: "seed", name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
       publish: { pick: "${output}" },
     },
     {
       type: "branch",
-      id: "route",
+      id: "route", name: "route",
       arms: [{ when: { type: "equals", path: "context.pick", value: "never-matches" }, body: [echoToken("dead")] }],
     },
   ],
@@ -190,10 +197,11 @@ const noMatch: WorkflowFile = {
 
 /** step-usage — the prompt step is where tokens are spent, on the scripted worker. */
 const prompt: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "prompt-usage",
   worker: { type: "llm", model: "test-model" },
-  body: [{ type: "prompt", id: "ask", prompt: "Say hi. ${config.token}" }],
+  body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Say hi. ${config.token}" }],
 };
 
 interface RunOutcomeSnapshot {
@@ -213,7 +221,7 @@ async function runOnce(file: WorkflowFile, token: ConfigValue): Promise<RunOutco
     const observer = composeObservers(createPersistedObserver(runDb, dir), createLoggingObserver(backends));
     const llmWorker = createScriptedLlmWorker({ ask: () => "hello" });
 
-    const result = await runWorkflow({ ...file, config: { token } }, dir, { observer, llmWorker });
+    const result = await runWorkflow(stampNames({ ...file, config: { token } }), dir, { observer, llmWorker });
 
     const rootRunId = (
       runDb.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string }

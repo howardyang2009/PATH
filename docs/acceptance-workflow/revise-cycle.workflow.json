@@ -1,39 +1,49 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "f348a778-360b-40d2-9771-b352968d1200",
   "name": "revise-cycle",
-
   "worker": {
     "type": "llm",
     "model": "claude-sonnet-5"
   },
-
   "body": [
     {
       "type": "prompt",
-      "id": "revise",
+      "id": "297d1380-77b8-4115-99e7-65c9afd329f5",
+      "name": "revise",
       "input": {
         "draft": "${context.draft}",
         "feedback": "${context.feedback}",
         "raw_changes": "${context.raw_changes}"
       },
       "prompt": "Revise the release-notes draft in your input according to the judge feedback, staying faithful to the raw git history. Output the full revised markdown.",
-      "publish": { "draft": "${output}" }
+      "publish": {
+        "draft": "${output}"
+      }
     },
     {
       "type": "prompt",
-      "id": "judge",
+      "id": "d90ab1e0-e0dc-456f-bd3c-5a433776a2a5",
+      "name": "judge",
       "parse": "json",
-      "input": { "draft": "${context.draft}" },
+      "input": {
+        "draft": "${context.draft}"
+      },
       "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }.",
-      "publish": { "verdict": "${output}" }
+      "publish": {
+        "verdict": "${output}"
+      }
     },
     {
       "type": "checkpoint",
-      "id": "verdict-wellformed",
-      "condition": { "type": "exists", "path": "context.verdict.pass" }
+      "id": "368c7add-20ed-400d-a9ff-015246fe4ea1",
+      "name": "verdict-wellformed",
+      "condition": {
+        "type": "exists",
+        "path": "context.verdict.pass"
+      }
     }
   ],
-
   "output": {
     "draft": "${context.draft}",
     "verdict": "${context.verdict}"

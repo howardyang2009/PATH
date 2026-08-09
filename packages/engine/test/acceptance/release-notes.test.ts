@@ -127,6 +127,7 @@ interface RunRow {
   root_run_id: string;
   parent_run_id: string | null;
   node_id: string | null;
+  node_name: string | null;
   // Nullable: the root workflow-run is inserted without a worker (persisted-observer.ts).
   worker: string | null;
   status: string;
@@ -210,7 +211,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     await expect(runPipeline(worker)).resolves.toBe(0);
 
     // parallel branches may settle in either order; the rest of the pipeline is strictly ordered.
-    const nodeIds = worker.calls.map((call) => call.nodeId);
+    const nodeIds = worker.calls.map((call) => call.nodeName);
     expect(nodeIds.slice(0, 2).sort()).toEqual(["summarize-features", "summarize-fixes"]);
     expect(nodeIds.slice(2)).toEqual(["draft-notes", "judge-draft", "revise", "judge", "format-short"]);
 
@@ -242,7 +243,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
 
     // Every leaf step that ran has its own row. Compared as a set — the parallel block's two
     // branches insert in whichever order they settle; step *ordering* is asserted separately.
-    expect(leaves.map((row) => row.node_id).sort()).toEqual([
+    expect(leaves.map((row) => row.node_name).sort()).toEqual([
       "draft-notes",
       "format-short",
       "gather-changes",
@@ -254,16 +255,16 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
       "write-file",
     ]);
     // Checkpoints are logic, not step runs — they leave no row.
-    expect(runs.some((row) => row.node_id === "have-changes")).toBe(false);
+    expect(runs.some((row) => row.node_name === "have-changes")).toBe(false);
 
     // The nested workflow-run (#22) is the root plus exactly one revise-cycle, and the cycle's
     // steps hang off it rather than off the root.
     expect(workflowRuns).toHaveLength(2);
     const cycle = workflowRuns.find((row) => row.run_id !== root.run_id)!;
-    expect(cycle.node_id).toBe("revise");
+    expect(cycle.node_name).toBe("revise");
     expect(cycle.parent_run_id).toBe(root.run_id);
     const cycleLeaves = leaves.filter((row) => row.parent_run_id === cycle.run_id);
-    expect(cycleLeaves.map((row) => row.node_id)).toEqual(["revise", "judge"]);
+    expect(cycleLeaves.map((row) => row.node_name)).toEqual(["revise", "judge"]);
   });
 
   it("criterion 2 — writes the log narrative to both backends, matching by seq", async () => {
@@ -341,7 +342,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
 
     await expect(runPipeline(worker)).resolves.toBe(0);
 
-    const nodeIds = worker.calls.map((call) => call.nodeId);
+    const nodeIds = worker.calls.map((call) => call.nodeName);
     expect(nodeIds).toContain("format-long");
     expect(nodeIds).not.toContain("format-short");
     // A passing first verdict also means the while-do loop never entered.
@@ -382,7 +383,7 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
     const runs = readRuns(harness.projectDir);
     expect(runs.find((row) => row.parent_run_id === null)!.status).toBe("failed");
     // The audit trail survives a failed run: the step that did run is still recorded.
-    expect(runs.find((row) => row.node_id === "gather-changes")!.status).toBe("succeeded");
+    expect(runs.find((row) => row.node_name === "gather-changes")!.status).toBe("succeeded");
   });
 
   it("a never-passing judge exhausts max_revisions and fails the run", async () => {
@@ -399,7 +400,7 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
     expect(existsSync(join(harness.projectDir, "RELEASE_NOTES.md"))).toBe(false);
 
     // The loop ran exactly max_revisions cycles before giving up.
-    expect(worker.calls.filter((call) => call.nodeId === "revise")).toHaveLength(2);
+    expect(worker.calls.filter((call) => call.nodeName === "revise")).toHaveLength(2);
 
     const runs = readRuns(harness.projectDir);
     const { root, workflowRuns, leaves } = classifyRuns(runs);
@@ -412,15 +413,15 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
 });
 
 /** The reuse-markers (#172) a resumed root run wrote, read straight from the `db` log backend. */
-function readReuseMarkers(projectDir: string, rootRunId: string): { nodeId: string; originalRunId: string }[] {
+function readReuseMarkers(projectDir: string, rootRunId: string): { nodeName: string; originalRunId: string }[] {
   const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
   try {
     const rows = db
       .prepare("SELECT event FROM log_events WHERE root_run_id = ? AND type = 'reuse-marker' ORDER BY seq")
       .all(rootRunId) as { event: string }[];
     return rows.map((row) => {
-      const event = JSON.parse(row.event) as { node_id: string; original_run_id: string };
-      return { nodeId: event.node_id, originalRunId: event.original_run_id };
+      const event = JSON.parse(row.event) as { node_name: string; original_run_id: string };
+      return { nodeName: event.node_name, originalRunId: event.original_run_id };
     });
   } finally {
     db.close();
@@ -440,10 +441,10 @@ function readReuseMarkers(projectDir: string, rootRunId: string): { nodeId: stri
 async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: ScriptedLlmWorker }> {
   const controller = new AbortController();
   const worker = createScriptedLlmWorker(happyPathScript(), {
-    onCall: ({ nodeId, callNumber }) => {
+    onCall: ({ nodeName, callNumber }) => {
       // The first `revise` prompt runs inside the while-do's first nested revise-cycle — killing here
       // is a kill mid-iteration, after the pre-loop work (summaries, draft, judge-draft) succeeded.
-      if (nodeId === "revise" && callNumber === 1) controller.abort();
+      if (nodeName === "revise" && callNumber === 1) controller.abort();
     },
   });
 
@@ -504,7 +505,7 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
 
     // Reused nodes did not execute again: the successor's worker was asked only for the loop it
     // re-ran and the format step past it. The five pre-loop nodes are absent from its calls.
-    const resumedNodeIds = resumeWorker.calls.map((call) => call.nodeId);
+    const resumedNodeIds = resumeWorker.calls.map((call) => call.nodeName);
     expect(resumedNodeIds).toEqual(["revise", "judge", "format-short"]);
     for (const reused of REUSED_NODES) expect(resumedNodeIds).not.toContain(reused);
   });
@@ -525,7 +526,7 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     // Every pre-loop node reused, each with a marker back-referencing the killed tree's own run — the
     // narrative record of "not re-run" (#172). One marker per node, no more.
     const markers = readReuseMarkers(harness.projectDir, successorRootRunId);
-    expect(markers.map((marker) => marker.nodeId).sort()).toEqual([...REUSED_NODES].sort());
+    expect(markers.map((marker) => marker.nodeName).sort()).toEqual([...REUSED_NODES].sort());
     expect(markers.every((marker) => marker.originalRunId.length > 0)).toBe(true);
 
     // The successor is a successor: its root row links back to the killed run, and it is a fresh tree.

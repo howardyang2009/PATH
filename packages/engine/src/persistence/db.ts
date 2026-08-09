@@ -16,8 +16,14 @@ import Database from "better-sqlite3";
  * immediate predecessor's root run id, set once at a successor root run's insert time; #168's
  * resume feature). Same precedent as the #19 bump: an existing pre-#169 db refuses to open rather
  * than silently lacking the column a resumed run would then fail to write to.
+ *
+ * Bumped to 4 in #204 for the identity migration (ADR 0006/0007): `runs.node_id` and every log
+ * event's `node_id` now carry the durable GUID, and a `node_name` column is added to both `runs` and
+ * `log_events` so the run tree and log stream stay human-readable without re-loading the workflow.
+ * Bump-and-break with no migration (pre-1.0): the store is a clean slate, so no old row carries a
+ * stale human `node_id`. Blobs under `.path/runs/` are unaffected.
  */
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export class SchemaVersionError extends Error {}
 
@@ -27,6 +33,7 @@ const RUNS_TABLE_DDL = `
     root_run_id TEXT NOT NULL,
     parent_run_id TEXT,
     node_id TEXT,
+    node_name TEXT,
     worker TEXT,
     status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','cancelled')),
     started_at TEXT,
@@ -52,6 +59,7 @@ const LOG_EVENTS_TABLE_DDL = `
     type TEXT NOT NULL,
     run_id TEXT NOT NULL,
     node_id TEXT,
+    node_name TEXT,
     event TEXT NOT NULL,
     PRIMARY KEY (root_run_id, seq)
   );

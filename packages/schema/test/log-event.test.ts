@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { LogEventSchema } from "../src/log-event.js";
 
-const envelope = { seq: 1, ts: "2026-07-19T00:00:00.000Z", run_id: "run-1", node_id: "greet" };
+const envelope = { seq: 1, ts: "2026-07-19T00:00:00.000Z", run_id: "run-1", node_id: "greet", node_name: "greet" };
 
 describe("LogEventSchema", () => {
   it("accepts a step-started event with its worker and step_type payload", () => {
@@ -29,15 +29,17 @@ describe("LogEventSchema", () => {
     expect(parsed).toMatchObject({ status: "failed", error: 'step "boom" exited with code 3' });
   });
 
-  it("allows a null node_id for the root workflow-step", () => {
+  it("allows a null node_id + node_name for the root workflow-step", () => {
     const parsed = LogEventSchema.parse({
       type: "step-started",
       ...envelope,
       node_id: null,
+      node_name: null,
       step_type: "workflow",
       worker: { type: "engine" },
     });
     expect(parsed.node_id).toBeNull();
+    expect(parsed.node_name).toBeNull();
   });
 
   it("carries the cause of an operator cancellation, which has no cause run behind it (#52)", () => {
@@ -60,7 +62,7 @@ describe("LogEventSchema", () => {
     expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-succeeded", cause_run_id: null });
   });
 
-  it("carries the winner id on a wait-one join-applied event", () => {
+  it("carries the winner name on a wait-one join-applied event", () => {
     const parsed = LogEventSchema.parse({
       type: "join-applied",
       ...envelope,

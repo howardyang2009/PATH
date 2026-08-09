@@ -9,8 +9,8 @@ export interface NodeChildBody {
   nodes: WorkflowNode[];
   /** JSON path segments from the owning node to this body, for error reporting. */
   path: (string | number)[];
-  /** A `parallel` branch carries its own id, which is not a node's — nothing else does. */
-  branchId?: string;
+  /** A `parallel` branch carries its own human `name`, which is not a node's — nothing else does. */
+  branchName?: string;
   /** True for `parallel` branches: siblings that run at once, and so can race to publish. */
   concurrent: boolean;
 }
@@ -35,7 +35,7 @@ export function childBodies(node: WorkflowNode): NodeChildBody[] {
       return node.branches.map((branch, branchIndex) => ({
         nodes: branch.body,
         path: ["branches", branchIndex, "body"],
-        branchId: branch.id,
+        branchName: branch.name,
         concurrent: true,
       }));
     case "branch": {

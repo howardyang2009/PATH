@@ -1,127 +1,190 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "5c848796-afae-40a2-8748-9157fb15c136",
   "name": "github-release-notes",
-
-  "worker": { "type": "engine" },
-
+  "worker": {
+    "type": "engine"
+  },
   "config": {
     "repo": "howardyang2009/PATH",
     "repo_path": "../..",
     "base_ref": "v0.4.1",
     "head_ref": "v0.4.3",
     "api_base": "https://api.github.com",
-    "token": { "$secret": { "$env": "GITHUB_TOKEN" } },
+    "token": {
+      "$secret": {
+        "$env": "GITHUB_TOKEN"
+      }
+    },
     "model": "claude-sonnet-5",
     "body_file": "issues.json",
     "output_file": "release-notes-enriched.md"
   },
-
   "body": [
     {
       "type": "binary",
-      "id": "gather-subjects",
+      "id": "147ac401-b05d-4074-b3a9-1d8d1e8151ec",
+      "name": "gather-subjects",
       "command": "git",
-      "args": ["log", "--no-merges", "--format=%s", "${config.base_ref}..${config.head_ref}"],
+      "args": [
+        "log",
+        "--no-merges",
+        "--format=%s",
+        "${config.base_ref}..${config.head_ref}"
+      ],
       "cwd": "${config.repo_path}",
-      "publish": { "raw_subjects": "${output}" }
+      "publish": {
+        "raw_subjects": "${output}"
+      }
     },
-
     {
       "type": "checkpoint",
-      "id": "have-changes",
-      "condition": { "type": "matches", "path": "context.raw_subjects", "pattern": "\\S" }
+      "id": "7c51ee95-b7da-474d-86f9-f8749723419f",
+      "name": "have-changes",
+      "condition": {
+        "type": "matches",
+        "path": "context.raw_subjects",
+        "pattern": "\\S"
+      }
     },
-
     {
       "type": "binary",
-      "id": "extract-refs",
+      "id": "cd7582e5-eaaf-4c94-ad3d-6cf2e53c72d1",
+      "name": "extract-refs",
       "input": "${context.raw_subjects}",
       "command": "sh",
-      "args": ["-c", "grep -oE '#[0-9]+' | tr -d '#' | sort -un || true"],
-      "publish": { "ref_numbers": "${output}" }
+      "args": [
+        "-c",
+        "grep -oE '#[0-9]+' | tr -d '#' | sort -un || true"
+      ],
+      "publish": {
+        "ref_numbers": "${output}"
+      }
     },
-
     {
       "type": "binary",
-      "id": "since-date",
+      "id": "b72aace1-1597-41f0-8df6-07797f1a9681",
+      "name": "since-date",
       "command": "sh",
       "args": [
         "-c",
         "TZ=UTC git log -1 --date=format:'%Y-%m-%dT%H:%M:%SZ' --format=%cd \"${config.base_ref}\" | tr -d '\\n'"
       ],
       "cwd": "${config.repo_path}",
-      "publish": { "since_date": "${output}" }
+      "publish": {
+        "since_date": "${output}"
+      }
     },
-
     {
       "type": "binary",
-      "id": "fetch-issues",
+      "id": "b4b3fcc0-61a2-4281-a6fa-40eb3779fd64",
+      "name": "fetch-issues",
       "input": "url = \"${config.api_base}/repos/${config.repo}/issues?state=all&since=${context.since_date}&per_page=100\"\nheader = \"Authorization: Bearer ${config.token}\"\nheader = \"Accept: application/vnd.github+json\"\nheader = \"X-GitHub-Api-Version: 2022-11-28\"\nsilent\noutput = \"${config.body_file}\"\nwrite-out = \"{\\\"http_code\\\":%{http_code},\\\"headers\\\":%{header_json}}\"\n",
       "command": "curl",
-      "args": ["--config", "-"],
+      "args": [
+        "--config",
+        "-"
+      ],
       "parse": "json",
-      "publish": { "meta": "${output}" }
+      "publish": {
+        "meta": "${output}"
+      }
     },
-
     {
       "type": "checkpoint",
-      "id": "http-ok",
-      "condition": { "type": "equals", "path": "context.meta.http_code", "value": 200 }
+      "id": "2ed52fed-5b57-4688-9e5d-af529aca0bc7",
+      "name": "http-ok",
+      "condition": {
+        "type": "equals",
+        "path": "context.meta.http_code",
+        "value": 200
+      }
     },
-
     {
       "type": "checkpoint",
-      "id": "single-page",
-      "condition": { "type": "not", "of": { "type": "exists", "path": "context.meta.headers.link" } }
+      "id": "c6c937d4-78be-4555-b557-278a064a3a14",
+      "name": "single-page",
+      "condition": {
+        "type": "not",
+        "of": {
+          "type": "exists",
+          "path": "context.meta.headers.link"
+        }
+      }
     },
-
     {
       "type": "binary",
-      "id": "read-body",
+      "id": "8087171e-f64a-47cb-a96b-580b0c04163a",
+      "name": "read-body",
       "command": "cat",
-      "args": ["${config.body_file}"],
+      "args": [
+        "${config.body_file}"
+      ],
       "parse": "json",
-      "publish": { "all_issues": "${output}" }
+      "publish": {
+        "all_issues": "${output}"
+      }
     },
-
     {
       "type": "binary",
-      "id": "join-refs",
-      "input": { "refs": "${context.ref_numbers}", "issues": "${context.all_issues}" },
+      "id": "cebbcbb6-2442-4f64-bafc-50594d843c38",
+      "name": "join-refs",
+      "input": {
+        "refs": "${context.ref_numbers}",
+        "issues": "${context.all_issues}"
+      },
       "command": "node",
-      "args": ["join-issue-refs.js"],
+      "args": [
+        "join-issue-refs.js"
+      ],
       "parse": "json",
-      "publish": { "enriched": "${output}" }
+      "publish": {
+        "enriched": "${output}"
+      }
     },
-
     {
       "type": "checkpoint",
-      "id": "have-citations",
-      "condition": { "type": "exists", "path": "context.enriched.cited.0.number" }
+      "id": "65d1c4f2-d866-4060-8458-7e5d671388f4",
+      "name": "have-citations",
+      "condition": {
+        "type": "exists",
+        "path": "context.enriched.cited.0.number"
+      }
     },
-
     {
       "type": "prompt",
-      "id": "draft-notes",
-      "worker": { "type": "llm", "model": "${config.model}" },
+      "id": "a70ce91f-e710-4027-91d4-e680207816c0",
+      "name": "draft-notes",
+      "worker": {
+        "type": "llm",
+        "model": "${config.model}"
+      },
       "input": {
         "cited": "${context.enriched.cited}",
         "unresolved": "${context.enriched.unresolved}",
         "subjects": "${context.raw_subjects}"
       },
       "prompt": "Write release notes in markdown for ${config.base_ref}..${config.head_ref} of ${config.repo}, from your input. `cited` holds the GitHub issues and pull requests this range's commits reference, already resolved to titles; `subjects` holds the commit subjects; `unresolved` holds reference numbers the API listing did not return. Group the notes by theme, and cite each item as #<number> using the resolved titles rather than the commit subjects where they differ. Do not describe an unresolved number — list any under a short 'Unresolved references' heading at the end, by number only. Invent nothing that is not in your input. Output markdown only.",
-      "publish": { "notes": "${output}" }
+      "publish": {
+        "notes": "${output}"
+      }
     },
-
     {
       "type": "binary",
-      "id": "write-file",
+      "id": "76b47ba1-aa1e-4a5d-bad1-a59bd589d344",
+      "name": "write-file",
       "input": "${context.notes}",
       "command": "sh",
-      "args": ["-c", "cat > \"${config.output_file}\""],
-      "publish": { "file": "${config.output_file}" }
+      "args": [
+        "-c",
+        "cat > \"${config.output_file}\""
+      ],
+      "publish": {
+        "file": "${config.output_file}"
+      }
     }
   ],
-
-  "output": { "file": "${context.file}" }
+  "output": {
+    "file": "${context.file}"
+  }
 }

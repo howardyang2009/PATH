@@ -1,22 +1,40 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "cf159dd3-4a05-4e24-af75-b0d65210a147",
   "name": "resumable",
-  "worker": { "type": "engine" },
-  "config": { "mode": "fail" },
+  "worker": {
+    "type": "engine"
+  },
+  "config": {
+    "mode": "fail"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "step-a",
+      "id": "908d75e8-c8bb-4792-95e1-2d80ce2f51d7",
+      "name": "step-a",
       "command": "node",
-      "args": ["-e", "process.stdout.write('A')"],
-      "publish": { "fromA": "${output}" }
+      "args": [
+        "-e",
+        "process.stdout.write('A')"
+      ],
+      "publish": {
+        "fromA": "${output}"
+      }
     },
     {
       "type": "binary",
-      "id": "step-b",
+      "id": "548ed098-0a65-499d-a5ea-4a1e091aca04",
+      "name": "step-b",
       "command": "node",
-      "args": ["-e", "if(process.argv[1]!=='ok')process.exit(3);process.stdout.write('B')", "${config.mode}"]
+      "args": [
+        "-e",
+        "if(process.argv[1]!=='ok')process.exit(3);process.stdout.write('B')",
+        "${config.mode}"
+      ]
     }
   ],
-  "output": { "a": "${context.fromA}" }
+  "output": {
+    "a": "${context.fromA}"
+  }
 }

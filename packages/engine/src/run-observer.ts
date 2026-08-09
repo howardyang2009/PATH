@@ -60,6 +60,7 @@ export type Observation =
       rootRunId: string;
       parentRunId: string | null;
       nodeId: string | null;
+      nodeName: string | null;
       input: JsonValue;
       worker: Worker;
       /**
@@ -77,6 +78,7 @@ export type Observation =
       rootRunId: string;
       parentRunId: string;
       nodeId: string;
+      nodeName: string;
       stepType: string;
       worker: Worker;
       input: JsonValue;
@@ -113,6 +115,7 @@ export type Observation =
       runId: string;
       rootRunId: string;
       nodeId: string;
+      nodeName: string;
       branches: string[];
       publishedKeys: string[];
       winner?: string;
@@ -130,6 +133,7 @@ export type Observation =
       runId: string;
       rootRunId: string;
       nodeId: string;
+      nodeName: string;
       cause: "sibling-failed" | "sibling-succeeded" | "operator";
       causeRunId: string | null;
     }
@@ -145,7 +149,7 @@ export type Observation =
    * single event, never one per descendant. Narrated to the log alone (see logging/logging-observer);
    * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
    */
-  | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; originalRunId: string }
+  | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; nodeName: string; originalRunId: string }
   /**
    * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
    * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run
@@ -153,7 +157,7 @@ export type Observation =
    * `passed: false` with the error surfaced as an error leaf inside `trace`. Logging (#19) splits
    * this into the `checkpoint-passed`/`checkpoint-failed` events.
    */
-  | { type: "checkpoint-evaluated"; runId: string; rootRunId: string; nodeId: string; passed: boolean; trace: Trace }
+  | { type: "checkpoint-evaluated"; runId: string; rootRunId: string; nodeId: string; nodeName: string; passed: boolean; trace: Trace }
   /**
    * A `branch` arm won (#21): `arm` is the winning arm's index, or `"else"` for the fallback (which
    * has no condition, so `trace` is null).
@@ -163,6 +167,7 @@ export type Observation =
       runId: string;
       rootRunId: string;
       nodeId: string;
+      nodeName: string;
       arm: number | "else";
       trace: Trace | null;
     }
@@ -170,12 +175,12 @@ export type Observation =
    * No `branch` arm matched and there was no `else` (#21) — this fails the run (§5.2). Carries every
    * arm's `trace`.
    */
-  | { type: "branch-no-match"; runId: string; rootRunId: string; nodeId: string; traces: Trace[] }
+  | { type: "branch-no-match"; runId: string; rootRunId: string; nodeId: string; nodeName: string; traces: Trace[] }
   /**
    * A `while-do` iteration is about to run (#23): `iteration` is 1-based; `trace` is the condition
    * check that passed (true) leading to this iteration.
    */
-  | { type: "iteration-started"; runId: string; rootRunId: string; nodeId: string; iteration: number; trace: Trace }
+  | { type: "iteration-started"; runId: string; rootRunId: string; nodeId: string; nodeName: string; iteration: number; trace: Trace }
   /**
    * A `while-do` loop exited (#23): `reason` is `condition-false` (the normal exit) or
    * `max-iterations-exceeded` (which fails the run — spec §5.2/§5.6); `iterations` is the number of
@@ -187,6 +192,7 @@ export type Observation =
       runId: string;
       rootRunId: string;
       nodeId: string;
+      nodeName: string;
       reason: "condition-false" | "max-iterations-exceeded";
       iterations: number;
       trace: Trace;

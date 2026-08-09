@@ -31,6 +31,7 @@ export interface RunNodeState {
   rootRunId: string;
   parentRunId: string | null;
   nodeId: string | null;
+  nodeName: string | null;
   worker: Worker | null;
   status: RunStatus;
   startedAt: string | null;
@@ -61,6 +62,7 @@ function nodeFromRecord(row: WireRunRecord): RunNodeState {
     rootRunId: row.root_run_id,
     parentRunId: row.parent_run_id,
     nodeId: row.node_id,
+    nodeName: row.node_name,
     worker: row.worker,
     status: row.status,
     startedAt: row.started_at,
@@ -143,6 +145,7 @@ export class RunViewModel {
       rootRunId: this.rootRunId,
       parentRunId: null,
       nodeId: event.node_id,
+      nodeName: event.node_name,
       worker: null,
       status: "pending",
       startedAt: null,

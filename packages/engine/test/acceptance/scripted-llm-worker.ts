@@ -9,7 +9,7 @@ import type { LlmWorker, PromptRequest, PromptResult } from "../../src/llm/llm-w
 export type ScriptedHandler = (request: PromptRequest, callNumber: number) => string;
 
 export interface ScriptedCall {
-  nodeId: string;
+  nodeName: string;
   model: string;
   input: JsonValue;
 }
@@ -64,19 +64,19 @@ export function createScriptedLlmWorker(
     async runPrompt(request: PromptRequest): Promise<PromptResult> {
       if (request.signal?.aborted) return { status: "cancelled" };
 
-      const handler = script[request.nodeId];
+      const handler = script[request.nodeName];
       if (!handler) {
         return {
           status: "failed",
-          error: `scripted worker has no handler for prompt node "${request.nodeId}"`,
+          error: `scripted worker has no handler for prompt node "${request.nodeName}"`,
           usage: SCRIPTED_USAGE,
           estimatedCostUsd: SCRIPTED_COST_USD,
         };
       }
 
-      const callNumber = (callsPerNode.get(request.nodeId) ?? 0) + 1;
-      callsPerNode.set(request.nodeId, callNumber);
-      const call: ScriptedCall = { nodeId: request.nodeId, model: request.model, input: request.input };
+      const callNumber = (callsPerNode.get(request.nodeName) ?? 0) + 1;
+      callsPerNode.set(request.nodeName, callNumber);
+      const call: ScriptedCall = { nodeName: request.nodeName, model: request.model, input: request.input };
       calls.push(call);
 
       // The kill seam (#178): fired before the wait below, so an abort it triggers is already live

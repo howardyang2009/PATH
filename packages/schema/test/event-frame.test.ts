@@ -9,6 +9,7 @@ function stepStarted(seq: number): LogEvent {
     ts: "2026-07-28T12:00:00.000Z",
     run_id: "run-1",
     node_id: "greet",
+    node_name: "greet",
     step_type: "binary",
     worker: { type: "engine" },
   };

@@ -1,6 +1,20 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "48636a73-0341-48e7-9382-92a1f03985a9",
   "name": "failing-step",
-  "worker": { "type": "engine" },
-  "body": [{ "type": "binary", "id": "boom", "command": "node", "args": ["-e", "process.exit(3)"] }]
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "binary",
+      "id": "75014f4d-cf39-4f2e-9ca6-3fbdd6695fc2",
+      "name": "boom",
+      "command": "node",
+      "args": [
+        "-e",
+        "process.exit(3)"
+      ]
+    }
+  ]
 }

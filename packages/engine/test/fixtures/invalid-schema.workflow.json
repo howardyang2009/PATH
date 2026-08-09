@@ -1,7 +1,17 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "e0c61835-819b-4b42-9edc-f604c86bf6a6",
   "name": "invalid-schema",
-  "worker": { "type": "engine" },
-  "body": [{ "type": "binary", "id": "step-one", "command": "echo" }],
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "binary",
+      "id": "6f558993-5bde-4b6e-bddc-67297c755d72",
+      "name": "step-one",
+      "command": "echo"
+    }
+  ],
   "bogus_field": true
 }

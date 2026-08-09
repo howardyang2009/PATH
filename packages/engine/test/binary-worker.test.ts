@@ -3,8 +3,8 @@ import { describe, expect, it } from "vitest";
 import { runBinaryStep, type ResolvedBinaryStep } from "../src/binary-worker.js";
 
 /** A step running the given inline node script — the engine's own executable, on every machine. */
-function nodeStep(script: string, id = "step-1"): ResolvedBinaryStep {
-  return { id, command: process.execPath, args: ["-e", script], cwd: tmpdir() };
+function nodeStep(script: string, name = "step-1"): ResolvedBinaryStep {
+  return { name, command: process.execPath, args: ["-e", script], cwd: tmpdir() };
 }
 
 /** Reads all of stdin and writes it back out, so a test can assert what the child was handed. */
@@ -44,7 +44,7 @@ describe("runBinaryStep", () => {
 
   it("fails a command that cannot start, naming the command", async () => {
     const step: ResolvedBinaryStep = {
-      id: "missing",
+      name: "missing",
       command: "path-no-such-binary-8f3a",
       args: [],
       cwd: tmpdir(),
@@ -72,7 +72,7 @@ describe("runBinaryStep", () => {
 
   it("settles cancelled without spawning when the signal is already aborted", async () => {
     const step: ResolvedBinaryStep = {
-      id: "never-runs",
+      name: "never-runs",
       command: "path-no-such-binary-8f3a",
       args: [],
       cwd: tmpdir(),

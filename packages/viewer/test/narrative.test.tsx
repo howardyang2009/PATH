@@ -11,13 +11,14 @@ function started(seq: number, nodeId: string | null): LogEvent {
     ts: `2026-07-25T10:00:0${seq}.000Z`,
     run_id: "run_a",
     node_id: nodeId,
+    node_name: nodeId,
     step_type: "binary",
     worker: { type: "engine" },
   };
 }
 
 function finished(seq: number, nodeId: string | null, status: Extract<RunStatus, "succeeded" | "failed" | "cancelled">): LogEvent {
-  return { type: "step-finished", seq, ts: `2026-07-25T10:00:0${seq}.000Z`, run_id: "run_a", node_id: nodeId, status };
+  return { type: "step-finished", seq, ts: `2026-07-25T10:00:0${seq}.000Z`, run_id: "run_a", node_id: nodeId, node_name: nodeId, status };
 }
 
 /** jsdom gives every element zero size; a scrollable list has to be faked to test following. */
@@ -52,6 +53,7 @@ describe("Narrative", () => {
       ts: "2026-07-25T10:00:01.000Z",
       run_id: "run_a",
       node_id: "fan",
+      node_name: "fan",
       branches: ["a", "b"],
       published_keys: [],
     };

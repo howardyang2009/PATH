@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
+import { stampGuids } from "./stamp-names.js";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
 import { createDbLogBackend } from "../src/logging/db-backend.js";
 import { LOG_FORMAT } from "../src/logging/log-backend.js";
@@ -273,12 +274,12 @@ describe("cli main() — --resume (ticket #177)", () => {
     const after = openDb(dbFilePath(projectDir));
     try {
       const successorRows = after
-        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
-        .all(successorRoot) as { node_id: string | null; status: string }[];
+        .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_name: string | null; status: string }[];
       // step-a was reused: it has no run row of its own in the successor tree. step-b reran and
       // succeeded. The successor's root row records the immediate predecessor it resumed from.
-      expect(successorRows.some((r) => r.node_id === "step-a")).toBe(false);
-      expect(successorRows.find((r) => r.node_id === "step-b")?.status).toBe("succeeded");
+      expect(successorRows.some((r) => r.node_name === "step-a")).toBe(false);
+      expect(successorRows.find((r) => r.node_name === "step-b")?.status).toBe("succeeded");
 
       const successorRootRow = after
         .prepare("SELECT resumed_from_root_run_id FROM runs WHERE run_id = ?")
@@ -287,10 +288,10 @@ describe("cli main() — --resume (ticket #177)", () => {
 
       // The original tree is untouched: its rows still read exactly as the failed run left them.
       const originalRows = after
-        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
-        .all(originalRoot) as { node_id: string | null; status: string }[];
-      expect(originalRows.find((r) => r.node_id === "step-a")?.status).toBe("succeeded");
-      expect(originalRows.find((r) => r.node_id === "step-b")?.status).toBe("failed");
+        .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
+        .all(originalRoot) as { node_name: string | null; status: string }[];
+      expect(originalRows.find((r) => r.node_name === "step-a")?.status).toBe("succeeded");
+      expect(originalRows.find((r) => r.node_name === "step-b")?.status).toBe("failed");
     } finally {
       after.close();
     }
@@ -550,16 +551,17 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   let projectDir: string;
   let sigintListenersBefore: number;
 
-  const ONE_PROMPT_WORKFLOW = {
-    format: "path/workflow@0",
+  const ONE_PROMPT_WORKFLOW = stampGuids({
+    format: "path/workflow@1",
+    id: "wf-id",
     name: "sigint-cancel",
     worker: { type: "llm", model: "claude-sonnet-5" },
     body: [
-      { type: "prompt", id: "ask", prompt: "Question.", publish: { answer: "${output}" } },
-      { type: "prompt", id: "never", prompt: "Second question." },
+      { type: "prompt", id: "ask", name: "ask", prompt: "Question.", publish: { answer: "${output}" } },
+      { type: "prompt", id: "never", name: "never", prompt: "Second question." },
     ],
     output: { result: "${context.answer}" },
-  };
+  });
 
   beforeEach(() => {
     projectDir = mkdtempSync(join(tmpdir(), "path-engine-sigint-cli-"));
@@ -597,10 +599,11 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
 
   function readRunRows() {
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
-    const rows = db.prepare("SELECT run_id, root_run_id, node_id, status FROM runs").all() as {
+    const rows = db.prepare("SELECT run_id, root_run_id, node_id, node_name, status FROM runs").all() as {
       run_id: string;
       root_run_id: string;
       node_id: string | null;
+      node_name: string | null;
       status: string;
     }[];
     db.close();
@@ -632,13 +635,13 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     const rows = readRunRows();
     const root = rows.find((r) => r.run_id === r.root_run_id)!;
     expect(root.status).toBe("cancelled"); // not the lying `running` row ^C used to leave
-    expect(rows.find((r) => r.node_id === "ask")!.status).toBe("cancelled");
-    expect(rows.find((r) => r.node_id === "never")).toBeUndefined(); // nothing ran after the abort
+    expect(rows.find((r) => r.node_name === "ask")!.status).toBe("cancelled");
+    expect(rows.find((r) => r.node_name === "never")).toBeUndefined(); // nothing ran after the abort
 
     // The NDJSON stream tells the same story, and the backends were closed on the root's terminal event.
     const events = readLogEvents(root.root_run_id);
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "run-cancelled", node_id: "ask", cause: "operator", cause_run_id: null }),
+      expect.objectContaining({ type: "run-cancelled", node_name: "ask", cause: "operator", cause_run_id: null }),
     );
     expect(events.at(-1)).toMatchObject({ type: "step-finished", run_id: root.run_id, node_id: null, status: "cancelled" });
   });
@@ -764,7 +767,7 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
       runId,
       rootRunId: runId,
       parentRunId: null,
-      nodeId: null,
+      nodeId: null, nodeName: null,
       worker: { type: "engine" },
       status: "running",
       resumedFromRootRunId: resumedFromRootRunId ?? null,
@@ -886,12 +889,13 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
 
   function seedRoot(runId: string, childNodeId = "greet"): void {
     const db = openDb(dbFilePath(projectDir));
-    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
     insertRun(db, {
       runId: `${runId}-child`,
       rootRunId: runId,
       parentRunId: runId,
       nodeId: childNodeId,
+      nodeName: childNodeId,
       worker: { type: "engine" },
       status: "succeeded",
     });
@@ -909,6 +913,7 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
       ts: new Date().toISOString(),
       run_id: holderRootRunId,
       node_id: "greet",
+      node_name: "greet",
       original_run_id: originalRunId,
     });
     await backend.close();

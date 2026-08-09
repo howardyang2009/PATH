@@ -1,18 +1,26 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "e87d2e8b-577e-40b5-8174-d012c4854991",
   "name": "stubborn-step",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "linger",
+      "id": "389dde56-0cb1-42db-adc0-c55e64a1be26",
+      "name": "linger",
       "command": "node",
       "args": [
         "-e",
         "require('fs').writeFileSync('stubborn-step.alive','');process.on('SIGTERM',()=>setTimeout(()=>process.exit(0),600));setTimeout(()=>process.stdout.write('done'),10000)"
       ],
-      "publish": { "result": "${output}" }
+      "publish": {
+        "result": "${output}"
+      }
     }
   ],
-  "output": { "result": "${context.result}" }
+  "output": {
+    "result": "${context.result}"
+  }
 }

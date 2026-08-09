@@ -1,24 +1,36 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "9a4d7499-777a-42a8-8711-6b99756a674c",
   "name": "two-binary-steps",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "greet",
+      "id": "fcc53bc0-e1b0-4328-8dfd-c27c2a6f0dcf",
+      "name": "greet",
       "command": "node",
-      "args": ["-e", "process.stdout.write('hello')"]
+      "args": [
+        "-e",
+        "process.stdout.write('hello')"
+      ]
     },
     {
       "type": "binary",
-      "id": "shout",
+      "id": "4dc02c9c-99df-4e51-9743-4e9657933297",
+      "name": "shout",
       "command": "node",
       "args": [
         "-e",
         "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d.toUpperCase()))"
       ],
-      "publish": { "shouted": "${output}" }
+      "publish": {
+        "shouted": "${output}"
+      }
     }
   ],
-  "output": { "shouted": "${context.shouted}" }
+  "output": {
+    "shouted": "${context.shouted}"
+  }
 }

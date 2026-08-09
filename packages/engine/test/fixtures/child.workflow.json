@@ -1,6 +1,16 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "2e221c5d-e533-415d-8a6f-bf0dbaba09bf",
   "name": "child",
-  "worker": { "type": "engine" },
-  "body": [{ "type": "binary", "id": "child-step-one", "command": "echo" }]
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "binary",
+      "id": "3a0d58a7-99cb-4282-b858-c36d3cf36900",
+      "name": "child-step-one",
+      "command": "echo"
+    }
+  ]
 }

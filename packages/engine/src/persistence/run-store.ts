@@ -10,6 +10,7 @@ export interface NewRunRow {
   rootRunId: string;
   parentRunId: string | null;
   nodeId: string | null;
+  nodeName: string | null;
   worker: Worker | null;
   status: RunStatus;
   /** Written with the row: the input blob is always on disk before the row exists (#72). */
@@ -20,13 +21,14 @@ export interface NewRunRow {
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, input_ref, resumed_from_root_run_id)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker, status, started_at, input_ref, resumed_from_root_run_id)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
     parentRunId: row.parentRunId,
     nodeId: row.nodeId,
+    nodeName: row.nodeName,
     worker: row.worker ? JSON.stringify(row.worker) : null,
     status: row.status,
     startedAt: new Date().toISOString(),
@@ -76,6 +78,7 @@ interface RunRowDb {
   root_run_id: string;
   parent_run_id: string | null;
   node_id: string | null;
+  node_name: string | null;
   worker: string | null;
   status: RunStatus;
   started_at: string | null;
@@ -93,6 +96,7 @@ function fromDbRow(row: RunRowDb): RunRecord {
     rootRunId: row.root_run_id,
     parentRunId: row.parent_run_id,
     nodeId: row.node_id,
+    nodeName: row.node_name,
     worker: row.worker ? (JSON.parse(row.worker) as Worker) : null,
     status: row.status,
     startedAt: row.started_at,

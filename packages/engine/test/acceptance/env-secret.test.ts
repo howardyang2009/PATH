@@ -116,13 +116,14 @@ interface RunRow {
   run_id: string;
   parent_run_id: string | null;
   node_id: string | null;
+  node_name: string | null;
   status: string;
 }
 
 function readRuns(): RunRow[] {
   const db = new Database(join(harness.projectDir, ".path", "path.db"), { readonly: true });
   try {
-    return db.prepare("SELECT run_id, parent_run_id, node_id, status FROM runs").all() as RunRow[];
+    return db.prepare("SELECT run_id, parent_run_id, node_id, node_name, status FROM runs").all() as RunRow[];
   } finally {
     db.close();
   }
@@ -163,8 +164,8 @@ function blobPath(runId: string, name: string): string {
   return join(harness.projectDir, ".path", "runs", rootRunId(), runId, name);
 }
 
-function stepRunId(nodeId: string): string {
-  return readRuns().find((row) => row.node_id === nodeId)!.run_id;
+function stepRunId(nodeName: string): string {
+  return readRuns().find((row) => row.node_name === nodeName)!.run_id;
 }
 
 /** Every file under `.path/`, so a leak can be looked for across the whole audit surface at once. */

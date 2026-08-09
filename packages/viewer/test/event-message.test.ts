@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { eventMessage } from "../src/event-message.js";
 
 /** The shared envelope every log event carries (mvp spec §8.1); each case spreads its own payload on. */
-const ENVELOPE = { seq: 1, ts: "2026-07-25T10:00:00.000Z", run_id: "run_a", node_id: "step-a" } as const;
+const ENVELOPE = { seq: 1, ts: "2026-07-25T10:00:00.000Z", run_id: "run_a", node_id: "step-a", node_name: "step-a" } as const;
 
 /** The trace type as it rides the event stream; derived rather than re-declared so it cannot drift. */
 type Trace = Extract<LogEvent, { type: "checkpoint-passed" }>["trace"];

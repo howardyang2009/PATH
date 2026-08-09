@@ -249,6 +249,7 @@ describe("LiveRuns — a run that rejects without a terminal event", () => {
             rootRunId: CRASHED_ROOT,
             parentRunId: null,
             nodeId: null,
+            nodeName: null,
             input: {},
             worker: { type: "engine" },
           });

@@ -126,6 +126,7 @@ translated to snake_case):
       "root_run_id": "<uuid>",
       "parent_run_id": null,
       "node_id": null,
+      "node_name": null,
       "worker": { "...": "..." },
       "status": "succeeded",
       "started_at": "...",
@@ -202,9 +203,9 @@ envelope level (`run_id`, `node_id`, `seq`, `ts`), so no field translation neede
 other endpoints.
 
 ```
-data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"step_type":"workflow","worker":{...}}
+data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker":{...}}
 
-data: {"type":"step-finished","seq":2,"ts":"...","run_id":"...","node_id":"draft","status":"succeeded"}
+data: {"type":"step-finished","seq":2,"ts":"...","run_id":"...","node_id":"<uuid>","node_name":"draft","status":"succeeded"}
 ```
 
 Mechanism: since execution is in-process, the server attaches its own live-forwarding `LogBackend`

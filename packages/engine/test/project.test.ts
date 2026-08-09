@@ -8,6 +8,7 @@ import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
 import { pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
+import { stampGuids, stampNames } from "./stamp-names.js";
 
 let dir: string;
 
@@ -30,18 +31,19 @@ function writeSettings(settings: unknown): void {
   writeFileSync(join(pathDir(dir), "settings.json"), JSON.stringify(settings), "utf8");
 }
 
-const oneStep: WorkflowFile = {
-  format: "path/workflow@0",
+const oneStep: WorkflowFile = stampNames({
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "one-step",
   worker: { type: "engine" },
-  body: [{ type: "binary", id: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
-};
+  body: [{ type: "binary", id: "only", name: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
+});
 
 // A binary step that emits `text` on stdout, or (when `text` is undefined) exits 1 — the two halves
 // of a run driven to a stopping point and then resumed past it.
 function emit(id: string, text?: string): WorkflowFile["body"][number] {
   const script = text !== undefined ? `process.stdout.write('${text}')` : "process.exit(1)";
-  return { type: "binary", id, command: "node", args: ["-e", script], publish: { [`from_${id}`]: "${output}" } };
+  return { type: "binary", id, name: id, command: "node", args: ["-e", script], publish: { [`from_${id}`]: "${output}" } };
 }
 
 describe("openProject", () => {
@@ -195,7 +197,8 @@ describe("Project.resume (#173)", () => {
   // v1 stops at `b` (exit 1) after `a` succeeds; v2 is the same tree with `b` fixed to succeed. On
   // resume against v2, `a` reuses its recorded output and only `b` re-runs.
   const v1: WorkflowFile = {
-    format: "path/workflow@0",
+    format: "path/workflow@1",
+    id: "wf-id",
     name: "resumable",
     worker: { type: "engine" },
     body: [emit("a", "A_OUT"), emit("b")],
@@ -294,20 +297,22 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     mkdirSync(sub, { recursive: true });
     writeFileSync(
       join(sub, "child.workflow.json"),
-      JSON.stringify({
-        format: "path/workflow@0",
+      JSON.stringify(stampGuids({
+        format: "path/workflow@1",
+        id: "wf-id",
         name: "child",
         worker: { type: "engine" },
-        body: [{ type: "binary", id: "inner", command: "node", args: ["-e", "process.stdout.write('inner')"] }],
-      }),
+        body: [{ type: "binary", id: "inner", name: "inner", command: "node", args: ["-e", "process.stdout.write('inner')"] }],
+      })),
       "utf8",
     );
-    const parent: WorkflowFile = {
-      format: "path/workflow@0",
+    const parent: WorkflowFile = stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "parent",
       worker: { type: "engine" },
-      body: [{ type: "workflow", id: "call", ref: "./child.workflow.json" }],
-    };
+      body: [{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }],
+    });
     writeFileSync(join(sub, "parent.workflow.json"), JSON.stringify(parent), "utf8");
 
     const project = open();

@@ -6,11 +6,11 @@ const ROOT = "root-1";
 const CHILD = "child-1";
 
 function stepStarted(seq: number, runId: string, nodeId: string | null): LogEvent {
-  return { type: "step-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, step_type: "workflow", worker: { type: "engine" } };
+  return { type: "step-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, step_type: "workflow", worker: { type: "engine" } };
 }
 
 function stepFinished(seq: number, runId: string, nodeId: string | null, status: "succeeded" | "failed" | "cancelled" = "succeeded"): LogEvent {
-  return { type: "step-finished", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, status };
+  return { type: "step-finished", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, status };
 }
 
 function tree(status: RunViewState["status"], output: RunTreeResponse["output"] = null): RunTreeResponse {
@@ -24,6 +24,7 @@ function tree(status: RunViewState["status"], output: RunTreeResponse["output"] 
         root_run_id: ROOT,
         parent_run_id: null,
         node_id: null,
+        node_name: null,
         worker: { type: "engine" },
         status,
         started_at: "t0",
@@ -102,6 +103,7 @@ describe("RunViewModel", () => {
       root_run_id: ROOT,
       parent_run_id: ROOT,
       node_id: "draft",
+      node_name: "draft",
       worker: { type: "engine" },
       // The row was read before the engine persisted the finish.
       status: "running",

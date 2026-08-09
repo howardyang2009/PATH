@@ -11,6 +11,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
     root_run_id: ROOT,
     parent_run_id: ROOT,
     node_id: "draft",
+    node_name: "draft",
     worker: { type: "engine" },
     status: "running",
     started_at: "t0",
@@ -24,7 +25,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
   };
 }
 
-const ROOT_ROW = record({ run_id: ROOT, parent_run_id: null, node_id: null });
+const ROOT_ROW = record({ run_id: ROOT, parent_run_id: null, node_id: null, node_name: null });
 
 function frame(event: Record<string, unknown>): Uint8Array {
   return new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`);
@@ -107,6 +108,7 @@ describe("connectRunViewModel", () => {
       ts: "t1",
       run_id: CHILD,
       node_id: "draft",
+      node_name: "draft",
       step_type: "binary",
       worker: { type: "engine" },
     });
@@ -126,7 +128,7 @@ describe("connectRunViewModel", () => {
     const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
 
     const connected = await connectRunViewModel({ client, rootRunId: ROOT });
-    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", status: "succeeded" });
+    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", node_name: "draft", status: "succeeded" });
     // The re-read decision is made in the same callback turn as the fold, so once the status has
     // moved, a re-read would already have been issued — `treeReads` staying 1 is decided by then.
     await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "succeeded");
@@ -177,7 +179,7 @@ describe("connectRunViewModel", () => {
     await waitFor(() => connected.model.getState().stream === "live");
 
     // The implicit root step finishing (`node_id: null`) is what closes the stream for good.
-    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: ROOT, node_id: null, status: "succeeded" });
+    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: ROOT, node_id: null, node_name: null, status: "succeeded" });
     // The end below is a completion, not a drop, only if the terminal event was seen first — and the
     // subscription records terminality before handing the event to the fold, so the root status
     // moving means the stream already knows.

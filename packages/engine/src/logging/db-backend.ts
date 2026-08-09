@@ -29,8 +29,8 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
         throw new Error("db log backend: write before open — no root run id to scope the event under");
       }
       db.prepare(
-        `INSERT INTO log_events (root_run_id, seq, ts, type, run_id, node_id, event)
-         VALUES (@rootRunId, @seq, @ts, @type, @runId, @nodeId, @event)`,
+        `INSERT INTO log_events (root_run_id, seq, ts, type, run_id, node_id, node_name, event)
+         VALUES (@rootRunId, @seq, @ts, @type, @runId, @nodeId, @nodeName, @event)`,
       ).run({
         rootRunId,
         seq: event.seq,
@@ -38,6 +38,7 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
         type: event.type,
         runId: event.run_id,
         nodeId: event.node_id,
+        nodeName: event.node_name,
         event: JSON.stringify(event),
       });
     },

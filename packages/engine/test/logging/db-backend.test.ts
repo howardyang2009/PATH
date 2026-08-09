@@ -21,7 +21,7 @@ afterEach(() => {
 });
 
 function finished(seq: number, runId = "root-1"): LogEvent {
-  return { type: "step-finished", seq, ts: "t", run_id: runId, node_id: null, status: "succeeded" };
+  return { type: "step-finished", seq, ts: "t", run_id: runId, node_id: null, node_name: null, status: "succeeded" };
 }
 
 /** A backend already open on the given root run — the only way a row reaches `log_events`. */
