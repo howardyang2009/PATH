@@ -314,6 +314,61 @@ describe("resume — the original tree is read-only (#172)", () => {
   });
 });
 
+describe("resume — wait-one join re-evaluates and short-circuits the losers (§7)", () => {
+  // The original tree decided the race: the winner branch's step succeeded (reusable), the loser was
+  // cancelled (not `succeeded`, so absent from the plan). Replaying must reuse the winner and start
+  // no loser at all — no run for cause-blindness to re-run, so no re-fired side effects.
+  const raceFile = tree(
+    [
+      {
+        type: "parallel",
+        id: "race",
+        join: "wait-one",
+        branches: [
+          { id: "fast", body: [{ type: "prompt", id: "f", prompt: "hi", publish: { answer: "${output}" } }] },
+          { id: "slow", body: [{ type: "prompt", id: "s", prompt: "yo", publish: { answer: "${output}" } }] },
+        ],
+      },
+    ],
+    { answer: "${context.answer}" },
+  );
+
+  it("reuses the recorded winner and never starts the cancelled loser", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+
+    const result = await runWorkflow(raceFile, "/tmp", {
+      observer,
+      llmWorker: recordingWorker({}, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", status: "succeeded" }),
+          run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", status: "cancelled" }),
+        ],
+        // Only the winner's blob exists; a read of the loser's would throw, proving it is never reused.
+        readBlob: reader({ "orig-root/context.json": {}, "f-run/output.json": "REUSED_F" }, reads),
+      },
+    });
+
+    // Nothing executed on the worker — the winner reused — and the loser was never launched.
+    expect(ran).toEqual([]);
+    expect(result.status).toBe("succeeded");
+    // Only the winner's publish landed, exactly as a fresh win would.
+    expect(result.output).toEqual({ answer: "REUSED_F" });
+
+    // The winner reused (one marker), the loser did not reuse and was not started.
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["f"]);
+    expect(startedNodeIds(observer)).not.toContain("s");
+    expect(reads).not.toContain("s-run/output.json");
+
+    // The join re-evaluated to a win naming the reused winner; no loser run means no run-cancelled.
+    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ nodeId: "race", winner: "fast" });
+    expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
+  });
+});
+
 // A recursive content snapshot of a directory: relative path → bytes, for an unchanged-check.
 function snapshot(dir: string): { [rel: string]: string } {
   const out: { [rel: string]: string } = {};
