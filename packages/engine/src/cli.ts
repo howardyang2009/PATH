@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { dirname } from "node:path";
+import { dirname, relative } from "node:path";
 import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
@@ -38,7 +38,7 @@ const consoleIo: CliIo = {
 const RUN_USAGE =
   "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
-  "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune";
+  "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -365,6 +365,11 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     llmWorker: overrides.llmWorker,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,
+    // Source-workflow provenance for the root row (#202, ADR 0006): the workflow file's path
+    // relative to the store dir, so a central `-C` store distinguishes two same-named workflows by
+    // where each lives. Default (no `-C`) collapses to the bare filename, store dir being the file's
+    // own directory. Recorded on a fresh run *and* a resume — a successor is still that workflow's run.
+    sourceWorkflowPath: relative(projectDir, tree.rootPath),
   };
 
   if (parsed.args.resumeRootRunId !== undefined) {
@@ -456,6 +461,8 @@ type ListRootsArgsResult = { success: true; options: ListRootsOptions } | { succ
 function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   let limit: number | undefined;
   let status: RunStatus | undefined;
+  let workflowName: string | undefined;
+  let workflowId: string | undefined;
 
   for (let i = 0; i < args.length; i += 1) {
     const flag = args[i];
@@ -471,20 +478,35 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
       }
       status = value as RunStatus;
       i += 1;
+    } else if (flag === "--workflow") {
+      // Exact match on the source workflow's human `name` (#202) — the display key in this table.
+      const value = args[i + 1];
+      if (!value) return { success: false, error: `--workflow requires a name argument\n${RUNS_USAGE}` };
+      workflowName = value;
+      i += 1;
+    } else if (flag === "--workflow-id") {
+      // Exact match on the durable GUID (#202) — unambiguous where two files share a `name`.
+      const value = args[i + 1];
+      if (!value) return { success: false, error: `--workflow-id requires a guid argument\n${RUNS_USAGE}` };
+      workflowId = value;
+      i += 1;
     } else {
       return { success: false, error: `unrecognized argument "${flag}"\n${RUNS_USAGE}` };
     }
   }
 
-  return { success: true, options: { limit, status } };
+  return { success: true, options: { limit, status, workflowName, workflowId } };
 }
 
-const RUNS_TABLE_HEADERS = ["root-run-id", "status", "started", "finished", "resumed-from"] as const;
+const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "finished", "resumed-from"] as const;
+
+// One rendered row of the listing — a cell per header, in header order.
+type RunsTableRow = [string, string, string, string, string, string];
 
 // Space-aligned columns (#174): the root run id is never truncated, so its column is as wide as the
 // longest id on the page. Every column but the last is padded to its width; the last carries no
 // trailing padding.
-function formatRunsTable(rows: readonly [string, string, string, string, string][]): string {
+function formatRunsTable(rows: readonly RunsTableRow[]): string {
   const widths = RUNS_TABLE_HEADERS.map((header, col) =>
     Math.max(header.length, ...rows.map((row) => row[col]!.length)),
   );
@@ -515,11 +537,14 @@ function runRunsListCommand(args: string[], dir: string, io: CliIo): number {
       .filter((id): id is string => id !== null);
     const live = opened.archive.existingRunIds(predecessorIds);
 
-    const rows = roots.map((run): [string, string, string, string, string] => {
+    const rows = roots.map((run): RunsTableRow => {
       const predecessor = run.resumedFromRootRunId;
       const resumedFrom =
         predecessor === null ? "-" : live.has(predecessor) ? predecessor : `${predecessor} (deleted)`;
-      return [run.runId, run.status, run.startedAt ?? "-", run.finishedAt ?? "-", resumedFrom];
+      // The human `name` is the display key (ADR 0006). Every engine-produced root records one (from
+      // the required `file.name`), so "-" is the defensive floor for a row with no recorded identity —
+      // a hand-inserted row, not a real run — never the common case.
+      return [run.runId, run.workflowName ?? "-", run.status, run.startedAt ?? "-", run.finishedAt ?? "-", resumedFrom];
     });
 
     io.log(formatRunsTable(rows));

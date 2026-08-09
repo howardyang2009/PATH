@@ -962,6 +962,10 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       nodeName: null,
       input: { seed: 1 },
       worker: { type: "engine" },
+      // Source-workflow identity is stamped on the root run-started (#202): the file's own GUID + name.
+      // No `workflowPath` here — this caller passed no `sourceWorkflowPath`.
+      workflowId: "wf-id",
+      workflowName: "observed",
     });
 
     expect(observer["step-started"]).toHaveBeenCalledTimes(1);

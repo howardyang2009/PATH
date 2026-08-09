@@ -113,12 +113,15 @@ The invariants implementers must not break:
   the `workflow.json` path, nested `workflow` refs, and binary `cwd`s all still resolve as they do
   without `-C`, never re-rooted under `<dir>` (contrast `git -C`;
   [ADR 0005](../adr/0005-path-run-dash-c-is-store-only.md)). The flag mirrors the `-C` `path runs`
-  already takes and may appear anywhere in the args. A root run carries no back-reference to its
-  source `workflow.json` yet, so a pooled store lists runs by id alone until that lands (#202).
-- `path runs [-C <dir>] [--limit <n>] [--status <status>]` — list root runs, most recent first,
-  showing each run's status and which root run (if any) it resumed from. `-C <dir>` reads the store
-  under `<dir>` (default: the working directory) — the read side of the same store the `run` `-C`
-  writes.
+  already takes and may appear anywhere in the args. Each root run records the source-workflow
+  identity of the `workflow.json` that produced it (ADR 0006, §5.7), so a pooled store segments by
+  workflow rather than listing runs by id alone (#202).
+- `path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>]`
+  — list root runs, most recent first, showing each run's source-workflow name, status, and which
+  root run (if any) it resumed from. `--workflow <name>` filters by the workflow's human `name` and
+  `--workflow-id <guid>` by its durable GUID — the GUID disambiguates two files that share a `name`
+  (ADR 0006). `-C <dir>` reads the store under `<dir>` (default: the working directory) — the read
+  side of the same store the `run` `-C` writes.
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
   **together** (§6).
 
@@ -280,7 +283,12 @@ Run rows exist for **step runs only** (domain invariant 1 — control nodes have
 content: run id, parent run id, node id (the durable GUID) + node name (the human label, ADR 0007),
 worker binding, status
 (`pending | running | succeeded | failed | cancelled`), timestamps, input/output object refs
-(§6), and for LLM runs `usage` (real token counts) + `estimated_cost_usd` (§7). Usage and cost
+(§6), and for LLM runs `usage` (real token counts) + `estimated_cost_usd` (§7). A **root row** also
+carries the producing workflow's **source-workflow identity** — its durable GUID `workflow_id`, human
+`workflow_name`, and store-relative `workflow_path` (ADR 0006, #202) — so a central `-C` store
+(ADR 0005) groups a run by the workflow that produced it rather than listing anonymous run-ids. These
+three are **root-only**: null on every nested row, whose producing node is already named by its own
+`node_id`/`node_name`. Usage and cost
 are recorded **leaf-only** — on the prompt-step runs where tokens were actually spent; no row
 stores derived totals. Subtree/whole-run figures are a read-time SUM over descendants (the CLI
 may display them), so ground truth exists exactly once and nothing can drift. Control-node

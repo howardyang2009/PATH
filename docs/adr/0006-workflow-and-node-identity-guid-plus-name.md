@@ -56,6 +56,8 @@ one sanctioned write-back is a one-time codemod that stamps every pre-existing `
   or resume silently stops reusing it.
 - **DB schema v3→v4**, bump-and-break (no migration framework pre-1.0; blobs under `.path/runs/`
   survive). Because the store is a clean slate, no root row ever has a null identity — backfill is
-  moot.
+  moot. *(As built, this split across the two tickets it was implemented in: #204 took v4 for the
+  node `node_id`/`node_name` migration, and #202 added the root-only `workflow_id`/`workflow_name`/
+  `workflow_path` columns as a second clean-slate break, v4→v5. Same reading, one bump later.)*
 - Copying a `workflow.json` copies its `id`, so a fork shares identity until the operator changes or
   clears the `id`. The GUID kills *accidental name collisions*; it cannot police deliberate copies.

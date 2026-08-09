@@ -245,6 +245,44 @@ describe("run archive — listRoots", () => {
     expect(archive.listRoots({ status: "failed" }).map((run) => run.runId)).toEqual(["root-1"]);
   });
 
+  it("filters by source-workflow name and GUID, and records identity root-only (#202)", () => {
+    // Two roots sharing a human name but distinct GUIDs, plus a third — the segmentation #202 exists
+    // for. Each `seedTree` also writes a child row, which must never pick up the identity.
+    insertRun(db, {
+      runId: "acc-1", rootRunId: "acc-1", parentRunId: null, nodeId: null, nodeName: null,
+      worker: { type: "engine" }, status: "running",
+      workflowId: "guid-acc", workflowName: "access", workflowPath: "a/access.workflow.json",
+    });
+    insertRun(db, {
+      runId: "acc-1-child", rootRunId: "acc-1", parentRunId: "acc-1", nodeId: "greet", nodeName: "greet",
+      worker: { type: "engine" }, status: "running",
+    });
+    insertRun(db, {
+      runId: "acc-2", rootRunId: "acc-2", parentRunId: null, nodeId: null, nodeName: null,
+      worker: { type: "engine" }, status: "running",
+      workflowId: "guid-acc-fork", workflowName: "access", workflowPath: "b/access.workflow.json",
+    });
+    insertRun(db, {
+      runId: "foo-1", rootRunId: "foo-1", parentRunId: null, nodeId: null, nodeName: null,
+      worker: { type: "engine" }, status: "running",
+      workflowId: "guid-foo", workflowName: "foo", workflowPath: "foo.workflow.json",
+    });
+
+    // Name groups both `access` roots (a fork keeps the name); the GUID separates them.
+    expect(archive.listRoots({ workflowName: "access" }).map((r) => r.runId).sort()).toEqual(["acc-1", "acc-2"]);
+    expect(archive.listRoots({ workflowId: "guid-acc-fork" }).map((r) => r.runId)).toEqual(["acc-2"]);
+
+    // Root-only: the identity is on the root record, its child carries null on all three columns.
+    const root = archive.tree("acc-1")!.root!;
+    expect([root.workflowId, root.workflowName, root.workflowPath]).toEqual([
+      "guid-acc",
+      "access",
+      "a/access.workflow.json",
+    ]);
+    const child = archive.tree("acc-1")!.runs.find((r) => r.runId === "acc-1-child")!;
+    expect([child.workflowId, child.workflowName, child.workflowPath]).toEqual([null, null, null]);
+  });
+
   it("existingRunIds answers which predecessor ids still have rows, independent of any listing page", () => {
     seedTree("root-1");
 

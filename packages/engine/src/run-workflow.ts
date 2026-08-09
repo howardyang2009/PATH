@@ -67,6 +67,14 @@ export interface RunOptions {
    * with its own root run id and its own `.path/runs/` tree (resume-restore-semantics.md §4).
    */
   resume?: ResumeInput;
+  /**
+   * Where the root `workflow.json` lives, as a path **relative to the store dir** (#202, ADR 0006) —
+   * recorded on the root run's `workflow_path` as provenance for a central `-C` store (ADR 0005).
+   * The launcher owns it because only the launcher knows both the file path and where the store was
+   * relocated to; the engine reads no fs of its own. Absent for a server-hosted run — the root run's
+   * `workflow_id`/`workflow_name` (read from the file itself) still identify it.
+   */
+  sourceWorkflowPath?: string;
 }
 
 /**
@@ -216,6 +224,9 @@ interface WorkflowRunParams {
   // run of a resumed tree — a nested run's predecessor is the tree's, not its own, so it never
   // carries one. It is the successor-identity fact persistence records on the root row.
   resumedFromRootRunId?: string;
+  // The root workflow's store-relative path (#202), threaded only into the root run's params — a
+  // nested workflow-run is started by `runWorkflowNode`, which never sets it, so it stays root-only.
+  sourceWorkflowPath?: string;
 }
 
 /**
@@ -360,6 +371,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   }
 
   async function runBody(): Promise<RunResult> {
+    // Source-workflow identity is root-only (#202, ADR 0006): the root run *is* the top-level
+    // workflow (identity.parentRunId === null — invariant 2), so its file's GUID/name identify the
+    // producing workflow. A nested workflow-run carries its own file's identity nowhere — its
+    // producing node is already named by `nodeId`/`nodeName`. Path rides along only when the launcher
+    // supplied one.
+    const isRoot = identity.parentRunId === null;
     await emit({ type: "run-started",
       runId,
       rootRunId,
@@ -371,6 +388,8 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       // Set only on a resumed tree's root run (#173) — persistence writes it to the root row's
       // `resumed_from_root_run_id`. Undefined everywhere else, including nested resumed runs.
       ...(params.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: params.resumedFromRootRunId } : {}),
+      ...(isRoot ? { workflowId: file.id, workflowName: file.name } : {}),
+      ...(isRoot && params.sourceWorkflowPath !== undefined ? { workflowPath: params.sourceWorkflowPath } : {}),
     });
 
     // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
@@ -790,6 +809,9 @@ export async function runWorkflow(
     // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
     // never carry one.
     resumedFromRootRunId: originalRoot?.runId,
+    // Source-workflow provenance (#202): the root file's store-relative path, recorded on the root
+    // row alone. Only `runWorkflow` (the root entry) forwards it; nested runs never carry one.
+    sourceWorkflowPath: options.sourceWorkflowPath,
   });
 
   // What the caller gets back is masked too (#123) — everything except a *succeeded* run's `output`.

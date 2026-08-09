@@ -41,4 +41,18 @@ export interface RunRecord {
   estimatedCostUsd: number | null;
   /** Null except on a root row created by resuming a prior tree — that predecessor's root run id (#168). */
   resumedFromRootRunId: string | null;
+  /**
+   * The producing workflow's durable GUID `id` (ADR 0006), recorded **root-only** so a central `-C`
+   * store (ADR 0005) can group a run by the workflow that produced it. Null on every nested row —
+   * its producing node is already named by `nodeId`/`nodeName` (#202).
+   */
+  workflowId: string | null;
+  /** The producing workflow's human `name` (ADR 0006) — the display/filter key in `path runs list`. Root-only, null elsewhere (#202). */
+  workflowName: string | null;
+  /**
+   * Where the producing `workflow.json` lived, as a path **relative to the store dir** (ADR 0006):
+   * provenance that disambiguates two same-named workflows pooling into one `-C` store. Root-only,
+   * and null when the launcher supplied no path (a server-hosted run) — the GUID/name still identify it (#202).
+   */
+  workflowPath: string | null;
 }

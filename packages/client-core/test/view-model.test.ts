@@ -34,6 +34,9 @@ function tree(status: RunViewState["status"], output: RunTreeResponse["output"] 
         usage: null,
         estimated_cost_usd: null,
         resumed_from_root_run_id: null,
+        workflow_id: null,
+        workflow_name: null,
+        workflow_path: null,
       },
     ],
   };
@@ -114,6 +117,9 @@ describe("RunViewModel", () => {
       usage: null,
       estimated_cost_usd: null,
       resumed_from_root_run_id: null,
+      workflow_id: null,
+      workflow_name: null,
+      workflow_path: null,
     });
     model.hydrate(reread);
 
