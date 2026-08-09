@@ -102,9 +102,11 @@ export type Observation =
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
   | { type: "context-changed"; runId: string; rootRunId: string; context: JsonValue }
   /**
-   * A `parallel` collect join applied at block end (#24): all branches succeeded and their buffered
-   * publishes landed in branch declaration order. A control-node observation (the block is a
-   * logicer, not a run) — `runId` is the enclosing workflow-run, `nodeId` the `parallel` node.
+   * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
+   * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the
+   * `winner` branch won the race and only its buffered publishes landed, `branches` naming just the
+   * winner. A control-node observation (the block is a logicer, not a run) — `runId` is the enclosing
+   * workflow-run, `nodeId` the `parallel` node. `winner` is set only for a `wait-one` join.
    */
   | {
       type: "join-applied";
@@ -113,19 +115,22 @@ export type Observation =
       nodeId: string;
       branches: string[];
       publishedKeys: string[];
+      winner?: string;
     }
   /**
    * A run the engine killed best-effort (#24, #52, mvp spec §5.6): `runId`/`nodeId` identify the
-   * cancelled step run and its node. `cause` is why — `sibling-failed` (a parallel branch failed,
-   * `causeRunId` naming that run) or `operator` (a cancel request against the root run, which has no
-   * cause run, so `causeRunId` is null). Paired with a `cancelled` `step-finished` for the same run.
+   * cancelled step run and its node. `cause` is why — `sibling-failed` (a `collect` branch failed,
+   * `causeRunId` naming that run), `sibling-succeeded` (a `wait-one` branch won the race, so the
+   * losers are cancelled — wait-one-join.md §5, no cause run so `causeRunId` is null), or `operator`
+   * (a cancel request against the root run, also no cause run). Paired with a `cancelled`
+   * `step-finished` for the same run.
    */
   | {
       type: "run-cancelled";
       runId: string;
       rootRunId: string;
       nodeId: string;
-      cause: "sibling-failed" | "operator";
+      cause: "sibling-failed" | "sibling-succeeded" | "operator";
       causeRunId: string | null;
     }
   /** A workflow-run finished (root or nested). */
