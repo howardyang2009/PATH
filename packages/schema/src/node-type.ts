@@ -4,7 +4,10 @@ import type { JsonValue } from "./json-value.js";
 import type { Worker } from "./worker-type.js";
 
 interface CommonStepFields {
+  /** Durable machine identity — a UUIDv4, the reuse/resume key and audit `node_id` (ADR 0006). */
   id: string;
+  /** Human label, unique across the whole file — keys output objects and the log narration. */
+  name: string;
   worker?: Worker;
   config?: ConfigObject;
   input?: JsonValue;
@@ -30,13 +33,17 @@ export interface WorkflowStep extends CommonStepFields {
 }
 
 export interface ParallelBranch {
+  /** Durable machine identity — a UUIDv4 (ADR 0006). */
   id: string;
+  /** Human label, unique across the whole file — keys `collect`/`wait-one` output. */
+  name: string;
   body: WorkflowNode[];
 }
 
 export interface ParallelNode {
   type: "parallel";
   id: string;
+  name: string;
   join: "collect" | "wait-one";
   branches: ParallelBranch[];
 }
@@ -49,6 +56,7 @@ export interface BranchArm {
 export interface BranchNode {
   type: "branch";
   id: string;
+  name: string;
   arms: BranchArm[];
   else?: WorkflowNode[];
 }
@@ -56,6 +64,7 @@ export interface BranchNode {
 export interface WhileDoNode {
   type: "while-do";
   id: string;
+  name: string;
   condition: Condition;
   max_iterations: number | string;
   body: WorkflowNode[];
@@ -64,6 +73,7 @@ export interface WhileDoNode {
 export interface CheckpointNode {
   type: "checkpoint";
   id: string;
+  name: string;
   condition: Condition;
 }
 

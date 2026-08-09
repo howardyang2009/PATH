@@ -33,7 +33,7 @@ function seedTree(rootRunId = "root-1"): void {
     runId: rootRunId,
     rootRunId,
     parentRunId: null,
-    nodeId: null,
+    nodeId: null, nodeName: null,
     worker: { type: "engine" },
     status: "running",
   });
@@ -41,7 +41,7 @@ function seedTree(rootRunId = "root-1"): void {
     runId: `${rootRunId}-child`,
     rootRunId,
     parentRunId: rootRunId,
-    nodeId: "greet",
+    nodeId: "greet", nodeName: "greet",
     worker: { type: "engine" },
     status: "running",
   });
@@ -59,7 +59,7 @@ function stepStarted(seq: number, runId: string): LogEvent {
     seq,
     ts: new Date().toISOString(),
     run_id: runId,
-    node_id: "greet",
+    node_id: "greet", node_name: "greet",
     step_type: "binary",
     worker: { type: "engine" },
   };
@@ -104,7 +104,7 @@ describe("run archive — tree", () => {
       runId: "child-only",
       rootRunId: "root-1",
       parentRunId: "root-1",
-      nodeId: "greet",
+      nodeId: "greet", nodeName: "greet",
       worker: { type: "engine" },
       status: "succeeded",
     });
@@ -223,7 +223,7 @@ describe("run archive — events", () => {
       seq: 1,
       ts: new Date().toISOString(),
       run_id: "root-1",
-      node_id: "greet",
+      node_id: "greet", node_name: "greet",
       status: "failed",
       error: "exit 1: token=***",
     };
@@ -304,7 +304,7 @@ function reuseMarker(seq: number, originalRunId: string): LogEvent {
     seq,
     ts: new Date().toISOString(),
     run_id: "successor-root",
-    node_id: "greet",
+    node_id: "greet", node_name: "greet",
     original_run_id: originalRunId,
   };
 }
@@ -372,7 +372,7 @@ function seedLeaf(opts: {
     runId: opts.runId,
     rootRunId: opts.rootRunId,
     parentRunId: opts.parentRunId,
-    nodeId: opts.nodeId,
+    nodeId: opts.nodeId, nodeName: opts.nodeId,
     worker: { type: "llm", model: "claude" },
     status: "succeeded",
   });
@@ -413,7 +413,7 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
       runId: "orig-wf",
       rootRunId: "orig",
       parentRunId: "orig",
-      nodeId: "loop",
+      nodeId: "loop", nodeName: "loop",
       worker: { type: "engine" },
       status: "succeeded",
     });

@@ -1,9 +1,22 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "cd2c661e-1b6e-4c4f-8949-1fb9ef2eae10",
   "name": "parent-with-child",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
-    { "type": "binary", "id": "step-one", "command": "echo" },
-    { "type": "workflow", "id": "child-step", "ref": "./child.workflow.json" }
+    {
+      "type": "binary",
+      "id": "fa1badf6-4706-440b-a11f-2f720c619ccc",
+      "name": "step-one",
+      "command": "echo"
+    },
+    {
+      "type": "workflow",
+      "id": "813124b2-f471-4b55-8062-a38bb41482f3",
+      "name": "child-step",
+      "ref": "./child.workflow.json"
+    }
   ]
 }

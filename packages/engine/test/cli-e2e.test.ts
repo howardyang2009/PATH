@@ -5,6 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
+import { stampGuids } from "./stamp-names.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 const execFileAsync = promisify(execFile);
@@ -198,10 +199,10 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
     try {
       // step-a was reused — no run row of its own in the successor tree; step-b reran and succeeded.
       const successorRows = db
-        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
-        .all(successorRoot) as { node_id: string | null; status: string }[];
-      expect(successorRows.some((r) => r.node_id === "step-a")).toBe(false);
-      expect(successorRows.find((r) => r.node_id === "step-b")?.status).toBe("succeeded");
+        .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_name: string | null; status: string }[];
+      expect(successorRows.some((r) => r.node_name === "step-a")).toBe(false);
+      expect(successorRows.find((r) => r.node_name === "step-b")?.status).toBe("succeeded");
 
       const successorRootRow = db
         .prepare("SELECT status, resumed_from_root_run_id FROM runs WHERE run_id = ?")
@@ -211,10 +212,10 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
 
       // The original tree is untouched by the resume: its rows still read as the failed run left them.
       const originalRows = db
-        .prepare("SELECT node_id, status FROM runs WHERE root_run_id = ?")
-        .all(originalRoot) as { node_id: string | null; status: string }[];
-      expect(originalRows.find((r) => r.node_id === "step-a")?.status).toBe("succeeded");
-      expect(originalRows.find((r) => r.node_id === "step-b")?.status).toBe("failed");
+        .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
+        .all(originalRoot) as { node_name: string | null; status: string }[];
+      expect(originalRows.find((r) => r.node_name === "step-a")?.status).toBe("succeeded");
+      expect(originalRows.find((r) => r.node_name === "step-b")?.status).toBe("failed");
     } finally {
       db.close();
     }
@@ -247,7 +248,7 @@ describe("path run — secret masking at the persistence boundary (ticket #20, r
     projectDir = mkdtempSync(join(tmpdir(), "path-engine-secret-e2e-"));
     // A step whose interpolated secret reaches argv (the real process), then flows into stdout
     // (its output), stderr, publish/context, and the workflow output map — every persisted surface.
-    const workflow = {
+    const workflow = stampGuids({
       format: "path/workflow@0",
       name: "secret-flow",
       worker: { type: "engine" },
@@ -262,7 +263,7 @@ describe("path run — secret masking at the persistence boundary (ticket #20, r
         },
       ],
       output: { result: "${context.saved}" },
-    };
+    });
     writeFileSync(join(projectDir, "workflow.json"), JSON.stringify(workflow));
   });
 
@@ -324,6 +325,7 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
       root_run_id: string;
       parent_run_id: string | null;
       node_id: string | null;
+      node_name: string | null;
       status: string;
     }[];
     db.close();
@@ -336,12 +338,12 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
     expect(root!.node_id).toBeNull();
     expect(root!.run_id).toBe(root!.root_run_id);
 
-    const childRun = rows.find((r) => r.node_id === "child-step");
+    const childRun = rows.find((r) => r.node_name === "child-step");
     expect(childRun).toBeTruthy();
     expect(childRun!.parent_run_id).toBe(root!.run_id);
     expect(childRun!.root_run_id).toBe(root!.run_id);
 
-    const leafRun = rows.find((r) => r.node_id === "shout");
+    const leafRun = rows.find((r) => r.node_name === "shout");
     expect(leafRun).toBeTruthy();
     expect(leafRun!.parent_run_id).toBe(childRun!.run_id);
     expect(leafRun!.root_run_id).toBe(root!.run_id);

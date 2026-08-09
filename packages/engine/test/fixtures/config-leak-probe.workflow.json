@@ -1,15 +1,27 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "06a5b61c-9c84-4485-9dc2-09ba384c6e1d",
   "name": "config-leak-probe",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "echo",
+      "id": "e194dcd0-988e-45d9-9963-0d60a4ef29ba",
+      "name": "echo",
       "command": "node",
-      "args": ["-e", "process.stdout.write(String(process.argv[1]))", "${config.llm.concurrency}"],
-      "publish": { "seen": "${output}" }
+      "args": [
+        "-e",
+        "process.stdout.write(String(process.argv[1]))",
+        "${config.llm.concurrency}"
+      ],
+      "publish": {
+        "seen": "${output}"
+      }
     }
   ],
-  "output": { "seen": "${context.seen}" }
+  "output": {
+    "seen": "${context.seen}"
+  }
 }

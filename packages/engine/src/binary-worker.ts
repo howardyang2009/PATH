@@ -27,7 +27,8 @@ export type BinaryStepResult = { stderr: string } & (
 // The step's `command`/`args`/`cwd` after interpolation — they travel together everywhere a
 // binary step actually runs, so runBinaryStep takes this instead of three loose parameters.
 export interface ResolvedBinaryStep {
-  id: string;
+  /** The step's human `name` — used only to name the step in error messages (ADR 0007). */
+  name: string;
   command: string;
   args: string[];
   cwd: string;
@@ -46,7 +47,7 @@ export function runBinaryStep(
   input: JsonValue,
   signal?: AbortSignal,
 ): Promise<BinaryStepResult> {
-  const { id: nodeId, command, args, cwd } = step;
+  const { name: nodeName, command, args, cwd } = step;
   return new Promise((resolveResult) => {
     if (signal?.aborted) {
       resolveResult({ status: "cancelled", stderr: "" });
@@ -78,7 +79,7 @@ export function runBinaryStep(
         settle({ status: "cancelled", stderr });
         return;
       }
-      settle({ status: "failed", error: `step "${nodeId}" failed to start "${command}": ${err.message}`, stderr });
+      settle({ status: "failed", error: `step "${nodeName}" failed to start "${command}": ${err.message}`, stderr });
     });
     child.on("close", (code) => {
       // A kill from `signal` closes the process with a null exit code — that is a cancellation, not
@@ -91,7 +92,7 @@ export function runBinaryStep(
         const tail = stderr.trim().slice(-500);
         settle({
           status: "failed",
-          error: `step "${nodeId}" exited with code ${code}${tail ? `: ${tail}` : ""}`,
+          error: `step "${nodeName}" exited with code ${code}${tail ? `: ${tail}` : ""}`,
           stderr,
         });
         return;

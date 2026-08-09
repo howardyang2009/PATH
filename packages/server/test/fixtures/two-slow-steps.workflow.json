@@ -1,21 +1,36 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "87f6707b-a59a-40af-8603-2ce4488cf619",
   "name": "two-slow-steps",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "first",
+      "id": "d87a640f-2ade-4703-bc40-49a85bc3cb17",
+      "name": "first",
       "command": "node",
-      "args": ["-e", "setTimeout(() => process.stdout.write('one'), 200)"]
+      "args": [
+        "-e",
+        "setTimeout(() => process.stdout.write('one'), 200)"
+      ]
     },
     {
       "type": "binary",
-      "id": "second",
+      "id": "829b66df-b78d-49af-848a-f8ef1debed9c",
+      "name": "second",
       "command": "node",
-      "args": ["-e", "setTimeout(() => process.stdout.write('two'), 200)"],
-      "publish": { "result": "${output}" }
+      "args": [
+        "-e",
+        "setTimeout(() => process.stdout.write('two'), 200)"
+      ],
+      "publish": {
+        "result": "${output}"
+      }
     }
   ],
-  "output": { "result": "${context.result}" }
+  "output": {
+    "result": "${context.result}"
+  }
 }

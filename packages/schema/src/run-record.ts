@@ -19,8 +19,16 @@ export interface RunRecord {
   runId: string;
   rootRunId: string;
   parentRunId: string | null;
-  /** Null for the root run — the top-level workflow is wrapped in an implicit root step (invariant 2). */
+  /**
+   * The producing node's durable GUID `id` (ADR 0007) — the machine identity `plan-reuse` matches
+   * on. Null for the root run: the top-level workflow is wrapped in an implicit root step (invariant 2).
+   */
   nodeId: string | null;
+  /**
+   * The producing node's human `name` (ADR 0007) — carried alongside the GUID so a reader stays
+   * human-readable without re-loading the workflow file. Null exactly where `nodeId` is (the root run).
+   */
+  nodeName: string | null;
   /** Null for a workflow-run's own row; a leaf step run carries the worker it executed on. */
   worker: Worker | null;
   status: RunStatus;

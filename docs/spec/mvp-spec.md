@@ -138,8 +138,9 @@ Exact flag spellings are implementer's choice; the semantics above are not.
 Normative document: [docs/format/workflow-format-v0.md](../format/workflow-format-v0.md).
 Summary for orientation only — the format doc wins on any detail:
 
-- Single JSON file, `"format": "path/workflow@0"`, strict zod validation (unknown fields
-  rejected), file-unique ids, one flat `type`-discriminated node union.
+- Single JSON file, `"format": "path/workflow@1"`, strict zod validation (unknown fields
+  rejected), durable GUID `id` + file-unique human `name` on the workflow and every node/branch
+  (ADR 0006/0007), one flat `type`-discriminated node union.
 - Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`), controls `parallel`
   (`join: "collect" | "wait-one"`) / `branch` / `while-do` (mandatory `max_iterations`) / `checkpoint`.
 - `${dot.path}` interpolation with the whole-string typing rule, in allowlisted positions only;
@@ -194,9 +195,9 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
 - **Branch**: the taken arm's last node's output.
 - **While-do**: the last node's output of the final executed iteration; transparent at zero
   iterations.
-- **Parallel (collect)**: `{ "<branch-id>": <output object of that branch's last node> }` —
+- **Parallel (collect)**: `{ "<branch-name>": <output object of that branch's last node> }` —
   deterministic regardless of completion order, dot-path addressable.
-- **Parallel (wait-one)**: `{ "winner": { "id": <winning-branch-id>, "output": <winner's last
+- **Parallel (wait-one)**: `{ "winner": { "name": <winning-branch-name>, "output": <winner's last
   node's output> } }` — a stable `winner` key, since the author cannot know which branch wins
   ([wait-one-join.md](wait-one-join.md) §3).
 
@@ -276,7 +277,8 @@ consequences; this applies to the second `^C` alone.
 ### 5.7 Run records
 
 Run rows exist for **step runs only** (domain invariant 1 — control nodes have no runs). Row
-content: run id, parent run id, node id, worker binding, status
+content: run id, parent run id, node id (the durable GUID) + node name (the human label, ADR 0007),
+worker binding, status
 (`pending | running | succeeded | failed | cancelled`), timestamps, input/output object refs
 (§6), and for LLM runs `usage` (real token counts) + `estimated_cost_usd` (§7). Usage and cost
 are recorded **leaf-only** — on the prompt-step runs where tokens were actually spent; no row
@@ -355,8 +357,9 @@ the authoritative queryable step record; events are lightweight observations.
 
 **Envelope** (every event): `seq` (monotonic per **root run**, engine-assigned — the ordering
 truth; timestamps collide under parallelism), `ts`, `type` (flat discriminated union, one zod
-schema), `run_id`, `node_id`. Control events carry the enclosing workflow-step's run id + the
-control node's id; lifecycle events carry the step's own run id. There are no workflow start/end
+schema), `run_id`, `node_id` (the durable GUID) and `node_name` (the human label, ADR 0007 — both
+null for the implicit root step). Control events carry the enclosing workflow-step's run id + the
+control node's id/name; lifecycle events carry the step's own run id. There are no workflow start/end
 events — workflow-as-step means they are just the workflow step's `step-started`/`step-finished`.
 
 **Event set** (payload beyond the envelope):
@@ -370,7 +373,7 @@ events — workflow-as-step means they are just the workflow step's `step-starte
 | `checkpoint-passed` / `checkpoint-failed` | `trace` |
 | `iteration-started` | `iteration` (1-based), `trace` |
 | `loop-exited` | `reason` (`condition-false` / `max-iterations-exceeded`), `iterations`, final `trace` |
-| `join-applied` | `branches` (ids in apply order), `published_keys`, `winner` (winning branch id, `wait-one` only) |
+| `join-applied` | `branches` (names in apply order), `published_keys`, `winner` (winning branch name, `wait-one` only) |
 | `run-cancelled` | `cause` (`sibling-failed` / `sibling-succeeded` / `operator`, §5.6), `cause_run_id` (the failing sibling; null for a `sibling-succeeded` or operator cancel) |
 
 **Trace** = the condition tree annotated per leaf with its dot-path, outcome

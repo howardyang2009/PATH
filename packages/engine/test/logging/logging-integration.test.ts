@@ -15,6 +15,7 @@ import { createPersistedObserver } from "../../src/persistence/persisted-observe
 import { getRunsForRoot } from "../../src/persistence/run-store.js";
 import { composeObservers, type RunObserver } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
+import { stampNames } from "../stamp-names.js";
 
 let projectDir: string;
 let db: Database.Database;
@@ -30,12 +31,13 @@ afterEach(() => {
 });
 
 const twoStepWorkflow: WorkflowFile = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: "wf-id",
   name: "two-step",
   worker: { type: "engine" },
   body: [
-    { type: "binary", id: "first", command: "node", args: ["-e", "process.stdout.write('a')"] },
-    { type: "binary", id: "second", command: "node", args: ["-e", "process.stdout.write('b')"] },
+    { type: "binary", id: "first", name: "first", command: "node", args: ["-e", "process.stdout.write('a')"] },
+    { type: "binary", id: "second", name: "second", command: "node", args: ["-e", "process.stdout.write('b')"] },
   ],
 };
 
@@ -55,7 +57,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
   it("produces the same narrative in the db table and run.log, ordered by seq", async () => {
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
     const observer = composeObservers(createLoggingObserver(backends));
-    const result = await runWorkflow(twoStepWorkflow, projectDir, { observer });
+    const result = await runWorkflow(stampNames(twoStepWorkflow), projectDir, { observer });
     expect(result.status).toBe("succeeded");
 
     const root = rootRunId();
@@ -81,7 +83,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("validates every run.log event against the event schema", async () => {
     const backends = createLogBackends(["ndjson"], { db, projectDir });
-    await runWorkflow(twoStepWorkflow, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    await runWorkflow(stampNames(twoStepWorkflow), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
 
     const [root] = readdirSync(join(projectDir, ".path", "runs")); // the sole root-run tree
     for (const event of readNdjson(root!).slice(1)) {
@@ -91,13 +93,14 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("records the failing step's step-finished with its error, then the failed root step-finished", async () => {
     const failing: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "boom",
       worker: { type: "engine" },
-      body: [{ type: "binary", id: "boom", command: "node", args: ["-e", "process.exit(3)"] }],
+      body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }],
     };
     const backends = createLogBackends(["db"], { db, projectDir });
-    const result = await runWorkflow(failing, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    const result = await runWorkflow(stampNames(failing), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
     expect(result.status).toBe("failed");
 
     const events = getLogEventsForRoot(db, rootRunId());
@@ -117,7 +120,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     };
     const [dbBackend] = createLogBackends(["db"], { db, projectDir });
     const observer = composeObservers(createLoggingObserver([dbBackend!, failing]));
-    const result = await runWorkflow(twoStepWorkflow, projectDir, { observer });
+    const result = await runWorkflow(stampNames(twoStepWorkflow), projectDir, { observer });
 
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/backend exploded/);
@@ -132,24 +135,25 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a parallel collect join in both backends, with branch ids and published keys (ticket #24)", async () => {
     const parallelWorkflow: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "parallel-join",
       worker: { type: "engine" },
       body: [
         {
           type: "parallel",
-          id: "fanout",
+          id: "fanout", name: "fanout",
           join: "collect",
           branches: [
-            { id: "one", body: [{ type: "binary", id: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
-            { id: "two", body: [{ type: "binary", id: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
+            { id: "one", name: "one", body: [{ type: "binary", id: "s1", name: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
+            { id: "two", name: "two", body: [{ type: "binary", id: "s2", name: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
           ],
         },
       ],
       output: {},
     };
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
-    const result = await runWorkflow(parallelWorkflow, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    const result = await runWorkflow(stampNames(parallelWorkflow), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
     expect(result.status).toBe("succeeded");
 
     const root = rootRunId();
@@ -163,24 +167,25 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a run-cancelled in both backends and marks the cancelled step's row cancelled (ticket #24)", async () => {
     const cancellingWorkflow: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "parallel-cancel",
       worker: { type: "engine" },
       body: [
         {
           type: "parallel",
-          id: "fanout",
+          id: "fanout", name: "fanout",
           join: "collect",
           branches: [
-            { id: "slow", body: [{ type: "binary", id: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"] }] },
-            { id: "boom", body: [{ type: "binary", id: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+            { id: "slow", name: "slow", body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"] }] },
+            { id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
           ],
         },
       ],
     };
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
     const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends));
-    const result = await runWorkflow(cancellingWorkflow, projectDir, { observer });
+    const result = await runWorkflow(stampNames(cancellingWorkflow), projectDir, { observer });
     expect(result.status).toBe("failed");
 
     const root = rootRunId();
@@ -201,13 +206,14 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("ends an externally aborted root run cancelled in both backends, the run rows and context.json (#52)", async () => {
     const cancellableWorkflow: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "operator-cancel",
       worker: { type: "engine" },
       body: [
         {
           type: "binary",
-          id: "sleeper",
+          id: "sleeper", name: "sleeper",
           command: "node",
           args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
           publish: { slow: "${output}" },
@@ -224,7 +230,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
     const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), aborter);
 
-    const result = await runWorkflow(cancellableWorkflow, projectDir, { observer, signal: controller.signal });
+    const result = await runWorkflow(stampNames(cancellableWorkflow), projectDir, { observer, signal: controller.signal });
     expect(result.status).toBe("cancelled");
 
     const root = rootRunId();
@@ -255,12 +261,14 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
     const publishingStep = (id: string) => ({
       type: "binary" as const,
       id,
+      name: id,
       command: "node",
       args: ["-e", `setTimeout(()=>process.stdout.write('${id}'),60)`],
       publish: { [id]: "${output}" },
     });
     const file: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "multi-publish",
       worker: { type: "engine" },
       body: [publishingStep("one"), publishingStep("two"), publishingStep("three")],
@@ -280,7 +288,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
       const observer = composeObservers(createPersistedObserver(db, projectDir), createLoggingObserver(backends), captureRootId);
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), delayMs);
-      const result = await runWorkflow(file, projectDir, { observer, signal: controller.signal });
+      const result = await runWorkflow(stampNames(file), projectDir, { observer, signal: controller.signal });
       clearTimeout(timer);
 
       expect(["cancelled", "succeeded"]).toContain(result.status);
@@ -296,7 +304,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("selects backends by the log.backends setting — 'none' produces no audit stream", async () => {
     const backends = createLogBackends([], { db, projectDir });
-    const result = await runWorkflow(twoStepWorkflow, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    const result = await runWorkflow(stampNames(twoStepWorkflow), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
     expect(result.status).toBe("succeeded");
 
     const rows = db.prepare("SELECT COUNT(*) AS n FROM log_events").get() as { n: number };
@@ -305,24 +313,25 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits checkpoint and branch control events with complete traces to both backends (ticket #21)", async () => {
     const controls: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "controls",
       worker: { type: "engine" },
       body: [
-        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { pick: "b" } },
-        { type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.pick" } },
+        { type: "binary", id: "seed", name: "seed", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { pick: "b" } },
+        { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.pick" } },
         {
           type: "branch",
-          id: "route",
+          id: "route", name: "route",
           arms: [
-            { when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", command: "node", args: ["-e", "process.stdout.write('a')"] }] },
-            { when: { type: "equals", path: "context.pick", value: "b" }, body: [{ type: "binary", id: "arm-b", command: "node", args: ["-e", "process.stdout.write('b')"] }] },
+            { when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", name: "arm-a", command: "node", args: ["-e", "process.stdout.write('a')"] }] },
+            { when: { type: "equals", path: "context.pick", value: "b" }, body: [{ type: "binary", id: "arm-b", name: "arm-b", command: "node", args: ["-e", "process.stdout.write('b')"] }] },
           ],
         },
       ],
     };
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
-    const result = await runWorkflow(controls, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    const result = await runWorkflow(stampNames(controls), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
     expect(result.status).toBe("succeeded");
 
     const root = rootRunId();
@@ -343,20 +352,21 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits while-do iteration-started and loop-exited control events with traces to both backends (ticket #23)", async () => {
     const loop: WorkflowFile = {
-      format: "path/workflow@0",
+      format: "path/workflow@1",
+      id: "wf-id",
       name: "while-loop",
       worker: { type: "engine" },
       body: [
-        { type: "binary", id: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
+        { type: "binary", id: "seed", name: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
         {
           type: "while-do",
-          id: "loop",
+          id: "loop", name: "loop",
           condition: { type: "range", path: "context.count", max: 1 },
           max_iterations: 10,
           body: [
             {
               type: "binary",
-              id: "inc",
+              id: "inc", name: "inc",
               command: "node",
               args: ["-e", "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(String(Number(d)+1)))"],
               parse: "json",
@@ -367,7 +377,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
       ],
     };
     const backends = createLogBackends(["db", "ndjson"], { db, projectDir });
-    const result = await runWorkflow(loop, projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
+    const result = await runWorkflow(stampNames(loop), projectDir, { observer: composeObservers(createLoggingObserver(backends)) });
     expect(result.status).toBe("succeeded");
 
     const root = rootRunId();

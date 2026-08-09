@@ -24,6 +24,7 @@ export interface WireRunRecord {
   root_run_id: string;
   parent_run_id: string | null;
   node_id: string | null;
+  node_name: string | null;
   worker: Worker | null;
   status: RunStatus;
   started_at: string | null;
@@ -80,6 +81,7 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     root_run_id: row.rootRunId,
     parent_run_id: row.parentRunId,
     node_id: row.nodeId,
+    node_name: row.nodeName,
     worker: row.worker,
     status: row.status,
     started_at: row.startedAt,

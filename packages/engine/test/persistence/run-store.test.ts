@@ -35,7 +35,7 @@ describe("run-store", () => {
       runId: "root-1",
       rootRunId: "root-1",
       parentRunId: null,
-      nodeId: null,
+      nodeId: null, nodeName: null,
       worker: null,
       status: "running",
     });
@@ -43,7 +43,7 @@ describe("run-store", () => {
       runId: "child-1",
       rootRunId: "root-1",
       parentRunId: "root-1",
-      nodeId: "greet",
+      nodeId: "greet", nodeName: "greet",
       worker: { type: "engine" },
       status: "running",
     });
@@ -55,7 +55,7 @@ describe("run-store", () => {
       runId: "child-1",
       rootRunId: "root-1",
       parentRunId: "root-1",
-      nodeId: "greet",
+      nodeId: "greet", nodeName: "greet",
       worker: { type: "engine" },
       status: "running",
     });
@@ -64,7 +64,7 @@ describe("run-store", () => {
   });
 
   it("finishRun sets status and finishedAt", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "running" });
     finishRun(db, "r1", "succeeded");
 
     const [row] = getRunsForRoot(db, "r1");
@@ -79,7 +79,7 @@ describe("run-store", () => {
       runId: "r1",
       rootRunId: "r1",
       parentRunId: null,
-      nodeId: null,
+      nodeId: null, nodeName: null,
       worker: null,
       status: "running",
       inputRef: "runs/r1/r1/input.json",
@@ -91,19 +91,19 @@ describe("run-store", () => {
   });
 
   it("insertRun leaves the input ref null when there is none", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "running" });
     expect(getRunsForRoot(db, "r1")[0]?.inputRef).toBeNull();
   });
 
   // Meaningful only on root rows (#168): set once at a successor root run's insert time to the
   // immediate predecessor's root run id.
   it("insertRun records resumedFromRootRunId on a successor root run and reads it back", () => {
-    insertRun(db, { runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
     insertRun(db, {
       runId: "root-2",
       rootRunId: "root-2",
       parentRunId: null,
-      nodeId: null,
+      nodeId: null, nodeName: null,
       worker: null,
       status: "running",
       resumedFromRootRunId: "root-1",
@@ -113,12 +113,12 @@ describe("run-store", () => {
   });
 
   it("insertRun leaves resumedFromRootRunId null when there is none", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "running" });
     expect(getRunsForRoot(db, "r1")[0]?.resumedFromRootRunId).toBeNull();
   });
 
   it("setRunOutputRef records the output ref once the run has succeeded", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "running" });
     setRunOutputRef(db, "r1", "runs/r1/r1/output.json");
 
     expect(getRunsForRoot(db, "r1")[0]?.outputRef).toBe("runs/r1/r1/output.json");
@@ -129,7 +129,7 @@ describe("run-store", () => {
       runId: "r1",
       rootRunId: "r1",
       parentRunId: null,
-      nodeId: "summarize",
+      nodeId: "summarize", nodeName: "summarize",
       worker: { type: "llm", model: "claude-sonnet-5" },
       status: "running",
     });
@@ -141,7 +141,7 @@ describe("run-store", () => {
   });
 
   it("leaves usage and cost null on rows where no tokens were spent", () => {
-    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, worker: null, status: "running" });
+    insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "running" });
 
     const [row] = getRunsForRoot(db, "r1");
     expect(row?.usage).toBeNull();
@@ -149,16 +149,16 @@ describe("run-store", () => {
   });
 
   it("scopes getRunsForRoot to only the requested root run's tree", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
 
     expect(getRunsForRoot(db, "a").map((r) => r.runId)).toEqual(["a"]);
     expect(getRunsForRoot(db, "b").map((r) => r.runId)).toEqual(["b"]);
   });
 
   it("deleteRunsForRoot removes only that root run's rows", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
 
     const deleted = deleteRunsForRoot(db, "a");
     expect(deleted).toBe(1);
@@ -167,13 +167,13 @@ describe("run-store", () => {
   });
 
   it("listRootRuns returns only root runs (run_id = root_run_id), most-recent-first", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
     // A child of `a` shares its tree but is not itself a root run — must be excluded.
     insertRun(db, {
       runId: "a-child",
       rootRunId: "a",
       parentRunId: "a",
-      nodeId: "greet",
+      nodeId: "greet", nodeName: "greet",
       worker: { type: "engine" },
       status: "succeeded",
     });
@@ -181,7 +181,7 @@ describe("run-store", () => {
       runId: "b",
       rootRunId: "b",
       parentRunId: null,
-      nodeId: null,
+      nodeId: null, nodeName: null,
       worker: null,
       status: "running",
       resumedFromRootRunId: "a",
@@ -195,7 +195,7 @@ describe("run-store", () => {
 
   it("listRootRuns caps the result at limit (default 50)", () => {
     for (let i = 0; i < 60; i++) {
-      insertRun(db, { runId: `r${i}`, rootRunId: `r${i}`, parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+      insertRun(db, { runId: `r${i}`, rootRunId: `r${i}`, parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
     }
     expect(listRootRuns(db)).toHaveLength(50);
     expect(listRootRuns(db, { limit: 3 })).toHaveLength(3);
@@ -204,17 +204,17 @@ describe("run-store", () => {
   });
 
   it("listRootRuns filters by status", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "failed" });
-    insertRun(db, { runId: "c", rootRunId: "c", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "failed" });
+    insertRun(db, { runId: "c", rootRunId: "c", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
 
     expect(listRootRuns(db, { status: "succeeded" }).map((r) => r.runId)).toEqual(["c", "a"]);
     expect(listRootRuns(db, { status: "failed" }).map((r) => r.runId)).toEqual(["b"]);
   });
 
   it("existingRunIds returns only the ids that still have a row, deduping the input", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
 
     expect(existingRunIds(db, ["a", "b", "gone", "a"])).toEqual(new Set(["a", "b"]));
   });
@@ -224,8 +224,8 @@ describe("run-store", () => {
   });
 
   it("deleteAllRuns wipes every row", () => {
-    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
-    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "a", rootRunId: "a", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
+    insertRun(db, { runId: "b", rootRunId: "b", parentRunId: null, nodeId: null, nodeName: null, worker: null, status: "succeeded" });
 
     const deleted = deleteAllRuns(db);
     expect(deleted).toBe(2);

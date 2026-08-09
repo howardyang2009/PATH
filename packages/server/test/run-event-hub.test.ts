@@ -9,6 +9,7 @@ const event = (seq: number): LogEvent => ({
   ts: "2026-07-27T10:00:00.000Z",
   run_id: "root-1",
   node_id: null,
+  node_name: null,
   status: "succeeded",
 });
 

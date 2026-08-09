@@ -1,93 +1,130 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "cb1e0f26-5091-4185-a49b-6ddfa6e60c27",
   "name": "changelog",
-
-  "worker": { "type": "engine" },
-
+  "worker": {
+    "type": "engine"
+  },
   "config": {
     "repo_path": "../..",
     "commit_range": "v0.1.0..HEAD",
     "output_file": "CHANGELOG.md"
   },
-
   "body": [
     {
       "type": "binary",
-      "id": "gather-changes",
+      "id": "9566c0e5-b231-4af6-86c0-8d6928d21da6",
+      "name": "gather-changes",
       "command": "git",
-      "args": ["log", "--no-merges", "--format=%s", "${config.commit_range}"],
+      "args": [
+        "log",
+        "--no-merges",
+        "--format=%s",
+        "${config.commit_range}"
+      ],
       "cwd": "${config.repo_path}",
-      "publish": { "raw_subjects": "${output}" }
+      "publish": {
+        "raw_subjects": "${output}"
+      }
     },
-
     {
       "type": "checkpoint",
-      "id": "have-changes",
-      "condition": { "type": "matches", "path": "context.raw_subjects", "pattern": "\\S" }
+      "id": "04b83bf9-541a-49ba-ab3a-07519c1611eb",
+      "name": "have-changes",
+      "condition": {
+        "type": "matches",
+        "path": "context.raw_subjects",
+        "pattern": "\\S"
+      }
     },
-
     {
       "type": "parallel",
-      "id": "bucket",
+      "id": "3f39120c-1b74-4485-8a06-9c49b633efe4",
+      "name": "bucket",
       "join": "collect",
       "branches": [
         {
-          "id": "features",
+          "id": "319b8df0-33a0-45c3-8324-9dd5d58b2497",
+          "name": "features",
           "body": [
             {
               "type": "binary",
-              "id": "grep-features",
+              "id": "a6d7befc-6526-4fce-b89c-2fa789228030",
+              "name": "grep-features",
               "input": "${context.raw_subjects}",
               "command": "sh",
-              "args": ["-c", "grep -E '^feat(\\([^)]*\\))?:' || true"]
+              "args": [
+                "-c",
+                "grep -E '^feat(\\([^)]*\\))?:' || true"
+              ]
             }
           ]
         },
         {
-          "id": "fixes",
+          "id": "036a2dd2-1b47-4391-949e-d08253a5c783",
+          "name": "fixes",
           "body": [
             {
               "type": "binary",
-              "id": "grep-fixes",
+              "id": "c0ca53ea-ef44-4603-82a1-b20d0db511fb",
+              "name": "grep-fixes",
               "input": "${context.raw_subjects}",
               "command": "sh",
-              "args": ["-c", "grep -E '^fix(\\([^)]*\\))?:' || true"]
+              "args": [
+                "-c",
+                "grep -E '^fix(\\([^)]*\\))?:' || true"
+              ]
             }
           ]
         },
         {
-          "id": "other",
+          "id": "8d538ab2-b1a4-43cc-8e97-e567aac39e78",
+          "name": "other",
           "body": [
             {
               "type": "binary",
-              "id": "grep-other",
+              "id": "dab1f44d-492d-41b2-b89f-b44f1b9afd80",
+              "name": "grep-other",
               "input": "${context.raw_subjects}",
               "command": "sh",
-              "args": ["-c", "grep -Ev '^(feat|fix)(\\([^)]*\\))?:' || true"]
+              "args": [
+                "-c",
+                "grep -Ev '^(feat|fix)(\\([^)]*\\))?:' || true"
+              ]
             }
           ]
         }
       ]
     },
-
     {
       "type": "binary",
-      "id": "format-changelog",
+      "id": "7ff6cfc6-0779-4a43-81be-0bfd1c5d626d",
+      "name": "format-changelog",
       "command": "node",
-      "args": ["format-changelog.js"],
-      "publish": { "final_markdown": "${output}" }
+      "args": [
+        "format-changelog.js"
+      ],
+      "publish": {
+        "final_markdown": "${output}"
+      }
     },
-
     {
       "type": "binary",
-      "id": "write-file",
+      "id": "cd822a6b-419f-4952-8ccb-fbf35731247d",
+      "name": "write-file",
       "input": "${context.final_markdown}",
       "command": "sh",
-      "args": ["-c", "cat > \"${config.output_file}\""],
+      "args": [
+        "-c",
+        "cat > \"${config.output_file}\""
+      ],
       "cwd": "${config.repo_path}",
-      "publish": { "file": "${config.output_file}" }
+      "publish": {
+        "file": "${config.output_file}"
+      }
     }
   ],
-
-  "output": { "file": "${context.file}" }
+  "output": {
+    "file": "${context.file}"
+  }
 }

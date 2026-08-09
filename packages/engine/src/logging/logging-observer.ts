@@ -18,7 +18,10 @@ interface ManagedBackend {
 }
 
 /** The shared log-event envelope (mvp spec §8.1) — `seq` is the ordering truth per root run. */
-type Envelope = { seq: number; ts: string; run_id: string; node_id: string | null };
+type Envelope = { seq: number; ts: string; run_id: string; node_id: string | null; node_name: string | null };
+
+/** A node's two-part identity (ADR 0007) as control events pass it through the projection. */
+type NodeIdentity = { id: string; name: string };
 
 // A `cancelled` step-finished (#24) carries no error — the cause is narrated by run-cancelled.
 function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
@@ -43,10 +46,10 @@ function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
  *   `checkpoint-passed`/`checkpoint-failed`.
  *
  * The `never` guard means a new `Observation` member forces a decision about whether it is narrated.
- * `envelope` is a factory rather than a value because the choice of `node_id` is part of the
- * projection: control-node events carry the control node's own id, lifecycle events the run's.
+ * `envelope` is a factory rather than a value because the choice of `node_id`/`node_name` is part of
+ * the projection: control-node events carry the control node's own identity, lifecycle events the run's.
  */
-export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: string) => Envelope): LogEvent | null {
+export function toLogEvent(o: Observation, envelope: (runId: string, node?: NodeIdentity) => Envelope): LogEvent | null {
   switch (o.type) {
     case "run-started":
       return { type: "step-started", ...envelope(o.runId), step_type: WORKFLOW_STEP_TYPE, worker: o.worker };
@@ -58,19 +61,19 @@ export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: st
     case "checkpoint-evaluated":
       return {
         type: o.passed ? "checkpoint-passed" : "checkpoint-failed",
-        ...envelope(o.runId, o.nodeId),
+        ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }),
         trace: o.trace,
       };
     case "branch-taken":
-      return { type: "branch-taken", ...envelope(o.runId, o.nodeId), arm: o.arm, trace: o.trace };
+      return { type: "branch-taken", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), arm: o.arm, trace: o.trace };
     case "branch-no-match":
-      return { type: "branch-no-match", ...envelope(o.runId, o.nodeId), traces: o.traces };
+      return { type: "branch-no-match", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), traces: o.traces };
     case "iteration-started":
-      return { type: "iteration-started", ...envelope(o.runId, o.nodeId), iteration: o.iteration, trace: o.trace };
+      return { type: "iteration-started", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), iteration: o.iteration, trace: o.trace };
     case "loop-exited":
       return {
         type: "loop-exited",
-        ...envelope(o.runId, o.nodeId),
+        ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }),
         reason: o.reason,
         iterations: o.iterations,
         trace: o.trace,
@@ -80,7 +83,7 @@ export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: st
       // the `parallel` node — never a run of its own (a logicer has no run, invariant 1).
       return {
         type: "join-applied",
-        ...envelope(o.runId, o.nodeId),
+        ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }),
         branches: o.branches,
         published_keys: o.publishedKeys,
         // Present only on a `wait-one` win (wait-one-join.md §8); JSON.stringify drops it when absent.
@@ -89,12 +92,12 @@ export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: st
     case "run-cancelled":
       // Paired with a `cancelled` step-finished for the same run. `cause` distinguishes a failing
       // sibling branch from an operator stopping the root run (#52).
-      return { type: "run-cancelled", ...envelope(o.runId, o.nodeId), cause: o.cause, cause_run_id: o.causeRunId };
+      return { type: "run-cancelled", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), cause: o.cause, cause_run_id: o.causeRunId };
     case "reuse-marker":
       // A reused node's whole narrative (#172): the log carries it where no step-lifecycle pair does,
       // node_id being the reused node's own id and original_run_id the back-reference to the run that
       // holds the real data in the original tree.
-      return { type: "reuse-marker", ...envelope(o.runId, o.nodeId), original_run_id: o.originalRunId };
+      return { type: "reuse-marker", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), original_run_id: o.originalRunId };
     // Persistence-only: no log event exists for these (see Observation's docblock).
     case "step-stderr":
     case "step-usage":
@@ -120,19 +123,18 @@ export function toLogEvent(o: Observation, envelope: (runId: string, nodeId?: st
 export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   const managed: ManagedBackend[] = backends.map((backend) => ({ backend, active: true, tail: Promise.resolve() }));
   const nodeIdByRun = new Map<string, string | null>();
+  const nodeNameByRun = new Map<string, string | null>();
   let seq = 0;
   let terminated = false;
 
-  // Lifecycle events default `node_id` to the run's own node (null for the root, the workflow
-  // node's id for a nested run). Control events (#21 checkpoint/branch, #24 join-applied/
-  // run-cancelled) pass the control node's id explicitly — they are attributed to the enclosing
-  // workflow-step's run but carry the control node's id.
-  function envelope(
-    runId: string,
-    nodeId?: string,
-  ): { seq: number; ts: string; run_id: string; node_id: string | null } {
-    const node_id = nodeId ?? nodeIdByRun.get(runId) ?? null;
-    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id };
+  // Lifecycle events default `node_id`/`node_name` to the run's own node (both null for the root, the
+  // `workflow` node's GUID + name for a nested run). Control events (#21 checkpoint/branch, #24
+  // join-applied/run-cancelled) pass the control node's identity explicitly — they are attributed to
+  // the enclosing workflow-step's run but carry the control node's own id and name (ADR 0007).
+  function envelope(runId: string, node?: NodeIdentity): Envelope {
+    const node_id = node?.id ?? nodeIdByRun.get(runId) ?? null;
+    const node_name = node?.name ?? nodeNameByRun.get(runId) ?? null;
+    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: runId, node_id, node_name };
   }
 
   // Serialize an op onto a backend's queue: it runs only after that backend's previous op settles,
@@ -179,10 +181,15 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
       // Backends live per root run, and their lifetime rides the root run's own start and finish —
       // which the observer contract guarantees bracket every other observation of the tree.
       if (o.type === "run-started") {
-        nodeIdByRun.set(o.runId, o.nodeId); // null for the root; the `workflow` node's id for a nested run (#22)
+        // null for the root; the `workflow` node's GUID + name for a nested run (#22)
+        nodeIdByRun.set(o.runId, o.nodeId);
+        nodeNameByRun.set(o.runId, o.nodeName);
         if (o.runId === o.rootRunId) await openAll(o.runId);
       }
-      if (o.type === "step-started") nodeIdByRun.set(o.runId, o.nodeId);
+      if (o.type === "step-started") {
+        nodeIdByRun.set(o.runId, o.nodeId);
+        nodeNameByRun.set(o.runId, o.nodeName);
+      }
 
       // The root run's own finish is the terminal event: best-effort, idempotent (runWorkflow may
       // re-drive it while failing), and followed by closing every backend. A *nested* workflow-run

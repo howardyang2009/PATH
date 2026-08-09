@@ -44,6 +44,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       rootRunId: string;
       parentRunId: string | null;
       nodeId: string | null;
+      nodeName: string | null;
       worker: Worker | null;
       input: JsonValue;
       // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
@@ -51,10 +52,10 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, worker, input, resumedFromRootRunId } = fact;
+    const { runId, rootRunId, parentRunId, nodeId, nodeName, worker, input, resumedFromRootRunId } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
-    insertRun(db, { runId, rootRunId, parentRunId, nodeId, worker, status: "running", inputRef, resumedFromRootRunId });
+    insertRun(db, { runId, rootRunId, parentRunId, nodeId, nodeName, worker, status: "running", inputRef, resumedFromRootRunId });
   }
 
   /** A run ended. Only a successful outcome has an output to persist (mvp spec §5.7). */

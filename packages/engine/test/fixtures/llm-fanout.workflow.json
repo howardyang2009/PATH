@@ -1,17 +1,66 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "7c14cd06-ec54-4092-aa9a-70a24bbe4c73",
   "name": "llm-fanout",
-  "worker": { "type": "llm", "model": "claude-sonnet-5" },
+  "worker": {
+    "type": "llm",
+    "model": "claude-sonnet-5"
+  },
   "body": [
     {
       "type": "parallel",
-      "id": "fanout",
+      "id": "baabeabb-bbd9-4e04-b6f8-0458c22d6591",
+      "name": "fanout",
       "join": "collect",
       "branches": [
-        { "id": "a", "body": [{ "type": "prompt", "id": "ask-a", "prompt": "Question a." }] },
-        { "id": "b", "body": [{ "type": "prompt", "id": "ask-b", "prompt": "Question b." }] },
-        { "id": "c", "body": [{ "type": "prompt", "id": "ask-c", "prompt": "Question c." }] },
-        { "id": "d", "body": [{ "type": "prompt", "id": "ask-d", "prompt": "Question d." }] }
+        {
+          "id": "afe1c034-9b7b-448a-89ca-ca3a5f51f7cd",
+          "name": "a",
+          "body": [
+            {
+              "type": "prompt",
+              "id": "9c0f774e-79dc-467b-8d80-0e169e539101",
+              "name": "ask-a",
+              "prompt": "Question a."
+            }
+          ]
+        },
+        {
+          "id": "dce27042-f183-4722-8634-85d42362cfea",
+          "name": "b",
+          "body": [
+            {
+              "type": "prompt",
+              "id": "80e557cb-058a-432e-a971-ad4af7220a8a",
+              "name": "ask-b",
+              "prompt": "Question b."
+            }
+          ]
+        },
+        {
+          "id": "d071edee-1c19-4cb9-a057-0bffe9c25e3c",
+          "name": "c",
+          "body": [
+            {
+              "type": "prompt",
+              "id": "f9e6a134-e0a6-475f-8df9-67c7b04be900",
+              "name": "ask-c",
+              "prompt": "Question c."
+            }
+          ]
+        },
+        {
+          "id": "c882acae-7e4d-4aef-8ea8-953c1cd25c78",
+          "name": "d",
+          "body": [
+            {
+              "type": "prompt",
+              "id": "d4ccef83-5219-4bc3-b9a2-3c8269ca4b27",
+              "name": "ask-d",
+              "prompt": "Question d."
+            }
+          ]
+        }
       ]
     }
   ]

@@ -6,7 +6,7 @@ const started: Observation = {
   runId: "r",
   rootRunId: "r",
   parentRunId: null,
-  nodeId: null,
+  nodeId: null, nodeName: null,
   input: {},
   worker: { type: "engine" },
 };

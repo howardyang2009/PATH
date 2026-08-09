@@ -6,7 +6,8 @@ import { WorkerSchema } from "./worker.js";
 /**
  * The typed log-event stream (mvp spec §8.1). Every event shares an envelope — `seq` (monotonic
  * per **root run**, the ordering truth since timestamps collide under parallelism), `ts`, `type`
- * (this flat discriminated union), `run_id`, and `node_id` — plus a per-type payload.
+ * (this flat discriminated union), `run_id`, `node_id` (the GUID) and `node_name` (the human label,
+ * ADR 0007) — plus a per-type payload.
  *
  * #19 landed the two step-lifecycle events; #21 adds the checkpoint/branch control-node events
  * (each carrying a condition `trace`, §8.1); #24 adds the two parallel-block control events
@@ -17,14 +18,15 @@ import { WorkerSchema } from "./worker.js";
  * Control events are attributed to the enclosing workflow-step's run (`run_id`) + the control
  * node's own id (`node_id`) — §8.1; the engine has no run for a control node (invariant 1).
  *
- * `node_id` is nullable: the top-level workflow is wrapped in an implicit root step (invariant 2)
- * that has no node id of its own — its lifecycle events carry a null `node_id`.
+ * `node_id`/`node_name` are nullable together: the top-level workflow is wrapped in an implicit root
+ * step (invariant 2) that has no node of its own — its lifecycle events carry both null.
  */
 const envelope = {
   seq: z.number().int().nonnegative(),
   ts: z.string(),
   run_id: z.string(),
   node_id: z.string().nullable(),
+  node_name: z.string().nullable(),
 };
 
 const StepStartedSchema = z
@@ -66,9 +68,9 @@ const BranchTakenSchema = z
 const BranchNoMatchSchema = z.object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) }).strict();
 
 // A `parallel` collect join applied at block end (mvp spec §5.2–5.4, §8.1): control events carry
-// the enclosing workflow-step's run id + the `parallel` node's id (envelope), plus the branch ids
-// in apply order and the context keys those branches published.
-// `winner` is the winning branch id, present only for a `wait-one` join (wait-one-join.md §8); a
+// the enclosing workflow-step's run id + the `parallel` node's id/name (envelope), plus the branch
+// names in apply order and the context keys those branches published (names, not GUIDs — ADR 0007).
+// `winner` is the winning branch name, present only for a `wait-one` join (wait-one-join.md §8); a
 // `collect` join lands every branch and has no single winner, so it omits the field.
 const JoinAppliedSchema = z
   .object({

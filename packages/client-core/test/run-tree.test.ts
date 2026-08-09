@@ -8,6 +8,7 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     rootRunId: "root",
     parentRunId,
     nodeId: runId,
+    nodeName: runId,
     worker: null,
     status: "running",
     startedAt,

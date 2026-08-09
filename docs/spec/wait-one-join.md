@@ -41,13 +41,13 @@ next step: input ← context.answer
 The block's output is keyed under a **stable** `winner` key:
 
 ```json
-{ "winner": { "id": "<winning-branch-id>", "output": <winner's last-node output object> } }
+{ "winner": { "name": "<winning-branch-name>", "output": <winner's last-node output object> } }
 ```
 
-A fixed key was chosen over `collect`'s `{branch-id: output}` shape because the author **cannot know
-which branch wins**, so a branch-id key would be unaddressable by a static `input` ref. `winner.output`
-always resolves; `winner.id` records who won for downstream logic. This satisfies the one-output-object
-rule (§5.4).
+A fixed key was chosen over `collect`'s `{branch-name: output}` shape because the author **cannot know
+which branch wins**, so a branch-name key would be unaddressable by a static `input` ref. `winner.output`
+always resolves; `winner.name` records who won for downstream logic (the human branch `name`, not the
+GUID — ADR 0007). This satisfies the one-output-object rule (§5.4).
 
 ## 4. Context and publishes
 
@@ -118,8 +118,8 @@ exception to the resume rule (which governs runs; here no run is started). Captu
 
 - **Single-branch `wait-one`** — legal (`branches.min(1)` unchanged). A degenerate one-runner race; no
   special case.
-- **`join-applied` event** — gains a `winner` field carrying the winning branch id. Fires **only** when
-  a winner lands; never on all-fail (§2).
+- **`join-applied` event** — gains a `winner` field carrying the winning branch name. Fires **only**
+  when a winner lands; never on all-fail (§2).
 
 ## 9. Build order
 
@@ -139,7 +139,7 @@ Dependency-ordered, small commits. Repo rule: `main` protected, PR-only, CI `tes
    - `wait-one` path: race branches; first `succeeded` (lowest `seq`) wins; cancel in-flight losers with
      cause `sibling-succeeded`; a branch failure does **not** cancel siblings; all-fail → aggregate block
      failure.
-   - Land the winner's buffer only; discard loser buffers; block output `{winner:{id,output}}`; emit
+   - Land the winner's buffer only; discard loser buffers; block output `{winner:{name,output}}`; emit
      `join-applied{winner}` on success, none on all-fail.
 4. **Resume re-eval** (§7) — resume path: the `wait-one` logicer checks for a reused `succeeded` child
    before launching; found → satisfy the join, start no losers.

@@ -1,6 +1,16 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "e7696944-cd38-4293-8f37-cce3af277818",
   "name": "cycle-a",
-  "worker": { "type": "engine" },
-  "body": [{ "type": "workflow", "id": "to-b", "ref": "./cycle-b.workflow.json" }]
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "workflow",
+      "id": "cd8861b3-bfe1-4c42-941b-127596a5cabe",
+      "name": "to-b",
+      "ref": "./cycle-b.workflow.json"
+    }
+  ]
 }

@@ -2,7 +2,7 @@ import type { LogEvent } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { eventOutcome } from "../src/event-outcome.js";
 
-const ENVELOPE = { seq: 1, ts: "2026-07-25T10:00:00.000Z", run_id: "run_a", node_id: "step-a" } as const;
+const ENVELOPE = { seq: 1, ts: "2026-07-25T10:00:00.000Z", run_id: "run_a", node_id: "step-a", node_name: "step-a" } as const;
 
 /** The trace type as it rides the event stream; derived rather than re-declared so it cannot drift. */
 type Trace = Extract<LogEvent, { type: "checkpoint-passed" }>["trace"];

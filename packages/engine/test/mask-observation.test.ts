@@ -11,12 +11,12 @@ const worker = { type: "engine" } as const;
 
 /** Every observation type, so a member added without a masking decision fails to compile here. */
 const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> } = {
-  "run-started": { type: "run-started", ...ids, parentRunId: null, nodeId: null, input: { k: "s3cret-value" }, worker },
+  "run-started": { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: { k: "s3cret-value" }, worker },
   "step-started": {
     type: "step-started",
     ...ids,
     parentRunId: "r0",
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     stepType: "binary",
     worker,
     input: { k: "s3cret-value" },
@@ -25,45 +25,45 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
   "step-usage": { type: "step-usage", ...ids, usage: { in: 1, note: "s3cret-value" }, estimatedCostUsd: 0.01 },
   "step-finished": { type: "step-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
   "context-changed": { type: "context-changed", ...ids, context: { k: "s3cret-value" } },
-  "join-applied": { type: "join-applied", ...ids, nodeId: "n1", branches: ["a"], publishedKeys: ["k"] },
-  "run-cancelled": { type: "run-cancelled", ...ids, nodeId: "n1", cause: "operator", causeRunId: null },
+  "join-applied": { type: "join-applied", ...ids, nodeId: "n1", nodeName: "n1", branches: ["a"], publishedKeys: ["k"] },
+  "run-cancelled": { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "n1", cause: "operator", causeRunId: null },
   "run-finished": { type: "run-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
   "checkpoint-evaluated": {
     type: "checkpoint-evaluated",
     ...ids,
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     passed: false,
     trace: { type: "equals", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
   "branch-taken": {
     type: "branch-taken",
     ...ids,
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     arm: 0,
     trace: { type: "equals", path: "context.k", outcome: "true", value: "s3cret-value" },
   },
   "branch-no-match": {
     type: "branch-no-match",
     ...ids,
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     traces: [{ type: "equals", path: "context.k", outcome: "false", value: "s3cret-value" }],
   },
   "iteration-started": {
     type: "iteration-started",
     ...ids,
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     iteration: 1,
     trace: { type: "exists", path: "context.k", outcome: "true", value: "s3cret-value" },
   },
   "loop-exited": {
     type: "loop-exited",
     ...ids,
-    nodeId: "n1",
+    nodeId: "n1", nodeName: "n1",
     reason: "condition-false",
     iterations: 2,
     trace: { type: "exists", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
-  "reuse-marker": { type: "reuse-marker", ...ids, nodeId: "n1", originalRunId: "orig-run" },
+  "reuse-marker": { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "n1", originalRunId: "orig-run" },
 };
 
 /**

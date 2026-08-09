@@ -1,11 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { WorkflowFileSchema, safeParseWorkflowFile } from "../src/workflow-file.js";
 
+// One valid UUIDv4. Schema checks name uniqueness across the file, not id uniqueness (ids are unique
+// by construction), so a single valid GUID can stand in for every node's `id` in these fixtures.
+const UUID = "11111111-1111-4111-8111-111111111111";
+
 const minimal = {
-  format: "path/workflow@0",
+  format: "path/workflow@1",
+  id: UUID,
   name: "my-workflow",
   worker: { type: "engine" },
-  body: [{ type: "binary", id: "step-one", command: "echo" }],
+  body: [{ type: "binary", id: UUID, name: "step-one", command: "echo" }],
 };
 
 describe("WorkflowFileSchema — envelope", () => {
@@ -14,12 +19,22 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 
   it("rejects a wrong format version", () => {
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@1" }).success).toBe(false);
+    // `@0` is the pre-identity format; the schema rejects it (the loader gives a targeted message).
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0" }).success).toBe(false);
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "workflow" }).success).toBe(false);
   });
 
   it("requires an exact format string match", () => {
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0 " }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@1 " }).success).toBe(false);
+  });
+
+  it("requires a workflow-level id (the durable GUID)", () => {
+    const { id, ...withoutId } = minimal;
+    expect(WorkflowFileSchema.safeParse(withoutId).success).toBe(false);
+  });
+
+  it("rejects a workflow id that is not a UUIDv4", () => {
+    expect(WorkflowFileSchema.safeParse({ ...minimal, id: "my-workflow" }).success).toBe(false);
   });
 
   it("rejects unknown top-level fields (strict)", () => {
@@ -59,51 +74,54 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 });
 
-describe("WorkflowFileSchema — file-unique ids", () => {
-  it("rejects duplicate ids across sequential body nodes", () => {
+describe("WorkflowFileSchema — file-unique names", () => {
+  it("rejects duplicate names across sequential body nodes", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
       body: [
-        { type: "binary", id: "dup", command: "echo" },
-        { type: "binary", id: "dup", command: "echo" },
+        { type: "binary", id: UUID, name: "dup", command: "echo" },
+        { type: "binary", id: UUID, name: "dup", command: "echo" },
       ],
     });
     expect(result.success).toBe(false);
   });
 
-  it("rejects a duplicate id between a top-level node and a nested block node", () => {
+  it("rejects a duplicate name between a top-level node and a nested block node", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
       body: [
-        { type: "binary", id: "dup", command: "echo" },
+        { type: "binary", id: UUID, name: "dup", command: "echo" },
         {
           type: "checkpoint",
-          id: "gate",
+          id: UUID,
+          name: "gate",
           condition: { type: "exists", path: "context.x" },
         },
         {
           type: "while-do",
-          id: "loop",
+          id: UUID,
+          name: "loop",
           condition: { type: "exists", path: "context.x" },
           max_iterations: 2,
-          body: [{ type: "binary", id: "dup", command: "echo" }],
+          body: [{ type: "binary", id: UUID, name: "dup", command: "echo" }],
         },
       ],
     });
     expect(result.success).toBe(false);
   });
 
-  it("rejects a duplicate id between a parallel branch id and a node id", () => {
+  it("rejects a duplicate name between a parallel branch name and a node name", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
       body: [
         {
           type: "parallel",
-          id: "p",
+          id: UUID,
+          name: "p",
           join: "collect",
           branches: [
-            { id: "dup", body: [{ type: "binary", id: "x", command: "echo" }] },
-            { id: "dup", body: [{ type: "binary", id: "y", command: "echo" }] },
+            { id: UUID, name: "dup", body: [{ type: "binary", id: UUID, name: "x", command: "echo" }] },
+            { id: UUID, name: "dup", body: [{ type: "binary", id: UUID, name: "y", command: "echo" }] },
           ],
         },
       ],
@@ -111,17 +129,18 @@ describe("WorkflowFileSchema — file-unique ids", () => {
     expect(result.success).toBe(false);
   });
 
-  it("accepts a file where every id (including parallel branch ids) is unique", () => {
+  it("accepts a file where every name (including parallel branch names) is unique", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
       body: [
         {
           type: "parallel",
-          id: "p",
+          id: UUID,
+          name: "p",
           join: "collect",
           branches: [
-            { id: "features", body: [{ type: "binary", id: "x", command: "echo" }] },
-            { id: "fixes", body: [{ type: "binary", id: "y", command: "echo" }] },
+            { id: UUID, name: "features", body: [{ type: "binary", id: UUID, name: "x", command: "echo" }] },
+            { id: UUID, name: "fixes", body: [{ type: "binary", id: UUID, name: "y", command: "echo" }] },
           ],
         },
       ],
@@ -137,16 +156,19 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "p",
+          id: UUID,
+          name: "p",
           join: "collect",
           branches: [
             {
-              id: "a",
-              body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }],
+              id: UUID,
+              name: "a",
+              body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }],
             },
             {
-              id: "b",
-              body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }],
+              id: UUID,
+              name: "b",
+              body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { result: "${output}" } }],
             },
           ],
         },
@@ -161,16 +183,19 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "p",
+          id: UUID,
+          name: "p",
           join: "collect",
           branches: [
             {
-              id: "a",
-              body: [{ type: "binary", id: "x", command: "echo", publish: { a_result: "${output}" } }],
+              id: UUID,
+              name: "a",
+              body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { a_result: "${output}" } }],
             },
             {
-              id: "b",
-              body: [{ type: "binary", id: "y", command: "echo", publish: { b_result: "${output}" } }],
+              id: UUID,
+              name: "b",
+              body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { b_result: "${output}" } }],
             },
           ],
         },
@@ -185,24 +210,28 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "p",
+          id: UUID,
+          name: "p",
           join: "collect",
           branches: [
             {
-              id: "a",
+              id: UUID,
+              name: "a",
               body: [
                 {
                   type: "while-do",
-                  id: "loop",
+                  id: UUID,
+                  name: "loop",
                   condition: { type: "exists", path: "context.x" },
                   max_iterations: 2,
-                  body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }],
+                  body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }],
                 },
               ],
             },
             {
-              id: "b",
-              body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }],
+              id: UUID,
+              name: "b",
+              body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { result: "${output}" } }],
             },
           ],
         },
@@ -215,8 +244,8 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
       body: [
-        { type: "binary", id: "x", command: "echo", publish: { result: "${output}" } },
-        { type: "binary", id: "y", command: "echo", publish: { result: "${output}" } },
+        { type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } },
+        { type: "binary", id: UUID, name: "y", command: "echo", publish: { result: "${output}" } },
       ],
     });
     expect(result.success).toBe(true);
@@ -228,11 +257,12 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "race",
+          id: UUID,
+          name: "race",
           join: "wait-one",
           branches: [
-            { id: "a", body: [{ type: "binary", id: "x", command: "echo", publish: { answer: "${output}" } }] },
-            { id: "b", body: [{ type: "binary", id: "y", command: "echo", publish: { answer: "${output}" } }] },
+            { id: UUID, name: "a", body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { answer: "${output}" } }] },
+            { id: UUID, name: "b", body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { answer: "${output}" } }] },
           ],
         },
       ],
@@ -246,24 +276,27 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "race",
+          id: UUID,
+          name: "race",
           join: "wait-one",
           branches: [
             {
-              id: "a",
+              id: UUID,
+              name: "a",
               body: [
                 {
                   type: "parallel",
-                  id: "inner",
+                  id: UUID,
+                  name: "inner",
                   join: "collect",
                   branches: [
-                    { id: "i", body: [{ type: "binary", id: "x", command: "echo", publish: { dup: "${output}" } }] },
-                    { id: "j", body: [{ type: "binary", id: "y", command: "echo", publish: { dup: "${output}" } }] },
+                    { id: UUID, name: "i", body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { dup: "${output}" } }] },
+                    { id: UUID, name: "j", body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { dup: "${output}" } }] },
                   ],
                 },
               ],
             },
-            { id: "b", body: [{ type: "binary", id: "z", command: "echo", publish: { dup: "${output}" } }] },
+            { id: UUID, name: "b", body: [{ type: "binary", id: UUID, name: "z", command: "echo", publish: { dup: "${output}" } }] },
           ],
         },
       ],
@@ -277,18 +310,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
       body: [
         {
           type: "parallel",
-          id: "p1",
+          id: UUID,
+          name: "p1",
           join: "collect",
           branches: [
-            { id: "a", body: [{ type: "binary", id: "x", command: "echo", publish: { result: "${output}" } }] },
+            { id: UUID, name: "a", body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }] },
           ],
         },
         {
           type: "parallel",
-          id: "p2",
+          id: UUID,
+          name: "p2",
           join: "collect",
           branches: [
-            { id: "b", body: [{ type: "binary", id: "y", command: "echo", publish: { result: "${output}" } }] },
+            { id: UUID, name: "b", body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { result: "${output}" } }] },
           ],
         },
       ],
@@ -306,12 +341,12 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 
-  it("reports a readable error for a duplicate id", () => {
+  it("reports a readable error for a duplicate name", () => {
     const result = safeParseWorkflowFile({
       ...minimal,
       body: [
-        { type: "binary", id: "dup", command: "echo" },
-        { type: "binary", id: "dup", command: "echo" },
+        { type: "binary", id: UUID, name: "dup", command: "echo" },
+        { type: "binary", id: UUID, name: "dup", command: "echo" },
       ],
     });
     expect(result.success).toBe(false);
@@ -333,15 +368,19 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 
-  it("reports a readable error for a wrong format version", () => {
-    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@1" });
+  it("reports a targeted error naming the codemod for a legacy @0 file", () => {
+    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@0" });
     expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join("\n")).toMatch(/path\/workflow@0/);
+      expect(result.errors.join("\n")).toMatch(/codemod/i);
+    }
   });
 
   it("reports a readable error for bad ${} syntax in a disallowed position", () => {
     const result = safeParseWorkflowFile({
       ...minimal,
-      body: [{ type: "binary", id: "step-one", command: "${output.cmd}" }],
+      body: [{ type: "binary", id: UUID, name: "step-one", command: "${output.cmd}" }],
     });
     expect(result.success).toBe(false);
     if (!result.success) {

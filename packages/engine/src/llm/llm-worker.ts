@@ -7,8 +7,8 @@ import type { JsonValue } from "@path/schema";
  * alternate if the SDK's undocumented keychain auth ever stops working.
  */
 export interface PromptRequest {
-  /** The `prompt` node's id — used only to name the step in error messages. */
-  nodeId: string;
+  /** The `prompt` node's human `name` — used only to name the step in error messages (ADR 0007). */
+  nodeName: string;
   /** The interpolated `model` of the effective `llm` worker (format doc §7). */
   model: string;
   /** The interpolated instruction text. */

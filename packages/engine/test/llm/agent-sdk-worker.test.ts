@@ -29,7 +29,7 @@ function fakeQuery(messages: unknown[]): { query: SdkQuery; calls: QueryParams[]
 }
 
 const request = {
-  nodeId: "summarize",
+  nodeName: "summarize",
   model: "claude-sonnet-5",
   prompt: "Summarize the release.",
   input: { version: "1.2.0" },

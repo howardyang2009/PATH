@@ -3,9 +3,12 @@ import type { WorkflowNode } from "../src/node-type.js";
 import { childBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 
+// Structural tests (childBodies/walkNodes) never pass through the schema, so the human id doubles as
+// both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes `branchName`.
 const step = (id: string, publish?: Record<string, string>): WorkflowNode => ({
   type: "binary",
   id,
+  name: id,
   command: "node",
   args: ["-e", ""],
   ...(publish ? { publish } : {}),
@@ -16,14 +19,17 @@ function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
   return {
     type: "parallel",
     id: "fan",
+    name: "fan",
     join: "collect",
     branches: [
       {
         id: "left",
+        name: "left",
         body: [
           {
             type: "branch",
             id: "route",
+            name: "route",
             arms: [
               {
                 when: { type: "exists", path: "context.x" },
@@ -31,6 +37,7 @@ function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
                   {
                     type: "while-do",
                     id: "spin",
+                    name: "spin",
                     condition: { type: "exists", path: "context.x" },
                     max_iterations: 2,
                     body: inner,
@@ -42,7 +49,7 @@ function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
           },
         ],
       },
-      { id: "right", body: [step("r")] },
+      { id: "right", name: "right", body: [step("r")] },
     ],
   };
 }
@@ -50,15 +57,15 @@ function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
 describe("childBodies", () => {
   it("returns nothing for a leaf", () => {
     expect(childBodies(step("s"))).toEqual([]);
-    expect(childBodies({ type: "checkpoint", id: "gate", condition: { type: "exists", path: "context.x" } })).toEqual(
+    expect(childBodies({ type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.x" } })).toEqual(
       [],
     );
   });
 
-  it("reports a parallel's branches as concurrent, carrying their own ids", () => {
+  it("reports a parallel's branches as concurrent, carrying their own names", () => {
     const bodies = childBodies(deeplyNested([step("inner")]));
     expect(bodies).toHaveLength(2);
-    expect(bodies.map((b) => b.branchId)).toEqual(["left", "right"]);
+    expect(bodies.map((b) => b.branchName)).toEqual(["left", "right"]);
     expect(bodies.every((b) => b.concurrent)).toBe(true);
     expect(bodies[0]!.path).toEqual(["branches", 0, "body"]);
   });
@@ -67,6 +74,7 @@ describe("childBodies", () => {
     const branch: WorkflowNode = {
       type: "branch",
       id: "route",
+name: "route",
       arms: [
         { when: { type: "exists", path: "context.a" }, body: [step("a")] },
         { when: { type: "exists", path: "context.b" }, body: [step("b")] },
@@ -91,6 +99,7 @@ describe("childBodies", () => {
     const loop: WorkflowNode = {
       type: "while-do",
       id: "spin",
+name: "spin",
       condition: { type: "exists", path: "context.x" },
       max_iterations: 2,
       body: [step("inner")],
@@ -107,7 +116,7 @@ describe("walkNodes", () => {
   });
 
   it("does not descend into a workflow step's ref'd file", () => {
-    const ids = [...walkNodes([{ type: "workflow", id: "call", ref: "./child.workflow.json" }])].map((n) => n.id);
+    const ids = [...walkNodes([{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }])].map((n) => n.id);
     expect(ids).toEqual(["call"]);
   });
 });
@@ -118,8 +127,23 @@ describe("walkNodes", () => {
  * meant these checks quietly stopped covering it — validation passed and the workflow misbehaved.
  */
 describe("validation reaches deeply nested bodies", () => {
+  // These tests go through the real schema, so every node/branch needs a UUID `id`; the human labels
+  // above are kept as `name` (which is what the uniqueness rule is now checked against).
+  let counter = 0;
+  const uuid = () => `00000000-0000-4000-8000-${String(counter++).padStart(12, "0")}`;
+  function guidify<T>(node: T): T {
+    const n = { ...(node as Record<string, unknown>) };
+    if ("id" in n) {
+      if (!("name" in n) && typeof n.id === "string") n.name = n.id; // keep the human label as `name`
+      n.id = uuid();
+    }
+    for (const key of ["branches", "arms", "else", "body"]) {
+      if (Array.isArray(n[key])) n[key] = (n[key] as unknown[]).map((c) => (typeof c === "object" && c ? guidify(c) : c));
+    }
+    return n as T;
+  }
   function file(body: WorkflowNode[]) {
-    return { format: "path/workflow@0", name: "deep", worker: { type: "engine" }, body };
+    return { format: "path/workflow@1", id: uuid(), name: "deep", worker: { type: "engine" }, body: body.map(guidify) };
   }
 
   it("catches a duplicate id buried under every block kind", () => {
@@ -140,14 +164,17 @@ describe("validation reaches deeply nested bodies", () => {
     const racing: WorkflowNode = {
       type: "parallel",
       id: "fan",
+name: "fan",
       join: "collect",
       branches: [
         {
           id: "left",
+name: "left",
           body: [
             {
               type: "while-do",
               id: "spin",
+name: "spin",
               condition: { type: "exists", path: "context.x" },
               max_iterations: 2,
               body: [step("l", { shared: "${output}" })],
@@ -156,10 +183,12 @@ describe("validation reaches deeply nested bodies", () => {
         },
         {
           id: "right",
+name: "right",
           body: [
             {
               type: "branch",
               id: "route",
+name: "route",
               arms: [{ when: { type: "exists", path: "context.x" }, body: [step("r", { shared: "${output}" })] }],
             },
           ],
@@ -176,6 +205,7 @@ describe("validation reaches deeply nested bodies", () => {
     const sequential: WorkflowNode = {
       type: "while-do",
       id: "spin",
+name: "spin",
       condition: { type: "exists", path: "context.x" },
       max_iterations: 2,
       body: [step("a", { same: "${output}" }), step("b", { same: "${output}" })],

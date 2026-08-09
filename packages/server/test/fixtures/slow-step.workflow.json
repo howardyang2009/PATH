@@ -1,15 +1,26 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "61c0e299-167e-4141-b6c0-a5cf40dbcb13",
   "name": "slow-step",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "wait",
+      "id": "ff6b327d-8614-4eb1-a040-7c395cfe1e8a",
+      "name": "wait",
       "command": "node",
-      "args": ["-e", "setTimeout(() => process.stdout.write('done'), 300)"],
-      "publish": { "result": "${output}" }
+      "args": [
+        "-e",
+        "setTimeout(() => process.stdout.write('done'), 300)"
+      ],
+      "publish": {
+        "result": "${output}"
+      }
     }
   ],
-  "output": { "result": "${context.result}" }
+  "output": {
+    "result": "${context.result}"
+  }
 }

@@ -1,19 +1,27 @@
 {
-  "format": "path/workflow@0",
+  "format": "path/workflow@1",
+  "id": "c3362ce3-8fc2-4b17-ad2d-4f990c758738",
   "name": "nested-child",
-  "worker": { "type": "engine" },
+  "worker": {
+    "type": "engine"
+  },
   "body": [
     {
       "type": "binary",
-      "id": "shout",
+      "id": "098c29b0-4196-46e8-9c7c-88bf12db220d",
+      "name": "shout",
       "command": "node",
       "args": [
         "-e",
         "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d.toUpperCase()))"
       ],
       "input": "${context.seed}",
-      "publish": { "shouted": "${output}" }
+      "publish": {
+        "shouted": "${output}"
+      }
     }
   ],
-  "output": { "shouted": "${context.shouted}" }
+  "output": {
+    "shouted": "${context.shouted}"
+  }
 }

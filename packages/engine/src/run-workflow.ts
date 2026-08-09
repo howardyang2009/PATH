@@ -158,8 +158,8 @@ export interface NodeExecContext {
   onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
 }
 
-function describeInterpolationError(nodeId: string, err: unknown): string {
-  if (err instanceof InterpolationError) return `node "${nodeId}": ${err.message}`;
+function describeInterpolationError(nodeName: string, err: unknown): string {
+  if (err instanceof InterpolationError) return `node "${nodeName}": ${err.message}`;
   throw err; // an unexpected error is a bug, not a data-flow failure — surface it, don't swallow it
 }
 
@@ -176,7 +176,10 @@ export interface RunIdentity {
   runId: string;
   rootRunId: string;
   parentRunId: string | null;
+  /** The `workflow` node's GUID `id` for a nested run; null for the root (ADR 0007). */
   nodeId: string | null;
+  /** The `workflow` node's human `name` for a nested run; null for the root (ADR 0007). */
+  nodeName: string | null;
 }
 
 // Everything a workflow-run needs to execute one file: the file, where it lives (for cwd defaults
@@ -362,6 +365,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       rootRunId,
       parentRunId: identity.parentRunId,
       nodeId: identity.nodeId,
+      nodeName: identity.nodeName,
       input,
       worker: file.worker,
       // Set only on a resumed tree's root run (#173) — persistence writes it to the root row's
@@ -445,16 +449,16 @@ async function runWorkflowNode(
   if (!isJsonObject(stepInput)) {
     return {
       status: "failed",
-      error: `workflow step "${node.id}": input must be a JSON object to seed the child's context (format doc §6.3)`,
+      error: `workflow step "${node.name}": input must be a JSON object to seed the child's context (format doc §6.3)`,
     };
   }
   if (!ctx.run.files) {
-    return { status: "failed", error: `workflow step "${node.id}": no loaded file tree to resolve ref "${node.ref}"` };
+    return { status: "failed", error: `workflow step "${node.name}": no loaded file tree to resolve ref "${node.ref}"` };
   }
   const childPath = resolve(ctx.run.fileDir, node.ref);
   const childFile = ctx.run.files.get(childPath);
   if (!childFile) {
-    return { status: "failed", error: `workflow step "${node.id}": referenced file "${node.ref}" is not in the loaded tree` };
+    return { status: "failed", error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
   const childResult = await executeWorkflowRun({
@@ -462,7 +466,13 @@ async function runWorkflowNode(
     fileDir: dirname(childPath),
     input: stepInput,
     incomingConfig: ctx.stepConfig, // parent's effective config crosses the file boundary (§8)
-    identity: { runId: randomUUID(), rootRunId: ctx.run.identity.rootRunId, parentRunId: ctx.run.identity.runId, nodeId: node.id },
+    identity: {
+      runId: randomUUID(),
+      rootRunId: ctx.run.identity.rootRunId,
+      parentRunId: ctx.run.identity.runId,
+      nodeId: node.id,
+      nodeName: node.name,
+    },
     files: ctx.run.files,
     emit: ctx.run.emit,
     // The root run's snapshot, so every file in the tree resolves `$env` against one environment
@@ -481,7 +491,7 @@ async function runWorkflowNode(
 
   if (childResult.status === "cancelled") return { status: "cancelled" };
   if (childResult.status === "failed") {
-    return { status: "failed", error: `workflow step "${node.id}": ${childResult.error}` };
+    return { status: "failed", error: `workflow step "${node.name}": ${childResult.error}` };
   }
   return { status: "succeeded", output: childResult.output };
 }
@@ -509,7 +519,7 @@ interface StepContext {
 async function finishLeafStep(
   emit: Emit,
   ids: { runId: string; rootRunId: string },
-  node: { id: string; parse?: "text" | "json" },
+  node: { name: string; parse?: "text" | "json" },
   rawOutput: string,
 ): Promise<SeqOutcome> {
   let output: JsonValue = rawOutput;
@@ -518,7 +528,7 @@ async function finishLeafStep(
       output = parseStepOutput(rawOutput);
     } catch (err) {
       if (!(err instanceof OutputParseError)) throw err;
-      const parseError = `step "${node.id}": ${err.message}`;
+      const parseError = `step "${node.name}": ${err.message}`;
       await emit({ type: "step-finished", runId: ids.runId, rootRunId: ids.rootRunId, status: "failed", error: parseError });
       return { status: "failed", error: parseError, causeRunId: ids.runId };
     }
@@ -538,7 +548,7 @@ async function finishLeafStep(
 async function cancelLeafStep(
   emit: Emit,
   ids: { runId: string; rootRunId: string },
-  nodeId: string,
+  node: { id: string; name: string },
   cancellation: Cancellation | undefined,
 ): Promise<SeqOutcome> {
   const causeRunId = cancellation?.causeRunId ?? null;
@@ -546,7 +556,8 @@ async function cancelLeafStep(
   await emit({ type: "run-cancelled",
     runId: ids.runId,
     rootRunId: ids.rootRunId,
-    nodeId,
+    nodeId: node.id,
+    nodeName: node.name,
     cause,
     causeRunId,
   });
@@ -579,7 +590,7 @@ async function runPromptNode(
   if (effectiveWorker.type !== "llm") {
     return {
       status: "failed",
-      error: `prompt step "${node.id}": needs an llm worker, but its effective worker is "${effectiveWorker.type}" (format doc §7)`,
+      error: `prompt step "${node.name}": needs an llm worker, but its effective worker is "${effectiveWorker.type}" (format doc §7)`,
     };
   }
 
@@ -589,7 +600,7 @@ async function runPromptNode(
     model = interpolateToString(effectiveWorker.model, scope); // worker values are interpolable (§7)
     prompt = interpolateToString(node.prompt, scope);
   } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.id, err) };
+    return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
   const release = await ctx.run.llm.semaphore.acquire();
@@ -601,13 +612,14 @@ async function runPromptNode(
       rootRunId,
       parentRunId: ctx.run.identity.runId,
       nodeId: node.id,
+      nodeName: node.name,
       stepType: node.type,
       worker: effectiveWorker,
       input: stepInput,
     });
 
     result = await ctx.run.llm.worker.runPrompt({
-      nodeId: node.id,
+      nodeName: node.name,
       model,
       prompt,
       input: stepInput,
@@ -622,7 +634,7 @@ async function runPromptNode(
       // A failing sibling parallel branch or an operator's cancel killed this processor (mvp spec
       // §5.6) — not a failure of this step. Awaited here rather than returned, so the processor slot
       // is only released once the cancellation has been narrated.
-      return await cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node.id, ctx.exec.cancellation);
+      return await cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node, ctx.exec.cancellation);
     }
 
     // Leaf-only (§5.7): recorded on this run, never rolled up — subtree figures are a read-time SUM.
@@ -674,7 +686,7 @@ async function runBinaryNode(
     // from omitting `cwd`, and would make a workflow's behaviour depend on the caller's shell.
     cwd = node.cwd !== undefined ? resolve(ctx.run.fileDir, interpolateToString(node.cwd, scope)) : ctx.run.fileDir;
   } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.id, err) };
+    return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
   const stepRunId = randomUUID();
@@ -683,18 +695,19 @@ async function runBinaryNode(
     rootRunId,
     parentRunId: ctx.run.identity.runId,
     nodeId: node.id,
+    nodeName: node.name,
     stepType: node.type,
     worker: effectiveWorker,
     input: stepInput,
   });
 
-  const result = await runBinaryStep({ id: node.id, command, args, cwd }, stepInput, ctx.exec.signal);
+  const result = await runBinaryStep({ name: node.name, command, args, cwd }, stepInput, ctx.exec.signal);
   await emit({ type: "step-stderr", runId: stepRunId, rootRunId, stderr: result.stderr });
 
   if (result.status === "cancelled") {
     // A failing sibling parallel branch or an operator's cancel killed this child process (mvp spec
     // §5.6) — not a failure of this step.
-    return cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node.id, ctx.exec.cancellation);
+    return cancelLeafStep(emit, { runId: stepRunId, rootRunId }, node, ctx.exec.cancellation);
   }
 
   if (result.status === "failed") {
@@ -754,7 +767,7 @@ export async function runWorkflow(
     fileDir,
     input: options.input ?? {},
     incomingConfig: options.operatorConfig ?? {},
-    identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null },
+    identity: { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null },
     files: options.files,
     emit,
     env,
@@ -861,9 +874,9 @@ async function runCheckpointNode(
   const { runId, rootRunId } = identity;
   const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
   const passed = outcome === "true";
-  await emit({ type: "checkpoint-evaluated", runId, rootRunId, nodeId: node.id, passed, trace });
+  await emit({ type: "checkpoint-evaluated", runId, rootRunId, nodeId: node.id, nodeName: node.name, passed, trace });
   if (!passed) {
-    return { status: "failed", error: `checkpoint "${node.id}" failed: ${describeConditionFailure(trace)}` };
+    return { status: "failed", error: `checkpoint "${node.name}" failed: ${describeConditionFailure(trace)}` };
   }
   return { status: "succeeded", output: incomingOutput };
 }
@@ -888,19 +901,19 @@ async function runBranchNode(
     const { outcome, trace } = evaluateCondition(arm.when, roots);
     traces.push(trace);
     if (outcome === "error") {
-      return { status: "failed", error: `branch "${node.id}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
+      return { status: "failed", error: `branch "${node.name}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
     }
     if (outcome === "true") {
-      await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, arm: index, trace });
+      await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, nodeName: node.name, arm: index, trace });
       return runSequence(run, arm.body, incomingOutput, exec);
     }
   }
   if (node.else) {
-    await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, arm: "else", trace: null });
+    await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, nodeName: node.name, arm: "else", trace: null });
     return runSequence(run, node.else, incomingOutput, exec);
   }
-  await emit({ type: "branch-no-match", runId, rootRunId, nodeId: node.id, traces });
-  return { status: "failed", error: `branch "${node.id}": no arm matched and there is no else (spec §5.2)` };
+  await emit({ type: "branch-no-match", runId, rootRunId, nodeId: node.id, nodeName: node.name, traces });
+  return { status: "failed", error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)` };
 }
 
 // A `while-do` node: check the condition before every iteration against the run's `context` + the
@@ -928,11 +941,11 @@ async function runWhileDoNode(
     try {
       resolved = interpolateToString(node.max_iterations, scope);
     } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.id, err) };
+      return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
     const parsed = Number(resolved);
     if (!Number.isInteger(parsed) || parsed <= 0) {
-      return { status: "failed", error: `while-do "${node.id}": max_iterations resolved to "${resolved}", which is not a positive integer` };
+      return { status: "failed", error: `while-do "${node.name}": max_iterations resolved to "${resolved}", which is not a positive integer` };
     }
     maxIterations = parsed;
   }
@@ -942,20 +955,20 @@ async function runWhileDoNode(
   for (;;) {
     const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: iterationOutput });
     if (outcome === "error") {
-      return { status: "failed", error: `while-do "${node.id}": condition evaluation error: ${describeConditionFailure(trace)}` };
+      return { status: "failed", error: `while-do "${node.name}": condition evaluation error: ${describeConditionFailure(trace)}` };
     }
     if (outcome === "false") {
-      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, reason: "condition-false", iterations, trace });
+      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, nodeName: node.name, reason: "condition-false", iterations, trace });
       return { status: "succeeded", output: iterationOutput };
     }
     // Condition true, but the cap has already been reached: the run fails (post-loop nodes may
     // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
     if (iterations >= maxIterations) {
-      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, reason: "max-iterations-exceeded", iterations, trace });
-      return { status: "failed", error: `while-do "${node.id}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
+      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, nodeName: node.name, reason: "max-iterations-exceeded", iterations, trace });
+      return { status: "failed", error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
     }
     iterations += 1;
-    await emit({ type: "iteration-started", runId, rootRunId, nodeId: node.id, iteration: iterations, trace });
+    await emit({ type: "iteration-started", runId, rootRunId, nodeId: node.id, nodeName: node.name, iteration: iterations, trace });
     const bodyOutcome = await runSequence(run, node.body, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
@@ -1023,6 +1036,7 @@ export async function runNode(
       runId: run.identity.runId,
       rootRunId: run.identity.rootRunId,
       nodeId: node.id,
+      nodeName: node.name,
       originalRunId: reused.runId,
     });
     outcome = { status: "succeeded", output };
@@ -1032,7 +1046,7 @@ export async function runNode(
     try {
       stepInput = node.input !== undefined ? interpolateValue(node.input, scope) : incomingOutput;
     } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.id, err) };
+      return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
 
     // One context for all three step types, derived rather than hand-built. These were two literals
@@ -1055,7 +1069,7 @@ export async function runNode(
       updates[key] = interpolateValue(expr, publishScope);
     }
   } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.id, err) };
+    return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
   // Every entry resolves before any is written, so the publish lands atomically (§5.3), before the
   // next node starts. A nested workflow-step publishes to *this* run's context only — never the
@@ -1172,9 +1186,9 @@ function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelB
 }
 
 // Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
-// lands (wait-one-join.md §4); the block output is the stable `{ winner: { id, output } }` shape so a
-// downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
-// the winner id (§8).
+// lands (wait-one-join.md §4); the block output is the stable `{ winner: { name, output } }` shape so
+// a downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
+// the winner's human `name` (§8, ADR 0007 — output keys and narration use `name`, never the GUID).
 async function landWaitOneWinner(
   run: RunContext,
   node: ParallelNode,
@@ -1191,11 +1205,12 @@ async function landWaitOneWinner(
     runId,
     rootRunId,
     nodeId: node.id,
-    branches: [winner.branch.id],
+    nodeName: node.name,
+    branches: [winner.branch.name],
     publishedKeys,
-    winner: winner.branch.id,
+    winner: winner.branch.name,
   });
-  return { status: "succeeded", output: { winner: { id: winner.branch.id, output: winner.output } } };
+  return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
 }
 
 /**
@@ -1205,11 +1220,11 @@ async function landWaitOneWinner(
  *
  * - `collect` — waits for *all* branches; a failing branch fails the block and cancels in-flight
  *   siblings (`sibling-failed`); on all-succeed every buffer lands in branch declaration order and
- *   the output is `{ "<branch-id>": <that branch's last node's output> }`.
+ *   the output is `{ "<branch-name>": <that branch's last node's output> }`.
  * - `wait-one` — races the branches; the first to `succeed` is the winner, and the still-running
  *   losers are cancelled (`sibling-succeeded`); a branch that *fails* cancels nothing and the race
  *   continues; if every branch fails the block fails with a synthetic aggregate error. Only the
- *   winner's buffer lands and the output is `{ winner: { id, output } }` (wait-one-join.md §2–§5).
+ *   winner's buffer lands and the output is `{ winner: { name, output } }` (wait-one-join.md §2–§5).
  */
 async function runParallelNode(
   run: RunContext,
@@ -1317,7 +1332,7 @@ async function runParallelNode(
     // No winner. A cancelled branch means we were aborted from outside; otherwise every branch
     // failed, and the block fails with a synthetic aggregate distinct from any one branch's error (§2).
     if (branchResults.some((r) => r.outcome.status === "cancelled")) return { status: "cancelled" };
-    return { status: "failed", error: `parallel "${node.id}": all ${node.branches.length} wait-one branches failed` };
+    return { status: "failed", error: `parallel "${node.name}": all ${node.branches.length} wait-one branches failed` };
   }
 
   // A failing branch fails the block (and thus the run); no publishes land. Report the
@@ -1326,7 +1341,7 @@ async function runParallelNode(
     if (outcome.status === "failed") {
       return {
         status: "failed",
-        error: `parallel "${node.id}", branch "${branch.id}": ${outcome.error}`,
+        error: `parallel "${node.name}", branch "${branch.name}": ${outcome.error}`,
       };
     }
   }
@@ -1351,15 +1366,16 @@ async function runParallelNode(
     runId,
     rootRunId,
     nodeId: node.id,
-    branches: branchResults.map((r) => r.branch.id),
+    nodeName: node.name,
+    branches: branchResults.map((r) => r.branch.name),
     publishedKeys,
   });
 
-  // Collect output: keyed by branch id in declaration order, deterministic regardless of
-  // completion order and dot-path addressable (§5.4).
+  // Collect output: keyed by branch name in declaration order, deterministic regardless of
+  // completion order and dot-path addressable (§5.4, ADR 0007 — output keys are the human `name`).
   const output: { [key: string]: JsonValue } = {};
   for (const { branch, outcome } of branchResults) {
-    output[branch.id] = outcome.status === "succeeded" ? outcome.output : null;
+    output[branch.name] = outcome.status === "succeeded" ? outcome.output : null;
   }
   return { status: "succeeded", output };
 }

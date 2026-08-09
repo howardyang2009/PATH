@@ -13,6 +13,7 @@ import { createPersistedObserver } from "../src/persistence/persisted-observer.j
 import { getRunsForRoot } from "../src/persistence/run-store.js";
 import { fakeObserver, type FakeObserver } from "./fake-observer.js";
 import { runWorkflow, type ResumeInput } from "../src/run-workflow.js";
+import { stampNames } from "./stamp-names.js";
 
 /**
  * Engine consumption of the reuse plan (#172): a resumed run reuses a succeeded node's recorded
@@ -26,6 +27,7 @@ import { runWorkflow, type ResumeInput } from "../src/run-workflow.js";
 function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
   return {
     rootRunId: "orig-root",
+    nodeName: overrides.nodeId,
     worker: null,
     startedAt: "t0",
     finishedAt: null,
@@ -39,11 +41,16 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
 }
 
 /** An llm worker that records which nodes actually executed and answers a per-node canned output. */
-function recordingWorker(outputs: { [nodeId: string]: string }, ran: string[]): LlmWorker {
+function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[]): LlmWorker {
   return {
     runPrompt: async (request) => {
-      ran.push(request.nodeId);
-      return { status: "succeeded", output: outputs[request.nodeId] ?? `ran-${request.nodeId}`, usage: null, estimatedCostUsd: null };
+      ran.push(request.nodeName);
+      return {
+        status: "succeeded",
+        output: outputs[request.nodeName] ?? `ran-${request.nodeName}`,
+        usage: null,
+        estimatedCostUsd: null,
+      };
     },
   };
 }
@@ -59,7 +66,9 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  return { format: "path/workflow@0", name: "resumed", worker: { type: "llm", model: "m" }, body, ...(output ? { output } : {}) };
+  // stampNames keeps each node's human id in place (so resume matching by id still works) and mirrors
+  // it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
+  return stampNames({ format: "path/workflow@1", name: "resumed", worker: { type: "llm", model: "m" }, body, ...(output ? { output } : {}) });
 }
 
 function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
@@ -80,8 +89,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const observer = fakeObserver();
     const file = tree(
       [
-        { type: "prompt", id: "a", prompt: "hi", publish: { fromA: "${output}" } },
-        { type: "prompt", id: "b", prompt: "yo", publish: { fromB: "${output}" } },
+        { type: "prompt", id: "a", name: "a", prompt: "hi", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", name: "b", prompt: "yo", publish: { fromB: "${output}" } },
       ],
       { a: "${context.fromA}", b: "${context.fromB}" },
     );
@@ -91,9 +100,9 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
-          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", status: "failed" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
+          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
         ],
         readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
@@ -108,7 +117,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // Exactly one reuse-marker, for a, pointing at the original run; run_id is this successor's root run.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "a", originalRunId: "a-run" });
+    expect(m[0]).toMatchObject({ nodeId: "a", nodeName: "a", originalRunId: "a-run" });
 
     // No step-started/step-finished for the reused node; the executed one has both.
     expect(startedNodeIds(observer)).toEqual(["b"]);
@@ -121,22 +130,22 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const inputs: JsonValue[] = [];
     const worker: LlmWorker = {
       runPrompt: async (request) => {
-        ran.push(request.nodeId);
+        ran.push(request.nodeName);
         inputs.push(request.input);
         return { status: "succeeded", output: "FRESH_B", usage: null, estimatedCostUsd: null };
       },
     };
     const file = tree([
-      { type: "prompt", id: "a", prompt: "hi" },
-      { type: "prompt", id: "b", prompt: "yo" },
+      { type: "prompt", id: "a", name: "a", prompt: "hi" },
+      { type: "prompt", id: "b", name: "b", prompt: "yo" },
     ]);
 
     await runWorkflow(file, "/tmp", {
       llmWorker: worker,
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
         ],
         readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
@@ -151,8 +160,8 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const reads: string[] = [];
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
-    const nested = tree([{ type: "prompt", id: "inner", prompt: "deep" }], { r: "${output}" });
-    const file = tree([{ type: "workflow", id: "sub", ref: "./nested.workflow.json" }]);
+    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "deep" }], { r: "${output}" });
+    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -160,10 +169,10 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       llmWorker: recordingWorker({}, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "succeeded" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
           // A descendant inside the collapsed subtree: it must never be walked, so its blob is never read.
-          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", status: "succeeded" }),
+          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
         ],
         readBlob: reader({ "orig-root/context.json": {}, "sub-run/output.json": { r: "SUB" } }, reads),
       },
@@ -174,7 +183,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // One marker for the reuse decision, not one per descendant.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "sub", originalRunId: "sub-run" });
+    expect(m[0]).toMatchObject({ nodeId: "sub", nodeName: "sub", originalRunId: "sub-run" });
     // The descendant's blob was never touched — the subtree was never walked.
     expect(reads.some((key) => key.startsWith("inner-run/"))).toBe(false);
   });
@@ -185,10 +194,10 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
     const nested = tree([
-      { type: "prompt", id: "x", prompt: "hi", publish: { fromX: "${output}" } },
-      { type: "prompt", id: "y", prompt: "yo" },
+      { type: "prompt", id: "x", name: "x", prompt: "hi", publish: { fromX: "${output}" } },
+      { type: "prompt", id: "y", name: "y", prompt: "yo" },
     ]);
-    const file = tree([{ type: "workflow", id: "sub", ref: "./nested.workflow.json" }]);
+    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -196,11 +205,11 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       llmWorker: recordingWorker({ y: "FRESH_Y" }, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
           // sub failed originally, so it re-enters rather than reusing — its succeeded child x reuses.
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", status: "failed" }),
-          run({ runId: "x-run", parentRunId: "sub-run", nodeId: "x", status: "succeeded" }),
-          run({ runId: "y-run", parentRunId: "sub-run", nodeId: "y", status: "failed" }),
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "failed" }),
+          run({ runId: "x-run", parentRunId: "sub-run", nodeId: "x", nodeName: "x", status: "succeeded" }),
+          run({ runId: "y-run", parentRunId: "sub-run", nodeId: "y", nodeName: "y", status: "failed" }),
         ],
         readBlob: reader(
           {
@@ -225,7 +234,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered ancestor.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "x", originalRunId: "x-run", runId: subStarted!.runId });
+    expect(m[0]).toMatchObject({ nodeId: "x", nodeName: "x", originalRunId: "x-run", runId: subStarted!.runId });
 
     // The nested run's restored context was read from the original tree (restore-by-load) and lands
     // in the new tree. `restored` exists only in the original `context.json` — never in the workflow
@@ -243,7 +252,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
   it("re-runs a from-scratch tree normally when there is nothing to resume from", async () => {
     const ran: string[] = [];
     const observer = fakeObserver();
-    const file = tree([{ type: "prompt", id: "a", prompt: "hi" }]);
+    const file = tree([{ type: "prompt", id: "a", name: "a", prompt: "hi" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -284,8 +293,8 @@ describe("resume — the original tree is read-only (#172)", () => {
     const ran: string[] = [];
     const file = tree(
       [
-        { type: "prompt", id: "a", prompt: "hi", publish: { fromA: "${output}" } },
-        { type: "prompt", id: "b", prompt: "yo", publish: { fromB: "${output}" } },
+        { type: "prompt", id: "a", name: "a", prompt: "hi", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", name: "b", prompt: "yo", publish: { fromB: "${output}" } },
       ],
       { out: "${context.fromA}" },
     );
@@ -295,8 +304,8 @@ describe("resume — the original tree is read-only (#172)", () => {
       llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", status: "succeeded" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
         ],
         readBlob: (record, filename) => JSON.parse(readFileSync(join(runBlobDir(origDir, record.rootRunId, record.runId), filename), "utf8")) as JsonValue,
       },
@@ -322,11 +331,11 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     [
       {
         type: "parallel",
-        id: "race",
+        id: "race", name: "race",
         join: "wait-one",
         branches: [
-          { id: "fast", body: [{ type: "prompt", id: "f", prompt: "hi", publish: { answer: "${output}" } }] },
-          { id: "slow", body: [{ type: "prompt", id: "s", prompt: "yo", publish: { answer: "${output}" } }] },
+          { id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "hi", publish: { answer: "${output}" } }] },
+          { id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "yo", publish: { answer: "${output}" } }] },
         ],
       },
     ],
@@ -343,9 +352,9 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       llmWorker: recordingWorker({}, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", status: "succeeded" }),
-          run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", status: "cancelled" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", nodeName: "f", status: "succeeded" }),
+          run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", nodeName: "s", status: "cancelled" }),
         ],
         // Only the winner's blob exists; a read of the loser's would throw, proving it is never reused.
         readBlob: reader({ "orig-root/context.json": {}, "f-run/output.json": "REUSED_F" }, reads),
@@ -364,7 +373,7 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     expect(reads).not.toContain("s-run/output.json");
 
     // The join re-evaluated to a win naming the reused winner; no loser run means no run-cancelled.
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ nodeId: "race", winner: "fast" });
+    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ nodeId: "race", nodeName: "race", winner: "fast" });
     expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
   });
 
@@ -379,13 +388,13 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       [
         {
           type: "parallel",
-          id: "race",
+          id: "race", name: "race",
           join: "wait-one",
           branches: [
             // Declared first, but finished *later* (t2) — the loser of the photo-finish.
-            { id: "late", body: [{ type: "prompt", id: "l", prompt: "hi", publish: { answer: "${output}" } }] },
+            { id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "hi", publish: { answer: "${output}" } }] },
             // Declared second, finished *first* (t1) — the recorded winner.
-            { id: "early", body: [{ type: "prompt", id: "e", prompt: "yo", publish: { answer: "${output}" } }] },
+            { id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "yo", publish: { answer: "${output}" } }] },
           ],
         },
       ],
@@ -397,9 +406,9 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       llmWorker: recordingWorker({}, ran),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
-          run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", status: "succeeded", finishedAt: "2026-08-09T00:00:02.000Z" }),
-          run({ runId: "e-run", parentRunId: "orig-root", nodeId: "e", status: "succeeded", finishedAt: "2026-08-09T00:00:01.000Z" }),
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", nodeName: "l", status: "succeeded", finishedAt: "2026-08-09T00:00:02.000Z" }),
+          run({ runId: "e-run", parentRunId: "orig-root", nodeId: "e", nodeName: "e", status: "succeeded", finishedAt: "2026-08-09T00:00:01.000Z" }),
         ],
         readBlob: reader(
           { "orig-root/context.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
