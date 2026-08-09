@@ -22,7 +22,7 @@ this document wins. §12 maps every section back to its originating decision.
 - A headless workflow engine + CLI (`@path/engine`) and a format schema package (`@path/schema`),
   TypeScript on Node LTS, running on macOS.
 - Workflow file format v0 (JSON): three step types (`prompt`, `binary`, `workflow`), three control
-  blocks (`parallel` w/ `collect` join, `branch`, `while-do`), `checkpoint` assertions, one
+  blocks (`parallel` w/ `collect` or `wait-one` join, `branch`, `while-do`), `checkpoint` assertions, one
   structured condition language, `${}` interpolation, config inheritance, worker declarations.
 - One LLM worker: the Claude Agent SDK (pinned), with subscription-keychain and API-key auth.
 - Local persistence under `.path/` (SQLite + blob files), typed log events to db + NDJSON
@@ -131,7 +131,7 @@ Summary for orientation only — the format doc wins on any detail:
 - Single JSON file, `"format": "path/workflow@0"`, strict zod validation (unknown fields
   rejected), file-unique ids, one flat `type`-discriminated node union.
 - Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`), controls `parallel`
-  (`join: "collect"`) / `branch` / `while-do` (mandatory `max_iterations`) / `checkpoint`.
+  (`join: "collect" | "wait-one"`) / `branch` / `while-do` (mandatory `max_iterations`) / `checkpoint`.
 - `${dot.path}` interpolation with the whole-string typing rule, in allowlisted positions only;
   roots `config`/`context` (+ `output` in `publish` maps).
 - Uniform data flow: `input` builds the step's input object (absent = previous node's output);
@@ -160,8 +160,10 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   iterations is a normal exit. If the condition is still true after `max_iterations` completed
   iterations, the **run fails** — post-loop nodes may assume the condition resolved to false.
 - **Checkpoint** — condition true → continue; false → run stops as failed.
-- **Parallel** — structured concurrency: all branches complete before the block does (`collect`);
-  no detached runs.
+- **Parallel** — structured concurrency; no detached runs. The `join` decides completion: `collect`
+  waits for **all** branches; `wait-one` **races** them and keeps the first to succeed, cancelling
+  the rest (a failing branch is ignored and the race continues; all-fail fails the block). See
+  [wait-one-join.md](wait-one-join.md).
 
 ### 5.3 Context write timing
 
@@ -170,7 +172,9 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
 - Parallel flow: each branch executes against a **snapshot of context taken at block entry** —
   siblings never see each other's writes. Branch publishes buffer and land **at the join, applied
   in branch declaration order**. Publish keys are static strings, so duplicate keys across sibling
-  branches are rejected at **load time**; no runtime races exist.
+  branches are rejected at **load time** under `collect`; no runtime races exist. Under `wait-one`
+  the same-key ban is lifted — only the winner's publishes land, so two branches publishing one key
+  is deterministic ([wait-one-join.md](wait-one-join.md) §4.1).
 
 ### 5.4 Node output objects
 
@@ -182,6 +186,9 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   iterations.
 - **Parallel (collect)**: `{ "<branch-id>": <output object of that branch's last node> }` —
   deterministic regardless of completion order, dot-path addressable.
+- **Parallel (wait-one)**: `{ "winner": { "id": <winning-branch-id>, "output": <winner's last
+  node's output> } }` — a stable `winner` key, since the author cannot know which branch wins
+  ([wait-one-join.md](wait-one-join.md) §3).
 
 **Default-input chain** — the mirror rule to the outputs above. When a step omits `input`
 (format §6.1), the chain threads *through* blocks: the first node of any block slot — a branch
@@ -214,9 +221,11 @@ or loop-cap exhaustion fails the run. So does a **run-start config failure** —
 naming a variable that is not set (format doc §8.3) — which lands before the first step rather than
 at load: the run is started and recorded, then ends `failed` naming every unset variable at once.
 Operator config is a run input rather than a file, so half of what is checked has no load to fail
-at, and a client watching a run needs a run to watch. A failing parallel branch **cancels in-flight siblings
-best-effort** (processor killed); `cancelled` is a distinct run status from `failed`; no publishes
-from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
+at, and a client watching a run needs a run to watch. A failing `collect` parallel branch **cancels
+in-flight siblings best-effort** (processor killed, cause `sibling-failed`); a `wait-one` winner
+cancels its still-running losers the same way (cause `sibling-succeeded`, a losing *failure* cancels
+nothing — [wait-one-join.md](wait-one-join.md) §5). `cancelled` is a distinct run status from
+`failed`; no publishes from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.
 Automatic in-run retry stays out of scope (§1). Resume — an operator-initiated re-run of a stopped
 tree, cause-blind, reusing every recorded `succeeded` output — has shipped as `path run --resume`
@@ -351,8 +360,8 @@ events — workflow-as-step means they are just the workflow step's `step-starte
 | `checkpoint-passed` / `checkpoint-failed` | `trace` |
 | `iteration-started` | `iteration` (1-based), `trace` |
 | `loop-exited` | `reason` (`condition-false` / `max-iterations-exceeded`), `iterations`, final `trace` |
-| `join-applied` | `branches` (ids in apply order), `published_keys` |
-| `run-cancelled` | `cause` (`sibling-failed` / `operator`, §5.6), `cause_run_id` (the failing sibling; null for an operator cancel) |
+| `join-applied` | `branches` (ids in apply order), `published_keys`, `winner` (winning branch id, `wait-one` only) |
+| `run-cancelled` | `cause` (`sibling-failed` / `sibling-succeeded` / `operator`, §5.6), `cause_run_id` (the failing sibling; null for a `sibling-succeeded` or operator cancel) |
 
 **Trace** = the condition tree annotated per leaf with its dot-path, outcome
 (`true | false | error` + message — strict-semantics evaluation errors surface as `error` leaves,
