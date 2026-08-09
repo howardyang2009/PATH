@@ -1109,6 +1109,13 @@ interface BranchResult {
   buffer: { [key: string]: JsonValue };
 }
 
+// The winning branch of a `wait-one` race, with the output and buffered publishes only it lands (§3, §4).
+interface WaitOneWinner {
+  branch: ParallelBranch;
+  output: JsonValue;
+  buffer: { [key: string]: JsonValue };
+}
+
 // True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
 // i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
 // no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does
@@ -1125,6 +1132,45 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
   return sawRunProducing;
 }
 
+// A fully-reused branch's recorded completion time: the latest `finishedAt` among its reused runs,
+// since the branch reaches `succeeded` when its last node does. Null when no reused run carries a
+// finish time — the tie-break below then falls back to declaration order.
+function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
+  let completedAt: string | null = null;
+  for (const inner of walkNodes(branch.body)) {
+    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
+      const record = plan.get(inner.id);
+      const finishedAt = record?.finishedAt ?? null;
+      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;
+    }
+  }
+  return completedAt;
+}
+
+// The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). Usually exactly
+// one branch is a reused winner (the losers were `cancelled`, so absent from the plan), and it is
+// returned directly. Best-effort cancellation is asynchronous, though, so a photo-finish can leave
+// **two** branches recorded `succeeded`; the live run resolved that by `seq` (§6), the ordering truth
+// — which a `RunRecord` does not carry. Resume reproduces it from the recorded completion time (a
+// lower `seq` was emitted no later, so the branch that finished first is the recorded winner), and
+// declaration order breaks an exact timestamp collision — the case `seq` exists for but resume cannot
+// see. Picking the first-*declared* winner instead would land a different branch than the original
+// run's `join-applied` named, breaking resume determinism (ADR 0001).
+function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelBranch | undefined {
+  const winners = node.branches.filter((branch) => branchIsReusedWinner(branch, plan));
+  if (winners.length <= 1) return winners[0];
+  return [...winners].sort((a, b) => {
+    const ca = reusedBranchCompletion(a, plan);
+    const cb = reusedBranchCompletion(b, plan);
+    if (ca !== cb) {
+      if (ca === null) return 1;
+      if (cb === null) return -1;
+      return ca < cb ? -1 : 1;
+    }
+    return node.branches.indexOf(a) - node.branches.indexOf(b);
+  })[0];
+}
+
 // Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
 // lands (wait-one-join.md §4); the block output is the stable `{ winner: { id, output } }` shape so a
 // downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
@@ -1132,7 +1178,7 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
 async function landWaitOneWinner(
   run: RunContext,
   node: ParallelNode,
-  winner: { branch: ParallelBranch; output: JsonValue; buffer: { [key: string]: JsonValue } },
+  winner: WaitOneWinner,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   const { runId, rootRunId } = run.identity;
@@ -1179,7 +1225,7 @@ async function runParallelNode(
   // waste, and at-least-once it could re-fire their side effects. So the join re-evaluates: find the
   // reused winner and run *only* it, starting no loser at all.
   if (node.join === "wait-one" && run.resume) {
-    const reusedWinner = node.branches.find((branch) => branchIsReusedWinner(branch, run.resume!.plan));
+    const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
     if (reusedWinner) {
       const buffer: { [key: string]: JsonValue } = {};
       const outcome = await runSequence(run, reusedWinner.body, seedInput, {
@@ -1231,7 +1277,7 @@ async function runParallelNode(
   // The winner of a `wait-one` race: the first branch to complete `succeeded`. Because the event loop
   // serializes branch completions, the first callback to see `succeeded` here is the lowest-`seq` one
   // (§6), so no secondary tie-break is needed.
-  let winner: { branch: ParallelBranch; output: JsonValue; buffer: { [key: string]: JsonValue } } | null = null;
+  let winner: WaitOneWinner | null = null;
 
   const branchResults: BranchResult[] = await Promise.all(
     node.branches.map(async (branch) => {

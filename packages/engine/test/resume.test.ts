@@ -367,6 +367,57 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ nodeId: "race", winner: "fast" });
     expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
   });
+
+  it("reproduces the seq-first winner when a photo-finish left two branches succeeded, not declaration order", async () => {
+    // Best-effort cancellation is async, so a race can record *two* succeeded branches. The original
+    // run named the branch that finished first (lower seq, §6). Here that is the second-declared
+    // branch, so a declaration-order pick would crown the wrong one; resume must follow completion time.
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const file = tree(
+      [
+        {
+          type: "parallel",
+          id: "race",
+          join: "wait-one",
+          branches: [
+            // Declared first, but finished *later* (t2) — the loser of the photo-finish.
+            { id: "late", body: [{ type: "prompt", id: "l", prompt: "hi", publish: { answer: "${output}" } }] },
+            // Declared second, finished *first* (t1) — the recorded winner.
+            { id: "early", body: [{ type: "prompt", id: "e", prompt: "yo", publish: { answer: "${output}" } }] },
+          ],
+        },
+      ],
+      { answer: "${context.answer}" },
+    );
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      llmWorker: recordingWorker({}, ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, status: "failed" }),
+          run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", status: "succeeded", finishedAt: "2026-08-09T00:00:02.000Z" }),
+          run({ runId: "e-run", parentRunId: "orig-root", nodeId: "e", status: "succeeded", finishedAt: "2026-08-09T00:00:01.000Z" }),
+        ],
+        readBlob: reader(
+          { "orig-root/context.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
+          reads,
+        ),
+      },
+    });
+
+    expect(ran).toEqual([]);
+    expect(result.status).toBe("succeeded");
+    // The earlier-finishing (second-declared) branch is the winner, not the first-declared one.
+    expect(result.output).toEqual({ answer: "EARLY" });
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["e"]);
+    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ winner: "early" });
+    // The losing-but-succeeded branch was neither started nor reused.
+    expect(startedNodeIds(observer)).not.toContain("l");
+    expect(reads).not.toContain("l-run/output.json");
+  });
 });
 
 // A recursive content snapshot of a directory: relative path → bytes, for an unchanged-check.
