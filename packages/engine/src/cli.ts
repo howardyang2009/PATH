@@ -36,12 +36,17 @@ const consoleIo: CliIo = {
 };
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
+  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune";
 
 interface ParsedRunArgs {
   workflowPath: string;
+  // `-C <dir>`: the project directory whose `.path/` store this run reads and writes, relocating it
+  // away from the workflow file's own directory (#201). Store-only — the workflow file and the
+  // engine's nested-ref/binary-cwd resolution still key off the workflow path, never `<dir>`
+  // (ADR 0005). Undefined means the default: the workflow file's own directory.
+  storeDir?: string;
   resumeRootRunId?: string;
   configFile?: string;
   setPairs: [string, string][];
@@ -57,7 +62,23 @@ type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; er
 // loads a whole object, repeatable `--set key=value` overrides individual top-level keys —
 // both merge over the top-level file's config defaults, nearest wins (format doc §8).
 function parseRunArgs(argv: string[]): ParseResult {
-  const [workflowPath, ...rest] = argv;
+  // `-C <dir>` can appear anywhere — including ahead of the workflow positional — exactly as it can
+  // on `path runs` (extractDirFlag), so it is stripped before the positional is taken rather than
+  // pinned to one slot. Absent means the store defaults to the workflow file's own directory.
+  const positional: string[] = [];
+  let storeDir: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    if (argv[i] === "-C") {
+      const value = argv[i + 1];
+      if (!value) return { success: false, error: `-C requires a directory argument\n${RUN_USAGE}` };
+      storeDir = value;
+      i += 1;
+    } else {
+      positional.push(argv[i]!);
+    }
+  }
+
+  const [workflowPath, ...rest] = positional;
   if (!workflowPath) return { success: false, error: RUN_USAGE };
 
   let resumeRootRunId: string | undefined;
@@ -127,7 +148,7 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   return {
     success: true,
-    args: { workflowPath, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
+    args: { workflowPath, storeDir, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
   };
 }
 
@@ -312,11 +333,15 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 1;
   }
 
-  // The CLI's project directory *is* the workflow file's own directory — it runs one file, in
-  // place. The server, serving a whole project, must tell them apart (#59); `Project.run` takes
-  // both so neither caller can conflate them.
+  // The CLI's project directory defaults to the workflow file's own directory — it runs one file,
+  // in place. `-C <dir>` overrides *only* where the `.path/` store lives (#201, ADR 0005): the store
+  // is opened at `projectDir`, but `workflowDir` — what the engine resolves nested `workflow` refs
+  // and binary `cwd`s against — stays the workflow file's own directory. The server, serving a whole
+  // project, must tell the two apart (#59); `Project.run` takes both so neither caller can conflate
+  // them, and that same seam is what lets `-C` relocate the store without re-rooting the workflow.
   const workflowDir = dirname(tree.rootPath);
-  const opened = openProject(workflowDir);
+  const projectDir = parsed.args.storeDir ?? workflowDir;
+  const opened = openProject(projectDir);
   if (!opened.success) {
     io.error(opened.error);
     // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db

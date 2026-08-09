@@ -107,8 +107,18 @@ The invariants implementers must not break:
   does not gate resume on step type. Idempotency, or avoiding externally-visible effects, is the
   workflow author's obligation, not an engine guarantee
   ([resume-side-effect-contract.md](../research/resume-side-effect-contract.md)).
-- `path runs [--limit <n>] [--status <status>]` — list root runs, most recent first, showing each
-  run's status and which root run (if any) it resumed from.
+- `path run <workflow.json> -C <dir>` — direct the run at the `.path/` store under `<dir>` instead
+  of the default (the workflow file's own directory), so many workflows can pool their runs in one
+  central place. **Store-only**: `-C` relocates where runs are read and written and nothing else —
+  the `workflow.json` path, nested `workflow` refs, and binary `cwd`s all still resolve as they do
+  without `-C`, never re-rooted under `<dir>` (contrast `git -C`;
+  [ADR 0005](../adr/0005-path-run-dash-c-is-store-only.md)). The flag mirrors the `-C` `path runs`
+  already takes and may appear anywhere in the args. A root run carries no back-reference to its
+  source `workflow.json` yet, so a pooled store lists runs by id alone until that lands (#202).
+- `path runs [-C <dir>] [--limit <n>] [--status <status>]` — list root runs, most recent first,
+  showing each run's status and which root run (if any) it resumed from. `-C <dir>` reads the store
+  under `<dir>` (default: the working directory) — the read side of the same store the `run` `-C`
+  writes.
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
   **together** (§6).
 
