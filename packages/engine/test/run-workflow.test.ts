@@ -110,6 +110,53 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     ).toBe(true);
   });
 
+  it("acceptance: every wait-one branch fails — the block fails to a synthetic aggregate, no winner lands (#196)", async () => {
+    // Both arms exit non-zero. A failing wait-one branch cancels nothing (§2), so the race runs to
+    // exhaustion and, with no winner, the block fails to the aggregate — not a copy of either arm's error.
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@0",
+      name: "all-fail-wait-one",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "race",
+          join: "wait-one",
+          branches: [
+            { id: "arm-a", body: [{ type: "binary", id: "boom-a", command: "node", args: ["-e", "process.exit(7)"] }] },
+            { id: "arm-b", body: [{ type: "binary", id: "boom-b", command: "node", args: ["-e", "process.exit(9)"] }] },
+          ],
+        },
+      ],
+    };
+
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    // The block fails with the synthetic aggregate, distinct from either arm's exit-code error (§2).
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/all 2 wait-one branches failed/);
+    expect(result.error).not.toMatch(/\b7\b/);
+    expect(result.error).not.toMatch(/\b9\b/);
+
+    const all = observer.all();
+    // No winner, so no join lands (§8)...
+    expect(observer["join-applied"]).not.toHaveBeenCalled();
+    // ...and nothing was cancelled sibling-succeeded — each branch died on its own (§2).
+    expect(all.some((o) => o.type === "run-cancelled" && o.cause === "sibling-succeeded")).toBe(false);
+
+    // Each branch's own failure is still recorded on its own run row (nodeId lands on step-started,
+    // so map each arm's node to its run and assert that run's step-finished is `failed`).
+    const failedRunIds = new Set(
+      all.filter((o) => o.type === "step-finished" && o.status === "failed").map((o) => o.runId),
+    );
+    for (const nodeId of ["boom-a", "boom-b"]) {
+      const started = all.find((o) => o.type === "step-started" && o.nodeId === nodeId);
+      expect(started, `step-started for ${nodeId}`).toBeDefined();
+      expect(failedRunIds.has(started!.runId)).toBe(true);
+    }
+  });
+
   it("respects a step's own cwd override", async () => {
     const file: WorkflowFile = {
       format: "path/workflow@0",
