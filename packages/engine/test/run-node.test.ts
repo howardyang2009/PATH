@@ -71,6 +71,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
+      detached: [],
       ...overrides,
     },
   };

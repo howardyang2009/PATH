@@ -257,6 +257,15 @@ export interface RunContext {
   llm: LlmRuntime;
   /** This workflow-run's resume state (#172), when the run is being resumed; absent for a fresh run. */
   resume?: RunResume;
+  /**
+   * Detached `do-not-wait` branch runs launched under this workflow-run (do-not-wait-join.md §2): a
+   * `do-not-wait` block starts every branch and does *not* await it at the join, pushing its run here
+   * instead. The owning run drains these at its exit barrier (`settleDetached`, §1.1/§2) so the tree
+   * stays strictly nested and `path run` never leaves live work behind. Each promise resolves on the
+   * branch reaching a terminal status; a branch failure is isolated (§5), so the promise never rejects
+   * except on an audit (ObserverError) fault.
+   */
+  detached: Promise<void>[];
 }
 
 /**
@@ -331,7 +340,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
   const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
-  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm, resume };
+  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm, resume, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
     await emit({ type: "run-finished", runId, rootRunId, status: "failed", error });
     return { status: "failed", output: previousOutput, error };
@@ -355,6 +364,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // Each workflow-run converts its own hooks' ObserverError, so a nested run reports failed to
   // its parent and the failure travels up the run tree as an ordinary failed step.
   const failFromObserverError = async (err: ObserverError): Promise<RunResult> => {
+    // Honour the exit barrier even on an audit fault: no detached `do-not-wait` branch may outlive
+    // its owning run (do-not-wait-join.md §1.1). Best-effort — the audit is already compromised.
+    try {
+      await settleDetached(run);
+    } catch {
+      // a detached branch's own audit write may fault too; nothing more to salvage
+    }
     try {
       await emit({ type: "run-finished", runId, rootRunId, status: "failed", error: err.message });
     } catch {
@@ -425,6 +441,11 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         await emit({ type: "context-changed", runId, rootRunId, context });
       },
     });
+    // Enclosing-workflow-run barrier (do-not-wait-join.md §1.1/§2): drain every detached branch to a
+    // terminal status before this run reports finished, so the run tree stays strictly nested and
+    // `path run` never returns with live work behind it. Runs regardless of the main path's outcome —
+    // a `succeeded` run may still have had a `failed` detached branch in its subtree (§5).
+    await settleDetached(run);
     if (outcome.status === "failed") return fail(outcome.error);
     if (outcome.status === "cancelled") return cancel();
     previousOutput = outcome.output;
@@ -1235,6 +1256,53 @@ async function landWaitOneWinner(
   return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
 }
 
+// Drain the owning workflow-run's detached `do-not-wait` branches to terminal (do-not-wait-join.md
+// §2). A branch's own body may launch a further `do-not-wait` block against the *same* run while this
+// await is in flight, so the loop re-checks: it drains, and any branch pushed meanwhile is caught on
+// the next pass. Branch outcomes are already isolated (§5) — a failure fails nothing here — so the
+// drained promises are awaited only for completion, not for their result.
+async function settleDetached(run: RunContext): Promise<void> {
+  while (run.detached.length > 0) {
+    const pending = run.detached.splice(0);
+    await Promise.all(pending);
+  }
+}
+
+// Launch-and-continue (do-not-wait-join.md §2): start every branch and wait for none. Each branch runs
+// against its own context snapshot (§5.3) under the run's ambient signal, so an operator abort still
+// reaches it (§6), but the block does not consult its status — the branch run is pushed to the owning
+// workflow-run's `detached` list and awaited only at that run's exit barrier (§1.1). A branch may not
+// `publish` (load-rejected, §4), so its `onPublish` is a no-op and nothing lands. The block discharges
+// at once with the empty object (§3) and its successor runs immediately; `join-applied` fires here
+// carrying no `winner` and no landed keys (§9).
+async function launchDoNotWait(
+  run: RunContext,
+  node: ParallelNode,
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+): Promise<SeqOutcome> {
+  const { runId, rootRunId } = run.identity;
+  for (const branch of node.branches) {
+    const branchRun = runSequence(run, branch.body, seedInput, {
+      context: { ...exec.context },
+      signal: exec.signal,
+      cancellation: exec.cancellation,
+      onPublish: async () => {},
+    }).then(() => {});
+    run.detached.push(branchRun);
+  }
+  await run.emit({
+    type: "join-applied",
+    runId,
+    rootRunId,
+    nodeId: node.id,
+    nodeName: node.name,
+    branches: node.branches.map((branch) => branch.name),
+    publishedKeys: [],
+  });
+  return { status: "succeeded", output: {} };
+}
+
 /**
  * Runs a `parallel` block (mvp spec §5.2–5.4, §5.6). Every branch runs concurrently against its own
  * snapshot of context taken at block entry (siblings never see each other's writes), and its
@@ -1247,6 +1315,9 @@ async function landWaitOneWinner(
  *   losers are cancelled (`sibling-succeeded`); a branch that *fails* cancels nothing and the race
  *   continues; if every branch fails the block fails with a synthetic aggregate error. Only the
  *   winner's buffer lands and the output is `{ winner: { name, output } }` (wait-one-join.md §2–§5).
+ * - `do-not-wait` — launches every branch and awaits none at the join; the block discharges at once
+ *   with `{}` and the successor runs while the branches keep going, awaited only at the enclosing
+ *   run's exit barrier (`launchDoNotWait`, do-not-wait-join.md §2). No resume short-circuit (§7).
  */
 async function runParallelNode(
   run: RunContext,
@@ -1256,6 +1327,13 @@ async function runParallelNode(
 ): Promise<SeqOutcome> {
   const { emit, identity } = run;
   const { runId, rootRunId } = identity;
+
+  // Launch-and-continue is join-mode dispatch, not a race variant: it shares nothing with the
+  // block-local win/fail controller below, and resume is cause-blind for it (re-runs, no
+  // short-circuit — §7), so it branches off before any of that is built.
+  if (node.join === "do-not-wait") {
+    return launchDoNotWait(run, node, seedInput, exec);
+  }
 
   // Resume short-circuit (wait-one-join.md §7): replaying a decided race, the winner's steps reuse as
   // `succeeded` while the losers were `cancelled`. Cause-blind resume would re-run the losers — pure
