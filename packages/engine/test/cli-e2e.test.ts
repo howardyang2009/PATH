@@ -6,7 +6,16 @@ import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
 import { stampGuids } from "./stamp-names.js";
-import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Every test here spawns one or more *cold* `npx tsx` subprocesses (see `runCli`), and some spawn
+// three (two `run`s + a `prune`/`rm`). On a loaded CI runner that cold start alone can exceed the
+// default 5s vitest `testTimeout`, tripping unrelated PRs (#220). A timeout here is not a harmless
+// slow test either: vitest rejects the test promise but does not kill the child, so a lingering
+// `runs prune` can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir`
+// block — which is how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case.
+// 30s gives real headroom over cold start; these are the slowest, most I/O-bound tests in the repo.
+vi.setConfig({ testTimeout: 30_000 });
 
 const execFileAsync = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
