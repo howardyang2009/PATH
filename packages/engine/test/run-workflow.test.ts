@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
 import { DEFAULT_LLM_CONCURRENCY } from "../src/llm/processor-semaphore.js";
 import { fakeObserver, type FakeObserver } from "./fake-observer.js";
-import type { RunObserver } from "../src/run-observer.js";
+import type { Observation, RunObserver } from "../src/run-observer.js";
 import { runWorkflow } from "../src/run-workflow.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
 
@@ -320,6 +320,193 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     // there is no winner (that field is wait-one-only).
     expect(join).toMatchObject({ nodeName: "fire", branches: ["notify"], publishedKeys: [] });
     expect(join).not.toHaveProperty("winner");
+  });
+});
+
+describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)", () => {
+  // Map a node name to the run row the engine minted for it, via `step-started`.
+  const runIdOf = (all: Observation[], nodeName: string) =>
+    all.find((o) => o.type === "step-started" && o.nodeName === nodeName)!.runId;
+  const finishedOf = (all: Observation[], nodeName: string) =>
+    all.find((o) => o.type === "step-finished" && o.runId === runIdOf(all, nodeName))!;
+
+  it("acceptance: a failed detached branch does not fail the run — the row is `failed`, the run ends `succeeded`", async () => {
+    // The demoable case (§5, ADR 0008): a detached branch exits non-zero while the main path
+    // succeeds. The block discharged at the join, so the run ends on its main path alone — `succeeded`
+    // — with the branch's `failed` recorded on its own run row and narrated by its own `step-finished`.
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "fire-and-fail",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "doomed", name: "doomed",
+              body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(7)"] }],
+            },
+          ],
+        },
+        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
+      ],
+    }));
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    // A run may end `succeeded` with a `failed` do-not-wait descendant in its subtree.
+    expect(result.status).toBe("succeeded");
+
+    const all = observer.all();
+    // The failure is auditable, not hidden: the branch's own run row ends `failed`.
+    expect(finishedOf(all, "boom")).toMatchObject({ status: "failed" });
+    // Isolation is about propagation, not cancellation — the failure cancelled nothing.
+    expect(all.some((o) => o.type === "run-cancelled")).toBe(false);
+    // And the root run itself ended `succeeded`.
+    const rootFinished = all.find((o) => o.type === "run-finished" && o.runId === o.rootRunId)!;
+    expect(rootFinished).toMatchObject({ status: "succeeded" });
+  });
+
+  it("a detached branch failure cancels neither its siblings nor the main path (§5, §6)", async () => {
+    // Two detached siblings: one exits non-zero at once, the other sleeps then succeeds. A `collect`
+    // failure would cross-cancel the in-flight sibling (`sibling-failed`); do-not-wait cancels nothing.
+    // The surviving sibling runs to `succeeded` and the main path is untouched.
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "fail-one-keep-other",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "doomed", name: "doomed",
+              body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(7)"] }],
+            },
+            {
+              id: "survivor", name: "survivor",
+              body: [{ type: "binary", id: "slow-ok", name: "slow-ok", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('ok'),80)"] }],
+            },
+          ],
+        },
+        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
+      ],
+    }));
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    expect(result.status).toBe("succeeded");
+
+    const all = observer.all();
+    // The failing branch is `failed`; the in-flight sibling survived to `succeeded`, not cancelled.
+    expect(finishedOf(all, "boom")).toMatchObject({ status: "failed" });
+    expect(finishedOf(all, "slow-ok")).toMatchObject({ status: "succeeded" });
+    expect(finishedOf(all, "after")).toMatchObject({ status: "succeeded" });
+    // Nothing was cancelled at all — no cross-cancel path exists for do-not-wait.
+    expect(all.some((o) => o.type === "run-cancelled")).toBe(false);
+  });
+
+  it("adds no new run-cancelled cause; an operator root-cancel reaches an in-flight detached branch under `operator` (§6)", async () => {
+    // A detached branch and the main path both sleep long enough to still be live when the operator
+    // aborts the root. do-not-wait adds no sibling-driven cancel path, so the only abort that reaches
+    // the branch is the existing operator one, and it lands under the existing cause `operator`.
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "operator-cancels-detached",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "detached", name: "detached",
+              body: [{ type: "binary", id: "detached-work", name: "detached-work", command: "node", args: ["-e", "setTimeout(()=>{},5000)"] }],
+            },
+          ],
+        },
+        { type: "binary", id: "main-work", name: "main-work", command: "node", args: ["-e", "setTimeout(()=>{},5000)"] },
+      ],
+    }));
+
+    const observer = fakeObserver();
+    const controller = new AbortController();
+    const pending = runWorkflow(file, fixturesDir, { observer, signal: controller.signal });
+    // Let both the branch and the main path get in flight, then abort the root.
+    await new Promise((r) => setTimeout(r, 120));
+    controller.abort();
+    await pending;
+
+    const all = observer.all();
+    // The operator abort reached the detached branch's leaf, under the pre-existing cause `operator`.
+    const branchCancel = all.find(
+      (o) => o.type === "run-cancelled" && o.nodeName === "detached-work",
+    );
+    expect(branchCancel).toMatchObject({ cause: "operator", causeRunId: null });
+    // No new cancel cause: every cancellation on this path is `operator` — do-not-wait added no
+    // sibling-driven path, so nothing here reads `sibling-failed`, `sibling-succeeded`, or anything else.
+    const causes = all.filter((o) => o.type === "run-cancelled").map((o) => (o as Extract<Observation, { type: "run-cancelled" }>).cause);
+    expect(causes.length).toBeGreaterThan(0);
+    expect(causes.every((c) => c === "operator")).toBe(true);
+  });
+
+  it("sums a failed detached branch's token usage into the roll-up, final before the run returns (§8)", async () => {
+    // The roll-up is status-blind: a detached branch that burned tokens and then `failed` still spent
+    // them. The enclosing-run barrier holds the run open until the branch is terminal, so its
+    // `step-usage` is emitted before the run finishes — the spend is final at roll-up time.
+    const worker: LlmWorker = {
+      async runPrompt() {
+        await new Promise((r) => setTimeout(r, 60));
+        return { status: "failed", error: "sink rejected", usage: { input_tokens: 11, output_tokens: 7 }, estimatedCostUsd: 0.002 };
+      },
+    };
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "detached-spend-counts",
+      worker: { type: "llm", model: "claude-sonnet-5" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "telemetry", name: "telemetry",
+              body: [{ type: "prompt", id: "emit", name: "emit", prompt: "Emit to the slow sink." }],
+            },
+          ],
+        },
+        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
+      ],
+    }));
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer, llmWorker: worker });
+
+    expect(result.status).toBe("succeeded");
+
+    const all = observer.all();
+    // The failed branch's spend is present on its own leaf run — status-blind accounting.
+    const usageIdx = all.findIndex(
+      (o) => o.type === "step-usage" && o.runId === runIdOf(all, "emit"),
+    );
+    expect(usageIdx).toBeGreaterThanOrEqual(0);
+    expect((all[usageIdx] as Extract<Observation, { type: "step-usage" }>).usage).toEqual({ input_tokens: 11, output_tokens: 7 });
+    expect(finishedOf(all, "emit")).toMatchObject({ status: "failed" });
+    // The barrier guarantees the spend landed before the run returned: usage precedes run-finished.
+    const rootFinishedIdx = all.findIndex((o) => o.type === "run-finished" && o.runId === o.rootRunId);
+    expect(usageIdx).toBeLessThan(rootFinishedIdx);
   });
 });
 
