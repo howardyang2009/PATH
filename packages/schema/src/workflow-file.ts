@@ -102,6 +102,42 @@ function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | num
   return collisions;
 }
 
+interface DoNotWaitPublish {
+  key: string;
+  path: (string | number)[];
+}
+
+// A `do-not-wait` branch is fire-and-forget: it runs past the join and lands after its would-be
+// readers, so a `publish` from it is a nondeterministic write-after-read into shared context. It is a
+// load error, not a silent runtime drop (do-not-wait-join.md §4). This is a separate check from
+// `findDuplicatePublishKeys`, whose join-aware racing-branch collision logic is unchanged. `insideDoNotWait`
+// latches on once a `do-not-wait` block is entered, so a publish anywhere below it — including one nested
+// in a `collect`/`while-do`/`branch` inside the detached branch — is caught (§4 "anywhere inside").
+function findDoNotWaitPublishes(
+  nodes: WorkflowNode[],
+  basePath: (string | number)[],
+  insideDoNotWait: boolean,
+): DoNotWaitPublish[] {
+  const violations: DoNotWaitPublish[] = [];
+
+  nodes.forEach((node, index) => {
+    const nodePath = [...basePath, index];
+
+    if (insideDoNotWait && (node.type === "prompt" || node.type === "binary" || node.type === "workflow") && node.publish) {
+      for (const key of Object.keys(node.publish)) {
+        violations.push({ key, path: [...nodePath, "publish", key] });
+      }
+    }
+
+    const detached = insideDoNotWait || (node.type === "parallel" && node.join === "do-not-wait");
+    for (const child of childBodies(node)) {
+      violations.push(...findDoNotWaitPublishes(child.nodes, [...nodePath, ...child.path], detached));
+    }
+  });
+
+  return violations;
+}
+
 export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchema.superRefine((file, ctx) => {
   const occurrences = collectNames(file.body, ["body"]);
   const byName = new Map<string, NameOccurrence[]>();
@@ -127,6 +163,14 @@ export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchem
       code: z.ZodIssueCode.custom,
       path: collision.path,
       message: `duplicate publish key "${collision.key}": sibling parallel branches must not publish the same context key`,
+    });
+  }
+
+  for (const violation of findDoNotWaitPublishes(file.body, ["body"], false)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: violation.path,
+      message: `publish "${violation.key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
     });
   }
 });
