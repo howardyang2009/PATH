@@ -174,10 +174,16 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   iterations is a normal exit. If the condition is still true after `max_iterations` completed
   iterations, the **run fails** — post-loop nodes may assume the condition resolved to false.
 - **Checkpoint** — condition true → continue; false → run stops as failed.
-- **Parallel** — structured concurrency; no detached runs. The `join` decides completion: `collect`
-  waits for **all** branches; `wait-one` **races** them and keeps the first to succeed, cancelling
-  the rest (a failing branch is ignored and the race continues; all-fail fails the block). See
-  [wait-one-join.md](wait-one-join.md).
+- **Parallel** — structured concurrency; the run tree stays **strictly nested** (every workflow-run
+  contains its descendants). The `join` decides completion: `collect` waits for **all** branches;
+  `wait-one` **races** them and keeps the first to succeed, cancelling the rest (a failing branch is
+  ignored and the race continues; all-fail fails the block —
+  [wait-one-join.md](wait-one-join.md)); `do-not-wait` **launches every branch and waits for none at
+  the join** — the block completes at once with output `{}` and the successor runs while the branches
+  keep going. "No detached runs" holds with one **narrow** redraw for `do-not-wait`: a branch is
+  detached from its *block*, not from the tree — it is awaited at the boundary of the
+  **workflow-run that owns the block** (the enclosing-run barrier), so no run outlives the process
+  and the strict nesting above is preserved. See [do-not-wait-join.md](do-not-wait-join.md) §1.1/§2.
 
 ### 5.3 Context write timing
 
@@ -188,7 +194,10 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   in branch declaration order**. Publish keys are static strings, so duplicate keys across sibling
   branches are rejected at **load time** under `collect`; no runtime races exist. Under `wait-one`
   the same-key ban is lifted — only the winner's publishes land, so two branches publishing one key
-  is deterministic ([wait-one-join.md](wait-one-join.md) §4.1).
+  is deterministic ([wait-one-join.md](wait-one-join.md) §4.1). Under `do-not-wait` a branch **may
+  not `publish` at all**: it lands after its would-be readers, so a write would be a nondeterministic
+  write-after-read — `publish` inside a `do-not-wait` branch is a **load error**
+  ([do-not-wait-join.md](do-not-wait-join.md) §4).
 
 ### 5.4 Node output objects
 
@@ -203,6 +212,10 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
 - **Parallel (wait-one)**: `{ "winner": { "name": <winning-branch-name>, "output": <winner's last
   node's output> } }` — a stable `winner` key, since the author cannot know which branch wins
   ([wait-one-join.md](wait-one-join.md) §3).
+- **Parallel (do-not-wait)**: the **empty object** `{}` — every branch is detached, none is waited on,
+  and none may publish (§5.3), so there is nothing to hand downstream. A downstream `input ←` ref into
+  the block's output resolves against `{}` and finds nothing, which is correct: a fire-and-forget block
+  produces no readable result ([do-not-wait-join.md](do-not-wait-join.md) §3).
 
 **Default-input chain** — the mirror rule to the outputs above. When a step omits `input`
 (format §6.1), the chain threads *through* blocks: the first node of any block slot — a branch
@@ -238,7 +251,18 @@ Operator config is a run input rather than a file, so half of what is checked ha
 at, and a client watching a run needs a run to watch. A failing `collect` parallel branch **cancels
 in-flight siblings best-effort** (processor killed, cause `sibling-failed`); a `wait-one` winner
 cancels its still-running losers the same way (cause `sibling-succeeded`, a losing *failure* cancels
-nothing — [wait-one-join.md](wait-one-join.md) §5). `cancelled` is a distinct run status from
+nothing — [wait-one-join.md](wait-one-join.md) §5). A `do-not-wait` branch is the third case, and it
+**cross-cancels nothing**: a failed detached branch cancels neither its siblings nor the main path
+(which has already moved on), and its failure **does not fail its tree** — the branch's `failed` is
+recorded on its own run row and there stops, so a workflow-run may end `succeeded` with a `failed`
+detached branch in its subtree. This deliberately breaks the fail-fast invariant that a failed
+descendant fails its ancestor, confined to `do-not-wait` and captured as
+[ADR 0008](../adr/0008-do-not-wait-detached-failure-does-not-fail-tree.md); isolation means the
+failure does not *propagate*, not that it is hidden — it stays fully auditable
+([do-not-wait-join.md](do-not-wait-join.md) §5). The cancel **cause union is unchanged** —
+`operator` | `sibling-failed` | `sibling-succeeded` — because `do-not-wait` adds no sibling-driven
+cancel path (the barrier *waits* rather than cancels), so it introduces no new cause
+([do-not-wait-join.md](do-not-wait-join.md) §6). `cancelled` is a distinct run status from
 `failed`; no publishes from cancelled or failed branches land. Rejected for MVP: drain-then-fail, tolerate-failures
 (allSettled), per-branch on-failure policy — the latter two would be additive format changes.
 Automatic in-run retry stays out of scope (§1). Resume — an operator-initiated re-run of a stopped
@@ -258,7 +282,8 @@ scope, since it would need an answer to "does the parent continue?" that collide
 There is no intermediate `cancelling` status — the unwind window is client-local UI state. A signal
 already aborted when the run is launched cancels it before its first step. Cancellation is
 **best-effort** in both causes: the engine asks, and holds no kill deadline and no force path.
-`run-cancelled` names which cause killed a run (`operator` | `sibling-failed`, §8.1). What a stop
+`run-cancelled` names which cause killed a run (`operator` | `sibling-failed` | `sibling-succeeded`,
+§8.1). What a stop
 owes is truth about where the run got to, not the ability to resume it — and that truthfulness is
 now the precondition resume's reuse mechanism depends on
 ([resume-door-verdict.md §4.2](../research/resume-door-verdict.md)): a resumed run trusts a
@@ -291,7 +316,13 @@ three are **root-only**: null on every nested row, whose producing node is alrea
 `node_id`/`node_name`. Usage and cost
 are recorded **leaf-only** — on the prompt-step runs where tokens were actually spent; no row
 stores derived totals. Subtree/whole-run figures are a read-time SUM over descendants (the CLI
-may display them), so ground truth exists exactly once and nothing can drift. Control-node
+may display them), so ground truth exists exactly once and nothing can drift. The SUM is
+**status-blind**: a `do-not-wait` detached branch is an ordinary tree member for cost, so its spend
+counts toward the root figure **regardless of the branch's status** — a `failed` detached branch
+still burned the tokens it burned, and the roll-up records real spend, not successful spend. The
+enclosing-run barrier (§5.2) guarantees every detached branch is terminal before its owning run
+exits, so all detached spend is **final at roll-up time**
+([do-not-wait-join.md](do-not-wait-join.md) §8). Control-node
 activity is recorded as typed log events (§8), attributed to the enclosing workflow-step's run.
 
 **Amendment for a successor run** (resume, §1, §5.6): a reused node's usage/`estimated_cost_usd`
@@ -494,7 +525,7 @@ Decided-by-omission: implementers may choose freely, provided the semantics abov
 
 | Deferred | Where the door is |
 |---|---|
-| `wait-one` / `do-not-wait` joins | `join` field stays in the format (`collect` only in v0) |
+| ~~`wait-one` / `do-not-wait` joins~~ | **Both shipped** — the `join` field now carries all three values. `wait-one` ([wait-one-join.md](wait-one-join.md)) and `do-not-wait` ([do-not-wait-join.md](do-not-wait-join.md), §5.2/§5.4/§5.6/§5.7 above) each graduated from a held-open door to built behavior (register #109) |
 | API-endpoint step type | curl via `binary` today; a real HTTP workflow (#129) did **not** promote it — `--config -` answers argv and needs no shell; the open cost is status-and-body. Trigger in #109 |
 | MCP/skill step types | live as LLM-worker `options`; revisit only for engine-direct calls |
 | Function-in-binary step | v-next shape: in-process JS-module call, not FFI |

@@ -25,4 +25,12 @@ describe("real acceptance workflow files validate clean", () => {
     }
     expect(result.success).toBe(true);
   });
+
+  it("validates do-not-wait-probe.workflow.json", () => {
+    const result = safeParseWorkflowFile(loadJson("do-not-wait-probe.workflow.json"));
+    if (!result.success) {
+      throw new Error(`do-not-wait-probe.workflow.json failed to validate:\n${result.errors.join("\n")}`);
+    }
+    expect(result.success).toBe(true);
+  });
 });
