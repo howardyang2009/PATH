@@ -44,7 +44,7 @@ export interface ParallelNode {
   type: "parallel";
   id: string;
   name: string;
-  join: "collect" | "wait-one";
+  join: "collect" | "wait-one" | "do-not-wait";
   branches: ParallelBranch[];
 }
 

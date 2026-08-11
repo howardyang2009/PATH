@@ -69,8 +69,9 @@ const ParallelNodeSchema = z
     id: IdSchema,
     name: NameSchema,
     // `collect` waits for every branch and lands them all; `wait-one` races and keeps the first to
-    // succeed, cancelling the rest (docs/spec/wait-one-join.md §2).
-    join: z.enum(["collect", "wait-one"]),
+    // succeed, cancelling the rest (docs/spec/wait-one-join.md §2); `do-not-wait` launches every
+    // branch and does not wait for any at the join (docs/spec/do-not-wait-join.md §2).
+    join: z.enum(["collect", "wait-one", "do-not-wait"]),
     branches: z.array(ParallelBranchSchema).min(1),
   })
   .strict();

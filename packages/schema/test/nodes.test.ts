@@ -158,7 +158,31 @@ describe("parallel node", () => {
     ).toBe(true);
   });
 
-  it("rejects a join value that is neither collect nor wait-one", () => {
+  it("validates a parallel block with the do-not-wait join", () => {
+    const result = NodeSchema.safeParse({
+      type: "parallel",
+      id: "11111111-1111-4111-8111-111111111111", name: "fire",
+      join: "do-not-wait",
+      branches: [
+        { id: "11111111-1111-4111-8111-111111111111", name: "notify", body: [{ type: "prompt", id: "11111111-1111-4111-8111-111111111111", name: "a", prompt: "hi" }] },
+        { id: "11111111-1111-4111-8111-111111111111", name: "telemetry", body: [{ type: "prompt", id: "11111111-1111-4111-8111-111111111111", name: "b", prompt: "hi" }] },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a single-branch do-not-wait block (branches.min(1), no special case)", () => {
+    expect(
+      NodeSchema.safeParse({
+        type: "parallel",
+        id: "11111111-1111-4111-8111-111111111111", name: "fire",
+        join: "do-not-wait",
+        branches: [{ id: "11111111-1111-4111-8111-111111111111", name: "only", body: [{ type: "prompt", id: "11111111-1111-4111-8111-111111111111", name: "x", prompt: "hi" }] }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("rejects a join value that is none of collect, wait-one, or do-not-wait", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",

@@ -332,6 +332,118 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
   });
 });
 
+describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
+  it("accepts a do-not-wait block whose branches do not publish", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "fire",
+          join: "do-not-wait",
+          branches: [
+            { id: UUID, name: "notify", body: [{ type: "binary", id: UUID, name: "x", command: "echo" }] },
+            { id: UUID, name: "telemetry", body: [{ type: "binary", id: UUID, name: "y", command: "echo" }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a single-branch do-not-wait block (no special case)", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "fire",
+          join: "do-not-wait",
+          branches: [{ id: UUID, name: "only", body: [{ type: "binary", id: UUID, name: "x", command: "echo" }] }],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects a publish directly inside a do-not-wait branch", () => {
+    const result = safeParseWorkflowFile({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "fire",
+          join: "do-not-wait",
+          branches: [
+            { id: UUID, name: "notify", body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }] },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors.join("\n")).toMatch(/do-not-wait/);
+    }
+  });
+
+  it("rejects a publish nested deeper (inside a while-do) within a do-not-wait branch", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: UUID,
+              name: "notify",
+              body: [
+                {
+                  type: "while-do",
+                  id: UUID,
+                  name: "loop",
+                  condition: { type: "exists", path: "context.x" },
+                  max_iterations: 2,
+                  body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }],
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("still allows publishes in collect and wait-one blocks (the reject is do-not-wait-only)", () => {
+    const result = WorkflowFileSchema.safeParse({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "collected",
+          join: "collect",
+          branches: [{ id: UUID, name: "a", body: [{ type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } }] }],
+        },
+        {
+          type: "parallel",
+          id: UUID,
+          name: "raced",
+          join: "wait-one",
+          branches: [{ id: UUID, name: "b", body: [{ type: "binary", id: UUID, name: "y", command: "echo", publish: { answer: "${output}" } }] }],
+        },
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("safeParseWorkflowFile — actionable errors", () => {
   it("reports a readable error for an unknown field", () => {
     const result = safeParseWorkflowFile({ ...minimal, bogus: true });
