@@ -223,6 +223,106 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
   });
 });
 
+describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => {
+  it("acceptance: launches a branch, discharges {} to the successor at once, and waits for the branch at the exit barrier", async () => {
+    // One detached branch that takes 80ms, then an instant successor. Launch-and-continue means the
+    // successor runs against the block's `{}` output without waiting for the branch; the enclosing-run
+    // barrier means the run does not finish until the branch is terminal (do-not-wait-join.md §2/§1.1).
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "fire-and-continue",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "notify", name: "notify",
+              body: [
+                {
+                  type: "binary",
+                  id: "slow-notify", name: "slow-notify",
+                  command: "node",
+                  args: ["-e", "setTimeout(()=>process.stdout.write('SENT'),80)"],
+                },
+              ],
+            },
+          ],
+        },
+        // The successor's default input is the block's output; it echoes its stdin, so its stdout is
+        // exactly what the block handed downstream — `{}` serialized.
+        {
+          type: "binary",
+          id: "after", name: "after",
+          command: "node",
+          args: ["-e", echoStdinScript()],
+          publish: { seen: "${output}" },
+        },
+      ],
+      output: { seen: "${context.seen}" },
+    }));
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer });
+
+    // The block discharged the empty object; the successor saw `{}` on stdin (§2, §3).
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seen: "{}" });
+
+    const all = observer.all();
+    const runIdOf = (nodeName: string) =>
+      all.find((o) => o.type === "step-started" && o.nodeName === nodeName)!.runId;
+    const finishedOf = (nodeName: string) =>
+      all.find((o) => o.type === "step-finished" && o.runId === runIdOf(nodeName))!;
+    const finishedIndexOf = (nodeName: string) =>
+      all.findIndex((o) => o.type === "step-finished" && o.runId === runIdOf(nodeName));
+
+    // Launch-and-continue: the successor finished before the 80ms branch, so it did not wait on it.
+    expect(finishedIndexOf("after")).toBeLessThan(finishedIndexOf("slow-notify"));
+
+    // Barrier: the detached branch reached `succeeded`, and it did so before the root run finished —
+    // the run never returned with the branch still live.
+    expect(finishedOf("slow-notify")).toMatchObject({ status: "succeeded" });
+    const rootFinishedIndex = all.findIndex((o) => o.type === "run-finished" && o.runId === o.rootRunId);
+    expect(finishedIndexOf("slow-notify")).toBeLessThan(rootFinishedIndex);
+  });
+
+  it("emits join-applied at the do-not-wait join with no winner and no landed keys (§9)", async () => {
+    const file = parseWorkflowFile(stampGuids({
+      format: "path/workflow@1",
+      id: "wf-id",
+      name: "fire-once",
+      worker: { type: "engine" },
+      body: [
+        {
+          type: "parallel",
+          id: "fire", name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              id: "notify", name: "notify",
+              body: [{ type: "binary", id: "ping", name: "ping", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
+            },
+          ],
+        },
+      ],
+    }));
+
+    const observer = fakeObserver();
+    const result = await runWorkflow(file, fixturesDir, { observer });
+    expect(result.status).toBe("succeeded");
+
+    const join = observer.all().find((o) => o.type === "join-applied");
+    // The join marks only that the block resolved: the launched branch is named, nothing landed, and
+    // there is no winner (that field is wait-one-only).
+    expect(join).toMatchObject({ nodeName: "fire", branches: ["notify"], publishedKeys: [] });
+    expect(join).not.toHaveProperty("winner");
+  });
+});
+
 describe("runWorkflow — config interpolation and inheritance (ticket #17)", () => {
   function configEchoFile(stepConfig?: ConfigObject): WorkflowFile {
     return {
