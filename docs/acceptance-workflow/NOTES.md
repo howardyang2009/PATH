@@ -42,8 +42,15 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 | Worker inheritance + override | workflow default = LLM (agent-sdk); binary steps override to local engine |
 | Agent SDK worker, parallel fan-out | two concurrent LLM sessions in the parallel block (within the default cap of 4) |
 
-Deliberately absent (deferred by earlier decisions): wait-one / do-not-wait joins, API/MCP/skill
-step types, config paths in conditions, templates/inheritance mechanics.
+Deliberately absent from *this* pipeline: wait-one join, API/MCP/skill step types, config paths in
+conditions, templates/inheritance mechanics. The **`do-not-wait` join** is no longer among them: it
+shipped (register #109, spec [do-not-wait-join.md](../spec/do-not-wait-join.md)) and has its own
+**synthetic** acceptance case — a block that fires a fire-and-forget side-effect branch and moves on
+— in [do-not-wait-probe.workflow.json](./do-not-wait-probe.workflow.json), driven by
+`packages/engine/test/acceptance/do-not-wait.test.ts` and documented in
+[do-not-wait-probe.NOTES.md](./do-not-wait-probe.NOTES.md). It is synthetic because no motivating
+workflow exists yet (spec §1), the same way this file marks `valid-json` absent-not-deferred below;
+the release-notes pipeline has no honest home for a detached branch.
 
 Also absent, and not deferred — **`valid-json`**. The map claimed it until #26's acceptance run
 went looking for the node that exercised it and found none. It has no honest home in this

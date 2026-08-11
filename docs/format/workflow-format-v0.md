@@ -114,14 +114,16 @@ Config crosses the boundary (§8); **worker does not** — every file declares i
 Every slot a block owns holds a **body** (non-empty node array) — one nesting rule everywhere; a
 multi-step branch never forces a nested file.
 
-**`parallel`** — `join` is `"collect"` or `"wait-one"` (`do-not-wait` stays deferred, see
-[wait-one-join.md](../spec/wait-one-join.md) §10). `branches` is a non-empty array of
-`{ "id", "name", "body" }` (GUID + human name, §3); the `name` labels the branch for logs and gives
-`collect` a stable output key — `collect` outputs `{ "<branch-name>": <output> }`.
+**`parallel`** — `join` is `"collect"`, `"wait-one"`, or `"do-not-wait"`. `branches` is a non-empty
+array of `{ "id", "name", "body" }` (GUID + human name, §3); the `name` labels the branch for logs
+and gives `collect` a stable output key — `collect` outputs `{ "<branch-name>": <output> }`.
 `wait-one` **races** the branches and keeps the first to succeed, cancelling the rest; only the
 winner's publishes land, so two branches publishing one context key is allowed there (§4.1) where
 `collect` rejects it. Its output is the stable `{ "winner": { "name", "output" } }` shape (§3), the
-winner named by its human `name`; the join semantics are #11's.
+winner named by its human `name`. `do-not-wait` **launches every branch and waits for none at the
+join**: the block completes at once with output `{}`, and a branch **may not `publish`** (rejected at
+load, §10). See [wait-one-join.md](../spec/wait-one-join.md) and
+[do-not-wait-join.md](../spec/do-not-wait-join.md); the join execution semantics are #11's.
 
 **`branch`** — `arms` is a non-empty array of `{ "when": <condition>, "body" }`, plus an optional
 top-level `else` body. Arm ordering/matching semantics and whether `else` is mandatory are #11's.
@@ -316,6 +318,11 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
   execution semantics: publish keys are static, so the race is detectable — and rejected — at load).
   A `wait-one` block is exempt: only the winner's publishes land, so the same key across branches is
   deterministic ([wait-one-join.md](../spec/wait-one-join.md) §4.1)
+- **any `publish` inside a `do-not-wait` branch** — a detached branch lands after its would-be
+  readers, so a `publish` from it is a nondeterministic write-after-read; it is a load error, not a
+  silent runtime drop, and it is caught **anywhere** below the block, including one nested in a
+  `collect`/`while-do`/`branch` inside the detached branch
+  ([do-not-wait-join.md](../spec/do-not-wait-join.md) §4)
 - malformed `${}` syntax in interpolable positions, and `${}` roots other than the allowed ones
 - malformed config wrappers, and sole `$`-prefixed config keys that name no known wrapper (§8.3)
 
@@ -332,9 +339,9 @@ first step (§8.3) — operator config, which can carry wrappers too, has no loa
 - **Templates / step reuse**: nothing in v0 — nested workflow files (structural reuse) and config
   inheritance (value reuse) are the v0 reuse story. `extends`/template mechanics would be additive
   post-MVP; strict unknown-field rejection plus the `@`-version rule keeps the door open safely.
-- **Deferred by earlier decisions**: `do-not-wait` join (the `wait-one` join has since shipped —
-  [wait-one-join.md](../spec/wait-one-join.md)); API/MCP/skill step types;
-  `config` as a condition root; input declarations (§2).
+- **Deferred by earlier decisions**: API/MCP/skill step types; `config` as a condition root; input
+  declarations (§2). (Both the `wait-one` and `do-not-wait` joins have since **shipped** —
+  [wait-one-join.md](../spec/wait-one-join.md), [do-not-wait-join.md](../spec/do-not-wait-join.md).)
 - **Escape hatch for a literal sole `$`-prefixed config key** (§8.3): parked until something
   concrete is blocked by the reservation. Further sourcing wrappers (`$file`, `$keychain`) are
   additive for the same reason — the reservation is what keeps them unambiguous.
