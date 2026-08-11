@@ -432,6 +432,91 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
   });
 });
 
+describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no short-circuit (ADR 0009)", () => {
+  // In contrast to the wait-one suite above — which re-evaluates the race and short-circuits the
+  // cancelled loser so it never starts — do-not-wait has no race and no winner. A detached branch left
+  // non-`succeeded` in the predecessor is ordinary *unfinished* work, so cause-blind resume RE-RUNS it
+  // (ADR 0009): do-not-wait adds nothing to the resume contract. This locks the *absence* of a
+  // short-circuit so no future change quietly introduces one.
+  //
+  // The predecessor's detached branch is `failed` (issue #215 headline; the #214 blocked-by exists
+  // precisely so this failed-branch re-run is exercisable). On resume it re-runs and fails *again*, and
+  // failure isolation (ADR 0008 / #214) keeps the resumed run `succeeded` — the same at-least-once
+  // re-fire every non-`succeeded` node gets, with no carve-out for the detached branch.
+  const file = tree(
+    [
+      // A succeeded predecessor node, reused on resume — proves the reuse machinery is live, so the
+      // detached branch's re-run below is a deliberate non-reuse, not resume failing to reuse anything.
+      { type: "prompt", id: "pre", name: "pre", prompt: "hi", publish: { seed: "${output}" } },
+      {
+        type: "parallel",
+        id: "fire", name: "fire",
+        join: "do-not-wait",
+        branches: [
+          { id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "notify" }] },
+        ],
+      },
+    ],
+    { seed: "${context.seed}" },
+  );
+
+  // A worker that reports every `d` re-run as `failed` (records the call), so the re-executed detached
+  // branch fails exactly as it did in the predecessor. `pre` is reused and never reaches the worker.
+  const failingBranchWorker = (ran: string[]): LlmWorker => ({
+    runPrompt: async (request) => {
+      ran.push(request.nodeName);
+      return { status: "failed", error: "detached branch failed again on re-run", usage: null, estimatedCostUsd: null };
+    },
+  });
+
+  it("re-runs the failed detached branch fresh, never reusing it and never short-circuiting it", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      llmWorker: failingBranchWorker(ran),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "pre-run", parentRunId: "orig-root", nodeId: "pre", nodeName: "pre", status: "succeeded" }),
+          run({ runId: "d-run", parentRunId: "orig-root", nodeId: "d", nodeName: "d", status: "failed" }),
+        ],
+        // The detached branch's blob is deliberately absent: any attempt to *reuse* it would throw,
+        // catching a short-circuit that tried to restore it instead of re-running.
+        readBlob: reader({ "orig-root/context.json": {}, "pre-run/output.json": "REUSED_PRE" }, reads),
+      },
+    });
+
+    // Failure isolation holds on resume: the re-run's failure did not fail the run (ADR 0008 / #214).
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ seed: "REUSED_PRE" }); // the reused predecessor still published.
+
+    // `pre` succeeded → reused (one marker, no execution). The failed detached branch → re-ran on the
+    // worker. So exactly the detached branch executed, and only the predecessor reused.
+    const markerIds = markers(observer).map((m) => m.nodeId);
+    expect(ran).toEqual(["d"]);
+    expect(markerIds).toEqual(["pre"]);
+
+    // The lock. The detached branch produced a FRESH step-started *and* step-finished — it was neither
+    // reused (no marker for `d`) nor short-circuited away (a wait-one loser never starts; this one does).
+    expect(startedNodeIds(observer)).toContain("d");
+    expect(markerIds).not.toContain("d");
+    const dRunId = observer.all().find((o) => o.type === "step-started" && o.nodeName === "d")!.runId;
+    expect(observer.all().find((o) => o.type === "step-finished" && o.runId === dRunId)).toMatchObject({ status: "failed" });
+    // Its recorded output was never read: resume re-executed it rather than restoring it.
+    expect(reads).not.toContain("d-run/output.json");
+
+    // No wait-one machinery: the join fires (spec §9) but crowns no winner, and nothing was cancelled —
+    // there is no reused winner making the branch pointless, so nothing to short-circuit.
+    const joinApplied = observer.all().find((o) => o.type === "join-applied" && o.nodeName === "fire");
+    expect(joinApplied).toBeDefined();
+    expect(joinApplied).not.toHaveProperty("winner");
+    expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
+  });
+});
+
 // A recursive content snapshot of a directory: relative path → bytes, for an unchanged-check.
 function snapshot(dir: string): { [rel: string]: string } {
   const out: { [rel: string]: string } = {};
