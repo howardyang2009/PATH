@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
 import { pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
+import type { LogBackend } from "../src/logging/log-backend.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
@@ -187,6 +188,44 @@ describe("Project.run — observer assembly", () => {
       });
       expect(seen).toContain("step-started");
       expect(seen).toContain("step-finished");
+    } finally {
+      project.close();
+    }
+  });
+
+  // The other half of the pair order (execute()'s "Persistence first, deliberately"): a log backend
+  // that throws fails the run audit-first, but the persisted observer runs *before* the logging one,
+  // so it has already written the root row by the time the throw aborts the rest. The row is what
+  // survives a failed audit. Swap the two tiers and the throw lands before persistence — no row.
+  it("keeps the run row when a log backend throws — persistence before logging", async () => {
+    const project = open();
+    try {
+      // Throw on the root run's own first log event (its implicit step's start, node_id null), so the
+      // failing observation is the very first one — the point where persistence-vs-logging order is
+      // observable: persistence-first has inserted the root row; logging-first would not have.
+      let thrown = false;
+      const failing: LogBackend = {
+        async open() {},
+        async write(event) {
+          if (!thrown && event.type === "step-started" && event.node_id === null) {
+            thrown = true;
+            throw new Error("backend exploded");
+          }
+        },
+        async close() {},
+      };
+
+      const result = await project.run(oneStep, dir, { extraBackends: [failing] });
+
+      // Audit-first: the backend write failure fails the run (mvp spec §8.2).
+      expect(result.status).toBe("failed");
+      expect(result.error).toMatch(/backend exploded/);
+
+      // But the persisted observer ran first, so the root row is on disk and queryable, ending
+      // `failed` — the record that outlives the audit that broke.
+      const roots = project.archive.listRoots();
+      expect(roots).toHaveLength(1);
+      expect(roots[0]!.status).toBe("failed");
     } finally {
       project.close();
     }
