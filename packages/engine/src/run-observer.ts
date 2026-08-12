@@ -239,24 +239,27 @@ export interface RunObserver {
 
 
 /**
- * Fans one observation out to several observers in argument order, awaiting each — how the CLI
- * drives both persistence (#18) and logging (#19) off the single `options.observer` slot. A throw
- * (e.g. an `ObserverError` from a log backend failure) propagates from the composite, so the engine
- * still sees it and fails the run; observers after the thrower do not run.
+ * Fans one observation out to several observers in argument order, awaiting each — the dumb ordered
+ * fan-out `Project.execute` builds its audit pipeline from (project.ts). A throw (e.g. an
+ * `ObserverError` from a log backend failure) propagates from the composite, so the engine still sees
+ * it and fails the run; observers after the thrower do not run.
  *
- * **Argument order is load-bearing, and nothing enforces it.** Both known assemblies depend on it:
+ * **Argument order is load-bearing.** `Project.execute` is the one place a run's observers are
+ * assembled (#64) — the CLI and the server both reach the engine through it, neither composing an
+ * observer of its own. It orders the pipeline persistence → logging → appended observers for two
+ * reasons, each now pinned by a test in `project.test.ts` rather than by this comment alone:
  *
  * - **Persistence before logging.** A log backend write failure raises `ObserverError`, which aborts
  *   the remaining observers for that observation. With logging first, a run whose audit failed would
  *   also have no run row — the row is the record that survives a failed audit, so it must land first.
- * - **The server's capture observer last.** It resolves the deferred that sends HTTP 202
- *   (`post-runs.ts`), and a client may `GET /v0/runs/:id` the instant that response lands. Running it
- *   before the persisted observer races the row it will read; before the logging observer, it races
- *   the hub channel its SSE stream subscribes to.
+ *   ("keeps the run row when a log backend throws".)
+ * - **Appended observers last.** The server's capture observer resolves the deferred that sends HTTP
+ *   202 (`post-runs.ts`), and a client may `GET /v0/runs/:id` the instant that response lands. Running
+ *   it before the persisted observer races the row it will read; before the logging observer, it races
+ *   the hub channel its SSE stream subscribes to. ("runs extraObservers after the built-in pair".)
  *
- * Both constraints exist because callers assemble this by hand — the CLI in one place, the server in
- * another. Giving that assembly an owner is a separate change; until then, this comment is the
- * contract.
+ * This function stays order-agnostic on purpose: it fans out in the order handed to it. The order is a
+ * property of the single assembly that builds it, which is where the tests aim.
  */
 export function composeObservers(...observers: RunObserver[]): RunObserver {
   return {
