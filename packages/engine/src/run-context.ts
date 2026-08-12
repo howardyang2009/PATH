@@ -1,6 +1,7 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import type { LlmWorker } from "./llm/llm-worker.js";
 import type { ProcessorSemaphore } from "./llm/processor-semaphore.js";
+import type { Emitter } from "./run-emitter.js";
 import type { ReusePlan } from "./plan-reuse.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { Observation } from "./run-observer.js";
@@ -105,7 +106,13 @@ export interface RunContext {
   /** This file's declared config with the incoming config shadowing it, nearest wins (format §8). */
   fileConfig: ConfigObject;
   identity: RunIdentity;
-  emit: Emit;
+  /**
+   * This run's producer of observations (run-emitter.ts): every tier — run, control node, leaf step,
+   * and a nested workflow-run via `emitter.child` — goes through it, so no walker respells the
+   * envelope and no walker touches the raw masking sink. The emitter is the run tree's only door to
+   * the audit seam.
+   */
+  emitter: Emitter;
   /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
   env: EnvSource;
   files?: Map<string, WorkflowFile>;
