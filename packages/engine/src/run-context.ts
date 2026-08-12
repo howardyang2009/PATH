@@ -107,16 +107,12 @@ export interface RunContext {
   fileConfig: ConfigObject;
   identity: RunIdentity;
   /**
-   * This run's producer of observations (run-emitter.ts): the run + control-node tiers go through
-   * it, so no walker respells the envelope. Built once per workflow-run from `identity` + `emit`.
+   * This run's producer of observations (run-emitter.ts): every tier — run, control node, leaf step,
+   * and a nested workflow-run via `emitter.child` — goes through it, so no walker respells the
+   * envelope and no walker touches the raw masking sink. The emitter is the run tree's only door to
+   * the audit seam.
    */
   emitter: Emitter;
-  /**
-   * The raw masking sink the emitter is built over. Scaffold — still read by the leaf-step tier
-   * (runBinaryNode/runPromptNode/finishLeafStep/cancelLeafStep) and to spawn a child run's emit,
-   * both of which move behind the emitter in c3; removed with them.
-   */
-  emit: Emit;
   /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
   env: EnvSource;
   files?: Map<string, WorkflowFile>;

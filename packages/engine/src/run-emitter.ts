@@ -97,6 +97,13 @@ export interface Emitter {
   reuseMarker(node: NodeRef, args: { originalRunId: string }): Promise<void>;
   /** Open a step-scoped sub-emitter for one leaf step run, minting its run id. */
   step(node: NodeRef): StepEmitter;
+  /**
+   * The emitter for a nested workflow-run (#22), over this run tree's *same* masking sink — the one
+   * door a child run gets to the audit seam. Its own `identity` fixes its envelope; nothing of this
+   * run's envelope leaks in. Lets a child run be spawned without threading the raw `emit` alongside
+   * the emitter that wraps it.
+   */
+  child(identity: RunIdentity): Emitter;
 }
 
 /**
@@ -257,6 +264,10 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
           await emit({ type: "step-finished", runId: stepRunId, rootRunId, status: "cancelled" });
         },
       };
+    },
+    child(childIdentity): Emitter {
+      // Same masking sink, a fresh envelope — the child run's own identity, none of this run's.
+      return createEmitter(childIdentity, emit);
     },
   };
 }

@@ -74,7 +74,6 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       fileConfig: {},
       identity,
       emitter: createEmitter(identity, emit),
-      emit,
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },

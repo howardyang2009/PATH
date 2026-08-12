@@ -58,7 +58,6 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       fileConfig: {},
       identity,
       emitter: createEmitter(identity, emit),
-      emit,
       env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
       detached: [],
