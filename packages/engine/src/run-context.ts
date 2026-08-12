@@ -1,6 +1,7 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import type { LlmWorker } from "./llm/llm-worker.js";
 import type { ProcessorSemaphore } from "./llm/processor-semaphore.js";
+import type { Emitter } from "./run-emitter.js";
 import type { ReusePlan } from "./plan-reuse.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { Observation } from "./run-observer.js";
@@ -105,6 +106,16 @@ export interface RunContext {
   /** This file's declared config with the incoming config shadowing it, nearest wins (format §8). */
   fileConfig: ConfigObject;
   identity: RunIdentity;
+  /**
+   * This run's producer of observations (run-emitter.ts): the run + control-node tiers go through
+   * it, so no walker respells the envelope. Built once per workflow-run from `identity` + `emit`.
+   */
+  emitter: Emitter;
+  /**
+   * The raw masking sink the emitter is built over. Scaffold — still read by the leaf-step tier
+   * (runBinaryNode/runPromptNode/finishLeafStep/cancelLeafStep) and to spawn a child run's emit,
+   * both of which move behind the emitter in c3; removed with them.
+   */
   emit: Emit;
   /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
   env: EnvSource;

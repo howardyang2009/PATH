@@ -16,6 +16,7 @@ import {
   type RunResume,
   type SeqOutcome,
 } from "./run-context.js";
+import { createEmitter } from "./run-emitter.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
@@ -197,7 +198,7 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
  */
 async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
   const { file, fileDir, input, incomingConfig, identity, files, emit } = params;
-  const { runId, rootRunId } = identity;
+  const emitter = createEmitter(identity, emit);
 
   // Resume (#172): a re-entered workflow-run restores its context blackboard from its original
   // counterpart's recorded `context.json` verbatim (restore-by-load, resume-restore-semantics.md
@@ -225,13 +226,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
   const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
-  const run: RunContext = { file, fileDir, fileConfig, identity, emit, files, env: params.env, llm: params.llm, resume, detached: [] };
+  const run: RunContext = { file, fileDir, fileConfig, identity, emitter, emit, files, env: params.env, llm: params.llm, resume, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
-    await emit({ type: "run-finished", runId, rootRunId, status: "failed", error });
+    await emitter.runFinished({ status: "failed", error });
     return { status: "failed", output: previousOutput, error };
   };
   const succeed = async (output: JsonValue): Promise<RunResult> => {
-    await emit({ type: "run-finished", runId, rootRunId, status: "succeeded", output });
+    await emitter.runFinished({ status: "succeeded", output });
     return { status: "succeeded", output };
   };
   // A workflow-run whose leaf step the engine killed — by a failing sibling parallel branch (#24) or
@@ -239,7 +240,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // from failed; no output contract. For the root run this is the `step-finished` of the implicit
   // root step, so its row lands `cancelled` and the log backends close on it like any other end.
   const cancel = async (): Promise<RunResult> => {
-    await emit({ type: "run-finished", runId, rootRunId, status: "cancelled" });
+    await emitter.runFinished({ status: "cancelled" });
     return { status: "cancelled", output: previousOutput };
   };
 
@@ -257,7 +258,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       // a detached branch's own audit write may fault too; nothing more to salvage
     }
     try {
-      await emit({ type: "run-finished", runId, rootRunId, status: "failed", error: err.message });
+      await emitter.runFinished({ status: "failed", error: err.message });
     } catch {
       // audit is already compromised; the best we can do is still report the run as failed
     }
@@ -277,20 +278,16 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     // producing workflow. A nested workflow-run carries its own file's identity nowhere — its
     // producing node is already named by `nodeId`/`nodeName`. Path rides along only when the launcher
     // supplied one.
-    const isRoot = identity.parentRunId === null;
-    await emit({ type: "run-started",
-      runId,
-      rootRunId,
-      parentRunId: identity.parentRunId,
-      nodeId: identity.nodeId,
-      nodeName: identity.nodeName,
+    // The emitter gates the root-only trio on `isRoot` itself (run-emitter.ts): the source-workflow
+    // id/name/path ride only a root run's `run-started`, and `resumedFromRootRunId` (#173, persisted
+    // to the root row) only when supplied. A nested run passes the file id/name and they are dropped.
+    await emitter.runStarted({
       input,
       worker: file.worker,
-      // Set only on a resumed tree's root run (#173) — persistence writes it to the root row's
-      // `resumed_from_root_run_id`. Undefined everywhere else, including nested resumed runs.
-      ...(params.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: params.resumedFromRootRunId } : {}),
-      ...(isRoot ? { workflowId: file.id, workflowName: file.name } : {}),
-      ...(isRoot && params.sourceWorkflowPath !== undefined ? { workflowPath: params.sourceWorkflowPath } : {}),
+      resumedFromRootRunId: params.resumedFromRootRunId,
+      workflowId: file.id,
+      workflowName: file.name,
+      workflowPath: params.sourceWorkflowPath,
     });
 
     // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
@@ -298,7 +295,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     // so write it straight through as a fresh, self-sufficient `context.json` under the new tree
     // (resume-restore-semantics.md §1) — overwriting the input-seed with what actually resumes.
     if (restoredContext !== undefined) {
-      await emit({ type: "context-changed", runId, rootRunId, context });
+      await emitter.contextChanged(context);
     }
 
     // A run-start config failure (#116) lands *here* rather than at load: the run exists, is
@@ -323,7 +320,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       signal: params.signal,
       cancellation: params.cancellation,
       onPublish: async () => {
-        await emit({ type: "context-changed", runId, rootRunId, context });
+        await emitter.contextChanged(context);
       },
     });
     // Enclosing-workflow-run barrier (do-not-wait-join.md §1.1/§2): drain every detached branch to a
@@ -792,11 +789,9 @@ async function runCheckpointNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity } = run;
-  const { runId, rootRunId } = identity;
   const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
   const passed = outcome === "true";
-  await emit({ type: "checkpoint-evaluated", runId, rootRunId, nodeId: node.id, nodeName: node.name, passed, trace });
+  await run.emitter.checkpointEvaluated(node, { passed, trace });
   if (!passed) {
     return { status: "failed", error: `checkpoint "${node.name}" failed: ${describeConditionFailure(trace)}` };
   }
@@ -815,8 +810,6 @@ async function runBranchNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity } = run;
-  const { runId, rootRunId } = identity;
   const roots = { context: exec.context, output: incomingOutput };
   const traces: Trace[] = [];
   for (const [index, arm] of node.arms.entries()) {
@@ -826,15 +819,15 @@ async function runBranchNode(
       return { status: "failed", error: `branch "${node.name}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
     }
     if (outcome === "true") {
-      await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, nodeName: node.name, arm: index, trace });
+      await run.emitter.branchTaken(node, { arm: index, trace });
       return runSequence(run, arm.body, incomingOutput, exec);
     }
   }
   if (node.else) {
-    await emit({ type: "branch-taken", runId, rootRunId, nodeId: node.id, nodeName: node.name, arm: "else", trace: null });
+    await run.emitter.branchTaken(node, { arm: "else", trace: null });
     return runSequence(run, node.else, incomingOutput, exec);
   }
-  await emit({ type: "branch-no-match", runId, rootRunId, nodeId: node.id, nodeName: node.name, traces });
+  await run.emitter.branchNoMatch(node, { traces });
   return { status: "failed", error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)` };
 }
 
@@ -852,8 +845,7 @@ async function runWhileDoNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity, fileConfig } = run;
-  const { runId, rootRunId } = identity;
+  const { fileConfig } = run;
   let maxIterations: number;
   if (typeof node.max_iterations === "number") {
     maxIterations = node.max_iterations;
@@ -880,17 +872,17 @@ async function runWhileDoNode(
       return { status: "failed", error: `while-do "${node.name}": condition evaluation error: ${describeConditionFailure(trace)}` };
     }
     if (outcome === "false") {
-      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, nodeName: node.name, reason: "condition-false", iterations, trace });
+      await run.emitter.loopExited(node, { reason: "condition-false", iterations, trace });
       return { status: "succeeded", output: iterationOutput };
     }
     // Condition true, but the cap has already been reached: the run fails (post-loop nodes may
     // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
     if (iterations >= maxIterations) {
-      await emit({ type: "loop-exited", runId, rootRunId, nodeId: node.id, nodeName: node.name, reason: "max-iterations-exceeded", iterations, trace });
+      await run.emitter.loopExited(node, { reason: "max-iterations-exceeded", iterations, trace });
       return { status: "failed", error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
     }
     iterations += 1;
-    await emit({ type: "iteration-started", runId, rootRunId, nodeId: node.id, nodeName: node.name, iteration: iterations, trace });
+    await run.emitter.iterationStarted(node, { iteration: iterations, trace });
     const bodyOutcome = await runSequence(run, node.body, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
@@ -953,14 +945,7 @@ export async function runNode(
   let outcome: SeqOutcome;
   if (run.resume && reused) {
     const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
-    await run.emit({
-      type: "reuse-marker",
-      runId: run.identity.runId,
-      rootRunId: run.identity.rootRunId,
-      nodeId: node.id,
-      nodeName: node.name,
-      originalRunId: reused.runId,
-    });
+    await run.emitter.reuseMarker(node, { originalRunId: reused.runId });
     outcome = { status: "succeeded", output };
   } else {
     const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };

@@ -5,6 +5,7 @@ import type { JsonValue, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LlmWorker } from "../src/llm/llm-worker.js";
 import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
+import { createEmitter } from "../src/run-emitter.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode } from "../src/run-workflow.js";
@@ -45,14 +46,19 @@ const noLlm: LlmWorker = {
 
 function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
   const observed: Observation[] = [];
+  // A real emitter over the capturing sink (Q7-b): join-applied and every other observation go
+  // through `run.emitter`, so `observed` stays the wire-`Observation` assertion it always was.
+  const identity: RunContext["identity"] = { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null };
+  const emit = async (o: Observation): Promise<void> => void observed.push(o);
   return {
     observed,
     run: {
       file,
       fileDir,
       fileConfig: {},
-      identity: { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null },
-      emit: async (o) => void observed.push(o),
+      identity,
+      emitter: createEmitter(identity, emit),
+      emit,
       env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
       detached: [],

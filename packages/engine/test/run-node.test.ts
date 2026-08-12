@@ -5,6 +5,7 @@ import type { BranchNode, CheckpointNode, JsonValue, WhileDoNode, WorkflowFile }
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LlmWorker, PromptRequest } from "../src/llm/llm-worker.js";
 import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
+import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
@@ -61,14 +62,19 @@ function answeringWorker(output: string): LlmWorker {
 
 function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
   const observed: Observation[] = [];
+  // A real emitter over the capturing sink (Q7-b): the walker emits through `run.emitter`, so the
+  // `observed` assertions stay assertions about the wire `Observation`s the emitter produces.
+  const identity: RunContext["identity"] = { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null };
+  const emit = async (o: Observation): Promise<void> => void observed.push(o);
   return {
     observed,
     run: {
       file,
       fileDir,
       fileConfig: {},
-      identity: { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null },
-      emit: async (o) => void observed.push(o),
+      identity,
+      emitter: createEmitter(identity, emit),
+      emit,
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
       llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },

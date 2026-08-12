@@ -45,21 +45,11 @@ async function landWaitOneWinner(
   winner: WaitOneWinner,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { runId, rootRunId } = run.identity;
   const landed = winner.buffer;
   const publishedKeys = Object.keys(landed);
   Object.assign(exec.context, landed);
   if (publishedKeys.length > 0) await exec.onPublish(landed);
-  await run.emit({
-    type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: [winner.branch.name],
-    publishedKeys,
-    winner: winner.branch.name,
-  });
+  await run.emitter.joinApplied(node, { branches: [winner.branch.name], publishedKeys, winner: winner.branch.name });
   return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
 }
 
@@ -88,7 +78,6 @@ async function launchDoNotWait(
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { runId, rootRunId } = run.identity;
   for (const branch of node.branches) {
     const branchRun = runSequence(run, branch.body, seedInput, {
       context: { ...exec.context },
@@ -98,15 +87,7 @@ async function launchDoNotWait(
     }).then(() => {});
     run.detached.push(branchRun);
   }
-  await run.emit({
-    type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: node.branches.map((branch) => branch.name),
-    publishedKeys: [],
-  });
+  await run.emitter.joinApplied(node, { branches: node.branches.map((branch) => branch.name), publishedKeys: [] });
   return { status: "succeeded", output: {} };
 }
 
@@ -132,8 +113,9 @@ export async function runParallelNode(
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { emit, identity } = run;
-  const { runId, rootRunId } = identity;
+  // `runId` labels this block as the fallback cause when a `collect` branch fails without naming its
+  // own causing run (below); every observation goes through `run.emitter`, which owns the envelope.
+  const { runId } = run.identity;
 
   // Launch-and-continue is join-mode dispatch, not a race variant: it shares nothing with the
   // block-local win/fail controller below, and resume is cause-blind for it (re-runs, no
@@ -269,14 +251,7 @@ export async function runParallelNode(
   }
   Object.assign(exec.context, landed);
   if (publishedKeys.length > 0) await exec.onPublish(landed);
-  await emit({ type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: branchResults.map((r) => r.branch.name),
-    publishedKeys,
-  });
+  await run.emitter.joinApplied(node, { branches: branchResults.map((r) => r.branch.name), publishedKeys });
 
   // Collect output: keyed by branch name in declaration order, deterministic regardless of
   // completion order and dot-path addressable (§5.4, ADR 0007 — output keys are the human `name`).
