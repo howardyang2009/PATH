@@ -2,21 +2,28 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
 import { runBinaryStep } from "./binary-worker.js";
-import { planReuse, type ReusePlan } from "./plan-reuse.js";
+import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
+import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
+import {
+  type Cancellation,
+  type Emit,
+  type LlmRuntime,
+  type NodeExecContext,
+  type RunContext,
+  type RunIdentity,
+  type RunResume,
+  type SeqOutcome,
+} from "./run-context.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
-import {
-  createProcessorSemaphore,
-  DEFAULT_LLM_CONCURRENCY,
-  type ProcessorSemaphore,
-} from "./llm/processor-semaphore.js";
+import { createProcessorSemaphore, DEFAULT_LLM_CONCURRENCY } from "./llm/processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
-import { type Observation, ObserverError, type RunObserver } from "./run-observer.js";
+import { ObserverError, type RunObserver } from "./run-observer.js";
 import { collectSecrets, maskObservation } from "./secret-mask.js";
 
 export interface RunOptions {
@@ -91,26 +98,6 @@ export interface ResumeInput {
   readBlob: (run: RunRecord, filename: string) => JsonValue;
 }
 
-/**
- * The engine's single emit choke point, threaded to every node of the run tree in place of the
- * observer itself (#62). Two things are guaranteed here and therefore nowhere else:
- *
- * - **Secrets are masked** (mvp spec §8.3) before anything crosses the seam. No caller has to apply
- *   a wrapper, so no caller can forget to — and no wrapper can cover part of the union.
- * - **The absent observer is handled once.** A run with nothing observing it emits into a no-op, so
- *   the 24 call sites downstream are plain `await emit(...)` rather than optional chains.
- */
-export type Emit = (o: Observation) => Promise<void>;
-
-/**
- * The LLM execution resources one run tree shares: the worker `prompt` steps run on, and the
- * single semaphore that caps how many of its processors are live at once (mvp spec §5.5).
- */
-export interface LlmRuntime {
-  worker: LlmWorker;
-  semaphore: ProcessorSemaphore;
-}
-
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
 // the last-succeeded node's output (useful to a caller even on failure), so `output` is
 // unconditional rather than living only in a success branch.
@@ -130,42 +117,6 @@ export interface RunResult {
   error?: string;
 }
 
-// The result of running one node (or a whole node sequence). A step run that a failing sibling
-// cancelled reports `cancelled`; a genuine failure carries its `error` and, when a killed step run
-// is the trigger, the `causeRunId` the sibling cancellations narrate (mvp spec §5.6).
-export type SeqOutcome =
-  | { status: "succeeded"; output: JsonValue }
-  | { status: "failed"; error: string; causeRunId?: string }
-  | { status: "cancelled" };
-
-// The shared cancellation of one `parallel` block: its branches all run under `signal`, and either a
-// branch failing (`collect`) or a branch winning the race (`wait-one`) aborts the in-flight siblings
-// best-effort. `cause` records which — `sibling-failed` or `sibling-succeeded` (wait-one-join.md §5)
-// — and is null until one fires (an outside abort, an operator cancelling the root run, leaves it
-// null). For `sibling-failed` the failing step run's id becomes `causeRunId`, which the losers'
-// run-cancelled events point back at; a win has no cause run, so `causeRunId` stays null there too.
-export interface Cancellation {
-  signal: AbortSignal;
-  causeRunId: string | null;
-  cause: "sibling-failed" | "sibling-succeeded" | null;
-  /** A `collect` branch failed: cancel in-flight siblings, `causeRunId` naming the failing run. */
-  trigger(causeRunId: string): void;
-  /** A `wait-one` branch won the race: cancel the still-running losers (no cause run). */
-  triggerWin(): void;
-}
-
-// What each node in a sequence reads and writes: the `context` it sees (the run's own for the
-// top-level body; a per-branch snapshot copy inside a `parallel` block, so siblings never observe
-// each other's writes — mvp spec §5.3), the `signal`/`cancellation` of any enclosing parallel, and
-// `onPublish` — how a landed publish is surfaced (context write-through at the top level; buffered
-// for the join inside a branch).
-export interface NodeExecContext {
-  context: { [key: string]: JsonValue };
-  signal?: AbortSignal;
-  cancellation?: Cancellation;
-  onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
-}
-
 function describeInterpolationError(nodeName: string, err: unknown): string {
   if (err instanceof InterpolationError) return `node "${nodeName}": ${err.message}`;
   throw err; // an unexpected error is a bug, not a data-flow failure — surface it, don't swallow it
@@ -175,19 +126,6 @@ function describeInterpolationError(nodeName: string, err: unknown): string {
 // plain object shape) but not nominally assignable across their recursive unions.
 function configScope(config: ConfigObject): JsonValue {
   return config as unknown as JsonValue;
-}
-
-// One workflow-run's identity within the run tree (#22). The root run has `parentRunId: null`
-// and `nodeId: null`; a nested workflow-step's run carries its parent run's id and the `workflow`
-// node's id — workflow-as-step means the child run *is* that step's run (CONTEXT invariant 2).
-export interface RunIdentity {
-  runId: string;
-  rootRunId: string;
-  parentRunId: string | null;
-  /** The `workflow` node's GUID `id` for a nested run; null for the root (ADR 0007). */
-  nodeId: string | null;
-  /** The `workflow` node's human `name` for a nested run; null for the root (ADR 0007). */
-  nodeName: string | null;
 }
 
 // Everything a workflow-run needs to execute one file: the file, where it lives (for cwd defaults
@@ -227,59 +165,6 @@ interface WorkflowRunParams {
   // The root workflow's store-relative path (#202), threaded only into the root run's params — a
   // nested workflow-run is started by `runWorkflowNode`, which never sets it, so it stays root-only.
   sourceWorkflowPath?: string;
-}
-
-/**
- * Everything that is fixed for the life of one workflow-run, threaded to every node walker.
- *
- * The mutable half — the context a sequence writes to, its cancellation, how a publish lands — is
- * `NodeExecContext`, and varies per sequence (a `parallel` branch gets its own snapshot copy). This
- * is the other half: the file being run, its effective config, who this run is, and the shared
- * resources of the run tree.
- *
- * Splitting the two is what lets the walkers live at module scope (#76). They used to be nested in
- * a 392-line closure and were reached only through a full `runWorkflow`, so the branch, loop and
- * join semantics that carry the spec had no seam a test could aim at. Four overlapping context bags
- * became these two.
- */
-export interface RunContext {
-  file: WorkflowFile;
-  /** The workflow file's own directory: binary `cwd` defaults and nested `ref`s resolve against it. */
-  fileDir: string;
-  /** This file's declared config with the incoming config shadowing it, nearest wins (format §8). */
-  fileConfig: ConfigObject;
-  identity: RunIdentity;
-  emit: Emit;
-  /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
-  env: EnvSource;
-  files?: Map<string, WorkflowFile>;
-  /** Shared by the whole run tree, so the processor cap spans nested runs too (mvp spec §5.5). */
-  llm: LlmRuntime;
-  /** This workflow-run's resume state (#172), when the run is being resumed; absent for a fresh run. */
-  resume?: RunResume;
-  /**
-   * Detached `do-not-wait` branch runs launched under this workflow-run (do-not-wait-join.md §2): a
-   * `do-not-wait` block starts every branch and does *not* await it at the join, pushing its run here
-   * instead. The owning run drains these at its exit barrier (`settleDetached`, §1.1/§2) so the tree
-   * stays strictly nested and `path run` never leaves live work behind. Each promise resolves on the
-   * branch reaching a terminal status; a branch failure is isolated (§5), so the promise never rejects
-   * except on an audit (ObserverError) fault.
-   */
-  detached: Promise<void>[];
-}
-
-/**
- * One workflow-run's resume state (#172): the whole-tree read inputs, this run's own original
- * counterpart, and the reuse plan computed for *this* run's direct children. `runNode` consults
- * `plan` to decide whether a node reuses; `runWorkflowNode` uses `input`/`counterpart` to find a
- * non-reused nested workflow-run's own counterpart before recursing into it.
- */
-interface RunResume {
-  input: ResumeInput;
-  /** The original run this successor workflow-run corresponds to, or undefined for a fresh (added) run. */
-  counterpart: RunRecord | undefined;
-  /** Node ids of this run's direct children that reuse, each pointing at the original run it reuses. */
-  plan: ReusePlan;
 }
 
 type WorkflowNode = WorkflowFile["body"][number];
@@ -464,19 +349,6 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   }
 }
 
-// The original nested workflow-run a non-reused `workflow` node re-enters (#172), or undefined to
-// start fresh. Matched by (parent run, node id) within the original tree — exactly one answer
-// re-enters and restores; zero (a node added since) or more than one (a while-do body's workflow
-// step, one run per iteration — which to restore is undefined) both start fresh, mirroring
-// planReuse's refusal to guess among multiple candidates. A node that *reused* never reaches here:
-// runNode short-circuits it before dispatch, so this only runs for a genuinely re-entered run.
-function findNestedCounterpart(resume: RunResume, nodeId: string): RunRecord | undefined {
-  if (!resume.counterpart) return undefined;
-  const parentRunId = resume.counterpart.runId;
-  const matches = resume.input.originalRuns.filter((r) => r.parentRunId === parentRunId && r.nodeId === nodeId);
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 // A `workflow` step: resolve `ref` against the loaded tree and run the child file as a nested
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
 // isolated — CONTEXT invariant); the parent's effective config crosses the boundary but its
@@ -525,7 +397,14 @@ async function runWorkflowNode(
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
     // its already-succeeded grandchildren reuse rather than re-running from scratch.
     resume: ctx.run.resume
-      ? { input: ctx.run.resume.input, counterpart: findNestedCounterpart(ctx.run.resume, node.id) }
+      ? {
+          input: ctx.run.resume.input,
+          counterpart: findNestedCounterpart(
+            ctx.run.resume.input.originalRuns,
+            ctx.run.resume.counterpart?.runId,
+            node.id,
+          ),
+        }
       : undefined,
   });
 
@@ -1153,329 +1032,4 @@ export async function runSequence(
   }
 
   return { status: "succeeded", output: previous };
-}
-
-type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
-type ParallelBranch = ParallelNode["branches"][number];
-
-// One branch's run: which branch, how it ended, and the publishes it buffered (landed only if it is
-// the collect join's all-succeeded set, or the wait-one join's winner — wait-one-join.md §4).
-interface BranchResult {
-  branch: ParallelBranch;
-  outcome: SeqOutcome;
-  buffer: { [key: string]: JsonValue };
-}
-
-// The winning branch of a `wait-one` race, with the output and buffered publishes only it lands (§3, §4).
-interface WaitOneWinner {
-  branch: ParallelBranch;
-  output: JsonValue;
-  buffer: { [key: string]: JsonValue };
-}
-
-// True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
-// i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
-// no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does
-// not qualify. Losers were `cancelled`, never `succeeded`, so their nodes are absent from the plan
-// and they fail this test — which is what lets resume start no loser (wait-one-join.md §7).
-function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
-  let sawRunProducing = false;
-  for (const inner of walkNodes(branch.body)) {
-    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
-      sawRunProducing = true;
-      if (!plan.has(inner.id)) return false;
-    }
-  }
-  return sawRunProducing;
-}
-
-// A fully-reused branch's recorded completion time: the latest `finishedAt` among its reused runs,
-// since the branch reaches `succeeded` when its last node does. Null when no reused run carries a
-// finish time — the tie-break below then falls back to declaration order.
-function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
-  let completedAt: string | null = null;
-  for (const inner of walkNodes(branch.body)) {
-    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
-      const record = plan.get(inner.id);
-      const finishedAt = record?.finishedAt ?? null;
-      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;
-    }
-  }
-  return completedAt;
-}
-
-// The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). Usually exactly
-// one branch is a reused winner (the losers were `cancelled`, so absent from the plan), and it is
-// returned directly. Best-effort cancellation is asynchronous, though, so a photo-finish can leave
-// **two** branches recorded `succeeded`; the live run resolved that by `seq` (§6), the ordering truth
-// — which a `RunRecord` does not carry. Resume reproduces it from the recorded completion time (a
-// lower `seq` was emitted no later, so the branch that finished first is the recorded winner), and
-// declaration order breaks an exact timestamp collision — the case `seq` exists for but resume cannot
-// see. Picking the first-*declared* winner instead would land a different branch than the original
-// run's `join-applied` named, breaking resume determinism (ADR 0001).
-function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelBranch | undefined {
-  const winners = node.branches.filter((branch) => branchIsReusedWinner(branch, plan));
-  if (winners.length <= 1) return winners[0];
-  return [...winners].sort((a, b) => {
-    const ca = reusedBranchCompletion(a, plan);
-    const cb = reusedBranchCompletion(b, plan);
-    if (ca !== cb) {
-      if (ca === null) return 1;
-      if (cb === null) return -1;
-      return ca < cb ? -1 : 1;
-    }
-    return node.branches.indexOf(a) - node.branches.indexOf(b);
-  })[0];
-}
-
-// Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
-// lands (wait-one-join.md §4); the block output is the stable `{ winner: { name, output } }` shape so
-// a downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
-// the winner's human `name` (§8, ADR 0007 — output keys and narration use `name`, never the GUID).
-async function landWaitOneWinner(
-  run: RunContext,
-  node: ParallelNode,
-  winner: WaitOneWinner,
-  exec: NodeExecContext,
-): Promise<SeqOutcome> {
-  const { runId, rootRunId } = run.identity;
-  const landed = winner.buffer;
-  const publishedKeys = Object.keys(landed);
-  Object.assign(exec.context, landed);
-  if (publishedKeys.length > 0) await exec.onPublish(landed);
-  await run.emit({
-    type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: [winner.branch.name],
-    publishedKeys,
-    winner: winner.branch.name,
-  });
-  return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
-}
-
-// Drain the owning workflow-run's detached `do-not-wait` branches to terminal (do-not-wait-join.md
-// §2). A branch's own body may launch a further `do-not-wait` block against the *same* run while this
-// await is in flight, so the loop re-checks: it drains, and any branch pushed meanwhile is caught on
-// the next pass. Branch outcomes are already isolated (§5) — a failure fails nothing here — so the
-// drained promises are awaited only for completion, not for their result.
-async function settleDetached(run: RunContext): Promise<void> {
-  while (run.detached.length > 0) {
-    const pending = run.detached.splice(0);
-    await Promise.all(pending);
-  }
-}
-
-// Launch-and-continue (do-not-wait-join.md §2): start every branch and wait for none. Each branch runs
-// against its own context snapshot (§5.3) under the run's ambient signal, so an operator abort still
-// reaches it (§6), but the block does not consult its status — the branch run is pushed to the owning
-// workflow-run's `detached` list and awaited only at that run's exit barrier (§1.1). A branch may not
-// `publish` (load-rejected, §4), so its `onPublish` is a no-op and nothing lands. The block discharges
-// at once with the empty object (§3) and its successor runs immediately; `join-applied` fires here
-// carrying no `winner` and no landed keys (§9).
-async function launchDoNotWait(
-  run: RunContext,
-  node: ParallelNode,
-  seedInput: JsonValue,
-  exec: NodeExecContext,
-): Promise<SeqOutcome> {
-  const { runId, rootRunId } = run.identity;
-  for (const branch of node.branches) {
-    const branchRun = runSequence(run, branch.body, seedInput, {
-      context: { ...exec.context },
-      signal: exec.signal,
-      cancellation: exec.cancellation,
-      onPublish: async () => {},
-    }).then(() => {});
-    run.detached.push(branchRun);
-  }
-  await run.emit({
-    type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: node.branches.map((branch) => branch.name),
-    publishedKeys: [],
-  });
-  return { status: "succeeded", output: {} };
-}
-
-/**
- * Runs a `parallel` block (mvp spec §5.2–5.4, §5.6). Every branch runs concurrently against its own
- * snapshot of context taken at block entry (siblings never see each other's writes), and its
- * publishes buffer rather than touch the parent context mid-run. The `join` decides what lands:
- *
- * - `collect` — waits for *all* branches; a failing branch fails the block and cancels in-flight
- *   siblings (`sibling-failed`); on all-succeed every buffer lands in branch declaration order and
- *   the output is `{ "<branch-name>": <that branch's last node's output> }`.
- * - `wait-one` — races the branches; the first to `succeed` is the winner, and the still-running
- *   losers are cancelled (`sibling-succeeded`); a branch that *fails* cancels nothing and the race
- *   continues; if every branch fails the block fails with a synthetic aggregate error. Only the
- *   winner's buffer lands and the output is `{ winner: { name, output } }` (wait-one-join.md §2–§5).
- * - `do-not-wait` — launches every branch and awaits none at the join; the block discharges at once
- *   with `{}` and the successor runs while the branches keep going, awaited only at the enclosing
- *   run's exit barrier (`launchDoNotWait`, do-not-wait-join.md §2). No resume short-circuit (§7).
- */
-async function runParallelNode(
-  run: RunContext,
-  node: ParallelNode,
-  seedInput: JsonValue,
-  exec: NodeExecContext,
-): Promise<SeqOutcome> {
-  const { emit, identity } = run;
-  const { runId, rootRunId } = identity;
-
-  // Launch-and-continue is join-mode dispatch, not a race variant: it shares nothing with the
-  // block-local win/fail controller below, and resume is cause-blind for it (re-runs, no
-  // short-circuit — §7), so it branches off before any of that is built.
-  if (node.join === "do-not-wait") {
-    return launchDoNotWait(run, node, seedInput, exec);
-  }
-
-  // Resume short-circuit (wait-one-join.md §7): replaying a decided race, the winner's steps reuse as
-  // `succeeded` while the losers were `cancelled`. Cause-blind resume would re-run the losers — pure
-  // waste, and at-least-once it could re-fire their side effects. So the join re-evaluates: find the
-  // reused winner and run *only* it, starting no loser at all.
-  if (node.join === "wait-one" && run.resume) {
-    const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
-    if (reusedWinner) {
-      const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, reusedWinner.body, seedInput, {
-        context: { ...exec.context },
-        onPublish: async (updates) => void Object.assign(buffer, updates),
-      });
-      // The winner reused as `succeeded` in the original tree; its replay reuses those runs and so
-      // cannot do otherwise. A non-success here would be an engine bug, not a data-flow outcome.
-      if (outcome.status !== "succeeded") return outcome;
-      return landWaitOneWinner(run, node, { branch: reusedWinner, output: outcome.output, buffer }, exec);
-    }
-  }
-
-  const controller = new AbortController();
-  // A nested parallel inherits its enclosing block's cancellation: if the outer block aborts, this
-  // one aborts too, so this block's own in-flight steps are killed as well.
-  const outerSignal = exec.signal;
-  const onOuterAbort = () => controller.abort();
-  if (outerSignal) {
-    if (outerSignal.aborted) controller.abort();
-    else outerSignal.addEventListener("abort", onOuterAbort, { once: true });
-  }
-
-  let causeRunId: string | null = null;
-  let cause: Cancellation["cause"] = null;
-  const cancellation: Cancellation = {
-    signal: controller.signal,
-    get causeRunId() {
-      // Read through to the enclosing block at read time, not at block entry: an *outer* sibling
-      // may fail after this block started, and its failing run is still this block's cause.
-      return causeRunId ?? exec.cancellation?.causeRunId ?? null;
-    },
-    get cause() {
-      return cause ?? exec.cancellation?.cause ?? null;
-    },
-    trigger(triggerRunId: string) {
-      if (cause === null) {
-        causeRunId = triggerRunId; // first failing sibling wins
-        cause = "sibling-failed";
-      }
-      controller.abort();
-    },
-    triggerWin() {
-      if (cause === null) cause = "sibling-succeeded"; // first winner wins; no cause run
-      controller.abort();
-    },
-  };
-
-  // The winner of a `wait-one` race: the first branch to complete `succeeded`. Because the event loop
-  // serializes branch completions, the first callback to see `succeeded` here is the lowest-`seq` one
-  // (§6), so no secondary tie-break is needed.
-  let winner: WaitOneWinner | null = null;
-
-  const branchResults: BranchResult[] = await Promise.all(
-    node.branches.map(async (branch) => {
-      // Each branch runs against a snapshot copy of context (§5.3): its publishes go to the copy
-      // (so later nodes in the same branch see them) and buffer for the join — never touching the
-      // parent context until the join lands them.
-      const branchContext: { [key: string]: JsonValue } = { ...exec.context };
-      const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, branch.body, seedInput, {
-        context: branchContext,
-        signal: controller.signal,
-        cancellation,
-        onPublish: async (updates) => {
-          Object.assign(buffer, updates);
-        },
-      });
-      if (node.join === "collect") {
-        if (outcome.status === "failed") {
-          cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
-        }
-      } else if (outcome.status === "succeeded" && winner === null) {
-        // First to succeed wins; a losing branch's failure is ignored and cancels nothing (§2).
-        winner = { branch, output: outcome.output, buffer };
-        cancellation.triggerWin(); // cancel the still-running losers best-effort
-      }
-      return { branch, outcome, buffer };
-    }),
-  );
-
-  if (outerSignal) outerSignal.removeEventListener("abort", onOuterAbort);
-
-  if (node.join === "wait-one") {
-    // An outside abort (an enclosing block failing, an operator cancelling the root run) outranks a
-    // local win: the whole subtree is coming down, so the winner's publishes must not land.
-    if (outerSignal?.aborted) return { status: "cancelled" };
-    if (winner !== null) return landWaitOneWinner(run, node, winner, exec);
-    // No winner. A cancelled branch means we were aborted from outside; otherwise every branch
-    // failed, and the block fails with a synthetic aggregate distinct from any one branch's error (§2).
-    if (branchResults.some((r) => r.outcome.status === "cancelled")) return { status: "cancelled" };
-    return { status: "failed", error: `parallel "${node.name}": all ${node.branches.length} wait-one branches failed` };
-  }
-
-  // A failing branch fails the block (and thus the run); no publishes land. Report the
-  // first-declared failure for determinism.
-  for (const { branch, outcome } of branchResults) {
-    if (outcome.status === "failed") {
-      return {
-        status: "failed",
-        error: `parallel "${node.name}", branch "${branch.name}": ${outcome.error}`,
-      };
-    }
-  }
-  // No local failure but a cancelled branch means the enclosing block aborted us: propagate.
-  if (branchResults.some((r) => r.outcome.status === "cancelled")) {
-    return { status: "cancelled" };
-  }
-
-  // All branches succeeded: land their buffered publishes at the join, in branch declaration
-  // order (§5.3). Duplicate keys across siblings are already a load-time error, so no key clashes.
-  const landed: { [key: string]: JsonValue } = {};
-  const publishedKeys: string[] = [];
-  for (const { buffer } of branchResults) {
-    for (const [key, value] of Object.entries(buffer)) {
-      landed[key] = value;
-      publishedKeys.push(key);
-    }
-  }
-  Object.assign(exec.context, landed);
-  if (publishedKeys.length > 0) await exec.onPublish(landed);
-  await emit({ type: "join-applied",
-    runId,
-    rootRunId,
-    nodeId: node.id,
-    nodeName: node.name,
-    branches: branchResults.map((r) => r.branch.name),
-    publishedKeys,
-  });
-
-  // Collect output: keyed by branch name in declaration order, deterministic regardless of
-  // completion order and dot-path addressable (§5.4, ADR 0007 — output keys are the human `name`).
-  const output: { [key: string]: JsonValue } = {};
-  for (const { branch, outcome } of branchResults) {
-    output[branch.name] = outcome.status === "succeeded" ? outcome.output : null;
-  }
-  return { status: "succeeded", output };
 }

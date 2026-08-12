@@ -1,7 +1,10 @@
 import type { BinaryStep, CheckpointNode, PromptStep, RunRecord, RunStatus, WorkflowFile, WorkflowNode, WorkflowStep } from "@path/schema";
 import { FORMAT_VERSION } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { planReuse } from "../src/plan-reuse.js";
+import { findNestedCounterpart, pickReusedWaitOneWinner, planReuse, type ReusePlan } from "../src/plan-reuse.js";
+
+type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
+type ParallelBranch = ParallelNode["branches"][number];
 
 function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
   return {
@@ -154,5 +157,84 @@ describe("planReuse (#170)", () => {
 
   it("returns an empty plan when the original tree has no root run recorded", () => {
     expect(planReuse([], tree([prompt("greet")])).size).toBe(0);
+  });
+});
+
+function branch(name: string, body: WorkflowNode[]): ParallelBranch {
+  return { id: name, name, body };
+}
+
+function waitOne(branches: ParallelBranch[]): ParallelNode {
+  return { type: "parallel", id: "p1", name: "p1", join: "wait-one", branches };
+}
+
+describe("findNestedCounterpart (#172)", () => {
+  const originalRuns = [
+    root(),
+    run({ runId: "revise-run", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
+    run({ runId: "greet-run", parentRunId: "revise-run", nodeId: "greet", nodeName: "greet", status: "succeeded" }),
+  ];
+
+  it("re-enters the one run matching (counterpart, node id)", () => {
+    expect(findNestedCounterpart(originalRuns, "revise-run", "greet")).toBe(originalRuns[2]);
+  });
+
+  it("starts fresh (undefined) when the re-entering run has no counterpart", () => {
+    expect(findNestedCounterpart(originalRuns, undefined, "greet")).toBeUndefined();
+  });
+
+  it("starts fresh when the node id was added since — no match under this counterpart", () => {
+    expect(findNestedCounterpart(originalRuns, "revise-run", "summarize")).toBeUndefined();
+  });
+
+  it("starts fresh when more than one run shares (counterpart, node id) — which attempt is undefined", () => {
+    const perIteration = [
+      ...originalRuns,
+      run({ runId: "greet-run-2", parentRunId: "revise-run", nodeId: "greet", nodeName: "greet", status: "succeeded" }),
+    ];
+    expect(findNestedCounterpart(perIteration, "revise-run", "greet")).toBeUndefined();
+  });
+});
+
+describe("pickReusedWaitOneWinner — replaying a decided wait-one race (§7)", () => {
+  // A branch reuses iff its lone run-producing node is in the plan; a plan holds the recorded run
+  // (with its `finishedAt`) the branch's step reused.
+  const reused = (nodeId: string, finishedAt: string | null): [string, RunRecord] => [
+    nodeId,
+    run({ runId: `${nodeId}-run`, parentRunId: "root", nodeId, nodeName: nodeId, status: "succeeded", finishedAt }),
+  ];
+
+  it("returns the sole reused winner directly; the losers left no plan entry", () => {
+    const node = waitOne([branch("a", [prompt("a-node")]), branch("b", [prompt("b-node")])]);
+    const plan: ReusePlan = new Map([reused("a-node", "t1")]);
+
+    expect(pickReusedWaitOneWinner(node, plan)?.name).toBe("a");
+  });
+
+  it("crowns no winner when no branch is fully reused", () => {
+    const node = waitOne([branch("a", [prompt("a-node")]), branch("b", [prompt("b-node")])]);
+    expect(pickReusedWaitOneWinner(node, new Map())).toBeUndefined();
+  });
+
+  it("a branch with no run-producing node is not a winner — nothing was recorded to reuse", () => {
+    const node = waitOne([branch("a", [checkpoint("cp")])]);
+    expect(pickReusedWaitOneWinner(node, new Map())).toBeUndefined();
+  });
+
+  it("reproduces the seq-first winner from completion time when a photo-finish reused two branches, not declaration order", () => {
+    // Both branches recorded `succeeded` (async cancellation lost the race); `a` is declared first
+    // but finished later (t2), so the recorded winner is `b` (finished t1) — the branch a lower `seq`
+    // would have named. Declaration order must not override that.
+    const node = waitOne([branch("a", [prompt("a-node")]), branch("b", [prompt("b-node")])]);
+    const plan: ReusePlan = new Map([reused("a-node", "t2"), reused("b-node", "t1")]);
+
+    expect(pickReusedWaitOneWinner(node, plan)?.name).toBe("b");
+  });
+
+  it("breaks an exact completion-time collision by declaration order — the case seq exists for but resume cannot see", () => {
+    const node = waitOne([branch("a", [prompt("a-node")]), branch("b", [prompt("b-node")])]);
+    const plan: ReusePlan = new Map([reused("a-node", "t1"), reused("b-node", "t1")]);
+
+    expect(pickReusedWaitOneWinner(node, plan)?.name).toBe("a");
   });
 });
