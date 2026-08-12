@@ -6,7 +6,8 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LlmWorker, PromptRequest } from "../src/llm/llm-worker.js";
 import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
 import type { Observation } from "../src/run-observer.js";
-import { runNode, runSequence, type NodeExecContext, type RunContext } from "../src/run-workflow.js";
+import { runNode, runSequence } from "../src/run-workflow.js";
+import type { NodeExecContext, RunContext } from "../src/run-context.js";
 
 /**
  * The node seam, called directly. Every kind of node a body can hold goes through `runNode`, so
