@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
 import { runBinaryStep } from "./binary-worker.js";
-import { planReuse, type ReusePlan } from "./plan-reuse.js";
+import { findNestedCounterpart, pickReusedWaitOneWinner, planReuse, type ReusePlan } from "./plan-reuse.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
@@ -464,19 +464,6 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   }
 }
 
-// The original nested workflow-run a non-reused `workflow` node re-enters (#172), or undefined to
-// start fresh. Matched by (parent run, node id) within the original tree — exactly one answer
-// re-enters and restores; zero (a node added since) or more than one (a while-do body's workflow
-// step, one run per iteration — which to restore is undefined) both start fresh, mirroring
-// planReuse's refusal to guess among multiple candidates. A node that *reused* never reaches here:
-// runNode short-circuits it before dispatch, so this only runs for a genuinely re-entered run.
-function findNestedCounterpart(resume: RunResume, nodeId: string): RunRecord | undefined {
-  if (!resume.counterpart) return undefined;
-  const parentRunId = resume.counterpart.runId;
-  const matches = resume.input.originalRuns.filter((r) => r.parentRunId === parentRunId && r.nodeId === nodeId);
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 // A `workflow` step: resolve `ref` against the loaded tree and run the child file as a nested
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
 // isolated — CONTEXT invariant); the parent's effective config crosses the boundary but its
@@ -525,7 +512,14 @@ async function runWorkflowNode(
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
     // its already-succeeded grandchildren reuse rather than re-running from scratch.
     resume: ctx.run.resume
-      ? { input: ctx.run.resume.input, counterpart: findNestedCounterpart(ctx.run.resume, node.id) }
+      ? {
+          input: ctx.run.resume.input,
+          counterpart: findNestedCounterpart(
+            ctx.run.resume.input.originalRuns,
+            ctx.run.resume.counterpart?.runId,
+            node.id,
+          ),
+        }
       : undefined,
   });
 
@@ -1171,61 +1165,6 @@ interface WaitOneWinner {
   branch: ParallelBranch;
   output: JsonValue;
   buffer: { [key: string]: JsonValue };
-}
-
-// True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
-// i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
-// no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does
-// not qualify. Losers were `cancelled`, never `succeeded`, so their nodes are absent from the plan
-// and they fail this test — which is what lets resume start no loser (wait-one-join.md §7).
-function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
-  let sawRunProducing = false;
-  for (const inner of walkNodes(branch.body)) {
-    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
-      sawRunProducing = true;
-      if (!plan.has(inner.id)) return false;
-    }
-  }
-  return sawRunProducing;
-}
-
-// A fully-reused branch's recorded completion time: the latest `finishedAt` among its reused runs,
-// since the branch reaches `succeeded` when its last node does. Null when no reused run carries a
-// finish time — the tie-break below then falls back to declaration order.
-function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
-  let completedAt: string | null = null;
-  for (const inner of walkNodes(branch.body)) {
-    if (inner.type === "prompt" || inner.type === "binary" || inner.type === "workflow") {
-      const record = plan.get(inner.id);
-      const finishedAt = record?.finishedAt ?? null;
-      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;
-    }
-  }
-  return completedAt;
-}
-
-// The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). Usually exactly
-// one branch is a reused winner (the losers were `cancelled`, so absent from the plan), and it is
-// returned directly. Best-effort cancellation is asynchronous, though, so a photo-finish can leave
-// **two** branches recorded `succeeded`; the live run resolved that by `seq` (§6), the ordering truth
-// — which a `RunRecord` does not carry. Resume reproduces it from the recorded completion time (a
-// lower `seq` was emitted no later, so the branch that finished first is the recorded winner), and
-// declaration order breaks an exact timestamp collision — the case `seq` exists for but resume cannot
-// see. Picking the first-*declared* winner instead would land a different branch than the original
-// run's `join-applied` named, breaking resume determinism (ADR 0001).
-function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelBranch | undefined {
-  const winners = node.branches.filter((branch) => branchIsReusedWinner(branch, plan));
-  if (winners.length <= 1) return winners[0];
-  return [...winners].sort((a, b) => {
-    const ca = reusedBranchCompletion(a, plan);
-    const cb = reusedBranchCompletion(b, plan);
-    if (ca !== cb) {
-      if (ca === null) return 1;
-      if (cb === null) return -1;
-      return ca < cb ? -1 : 1;
-    }
-    return node.branches.indexOf(a) - node.branches.indexOf(b);
-  })[0];
 }
 
 // Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
