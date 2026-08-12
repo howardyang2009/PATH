@@ -92,14 +92,14 @@ function parseRunArgs(argv: string[]): ParseResult {
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
     if (flag === "--resume") {
-      const value = rest[i + 1];
-      if (!value) return { success: false, error: `--resume requires a root run id argument\n${RUN_USAGE}` };
-      resumeRootRunId = value;
+      const taken = takeValue(rest, i, "--resume", "a root run id", RUN_USAGE);
+      if (!taken.success) return taken;
+      resumeRootRunId = taken.value;
       i += 1;
     } else if (flag === "--config") {
-      const value = rest[i + 1];
-      if (!value) return { success: false, error: `--config requires a path argument\n${RUN_USAGE}` };
-      configFile = value;
+      const taken = takeValue(rest, i, "--config", "a path", RUN_USAGE);
+      if (!taken.success) return taken;
+      configFile = taken.value;
       i += 1;
     } else if (flag === "--set") {
       const pair = rest[i + 1];
@@ -108,9 +108,9 @@ function parseRunArgs(argv: string[]): ParseResult {
       setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
       i += 1;
     } else if (flag === "--context") {
-      const value = rest[i + 1];
-      if (!value) return { success: false, error: `--context requires a path argument\n${RUN_USAGE}` };
-      contextFile = value;
+      const taken = takeValue(rest, i, "--context", "a path", RUN_USAGE);
+      if (!taken.success) return taken;
+      contextFile = taken.value;
       i += 1;
     } else if (flag === "--set-context") {
       const pair = rest[i + 1];
@@ -150,6 +150,20 @@ function parseRunArgs(argv: string[]): ParseResult {
     success: true,
     args: { workflowPath, storeDir, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
   };
+}
+
+type TakeValueResult = { success: true; value: string } | { success: false; error: string };
+
+// The argument after a pure value-flag at `args[i]`, or a usage error naming the flag when it is
+// absent. The five value-flags that only take a string — --resume, --config, --context, --workflow,
+// --workflow-id — shared this exact read-check-message verbatim; concentrating it keeps the wording
+// from drifting across them. `noun` is the flag's own ("a path", "a guid"); the message re-appends
+// " argument" to stay byte-identical to the hand-written checks it replaces. The caller still
+// advances `i` — the `+ 1` stays visible in each parse loop.
+function takeValue(args: string[], i: number, flag: string, noun: string, usage: string): TakeValueResult {
+  const value = args[i + 1];
+  if (!value) return { success: false, error: `${flag} requires ${noun} argument\n${usage}` };
+  return { success: true, value };
 }
 
 type PositiveIntResult = { success: true; value: number } | { success: false; error: string };
@@ -480,15 +494,15 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
       i += 1;
     } else if (flag === "--workflow") {
       // Exact match on the source workflow's human `name` (#202) — the display key in this table.
-      const value = args[i + 1];
-      if (!value) return { success: false, error: `--workflow requires a name argument\n${RUNS_USAGE}` };
-      workflowName = value;
+      const taken = takeValue(args, i, "--workflow", "a name", RUNS_USAGE);
+      if (!taken.success) return taken;
+      workflowName = taken.value;
       i += 1;
     } else if (flag === "--workflow-id") {
       // Exact match on the durable GUID (#202) — unambiguous where two files share a `name`.
-      const value = args[i + 1];
-      if (!value) return { success: false, error: `--workflow-id requires a guid argument\n${RUNS_USAGE}` };
-      workflowId = value;
+      const taken = takeValue(args, i, "--workflow-id", "a guid", RUNS_USAGE);
+      if (!taken.success) return taken;
+      workflowId = taken.value;
       i += 1;
     } else {
       return { success: false, error: `unrecognized argument "${flag}"\n${RUNS_USAGE}` };
