@@ -65,6 +65,17 @@ Rule of thumb: **Config flows in from outside; Context is written from inside.**
 
 - **Project directory** — the directory whose `.path/` subtree is the **store** for a run: `path.db` (the run rows and log events) plus per-run blobs under `runs/<root-run-id>/<run-id>/`. Chosen per command, not baked into a workflow. Default for `path run` is the workflow file's own directory (it runs one file, in place); `path run -C <dir>` and `path runs -C <dir>` override it, pointing the command at a `.path` store elsewhere. `-C` is **store-only**: it moves where `.path` lives and nothing else — the `workflow.json` positional still resolves against the real working directory, never re-rooted under `<dir>` (contrast `git -C`). A relocated store is how one central directory holds runs from many workflows; each root run records its **source-workflow identity** (Identity) — the producing workflow's id, name, and store-relative path — so a shared store segments its runs by workflow instead of listing anonymous run-ids.
 
+## Discovery
+
+- **Root workflow (file)** — a discovered `*.workflow.json` that no *other* discovered workflow
+  references as a nested `workflow` step. The distinction is **referential**, not about validity or
+  launchability: a **nested-ref file** (one reachable from another via `ref`) is an equally
+  complete, schema-valid workflow, launchable on its own with the right input and config
+  (workflow-as-step). "Root" here names a file's position in the discovered ref graph — distinct
+  from a **root run** (an execution's top run) and from the implicit **root step**. Workflow
+  discovery lists *both* kinds, flagging each as root or nested; it reports existence, validity, and
+  root-ness, and promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6).
+
 ## Resume
 
 - **Root run** — a run tree's own top run: the run of the workflow's implicit root step (Composition, "Workflow"), the one with no parent run id. Its id is what `.path/runs/<root-run-id>/` and a log event's per-root `seq` (Audit, "Log event") key off.
