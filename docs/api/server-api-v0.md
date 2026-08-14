@@ -237,9 +237,93 @@ unavailable — the stream only carries events from connect time onward.
 `404 Not Found` if `root_run_id` is unknown. Stream closes (client sees end-of-stream) when the run
 reaches a terminal status (`succeeded`/`failed`/`cancelled`) at the root.
 
-## 6. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
+## 6. `GET /v0/workflows` — discover launchable workflows
+
+New capability ([#230](https://github.com/howardyang2009/PATH/issues/230), part of
+[#228](https://github.com/howardyang2009/PATH/issues/228)). Scans the server's fixed project root
+for workflow files and returns them, each flagged whether it is a **root** (referenced by no other
+discovered workflow) or also reachable as a nested `workflow` ref. Pure read — no new engine exec
+path.
+
+**Scan.** Recursively collect every `*.workflow.json` under the project root (the repo convention;
+there is no bare `workflow.json`). Skip `.path/`, `node_modules`, and any directory whose name
+starts with `.`. Symlinks are **not** followed — the loader canonicalizes lexically (`resolve`, not
+`realpath`), and matching that avoids aliasing a nested file as a root
+([valid-root-detection.md](../research/valid-root-detection.md)).
+
+**Root classification.** For each discovered file, `loadWorkflowTree(f)`; on success subtract that
+tree's nested-ref set — `keys(tree.files) \ {rootPath}` — from the discovered union. A file landing
+in *any* successfully-loaded root's nested set is `is_root: false`; a file no valid workflow
+references is `is_root: true`; a file whose own load fails cannot be classified → `is_root: null`
+(a failed `LoadResult` carries no `tree.files`). The subtraction is sound because refs are
+schema-guaranteed relative paths (valid-root-detection.md §3).
+
+**Every discovered file is listed** — nested refs included, not deduped away. A nested-ref target is
+itself a complete, schema-valid workflow (workflow-as-step, CONTEXT.md) and is independently
+launchable via §2 with operator-supplied `input` + `config`; `is_root` is a presentation/dedupe
+hint, **not** a launchability gate. This reverses the "valid-roots-only" scoping first charted in
+#228 — see [ADR 0011](../adr/0011-discovery-lists-all-workflows-roots-flagged.md).
+
+Response `200 OK`:
+
+```json
+{
+  "workflows": [
+    {
+      "relative_path": "release-notes.workflow.json",
+      "id": "<uuid>",
+      "name": "release-notes",
+      "valid": true,
+      "is_root": true,
+      "error": null
+    },
+    {
+      "relative_path": "lib/draft.workflow.json",
+      "id": "<uuid>",
+      "name": "draft",
+      "valid": true,
+      "is_root": false,
+      "error": null
+    },
+    {
+      "relative_path": "broken.workflow.json",
+      "id": null,
+      "name": null,
+      "valid": false,
+      "is_root": null,
+      "error": { "message": "unexpected token in JSON at position 12", "details": "..." }
+    }
+  ]
+}
+```
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. |
+| `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
+| `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
+| `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. |
+| `is_root` | boolean \| null | `true` unreferenced; `false` reachable as another discovered workflow's nested ref; `null` when `valid: false`. |
+| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle); `null` otherwise. |
+
+- **No input hint.** The format declares no input schema (top-level `WorkflowFileSchema` carries
+  `format`/`id`/`name`/`worker`/`config`/`body`/`output`, no `input`), so an entry says nothing
+  about what `input` a launch needs — the operator supplies it as raw JSON (#228). An inner
+  workflow's *effective config* (invariant 5: config inherits downward) is likewise not surfaced:
+  **schema-valid ≠ self-sufficient standalone.** Discovery reports existence, validity, and
+  root-ness only — never launch-readiness.
+- **Synchronous `200`, fresh scan each call** — no pagination, no `limit`, no cache. An operator
+  adds files between calls and staleness is worse than a re-scan. Designed for a project root
+  holding tens–low-hundreds of workflow files, not a monorepo-wide index; loading every candidate to
+  classify roots is the cost driver and bounds the scale. Shared children dedupe by absolute-path key
+  within one tree load but are re-read across sibling roots — acceptable at that scale.
+
+## 7. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
 
 - `run-store`: add a "list root runs" query (§3).
+- Discovery (§6) needs one additive helper: a directory scan + per-file `loadWorkflowTree`
+  classification. The loader primitives already exist (`tree.files` is the transitive nested-ref set,
+  valid-root-detection.md §1); the scan + set-subtraction lives in `@path/server`, no engine change.
 - ~~No blob-serving endpoint in v0~~ — closed by issue #43: §4.1 serves `input`/`output` content over
   HTTP for clients that are not co-located with the server's filesystem.
 - SSE replay depends on the `ndjson` log backend being enabled for the run (§5) — a db-only read-back
