@@ -10,15 +10,21 @@
 export {
   isTerminal,
   type BlobName,
+  type ConfigObject,
   type JsonValue,
   type ListRunsResponse,
+  type ListWorkflowsResponse,
+  type LogBackendId,
   type LogEvent,
   type RootRunSummary,
   type RunRecord,
   type RunStatus,
   type RunTreeResponse,
+  type StartRunRequest,
+  type StartRunResponse,
   type WireError,
   type WireRunRecord,
+  type WorkflowSummary,
 } from "@path/schema";
 
 export {
@@ -26,6 +32,7 @@ export {
   PathApiError,
   type PathApiClientOptions,
   type ListRunsQuery,
+  type StartRunOptions,
   type FetchLike,
 } from "./api-client.js";
 

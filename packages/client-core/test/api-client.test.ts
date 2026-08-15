@@ -89,6 +89,76 @@ describe("PathApiClient", () => {
     });
   });
 
+  it("POST /v0/runs translates camelCase options to the snake_case body and returns the wire reply", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ run_id: "r1", root_run_id: "r1" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.startRun({
+      workflowPath: "release-notes.workflow.json",
+      input: { tag: "v1" },
+      config: { model: "sonnet" },
+      logBackends: ["db", "ndjson"],
+      llmConcurrency: 4,
+    });
+
+    expect(res).toEqual({ run_id: "r1", root_run_id: "r1" });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs");
+    expect(inits[0]?.method).toBe("POST");
+    expect(inits[0]?.headers).toEqual({ Accept: "application/json", "Content-Type": "application/json" });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      workflow_path: "release-notes.workflow.json",
+      input: { tag: "v1" },
+      config: { model: "sonnet" },
+      log_backends: ["db", "ndjson"],
+      llm_concurrency: 4,
+    });
+  });
+
+  it("startRun omits every unset optional field, sending only workflow_path", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ run_id: "r1", root_run_id: "r1" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.startRun({ workflowPath: "wf.workflow.json" });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({ workflow_path: "wf.workflow.json" });
+  });
+
+  it("startRun surfaces a 400 validation failure as a PathApiError with the server's details", async () => {
+    const stub = stubFetch(() => json({ error: { message: "invalid config", details: { field: "$env" } } }, 400));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.startRun({ workflowPath: "wf.workflow.json" })).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 400,
+      message: "invalid config",
+      details: { field: "$env" },
+    });
+  });
+
+  it("GET /v0/workflows returns the raw discovery list, roots flagged", async () => {
+    const stub = stubFetch(() =>
+      json({
+        workflows: [
+          { relative_path: "release-notes.workflow.json", id: "w1", name: "release-notes", valid: true, is_root: true, error: null },
+          { relative_path: "broken.workflow.json", id: null, name: null, valid: false, is_root: null, error: { message: "bad JSON" } },
+        ],
+      }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.listWorkflows();
+    expect(res.workflows[0]).toMatchObject({ relative_path: "release-notes.workflow.json", is_root: true });
+    expect(res.workflows[1]).toMatchObject({ valid: false, is_root: null, error: { message: "bad JSON" } });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
+  });
+
   it("raises PathApiError carrying the server's error envelope on non-2xx", async () => {
     const stub = stubFetch(() => json({ error: { message: "no run found", details: { id: "nope" } } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
