@@ -47,6 +47,7 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 ## Data
 
 - **Config** — key-value data injected into a run *from outside*: supplied by the workflow author or operator at design/launch time (API tokens, model names, endpoints, flags). Declared per step; when unspecified, inherited from the enclosing workflow ("upper config inherited by downside steps"). Config never originates from a step's execution.
+- **Operator config** — the subset of config an *operator* supplies at launch to override authored values (the CLI `--config`/`--set`, the `POST /v0/runs` `config` field), as opposed to config authored into a `workflow.json`. Its trust source is the launching operator, not the machine: it may carry a literal **Secret**, but it may not name the server's environment with an **Env-sourced value** (a browser operator who launches a discovered workflow cannot otherwise read the server box's environment). A `$env` authored inside a workflow file is unaffected — that is the author's, not the operator's.
 - **Context** — key-value data written *from inside* the run: produced by steps at runtime and readable by the other steps of the same workflow (a computed temp dir, a branch name, accumulated results). Scoped to one workflow-run and isolated: a nested workflow-step starts with a fresh, empty context and exchanges data with its parent only through its input and output objects.
 
 Rule of thumb: **Config flows in from outside; Context is written from inside.**
