@@ -53,18 +53,22 @@ section back to its originating decision.
   graduates only when remote access is a real destination, not this one.
 - **Project scope**: one server instance serves one fixed project root, set at startup (§4). No
   request carries an arbitrary filesystem path; no multi-project routing exists in v0.
-- **`$env` in posted config resolves against the server process, and this is argued rather than
-  gated.** `POST /v0/runs` validates operator config with `ConfigObjectSchema` — stricter than the
-  CLI path, which schema-checks workflow files but not `--set`/`--config` values (mvp spec §8.3) — so
-  a caller may name any environment variable of the **server process** via `{"$env": "NAME"}`
-  (format doc §8.3) and read its value back through a step's output. That grants **no new power**: a
-  caller who can post a workflow can already post a `binary` step, and binary steps inherit the whole process
-  environment — the variable was reachable before `$env` existed. Adding an allowlist or a
-  server-side refusal here would stop the honest path and leave the `curl`-in-a-`binary`-step path
-  open, which is a gate that only looks like one. The boundary that actually holds is the one above:
-  localhost-only, no auth, same trust as `.path/` on disk. It is unchanged by `$env`. If that
-  boundary ever moves — remote access, real auth — this argument is re-opened with it, because
-  "already reachable" is only true for a caller who is already local.
+- **`$env` in operator-supplied config is rejected; a literal `$secret` is accepted.** `POST
+  /v0/runs` validates operator config with `ConfigObjectSchema`, then refuses any `{"$env": "NAME"}`
+  wrapper in it — including the composed `{"$secret": {"$env": "NAME"}}` form — with a `400`
+  ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), [#231](https://github.com/howardyang2009/PATH/issues/231)).
+  This reverses the earlier "argued, not gated" stance. That stance held `$env` "adds no new power"
+  because a caller who can post config can already post a `binary` step that inherits the process
+  environment — but the browser launch surface ([#228](https://github.com/howardyang2009/PATH/issues/228))
+  breaks the equivalence: the viewer launches *discovered* workflows and cannot author a `binary`
+  step, so `$env` on the override path would hand a browser user an env-read power they do not
+  otherwise have. This is the boundary-move this spec pre-committed to re-open on. Launch-time
+  security material must come from the website user (a literal `$secret`, masked on the return path,
+  CONTEXT.md → Secret), not the server box. The reject is uniform across every caller (one no-auth
+  same-origin endpoint cannot tell a browser `fetch` from a `curl`) and applies **only to
+  operator-supplied override config** — an `$env` wrapper authored inside a `workflow.json` is
+  untouched. CSRF/cross-origin remains a separate, deferred concern (the config envelope is the wrong
+  layer for it); it graduates with the auth/origin hardening below.
 - **Concurrency**: multiple root runs may execute concurrently against one server instance, with no
   server-side queueing. This falls out of the engine's existing design, not new work: run
   persistence and log backends are already keyed per root run (mvp spec §6, §8), and the LLM

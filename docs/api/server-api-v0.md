@@ -62,7 +62,7 @@ Request body:
 | --- | --- | --- |
 | `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
-| `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, and the same `$secret`/`$env` wrappers (format doc §8.3), validated here by `ConfigObjectSchema`. `$env` names a variable of the **server process**; the argument for why that adds no power is in the server spec §2. |
+| `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, validated here by `ConfigObjectSchema`. Accepts a literal `{"$secret": "..."}` wrapper (format doc §8.3; masked on the return path). **Rejects** any `{"$env": "NAME"}` wrapper — including the composed `{"$secret": {"$env": "NAME"}}` form — with a `400`: operator override config may not source from the server process environment ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), server spec §2). An `$env` wrapper authored *inside* a `workflow.json` is unaffected. |
 | `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
 | `llm_concurrency` | no | Same as `path run --llm-concurrency`. Omitted: the project's `.path/settings.json` `"llm.concurrency"`, else the engine default (4). |
 
