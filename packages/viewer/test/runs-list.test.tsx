@@ -135,6 +135,20 @@ describe("RunsList", () => {
     expect(urls[1]).toBe("/v0/runs?limit=50&status=failed");
   });
 
+  it("re-reads immediately when the reload nonce changes, without a loading flash", async () => {
+    const { client, urls } = stubClient([RUNNING]);
+
+    const { rerender } = renderList(client, { reloadNonce: 0 });
+    await waitFor(() => expect(urls).toHaveLength(1));
+
+    rerender(
+      <RunsList client={client} selectedRootRunId={null} onSelectRootRun={() => {}} reloadNonce={1} />,
+    );
+
+    await waitFor(() => expect(urls).toHaveLength(2));
+    expect(screen.queryByText("Loading runs…")).toBeNull();
+  });
+
   it("distinguishes an empty filter result from an empty run store", async () => {
     const { client } = stubClient([]);
 

@@ -1,6 +1,7 @@
 import type { PathApiClient } from "@path/client-core";
 import { useState } from "react";
 import { AppShell } from "./app-shell.js";
+import { LaunchPanel } from "./launch-panel.js";
 import { NodeIo } from "./node-io.js";
 import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
@@ -23,6 +24,7 @@ import { useRunView } from "./use-run-view.js";
 export function App({ client }: { client: PathApiClient }) {
   const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
 
   // Switching root run drops the node selection: a run id from the previous tree names nothing in
@@ -30,6 +32,14 @@ export function App({ client }: { client: PathApiClient }) {
   const selectRootRun = (rootRunId: string): void => {
     setSelectedRootRunId(rootRunId);
     setSelectedRunId(null);
+  };
+
+  // A launch (#233) is the same transition as a click — select the new run so the centre pane
+  // streams it — plus a nudge so the runs rail re-reads and shows the new row now, not at the next
+  // periodic tick.
+  const handleLaunched = (rootRunId: string): void => {
+    selectRootRun(rootRunId);
+    setRunsReloadNonce((nonce) => nonce + 1);
   };
 
   // The tree is the only source of the selected run: taking the record from the same snapshot the
@@ -40,11 +50,15 @@ export function App({ client }: { client: PathApiClient }) {
   return (
     <AppShell
       runs={
-        <RunsList
-          client={client}
-          selectedRootRunId={selectedRootRunId}
-          onSelectRootRun={selectRootRun}
-        />
+        <>
+          <LaunchPanel client={client} onLaunched={handleLaunched} />
+          <RunsList
+            client={client}
+            selectedRootRunId={selectedRootRunId}
+            onSelectRootRun={selectRootRun}
+            reloadNonce={runsReloadNonce}
+          />
+        </>
       }
       detail={
         selectedRootRunId === null ? (

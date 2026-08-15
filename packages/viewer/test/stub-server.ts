@@ -42,6 +42,8 @@ export class EventStreamStub {
 export interface StubServerOptions {
   /** Body for `GET /v0/runs` — the runs-list window. */
   runs?: unknown;
+  /** Body for `GET /v0/workflows` — the launch panel's discovery list. Defaults to an empty list. */
+  workflows?: unknown;
   /** Body for `GET /v0/runs/:root_run_id` — the run tree. */
   tree?: unknown;
   /** Status for the tree response, for the not-found path. */
@@ -60,12 +62,15 @@ export interface StubServerOptions {
 }
 
 export function stubClient(options: StubServerOptions = {}): PathApiClient {
-  const { runs = { runs: [] }, tree = { runs: [] }, treeStatus = 200, stream } = options;
+  const { runs = { runs: [] }, workflows = { workflows: [] }, tree = { runs: [] }, treeStatus = 200, stream } = options;
 
   const fetchLike: FetchLike = async (input, init) => {
     if (input.endsWith("/events")) {
       const body = (stream ?? new EventStreamStub()).body(init?.signal);
       return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }
+    if (input === "/v0/workflows") {
+      return json(workflows, 200);
     }
     const blobKey = blobKeyOf(input);
     if (blobKey !== null) {
