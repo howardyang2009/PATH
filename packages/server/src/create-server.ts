@@ -8,6 +8,7 @@ import { handleGetRun } from "./routes/get-run.js";
 import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
+import { handleGetWorkflows } from "./routes/get-workflows.js";
 import { createLiveRuns } from "./live-runs.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
 import { serveStatic } from "./serve-static.js";
@@ -46,6 +47,11 @@ async function handleRequest(
 
     if (req.method === "GET" && pathname === "/v0/runs") {
       handleListRuns(res, ctx, url.searchParams);
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/v0/workflows") {
+      handleGetWorkflows(res, ctx);
       return;
     }
 
