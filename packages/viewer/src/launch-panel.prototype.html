@@ -1,0 +1,668 @@
+<title>Launch Panel Prototype</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  THROWAWAY PROTOTYPE — issue #233 (part of #228). Not production code.
+  Question: what should the viewer's launch panel look/behave like, and where does it live?
+  Three radically different variants on the pinned three-pane console, switchable via ?variant= and
+  the floating bottom bar (or ← / → keys). Each variant answers the four open questions differently:
+    1. combined blob vs separate input/config textareas
+    2. client-side JSON validity + how a server 400 (schema / $env) surfaces back into the panel
+    3. empty-input: allowed or required
+    4. panel placement vs the workflow list, and how launch → 202 {run_id, root_run_id} enters the live stream
+  Mock server below simulates POST /v0/runs: 202 {run_id, root_run_id}; 400 {error:{message,details}}
+  for schema failure and for the ADR-0012 $env-in-override rejection. No real network, no persistence.
+-->
+<style>
+  /* Tokens copied verbatim from packages/viewer/src/tokens.css — honor the pinned design system. */
+  :root {
+    --ground: #fbfcfd; --surface: #ffffff; --border: #d8dee4;
+    --text: #1c2128; --text-muted: #656d76; --accent: #4c6ef5;
+    --status-running-fg: #1f6feb; --status-running-bg: #ddf0ff;
+    --status-succeeded-fg: #1a7f37; --status-succeeded-bg: #dcfce7;
+    --status-failed-fg: #cf222e; --status-failed-bg: #ffebe9;
+    --status-cancelled-fg: #656d76; --status-cancelled-bg: #eaeef2;
+    --status-pending-fg: #9a6700; --status-pending-bg: #fff8c5;
+    --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+    --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 19px; --fs-xl: 24px;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1116; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-muted: #8b949e; --accent: #5c7cff;
+    --status-running-fg: #58a6ff; --status-running-bg: #12283f;
+    --status-succeeded-fg: #3fb950; --status-succeeded-bg: #12261a;
+    --status-failed-fg: #f85149; --status-failed-bg: #2d1416;
+    --status-cancelled-fg: #8b949e; --status-cancelled-bg: #21262d;
+    --status-pending-fg: #d29922; --status-pending-bg: #2a2213;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1116; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-muted: #8b949e; --accent: #5c7cff;
+      --status-running-fg: #58a6ff; --status-running-bg: #12283f;
+      --status-succeeded-fg: #3fb950; --status-succeeded-bg: #12261a;
+      --status-failed-fg: #f85149; --status-failed-bg: #2d1416;
+      --status-cancelled-fg: #8b949e; --status-cancelled-bg: #21262d;
+      --status-pending-fg: #d29922; --status-pending-bg: #2a2213;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--ground); color: var(--text);
+         font-family: var(--font-sans); font-size: var(--fs-base); }
+
+  /* Prototype banner. */
+  .proto-banner { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+    background: var(--status-pending-bg); color: var(--status-pending-fg);
+    border-bottom: 1px solid var(--border); padding: 6px 14px; font-size: var(--fs-sm); }
+  .proto-banner strong { font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .proto-banner .q { color: var(--text-muted); }
+
+  /* Three-pane console chrome (mirrors app-shell.tsx). */
+  .shell { display: flex; flex-direction: column; height: calc(100vh - 33px); }
+  .topbar { display: flex; align-items: center; gap: 10px; padding: 8px 14px;
+    background: var(--surface); border-bottom: 1px solid var(--border); }
+  .brand { font-weight: 700; letter-spacing: .06em; }
+  .brand-sub { color: var(--text-muted); font-size: var(--fs-sm); }
+  .topbar .spacer { flex: 1; }
+  .topbar-launch { font-family: var(--font-sans); font-size: var(--fs-sm); cursor: pointer;
+    background: var(--accent); color: #fff; border: none; border-radius: 6px; padding: 5px 11px; font-weight: 600; }
+  .topbar-toggle { font-size: var(--fs-sm); cursor: pointer; background: transparent;
+    color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 4px 10px; }
+  .topbar-toggle[aria-pressed="true"] { background: var(--status-running-bg); color: var(--status-running-fg); border-color: var(--status-running-fg); }
+
+  .panes { flex: 1; display: grid; grid-template-columns: 300px 1fr 300px; min-height: 0; }
+  .pane { border-right: 1px solid var(--border); display: flex; flex-direction: column; min-height: 0; }
+  .pane:last-child { border-right: none; }
+  .pane-head { padding: 7px 12px; border-bottom: 1px solid var(--border); background: var(--surface); }
+  .pane-title { margin: 0; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: .05em; color: var(--text-muted); font-weight: 700; }
+  .pane-body { flex: 1; overflow: auto; min-height: 0; }
+  .pane-note { color: var(--text-muted); padding: 14px; font-size: var(--fs-sm); }
+
+  /* Runs list rows (mirrors runs-list density). */
+  .runrow { display: flex; align-items: center; gap: 8px; padding: 8px 12px;
+    border-bottom: 1px solid var(--border); cursor: pointer; }
+  .runrow:hover { background: var(--ground); }
+  .runrow[aria-selected="true"] { background: var(--status-running-bg); }
+  .runrow .rid { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+  .runrow .rname { font-size: var(--fs-sm); flex: 1; }
+  .runrow.fresh { animation: flash 1.4s ease-out; }
+  @keyframes flash { from { background: var(--status-succeeded-bg); } to { background: transparent; } }
+
+  .pill { font-size: var(--fs-xs); padding: 1px 7px; border-radius: 999px; font-weight: 600; white-space: nowrap; }
+  .pill.running   { color: var(--status-running-fg);   background: var(--status-running-bg); }
+  .pill.succeeded { color: var(--status-succeeded-fg); background: var(--status-succeeded-bg); }
+  .pill.failed    { color: var(--status-failed-fg);    background: var(--status-failed-bg); }
+  .pill.pending   { color: var(--status-pending-fg);   background: var(--status-pending-bg); }
+
+  /* Workflow list. */
+  .wf-head { padding: 7px 12px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); font-weight: 700; border-bottom: 1px solid var(--border); display: flex; gap: 6px; align-items: center; }
+  .wf-row { display: flex; align-items: center; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+  .wf-row:hover { background: var(--ground); }
+  .wf-row[aria-expanded="true"] { background: var(--status-running-bg); }
+  .wf-row.invalid { cursor: not-allowed; opacity: .7; }
+  .wf-name { flex: 1; font-size: var(--fs-sm); }
+  .wf-path { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+  .tag { font-size: 9px; letter-spacing: .04em; text-transform: uppercase; padding: 1px 5px; border-radius: 3px; font-weight: 700;
+    border: 1px solid var(--border); color: var(--text-muted); }
+  .tag.root { color: var(--status-succeeded-fg); border-color: var(--status-succeeded-fg); }
+  .tag.nested { color: var(--text-muted); }
+  .tag.bad { color: var(--status-failed-fg); border-color: var(--status-failed-fg); }
+
+  /* Launch form primitives (shared across variants). */
+  label.field { display: block; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em;
+    color: var(--text-muted); font-weight: 700; margin: 0 0 4px; }
+  textarea.json { width: 100%; font-family: var(--font-mono); font-size: var(--fs-sm); line-height: 1.5;
+    background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 6px;
+    padding: 8px; resize: vertical; }
+  textarea.json.ok  { border-color: var(--status-succeeded-fg); }
+  textarea.json.bad { border-color: var(--status-failed-fg); }
+  .lint { font-family: var(--font-mono); font-size: var(--fs-xs); margin: 3px 0 0; min-height: 15px; }
+  .lint.ok  { color: var(--status-succeeded-fg); }
+  .lint.bad { color: var(--status-failed-fg); }
+  .lint.warn{ color: var(--status-pending-fg); }
+  .btn-primary { font-family: var(--font-sans); font-size: var(--fs-sm); cursor: pointer; background: var(--accent);
+    color: #fff; border: none; border-radius: 6px; padding: 7px 14px; font-weight: 600; }
+  .btn-primary:disabled { opacity: .45; cursor: not-allowed; }
+  .btn-ghost { font-family: var(--font-sans); font-size: var(--fs-sm); cursor: pointer; background: transparent;
+    color: var(--text); border: 1px solid var(--border); border-radius: 6px; padding: 6px 12px; }
+  .disclosure { font-size: var(--fs-sm); color: var(--accent); cursor: pointer; background: none; border: none; padding: 0; font-weight: 600; }
+  .server-400 { border: 1px solid var(--status-failed-fg); background: var(--status-failed-bg); color: var(--status-failed-fg);
+    border-radius: 6px; padding: 8px 10px; font-size: var(--fs-sm); margin-top: 8px; }
+  .server-400 code { font-family: var(--font-mono); font-size: var(--fs-xs); }
+  .server-400 .det { color: var(--text); opacity: .85; display: block; margin-top: 4px; }
+  .checkline { display: flex; align-items: center; gap: 6px; font-size: var(--fs-xs); color: var(--text-muted); margin-top: 8px; }
+
+  /* A — inline expander form inside Runs pane. */
+  .wf-inline-form { padding: 12px; border-bottom: 1px solid var(--border); background: var(--surface); display: flex; flex-direction: column; gap: 10px; }
+
+  /* B — modal overlay. */
+  .modal-scrim { position: fixed; inset: 0; background: rgba(0,0,0,.5); display: flex; align-items: center; justify-content: center; z-index: 40; }
+  .modal { width: min(860px, 92vw); height: min(560px, 88vh); background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; display: grid; grid-template-columns: 240px 1fr; overflow: hidden; box-shadow: 0 12px 40px rgba(0,0,0,.35); }
+  .modal-pick { border-right: 1px solid var(--border); overflow: auto; }
+  .modal-pick input { width: 100%; border: none; border-bottom: 1px solid var(--border); padding: 9px 12px; background: var(--ground); color: var(--text); font-size: var(--fs-sm); }
+  .modal-pick .wf-row[aria-selected="true"] { background: var(--status-running-bg); }
+  .modal-edit { display: flex; flex-direction: column; padding: 14px; gap: 8px; min-height: 0; }
+  .modal-edit .edit-head { display: flex; align-items: center; gap: 8px; }
+  .modal-edit .edit-head .validity { margin-left: auto; }
+  .modal-edit textarea.json { flex: 1; min-height: 0; }
+  .modal-foot { display: flex; align-items: center; gap: 8px; }
+
+  /* C — persistent drawer replaces Node I/O pane. */
+  .drawer { display: flex; flex-direction: column; gap: 10px; padding: 12px; }
+  .tree-preview { border: 1px solid var(--border); border-radius: 6px; padding: 8px; background: var(--ground); font-family: var(--font-mono); font-size: var(--fs-xs); }
+  .tree-preview .t-root { color: var(--status-succeeded-fg); font-weight: 700; }
+  .tree-preview .t-ref { color: var(--text-muted); padding-left: 14px; }
+
+  .toast-wrap { position: fixed; bottom: 64px; right: 18px; display: flex; flex-direction: column; gap: 8px; z-index: 50; }
+  .toast { background: var(--surface); border: 1px solid var(--status-succeeded-fg); border-left-width: 4px;
+    color: var(--text); border-radius: 6px; padding: 9px 12px; font-size: var(--fs-sm); box-shadow: 0 4px 14px rgba(0,0,0,.18);
+    animation: rise .25s ease-out; max-width: 300px; }
+  .toast .tid { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text-muted); }
+  @keyframes rise { from { transform: translateY(8px); opacity: 0; } to { transform: none; opacity: 1; } }
+
+  /* Variant meta strip (what this variant decides). */
+  .variant-meta { padding: 10px 12px; border-bottom: 1px dashed var(--border); background: var(--ground); font-size: var(--fs-xs); color: var(--text-muted); }
+  .variant-meta b { color: var(--text); }
+  .variant-meta .row { margin-top: 3px; }
+
+  /* Floating switcher. */
+  .switcher { position: fixed; bottom: 14px; left: 50%; transform: translateX(-50%); z-index: 60;
+    display: flex; align-items: center; gap: 4px; background: #111418; color: #fff; border-radius: 999px;
+    padding: 5px 6px; box-shadow: 0 6px 22px rgba(0,0,0,.4); font-size: var(--fs-sm); }
+  .switcher button { background: transparent; color: #fff; border: none; cursor: pointer; font-size: 16px; line-height: 1;
+    padding: 4px 9px; border-radius: 999px; }
+  .switcher button:hover { background: rgba(255,255,255,.15); }
+  .switcher .label { padding: 0 8px; font-weight: 600; white-space: nowrap; }
+  .switcher .label .k { opacity: .6; margin-right: 6px; }
+
+  .center-empty { display: flex; align-items: center; justify-content: center; height: 100%; color: var(--text-muted); font-size: var(--fs-sm); text-align: center; padding: 20px; }
+  .stream { padding: 12px; font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); }
+  .stream .ev { padding: 2px 0; border-bottom: 1px solid var(--border); }
+  .stream .ev .k { color: var(--accent); }
+</style>
+
+<div class="proto-banner">
+  <strong>Prototype · throwaway</strong>
+  <span class="q">issue #233 — launch panel: raw-JSON input/config, validation, post-202 transition. Flip variants below; your reaction is the deliverable.</span>
+</div>
+
+<div id="app"></div>
+
+<div class="switcher" role="group" aria-label="Prototype variant switcher">
+  <button id="prev" aria-label="Previous variant">‹</button>
+  <span class="label"><span class="k" id="vk">A</span><span id="vname"></span></span>
+  <button id="next" aria-label="Next variant">›</button>
+</div>
+
+<div class="toast-wrap" id="toasts"></div>
+
+<script>
+"use strict";
+
+/* ------------------------------------------------------------------ *
+ * Mock domain data — realistic GET /v0/workflows (§6) + a runs list.  *
+ * ------------------------------------------------------------------ */
+const WORKFLOWS = [
+  { relative_path: "release-notes.workflow.json", id: "8f1c…a02", name: "release-notes", valid: true,  is_root: true,  error: null },
+  { relative_path: "classify.workflow.json",      id: "3b90…7d1", name: "classify",      valid: true,  is_root: true,  error: null },
+  { relative_path: "lib/draft.workflow.json",     id: "c47e…9f5", name: "draft",         valid: true,  is_root: false, error: null },
+  { relative_path: "broken.workflow.json",        id: null,       name: null,           valid: false, is_root: null,
+    error: { message: "unexpected token } in JSON at position 142", details: "lib/broken.workflow.json" } },
+];
+// Nested refs per root, for variant C's tree preview.
+const TREES = {
+  "release-notes.workflow.json": ["lib/draft.workflow.json"],
+  "classify.workflow.json": [],
+};
+
+let runs = [
+  { run_id: "r_9f2a10", name: "release-notes", status: "succeeded" },
+  { run_id: "r_7c3d88", name: "classify",      status: "running" },
+];
+let freshId = null;               // run_id to flash after a launch
+let selectedRootRunId = "r_7c3d88";
+
+/* ------------------------------------------------------------------ *
+ * Mock server — POST /v0/runs. Returns {status, body}.               *
+ *   400 schema failure  → force400 flag                              *
+ *   400 $env rejection  → any {"$env": …} in override config (ADR 12) *
+ *   202                 → {run_id, root_run_id}                      *
+ * ------------------------------------------------------------------ */
+function hasEnvWrapper(v) {
+  if (Array.isArray(v)) return v.some(hasEnvWrapper);
+  if (v && typeof v === "object") {
+    if (Object.prototype.hasOwnProperty.call(v, "$env")) return true;
+    return Object.values(v).some(hasEnvWrapper);
+  }
+  return false;
+}
+function mockStartRun({ workflow_path, config, force400 }) {
+  if (config && hasEnvWrapper(config)) {
+    return { status: 400, body: { error: {
+      message: "operator config override rejects the $env wrapper (ADR 0012); use $secret instead",
+      details: { at: "config", wrapper: "$env" } } } };
+  }
+  if (force400) {
+    return { status: 400, body: { error: {
+      message: "workflow validation failed",
+      details: { input: "required property 'ticket' missing; expected object matching worker input" } } } };
+  }
+  const n = (Math.random() * 0xffffff | 0).toString(16).padStart(6, "0");
+  return { status: 202, body: { run_id: "r_" + n, root_run_id: "r_" + n } };
+}
+
+/* ------------------------------------------------------------------ *
+ * Shared JSON-lint helper: returns {ok, empty, msg, value}.          *
+ * ------------------------------------------------------------------ */
+function lintJson(text, { allowEmpty }) {
+  const t = text.trim();
+  if (t === "") return allowEmpty
+    ? { ok: true, empty: true, msg: "empty — field omitted", value: undefined }
+    : { ok: false, empty: true, msg: "required (type {} for none)", value: undefined };
+  try {
+    const value = JSON.parse(t);
+    return { ok: true, empty: false, msg: "valid JSON", value };
+  } catch (e) {
+    return { ok: false, empty: false, msg: String(e.message || e), value: undefined };
+  }
+}
+
+function launchRow(name, res) {
+  // Fold a 202 into the runs list and select it — the shared "transition into the live stream" step.
+  runs = [{ run_id: res.body.run_id, name, status: "running" }, ...runs];
+  freshId = res.body.run_id;
+  selectedRootRunId = res.body.root_run_id;
+}
+function toast(html) {
+  const wrap = document.getElementById("toasts");
+  const el = document.createElement("div");
+  el.className = "toast";
+  el.innerHTML = html;
+  wrap.appendChild(el);
+  setTimeout(() => el.remove(), 4200);
+}
+function statusPill(s) { return `<span class="pill ${s}">${s}</span>`; }
+
+/* ------------------------------------------------------------------ *
+ * Center pane — the live run stream a launch transitions into.        *
+ * ------------------------------------------------------------------ */
+function centerPane() {
+  const run = runs.find(r => r.run_id === selectedRootRunId);
+  if (!run) return `<div class="center-empty">Select a run, or launch one.</div>`;
+  return `
+    <div class="stream">
+      <div style="margin-bottom:8px">${statusPill(run.status)} <b>${run.name}</b>
+        <span class="rid" style="font-family:var(--font-mono)">${run.run_id}</span></div>
+      <div class="ev"><span class="k">run-started</span> root_run_id=${run.run_id}</div>
+      <div class="ev"><span class="k">node-started</span> node=plan</div>
+      <div class="ev"><span class="k">llm-delta</span> …streaming tokens…</div>
+      ${run.status !== "running" ? `<div class="ev"><span class="k">run-${run.status}</span></div>` : ""}
+    </div>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Runs list rows (shared left-pane body content builder).            *
+ * ------------------------------------------------------------------ */
+function runsRows() {
+  return runs.map(r => `
+    <div class="runrow ${r.run_id === freshId ? "fresh" : ""}" data-run="${r.run_id}"
+         aria-selected="${r.run_id === selectedRootRunId}">
+      ${statusPill(r.status)}<span class="rname">${r.name}</span><span class="rid">${r.run_id}</span>
+    </div>`).join("");
+}
+
+/* ================================================================== *
+ * VARIANT A — inline expander inside the Runs pane.                    *
+ *   • Panel lives UNDER the workflow row, inside the list column.      *
+ *   • SEPARATE input + config; config behind an "Override config" disc.*
+ *   • Empty input ALLOWED (prefilled {}).                              *
+ *   • 400 → field-mapped red banner under the form.                   *
+ *   • 202 → form collapses, new row prepended + auto-selected.        *
+ * ================================================================== */
+const stateA = { expanded: null, input: "{}", config: "", showConfig: false, force400: false, server: null };
+function renderA(mount) {
+  mount.innerHTML = `
+    <div class="shell">
+      <div class="topbar"><span class="brand">PATH</span><span class="brand-sub">viewer · read-only</span>
+        <span class="spacer"></span></div>
+      <div class="panes">
+        <section class="pane">
+          <div class="variant-meta">
+            <b>A · Inline expander, list-anchored.</b>
+            <div class="row">Launch form opens <b>under the workflow row</b>, inside the list. Separate input/config, config collapsed. Empty input allowed. 202 collapses the form and drops the run in the list below.</div>
+          </div>
+          <div class="wf-head">Workflows <span class="tag" style="border:none">GET /v0/workflows</span></div>
+          <div id="wf-list"></div>
+          <div class="wf-head">Runs</div>
+          <div id="runs">${runsRows()}</div>
+        </section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">Run detail</h2></div>
+          <div class="pane-body">${centerPane()}</div></section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">Node I/O</h2></div>
+          <div class="pane-body"><p class="pane-note">Select a node in the tree.</p></div></section>
+      </div>
+    </div>`;
+  const list = mount.querySelector("#wf-list");
+  list.innerHTML = WORKFLOWS.map(w => {
+    const tag = !w.valid ? `<span class="tag bad">invalid</span>`
+      : w.is_root ? `<span class="tag root">root</span>` : `<span class="tag nested">nested</span>`;
+    const row = `<div class="wf-row ${w.valid ? "" : "invalid"}" data-wf="${w.relative_path}"
+        aria-expanded="${stateA.expanded === w.relative_path}">
+        <span class="wf-name">${w.name ?? "—"} <span class="wf-path">${w.relative_path}</span></span>${tag}</div>`;
+    return row + (stateA.expanded === w.relative_path ? inlineFormA(w) : "");
+  }).join("");
+
+  list.querySelectorAll(".wf-row").forEach(el => el.addEventListener("click", () => {
+    const w = WORKFLOWS.find(x => x.relative_path === el.dataset.wf);
+    if (!w.valid) return;
+    stateA.expanded = stateA.expanded === w.relative_path ? null : w.relative_path;
+    stateA.server = null;
+    renderA(mount);
+  }));
+  wireInlineFormA(mount);
+  mount.querySelectorAll("#runs .runrow").forEach(el => el.addEventListener("click", () => {
+    selectedRootRunId = el.dataset.run; freshId = null; renderA(mount);
+  }));
+}
+function inlineFormA(w) {
+  const li = lintJson(stateA.input, { allowEmpty: true });
+  const lc = stateA.showConfig ? lintJson(stateA.config, { allowEmpty: true }) : { ok: true };
+  const canLaunch = li.ok && lc.ok;
+  return `
+    <div class="wf-inline-form">
+      <div>
+        <label class="field">input · raw JSON</label>
+        <textarea class="json ${li.ok ? "ok" : "bad"}" id="a-input" rows="4">${stateA.input}</textarea>
+        <p class="lint ${li.ok ? "ok" : "bad"}">${li.msg}</p>
+      </div>
+      <button class="disclosure" id="a-disc">${stateA.showConfig ? "▾" : "▸"} Override config (optional)</button>
+      ${stateA.showConfig ? `<div>
+        <label class="field">config override · raw JSON</label>
+        <textarea class="json ${lintJson(stateA.config,{allowEmpty:true}).ok ? "ok":"bad"}" id="a-config" rows="3" placeholder='{"model":"…","$secret":{…}}'>${stateA.config}</textarea>
+        <p class="lint ${lintJson(stateA.config,{allowEmpty:true}).ok?"ok":"bad"}">${lintJson(stateA.config,{allowEmpty:true}).msg}</p>
+      </div>` : ""}
+      <label class="checkline"><input type="checkbox" id="a-f400" ${stateA.force400?"checked":""}/> simulate a server 400 (schema failure)</label>
+      <div style="display:flex; gap:8px; align-items:center">
+        <button class="btn-primary" id="a-launch" ${canLaunch?"":"disabled"}>Launch ${w.name}</button>
+        <span class="rid" style="font-family:var(--font-mono)">POST /v0/runs</span>
+      </div>
+      ${stateA.server ? server400Block(stateA.server) : ""}
+    </div>`;
+}
+function wireInlineFormA(mount) {
+  const inp = mount.querySelector("#a-input");
+  if (!inp) return;
+  inp.addEventListener("input", () => { stateA.input = inp.value; softRelintA(mount); });
+  const cfg = mount.querySelector("#a-config");
+  if (cfg) cfg.addEventListener("input", () => { stateA.config = cfg.value; softRelintA(mount); });
+  mount.querySelector("#a-disc").addEventListener("click", () => { stateA.showConfig = !stateA.showConfig; renderA(mount); });
+  mount.querySelector("#a-f400").addEventListener("change", e => { stateA.force400 = e.target.checked; });
+  mount.querySelector("#a-launch").addEventListener("click", () => {
+    const w = WORKFLOWS.find(x => x.relative_path === stateA.expanded);
+    const cfgv = stateA.showConfig ? lintJson(stateA.config, { allowEmpty: true }).value : undefined;
+    const res = mockStartRun({ workflow_path: w.relative_path, config: cfgv, force400: stateA.force400 });
+    if (res.status === 202) { launchRow(w.name, res); stateA.expanded = null; stateA.server = null; renderA(mount); }
+    else { stateA.server = res.body; renderA(mount); }
+  });
+}
+// Re-lint without a full re-render so the textarea keeps focus/caret while typing.
+function softRelintA(mount) {
+  const li = lintJson(stateA.input, { allowEmpty: true });
+  const inp = mount.querySelector("#a-input");
+  inp.className = "json " + (li.ok ? "ok" : "bad");
+  inp.nextElementSibling.className = "lint " + (li.ok ? "ok" : "bad");
+  inp.nextElementSibling.textContent = li.msg;
+  const cfg = mount.querySelector("#a-config");
+  const lc = cfg ? lintJson(stateA.config, { allowEmpty: true }) : { ok: true };
+  if (cfg) { cfg.className = "json " + (lc.ok ? "ok" : "bad"); cfg.nextElementSibling.className = "lint " + (lc.ok ? "ok" : "bad"); cfg.nextElementSibling.textContent = lc.msg; }
+  mount.querySelector("#a-launch").disabled = !(li.ok && lc.ok);
+}
+
+/* ================================================================== *
+ * VARIANT B — full-focus launch modal / command palette.              *
+ *   • "+ Launch workflow" in the topbar opens a modal over the console.*
+ *   • Workflow picker (left) + ONE combined JSON blob (right).        *
+ *   • Empty input EXPLICIT: must be valid JSON; {} scaffold prefilled.*
+ *   • 400 → error list under the editor.                             *
+ *   • 202 → modal closes, list auto-selects new run, toast + stream.  *
+ * ================================================================== */
+const B_SCAFFOLD = '{\n  "input": {},\n  "config": {}\n}';
+const stateB = { open: false, pick: "release-notes.workflow.json", blob: B_SCAFFOLD, query: "", force400: false, server: null };
+function renderB(mount) {
+  mount.innerHTML = `
+    <div class="shell">
+      <div class="topbar"><span class="brand">PATH</span><span class="brand-sub">viewer · read-only</span>
+        <span class="spacer"></span>
+        <button class="topbar-launch" id="b-open">+ Launch workflow</button></div>
+      <div class="panes">
+        <section class="pane">
+          <div class="variant-meta"><b>B · Full-focus modal.</b>
+            <div class="row">Launch lives behind a <b>topbar button</b>, opens a modal. <b>One combined JSON blob</b> ({input, config}). Input explicit (must be valid JSON). 202 closes the modal, auto-selects the run, toasts.</div></div>
+          <div class="wf-head">Runs</div>
+          <div id="runs">${runsRows()}</div>
+        </section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">Run detail</h2></div>
+          <div class="pane-body">${centerPane()}</div></section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">Node I/O</h2></div>
+          <div class="pane-body"><p class="pane-note">Select a node in the tree.</p></div></section>
+      </div>
+    </div>
+    ${stateB.open ? modalB() : ""}`;
+  mount.querySelector("#b-open").addEventListener("click", () => { stateB.open = true; stateB.server = null; renderB(mount); });
+  mount.querySelectorAll("#runs .runrow").forEach(el => el.addEventListener("click", () => { selectedRootRunId = el.dataset.run; freshId = null; renderB(mount); }));
+  if (stateB.open) wireModalB(mount);
+}
+function modalB() {
+  const l = lintJson(stateB.blob, { allowEmpty: false });
+  const shown = WORKFLOWS.filter(w => (w.name ?? w.relative_path).includes(stateB.query));
+  return `
+    <div class="modal-scrim" id="b-scrim">
+      <div class="modal" role="dialog" aria-label="Launch workflow">
+        <div class="modal-pick">
+          <input id="b-search" placeholder="Filter workflows…" value="${stateB.query}"/>
+          ${shown.map(w => {
+            const tag = !w.valid ? `<span class="tag bad">invalid</span>` : w.is_root ? `<span class="tag root">root</span>` : `<span class="tag nested">nested</span>`;
+            return `<div class="wf-row ${w.valid?"":"invalid"}" data-wf="${w.relative_path}" aria-selected="${stateB.pick===w.relative_path}">
+              <span class="wf-name">${w.name ?? "—"}<br><span class="wf-path">${w.relative_path}</span></span>${tag}</div>`;
+          }).join("")}
+        </div>
+        <div class="modal-edit">
+          <div class="edit-head">
+            <label class="field" style="margin:0">launch body · one JSON blob</label>
+            <span class="pill ${l.ok?"succeeded":"failed"} validity">${l.ok?"valid JSON":"invalid"}</span>
+          </div>
+          <textarea class="json ${l.ok?"ok":"bad"}" id="b-blob">${stateB.blob}</textarea>
+          <p class="lint ${l.ok?"ok":"bad"}">${l.msg}</p>
+          <label class="checkline"><input type="checkbox" id="b-f400" ${stateB.force400?"checked":""}/> simulate a server 400 (schema failure)</label>
+          ${stateB.server ? server400Block(stateB.server) : ""}
+          <div class="modal-foot">
+            <button class="btn-primary" id="b-launch" ${l.ok?"":"disabled"}>Launch</button>
+            <button class="btn-ghost" id="b-cancel">Cancel</button>
+            <span class="rid" style="font-family:var(--font-mono); margin-left:auto">${stateB.pick}</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+function wireModalB(mount) {
+  const blob = mount.querySelector("#b-blob");
+  blob.addEventListener("input", () => { stateB.blob = blob.value; softRelintB(mount); });
+  const search = mount.querySelector("#b-search");
+  search.addEventListener("input", () => { stateB.query = search.value; renderB(mount); mount.querySelector("#b-search").focus(); });
+  mount.querySelector("#b-f400").addEventListener("change", e => { stateB.force400 = e.target.checked; });
+  mount.querySelectorAll(".modal-pick .wf-row").forEach(el => el.addEventListener("click", () => {
+    const w = WORKFLOWS.find(x => x.relative_path === el.dataset.wf); if (!w.valid) return;
+    stateB.pick = w.relative_path; renderB(mount);
+  }));
+  mount.querySelector("#b-cancel").addEventListener("click", () => { stateB.open = false; renderB(mount); });
+  mount.querySelector("#b-scrim").addEventListener("click", e => { if (e.target.id === "b-scrim") { stateB.open = false; renderB(mount); } });
+  mount.querySelector("#b-launch").addEventListener("click", () => {
+    const parsed = lintJson(stateB.blob, { allowEmpty: false });
+    if (!parsed.ok) return;
+    const w = WORKFLOWS.find(x => x.relative_path === stateB.pick);
+    const res = mockStartRun({ workflow_path: w.relative_path, config: parsed.value?.config, force400: stateB.force400 });
+    if (res.status === 202) { launchRow(w.name, res); stateB.open = false; stateB.server = null; renderB(mount); toast(`Run started · <span class="tid">${res.body.run_id}</span>`); }
+    else { stateB.server = res.body; renderB(mount); }
+  });
+}
+function softRelintB(mount) {
+  const l = lintJson(stateB.blob, { allowEmpty: false });
+  const ta = mount.querySelector("#b-blob");
+  ta.className = "json " + (l.ok ? "ok" : "bad");
+  ta.nextElementSibling.className = "lint " + (l.ok ? "ok" : "bad");
+  ta.nextElementSibling.textContent = l.msg;
+  mount.querySelector(".validity").className = "pill " + (l.ok ? "succeeded" : "failed") + " validity";
+  mount.querySelector(".validity").textContent = l.ok ? "valid JSON" : "invalid";
+  mount.querySelector("#b-launch").disabled = !l.ok;
+}
+
+/* ================================================================== *
+ * VARIANT C — persistent launch drawer (annexes Node I/O pane).       *
+ *   • Drawer toggled from topbar; SEPARATE input/config + tree preview.*
+ *   • Client-side $env PRE-FLIGHT guard (ADR 0012) before send.       *
+ *   • Empty input ALLOWED.                                            *
+ *   • 400 → dedicated "server rejected" block; drawer STAYS open.     *
+ *   • 202 → toast + row prepended; drawer stays open for relaunch.    *
+ * ================================================================== */
+const stateC = { open: true, pick: "release-notes.workflow.json", input: "{}", config: "", force400: false, server: null };
+function renderC(mount) {
+  mount.innerHTML = `
+    <div class="shell">
+      <div class="topbar"><span class="brand">PATH</span><span class="brand-sub">viewer · read-only</span>
+        <span class="spacer"></span>
+        <button class="topbar-toggle" id="c-toggle" aria-pressed="${stateC.open}">Launch drawer</button></div>
+      <div class="panes">
+        <section class="pane">
+          <div class="variant-meta"><b>C · Persistent drawer, iterative.</b>
+            <div class="row">Launch is a <b>third-pane drawer</b> kept open beside the run. Separate input/config + tree preview. Client-side <b>$env pre-flight</b>. 202 toasts and the drawer <b>stays open</b> to relaunch.</div></div>
+          <div class="wf-head">Runs</div>
+          <div id="runs">${runsRows()}</div>
+        </section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">Run detail</h2></div>
+          <div class="pane-body">${centerPane()}</div></section>
+        <section class="pane"><div class="pane-head"><h2 class="pane-title">${stateC.open ? "Launch" : "Node I/O"}</h2></div>
+          <div class="pane-body">${stateC.open ? drawerC() : `<p class="pane-note">Select a node in the tree.</p>`}</div></section>
+      </div>
+    </div>`;
+  mount.querySelector("#c-toggle").addEventListener("click", () => { stateC.open = !stateC.open; renderC(mount); });
+  mount.querySelectorAll("#runs .runrow").forEach(el => el.addEventListener("click", () => { selectedRootRunId = el.dataset.run; freshId = null; renderC(mount); }));
+  if (stateC.open) wireDrawerC(mount);
+}
+function drawerC() {
+  const li = lintJson(stateC.input, { allowEmpty: true });
+  const lc = lintJson(stateC.config, { allowEmpty: true });
+  const cfgVal = lc.ok ? lc.value : undefined;
+  const envFlag = cfgVal && hasEnvWrapper(cfgVal);   // pre-flight: catch $env before the server does.
+  const canLaunch = li.ok && lc.ok && !envFlag;
+  const refs = TREES[stateC.pick] || [];
+  return `
+    <div class="drawer">
+      <div>
+        <label class="field">workflow</label>
+        <select id="c-pick" class="json" style="font-family:var(--font-sans)">
+          ${WORKFLOWS.filter(w=>w.valid).map(w=>`<option value="${w.relative_path}" ${stateC.pick===w.relative_path?"selected":""}>${w.name} — ${w.relative_path}${w.is_root?"":" (nested)"}</option>`).join("")}
+        </select>
+      </div>
+      <div class="tree-preview">
+        <div class="t-root">▸ ${WORKFLOWS.find(w=>w.relative_path===stateC.pick)?.name}</div>
+        ${refs.length ? refs.map(r=>`<div class="t-ref">└ ${r}</div>`).join("") : `<div class="t-ref" style="opacity:.6">no nested refs</div>`}
+      </div>
+      <div>
+        <label class="field">input · raw JSON</label>
+        <textarea class="json ${li.ok?"ok":"bad"}" id="c-input" rows="4">${stateC.input}</textarea>
+        <p class="lint ${li.ok?"ok":"bad"}">${li.msg}</p>
+      </div>
+      <div>
+        <label class="field">config override · raw JSON</label>
+        <textarea class="json ${lc.ok?"ok":"bad"}" id="c-config" rows="3" placeholder='{"$secret":{"name":"OPENAI_KEY"}}'>${stateC.config}</textarea>
+        <p class="lint ${envFlag ? "warn" : (lc.ok?"ok":"bad")}">${envFlag ? "⚠ $env is rejected in an override (ADR 0012) — use $secret; server would 400" : lc.msg}</p>
+      </div>
+      <label class="checkline"><input type="checkbox" id="c-f400" ${stateC.force400?"checked":""}/> simulate a server 400 (schema failure)</label>
+      <div style="display:flex; gap:8px; align-items:center">
+        <button class="btn-primary" id="c-launch" ${canLaunch?"":"disabled"}>Launch</button>
+        <span class="rid" style="font-family:var(--font-mono)">POST /v0/runs</span>
+      </div>
+      ${stateC.server ? server400Block(stateC.server) : ""}
+    </div>`;
+}
+function wireDrawerC(mount) {
+  const inp = mount.querySelector("#c-input");
+  inp.addEventListener("input", () => { stateC.input = inp.value; softRelintC(mount); });
+  const cfg = mount.querySelector("#c-config");
+  cfg.addEventListener("input", () => { stateC.config = cfg.value; softRelintC(mount); });
+  mount.querySelector("#c-pick").addEventListener("change", e => { stateC.pick = e.target.value; renderC(mount); });
+  mount.querySelector("#c-f400").addEventListener("change", e => { stateC.force400 = e.target.checked; });
+  mount.querySelector("#c-launch").addEventListener("click", () => {
+    const w = WORKFLOWS.find(x => x.relative_path === stateC.pick);
+    const cfgv = lintJson(stateC.config, { allowEmpty: true }).value;
+    const res = mockStartRun({ workflow_path: w.relative_path, config: cfgv, force400: stateC.force400 });
+    if (res.status === 202) { launchRow(w.name, res); stateC.server = null; renderC(mount); toast(`Run started · <span class="tid">${res.body.run_id}</span> — drawer stays open to relaunch`); }
+    else { stateC.server = res.body; renderC(mount); }
+  });
+}
+function softRelintC(mount) {
+  const li = lintJson(stateC.input, { allowEmpty: true });
+  const lc = lintJson(stateC.config, { allowEmpty: true });
+  const envFlag = lc.ok && lc.value && hasEnvWrapper(lc.value);
+  const inp = mount.querySelector("#c-input");
+  inp.className = "json " + (li.ok ? "ok" : "bad");
+  inp.nextElementSibling.className = "lint " + (li.ok ? "ok" : "bad");
+  inp.nextElementSibling.textContent = li.msg;
+  const cfg = mount.querySelector("#c-config");
+  cfg.className = "json " + (lc.ok ? "ok" : "bad");
+  const cl = cfg.nextElementSibling;
+  cl.className = "lint " + (envFlag ? "warn" : (lc.ok ? "ok" : "bad"));
+  cl.textContent = envFlag ? "⚠ $env is rejected in an override (ADR 0012) — use $secret; server would 400" : lc.msg;
+  mount.querySelector("#c-launch").disabled = !(li.ok && lc.ok && !envFlag);
+}
+
+/* Shared 400 block — how a server rejection surfaces back into the panel. */
+function server400Block(body) {
+  const det = body?.error?.details;
+  return `<div class="server-400" role="alert">
+    <b>400</b> ${body?.error?.message ?? "request rejected"}
+    ${det ? `<span class="det"><code>${typeof det === "string" ? det : JSON.stringify(det)}</code></span>` : ""}
+  </div>`;
+}
+
+/* ------------------------------------------------------------------ *
+ * Switcher wiring.                                                    *
+ * ------------------------------------------------------------------ */
+const VARIANTS = [
+  { k: "A", name: "Inline expander", render: renderA },
+  { k: "B", name: "Launch modal",    render: renderB },
+  { k: "C", name: "Launch drawer",   render: renderC },
+];
+function currentKey() {
+  const p = new URLSearchParams(location.search).get("variant");
+  return VARIANTS.some(v => v.k === p) ? p : "A";
+}
+function render() {
+  const key = currentKey();
+  const v = VARIANTS.find(x => x.k === key);
+  document.getElementById("vk").textContent = v.k;
+  document.getElementById("vname").textContent = v.name;
+  v.render(document.getElementById("app"));
+}
+function go(key) {
+  const u = new URL(location.href); u.searchParams.set("variant", key);
+  history.replaceState(null, "", u);
+  render();
+}
+function cycle(dir) {
+  const i = VARIANTS.findIndex(v => v.k === currentKey());
+  go(VARIANTS[(i + dir + VARIANTS.length) % VARIANTS.length].k);
+}
+document.getElementById("prev").addEventListener("click", () => cycle(-1));
+document.getElementById("next").addEventListener("click", () => cycle(1));
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "TEXTAREA" || t.tagName === "INPUT" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") cycle(-1);
+  if (e.key === "ArrowRight") cycle(1);
+});
+render();
+</script>
