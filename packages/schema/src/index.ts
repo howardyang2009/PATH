@@ -127,9 +127,13 @@ export {
   toWireRunRecord,
   type BlobName,
   type ListRunsResponse,
+  type ListWorkflowsResponse,
+  type LogBackendId,
   type RootRunSummary,
   type RunTreeResponse,
+  type StartRunRequest,
   type StartRunResponse,
   type WireError,
   type WireRunRecord,
+  type WorkflowSummary,
 } from "./wire-v0.js";

@@ -1,9 +1,14 @@
 import type {
   BlobName,
+  ConfigObject,
   JsonValue,
   ListRunsResponse,
+  ListWorkflowsResponse,
+  LogBackendId,
   RunStatus,
   RunTreeResponse,
+  StartRunRequest,
+  StartRunResponse,
   WireError,
 } from "@path/schema";
 
@@ -41,11 +46,33 @@ export interface ListRunsQuery {
 }
 
 /**
- * A typed client over the `@path/server` v0 HTTP API — the read surfaces (server-api-v0.md §§3–4
- * and the blob route) plus one action, `cancelRun` (§4.2). Pure TS — no framework, no DOM; every
- * request goes through the injected `fetch`, so the same client drives Node, a browser, or React
- * Native. Decodes the snake_case wire shapes into `./wire-types`, and raises `PathApiError` for any
- * non-2xx status.
+ * The camelCase, domain-shaped input to `startRun` — the ergonomic door the designer and mobile
+ * surfaces call through, translated to the snake_case `StartRunRequest` body at the boundary
+ * (ADR 0013). Only `workflowPath` is required; the rest fall back to the server's own defaults
+ * (`.path/settings.json`, then built-ins). `config` passes through as authored; the server is the
+ * validator (`400` on a rejected `$env` wrapper).
+ */
+export interface StartRunOptions {
+  /** Path to the root workflow file, resolved against the server's fixed project root — the launch handle from `listWorkflows`. */
+  workflowPath: string;
+  /** Seeds the root run's context (`RunOptions.input`). Raw JSON — the format declares no input schema. */
+  input?: JsonValue;
+  /** Operator config overrides (`RunOptions.operatorConfig`); server-validated by `ConfigObjectSchema`. */
+  config?: ConfigObject;
+  /** Which log backends to write (`path run --log-backends`). Omitted: the project's settings, else `["db", "ndjson"]`. */
+  logBackends?: LogBackendId[];
+  /** LLM concurrency cap (`path run --llm-concurrency`). Omitted: the project's settings, else the engine default. */
+  llmConcurrency?: number;
+}
+
+/**
+ * A typed client over the `@path/server` v0 HTTP API — the read surfaces (`listRuns`/`getRun`/
+ * `getBlob`/`listWorkflows`, server-api-v0.md §§3–4, §6, and the blob route) plus two actions,
+ * `startRun` (§2) and `cancelRun` (§4.2). Pure TS — no framework, no DOM; every request goes through
+ * the injected `fetch`, so the same client drives Node, a browser, or React Native. Reads and the
+ * `startRun` reply come back as the raw snake_case wire shapes (`@path/schema`, consumed directly by
+ * `RunViewModel`); only the write *input* is camelCase, translated at the boundary (ADR 0013).
+ * Raises `PathApiError` for any non-2xx status.
  */
 export class PathApiClient {
   /** The normalized base URL (trailing slash trimmed). */
@@ -99,6 +126,34 @@ export class PathApiClient {
     await this.post(`/v0/runs/${encodeURIComponent(rootRunId)}/cancel`);
   }
 
+  /**
+   * `POST /v0/runs` — start a run (server-api-v0.md §2). Async: the `202` returns as soon as the
+   * workflow tree loads and validates, before execution finishes, carrying `{ run_id, root_run_id }`
+   * (equal for a root run) — the caller then polls `getRun` or streams the event route. Takes the
+   * camelCase `StartRunOptions` and translates it inline to the snake_case wire body (ADR 0013); the
+   * reply is the raw wire `StartRunResponse`. A `400` (missing/unfound `workflow_path`, validation
+   * failure, or a rejected `$env` config) and a `404` (path outside the project root) arrive as
+   * `PathApiError`s.
+   */
+  async startRun(options: StartRunOptions): Promise<StartRunResponse> {
+    const body: StartRunRequest = { workflow_path: options.workflowPath };
+    if (options.input !== undefined) body.input = options.input;
+    if (options.config !== undefined) body.config = options.config;
+    if (options.logBackends !== undefined) body.log_backends = options.logBackends;
+    if (options.llmConcurrency !== undefined) body.llm_concurrency = options.llmConcurrency;
+    return this.postJson<StartRunResponse>("/v0/runs", body);
+  }
+
+  /**
+   * `GET /v0/workflows` — discover launchable workflows (server-api-v0.md §6, ADR 0011). A fresh
+   * scan each call (no query, no pagination): every discovered `*.workflow.json`, each flagged
+   * `is_root`. `is_root`/`valid` are hints, not a launchability gate — a `valid` entry is not
+   * guaranteed runnable standalone. Returns the raw wire `ListWorkflowsResponse`.
+   */
+  async listWorkflows(): Promise<ListWorkflowsResponse> {
+    return this.getJson<ListWorkflowsResponse>("/v0/workflows");
+  }
+
   private async getJson<T>(path: string): Promise<T> {
     const res = await this.fetch(this.url(path), { headers: { Accept: "application/json" } });
     const text = await res.text();
@@ -123,6 +178,24 @@ export class PathApiClient {
     });
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);
+  }
+
+  /**
+   * The body-bearing, reply-parsing write — `startRun`'s transport, kept distinct from `post`
+   * rather than folded in behind optional arguments, so reading either helper tells you what kind of
+   * request it is without tracing a flag (the `getJson`/`post` reasoning). Sends `body` as JSON and
+   * decodes the 2xx envelope, because `startRun`'s caller does not already know the `run_id` it
+   * answers with — unlike `cancelRun`, whose `post` deliberately reads nothing back.
+   */
+  private async postJson<T>(path: string, body: unknown): Promise<T> {
+    const res = await this.fetch(this.url(path), {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
+    return JSON.parse(text) as T;
   }
 }
 

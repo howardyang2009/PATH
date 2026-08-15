@@ -1,3 +1,4 @@
+import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
@@ -60,6 +61,28 @@ export interface ListRunsResponse {
   runs: RootRunSummary[];
 }
 
+/**
+ * A log backend id (server-api-v0.md §2 `log_backends`). Owned here rather than imported from
+ * `@path/engine`: `@path/client-core` names this on its public `startRun` surface and carries no
+ * engine dependency by design. This duplicates the engine's `LogBackendId` — consolidating the two
+ * into one schema-owned source (engine re-exporting) is a deliberate follow-up (ADR 0013).
+ */
+export type LogBackendId = "db" | "ndjson";
+
+/**
+ * `POST /v0/runs` request body (server-api-v0.md §2), snake_case. Shared so the client encodes and
+ * the server decodes the one shape: a body is client-encode / server-decode, the same drift mode
+ * `WireRunRecord` is shared to prevent. `input`/`config` pass through as the operator authored them;
+ * the server validates `config` (`ConfigObjectSchema`, rejecting `$env`) and reports a `400`.
+ */
+export interface StartRunRequest {
+  workflow_path: string;
+  input?: JsonValue;
+  config?: ConfigObject;
+  log_backends?: LogBackendId[];
+  llm_concurrency?: number;
+}
+
 /** `POST /v0/runs` — the 202 body (server-api-v0.md §4.1). */
 export interface StartRunResponse {
   run_id: string;
@@ -72,6 +95,27 @@ export interface WireError {
     message: string;
     details?: JsonValue;
   };
+}
+
+/**
+ * One discovered workflow file (`GET /v0/workflows`, server-api-v0.md §6). `relative_path` is the
+ * launch handle — the exact string fed back as §2 `workflow_path`. `is_root` is a presentation/dedupe
+ * hint, not a launchability gate (ADR 0011): `false` = also reachable as another workflow's nested
+ * ref; `null` when `valid: false`. `id`/`name` are best-effort shallow-parsed and `null` when even
+ * the top-level parse fails; `error` carries the shared envelope's inner shape when `valid: false`.
+ */
+export interface WorkflowSummary {
+  relative_path: string;
+  id: string | null;
+  name: string | null;
+  valid: boolean;
+  is_root: boolean | null;
+  error: WireError["error"] | null;
+}
+
+/** `GET /v0/workflows` — every discovered workflow, roots flagged (server-api-v0.md §6, ADR 0011). */
+export interface ListWorkflowsResponse {
+  workflows: WorkflowSummary[];
 }
 
 /** A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input or output. */
