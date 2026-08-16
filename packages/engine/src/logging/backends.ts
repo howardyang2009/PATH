@@ -1,14 +1,13 @@
+import { LOG_BACKEND_IDS, type LogBackendId } from "@path/schema";
 import type Database from "better-sqlite3";
 import { createDbLogBackend } from "./db-backend.js";
 import type { LogBackend } from "./log-backend.js";
 import { createNdjsonBackend } from "./ndjson-backend.js";
 
-/**
- * The engine-level `log.backends` operator setting (mvp spec §8.2): which log backends a run fans
- * out to. This is engine configuration, *not* workflow-file content. Both are on by default.
- */
-export const LOG_BACKEND_IDS = ["db", "ndjson"] as const;
-export type LogBackendId = (typeof LOG_BACKEND_IDS)[number];
+// `LOG_BACKEND_IDS` / `LogBackendId` are owned by `@path/schema` (ADR 0013) so `@path/client-core`
+// can name the enum without an engine dependency. Engine re-exports them here, keeping every
+// existing consumer's import (`./logging/backends.js`) and `createLogBackends` unchanged.
+export { LOG_BACKEND_IDS, type LogBackendId };
 export const DEFAULT_LOG_BACKENDS: readonly LogBackendId[] = LOG_BACKEND_IDS;
 
 export function isLogBackendId(value: string): value is LogBackendId {

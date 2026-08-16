@@ -122,13 +122,13 @@ export {
   type EventFrameDecoder,
 } from "./event-frame.js";
 export type { RunRecord } from "./run-record.js";
+export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
   toRootRunSummary,
   toWireRunRecord,
   type BlobName,
   type ListRunsResponse,
   type ListWorkflowsResponse,
-  type LogBackendId,
   type RootRunSummary,
   type RunTreeResponse,
   type StartRunRequest,
