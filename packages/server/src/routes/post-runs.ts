@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { loadWorkflowTree, LOG_BACKEND_IDS, type Project } from "@path/engine";
-import { ConfigObjectSchema, formatIssues, type JsonValue, type StartRunResponse } from "@path/schema";
+import { ConfigObjectSchema, formatIssues, mapEnv, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import type { LiveRuns } from "../live-runs.js";
@@ -54,6 +54,31 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   }
   const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, llm_concurrency: llmConcurrency } =
     parsed.data;
+
+  // ADR 0012 / #231: operator-supplied override config may name a literal `{"$secret": "..."}` but
+  // not `{"$env": "NAME"}` — an `$env` would let a browser operator read a variable of the *server
+  // process* back through a step's output. `ConfigObjectSchema` is shared with workflow-authored
+  // config (where `$env` is legitimate), so the reject can't live in the schema; it's this post-parse
+  // walk on the operator path only. `mapEnv` descends *through* a `$secret` wrapper, so the composed
+  // `{"$secret": {"$env": "NAME"}}` form is caught by the same walk, and reports the config key as
+  // the path (not `key.$secret`). A `$env` authored inside the workflow.json is untouched.
+  if (config !== undefined) {
+    const envPaths: string[] = [];
+    mapEnv(config as JsonValue, (_name, path) => {
+      envPaths.push(path);
+      return null;
+    });
+    if (envPaths.length > 0) {
+      sendError(
+        res,
+        400,
+        `operator config may not source from the server environment: $env at ${envPaths
+          .map((p) => `"${p}"`)
+          .join(", ")}`,
+      );
+      return;
+    }
+  }
 
   const absPath = resolveWorkflowPath(ctx.project.dir, workflowPath);
   if (!absPath) {
