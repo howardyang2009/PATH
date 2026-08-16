@@ -32,6 +32,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
   const state = load.value;
   const root = state.runs.get(rootRunId);
   // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
+  // The finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
   const cancellable = !isTerminal(state.status);
 
   return (

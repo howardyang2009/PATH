@@ -23,7 +23,7 @@ const PostRunsBodySchema = z
  * the project root is rejected rather than followed, since the server (unlike the CLI) isn't
  * trusted with the operator's whole filesystem.
  */
-function resolveWorkflowPath(projectDir: string, workflowPath: string): string | undefined {
+export function resolveWorkflowPath(projectDir: string, workflowPath: string): string | undefined {
   const absPath = resolve(projectDir, workflowPath);
   const rel = relative(projectDir, absPath);
   if (rel.startsWith("..") || isAbsolute(rel)) return undefined;
@@ -113,6 +113,9 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       files: tree.files,
       logBackends: logBackendIds,
       llmConcurrency,
+      // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`
+      // stores — the normalized path, not the raw request string.
+      sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
     });
   } catch (err) {
     sendError(res, 500, `run failed to start: ${err instanceof Error ? err.message : String(err)}`);

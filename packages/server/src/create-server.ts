@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { openProject } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { handleCancelRun } from "./routes/cancel-run.js";
+import { handleResumeRun } from "./routes/resume-run.js";
 import { handleGetRun } from "./routes/get-run.js";
 import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
@@ -17,6 +18,7 @@ import { serveStatic } from "./serve-static.js";
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
 const RUN_CANCEL_ROUTE = /^\/v0\/runs\/([^/]+)\/cancel$/;
+const RUN_RESUME_ROUTE = /^\/v0\/runs\/([^/]+)\/resume$/;
 const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
 
 /**
@@ -64,6 +66,12 @@ async function handleRequest(
     const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
     if (req.method === "POST" && cancelMatch) {
       handleCancelRun(res, ctx, decodeURIComponent(cancelMatch[1]!));
+      return;
+    }
+
+    const resumeMatch = RUN_RESUME_ROUTE.exec(pathname);
+    if (req.method === "POST" && resumeMatch) {
+      await handleResumeRun(req, res, ctx, decodeURIComponent(resumeMatch[1]!));
       return;
     }
 

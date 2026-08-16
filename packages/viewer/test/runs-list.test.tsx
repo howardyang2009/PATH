@@ -1,4 +1,4 @@
-import { PathApiClient, type FetchLike, type RootRunSummary } from "@path/client-core";
+import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
@@ -34,12 +34,27 @@ const RUNNING: RootRunSummary = {
   finished_at: null,
 };
 
+const CANCELLED: RootRunSummary = {
+  run_id: "run_gamma",
+  status: "cancelled",
+  started_at: "2026-07-25T09:25:00.000Z",
+  finished_at: "2026-07-25T09:25:40.000Z",
+};
+
+const FAILED: RootRunSummary = {
+  run_id: "run_delta",
+  status: "failed",
+  started_at: "2026-07-25T09:30:00.000Z",
+  finished_at: "2026-07-25T09:30:12.000Z",
+};
+
 function renderList(client: PathApiClient, overrides: Partial<Parameters<typeof RunsList>[0]> = {}) {
   return render(
     <RunsList
       client={client}
       selectedRootRunId={null}
       onSelectRootRun={() => {}}
+      onResumed={() => {}}
       {...overrides}
     />,
   );
@@ -115,7 +130,7 @@ describe("RunsList", () => {
     expect(onSelect).toHaveBeenCalledWith("run_alpha");
 
     rerender(
-      <RunsList client={client} selectedRootRunId="run_alpha" onSelectRootRun={onSelect} />,
+      <RunsList client={client} selectedRootRunId="run_alpha" onSelectRootRun={onSelect} onResumed={() => {}} />,
     );
     expect(screen.getByTestId("run-row-run_alpha")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("run-row-run_beta")).not.toHaveAttribute("aria-current");
@@ -142,7 +157,7 @@ describe("RunsList", () => {
     await waitFor(() => expect(urls).toHaveLength(1));
 
     rerender(
-      <RunsList client={client} selectedRootRunId={null} onSelectRootRun={() => {}} reloadNonce={1} />,
+      <RunsList client={client} selectedRootRunId={null} onSelectRootRun={() => {}} onResumed={() => {}} reloadNonce={1} />,
     );
 
     await waitFor(() => expect(urls).toHaveLength(2));
@@ -158,6 +173,87 @@ describe("RunsList", () => {
     fireEvent.change(screen.getByLabelText("Status"), { target: { value: "failed" } });
 
     expect(await screen.findByText("No failed runs.")).toBeInTheDocument();
+  });
+
+  // Resume (§4.3) lives here, expanded under a run's row — the rail's mirror of the launch form
+  // under a workflow row: a click opens it, a second click closes it (single-open), and only a
+  // finished-but-unsuccessful row offers it at all.
+  describe("resume affordance", () => {
+    it.each([CANCELLED, FAILED])("expands Resume under a %s row when it is clicked", async (run) => {
+      const { client } = stubClient([run]);
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+      expect(await screen.findByTestId("resume-button")).toHaveTextContent("Resume run");
+    });
+
+    it("collapses the Resume expand when the same row is clicked again (toggle)", async () => {
+      const { client } = stubClient([CANCELLED]);
+      renderList(client);
+
+      const row = await screen.findByTestId(`run-row-${CANCELLED.run_id}`);
+      fireEvent.click(row);
+      expect(await screen.findByTestId("resume-button")).toBeInTheDocument();
+
+      fireEvent.click(row);
+      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    });
+
+    it.each([SUCCEEDED, RUNNING])("offers no Resume when a %s row is clicked", async (run) => {
+      const { client } = stubClient([run]);
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    });
+
+    it("does not expand a row's Resume until it is clicked", async () => {
+      const { client } = stubClient([CANCELLED]);
+      renderList(client);
+
+      await screen.findByTestId(`run-row-${CANCELLED.run_id}`);
+      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    });
+
+    it("resumes the run and hands the successor up to the app", async () => {
+      const { client } = stubClient([CANCELLED]);
+      vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "successor", root_run_id: "successor" });
+      const onResumed = vi.fn();
+      renderList(client, { onResumed });
+
+      fireEvent.click(await screen.findByTestId(`run-row-${CANCELLED.run_id}`));
+      fireEvent.click(await screen.findByTestId("resume-button"));
+
+      await waitFor(() => expect(onResumed).toHaveBeenCalledWith("successor"));
+    });
+
+    it("forwards a typed config override to resumeRun", async () => {
+      const { client } = stubClient([FAILED]);
+      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${FAILED.run_id}`));
+      fireEvent.click(screen.getByTestId("resume-config-toggle")); // reveal the optional field
+      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"output_file":"OUT.md"}' } });
+      fireEvent.click(screen.getByTestId("resume-button"));
+
+      expect(resumeRun).toHaveBeenCalledWith(FAILED.run_id, { output_file: "OUT.md" });
+    });
+
+    it("surfaces a resume error rather than claiming it was sent", async () => {
+      const { client } = stubClient([FAILED]);
+      vi.spyOn(client, "resumeRun").mockRejectedValue(new PathApiError(409, "already succeeded"));
+      const onResumed = vi.fn();
+      renderList(client, { onResumed });
+
+      fireEvent.click(await screen.findByTestId(`run-row-${FAILED.run_id}`));
+      const button = await screen.findByTestId("resume-button");
+      fireEvent.click(button);
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("already succeeded");
+      expect(button).toHaveTextContent("Resume run");
+      expect(onResumed).not.toHaveBeenCalled();
+    });
   });
 });
 

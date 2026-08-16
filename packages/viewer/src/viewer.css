@@ -565,6 +565,9 @@ button.workflow-row:focus-visible {
   text-align: right;
 }
 
+/* Resume reuses the launch form's card + submit-button styling (`.launch-form`/`.launch-submit`),
+   expanded under a run row exactly as the launch form sits under a workflow row. */
+
 /* ---------- run tree ---------- */
 
 .run-tree {

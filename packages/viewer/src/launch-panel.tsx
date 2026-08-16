@@ -1,5 +1,6 @@
 import type { PathApiClient, WorkflowSummary } from "@path/client-core";
 import { useEffect, useState } from "react";
+import { JsonField } from "./json-field.js";
 import { parseJsonField } from "./launch-json.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -236,48 +237,6 @@ function LaunchForm({
           {submit.message}
         </p>
       )}
-    </div>
-  );
-}
-
-/** One raw-JSON textarea with its live client-side lint line, shared by the input and config fields. */
-function JsonField({
-  id,
-  testId,
-  label,
-  value,
-  onChange,
-  result,
-  rows,
-  placeholder,
-}: {
-  id: string;
-  testId: string;
-  label: string;
-  value: string;
-  onChange: (next: string) => void;
-  result: ReturnType<typeof parseJsonField>;
-  rows: number;
-  placeholder?: string;
-}) {
-  const hint = result.ok ? (result.empty ? "empty — field omitted" : "valid JSON") : result.message;
-  return (
-    <div className="launch-field">
-      <label className="field-label" htmlFor={id}>
-        {label}
-      </label>
-      <textarea
-        id={id}
-        data-testid={testId}
-        className="launch-textarea"
-        value={value}
-        rows={rows}
-        placeholder={placeholder}
-        spellCheck={false}
-        aria-invalid={result.ok ? undefined : true}
-        onChange={(event) => onChange(event.target.value)}
-      />
-      <p className={`launch-lint${result.ok ? "" : " launch-lint--bad"}`}>{hint}</p>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import type { LogBackendId, Project, RunObserver } from "@path/engine";
+import type { LogBackend, LogBackendId, Project, RunObserver } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
@@ -41,6 +41,16 @@ export interface LiveRuns {
    */
   start(rootFile: WorkflowFile, workflowDir: string, options: StartRunOptions): Promise<StartedRun>;
   /**
+   * Resumes a prior root run as a **successor** (ADR 0001, engine #173) and resolves with the
+   * successor's *own* fresh ids as soon as it reaches `run-started` — the same async contract as
+   * `start`, behind `POST /v0/runs/:root_run_id/resume`. The successor restores its context from the
+   * predecessor's tree, so no `input`/`operatorConfig` is carried (a resumed run's starting context
+   * is already determined — engine `cli.ts`). Rejects with a {@link ResumeNotFound} when the engine
+   * reports the predecessor id unknown (a TOCTOU against the route's own existence check), and like
+   * `start` when the successor never reaches `run-started`.
+   */
+  resume(rootFile: WorkflowFile, resumeRootRunId: string, workflowDir: string, options: ResumeRunOptions): Promise<StartedRun>;
+  /**
    * Signals a run's abort, best-effort (mvp spec §5.6). `false` means no run by that id is
    * executing here — a `running` row this process holds no controller for belongs to some other
    * one (a `path run` against the same `.path/path.db`, or an earlier crashed server), and its
@@ -76,6 +86,41 @@ export interface StartRunOptions {
   files: Map<string, WorkflowFile>;
   logBackends?: LogBackendId[];
   llmConcurrency?: number;
+  /**
+   * The root workflow file's path relative to the project root, recorded on the root run row so a
+   * later `resume` (§4.3) can recover which file to re-run — the same value `path run` stores
+   * (engine `cli.ts`). Without it a run is unresumable.
+   */
+  sourceWorkflowPath?: string;
+}
+
+/**
+ * What `resume` needs beyond the predecessor id: the workflow structure (re-read from disk by the
+ * route, since a resumed successor still runs the workflow file, not a db copy) and the same backend
+ * overrides `start` takes. Deliberately *not* `input`/`operatorConfig` — a resumed run's context is
+ * restored from the predecessor's tree, so a fresh seed would be silently discarded.
+ */
+export interface ResumeRunOptions {
+  files: Map<string, WorkflowFile>;
+  logBackends?: LogBackendId[];
+  llmConcurrency?: number;
+  /**
+   * An optional config override for the resumed run (§4.3). Unlike `input` — which a resume discards
+   * in favour of the restored context — operator config is still applied on the resume path (the
+   * engine merges it over the workflow's declared config for the steps that re-run), so it is
+   * forwarded rather than dropped.
+   */
+  operatorConfig?: ConfigObject;
+  /** Recorded on the successor's root row so a resumed run is itself resumable (see `StartRunOptions`). */
+  sourceWorkflowPath?: string;
+}
+
+/** Thrown by `resume` when the engine reports the predecessor root run id unknown. */
+export class ResumeNotFound extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ResumeNotFound";
+  }
 }
 
 export interface StartedRun {
@@ -106,43 +151,72 @@ export function createLiveRuns(project: Project): LiveRuns {
    */
   const controllers = new Map<string, AbortController>();
 
-  return {
-    async start(rootFile, workflowDir, options): Promise<StartedRun> {
-      // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
-      // the response goes out before the run finishes, not before it starts.
-      const started = createDeferred<StartedRun>();
-      const controller = new AbortController();
-      let registeredRootRunId: string | undefined;
+  /**
+   * The tracking machinery `start` and `resume` share (they differ only in which engine entry point
+   * they drive — `project.run` vs `project.resume`): a deferred that resolves on the first
+   * `run-started`, the controller filed under the root run id for `cancel`, the live-forwarding
+   * backend, and the teardown that drops both registries on any outcome. `hooks` is spread into the
+   * engine options; `finalize` is the `.finally` both attach.
+   */
+  function beginTracked(): {
+    started: ReturnType<typeof createDeferred<StartedRun>>;
+    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void };
+    finalize: () => void;
+  } {
+    // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
+    // the response goes out before the run finishes, not before it starts.
+    const started = createDeferred<StartedRun>();
+    const controller = new AbortController();
+    let registeredRootRunId: string | undefined;
 
-      const captureObserver: RunObserver = {
-        observe(o) {
-          if (o.type !== "run-started") return;
-          // Fires for every run in the tree, all sharing one `rootRunId` — register on the first.
-          if (registeredRootRunId === undefined) {
-            registeredRootRunId = o.rootRunId;
-            controllers.set(o.rootRunId, controller);
-          }
-          started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
-        },
-      };
+    const captureObserver: RunObserver = {
+      observe(o) {
+        if (o.type !== "run-started") return;
+        // Fires for every run in the tree, all sharing one `rootRunId` — register on the first.
+        if (registeredRootRunId === undefined) {
+          registeredRootRunId = o.rootRunId;
+          controllers.set(o.rootRunId, controller);
+        }
+        started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
+      },
+    };
 
-      const runPromise = project.run(rootFile, workflowDir, {
-        ...options,
+    return {
+      started,
+      hooks: {
         // The live-forwarding backend rides alongside the configured db/NDJSON backends so
         // subscribers (§5) see every already-masked event in `seq` order — independent of which
         // backends the run persists to. It never throws, so it can't fail the run.
         extraBackends: [createLiveLogBackend(hub)],
-        // Appended after persistence and logging by `Project.run`, which is the point: this is what
-        // resolves `start`, and a caller may read the run the moment it does.
+        // Appended after persistence and logging by `Project.run`/`resume`, which is the point: this
+        // is what resolves the deferred, and a caller may read the run the moment it does.
         extraObservers: [captureObserver],
         signal: controller.signal,
         warn: (message) => console.error(`warning: ${message}`),
-      });
+      },
+      // However it ended, the run is over. Tearing both registries down here rather than in each
+      // arm is what makes "on every outcome" true by construction, so a long-lived server
+      // accumulates neither.
+      finalize: () => {
+        if (registeredRootRunId === undefined) return; // never started; neither holds an entry
+        controllers.delete(registeredRootRunId);
+        // Normally already closed: the root run's terminal event drives the live backend's `close`.
+        // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
+        // with a propagating bug rather than converting it to a failed run (#74). Without it the
+        // channel outlives the run and every subscriber hangs open. Idempotent.
+        hub.close(registeredRootRunId);
+      },
+    };
+  }
 
+  return {
+    async start(rootFile, workflowDir, options): Promise<StartedRun> {
+      const { started, hooks, finalize } = beginTracked();
       // Fire-and-forget from the starter's point of view: the run keeps executing after `start`
       // resolves. Never left unhandled — a rejection here means `run-started` never fired either,
       // so it also settles `started` (a no-op if it already resolved).
-      runPromise
+      project
+        .run(rootFile, workflowDir, { ...options, ...hooks })
         .then(
           (result) => {
             if (result.status === "failed") console.error(`run failed: ${result.error}`);
@@ -152,19 +226,31 @@ export function createLiveRuns(project: Project): LiveRuns {
             console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
           },
         )
-        // However it ended, the run is over. Tearing both registries down here rather than in each
-        // arm is what makes "on every outcome" true by construction, so a long-lived server
-        // accumulates neither.
-        .finally(() => {
-          if (registeredRootRunId === undefined) return; // never started; neither holds an entry
-          controllers.delete(registeredRootRunId);
-          // Normally already closed: the root run's terminal event drives the live backend's
-          // `close`. This is the backstop for the one path that has no terminal event —
-          // `runWorkflow` rejecting with a propagating bug rather than converting it to a failed
-          // run (#74). Without it the channel outlives the run and every subscriber hangs open.
-          // Idempotent, so the normal path is unaffected.
-          hub.close(registeredRootRunId);
-        });
+        .finally(finalize);
+
+      return started.promise;
+    },
+
+    async resume(rootFile, resumeRootRunId, workflowDir, options): Promise<StartedRun> {
+      const { started, hooks, finalize } = beginTracked();
+      project
+        .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
+        .then(
+          (result) => {
+            // The predecessor id was unknown — no successor was ever started, so nothing emitted
+            // `run-started` and the deferred is still pending. Reject it so the route answers 404.
+            if (!result.found) {
+              started.reject(new ResumeNotFound(result.error));
+              return;
+            }
+            if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
+          },
+          (err) => {
+            started.reject(err);
+            console.error(`resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`);
+          },
+        )
+        .finally(finalize);
 
       return started.promise;
     },

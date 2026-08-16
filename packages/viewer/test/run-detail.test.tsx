@@ -321,4 +321,17 @@ describe("RunDetail", () => {
       });
     });
   });
+
+  // Resume (§4.3) lives in the runs rail now, under the selected row — its tests are in
+  // runs-list.test.tsx. The detail header only carries Cancel.
+  it("keeps Resume out of the detail header (it belongs to the runs rail)", async () => {
+    const failedTree = {
+      ...TREE,
+      status: "failed",
+      runs: TREE.runs.map((row) => (row.run_id === ROOT ? { ...row, status: "failed" } : row)),
+    };
+    renderDetail(stubClient({ tree: failedTree }));
+    await screen.findByTestId("run-head");
+    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+  });
 });

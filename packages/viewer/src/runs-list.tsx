@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
+import { ResumeButton } from "./resume-button.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -32,6 +33,12 @@ export interface RunsListProps {
   selectedRootRunId: string | null;
   onSelectRootRun: (rootRunId: string) => void;
   /**
+   * Switches the app to watch the successor of a resumed run — the same transition a launch makes.
+   * The Resume affordance lives here, under the selected run's row, mirroring how the launch form
+   * expands under a workflow row: a run is resumed from the same rail it is selected in.
+   */
+  onResumed: (successorRootRunId: string) => void;
+  /**
    * Bumped by the app after an inline launch (#233) to force an immediate re-read, so the run just
    * started appears in the rail now rather than at the next {@link RUNS_REFRESH_MS} tick — the same
    * one-shot read, triggered a beat early.
@@ -44,9 +51,14 @@ export interface RunsListProps {
  * three-pane console (#44 Variant A). Read-only — no launch or edit affordances (map #40) — and
  * formatting-only: `@path/client-core` owns the wire shapes, this renders them.
  */
-export function RunsList({ client, selectedRootRunId, onSelectRootRun, reloadNonce }: RunsListProps) {
+export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed, reloadNonce }: RunsListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
+  // Which row's Resume form is expanded, or none — a single-open toggle exactly like the launch
+  // form's `expanded` (launch-panel.tsx): clicking a row opens its form, clicking it again closes it,
+  // clicking another row moves the expand there. Independent of `selectedRootRunId`, so collapsing
+  // the form never stops the centre pane watching the run.
+  const [resumeOpenFor, setResumeOpenFor] = useState<string | null>(null);
 
   // The current filter, read by the nonce effect without making it a dependency: a launch re-reads
   // the same window the pane is showing, and should not itself be a reason to re-read on filter change.
@@ -141,23 +153,47 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, reloadNon
           </p>
         ) : (
           <ul className="runs">
-            {state.value.map((run) => (
-              <li key={run.run_id}>
-                <button
-                  type="button"
-                  className="run-row"
-                  title={run.run_id}
-                  data-run-id={run.run_id}
-                  data-testid={`run-row-${run.run_id}`}
-                  aria-current={run.run_id === selectedRootRunId ? "true" : undefined}
-                  onClick={() => onSelectRootRun(run.run_id)}
-                >
-                  <span className="run-id">{run.run_id}</span>
-                  <StatusPill status={run.status} />
-                  <span className="run-started">{formatTimestamp(run.started_at)}</span>
-                </button>
-              </li>
-            ))}
+            {state.value.map((run) => {
+              // The Resume affordance expands under its own row — the rail's mirror of the launch form
+              // under a workflow row (#233). Only a finished-but-unsuccessful run offers it, and only
+              // when that row's expand is open. Rendered as a sibling of the row button, never inside
+              // it (a button cannot nest the Resume form's own buttons).
+              const canResume = run.status === "cancelled" || run.status === "failed";
+              const resumeOpen = canResume && resumeOpenFor === run.run_id;
+              return (
+                <li key={run.run_id}>
+                  <button
+                    type="button"
+                    className="run-row"
+                    title={run.run_id}
+                    data-run-id={run.run_id}
+                    data-testid={`run-row-${run.run_id}`}
+                    aria-current={run.run_id === selectedRootRunId ? "true" : undefined}
+                    onClick={() => {
+                      onSelectRootRun(run.run_id);
+                      // Toggle this row's Resume expand, single-open, like the launch form.
+                      setResumeOpenFor((current) => (current === run.run_id ? null : run.run_id));
+                    }}
+                  >
+                    <span className="run-id">{run.run_id}</span>
+                    <StatusPill status={run.status} />
+                    <span className="run-started">{formatTimestamp(run.started_at)}</span>
+                  </button>
+                  {resumeOpen && (
+                    <ResumeButton
+                      client={client}
+                      rootRunId={run.run_id}
+                      onResumed={(successorRootRunId) => {
+                        // Collapse on success, as the launch form does on launch — then hand the
+                        // successor to the app to select and watch.
+                        setResumeOpenFor(null);
+                        onResumed(successorRootRunId);
+                      }}
+                    />
+                  )}
+                </li>
+              );
+            })}
           </ul>
         ))}
     </div>
