@@ -17,7 +17,8 @@ breaking change to the contract ships as `/v1` alongside it, never a silent resh
 - Transport: HTTP + SSE only. No WebSocket, no raw IPC socket.
 - `@path/server` is a new package, imports `@path/engine` **in-process** (`runWorkflow`,
   `loadWorkflowTree`, log backends) — not a CLI subprocess wrapper.
-- No auth. Localhost-bind only.
+- No auth. Localhost-bind only. State-changing routes carry an origin gate against browser CSRF
+  (§2.1, #237).
 - Single fixed project root per server instance, set at startup — one `.path/` tree, like `path run`.
 - Multiple root runs may execute concurrently; no server-side queueing.
 - Cancellation is **best-effort and root-only** (mvp spec §5.6), because that is exactly what the
@@ -83,6 +84,30 @@ Responses:
 - `400 Bad Request` — `workflow_path` missing/not found, or `loadWorkflowTree` validation failure.
   `error.details` carries the validation issues.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or the file doesn't exist.
+- `403 Forbidden` — cross-origin caller, rejected by the origin gate (§2.1) before the body is read.
+
+### 2.1 Origin gate (CSRF, #237)
+
+The server is no-auth, localhost-bind, single-origin (it serves the viewer bundle and this API from
+one origin, no CORS headers, #42). The browser launch surface (#228) makes `POST /v0/runs` a
+CSRF target: a malicious site the operator has open in another tab can `fetch()` a launch. The
+residual threat is the *unwanted launch's side effect*, not exfiltration — the operator's secret is
+typed per-launch and never stored, and the same-origin policy blocks reading the response
+cross-origin ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md) additionally rejects
+`$env` in operator config).
+
+The gate is a header check, no auth (it graduates to token auth if remote access ever lands, §0). It
+guards every **state-changing** route — `POST /v0/runs` and `POST /v0/runs/:root_run_id/cancel`
+(§4.2) — and rejects with `403` when the request looks like a cross-origin browser call:
+
+- `Sec-Fetch-Site`, when present, is decisive: `same-origin` and `none` (a user-initiated load) pass;
+  `cross-site` / `same-site` are refused.
+- Absent `Sec-Fetch-Site` (older or non-browser client), fall back to `Origin` vs `Host`: a mismatch
+  (or a malformed / `null` `Origin`) is refused; an absent `Origin` passes, since a non-browser
+  client (the CLI, curl) sends neither header and is not a CSRF vector.
+
+Read routes (`GET`) are ungated: they have no side effect and the same-origin policy already blocks a
+cross-origin page from reading their responses.
 
 ## 3. `GET /v0/runs` — list root runs
 
@@ -190,6 +215,8 @@ Responses:
 
   Repeating the call while the run is still unwinding answers `202` again — aborting an already
   aborted run is a no-op, so a double click is safe.
+- `403 Forbidden` — cross-origin caller, rejected by the origin gate (§2.1); a cancel is a
+  state-changing action and is guarded like `POST /v0/runs`.
 - `404 Not Found` — no run with that `root_run_id`.
 - `409 Conflict` — the run exists but already reached a terminal status; the message names which one.
 - `409 Conflict` — the run's row says `running` but it is **not executing in this server process**,

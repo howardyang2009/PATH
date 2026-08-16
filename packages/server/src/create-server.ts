@@ -10,6 +10,7 @@ import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handleGetWorkflows } from "./routes/get-workflows.js";
 import { createLiveRuns } from "./live-runs.js";
+import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
 import { serveStatic } from "./serve-static.js";
 
@@ -40,6 +41,11 @@ async function handleRequest(
   const pathname = url.pathname;
 
   try {
+    // Every state-changing route is a non-GET method. Gate them all against cross-origin browser
+    // CSRF here (#237, origin-gate.ts) rather than per-route, so a future mutating route can't ship
+    // ungated by forgetting a hand-placed check. GET/HEAD are safe reads and pass through.
+    if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
+
     if (req.method === "POST" && pathname === "/v0/runs") {
       await handlePostRuns(req, res, ctx);
       return;
