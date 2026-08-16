@@ -64,6 +64,28 @@ describe("RunTree", () => {
     expect(screen.getByText("No runs recorded for this root run.")).toBeInTheDocument();
   });
 
+  it("shows the human name, the node GUID, and the run id on a row", () => {
+    tree(
+      ROOT_RUN,
+      run({ runId: "run_a", nodeId: "node-guid-123", nodeName: "fetch-data" }),
+    );
+
+    const row = screen.getByTestId("tree-row-run_a");
+    expect(row).toHaveTextContent("fetch-data");
+    expect(row).toHaveTextContent("node-guid-123");
+    expect(row).toHaveTextContent("run_a");
+  });
+
+  it("labels the implicit root run once, with no null node identities beside it", () => {
+    tree(ROOT_RUN, run({ runId: "run_a", nodeId: "n1", nodeName: "a" }));
+
+    const rootRow = screen.getByTestId(`tree-row-${ROOT}`);
+    expect(rootRow).toHaveTextContent("root");
+    expect(rootRow).not.toHaveTextContent("null");
+    // The root carries no node GUID, so only its run id trails the label.
+    expect(rootRow).toHaveTextContent(ROOT);
+  });
+
   it("marks the selected run so the node-I/O pane and the tree agree", () => {
     const map = new Map([
       [ROOT, ROOT_RUN],

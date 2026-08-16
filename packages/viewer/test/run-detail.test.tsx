@@ -322,6 +322,57 @@ describe("RunDetail", () => {
     });
   });
 
+  describe("tree/narrative split (drag-resize)", () => {
+    /** jsdom leaves every element `clientHeight === 0`; pin the pane so the clamp has real room. */
+    function withPaneHeight(px: number) {
+      const spy = vi
+        .spyOn(HTMLElement.prototype, "clientHeight", "get")
+        .mockReturnValue(px);
+      return () => spy.mockRestore();
+    }
+
+    it("offers a horizontal separator between the tree and the narrative", async () => {
+      renderDetail(stubClient({ tree: TREE }));
+      const sep = await screen.findByRole("separator", { name: "Resize run tree" });
+      expect(sep).toHaveAttribute("aria-orientation", "horizontal");
+    });
+
+    it("grows and shrinks the tree height on arrow keys", async () => {
+      const restore = withPaneHeight(600);
+      try {
+        renderDetail(stubClient({ tree: TREE }));
+        const sep = await screen.findByRole("separator", { name: "Resize run tree" });
+        expect(sep).toHaveAttribute("aria-valuenow", "220");
+
+        fireEvent.keyDown(sep, { key: "ArrowDown" });
+        expect(sep).toHaveAttribute("aria-valuenow", "228");
+
+        fireEvent.keyDown(sep, { key: "ArrowUp", shiftKey: true });
+        expect(sep).toHaveAttribute("aria-valuenow", "196");
+      } finally {
+        restore();
+      }
+    });
+
+    it("never lets the tree starve the narrative or collapse below its floor", async () => {
+      const restore = withPaneHeight(600);
+      try {
+        renderDetail(stubClient({ tree: TREE }));
+        const sep = await screen.findByRole("separator", { name: "Resize run tree" });
+
+        // Slam it down repeatedly: it caps at pane height (600) minus the narrative floor (120).
+        for (let i = 0; i < 100; i++) fireEvent.keyDown(sep, { key: "ArrowDown", shiftKey: true });
+        expect(sep).toHaveAttribute("aria-valuenow", "480");
+
+        // …and up repeatedly: it stops at the tree's own floor.
+        for (let i = 0; i < 100; i++) fireEvent.keyDown(sep, { key: "ArrowUp", shiftKey: true });
+        expect(sep).toHaveAttribute("aria-valuenow", "80");
+      } finally {
+        restore();
+      }
+    });
+  });
+
   // Resume (§4.3) lives in the runs rail now, under the selected row — its tests are in
   // runs-list.test.tsx. The detail header only carries Cancel.
   it("keeps Resume out of the detail header (it belongs to the runs rail)", async () => {
