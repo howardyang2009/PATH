@@ -1,6 +1,13 @@
 # Changelog
 
-## Unreleased
+## v0.5.0 — 2026-08-16
+
+Two things grow up in this release. The **engine learns to fan out and rejoin** — `wait-one` races
+its branches and keeps the first winner, `do-not-wait` launches a branch and lets the enclosing run
+continue behind a join barrier. And the **viewer stops being read-only**: it discovers the store's
+workflows, launches runs, and resumes a cancelled or failed run, all from the console. Underneath
+both, workflow and node identity is rebuilt on a durable GUID so a rename never breaks reuse or
+resume.
 
 Two coupled breaks land together (ADR 0006 → ADR 0007): the **workflow format** and the **audit
 tables**. The workflow and every node/branch now carry a two-part identity — a durable UUIDv4 `id`
@@ -26,8 +33,8 @@ store-relative `workflow_path` (root-only, null on every nested row). `path runs
 run-ids. ADR 0006 costed the columns as part of the same v3 → v4 bump; the work split across two
 tickets, so they land as a second clean-slate DB break (v4 → v5) — same reading, no backfill.
 
-Suite 899 → 928 (schema 201 → 211, client-core 42, engine 488 → 507, viewer 89, server 79),
-typecheck green across all five packages.
+Suite 1055 across the five packages (schema 219, client-core 51, engine 540, viewer 121, server
+124), typecheck green throughout.
 
 ### Breaking Changes
 
@@ -59,6 +66,37 @@ typecheck green across all five packages.
   `workflowPath`, persisted root-only to the new `runs` columns and surfaced on `RunRecord` and the
   v0 wire record. `path runs list` gains a `workflow` column and `--workflow`/`--workflow-id` filters;
   the CLI records the workflow path relative to the (possibly `-C`-relocated) store dir.
+- feat(engine): `wait-one` parallel join (#198, #199) — a block that races its branches and keeps the
+  first winner, output `{ winner: { name, output } }`; all-branches-fail aggregates with no winner
+  (#196), per ADR 0004.
+- feat(engine): `do-not-wait` launch-and-continue join (#109, #210–#212) — a branch fires and the
+  enclosing run proceeds, with an enclosing-run barrier that still joins before the root completes.
+  Failure stays isolated to the branch and raises no new cancel cause; in-branch publish is accepted
+  or rejected at the schema (ADR 0008/0009).
+- feat(cli): `path run -C <dir>` relocates the `.path` store (#201) — reads and writes go to the
+  named store dir instead of the workflow's own directory.
+- feat(client-core): `startRun(body)` + `listWorkflows()` write surface (#232) — the client can now
+  launch runs and enumerate workflows, not only read run state.
+- feat(server): `GET /v0/workflows` discovery endpoint (#243, #246) — lists all workflows in the
+  store with root workflows flagged.
+- feat(server): CSRF / origin gate on state-changing routes (#237, #247) — every mutating v0 route
+  now checks origin, so a browser page cannot drive the local server cross-site.
+- feat(server): operator override config rejects `$env`, accepts literal `$secret` (#231, #248,
+  ADR 0012) — secrets resolve through the sanctioned path, environment interpolation is refused.
+- feat(viewer): inline launch panel — discover + launch workflows (#233) — pick a workflow and start
+  a run from the console, backed by the new `client-core` write surface.
+- feat(viewer): resume a cancelled or failed run from the console (#249) — a Resume control in the
+  runs rail, under the selected row.
+- feat(viewer): drag-resizable panes, tree/narrative split, richer tree rows (#251) — resize the
+  three console panes and the run-tree/narrative split by dragging (widths persist); run-tree rows
+  lead with the human node name, trailed by the GUID and run-id.
+
+### Internal
+
+- refactor(schema): consolidate `LogBackendId` into `@path/schema` (#240, #250).
+- refactor(engine): run-scoped `Emitter` that owns the observation envelope (#225); deepened resume /
+  parallel-block / CLI-value-flag decisions (#224); pinned observer order and retired
+  `composeObservers`' stale contract (#227).
 
 ## v0.4.4 — 2026-08-08
 
