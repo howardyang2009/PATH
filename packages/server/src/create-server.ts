@@ -71,7 +71,7 @@ async function handleRequest(
 
     const resumeMatch = RUN_RESUME_ROUTE.exec(pathname);
     if (req.method === "POST" && resumeMatch) {
-      await handleResumeRun(res, ctx, decodeURIComponent(resumeMatch[1]!));
+      await handleResumeRun(req, res, ctx, decodeURIComponent(resumeMatch[1]!));
       return;
     }
 

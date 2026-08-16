@@ -237,11 +237,22 @@ Re-runs a `cancelled` or `failed` root run as a **successor** (ADR 0001, engine
 async like §2: it answers `202` with the successor's *own* fresh ids the moment it starts, then the
 client watches that new run over §5 to its terminal status.
 
-**No request body.** The workflow file to re-run is recovered from the predecessor's own row
-(`workflow_path`, recorded on every launch since engine #169), so a resume names *which run* to
-continue, not what to run. No `input`/`config` either: a resumed run restores its context from the
-predecessor's tree (engine `cli.ts`), so a fresh seed would be silently discarded. The successor
-records its own `workflow_path` and is therefore itself resumable.
+**Optional request body — a `config` override only:**
+
+```json
+{ "config": { "output_file": "RELEASE_NOTES_v2.md" } }
+```
+
+The workflow file to re-run is recovered from the predecessor's own row (`workflow_path`, recorded on
+every launch since engine #169), so a resume names *which run* to continue, not what to run. The one
+thing the caller may supply is a `config` override, validated by `ConfigObjectSchema` and carrying
+the same `$env` reject as §2 ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)): the
+engine applies operator config on the resume path too (it shadows the workflow's declared config, key
+by key, for the steps that re-run), so an operator can change a value — an output path, a range —
+before continuing. There is **no `input`**: a resumed run restores its context from the predecessor's
+tree (engine `cli.ts`), so a fresh input seed would be silently discarded. Omitting the body (or
+sending none) resumes with the workflow's own declared config. The successor records its own
+`workflow_path` and is therefore itself resumable.
 
 Responses:
 
@@ -254,8 +265,9 @@ Responses:
 - `403 Forbidden` — cross-origin caller (the §2.1 origin gate; resume is state-changing).
 - `404 Not Found` — no run with that `root_run_id`, or its recorded `workflow_path` no longer exists
   on disk.
-- `400 Bad Request` — the workflow file was found but no longer passes validation (`error.details`
-  carries the issues), exactly as a fresh launch of it would.
+- `400 Bad Request` — a malformed body, a `config` override that fails `ConfigObjectSchema` or carries
+  an `$env` wrapper (ADR 0012), or a workflow file that was found but no longer passes validation
+  (`error.details` carries the issues), exactly as a fresh launch of it would.
 - `409 Conflict` — the run is not in a resumable state, each case named distinctly: still `running`
   (nothing to resume yet), already `succeeded` (nothing to resume), it carries no recorded
   `workflow_path` (a pre-#169 run) so the server cannot know which file to re-run, or the file now at

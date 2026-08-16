@@ -1,11 +1,16 @@
 import { existsSync } from "node:fs";
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, relative } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
-import { isTerminal, type StartRunResponse } from "@path/schema";
-import { sendError, sendJson } from "../http-json.js";
+import { ConfigObjectSchema, formatIssues, isTerminal, type StartRunResponse } from "@path/schema";
+import { z } from "zod";
+import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import { ResumeNotFound } from "../live-runs.js";
+import { operatorConfigEnvError } from "../operator-config.js";
 import { resolveWorkflowPath, type RunsRouteContext } from "./post-runs.js";
+
+/** The one optional field: a config override for the resumed run (§4.3). No `input` — see below. */
+const ResumeBodySchema = z.object({ config: ConfigObjectSchema.optional() }).strict();
 
 /**
  * `POST /v0/runs/:root_run_id/resume` (server-api-v0.md §4.3) — re-runs a finished-but-unsuccessful
@@ -14,14 +19,40 @@ import { resolveWorkflowPath, type RunsRouteContext } from "./post-runs.js";
  * soon as the run starts, then the client watches that new run's SSE stream to its terminal status.
  *
  * The workflow file to re-run is recovered from the predecessor's own row (`workflow_path`, stored
- * since engine #169), so the caller sends no body: a resume names *which run* to continue, not what
- * to run. No `input`/`config` either — a resumed run restores its context from the predecessor's
- * tree, so a fresh seed would be silently discarded (engine `cli.ts`).
+ * since engine #169). The one thing the caller may send is an optional `config` **override** for the
+ * resumed run — the engine applies operator config on the resume path too (`run-workflow.ts`), so an
+ * operator can, say, change an output path before continuing. It carries the same ADR 0012 `$env`
+ * reject as §2. There is no `input`: a resumed run restores its context from the predecessor's tree,
+ * so a fresh seed would be silently discarded (engine `cli.ts`).
  *
  * Each refusal names a distinct reason a resume cannot happen, so the client can tell "not finished
  * yet" from "already succeeded" from "the workflow file is gone".
  */
-export async function handleResumeRun(res: ServerResponse, ctx: RunsRouteContext, rootRunId: string): Promise<void> {
+export async function handleResumeRun(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RunsRouteContext,
+  rootRunId: string,
+): Promise<void> {
+  const body = await readJsonBody(req);
+  if (!body.ok) {
+    sendError(res, 400, "request body must be valid JSON");
+    return;
+  }
+  const parsed = ResumeBodySchema.safeParse(body.value);
+  if (!parsed.success) {
+    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
+    return;
+  }
+  const { config } = parsed.data;
+  if (config !== undefined) {
+    const envError = operatorConfigEnvError(config);
+    if (envError) {
+      sendError(res, 400, envError);
+      return;
+    }
+  }
+
   // The predecessor's root row, or null — the same `RunTree.root` `cancel` keys on, never some other
   // row of the tree whose status could disagree with the root's.
   const root = ctx.project.archive.tree(rootRunId)?.root;
@@ -86,6 +117,9 @@ export async function handleResumeRun(res: ServerResponse, ctx: RunsRouteContext
   try {
     ids = await ctx.live.resume(rootFile, rootRunId, dirname(tree.rootPath), {
       files: tree.files,
+      // The operator's override for the resumed run — shadows the workflow's declared config key by
+      // key (engine `run-workflow.ts`), applied to the steps that re-run.
+      operatorConfig: config,
       // Recorded on the successor's root row so it is itself resumable.
       sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
     });

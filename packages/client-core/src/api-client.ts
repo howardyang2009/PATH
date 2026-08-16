@@ -128,15 +128,20 @@ export class PathApiClient {
 
   /**
    * `POST /v0/runs/:root_run_id/resume` — resume a `cancelled`/`failed` root run as a **successor**
-   * (server-api-v0.md §4.3). No request body: the server recovers the workflow file from the
-   * predecessor's row. Async like `startRun` — the `202` carries the *successor's* own
-   * `{ run_id, root_run_id }` (equal, a fresh root run), which the caller watches from here on. A
-   * `404` (unknown run, or its workflow file is gone), a `400` (the workflow no longer validates),
-   * and a `409` (not resumable: still running, already succeeded, or no recorded path) arrive as
+   * (server-api-v0.md §4.3). The server recovers the workflow file from the predecessor's row; the
+   * one thing the caller may pass is an optional `config` **override** applied to the steps that
+   * re-run (there is no `input` — a resume restores its context from the predecessor). Omitting
+   * `config` sends no body, unchanged from a plain resume. Async like `startRun` — the `202` carries
+   * the *successor's* own `{ run_id, root_run_id }` (a fresh root run), which the caller watches from
+   * here on. A `404` (unknown run, or its workflow file is gone), a `400` (invalid body, a rejected
+   * `$env` config, or the workflow no longer validates), and a `409` (not resumable) arrive as
    * `PathApiError`s carrying the status and the server's message.
    */
-  async resumeRun(rootRunId: string): Promise<StartRunResponse> {
-    return this.postReadingReply<StartRunResponse>(`/v0/runs/${encodeURIComponent(rootRunId)}/resume`);
+  async resumeRun(rootRunId: string, config?: ConfigObject): Promise<StartRunResponse> {
+    const path = `/v0/runs/${encodeURIComponent(rootRunId)}/resume`;
+    return config === undefined
+      ? this.postReadingReply<StartRunResponse>(path)
+      : this.postJson<StartRunResponse>(path, { config });
   }
 
   /**

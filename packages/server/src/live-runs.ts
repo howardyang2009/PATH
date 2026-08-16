@@ -104,6 +104,13 @@ export interface ResumeRunOptions {
   files: Map<string, WorkflowFile>;
   logBackends?: LogBackendId[];
   llmConcurrency?: number;
+  /**
+   * An optional config override for the resumed run (§4.3). Unlike `input` — which a resume discards
+   * in favour of the restored context — operator config is still applied on the resume path (the
+   * engine merges it over the workflow's declared config for the steps that re-run), so it is
+   * forwarded rather than dropped.
+   */
+  operatorConfig?: ConfigObject;
   /** Recorded on the successor's root row so a resumed run is itself resumable (see `StartRunOptions`). */
   sourceWorkflowPath?: string;
 }

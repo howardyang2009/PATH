@@ -86,8 +86,11 @@ async function cancelRun(rootRunId: string): Promise<Response> {
   return fetch(`${handle.url}/v0/runs/${rootRunId}/cancel`, { method: "POST" });
 }
 
-async function resumeRun(rootRunId: string): Promise<Response> {
-  return fetch(`${handle.url}/v0/runs/${rootRunId}/resume`, { method: "POST" });
+async function resumeRun(rootRunId: string, body?: unknown): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs/${rootRunId}/resume`, {
+    method: "POST",
+    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+  });
 }
 
 /**
@@ -850,6 +853,46 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     writeFileSync(join(projectDir, "failing-step.workflow.json"), JSON.stringify({ format: "path/workflow@1" }));
 
     const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(400);
+  });
+
+  it("accepts an optional config override on resume (202)", async () => {
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(original)).status).toBe("failed");
+
+    const res = await resumeRun(original, { config: { some_key: "override" } });
+    expect(res.status).toBe(202);
+    const { root_run_id: successor } = (await res.json()) as { root_run_id: string };
+    expect(successor).not.toBe(original);
+    await pollUntilTerminal(successor);
+  });
+
+  it("400s a resume whose config override carries an $env wrapper (ADR 0012)", async () => {
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(original)).status).toBe("failed");
+
+    const res = await resumeRun(original, { config: { token: { $secret: { $env: "SECRET_X" } } } });
+    expect(res.status).toBe(400);
+    const message = ((await res.json()) as { error: { message: string } }).error.message;
+    expect(message).toContain("$env");
+    expect(message).toContain("token");
+  });
+
+  it("400s a resume with a malformed JSON body", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/resume`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{not json",
+    });
     expect(res.status).toBe(400);
   });
 

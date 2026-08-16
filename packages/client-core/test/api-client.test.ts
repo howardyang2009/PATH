@@ -105,6 +105,20 @@ describe("PathApiClient", () => {
     expect(inits[0]?.headers).toEqual({ Accept: "application/json" });
   });
 
+  it("resumeRun sends { config } as a JSON body when a config override is given", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ run_id: "successor", root_run_id: "successor" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.resumeRun("r1", { output_file: "OUT.md" });
+    expect(inits[0]?.method).toBe("POST");
+    expect(inits[0]?.body).toBe(JSON.stringify({ config: { output_file: "OUT.md" } }));
+    expect(inits[0]?.headers).toMatchObject({ "Content-Type": "application/json" });
+  });
+
   it.each([
     [404, "an unknown run or a missing workflow file", `no run found with id "r1"`],
     [409, "a run that is not resumable", `run "r1" already succeeded; there is nothing to resume`],

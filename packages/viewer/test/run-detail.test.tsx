@@ -376,9 +376,39 @@ describe("RunDetail", () => {
       fireEvent.click(button);
 
       expect(resumeRun).toHaveBeenCalledTimes(1);
-      expect(resumeRun).toHaveBeenCalledWith(ROOT);
+      // No config typed → the override is omitted (undefined), not an empty object.
+      expect(resumeRun).toHaveBeenCalledWith(ROOT, undefined);
       expect(button).toHaveTextContent("Resuming…");
       expect(button).toBeDisabled();
+    });
+
+    it("forwards a typed config override to resumeRun", async () => {
+      const client = stubClient({ tree: terminalTreeAt("cancelled") });
+      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
+      renderDetail(client);
+
+      await screen.findByTestId("resume-button");
+      fireEvent.click(screen.getByTestId("resume-config-toggle")); // reveal the optional field
+      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"output_file":"OUT.md"}' } });
+      fireEvent.click(screen.getByTestId("resume-button"));
+
+      expect(resumeRun).toHaveBeenCalledWith(ROOT, { output_file: "OUT.md" });
+    });
+
+    it("blocks the resume on an invalid config, keeping the field open with the reason", async () => {
+      const client = stubClient({ tree: terminalTreeAt("failed") });
+      const resumeRun = vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "s", root_run_id: "s" });
+      renderDetail(client);
+
+      const button = await screen.findByTestId("resume-button");
+      fireEvent.click(screen.getByTestId("resume-config-toggle"));
+      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: "{not json" } });
+
+      expect(button).toBeDisabled();
+      fireEvent.click(button);
+      expect(resumeRun).not.toHaveBeenCalled();
+      // A bad config can't be collapsed out of sight — the field stays open so the reason is on screen.
+      expect(screen.getByTestId("resume-config")).toBeInTheDocument();
     });
 
     it("hands the successor's root id up so the app switches to watching it", async () => {
