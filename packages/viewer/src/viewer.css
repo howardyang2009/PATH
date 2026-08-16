@@ -34,9 +34,38 @@
    narrative never pushes the runs list out of view. */
 .panes {
   display: grid;
-  grid-template-columns: 300px 1fr 340px;
+  /* Columns set inline by AppShell: `<left>px 6px 1fr 6px <right>px`. The two 6px tracks are the
+     drag handles; the outer rails are resizable, the centre stays fluid. */
+  grid-template-columns: 300px 6px 1fr 6px 340px;
   flex: 1;
   min-height: 0;
+}
+
+/* The divider between panes. Doubles as its own border: a hairline sits centred in the 6px track,
+   thickening on hover/focus/drag so the grab target reads without stealing layout width. */
+.pane-resizer {
+  position: relative;
+  cursor: col-resize;
+  background: var(--border);
+  touch-action: none;
+}
+
+.pane-resizer::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.pane-resizer:hover::before,
+.pane-resizer:focus-visible::before,
+.pane-resizer:active::before {
+  background: var(--accent);
+}
+
+.pane-resizer:focus-visible {
+  outline: none;
 }
 
 .pane {
@@ -45,10 +74,6 @@
   min-width: 0;
   min-height: 0;
   background: var(--surface);
-}
-
-.pane + .pane {
-  border-left: 1px solid var(--border);
 }
 
 #pane-detail {
@@ -431,7 +456,7 @@ button.workflow-row:focus-visible {
   min-height: 0;
 }
 
-/* Tree above, narrative below (#44 Variant A): the tree takes what it needs up to half the pane,
+/* Tree above, narrative below (#44 Variant A): the tree's height is drag-set (see `.row-resizer`)
    and the narrative takes the rest — a long run's log is the thing that keeps growing. */
 .run-section,
 .narrative {
@@ -444,12 +469,47 @@ button.workflow-row:focus-visible {
 }
 
 .run-section {
-  flex: 0 1 auto;
-  max-height: 50%;
+  /* Height comes from an inline style set by RunDetail; hold it against flex stretch/shrink. */
+  flex: none;
 }
 
 .narrative {
   flex: 1 1 auto;
+}
+
+/* The horizontal divider between the run tree and the narrative. Sits in the `.run-detail` column
+   gap; a hairline centred in an 8px grab strip that lights up on hover/focus/drag. */
+.row-resizer {
+  position: relative;
+  flex: none;
+  height: 8px;
+  margin: -4px 0;
+  cursor: row-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.row-resizer::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 50%;
+  height: 2px;
+  transform: translateY(-50%);
+  border-radius: 1px;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+
+.row-resizer:hover::before,
+.row-resizer:focus-visible::before,
+.row-resizer:active::before {
+  background: var(--accent);
+}
+
+.row-resizer:focus-visible {
+  outline: none;
 }
 
 .run-section > .run-tree {
@@ -626,6 +686,30 @@ button.workflow-row:focus-visible {
   min-width: 0;
   font-family: var(--font-mono);
   font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The human step name is the row's headline: readable (not mono), and the last thing to give up
+   width when the row is tight. */
+.node-name {
+  flex: 0 1 auto;
+  min-width: 3ch;
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The two machine identities trailing the name — the node's durable GUID and the run's own id.
+   Muted mono, and shrink-first (high flex-shrink) so a long id yields before the name does. */
+.tree-ref {
+  flex: 0 100 auto;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

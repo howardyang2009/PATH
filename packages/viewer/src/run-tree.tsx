@@ -56,7 +56,9 @@ interface TreeView {
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
-  const label = nodeLabel(run.nodeId);
+  // The human step name is the row's headline; the GUID `nodeId` and the `runId` trail it as the
+  // two machine identities. `nodeName`/`nodeId` are null together on the implicit root run.
+  const label = run.nodeName ?? nodeLabel(run.nodeId);
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>
@@ -85,7 +87,9 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           aria-current={run.runId === tree.selectedRunId ? "true" : undefined}
           onClick={() => tree.onSelectRun(run.runId)}
         >
-          <span className="node-id">{label}</span>
+          <span className="node-name">{label}</span>
+          {run.nodeId && <span className="tree-ref node-ref">{run.nodeId}</span>}
+          <span className="tree-ref run-ref">{run.runId}</span>
           <StatusPill status={run.status} />
         </button>
       </div>
