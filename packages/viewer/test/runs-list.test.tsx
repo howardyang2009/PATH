@@ -175,46 +175,53 @@ describe("RunsList", () => {
     expect(await screen.findByText("No failed runs.")).toBeInTheDocument();
   });
 
-  // Resume (§4.3) lives here, under the selected run's row — the rail's mirror of the launch form
-  // under a workflow row. Only a *selected* and *finished-but-unsuccessful* row offers it.
+  // Resume (§4.3) lives here, expanded under a run's row — the rail's mirror of the launch form
+  // under a workflow row: a click opens it, a second click closes it (single-open), and only a
+  // finished-but-unsuccessful row offers it at all.
   describe("resume affordance", () => {
-    it.each([CANCELLED, FAILED])("offers Resume under a selected %s run", async (run) => {
+    it.each([CANCELLED, FAILED])("expands Resume under a %s row when it is clicked", async (run) => {
       const { client } = stubClient([run]);
-      renderList(client, { selectedRootRunId: run.run_id });
+      renderList(client);
 
+      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
       expect(await screen.findByTestId("resume-button")).toHaveTextContent("Resume run");
     });
 
-    it("offers no Resume under a selected succeeded run", async () => {
-      const { client } = stubClient([SUCCEEDED]);
-      renderList(client, { selectedRootRunId: SUCCEEDED.run_id });
-
-      await screen.findByTestId(`run-row-${SUCCEEDED.run_id}`);
-      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
-    });
-
-    it("offers no Resume under a selected running run (that is Cancel's job)", async () => {
-      const { client } = stubClient([RUNNING]);
-      renderList(client, { selectedRootRunId: RUNNING.run_id });
-
-      await screen.findByTestId(`run-row-${RUNNING.run_id}`);
-      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
-    });
-
-    it("offers no Resume under a cancelled run that is not the selected one", async () => {
+    it("collapses the Resume expand when the same row is clicked again (toggle)", async () => {
       const { client } = stubClient([CANCELLED]);
-      renderList(client, { selectedRootRunId: null });
+      renderList(client);
+
+      const row = await screen.findByTestId(`run-row-${CANCELLED.run_id}`);
+      fireEvent.click(row);
+      expect(await screen.findByTestId("resume-button")).toBeInTheDocument();
+
+      fireEvent.click(row);
+      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    });
+
+    it.each([SUCCEEDED, RUNNING])("offers no Resume when a %s row is clicked", async (run) => {
+      const { client } = stubClient([run]);
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    });
+
+    it("does not expand a row's Resume until it is clicked", async () => {
+      const { client } = stubClient([CANCELLED]);
+      renderList(client);
 
       await screen.findByTestId(`run-row-${CANCELLED.run_id}`);
       expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
     });
 
-    it("resumes the selected run and hands the successor up to the app", async () => {
+    it("resumes the run and hands the successor up to the app", async () => {
       const { client } = stubClient([CANCELLED]);
       vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "successor", root_run_id: "successor" });
       const onResumed = vi.fn();
-      renderList(client, { selectedRootRunId: CANCELLED.run_id, onResumed });
+      renderList(client, { onResumed });
 
+      fireEvent.click(await screen.findByTestId(`run-row-${CANCELLED.run_id}`));
       fireEvent.click(await screen.findByTestId("resume-button"));
 
       await waitFor(() => expect(onResumed).toHaveBeenCalledWith("successor"));
@@ -223,9 +230,9 @@ describe("RunsList", () => {
     it("forwards a typed config override to resumeRun", async () => {
       const { client } = stubClient([FAILED]);
       const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
-      renderList(client, { selectedRootRunId: FAILED.run_id });
+      renderList(client);
 
-      await screen.findByTestId("resume-button");
+      fireEvent.click(await screen.findByTestId(`run-row-${FAILED.run_id}`));
       fireEvent.click(screen.getByTestId("resume-config-toggle")); // reveal the optional field
       fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"output_file":"OUT.md"}' } });
       fireEvent.click(screen.getByTestId("resume-button"));
@@ -237,8 +244,9 @@ describe("RunsList", () => {
       const { client } = stubClient([FAILED]);
       vi.spyOn(client, "resumeRun").mockRejectedValue(new PathApiError(409, "already succeeded"));
       const onResumed = vi.fn();
-      renderList(client, { selectedRootRunId: FAILED.run_id, onResumed });
+      renderList(client, { onResumed });
 
+      fireEvent.click(await screen.findByTestId(`run-row-${FAILED.run_id}`));
       const button = await screen.findByTestId("resume-button");
       fireEvent.click(button);
 

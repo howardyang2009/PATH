@@ -59,17 +59,7 @@ export function ResumeButton({ client, rootRunId, onResumed }: ResumeButtonProps
   };
 
   return (
-    <span className="resume-slot">
-      <button
-        type="button"
-        className="resume-button"
-        data-testid="resume-button"
-        disabled={!canResume}
-        onClick={send}
-      >
-        {phase === "sending" ? "Resuming…" : "Resume run"}
-      </button>
-
+    <div className="launch-form resume-form" data-testid="resume-form">
       <button
         type="button"
         className="launch-disclosure"
@@ -93,11 +83,23 @@ export function ResumeButton({ client, rootRunId, onResumed }: ResumeButtonProps
         />
       )}
 
+      <div className="launch-actions">
+        <button
+          type="button"
+          className="launch-submit"
+          data-testid="resume-button"
+          disabled={!canResume}
+          onClick={send}
+        >
+          {phase === "sending" ? "Resuming…" : "Resume run"}
+        </button>
+      </div>
+
       {error !== null && (
-        <p className="pane-note pane-error resume-error" role="alert">
+        <p className="pane-note pane-error launch-error" role="alert">
           {error}
         </p>
       )}
-    </span>
+    </div>
   );
 }

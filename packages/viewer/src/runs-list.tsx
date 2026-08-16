@@ -54,6 +54,11 @@ export interface RunsListProps {
 export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed, reloadNonce }: RunsListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
+  // Which row's Resume form is expanded, or none — a single-open toggle exactly like the launch
+  // form's `expanded` (launch-panel.tsx): clicking a row opens its form, clicking it again closes it,
+  // clicking another row moves the expand there. Independent of `selectedRootRunId`, so collapsing
+  // the form never stops the centre pane watching the run.
+  const [resumeOpenFor, setResumeOpenFor] = useState<string | null>(null);
 
   // The current filter, read by the nonce effect without making it a dependency: a launch re-reads
   // the same window the pane is showing, and should not itself be a reason to re-read on filter change.
@@ -149,12 +154,12 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The selected run's Resume affordance expands under its own row — the rail's mirror of
-              // the launch form under a workflow row. Only a finished-but-unsuccessful run offers it;
-              // a succeeded or still-running run does not. Rendered as a sibling of the row button,
-              // never inside it (a button cannot nest the Resume form's own buttons).
-              const resumable =
-                run.run_id === selectedRootRunId && (run.status === "cancelled" || run.status === "failed");
+              // The Resume affordance expands under its own row — the rail's mirror of the launch form
+              // under a workflow row (#233). Only a finished-but-unsuccessful run offers it, and only
+              // when that row's expand is open. Rendered as a sibling of the row button, never inside
+              // it (a button cannot nest the Resume form's own buttons).
+              const canResume = run.status === "cancelled" || run.status === "failed";
+              const resumeOpen = canResume && resumeOpenFor === run.run_id;
               return (
                 <li key={run.run_id}>
                   <button
@@ -164,13 +169,28 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed
                     data-run-id={run.run_id}
                     data-testid={`run-row-${run.run_id}`}
                     aria-current={run.run_id === selectedRootRunId ? "true" : undefined}
-                    onClick={() => onSelectRootRun(run.run_id)}
+                    onClick={() => {
+                      onSelectRootRun(run.run_id);
+                      // Toggle this row's Resume expand, single-open, like the launch form.
+                      setResumeOpenFor((current) => (current === run.run_id ? null : run.run_id));
+                    }}
                   >
                     <span className="run-id">{run.run_id}</span>
                     <StatusPill status={run.status} />
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
-                  {resumable && <ResumeButton client={client} rootRunId={run.run_id} onResumed={onResumed} />}
+                  {resumeOpen && (
+                    <ResumeButton
+                      client={client}
+                      rootRunId={run.run_id}
+                      onResumed={(successorRootRunId) => {
+                        // Collapse on success, as the launch form does on launch — then hand the
+                        // successor to the app to select and watch.
+                        setResumeOpenFor(null);
+                        onResumed(successorRootRunId);
+                      }}
+                    />
+                  )}
                 </li>
               );
             })}

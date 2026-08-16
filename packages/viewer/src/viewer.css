@@ -565,50 +565,8 @@ button.workflow-row:focus-visible {
   text-align: right;
 }
 
-/* Resume expands under the selected run's row in the left rail — the mirror of the launch form under
-   a workflow row — so its slot spans the rail column and reads as a forward action (accent). */
-.resume-slot {
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: 6px;
-  padding: 8px 0 4px;
-}
-
-.resume-slot > .resume-button {
-  align-self: flex-start;
-}
-
-.resume-button {
-  font: inherit;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 12%, transparent);
-  border: 1px solid transparent;
-  border-radius: 5px;
-  padding: 3px 9px;
-  cursor: pointer;
-}
-
-.resume-button:hover:not(:disabled) {
-  border-color: color-mix(in srgb, var(--accent) 45%, transparent);
-}
-
-.resume-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
-
-.resume-button:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-
-.resume-error {
-  max-width: 220px;
-  text-align: right;
-}
+/* Resume reuses the launch form's card + submit-button styling (`.launch-form`/`.launch-submit`),
+   expanded under a run row exactly as the launch form sits under a workflow row. */
 
 /* ---------- run tree ---------- */
 
