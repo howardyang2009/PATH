@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, rmSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -84,6 +84,10 @@ async function readSseStream(res: Response): Promise<EventFrame[]> {
 
 async function cancelRun(rootRunId: string): Promise<Response> {
   return fetch(`${handle.url}/v0/runs/${rootRunId}/cancel`, { method: "POST" });
+}
+
+async function resumeRun(rootRunId: string): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs/${rootRunId}/resume`, { method: "POST" });
 }
 
 /**
@@ -717,5 +721,158 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
 
     await cancelRun(root_run_id);
     await pollUntilTerminal(root_run_id);
+  });
+});
+
+describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessful run", () => {
+  it("202s resuming a failed run as a distinct successor that itself runs to terminal", async () => {
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(original)).status).toBe("failed");
+
+    const res = await resumeRun(original);
+    expect(res.status).toBe(202);
+    const { run_id, root_run_id: successor } = (await res.json()) as { run_id: string; root_run_id: string };
+    // A resumed run is a *successor* (ADR 0001): its own fresh root id, never the predecessor's.
+    expect(successor).not.toBe(original);
+    expect(run_id).toBe(successor);
+
+    // The successor is a real root run that runs the workflow again — failing-step fails again — and
+    // its root row records the lineage back to the run it resumed.
+    const successorBody = await pollUntilTerminal(successor);
+    expect(successorBody.status).toBe("failed");
+    const successorRoot = successorBody.runs.find((r) => r.parent_run_id === null)!;
+    expect((successorRoot as unknown as { resumed_from_root_run_id: string }).resumed_from_root_run_id).toBe(original);
+  });
+
+  it("202s resuming a cancelled run", async () => {
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilStepAlive("long-step.alive");
+    await cancelRun(original);
+    expect((await pollUntilTerminal(original)).status).toBe("cancelled");
+
+    const res = await resumeRun(original);
+    expect(res.status).toBe(202);
+    const { root_run_id: successor } = (await res.json()) as { root_run_id: string };
+    expect(successor).not.toBe(original);
+    // The successor exists as its own root run immediately.
+    expect((await getRun(successor)).status).toBe(200);
+
+    // It re-runs the long step; stop it so the suite doesn't wait the fixture out.
+    await cancelRun(successor);
+    await pollUntilTerminal(successor);
+  });
+
+  it("409s a run that is still running (nothing to resume yet)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilStepAlive("long-step.alive");
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("still");
+
+    await cancelRun(root_run_id);
+    await pollUntilTerminal(root_run_id);
+  });
+
+  it("409s a run that already succeeded (nothing to resume)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("succeeded");
+  });
+
+  it("404s for an unknown root_run_id", async () => {
+    const res = await resumeRun("00000000-0000-0000-0000-000000000000");
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "00000000-0000-0000-0000-000000000000",
+    );
+  });
+
+  it("403s a cross-origin resume (state-changing route, #237 gate)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}/resume`, {
+      method: "POST",
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(res.status).toBe(403);
+  });
+
+  it("409s a run with no recorded workflow_path (a pre-#169 row it cannot re-run)", async () => {
+    const rootRunId = "44444444-4444-4444-4444-444444444444";
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      db.prepare(
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, workflow_path)
+         VALUES (?, ?, NULL, NULL, NULL, 'failed', ?, NULL)`,
+      ).run(rootRunId, rootRunId, new Date().toISOString());
+    } finally {
+      db.close();
+    }
+
+    const res = await resumeRun(rootRunId);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("no recorded workflow path");
+  });
+
+  it("404s when the recorded workflow file no longer exists on disk", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
+    rmSync(join(projectDir, "failing-step.workflow.json"));
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(404);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("failing-step.workflow.json");
+  });
+
+  it("400s when the recorded workflow file no longer passes validation", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
+    // The file at that path is now schema-invalid — a resume of it is a 400, as a fresh launch would be.
+    writeFileSync(join(projectDir, "failing-step.workflow.json"), JSON.stringify({ format: "path/workflow@1" }));
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(400);
+  });
+
+  it("409s when the file at the recorded path is now a different workflow (id changed)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
+    // A valid workflow, but not the one that ran — its id differs, so resuming the old run's context
+    // into it would be running a workflow the operator never launched.
+    writeFileSync(
+      join(projectDir, "failing-step.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+        name: "swapped",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: "550e8400-e29b-41d4-a716-446655440000", name: "noop", command: "true", args: [] }],
+      }),
+    );
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("id changed");
   });
 });

@@ -127,6 +127,19 @@ export class PathApiClient {
   }
 
   /**
+   * `POST /v0/runs/:root_run_id/resume` — resume a `cancelled`/`failed` root run as a **successor**
+   * (server-api-v0.md §4.3). No request body: the server recovers the workflow file from the
+   * predecessor's row. Async like `startRun` — the `202` carries the *successor's* own
+   * `{ run_id, root_run_id }` (equal, a fresh root run), which the caller watches from here on. A
+   * `404` (unknown run, or its workflow file is gone), a `400` (the workflow no longer validates),
+   * and a `409` (not resumable: still running, already succeeded, or no recorded path) arrive as
+   * `PathApiError`s carrying the status and the server's message.
+   */
+  async resumeRun(rootRunId: string): Promise<StartRunResponse> {
+    return this.postReadingReply<StartRunResponse>(`/v0/runs/${encodeURIComponent(rootRunId)}/resume`);
+  }
+
+  /**
    * `POST /v0/runs` — start a run (server-api-v0.md §2). Async: the `202` returns as soon as the
    * workflow tree loads and validates, before execution finishes, carrying `{ run_id, root_run_id }`
    * (equal for a root run) — the caller then polls `getRun` or streams the event route. Takes the
@@ -187,6 +200,22 @@ export class PathApiClient {
    * decodes the 2xx envelope, because `startRun`'s caller does not already know the `run_id` it
    * answers with — unlike `cancelRun`, whose `post` deliberately reads nothing back.
    */
+  /**
+   * A write that sends no request body yet *does* parse its 2xx reply — `resumeRun`'s transport,
+   * distinct from `post` (reads nothing back) and `postJson` (sends a body), following the same
+   * "reading the helper tells you the request shape" reasoning. Resume names its target in the path
+   * but answers with the successor's ids the caller does not yet know.
+   */
+  private async postReadingReply<T>(path: string): Promise<T> {
+    const res = await this.fetch(this.url(path), {
+      method: "POST",
+      headers: { Accept: "application/json" },
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
+    return JSON.parse(text) as T;
+  }
+
   private async postJson<T>(path: string, body: unknown): Promise<T> {
     const res = await this.fetch(this.url(path), {
       method: "POST",

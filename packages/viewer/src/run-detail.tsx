@@ -1,5 +1,6 @@
 import { isTerminal, type PathApiClient } from "@path/client-core";
 import { CancelButton } from "./cancel-button.js";
+import { ResumeButton } from "./resume-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -15,6 +16,8 @@ export interface RunDetailProps {
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
+  /** Switches the app to watch the successor of a resumed run — the same transition a launch makes. */
+  onResumed: (successorRootRunId: string) => void;
 }
 
 /**
@@ -25,7 +28,7 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, onResumed }: RunDetailProps) {
   if (load.phase === "idle" || load.phase === "loading") return <PaneLoading what="run" />;
   if (load.phase === "error") return <PaneError what="run" message={load.message} />;
 
@@ -33,6 +36,9 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
   const root = state.runs.get(rootRunId);
   // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
   const cancellable = !isTerminal(state.status);
+  // Its mirror on the finished side: a run that stopped short — `cancelled` or `failed` — can be
+  // resumed as a successor (§4.3). A `succeeded` run has nothing to resume, so no button.
+  const resumable = state.status === "cancelled" || state.status === "failed";
 
   return (
     <div className="run-detail">
@@ -40,6 +46,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
         <span className="run-id">{state.rootRunId}</span>
         <StatusPill status={state.status} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
+        {resumable && <ResumeButton client={client} rootRunId={rootRunId} onResumed={onResumed} />}
         <span className="run-meta">{formatTimestamp(root?.startedAt ?? null)}</span>
       </header>
 

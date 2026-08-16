@@ -229,6 +229,40 @@ Nothing about the run's event stream is special-cased for a cancel — its termi
 `run-cancelled` naming the `operator` cause, then the root's `step-finished`) flow through §5 exactly
 as a failure's would.
 
+### 4.3 `POST /v0/runs/:root_run_id/resume` — resume a finished-but-unsuccessful run
+
+Re-runs a `cancelled` or `failed` root run as a **successor** (ADR 0001, engine
+[#173](https://github.com/howardyang2009/PATH/issues/173)) — the browser counterpart of
+`path run <workflow.json> --resume <root-run-id>`. A named action on an existing run, like §4.2, and
+async like §2: it answers `202` with the successor's *own* fresh ids the moment it starts, then the
+client watches that new run over §5 to its terminal status.
+
+**No request body.** The workflow file to re-run is recovered from the predecessor's own row
+(`workflow_path`, recorded on every launch since engine #169), so a resume names *which run* to
+continue, not what to run. No `input`/`config` either: a resumed run restores its context from the
+predecessor's tree (engine `cli.ts`), so a fresh seed would be silently discarded. The successor
+records its own `workflow_path` and is therefore itself resumable.
+
+Responses:
+
+- `202 Accepted` — the successor started:
+  ```json
+  { "run_id": "<successor-uuid>", "root_run_id": "<successor-uuid>" }
+  ```
+  The ids are the **successor's**, never the predecessor's; the successor's root row carries
+  `resumed_from_root_run_id` pointing back (§4 tree, §3 list).
+- `403 Forbidden` — cross-origin caller (the §2.1 origin gate; resume is state-changing).
+- `404 Not Found` — no run with that `root_run_id`, or its recorded `workflow_path` no longer exists
+  on disk.
+- `400 Bad Request` — the workflow file was found but no longer passes validation (`error.details`
+  carries the issues), exactly as a fresh launch of it would.
+- `409 Conflict` — the run is not in a resumable state, each case named distinctly: still `running`
+  (nothing to resume yet), already `succeeded` (nothing to resume), it carries no recorded
+  `workflow_path` (a pre-#169 run) so the server cannot know which file to re-run, or the file now at
+  that path is a **different workflow** (its `id` no longer matches the run's, ADR 0006) — the path
+  is recovered from the row, not re-confirmed by the operator, so a swapped file is refused rather
+  than run against the predecessor's restored context.
+
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 
 `Content-Type: text/event-stream`. Each SSE frame's `data:` payload is one `LogEvent` (the existing

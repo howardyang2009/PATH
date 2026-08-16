@@ -70,6 +70,7 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
+            onResumed={handleLaunched}
           />
         )
       }
