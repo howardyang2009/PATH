@@ -565,21 +565,18 @@ button.workflow-row:focus-visible {
   text-align: right;
 }
 
-/* Resume mirrors cancel's slot but reads as a forward action (accent), not a destructive one — the
-   two never show together (a run is running xor finished). */
+/* Resume expands under the selected run's row in the left rail — the mirror of the launch form under
+   a workflow row — so its slot spans the rail column and reads as a forward action (accent). */
 .resume-slot {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
-  margin-left: auto;
-  min-width: 240px;
+  gap: 6px;
+  padding: 8px 0 4px;
 }
 
-/* The Resume button itself sits right, like Cancel; the config disclosure and field below it span the
-   slot so the JSON textarea is usable. */
 .resume-slot > .resume-button {
-  align-self: flex-end;
+  align-self: flex-start;
 }
 
 .resume-button {

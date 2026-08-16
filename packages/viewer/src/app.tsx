@@ -56,6 +56,7 @@ export function App({ client }: { client: PathApiClient }) {
             client={client}
             selectedRootRunId={selectedRootRunId}
             onSelectRootRun={selectRootRun}
+            onResumed={handleLaunched}
             reloadNonce={runsReloadNonce}
           />
         </>
@@ -70,7 +71,6 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
-            onResumed={handleLaunched}
           />
         )
       }

@@ -50,40 +50,14 @@ const TREE = {
  * The pane is a view over a snapshot the app owns (one connection feeds the detail and node-I/O
  * panes), so the tests connect it the way the app does rather than reaching past `useRunView`.
  */
-function ConnectedDetail({
-  client,
-  onSelectRun,
-  onResumed,
-}: {
-  client: PathApiClient;
-  onSelectRun: () => void;
-  onResumed: (id: string) => void;
-}) {
+function ConnectedDetail({ client, onSelectRun }: { client: PathApiClient; onSelectRun: () => void }) {
   const load = useRunView(client, ROOT);
-  return (
-    <RunDetail
-      client={client}
-      load={load}
-      rootRunId={ROOT}
-      selectedRunId={null}
-      onSelectRun={onSelectRun}
-      onResumed={onResumed}
-    />
-  );
+  return <RunDetail client={client} load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={onSelectRun} />;
 }
 
-function renderDetail(client: PathApiClient, onSelectRun = vi.fn(), onResumed = vi.fn()) {
-  const view = render(<ConnectedDetail client={client} onSelectRun={onSelectRun} onResumed={onResumed} />);
-  return { ...view, onSelectRun, onResumed };
-}
-
-/** A terminal tree at `status`, with the root row moved to the same status. */
-function terminalTreeAt(status: string) {
-  return {
-    ...TREE,
-    status,
-    runs: TREE.runs.map((row) => (row.run_id === ROOT ? { ...row, status } : row)),
-  };
+function renderDetail(client: PathApiClient, onSelectRun = vi.fn()) {
+  const view = render(<ConnectedDetail client={client} onSelectRun={onSelectRun} />);
+  return { ...view, onSelectRun };
 }
 
 describe("RunDetail", () => {
@@ -348,91 +322,16 @@ describe("RunDetail", () => {
     });
   });
 
-  describe("resume (§4.3)", () => {
-    it.each(["cancelled", "failed"])("offers Resume on a %s run", async (status) => {
-      renderDetail(stubClient({ tree: terminalTreeAt(status) }));
-      expect(await screen.findByTestId("resume-button")).toHaveTextContent("Resume run");
-    });
-
-    it("gives a succeeded run nothing to resume", async () => {
-      renderDetail(stubClient({ tree: terminalTreeAt("succeeded") }));
-      await screen.findByTestId("run-head");
-      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
-    });
-
-    it("offers no Resume while the run is still running (that is Cancel's job)", async () => {
-      renderDetail(stubClient({ tree: TREE }));
-      await screen.findByTestId("cancel-button");
-      expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
-    });
-
-    it("sends the resume and shows Resuming…, disabled so it cannot fire twice", async () => {
-      const client = stubClient({ tree: terminalTreeAt("failed") });
-      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
-      renderDetail(client);
-
-      const button = await screen.findByTestId("resume-button");
-      fireEvent.click(button);
-      fireEvent.click(button);
-
-      expect(resumeRun).toHaveBeenCalledTimes(1);
-      // No config typed → the override is omitted (undefined), not an empty object.
-      expect(resumeRun).toHaveBeenCalledWith(ROOT, undefined);
-      expect(button).toHaveTextContent("Resuming…");
-      expect(button).toBeDisabled();
-    });
-
-    it("forwards a typed config override to resumeRun", async () => {
-      const client = stubClient({ tree: terminalTreeAt("cancelled") });
-      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
-      renderDetail(client);
-
-      await screen.findByTestId("resume-button");
-      fireEvent.click(screen.getByTestId("resume-config-toggle")); // reveal the optional field
-      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"output_file":"OUT.md"}' } });
-      fireEvent.click(screen.getByTestId("resume-button"));
-
-      expect(resumeRun).toHaveBeenCalledWith(ROOT, { output_file: "OUT.md" });
-    });
-
-    it("blocks the resume on an invalid config, keeping the field open with the reason", async () => {
-      const client = stubClient({ tree: terminalTreeAt("failed") });
-      const resumeRun = vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "s", root_run_id: "s" });
-      renderDetail(client);
-
-      const button = await screen.findByTestId("resume-button");
-      fireEvent.click(screen.getByTestId("resume-config-toggle"));
-      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: "{not json" } });
-
-      expect(button).toBeDisabled();
-      fireEvent.click(button);
-      expect(resumeRun).not.toHaveBeenCalled();
-      // A bad config can't be collapsed out of sight — the field stays open so the reason is on screen.
-      expect(screen.getByTestId("resume-config")).toBeInTheDocument();
-    });
-
-    it("hands the successor's root id up so the app switches to watching it", async () => {
-      const client = stubClient({ tree: terminalTreeAt("cancelled") });
-      vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "successor", root_run_id: "successor" });
-      const { onResumed } = renderDetail(client);
-
-      fireEvent.click(await screen.findByTestId("resume-button"));
-
-      await waitFor(() => expect(onResumed).toHaveBeenCalledWith("successor"));
-    });
-
-    it("surfaces a 409 rather than claiming the resume was sent", async () => {
-      const client = stubClient({ tree: terminalTreeAt("failed") });
-      vi.spyOn(client, "resumeRun").mockRejectedValue(new PathApiError(409, "already succeeded"));
-      const { onResumed } = renderDetail(client);
-
-      const button = await screen.findByTestId("resume-button");
-      fireEvent.click(button);
-
-      expect(await screen.findByRole("alert")).toHaveTextContent("already succeeded");
-      // Back to armable, not stuck on a disabled "Resuming…" that never happened.
-      expect(button).toHaveTextContent("Resume run");
-      expect(onResumed).not.toHaveBeenCalled();
-    });
+  // Resume (§4.3) lives in the runs rail now, under the selected row — its tests are in
+  // runs-list.test.tsx. The detail header only carries Cancel.
+  it("keeps Resume out of the detail header (it belongs to the runs rail)", async () => {
+    const failedTree = {
+      ...TREE,
+      status: "failed",
+      runs: TREE.runs.map((row) => (row.run_id === ROOT ? { ...row, status: "failed" } : row)),
+    };
+    renderDetail(stubClient({ tree: failedTree }));
+    await screen.findByTestId("run-head");
+    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
   });
 });
