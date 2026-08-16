@@ -207,6 +207,45 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(body.error.details.join("\n")).toContain("bogus_field");
   });
 
+  // ADR 0012 / #231 — operator-supplied override config may carry a literal `$secret` but must not
+  // source from the server box's environment via `$env`. `ConfigObjectSchema` (shared with
+  // workflow-authored config) accepts `$env`, so the reject is a post-parse walk on the operator
+  // path only. `$env` authored *inside* a workflow.json is untouched.
+  describe("operator config rejects $env ($secret literal still allowed)", () => {
+    it("400s a bare {\"$env\": ...} in operator config, and starts no run", async () => {
+      const res = await postRun({
+        workflow_path: "two-binary-steps.workflow.json",
+        config: { repo_path: { $env: "SECRET_X" } },
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toContain("$env");
+      expect(body.error.message).toContain("repo_path");
+      const listed = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+      expect(listed.runs).toHaveLength(0);
+    });
+
+    it("400s the composed {\"$secret\": {\"$env\": ...}} form, reporting the config path", async () => {
+      const res = await postRun({
+        workflow_path: "two-binary-steps.workflow.json",
+        config: { token: { $secret: { $env: "SECRET_X" } } },
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as { error: { message: string } };
+      expect(body.error.message).toContain("$env");
+      // mapEnv walks *through* $secret, so the path is the config key, not `token.$secret`.
+      expect(body.error.message).toContain("token");
+    });
+
+    it("accepts a literal {\"$secret\": \"...\"} in operator config", async () => {
+      const res = await postRun({
+        workflow_path: "two-binary-steps.workflow.json",
+        config: { token: { $secret: "hunter2" } },
+      });
+      expect(res.status).toBe(202);
+    });
+  });
+
   it("404s when the workflow file does not exist", async () => {
     const res = await postRun({ workflow_path: "does-not-exist.workflow.json" });
     expect(res.status).toBe(404);
