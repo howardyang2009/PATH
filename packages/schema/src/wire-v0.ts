@@ -1,5 +1,6 @@
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
+import type { LogBackendId } from "./log-backend-id.js";
 import type { RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
 import type { Worker } from "./worker-type.js";
@@ -60,14 +61,6 @@ export interface RootRunSummary {
 export interface ListRunsResponse {
   runs: RootRunSummary[];
 }
-
-/**
- * A log backend id (server-api-v0.md §2 `log_backends`). Owned here rather than imported from
- * `@path/engine`: `@path/client-core` names this on its public `startRun` surface and carries no
- * engine dependency by design. This duplicates the engine's `LogBackendId` — consolidating the two
- * into one schema-owned source (engine re-exporting) is a deliberate follow-up (ADR 0013).
- */
-export type LogBackendId = "db" | "ndjson";
 
 /**
  * `POST /v0/runs` request body (server-api-v0.md §2), snake_case. Shared so the client encodes and
