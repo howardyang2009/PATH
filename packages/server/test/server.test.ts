@@ -217,6 +217,59 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
   });
 
+  // Issue #237 — the CSRF/origin gate on the state-changing routes. A cross-origin browser fetch
+  // (another tab on a malicious site) carries `Sec-Fetch-Site: cross-site` or a mismatched `Origin`;
+  // the viewer's own fetch and non-browser clients do not.
+  describe("CSRF/origin gate (#237)", () => {
+    async function postRunFrom(headers: Record<string, string>): Promise<Response> {
+      return fetch(`${handle.url}/v0/runs`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...headers },
+        body: JSON.stringify({ workflow_path: "two-binary-steps.workflow.json" }),
+      });
+    }
+
+    it("403s a POST /v0/runs with Sec-Fetch-Site: cross-site, and starts no run", async () => {
+      const res = await postRunFrom({ "Sec-Fetch-Site": "cross-site" });
+      expect(res.status).toBe(403);
+      const listed = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+      expect(listed.runs).toHaveLength(0);
+    });
+
+    it("403s a POST /v0/runs whose Origin does not match Host", async () => {
+      const res = await postRunFrom({ Origin: "http://evil.com" });
+      expect(res.status).toBe(403);
+    });
+
+    it("allows a POST /v0/runs with Sec-Fetch-Site: same-origin", async () => {
+      const res = await postRunFrom({ "Sec-Fetch-Site": "same-origin" });
+      expect(res.status).toBe(202);
+    });
+
+    it("allows a POST /v0/runs with no Origin/Sec-Fetch-Site (a non-browser client)", async () => {
+      const res = await postRun({ workflow_path: "two-binary-steps.workflow.json" });
+      expect(res.status).toBe(202);
+    });
+
+    it("allows a POST /v0/runs on the Origin-vs-Host fallback when Origin matches Host", async () => {
+      // No Sec-Fetch-Site (an older browser), so the gate falls back to comparing Origin to Host.
+      // The server's own URL is same-origin, so its host is exactly what a same-origin Origin carries.
+      const res = await postRunFrom({ Origin: handle.url });
+      expect(res.status).toBe(202);
+    });
+
+    it("403s a cross-origin cancel", async () => {
+      const started = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+        root_run_id: string;
+      };
+      const res = await fetch(`${handle.url}/v0/runs/${started.root_run_id}/cancel`, {
+        method: "POST",
+        headers: { "Sec-Fetch-Site": "cross-site" },
+      });
+      expect(res.status).toBe(403);
+    });
+  });
+
   it("GET /v0/runs lists root runs most-recent-first, with limit and status filters", async () => {
     const first = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
       root_run_id: string;
