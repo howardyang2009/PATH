@@ -136,16 +136,23 @@ not a flag.
 
 Exact flag spellings are implementer's choice; the semantics above are not.
 
-## 4. Workflow file format v0
+## 4. Workflow file format v2
 
-Normative document: [docs/format/workflow-format-v0.md](../format/workflow-format-v0.md).
-Summary for orientation only — the format doc wins on any detail:
+Normative document: [docs/format/workflow-format-v2.md](../format/workflow-format-v2.md)
+(`path/workflow@2`; the older [workflow-format-v0.md](../format/workflow-format-v0.md) describes the
+superseded `@1` and carries a banner pointing here). Summary for orientation only — the format doc
+wins on any detail:
 
-- Single JSON file, `"format": "path/workflow@1"`, strict zod validation (unknown fields
-  rejected), durable GUID `id` + file-unique human `name` on the workflow and every node/branch
-  (ADR 0006/0007), one flat `type`-discriminated node union.
-- Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`), controls `parallel`
-  (`join: "collect" | "wait-one"`) / `branch` / `while-do` (mandatory `max_iterations`) / `checkpoint`.
+- Single JSON file, `"format": "path/workflow@2"`, strict zod validation (unknown fields
+  rejected), durable GUID `id` + file-unique human `name` on the workflow and **every node**
+  (ADR 0006/0007/0014), one flat `type`-discriminated node union.
+- **Every container slot holds exactly one node** (ADR 0014): a `parallel` branch, a `branch` arm's
+  occupant, an `else`, and a `while-do` body are each a node, not a wrapper. Only two slots carry a
+  node array — the file's top-level `body` and a `sequence`'s `body`.
+- Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`), logicers `parallel`
+  (`join: "collect" | "wait-one" | "do-not-wait"`) / `branch` / `while-do` (mandatory
+  `max_iterations`) / `sequence` (a node array wherever a slot needs several nodes in order), plus
+  `checkpoint`.
 - `${dot.path}` interpolation with the whole-string typing rule, in allowlisted positions only;
   roots `config`/`context` (+ `output` in `publish` maps).
 - Uniform data flow: `input` builds the step's input object (absent = previous node's output);
@@ -174,6 +181,12 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   iterations is a normal exit. If the condition is still true after `max_iterations` completed
   iterations, the **run fails** — post-loop nodes may assume the condition resolved to false.
 - **Checkpoint** — condition true → continue; false → run stops as failed.
+- **Sequence** — a logicer holding a **node array** (`body`), the answer to "this single-node slot
+  needs several nodes in order." Its nodes run sequentially like a top-level body; its output object
+  is its **last child's**, and its first child's default input is the `sequence`'s predecessor's
+  output (§5.4). It adds no new execution rule — the block-slot rules restated over one node — and,
+  being a logicer, has no worker, task, or run. It is a legal occupant of any single-node slot (a
+  `while-do` body, a `branch` arm, an `else`, a `parallel` branch).
 - **Parallel** — structured concurrency; the run tree stays **strictly nested** (every workflow-run
   contains its descendants). The `join` decides completion: `collect` waits for **all** branches;
   `wait-one` **races** them and keeps the first to succeed, cancelling the rest (a failing branch is
@@ -191,25 +204,31 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
   starts**.
 - Parallel flow: each branch executes against a **snapshot of context taken at block entry** —
   siblings never see each other's writes. Branch publishes buffer and land **at the join, applied
-  in branch declaration order**. Publish keys are static strings, so duplicate keys across sibling
-  branches are rejected at **load time** under `collect`; no runtime races exist. Under `wait-one`
-  the same-key ban is lifted — only the winner's publishes land, so two branches publishing one key
-  is deterministic ([wait-one-join.md](wait-one-join.md) §4.1). Under `do-not-wait` a branch **may
-  not `publish` at all**: it lands after its would-be readers, so a write would be a nondeterministic
-  write-after-read — `publish` inside a `do-not-wait` branch is a **load error**
-  ([do-not-wait-join.md](do-not-wait-join.md) §4).
+  in branch declaration order**. Publish keys are static strings, so duplicate keys are checked over
+  a branch **node's publish set** — its own `publish` keys plus those of every node reachable through
+  its child bodies (a `sequence`, a nested block, any depth), not descending into a `workflow` step's
+  ref'd file (format §5.1). Duplicate keys across **concurrent sibling branch nodes** are rejected at
+  **load time** under `collect`; no runtime races exist. Under `wait-one` the same-key ban is lifted
+  — only the winner's publishes land, so two branches publishing one key is deterministic
+  ([wait-one-join.md](wait-one-join.md) §4.1). Under `do-not-wait` a branch node's publish set must
+  be **empty**: it lands after its would-be readers, so a write would be a nondeterministic
+  write-after-read — any `publish` reachable within a `do-not-wait` branch, including through a
+  `sequence` or nested block, is a **load error** ([do-not-wait-join.md](do-not-wait-join.md) §4).
 
 ### 5.4 Node output objects
 
 - **Step**: its own output (stdout / LLM result / child workflow `output` map), per the format doc.
 - **Checkpoint**: transparent — forwards its predecessor's output unchanged (its condition's
   `output` root reads that same object).
-- **Branch**: the taken arm's last node's output.
-- **While-do**: the last node's output of the final executed iteration; transparent at zero
+- **Sequence**: its **last child's** output object.
+- **Branch**: the taken arm's **node's** output.
+- **While-do**: the **node's** output of the final executed iteration; transparent at zero
   iterations.
-- **Parallel (collect)**: `{ "<branch-name>": <output object of that branch's last node> }` —
-  deterministic regardless of completion order, dot-path addressable.
-- **Parallel (wait-one)**: `{ "winner": { "name": <winning-branch-name>, "output": <winner's last
+- **Parallel (collect)**: `{ "<branch-node-name>": <that branch node's output object> }` — the key is
+  the branch **node's** own `name` (format §4.3); deterministic regardless of completion order,
+  dot-path addressable. Shape unchanged from `@1` — only the key's source moved from the deleted
+  wrapper onto the node.
+- **Parallel (wait-one)**: `{ "winner": { "name": <winning branch node's name>, "output": <that
   node's output> } }` — a stable `winner` key, since the author cannot know which branch wins
   ([wait-one-join.md](wait-one-join.md) §3).
 - **Parallel (do-not-wait)**: the **empty object** `{}` — every branch is detached, none is waited on,
@@ -220,10 +239,12 @@ order. Concurrency exists only inside `parallel` blocks. No lookahead, no reorde
 **Default-input chain** — the mirror rule to the outputs above. When a step omits `input`
 (format §6.1), the chain threads *through* blocks: the first node of any block slot — a branch
 arm, a parallel branch, a while-do body — defaults to the **block's predecessor's output object**
-(parallel siblings all start from that same object, consistent with the context-snapshot rule).
-A while-do body additionally chains **across iterations**: iteration 1's first node reads the
-block's predecessor's output; iteration N's first node reads iteration N−1's last node's output.
-Blocks are thus transparent to one uniform chain, on both their input and output sides.
+(parallel siblings all start from that same object, consistent with the context-snapshot rule). A
+`sequence` needs no special clause: its first child defaults to the `sequence`'s predecessor's
+output, its later children chain internally — identical to the arm / branch / loop-body rule. A
+while-do body additionally chains **across iterations**: iteration 1's node reads the block's
+predecessor's output; iteration N's node reads iteration N−1's node's output. Blocks are thus
+transparent to one uniform chain, on both their input and output sides.
 
 ### 5.5 Processors & the fan-out cap
 
@@ -574,3 +595,4 @@ workflow's NOTES.md.
 | Agent SDK spike (§7) | [#13](https://github.com/howardyang2009/PATH/issues/13) → findings doc |
 | Logging & secrets (§8) | [#14](https://github.com/howardyang2009/PATH/issues/14) |
 | `$env` config sourcing (§3, §8.3) | [#113](https://github.com/howardyang2009/PATH/issues/113) → format doc §8.3 |
+| Single-node container slots + `sequence` (§4, §5) | [#265](https://github.com/howardyang2009/PATH/issues/265) → format v2 doc, [ADR 0014](../adr/0014-single-node-container-slots-and-sequence-logicer.md) |
