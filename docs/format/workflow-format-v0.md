@@ -1,5 +1,12 @@
 # PATH Workflow File Format v0
 
+> [!warning] Superseded
+> This document describes `path/workflow@1` (despite its `v0` filename) and is **superseded by**
+> [`workflow-format-v2.md`](workflow-format-v2.md), the normative definition of `path/workflow@2`.
+> The engine reads `@2` only; `@1`/`@0` files are rejected at load (run
+> [`scripts/migrate-workflow-format-v2.ts`](../../scripts/migrate-workflow-format-v2.ts)). This file
+> is kept because the CHANGELOG and several closed issues link it.
+
 Resolves wayfinder ticket [#10](https://github.com/howardyang2009/PATH/issues/10). This document is
 the normative definition of the v0 workflow file format; `@path/schema` implements it as zod
 schemas. Vocabulary follows [CONTEXT.md](../../CONTEXT.md). Runtime semantics (scheduling, when
