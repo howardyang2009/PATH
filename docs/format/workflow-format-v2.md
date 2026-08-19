@@ -295,13 +295,13 @@ is not decided by `@2`.)
 
 ### 5.5 Resume, cancellation, cost
 
-Reuse, cancellation, and cost aggregation all key on **run ids or run-producing node ids**. A
-`sequence` and every branch node are **run-less logicers, never resume keys**: resume reuses each node
-whose recorded *run* is `succeeded` and re-runs the rest, and a logicer has no run to reuse. Turning
-branches into nodes and adding `sequence` therefore changes none of it — the `wait-one` recorded-winner
-resolution, the `do-not-wait` enclosing-run barrier, cost aggregation, and the cancel cause set all
-survive branches-as-nodes unchanged. A `do-not-wait` block nested inside a `sequence` still awaits at
-the same workflow-run boundary, because a `sequence` is not a workflow-run.
+> Resume, cancellation, and cost aggregation are invariant under `@2`. Reuse keys on a node's `id`,
+> and only run-producing nodes (`prompt`, `binary`, `workflow`) produce a run; `sequence` and every
+> branch node are logicers with no run (invariant 1), so none is ever a reuse key, a cancel cause, or
+> a term in a run's cost SUM. A `wait-one` race still replays to the same winner: resume orders reused
+> winners by recorded completion time, then by branch declaration order, both preserved when a branch
+> is a node. (Build map: the `parallel` and `plan-reuse` consumers that today walk a branch wrapper's
+> `body` re-target to the branch node; mechanical, no semantic change.)
 
 ### 5.6 Load-time validation
 
