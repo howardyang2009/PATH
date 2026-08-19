@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "cd2c661e-1b6e-4c4f-8949-1fb9ef2eae10",
   "name": "parent-with-child",
   "worker": {

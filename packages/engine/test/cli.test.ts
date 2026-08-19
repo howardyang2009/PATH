@@ -571,7 +571,7 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   let sigintListenersBefore: number;
 
   const ONE_PROMPT_WORKFLOW = stampGuids({
-    format: "path/workflow@1",
+    format: "path/workflow@2",
     id: "wf-id",
     name: "sigint-cancel",
     worker: { type: "llm", model: "claude-sonnet-5" },

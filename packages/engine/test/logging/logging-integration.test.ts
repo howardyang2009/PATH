@@ -31,7 +31,7 @@ afterEach(() => {
 });
 
 const twoStepWorkflow: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "two-step",
   worker: { type: "engine" },
@@ -93,7 +93,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("records the failing step's step-finished with its error, then the failed root step-finished", async () => {
     const failing: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "boom",
       worker: { type: "engine" },
@@ -135,7 +135,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a parallel collect join in both backends, with branch ids and published keys (ticket #24)", async () => {
     const parallelWorkflow: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "parallel-join",
       worker: { type: "engine" },
@@ -145,8 +145,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
           id: "fanout", name: "fanout",
           join: "collect",
           branches: [
-            { id: "one", name: "one", body: [{ type: "binary", id: "s1", name: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
-            { id: "two", name: "two", body: [{ type: "binary", id: "s2", name: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
+            { type: "sequence", id: "one", name: "one", body: [{ type: "binary", id: "s1", name: "s1", command: "node", args: ["-e", "process.stdout.write('1')"], publish: { k1: "${output}" } }] },
+            { type: "sequence", id: "two", name: "two", body: [{ type: "binary", id: "s2", name: "s2", command: "node", args: ["-e", "process.stdout.write('2')"], publish: { k2: "${output}" } }] },
           ],
         },
       ],
@@ -167,7 +167,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a run-cancelled in both backends and marks the cancelled step's row cancelled (ticket #24)", async () => {
     const cancellingWorkflow: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "parallel-cancel",
       worker: { type: "engine" },
@@ -177,8 +177,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
           id: "fanout", name: "fanout",
           join: "collect",
           branches: [
-            { id: "slow", name: "slow", body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"] }] },
-            { id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+            { type: "sequence", id: "slow", name: "slow", body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"] }] },
+            { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
           ],
         },
       ],
@@ -206,7 +206,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("ends an externally aborted root run cancelled in both backends, the run rows and context.json (#52)", async () => {
     const cancellableWorkflow: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "operator-cancel",
       worker: { type: "engine" },
@@ -267,7 +267,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
       publish: { [id]: "${output}" },
     });
     const file: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "multi-publish",
       worker: { type: "engine" },
@@ -313,7 +313,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits checkpoint and branch control events with complete traces to both backends (ticket #21)", async () => {
     const controls: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "controls",
       worker: { type: "engine" },
@@ -324,8 +324,8 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
           type: "branch",
           id: "route", name: "route",
           arms: [
-            { when: { type: "equals", path: "context.pick", value: "a" }, body: [{ type: "binary", id: "arm-a", name: "arm-a", command: "node", args: ["-e", "process.stdout.write('a')"] }] },
-            { when: { type: "equals", path: "context.pick", value: "b" }, body: [{ type: "binary", id: "arm-b", name: "arm-b", command: "node", args: ["-e", "process.stdout.write('b')"] }] },
+            { when: { type: "equals", path: "context.pick", value: "a" }, node: { type: "binary", id: "arm-a", name: "arm-a", command: "node", args: ["-e", "process.stdout.write('a')"] } },
+            { when: { type: "equals", path: "context.pick", value: "b" }, node: { type: "binary", id: "arm-b", name: "arm-b", command: "node", args: ["-e", "process.stdout.write('b')"] } },
           ],
         },
       ],
@@ -352,7 +352,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits while-do iteration-started and loop-exited control events with traces to both backends (ticket #23)", async () => {
     const loop: WorkflowFile = {
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "while-loop",
       worker: { type: "engine" },
@@ -363,16 +363,14 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
           id: "loop", name: "loop",
           condition: { type: "range", path: "context.count", max: 1 },
           max_iterations: 10,
-          body: [
-            {
-              type: "binary",
-              id: "inc", name: "inc",
-              command: "node",
-              args: ["-e", "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(String(Number(d)+1)))"],
-              parse: "json",
-              publish: { count: "${output}" },
-            },
-          ],
+          node: {
+            type: "binary",
+            id: "inc", name: "inc",
+            command: "node",
+            args: ["-e", "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(String(Number(d)+1)))"],
+            parse: "json",
+            publish: { count: "${output}" },
+          },
         },
       ],
     };

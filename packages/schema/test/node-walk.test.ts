@@ -4,7 +4,7 @@ import { childBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 
 // Structural tests (childBodies/walkNodes) never pass through the schema, so the human id doubles as
-// both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes `branchName`.
+// both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes each slot's nodes.
 const step = (id: string, publish?: Record<string, string>): WorkflowNode => ({
   type: "binary",
   id,
@@ -14,8 +14,12 @@ const step = (id: string, publish?: Record<string, string>): WorkflowNode => ({
   ...(publish ? { publish } : {}),
 });
 
-/** A body buried under every block kind at once: parallel → branch arm → while-do. */
-function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
+/**
+ * A node buried under every block kind at once: parallel branch → branch arm → while-do. In `@2`
+ * every container slot holds a single node, so the branches are nodes directly and the arm / loop
+ * bodies are single nodes.
+ */
+function deeplyNested(inner: WorkflowNode): WorkflowNode {
   return {
     type: "parallel",
     id: "fan",
@@ -23,33 +27,25 @@ function deeplyNested(inner: WorkflowNode[]): WorkflowNode {
     join: "collect",
     branches: [
       {
-        id: "left",
-        name: "left",
-        body: [
+        type: "branch",
+        id: "route",
+        name: "route",
+        arms: [
           {
-            type: "branch",
-            id: "route",
-            name: "route",
-            arms: [
-              {
-                when: { type: "exists", path: "context.x" },
-                body: [
-                  {
-                    type: "while-do",
-                    id: "spin",
-                    name: "spin",
-                    condition: { type: "exists", path: "context.x" },
-                    max_iterations: 2,
-                    body: inner,
-                  },
-                ],
-              },
-            ],
-            else: [step("fallback")],
+            when: { type: "exists", path: "context.x" },
+            node: {
+              type: "while-do",
+              id: "spin",
+              name: "spin",
+              condition: { type: "exists", path: "context.x" },
+              max_iterations: 2,
+              node: inner,
+            },
           },
         ],
+        else: step("fallback"),
       },
-      { id: "right", name: "right", body: [step("r")] },
+      step("r"),
     ],
   };
 }
@@ -62,27 +58,28 @@ describe("childBodies", () => {
     );
   });
 
-  it("reports a parallel's branches as concurrent, carrying their own names", () => {
-    const bodies = childBodies(deeplyNested([step("inner")]));
+  it("reports a parallel's branches as concurrent single nodes", () => {
+    const bodies = childBodies(deeplyNested(step("inner")));
     expect(bodies).toHaveLength(2);
-    expect(bodies.map((b) => b.branchName)).toEqual(["left", "right"]);
+    expect(bodies.map((b) => b.nodes[0]!.name)).toEqual(["route", "r"]);
     expect(bodies.every((b) => b.concurrent)).toBe(true);
-    expect(bodies[0]!.path).toEqual(["branches", 0, "body"]);
+    expect(bodies[0]!.path).toEqual(["branches", 0]);
   });
 
-  it("reports branch arms and else as alternatives, never concurrent", () => {
+  it("reports branch arms and else as single-node alternatives, never concurrent", () => {
     const branch: WorkflowNode = {
       type: "branch",
       id: "route",
-name: "route",
+      name: "route",
       arms: [
-        { when: { type: "exists", path: "context.a" }, body: [step("a")] },
-        { when: { type: "exists", path: "context.b" }, body: [step("b")] },
+        { when: { type: "exists", path: "context.a" }, node: step("a") },
+        { when: { type: "exists", path: "context.b" }, node: step("b") },
       ],
-      else: [step("c")],
+      else: step("c"),
     };
     const bodies = childBodies(branch);
-    expect(bodies.map((b) => b.path)).toEqual([["arms", 0, "body"], ["arms", 1, "body"], ["else"]]);
+    expect(bodies.map((b) => b.path)).toEqual([["arms", 0, "node"], ["arms", 1, "node"], ["else"]]);
+    expect(bodies.map((b) => b.nodes[0]!.name)).toEqual(["a", "b", "c"]);
     expect(bodies.some((b) => b.concurrent)).toBe(false);
   });
 
@@ -95,24 +92,39 @@ name: "route",
     expect([...walkNodes([unknown])].map((n) => n.id)).toEqual(["guess"]);
   });
 
-  it("reports a while-do body as sequential — iterations do not race", () => {
+  it("reports a while-do body as a sequential single node — iterations do not race", () => {
     const loop: WorkflowNode = {
       type: "while-do",
       id: "spin",
-name: "spin",
+      name: "spin",
       condition: { type: "exists", path: "context.x" },
       max_iterations: 2,
-      body: [step("inner")],
+      node: step("inner"),
     };
-    expect(childBodies(loop)).toEqual([{ nodes: [step("inner")], path: ["body"], concurrent: false }]);
+    expect(childBodies(loop)).toEqual([{ nodes: [step("inner")], path: ["node"], concurrent: false }]);
+  });
+
+  it("reports a sequence's body as a sequential node array", () => {
+    const seq: WorkflowNode = {
+      type: "sequence",
+      id: "steps",
+      name: "steps",
+      body: [step("a"), step("b")],
+    };
+    expect(childBodies(seq)).toEqual([{ nodes: [step("a"), step("b")], path: ["body"], concurrent: false }]);
   });
 });
 
 describe("walkNodes", () => {
   it("reaches a node buried under every block kind at once", () => {
-    const ids = [...walkNodes([deeplyNested([step("buried")])])].map((n) => n.id);
+    const ids = [...walkNodes([deeplyNested(step("buried"))])].map((n) => n.id);
     expect(ids).toContain("buried");
     expect(ids).toEqual(["fan", "route", "spin", "buried", "fallback", "r"]);
+  });
+
+  it("descends through a sequence", () => {
+    const seq: WorkflowNode = { type: "sequence", id: "steps", name: "steps", body: [step("a"), step("b")] };
+    expect([...walkNodes([seq])].map((n) => n.id)).toEqual(["steps", "a", "b"]);
   });
 
   it("does not descend into a workflow step's ref'd file", () => {
@@ -127,71 +139,67 @@ describe("walkNodes", () => {
  * meant these checks quietly stopped covering it — validation passed and the workflow misbehaved.
  */
 describe("validation reaches deeply nested bodies", () => {
-  // These tests go through the real schema, so every node/branch needs a UUID `id`; the human labels
-  // above are kept as `name` (which is what the uniqueness rule is now checked against).
+  // These tests go through the real schema, so every node needs a UUID `id`; the human labels above
+  // are kept as `name` (which is what the uniqueness rule is now checked against).
   let counter = 0;
   const uuid = () => `00000000-0000-4000-8000-${String(counter++).padStart(12, "0")}`;
   function guidify<T>(node: T): T {
+    if (typeof node !== "object" || node === null) return node;
     const n = { ...(node as Record<string, unknown>) };
     if ("id" in n) {
       if (!("name" in n) && typeof n.id === "string") n.name = n.id; // keep the human label as `name`
       n.id = uuid();
     }
-    for (const key of ["branches", "arms", "else", "body"]) {
-      if (Array.isArray(n[key])) n[key] = (n[key] as unknown[]).map((c) => (typeof c === "object" && c ? guidify(c) : c));
+    // `body`/`branches` are node arrays; `node`/`else` are single nodes; `arms` carry a `node`.
+    for (const key of ["branches", "body"]) {
+      if (Array.isArray(n[key])) n[key] = (n[key] as unknown[]).map((c) => guidify(c));
+    }
+    for (const key of ["node", "else"]) {
+      if (key in n) n[key] = guidify(n[key]);
+    }
+    if (Array.isArray(n.arms)) {
+      n.arms = (n.arms as Record<string, unknown>[]).map((arm) => ({ ...arm, node: guidify(arm.node) }));
     }
     return n as T;
   }
   function file(body: WorkflowNode[]) {
-    return { format: "path/workflow@1", id: uuid(), name: "deep", worker: { type: "engine" }, body: body.map(guidify) };
+    return { format: "path/workflow@2", id: uuid(), name: "deep", worker: { type: "engine" }, body: body.map(guidify) };
   }
 
   it("catches a duplicate id buried under every block kind", () => {
-    const result = safeParseWorkflowFile(file([step("twice"), deeplyNested([step("twice")])]));
+    const result = safeParseWorkflowFile(file([step("twice"), deeplyNested(step("twice"))]));
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
     expect(result.errors.join("\n")).toMatch(/twice/);
   });
 
-  it("catches a parallel branch id colliding with a deeply nested node id", () => {
-    const result = safeParseWorkflowFile(file([deeplyNested([step("left")])]));
+  it("catches a parallel branch node's name colliding with a deeply nested node's name", () => {
+    const result = safeParseWorkflowFile(file([deeplyNested(step("route"))]));
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
-    expect(result.errors.join("\n")).toMatch(/left/);
+    expect(result.errors.join("\n")).toMatch(/route/);
   });
 
   it("catches two concurrent branches publishing the same key from nested bodies", () => {
     const racing: WorkflowNode = {
       type: "parallel",
       id: "fan",
-name: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         {
-          id: "left",
-name: "left",
-          body: [
-            {
-              type: "while-do",
-              id: "spin",
-name: "spin",
-              condition: { type: "exists", path: "context.x" },
-              max_iterations: 2,
-              body: [step("l", { shared: "${output}" })],
-            },
-          ],
+          type: "while-do",
+          id: "spin",
+          name: "spin",
+          condition: { type: "exists", path: "context.x" },
+          max_iterations: 2,
+          node: step("l", { shared: "${output}" }),
         },
         {
-          id: "right",
-name: "right",
-          body: [
-            {
-              type: "branch",
-              id: "route",
-name: "route",
-              arms: [{ when: { type: "exists", path: "context.x" }, body: [step("r", { shared: "${output}" })] }],
-            },
-          ],
+          type: "branch",
+          id: "route",
+          name: "route",
+          arms: [{ when: { type: "exists", path: "context.x" }, node: step("r", { shared: "${output}" }) }],
         },
       ],
     };
@@ -201,14 +209,19 @@ name: "route",
     expect(result.errors.join("\n")).toMatch(/shared/);
   });
 
-  it("does not call sequential republishing of one key a collision", () => {
+  it("does not call sequential republishing of one key inside a sequence a collision", () => {
     const sequential: WorkflowNode = {
       type: "while-do",
       id: "spin",
-name: "spin",
+      name: "spin",
       condition: { type: "exists", path: "context.x" },
       max_iterations: 2,
-      body: [step("a", { same: "${output}" }), step("b", { same: "${output}" })],
+      node: {
+        type: "sequence",
+        id: "steps",
+        name: "steps",
+        body: [step("a", { same: "${output}" }), step("b", { same: "${output}" })],
+      },
     };
     expect(safeParseWorkflowFile(file([sequential])).success).toBe(true);
   });

@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "cf159dd3-4a05-4e24-af75-b0d65210a147",
   "name": "resumable",
   "worker": {

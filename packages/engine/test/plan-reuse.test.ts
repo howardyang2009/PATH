@@ -125,9 +125,9 @@ describe("planReuse (#170)", () => {
       run({ runId: "c-run", parentRunId: "root", nodeId: "in-loop", nodeName: "in-loop", status: "succeeded" }),
     ];
     const nested = tree([
-      { type: "branch", id: "b1", name: "b1", arms: [{ when: { type: "exists", path: "context.x" }, body: [prompt("in-branch")] }] },
-      { type: "parallel", id: "p1", name: "p1", join: "collect", branches: [{ id: "br1", name: "br1", body: [binary("in-parallel")] }] },
-      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, body: [prompt("in-loop")] },
+      { type: "branch", id: "b1", name: "b1", arms: [{ when: { type: "exists", path: "context.x" }, node: prompt("in-branch") }] },
+      { type: "parallel", id: "p1", name: "p1", join: "collect", branches: [{ type: "sequence", id: "br1", name: "br1", body: [binary("in-parallel")] }] },
+      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, node: prompt("in-loop") },
       checkpoint("cp1"),
     ]);
 
@@ -149,7 +149,7 @@ describe("planReuse (#170)", () => {
       run({ runId: "iter-2", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
     ];
     const loop = tree([
-      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, body: [prompt("revise")] },
+      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, node: prompt("revise") },
     ]);
 
     expect(planReuse(originalRuns, loop).has("revise")).toBe(false);
@@ -160,8 +160,10 @@ describe("planReuse (#170)", () => {
   });
 });
 
+// In `@2` a branch is a single node; a multi-node branch is a `sequence` carrying the branch's name
+// (the collect/wait-one output key), which is exactly the shape the codemod would emit here.
 function branch(name: string, body: WorkflowNode[]): ParallelBranch {
-  return { id: name, name, body };
+  return { type: "sequence", id: name, name, body };
 }
 
 function waitOne(branches: ParallelBranch[]): ParallelNode {

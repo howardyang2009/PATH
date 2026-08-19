@@ -33,7 +33,7 @@ function writeSettings(settings: unknown): void {
 }
 
 const oneStep: WorkflowFile = stampNames({
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "one-step",
   worker: { type: "engine" },
@@ -236,7 +236,7 @@ describe("Project.resume (#173)", () => {
   // v1 stops at `b` (exit 1) after `a` succeeds; v2 is the same tree with `b` fixed to succeed. On
   // resume against v2, `a` reuses its recorded output and only `b` re-runs.
   const v1: WorkflowFile = {
-    format: "path/workflow@1",
+    format: "path/workflow@2",
     id: "wf-id",
     name: "resumable",
     worker: { type: "engine" },
@@ -337,7 +337,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     writeFileSync(
       join(sub, "child.workflow.json"),
       JSON.stringify(stampGuids({
-        format: "path/workflow@1",
+        format: "path/workflow@2",
         id: "wf-id",
         name: "child",
         worker: { type: "engine" },
@@ -346,7 +346,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
       "utf8",
     );
     const parent: WorkflowFile = stampGuids({
-      format: "path/workflow@1",
+      format: "path/workflow@2",
       id: "wf-id",
       name: "parent",
       worker: { type: "engine" },

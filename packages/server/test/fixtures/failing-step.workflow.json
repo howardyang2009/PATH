@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "d19e75d5-e2a1-479f-94dc-5e2e0b1de872",
   "name": "failing-step",
   "worker": {

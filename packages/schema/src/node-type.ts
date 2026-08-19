@@ -32,25 +32,19 @@ export interface WorkflowStep extends CommonStepFields {
   ref: string;
 }
 
-export interface ParallelBranch {
-  /** Durable machine identity — a UUIDv4 (ADR 0006). */
-  id: string;
-  /** Human label, unique across the whole file — keys `collect`/`wait-one` output. */
-  name: string;
-  body: WorkflowNode[];
-}
-
 export interface ParallelNode {
   type: "parallel";
   id: string;
   name: string;
   join: "collect" | "wait-one" | "do-not-wait";
-  branches: ParallelBranch[];
+  /** Each branch is a node carrying its own `id` + `name` — the `collect`/`wait-one` output key (`@2` §4.3). */
+  branches: WorkflowNode[];
 }
 
 export interface BranchArm {
   when: Condition;
-  body: WorkflowNode[];
+  /** The arm's occupant is a single node (`@2` §4.3) — a `sequence` where several nodes are needed. */
+  node: WorkflowNode;
 }
 
 export interface BranchNode {
@@ -58,7 +52,8 @@ export interface BranchNode {
   id: string;
   name: string;
   arms: BranchArm[];
-  else?: WorkflowNode[];
+  /** The `else` occupant is a single node (`@2` §4.3). */
+  else?: WorkflowNode;
 }
 
 export interface WhileDoNode {
@@ -67,6 +62,15 @@ export interface WhileDoNode {
   name: string;
   condition: Condition;
   max_iterations: number | string;
+  /** The loop body is a single node (`@2` §4.3). */
+  node: WorkflowNode;
+}
+
+export interface SequenceNode {
+  type: "sequence";
+  id: string;
+  name: string;
+  /** Node array, minimum length 1 — the nodes run in order; output is the last child's (`@2` §4.4). */
   body: WorkflowNode[];
 }
 
@@ -84,4 +88,5 @@ export type WorkflowNode =
   | ParallelNode
   | BranchNode
   | WhileDoNode
+  | SequenceNode
   | CheckpointNode;

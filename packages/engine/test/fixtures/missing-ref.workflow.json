@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "3616cbbf-cee6-40fa-a434-c71374fbef85",
   "name": "missing-ref",
   "worker": {

@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "0141fbab-90a7-4f63-b030-91b89c0cb508",
   "name": "release-notes",
   "worker": {
@@ -49,40 +49,28 @@
       "join": "collect",
       "branches": [
         {
-          "id": "63c094c1-121a-48fe-b61e-28d3764934e2",
-          "name": "features",
-          "body": [
-            {
-              "type": "prompt",
-              "id": "ba536aae-a5b9-4c38-9f32-28a210829bc2",
-              "name": "summarize-features",
-              "input": {
-                "raw_changes": "${context.raw_changes}"
-              },
-              "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
-              "publish": {
-                "features_summary": "${output}"
-              }
-            }
-          ]
+          "type": "prompt",
+          "id": "ba536aae-a5b9-4c38-9f32-28a210829bc2",
+          "name": "summarize-features",
+          "input": {
+            "raw_changes": "${context.raw_changes}"
+          },
+          "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
+          "publish": {
+            "features_summary": "${output}"
+          }
         },
         {
-          "id": "41f5a24d-5228-4e5a-bdf9-953815a97d5a",
-          "name": "fixes",
-          "body": [
-            {
-              "type": "prompt",
-              "id": "f8dafcf5-e9ec-481c-822b-40e3b3770a1c",
-              "name": "summarize-fixes",
-              "input": {
-                "raw_changes": "${context.raw_changes}"
-              },
-              "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
-              "publish": {
-                "fixes_summary": "${output}"
-              }
-            }
-          ]
+          "type": "prompt",
+          "id": "f8dafcf5-e9ec-481c-822b-40e3b3770a1c",
+          "name": "summarize-fixes",
+          "input": {
+            "raw_changes": "${context.raw_changes}"
+          },
+          "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
+          "publish": {
+            "fixes_summary": "${output}"
+          }
         }
       ]
     },
@@ -145,23 +133,21 @@
         "value": false
       },
       "max_iterations": "${config.max_revisions}",
-      "body": [
-        {
-          "type": "workflow",
-          "id": "c24eda53-4975-47ac-a446-13bad94027c6",
-          "name": "revise",
-          "ref": "./revise-cycle.workflow.json",
-          "input": {
-            "draft": "${context.draft}",
-            "feedback": "${context.verdict.feedback}",
-            "raw_changes": "${context.raw_changes}"
-          },
-          "publish": {
-            "draft": "${output.draft}",
-            "verdict": "${output.verdict}"
-          }
+      "node": {
+        "type": "workflow",
+        "id": "c24eda53-4975-47ac-a446-13bad94027c6",
+        "name": "revise",
+        "ref": "./revise-cycle.workflow.json",
+        "input": {
+          "draft": "${context.draft}",
+          "feedback": "${context.verdict.feedback}",
+          "raw_changes": "${context.raw_changes}"
+        },
+        "publish": {
+          "draft": "${output.draft}",
+          "verdict": "${output.verdict}"
         }
-      ]
+      }
     },
     {
       "type": "branch",
@@ -174,20 +160,18 @@
             "path": "context.verdict.suggested_format",
             "value": "short"
           },
-          "body": [
-            {
-              "type": "prompt",
-              "id": "a31156c9-9dd1-4a74-843b-fdc35914c6a6",
-              "name": "format-short",
-              "input": {
-                "draft": "${context.draft}"
-              },
-              "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
-              "publish": {
-                "final_notes": "${output}"
-              }
+          "node": {
+            "type": "prompt",
+            "id": "a31156c9-9dd1-4a74-843b-fdc35914c6a6",
+            "name": "format-short",
+            "input": {
+              "draft": "${context.draft}"
+            },
+            "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
+            "publish": {
+              "final_notes": "${output}"
             }
-          ]
+          }
         },
         {
           "when": {
@@ -195,20 +179,18 @@
             "path": "context.verdict.suggested_format",
             "value": "long"
           },
-          "body": [
-            {
-              "type": "prompt",
-              "id": "ffa663b8-8e1e-46f8-b2b5-cce82bc2ed7e",
-              "name": "format-long",
-              "input": {
-                "draft": "${context.draft}"
-              },
-              "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
-              "publish": {
-                "final_notes": "${output}"
-              }
+          "node": {
+            "type": "prompt",
+            "id": "ffa663b8-8e1e-46f8-b2b5-cce82bc2ed7e",
+            "name": "format-long",
+            "input": {
+              "draft": "${context.draft}"
+            },
+            "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
+            "publish": {
+              "final_notes": "${output}"
             }
-          ]
+          }
         }
       ]
     },

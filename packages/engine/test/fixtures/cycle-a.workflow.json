@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "e7696944-cd38-4293-8f37-cce3af277818",
   "name": "cycle-a",
   "worker": {

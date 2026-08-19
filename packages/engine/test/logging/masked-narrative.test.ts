@@ -49,7 +49,7 @@ function echoToken(id: string): WorkflowFile["body"][number] {
 
 /** checkpoint-evaluated, branch-taken, context-changed. */
 const controls: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "controls",
   worker: { type: "engine" },
@@ -66,16 +66,16 @@ const controls: WorkflowFile = {
       type: "branch",
       id: "route", name: "route",
       arms: [
-        { when: { type: "equals", path: "context.pick", value: "b" }, body: [echoToken("arm-b")] },
+        { when: { type: "equals", path: "context.pick", value: "b" }, node: echoToken("arm-b") },
       ],
-      else: [echoToken("fallback")],
+      else: echoToken("fallback"),
     },
   ],
 };
 
 /** iteration-started, loop-exited. */
 const loop: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "loop",
   worker: { type: "engine" },
@@ -93,23 +93,21 @@ const loop: WorkflowFile = {
       id: "spin", name: "spin",
       condition: { type: "range", path: "context.count", max: 1 },
       max_iterations: 4,
-      body: [
-        {
-          type: "binary",
-          id: "bump", name: "bump",
-          command: "node",
-          args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
-          parse: "json",
-          publish: { count: "${output}" },
-        },
-      ],
+      node: {
+        type: "binary",
+        id: "bump", name: "bump",
+        command: "node",
+        args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
+        parse: "json",
+        publish: { count: "${output}" },
+      },
     },
   ],
 };
 
 /** join-applied — every branch succeeds, so the collect join applies at block end. */
 const parallelJoin: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "parallel-join",
   worker: { type: "engine" },
@@ -120,7 +118,7 @@ const parallelJoin: WorkflowFile = {
       join: "collect",
       branches: [
         {
-          id: "left", name: "left",
+          type: "sequence", id: "left", name: "left",
           body: [
             {
               type: "binary",
@@ -132,7 +130,7 @@ const parallelJoin: WorkflowFile = {
           ],
         },
         {
-          id: "right", name: "right",
+          type: "sequence", id: "right", name: "right",
           body: [
             {
               type: "binary",
@@ -150,7 +148,7 @@ const parallelJoin: WorkflowFile = {
 
 /** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is killed. */
 const parallelCancel: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "parallel-cancel",
   worker: { type: "engine" },
@@ -161,11 +159,11 @@ const parallelCancel: WorkflowFile = {
       join: "collect",
       branches: [
         {
-          id: "doomed", name: "doomed",
+          type: "sequence", id: "doomed", name: "doomed",
           body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(3)"] }],
         },
         {
-          id: "victim", name: "victim",
+          type: "sequence", id: "victim", name: "victim",
           body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(() => {}, 5000)"] }],
         },
       ],
@@ -175,7 +173,7 @@ const parallelCancel: WorkflowFile = {
 
 /** branch-no-match — no arm matches and there is no `else`, which fails the run (§5.2). */
 const noMatch: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "branch-no-match",
   worker: { type: "engine" },
@@ -190,14 +188,14 @@ const noMatch: WorkflowFile = {
     {
       type: "branch",
       id: "route", name: "route",
-      arms: [{ when: { type: "equals", path: "context.pick", value: "never-matches" }, body: [echoToken("dead")] }],
+      arms: [{ when: { type: "equals", path: "context.pick", value: "never-matches" }, node: echoToken("dead") }],
     },
   ],
 };
 
 /** step-usage — the prompt step is where tokens are spent, on the scripted worker. */
 const prompt: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "prompt-usage",
   worker: { type: "llm", model: "test-model" },

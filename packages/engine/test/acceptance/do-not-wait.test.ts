@@ -150,10 +150,11 @@ describe("acceptance: do-not-wait publish rejection at load (issue #216, spec §
   it("rejects the checked-in workflow the moment a publish is injected into its detached branch", () => {
     // Start from the real file and add the one thing §4 forbids — a `publish` inside the branch — so
     // the rejection is pinned against the shipped workflow, not a hand-built lookalike.
+    // `@2`: a branch *is* a node, so the forbidden `publish` goes directly on the branch node (§4.3).
     const file = JSON.parse(readFileSync(join(acceptanceDir, WORKFLOW_FILE), "utf8")) as {
-      body: { branches?: { body: { publish?: unknown }[] }[] }[];
+      body: { branches?: { publish?: unknown }[] }[];
     };
-    file.body[0]!.branches![0]!.body[0]!.publish = { echoed: "${output}" };
+    file.body[0]!.branches![0]!.publish = { echoed: "${output}" };
     const injected = join(harness.projectDir, "with-publish.workflow.json");
     writeFileSync(injected, JSON.stringify(file));
 

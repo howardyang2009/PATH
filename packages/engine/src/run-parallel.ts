@@ -10,7 +10,7 @@ import { runSequence } from "./run-workflow.js";
  * `run-workflow.ts` so the join semantics that carry the spec sit together rather than buried in the
  * executor's leaf-step and sequence code.
  *
- * The recursion into `runSequence` (a branch body is a node sequence) is imported back from the
+ * The recursion into `runSequence` (a branch is a single node, run as a one-node sequence) is imported back from the
  * executor: `run-parallel.ts → run-workflow.ts → runNode → runParallelNode` is a function cycle,
  * resolved by ESM before either is called, so it is benign — a value is never read at module-eval
  * time. Detached branches cross the split through `RunContext.detached`: `launchDoNotWait` fills it,
@@ -79,7 +79,7 @@ async function launchDoNotWait(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   for (const branch of node.branches) {
-    const branchRun = runSequence(run, branch.body, seedInput, {
+    const branchRun = runSequence(run, [branch], seedInput, {
       context: { ...exec.context },
       signal: exec.signal,
       cancellation: exec.cancellation,
@@ -132,7 +132,7 @@ export async function runParallelNode(
     const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
     if (reusedWinner) {
       const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, reusedWinner.body, seedInput, {
+      const outcome = await runSequence(run, [reusedWinner], seedInput, {
         context: { ...exec.context },
         onPublish: async (updates) => void Object.assign(buffer, updates),
       });
@@ -190,7 +190,7 @@ export async function runParallelNode(
       // parent context until the join lands them.
       const branchContext: { [key: string]: JsonValue } = { ...exec.context };
       const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, branch.body, seedInput, {
+      const outcome = await runSequence(run, [branch], seedInput, {
         context: branchContext,
         signal: controller.signal,
         cancellation,

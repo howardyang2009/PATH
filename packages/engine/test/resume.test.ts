@@ -71,7 +71,7 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
   // stampNames keeps each node's human id in place (so resume matching by id still works) and mirrors
   // it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
-  return stampNames({ format: "path/workflow@1", name: "resumed", worker: { type: "llm", model: "m" }, body, ...(output ? { output } : {}) });
+  return stampNames({ format: "path/workflow@2", name: "resumed", worker: { type: "llm", model: "m" }, body, ...(output ? { output } : {}) });
 }
 
 function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
@@ -337,8 +337,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
         id: "race", name: "race",
         join: "wait-one",
         branches: [
-          { id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "hi", publish: { answer: "${output}" } }] },
-          { id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "yo", publish: { answer: "${output}" } }] },
+          { type: "sequence", id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "hi", publish: { answer: "${output}" } }] },
+          { type: "sequence", id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "yo", publish: { answer: "${output}" } }] },
         ],
       },
     ],
@@ -395,9 +395,9 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
           join: "wait-one",
           branches: [
             // Declared first, but finished *later* (t2) — the loser of the photo-finish.
-            { id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "hi", publish: { answer: "${output}" } }] },
+            { type: "sequence", id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "hi", publish: { answer: "${output}" } }] },
             // Declared second, finished *first* (t1) — the recorded winner.
-            { id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "yo", publish: { answer: "${output}" } }] },
+            { type: "sequence", id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "yo", publish: { answer: "${output}" } }] },
           ],
         },
       ],
@@ -453,7 +453,7 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
         id: "fire", name: "fire",
         join: "do-not-wait",
         branches: [
-          { id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "notify" }] },
+          { type: "sequence", id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "notify" }] },
         ],
       },
     ],

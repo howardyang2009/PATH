@@ -28,10 +28,10 @@ export type {
   BinaryStep,
   WorkflowStep,
   ParallelNode,
-  ParallelBranch,
   BranchNode,
   BranchArm,
   WhileDoNode,
+  SequenceNode,
   CheckpointNode,
 } from "./node-type.js";
 

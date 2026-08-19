@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "06a5b61c-9c84-4485-9dc2-09ba384c6e1d",
   "name": "config-leak-probe",
   "worker": {
