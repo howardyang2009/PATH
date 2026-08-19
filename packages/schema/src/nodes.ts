@@ -53,15 +53,12 @@ const WorkflowStepSchema = z
 
 const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(STEP_ROOTS)]);
 
+// A `body` slot is an ordered node array — the workflow top level and a `sequence` (§3.1). A `node`
+// slot is a single node: a `while-do` body, a branch arm, an `else`. `parallel.branches` also holds a
+// node array, but its members are concurrent siblings, not an ordered sequence. All three node-array
+// slots reuse `NodeArraySchema` (array, min 1); the one naming rule of `@2` (workflow-format-v2.md §3.1).
 export const NodeArraySchema: z.ZodType<WorkflowNode[]> = z.lazy(() => z.array(NodeSchema).min(1));
-
-const ParallelBranchSchema = z
-  .object({
-    id: IdSchema,
-    name: NameSchema,
-    body: NodeArraySchema,
-  })
-  .strict();
+const SingleNodeSchema: z.ZodType<WorkflowNode> = z.lazy(() => NodeSchema);
 
 const ParallelNodeSchema = z
   .object({
@@ -72,14 +69,17 @@ const ParallelNodeSchema = z
     // succeed, cancelling the rest (docs/spec/wait-one-join.md §2); `do-not-wait` launches every
     // branch and does not wait for any at the join (docs/spec/do-not-wait-join.md §2).
     join: z.enum(["collect", "wait-one", "do-not-wait"]),
-    branches: z.array(ParallelBranchSchema).min(1),
+    // Each branch *is* a node (`@2` §4.3): the `@1` `{ id, name, body }` wrapper is gone, and the
+    // branch node carries its own `id` + `name` — the `collect`/`wait-one` output key.
+    branches: NodeArraySchema,
   })
   .strict();
 
 const BranchArmSchema = z
   .object({
     when: ConditionSchema,
-    body: NodeArraySchema,
+    // An arm's occupant is a single node (`@2` §4.3); for several nodes in order, a `sequence`.
+    node: SingleNodeSchema,
   })
   .strict();
 
@@ -89,7 +89,7 @@ const BranchNodeSchema = z
     id: IdSchema,
     name: NameSchema,
     arms: z.array(BranchArmSchema).min(1),
-    else: NodeArraySchema.optional(),
+    else: SingleNodeSchema.optional(),
   })
   .strict();
 
@@ -100,6 +100,19 @@ const WhileDoNodeSchema = z
     name: NameSchema,
     condition: ConditionSchema,
     max_iterations: MaxIterationsSchema,
+    // The loop body is a single node (`@2` §4.3).
+    node: SingleNodeSchema,
+  })
+  .strict();
+
+// `sequence` is the single-node grammar's answer to "this slot needs several nodes in order"
+// (`@2` §4.4). A logicer: it takes none of `worker`/`config`/`input`/`parse`/`publish`; its `body`
+// is a node array of minimum length 1, run in order, and its output is its last child's output.
+const SequenceNodeSchema = z
+  .object({
+    type: z.literal("sequence"),
+    id: IdSchema,
+    name: NameSchema,
     body: NodeArraySchema,
   })
   .strict();
@@ -120,5 +133,6 @@ export const NodeSchema: z.ZodType<WorkflowNode> = z.discriminatedUnion("type", 
   ParallelNodeSchema,
   BranchNodeSchema,
   WhileDoNodeSchema,
+  SequenceNodeSchema,
   CheckpointNodeSchema,
 ]);

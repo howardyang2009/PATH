@@ -7,7 +7,7 @@ import { childBodies, walkNodes } from "./node-walk.js";
 import { NodeArraySchema } from "./nodes.js";
 import { STEP_ROOTS } from "./roots.js";
 import { WorkerSchema } from "./worker.js";
-import { FORMAT_VERSION, LEGACY_FORMAT_VERSION, type WorkflowFile } from "./workflow-file-type.js";
+import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
 
 export { FORMAT_VERSION };
@@ -29,9 +29,11 @@ interface NameOccurrence {
   path: (string | number)[];
 }
 
-// Every body node (steps, blocks, checkpoints) and every parallel branch carries a required human
-// `name`, unique across the whole file at every nesting level (workflow-format-v0.md §3). The GUID
-// `id` beside it is unique by construction, so only `name` is checked here.
+// Every node — steps, logicers, checkpoints, and each `parallel` branch (now itself a node, `@2`
+// §4.3) — carries a required human `name`, unique across the whole file at every nesting level
+// (workflow-format-v2.md §3). The GUID `id` beside it is unique by construction, so only `name` is
+// checked here. Branch nodes are reached by ordinary recursion: `childBodies` exposes each branch as
+// a one-node slot, so its `name` is collected like any other node's.
 function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): NameOccurrence[] {
   const found: NameOccurrence[] = [];
 
@@ -40,10 +42,6 @@ function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): Nam
     found.push({ name: node.name, path: [...nodePath, "name"] });
 
     for (const child of childBodies(node)) {
-      // A parallel branch's own name is not a node's, and is unique on the same terms.
-      if (child.branchName !== undefined) {
-        found.push({ name: child.branchName, path: [...nodePath, ...child.path.slice(0, -1), "name"] });
-      }
       found.push(...collectNames(child.nodes, [...nodePath, ...child.path]));
     }
   });
@@ -89,7 +87,9 @@ function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | num
       if (child.concurrent && !collisionsAllowed) {
         for (const key of new Set(collectPublishKeys(child.nodes))) {
           if (firstSeenIn.has(key)) {
-            collisions.push({ key, path: [...nodePath, ...child.path.slice(0, -1)] });
+            // `child.path` already lands on the branch node itself (`["branches", i]`, `@2` §4.3),
+            // so the collision points at the offending branch directly — no trailing segment to trim.
+            collisions.push({ key, path: [...nodePath, ...child.path] });
           } else {
             firstSeenIn.set(key, childIndex);
           }
@@ -185,31 +185,30 @@ export interface WorkflowFileParseFailure {
   errors: string[];
 }
 
-// A pre-migration file carrying the old `format` string gets a targeted error naming the codemod,
-// not a generic zod "invalid literal": the shape changed (GUID `id` + human `name` — ADR 0007), so
-// the fix is to migrate, not to hand-edit `format`.
-function legacyFormatError(json: unknown): WorkflowFileParseFailure | null {
-  if (
-    typeof json === "object" &&
-    json !== null &&
-    (json as { format?: unknown }).format === LEGACY_FORMAT_VERSION
-  ) {
-    return {
-      success: false,
-      errors: [
-        `format "${LEGACY_FORMAT_VERSION}" predates the identity migration (durable GUID \`id\` + human ` +
-          `\`name\` — ADR 0006/0007). Run the workflow-format codemod to migrate this file to "${FORMAT_VERSION}".`,
-      ],
-    };
-  }
-  return null;
+// A pre-migration file carrying a superseded `format` string gets a targeted error naming the
+// codemod, not a generic zod "invalid literal": the shape changed (`@1`'s uniform single-node
+// containers, `@0`'s GUID identity), so the fix is to migrate, not to hand-edit `format`
+// (workflow-format-v2.md §1). The engine reads `@2` only — there is no dual reader.
+function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
+  if (typeof json !== "object" || json === null) return null;
+  const format = (json as { format?: unknown }).format;
+  const superseded = SUPERSEDED_FORMAT_VERSIONS.find((version) => version === format);
+  if (superseded === undefined) return null;
+  // Verbatim per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never
+  // a generic zod "invalid literal" on `format`.
+  return {
+    success: false,
+    errors: [
+      `${superseded} is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to ${FORMAT_VERSION}`,
+    ],
+  };
 }
 
 export function safeParseWorkflowFile(
   json: unknown,
 ): WorkflowFileParseSuccess | WorkflowFileParseFailure {
-  const legacy = legacyFormatError(json);
-  if (legacy) return legacy;
+  const superseded = supersededFormatError(json);
+  if (superseded) return superseded;
   const result = WorkflowFileSchema.safeParse(json);
   if (result.success) {
     return { success: true, data: result.data };

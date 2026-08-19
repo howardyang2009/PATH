@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "f348a778-360b-40d2-9771-b352968d1200",
   "name": "revise-cycle",
   "worker": {

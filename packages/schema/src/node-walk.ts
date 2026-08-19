@@ -6,11 +6,14 @@ import type { WorkflowNode } from "./node-type.js";
  * nowhere else.
  */
 export interface NodeChildBody {
+  /**
+   * The nodes of this child slot. A `body` slot (`sequence`) carries its whole array; a single-`node`
+   * slot (a `while-do` body, a branch arm, an `else`) and each `parallel` branch carry exactly one
+   * node, wrapped in a one-element array so every caller walks a list (`@2` §3.1).
+   */
   nodes: WorkflowNode[];
   /** JSON path segments from the owning node to this body, for error reporting. */
   path: (string | number)[];
-  /** A `parallel` branch carries its own human `name`, which is not a node's — nothing else does. */
-  branchName?: string;
   /** True for `parallel` branches: siblings that run at once, and so can race to publish. */
   concurrent: boolean;
 }
@@ -32,24 +35,31 @@ export interface NodeChildBody {
 export function childBodies(node: WorkflowNode): NodeChildBody[] {
   switch (node.type) {
     case "parallel":
+      // Each branch is a single node carrying its own `id` + `name` (`@2` §4.3) — wrapped so callers
+      // walk a list. Siblings run at once, so they can race to publish.
       return node.branches.map((branch, branchIndex) => ({
-        nodes: branch.body,
-        path: ["branches", branchIndex, "body"],
-        branchName: branch.name,
+        nodes: [branch],
+        path: ["branches", branchIndex],
         concurrent: true,
       }));
     case "branch": {
+      // Each arm's occupant and the `else` are single nodes (`@2` §4.3). Exactly one arm runs, so
+      // arms are alternatives rather than siblings — never concurrent.
       const bodies: NodeChildBody[] = node.arms.map((arm, armIndex) => ({
-        nodes: arm.body,
-        path: ["arms", armIndex, "body"],
+        nodes: [arm.node],
+        path: ["arms", armIndex, "node"],
         concurrent: false,
       }));
-      // Exactly one arm runs, so arms are alternatives rather than siblings — never concurrent.
-      if (node.else) bodies.push({ nodes: node.else, path: ["else"], concurrent: false });
+      if (node.else) bodies.push({ nodes: [node.else], path: ["else"], concurrent: false });
       return bodies;
     }
     case "while-do":
-      // Iterations are sequential, so a key published on two passes is not a race.
+      // The loop body is a single node (`@2` §4.3). Iterations are sequential, so a key published on
+      // two passes is not a race.
+      return [{ nodes: [node.node], path: ["node"], concurrent: false }];
+    case "sequence":
+      // A `sequence`'s `body` is an ordered node array (`@2` §4.4); the nodes run in sequence, so a
+      // key published by two of them is not a race.
       return [{ nodes: node.body, path: ["body"], concurrent: false }];
     case "prompt":
     case "binary":

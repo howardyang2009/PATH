@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "6699bc46-e0a3-48c9-bd39-ea74bf3491a0",
   "name": "do-not-wait-probe",
   "worker": {
@@ -18,22 +18,16 @@
       "join": "do-not-wait",
       "branches": [
         {
-          "id": "8cfd9322-b413-4093-8c47-88d0c394a2a4",
+          "type": "binary",
+          "id": "349f1aab-027a-4519-ab16-f0a8e3a78419",
           "name": "notify",
-          "body": [
-            {
-              "type": "binary",
-              "id": "349f1aab-027a-4519-ab16-f0a8e3a78419",
-              "name": "post-signal",
-              "command": "node",
-              "args": [
-                "-e",
-                "const [file, delay, code] = process.argv.slice(1); require('node:fs').appendFileSync(file, 'fired\\n'); setTimeout(() => { process.exitCode = Number(code); }, Number(delay));",
-                "${config.signal_file}",
-                "${config.branch_delay_ms}",
-                "${config.branch_exit_code}"
-              ]
-            }
+          "command": "node",
+          "args": [
+            "-e",
+            "const [file, delay, code] = process.argv.slice(1); require('node:fs').appendFileSync(file, 'fired\\n'); setTimeout(() => { process.exitCode = Number(code); }, Number(delay));",
+            "${config.signal_file}",
+            "${config.branch_delay_ms}",
+            "${config.branch_exit_code}"
           ]
         }
       ]
