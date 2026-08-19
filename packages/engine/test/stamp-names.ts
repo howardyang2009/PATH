@@ -20,20 +20,20 @@ type AnyNode = { [key: string]: unknown };
 function stampNode(node: AnyNode): AnyNode {
   const stamped: AnyNode = { ...node };
   if (typeof stamped.id === "string" && stamped.name === undefined) stamped.name = stamped.id;
+  // `@2`: each branch *is* a node (stampNode recurses its own body/children).
   if (Array.isArray(stamped.branches)) {
-    stamped.branches = stamped.branches.map((b) => {
-      const branch = stampNode(b as AnyNode);
-      if (Array.isArray(branch.body)) branch.body = stampNodes(branch.body as AnyNode[]);
-      return branch;
-    });
+    stamped.branches = stamped.branches.map((b) => stampNode(b as AnyNode));
   }
   if (Array.isArray(stamped.arms)) {
+    // `@2`: an arm's occupant is a single `node` (not a `body` array).
     stamped.arms = stamped.arms.map((arm) => {
       const a = arm as AnyNode;
-      return Array.isArray(a.body) ? { ...a, body: stampNodes(a.body as AnyNode[]) } : a;
+      return a.node ? { ...a, node: stampNode(a.node as AnyNode) } : a;
     });
   }
-  if (Array.isArray(stamped.else)) stamped.else = stampNodes(stamped.else as AnyNode[]);
+  // `@2`: `else` and a `while-do`'s body are single nodes.
+  if (stamped.else) stamped.else = stampNode(stamped.else as AnyNode);
+  if (stamped.node) stamped.node = stampNode(stamped.node as AnyNode);
   if (Array.isArray(stamped.body)) stamped.body = stampNodes(stamped.body as AnyNode[]);
   return stamped;
 }
@@ -45,7 +45,7 @@ export function stampNodes(nodes: unknown): WorkflowNode[] {
 /** Stamp `name = id` throughout a workflow file's body and bump `format` to `path/workflow@1`. */
 export function stampNames(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
-  f.format = "path/workflow@1";
+  f.format = "path/workflow@2";
   if (f.id === undefined) f.id = "wf-id"; // a placeholder GUID stand-in; runWorkflow never validates it
   if (Array.isArray(f.body)) f.body = stampNodes(f.body as AnyNode[]);
   return f as unknown as WorkflowFile;
@@ -60,27 +60,25 @@ function guidNode(node: AnyNode): AnyNode {
   const stamped: AnyNode = { ...node };
   if (stamped.name === undefined && typeof stamped.id === "string") stamped.name = stamped.id;
   stamped.id = randomUUID();
+  // `@2`: each branch is a node; an arm/`else`/`while-do` body is a single `node` (§4.3).
   if (Array.isArray(stamped.branches)) {
-    stamped.branches = stamped.branches.map((b) => {
-      const branch = guidNode(b as AnyNode);
-      if (Array.isArray(branch.body)) branch.body = (branch.body as AnyNode[]).map(guidNode);
-      return branch;
-    });
+    stamped.branches = stamped.branches.map((b) => guidNode(b as AnyNode));
   }
   if (Array.isArray(stamped.arms)) {
     stamped.arms = stamped.arms.map((arm) => {
       const a = arm as AnyNode;
-      return Array.isArray(a.body) ? { ...a, body: (a.body as AnyNode[]).map(guidNode) } : a;
+      return a.node ? { ...a, node: guidNode(a.node as AnyNode) } : a;
     });
   }
-  if (Array.isArray(stamped.else)) stamped.else = (stamped.else as AnyNode[]).map(guidNode);
+  if (stamped.else) stamped.else = guidNode(stamped.else as AnyNode);
+  if (stamped.node) stamped.node = guidNode(stamped.node as AnyNode);
   if (Array.isArray(stamped.body)) stamped.body = (stamped.body as AnyNode[]).map(guidNode);
   return stamped;
 }
 
 export function stampGuids(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
-  f.format = "path/workflow@1";
+  f.format = "path/workflow@2";
   f.id = randomUUID(); // always a real GUID — this is the schema-valid stamper
   if (Array.isArray(f.body)) f.body = (f.body as AnyNode[]).map(guidNode);
   return f as unknown as WorkflowFile;

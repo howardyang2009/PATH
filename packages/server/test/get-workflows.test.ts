@@ -32,7 +32,7 @@ function workflow(name: string, refs: string[] = []): string {
     refs.length > 0
       ? refs.map((ref, i) => ({ type: "workflow", id: uuid(), name: `child-${i}`, ref }))
       : [{ type: "binary", id: uuid(), name: "step-one", command: "echo" }];
-  return JSON.stringify({ format: "path/workflow@1", id: uuid(), name, worker: { type: "engine" }, body });
+  return JSON.stringify({ format: "path/workflow@2", id: uuid(), name, worker: { type: "engine" }, body });
 }
 
 function write(relPath: string, content: string): void {
@@ -91,7 +91,7 @@ describe("GET /v0/workflows", () => {
   });
 
   it("reports a schema-invalid file as valid: false, is_root: null, with a best-effort id/name", async () => {
-    write("broken.workflow.json", JSON.stringify({ format: "path/workflow@1", id: uuid(), name: "broken", bogus: true }));
+    write("broken.workflow.json", JSON.stringify({ format: "path/workflow@2", id: uuid(), name: "broken", bogus: true }));
 
     const broken = byPath((await listWorkflows()).body).get("broken.workflow.json")!;
     expect(broken.valid).toBe(false);

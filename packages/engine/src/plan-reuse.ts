@@ -73,7 +73,7 @@ export function findNestedCounterpart(
 // and they fail this test — which is what lets resume start no loser (wait-one-join.md §7).
 function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
   let sawRunProducing = false;
-  for (const inner of walkNodes(branch.body)) {
+  for (const inner of walkNodes([branch])) {
     if (RUN_PRODUCING_TYPES.has(inner.type)) {
       sawRunProducing = true;
       if (!plan.has(inner.id)) return false;
@@ -87,7 +87,7 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
 // finish time — the tie-break below then falls back to declaration order.
 function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
   let completedAt: string | null = null;
-  for (const inner of walkNodes(branch.body)) {
+  for (const inner of walkNodes([branch])) {
     if (RUN_PRODUCING_TYPES.has(inner.type)) {
       const record = plan.get(inner.id);
       const finishedAt = record?.finishedAt ?? null;

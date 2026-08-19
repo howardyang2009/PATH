@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "27f98a33-4507-46f9-97b7-88b350e40a21",
   "name": "nested-parent",
   "worker": {

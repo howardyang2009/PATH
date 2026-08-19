@@ -51,7 +51,7 @@
         {
           "type": "prompt",
           "id": "ba536aae-a5b9-4c38-9f32-28a210829bc2",
-          "name": "features",
+          "name": "summarize-features",
           "input": {
             "raw_changes": "${context.raw_changes}"
           },
@@ -63,7 +63,7 @@
         {
           "type": "prompt",
           "id": "f8dafcf5-e9ec-481c-822b-40e3b3770a1c",
-          "name": "fixes",
+          "name": "summarize-fixes",
           "input": {
             "raw_changes": "${context.raw_changes}"
           },

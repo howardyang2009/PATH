@@ -850,7 +850,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
     // The file at that path is now schema-invalid — a resume of it is a 400, as a fresh launch would be.
-    writeFileSync(join(projectDir, "failing-step.workflow.json"), JSON.stringify({ format: "path/workflow@1" }));
+    writeFileSync(join(projectDir, "failing-step.workflow.json"), JSON.stringify({ format: "path/workflow@2" }));
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(400);
@@ -906,7 +906,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     writeFileSync(
       join(projectDir, "failing-step.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@1",
+        format: "path/workflow@2",
         id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
         name: "swapped",
         worker: { type: "engine" },

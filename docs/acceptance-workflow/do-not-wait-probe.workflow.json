@@ -20,7 +20,7 @@
         {
           "type": "binary",
           "id": "349f1aab-027a-4519-ab16-f0a8e3a78419",
-          "name": "notify",
+          "name": "post-signal",
           "command": "node",
           "args": [
             "-e",

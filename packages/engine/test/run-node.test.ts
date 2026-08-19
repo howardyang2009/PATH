@@ -21,7 +21,7 @@ import type { NodeExecContext, RunContext } from "../src/run-context.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "walkers",
   worker: { type: "engine" },
@@ -135,10 +135,10 @@ describe("runNode — branch", () => {
     type: "branch",
     id: "route", name: "route",
     arms: [
-      { when: { type: "equals", path: "context.pick", value: "a" }, body: [echo("arm-a", "A")] },
-      { when: { type: "equals", path: "context.pick", value: "b" }, body: [echo("arm-b", "B")] },
+      { when: { type: "equals", path: "context.pick", value: "a" }, node: echo("arm-a", "A") },
+      { when: { type: "equals", path: "context.pick", value: "b" }, node: echo("arm-b", "B") },
     ],
-    ...(withElse ? { else: [echo("fallback", "F")] } : {}),
+    ...(withElse ? { else: echo("fallback", "F") } : {}),
   });
 
   it("takes the first arm whose condition holds, in declaration order", async () => {
@@ -177,16 +177,14 @@ describe("runNode — while-do", () => {
     id: "spin", name: "spin",
     condition: { type: "range", path: "context.count", max: 1 },
     max_iterations: 5,
-    body: [
-      {
-        type: "binary",
-        id: "bump", name: "bump",
-        command: "node",
-        args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
-        parse: "json",
-        publish: { count: "${output}" },
-      },
-    ],
+    node: {
+      type: "binary",
+      id: "bump", name: "bump",
+      command: "node",
+      args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
+      parse: "json",
+      publish: { count: "${output}" },
+    },
   };
 
   it("iterates until the condition goes false, narrating each pass and the exit", async () => {
@@ -486,10 +484,10 @@ describe("runNode — prompt step", () => {
       join: "collect",
       branches: [
         {
-          id: "slow", name: "slow",
+          type: "sequence", id: "slow", name: "slow",
           body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", worker: { type: "llm", model: "m" }, publish: { answer: "${output}" } }],
         },
-        { id: "boom", name: "boom", body: [{ type: "binary", id: "fail", name: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
+        { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "fail", name: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
       ],
     };
     const exec = makeExec();
@@ -504,7 +502,7 @@ describe("runNode — prompt step", () => {
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@1",
+    format: "path/workflow@2",
     id: "wf-id",
     name: "child",
     worker: { type: "engine" },

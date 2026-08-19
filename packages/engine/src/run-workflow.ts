@@ -789,12 +789,13 @@ async function runBranchNode(
     }
     if (outcome === "true") {
       await run.emitter.branchTaken(node, { arm: index, trace });
-      return runSequence(run, arm.body, incomingOutput, exec);
+      // The arm's occupant is a single node (`@2` §4.3), run as a one-node sequence.
+      return runSequence(run, [arm.node], incomingOutput, exec);
     }
   }
   if (node.else) {
     await run.emitter.branchTaken(node, { arm: "else", trace: null });
-    return runSequence(run, node.else, incomingOutput, exec);
+    return runSequence(run, [node.else], incomingOutput, exec);
   }
   await run.emitter.branchNoMatch(node, { traces });
   return { status: "failed", error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)` };
@@ -852,7 +853,8 @@ async function runWhileDoNode(
     }
     iterations += 1;
     await run.emitter.iterationStarted(node, { iteration: iterations, trace });
-    const bodyOutcome = await runSequence(run, node.body, iterationOutput, exec);
+    // The loop body is a single node (`@2` §4.3), run as a one-node sequence each iteration.
+    const bodyOutcome = await runSequence(run, [node.node], iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
   }
@@ -885,6 +887,11 @@ export async function runNode(
     if (node.type === "checkpoint") return runCheckpointNode(run, node, incomingOutput, exec);
     if (node.type === "branch") return runBranchNode(run, node, incomingOutput, exec);
     if (node.type === "while-do") return runWhileDoNode(run, node, incomingOutput, exec);
+    // A `sequence` adds no execution rule (`@2` §4.4): it runs its body as a nested node sequence,
+    // seeded by its predecessor's output, and its output is its last child's output — exactly what
+    // `runSequence` already does. It is transparent to `exec` (same context/cancellation) like the
+    // other logicers.
+    if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
     // Two guards, deliberately. The `never` assertion is the compile-time one: if the format gains
     // a node type this dispatch does not walk, the build fails rather than someone discovering it
     // by running a workflow. The runtime branch below survives anyway, because a hand-constructed

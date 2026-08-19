@@ -22,7 +22,7 @@ import { runNode } from "../src/run-workflow.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@1",
+  format: "path/workflow@2",
   id: "wf-id",
   name: "walkers",
   worker: { type: "engine" },
@@ -81,8 +81,8 @@ describe("runNode — parallel", () => {
     id: "fan", name: "fan",
     join: "collect",
     branches: [
-      { id: "left", name: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
-      { id: "right", name: "right", body: secondBranchBody },
+      { type: "sequence", id: "left", name: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
+      { type: "sequence", id: "right", name: "right", body: secondBranchBody },
     ],
   });
 
@@ -163,8 +163,8 @@ describe("runNode — parallel", () => {
       id: "fan", name: "fan",
       join: "collect",
       branches: [
-        { id: "alpha", name: "alpha", body: [rendezvous(fileDir, "a", "b")] },
-        { id: "beta", name: "beta", body: [rendezvous(fileDir, "b", "a")] },
+        { type: "sequence", id: "alpha", name: "alpha", body: [rendezvous(fileDir, "a", "b")] },
+        { type: "sequence", id: "beta", name: "beta", body: [rendezvous(fileDir, "b", "a")] },
       ],
     };
 
@@ -181,10 +181,10 @@ describe("runNode — parallel", () => {
       id: "fan", name: "fan",
       join: "collect",
       branches: [
-        { id: "writer", name: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
+        { type: "sequence", id: "writer", name: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
         // Reads a key its sibling publishes; against the entry snapshot it does not exist, so this
         // branch fails — proving siblings never observe each other's writes (§5.3).
-        { id: "reader", name: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
+        { type: "sequence", id: "reader", name: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
       ],
     };
 
@@ -203,7 +203,7 @@ describe("runNode — parallel", () => {
       branches: [
         // Sleeps well past the sibling's failure; it must be killed, not allowed to finish.
         {
-          id: "slow", name: "slow",
+          type: "sequence", id: "slow", name: "slow",
           body: [
             {
               type: "binary",
@@ -214,7 +214,7 @@ describe("runNode — parallel", () => {
             },
           ],
         },
-        { id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+        { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
       ],
     };
 
@@ -254,6 +254,7 @@ describe("runNode — parallel", () => {
     };
     const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
     const ask = (id: string) => ({
+      type: "sequence" as const,
       id,
       name: id,
       body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: "Hi.", worker: { type: "llm" as const, model: "m" } }],
@@ -286,8 +287,8 @@ describe("runNode — parallel wait-one", () => {
       join: "wait-one",
       branches: [
         // The fast branch resolves at once; the slow one sleeps well past it and must be cancelled.
-        { id: "fast", name: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
-        { id: "slow", name: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
+        { type: "sequence", id: "fast", name: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
+        { type: "sequence", id: "slow", name: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
       ],
     };
 
@@ -319,9 +320,9 @@ describe("runNode — parallel wait-one", () => {
       join: "wait-one",
       branches: [
         // Fails immediately; under wait-one this cancels nothing and the race continues (§2).
-        { id: "boom", name: "boom", body: [failFast("kab")] },
+        { type: "sequence", id: "boom", name: "boom", body: [failFast("kab")] },
         // Succeeds only after a delay — proof the race outlived the failure rather than ending on it.
-        { id: "winner", name: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
+        { type: "sequence", id: "winner", name: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
       ],
     };
 
@@ -341,8 +342,8 @@ describe("runNode — parallel wait-one", () => {
       id: "race", name: "race",
       join: "wait-one",
       branches: [
-        { id: "a", name: "a", body: [failFast("x")] },
-        { id: "b", name: "b", body: [failFast("y")] },
+        { type: "sequence", id: "a", name: "a", body: [failFast("x")] },
+        { type: "sequence", id: "b", name: "b", body: [failFast("y")] },
       ],
     };
 
@@ -362,7 +363,7 @@ describe("runNode — parallel wait-one", () => {
       type: "parallel",
       id: "race", name: "race",
       join: "wait-one",
-      branches: [{ id: "only", name: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
+      branches: [{ type: "sequence", id: "only", name: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
     };
 
     const outcome = await runNode(run, node, "seed", exec);

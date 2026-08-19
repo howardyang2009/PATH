@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "e0c61835-819b-4b42-9edc-f604c86bf6a6",
   "name": "invalid-schema",
   "worker": {
