@@ -214,6 +214,32 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(body.error.details.join("\n")).toContain("bogus_field");
   });
 
+  // #280 / workflow-format-v2.md §1 — the server reads `@2` only, same as the CLI. A pre-migration
+  // file is a 400 at load with the targeted codemod sentence, not a silent upconvert, so an API
+  // client gets the same fix an operator reads on stderr.
+  it("400s a superseded @1 workflow file, naming the codemod, and starts no run", async () => {
+    writeFileSync(
+      join(projectDir, "superseded.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: "af72905e-1cd4-4b83-9e07-32516da8bc4f",
+        name: "superseded",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a", name: "step-one", command: "echo" }],
+      }),
+    );
+
+    const res = await postRun({ workflow_path: "superseded.workflow.json" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string; details: string[] } };
+    expect(body.error.details).toEqual([
+      `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+    ]);
+
+    const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+    expect(runs.runs).toEqual([]);
+  });
+
   // ADR 0012 / #231 — operator-supplied override config may carry a literal `$secret` but must not
   // source from the server box's environment via `$env`. `ConfigObjectSchema` (shared with
   // workflow-authored config) accepts `$env`, so the reject is a post-parse walk on the operator
@@ -854,6 +880,33 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(400);
+  });
+
+  // Resume re-validates the file as it stands *now*, so it is a load surface of its own (#280): a
+  // file rolled back to `@1` under a finished run is a 400 naming the codemod, not an upconvert of
+  // the version the run originally succeeded against.
+  it("400s a resume whose recorded workflow file has been rolled back to @1, naming the codemod", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
+    writeFileSync(
+      join(projectDir, "failing-step.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: "af72905e-1cd4-4b83-9e07-32516da8bc4f",
+        name: "failing-step",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a", name: "boom", command: "false" }],
+      }),
+    );
+
+    const res = await resumeRun(root_run_id);
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { details: string[] } };
+    expect(body.error.details).toEqual([
+      `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+    ]);
   });
 
   it("accepts an optional config override on resume (202)", async () => {

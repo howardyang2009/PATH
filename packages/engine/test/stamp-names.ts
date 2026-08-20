@@ -42,7 +42,7 @@ export function stampNodes(nodes: unknown): WorkflowNode[] {
   return (nodes as AnyNode[]).map(stampNode) as unknown as WorkflowNode[];
 }
 
-/** Stamp `name = id` throughout a workflow file's body and bump `format` to `path/workflow@1`. */
+/** Stamp `name = id` throughout a workflow file's body and bump `format` to `path/workflow@2`. */
 export function stampNames(file: unknown): WorkflowFile {
   const f = { ...(file as AnyNode) };
   f.format = "path/workflow@2";
