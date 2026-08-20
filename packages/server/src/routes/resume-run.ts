@@ -80,11 +80,12 @@ export async function handleResumeRun(
   // fresh launch runs (launch.ts) — a file that has since become invalid is a `400`, exactly as a
   // fresh launch of it would be. The path comes from the predecessor's row, so a resume's not-found
   // message names the run whose recorded file vanished, not a path a caller just sent.
-  const prepared = prepareWorkflow(
-    ctx.project.dir,
-    root.workflowPath,
-    () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
-  );
+  // No `escapesRoot`: the path came from a row this server wrote relative to the project root, so an
+  // escape is unreachable and folds into the same "recorded file is gone" 404 the pre-launch-module
+  // route used — one message for both, as before.
+  const prepared = prepareWorkflow(ctx.project.dir, root.workflowPath, {
+    notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+  });
   if (!prepared.ok) {
     sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
     return;

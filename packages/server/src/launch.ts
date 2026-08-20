@@ -68,14 +68,26 @@ export function operatorConfigEnvError(config: ConfigObject): string | undefined
   return `operator config may not source from the server environment: $env at ${paths.map((p) => `"${p}"`).join(", ")}`;
 }
 
+/** How a route words its two 404s — the only wording that legitimately differs between the surfaces. */
+export interface NotFoundMessages {
+  /** A path on disk that isn't there. A fresh launch names the path sent; a resume names the run. */
+  notFound(workflowPath: string): string;
+  /**
+   * A path that escapes the project root. Defaults to {@link NotFoundMessages.notFound}: a fresh
+   * launch distinguishes the two (an escaping `workflow_path` is a distinct operator mistake), while
+   * a resume folds them — its path comes from a row this server wrote relative to the root, so an
+   * escape is unreachable and shares the "recorded file is gone" 404 rather than earning its own.
+   */
+  escapesRoot?(workflowPath: string): string;
+}
+
 /**
  * Resolve a workflow path within the project root, confirm the file exists, and load + validate it —
  * returning the {@link LoadedWorkflow} or a ready-to-send refusal. The three refusals mirror the two
  * routes' existing wording and status codes:
  *
- * - escapes the project root → `404`, this module's wording;
- * - not on disk → `404`, the caller's `notFound(workflowPath)` (a fresh launch names the path sent,
- *   a resume names the run whose recorded file vanished);
+ * - escapes the project root → `404`, `messages.escapesRoot` (defaulting to `notFound`);
+ * - not on disk → `404`, `messages.notFound`;
  * - fails to load → `400`, `"workflow validation failed"` with the loader's per-file errors.
  *
  * The `$env` reject is a separate call ({@link operatorConfigEnvError}) a route makes first, because
@@ -85,14 +97,15 @@ export function operatorConfigEnvError(config: ConfigObject): string | undefined
 export function prepareWorkflow(
   projectDir: string,
   workflowPath: string,
-  notFound: (workflowPath: string) => string,
+  messages: NotFoundMessages,
 ): PreparedWorkflow {
   const absPath = resolveWorkflowPath(projectDir, workflowPath);
   if (!absPath) {
-    return { ok: false, refusal: { status: 404, message: `workflow_path "${workflowPath}" resolves outside the project root` } };
+    const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
+    return { ok: false, refusal: { status: 404, message: escaped } };
   }
   if (!existsSync(absPath)) {
-    return { ok: false, refusal: { status: 404, message: notFound(workflowPath) } };
+    return { ok: false, refusal: { status: 404, message: messages.notFound(workflowPath) } };
   }
 
   const loadResult = loadWorkflowTree(absPath);
