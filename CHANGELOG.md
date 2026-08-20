@@ -1,5 +1,90 @@
 # Changelog
 
+## v0.5.1 — 2026-08-20
+
+One shape, everywhere. The **workflow format grows up again** — `path/workflow@1`'s three different
+container slots collapse into a single uniform node shape, and a new `sequence` logicer carries the
+"run these in order" case that used to be smuggled inside a bare node array. A parallel branch is now
+just a node (it already carries its own `id` + `name` — the `collect`/`wait-one` key — so the old
+`{id,name,body}` wrapper was pure ceremony); a branch arm, an `else`, and a `while-do` body each hold
+one `node` instead of a body; and where several steps really do run in sequence you name a `sequence`
+node and put them in its `body`. The count of multi-node slots in the format drops to the two that
+earn it (top-level `body`, `sequence.body`), per ADR 0014.
+
+The break is clean-slate and codemod-migrated, exactly like the `@0` → `@1` before it. `FORMAT_VERSION`
+becomes `path/workflow@2`, the only accepted string; an `@0` or `@1` file is rejected at load with a
+targeted message that now names the **whole codemod chain** to run (`@0` is told to run the v1 script
+_then_ the v2 script, not pointed at a v2 codemod that would silently skip it). `scripts/migrate-workflow-format-v2.ts`
+is the one-time, fill-once write-back: it unwraps single-node branches (renaming the node to the
+wrapper's `name` so the output key is byte-preserved), wraps genuinely multi-node branches in a minted
+`sequence`, converts every single-`node` slot from an array to one node, preserves every existing
+`id`, is idempotent, and refuses on a post-migration name collision rather than inventing a name. This
+repo's own fixtures and the last two dogfood workflows are already on `@2`.
+
+No DB break this time — the store schema is untouched, so an existing `path.db` keeps opening.
+
+Two refactors ride along (#290, both Opus 5). `loadWorkflowTree` now hands callers a `LoadedWorkflow`
+that owns the three facts every caller used to re-derive (`rootFile`, `workflowDir`,
+`storeRelativePath`), deleting three unreachable "internal error"/500 branches and three non-null
+assertions. And the two launch routes — `POST /v0/runs` and its resume sibling — collapse behind one
+`launch.ts` `prepareWorkflow`, so the ADR 0012 `$env` reject and the escape/not-found/invalid gate are
+each spelled once instead of drifting in two copies.
+
+Suite 1119 across the six packages (schema 235, client-core 51, engine 564, viewer 121, server 134,
+scripts 14), typecheck green throughout; `scripts/` now runs inside CI (#287).
+
+### Breaking Changes
+
+- **Format `path/workflow@1` → `path/workflow@2`** (#278) — the three `@1` container slot shapes
+  become one node shape. `parallel.branches` is an array of nodes (the `{id,name,body}` wrapper is
+  gone); a branch arm is `{when, node}`, an `else` is a single node, and `while-do` uses `node`
+  (renamed from `body`). No backward compatibility: an `@1` (or `@0`) file is rejected at load with a
+  run-the-codemod message. Migrate with `scripts/migrate-workflow-format-v2.ts` (fill-once, idempotent,
+  refuses on a name collision).
+- **`sequence` node** (#278) — the multi-step case that lived in a bare node array is now an explicit
+  `{type: "sequence", id, name, body}` logicer (body: node array, min 1); output is the last child's.
+  As a logicer it rejects worker/config/input/parse/publish. Only two multi-node slots remain in the
+  format: top-level `body` and `sequence.body`.
+
+### Features
+
+- feat(schema): `@2` uniform single-node containers + `sequence` logicer (#278) — collapses the three
+  `@1` slot shapes into one node shape and adds `sequence`, per the frozen `workflow-format-v2.md`
+  spec. `FORMAT_VERSION` is `path/workflow@2`, the only accepted string; `node-walk` re-expresses each
+  single-node slot as a one-element body and drops the `branchName` special case.
+- feat(engine,server): consume `@2` single-node containers + `sequence` (#278) — branch arm / `else` /
+  `while-do` body run as one-node sequences; the `sequence` logicer runs its body nested, output = last
+  child. `run-parallel` and `plan-reuse` walk `[branch]` for a branch-as-node.
+- feat(scripts): `@1` → `@2` workflow-format codemod (#278) — the one-time repo codemod the loader's
+  rejection names, following its `@0` → `@1` predecessor. Unwraps single-node branches (name-preserving),
+  wraps multi-node ones in a minted `sequence`, converts single-`node` slots, preserves ids, idempotent,
+  refuses on a name collision.
+
+### Fixes
+
+- fix(schema): name both codemods when rejecting a `@0` file (#280) — `SUPERSEDED_FORMAT_VERSIONS` maps
+  each superseded version to the codemod chain that lifts it to `@2`, joined with " then ". An `@0` file
+  now reads "run `migrate-workflow-format-v1.ts` then `migrate-workflow-format-v2.ts`" instead of being
+  pointed at a v2 codemod that would silently skip it. `@1`'s sentence is byte-identical.
+
+### Internal
+
+- refactor(engine): deepen the workflow loader — `loadWorkflowTree` returns a `LoadedWorkflow` owning
+  `rootFile` / `workflowDir` / `storeRelativePath`; four production sites and four tests stop
+  re-deriving them, and three unreachable error branches plus three non-null assertions are deleted
+  (#290).
+- refactor(server): one `launch.ts` `prepareWorkflow` behind both `POST /v0/runs` and the resume route —
+  the ADR 0012 `$env` reject and the escape/not-found/invalid gate spelled once; `operator-config.ts`
+  folded in and deleted (#290).
+- chore(dogfood): migrate the last two `@1` workflow files to `@2` (#281).
+- test(engine,schema): cover `@2` sequence + branch-as-node dispatch (#279); pin the `@1`/`@0` load
+  rejection across every load surface (#282, #280); guard the inline-fixture stampers against the `@1`
+  slot shape (#282).
+- test(scripts): cover the `@1` → `@2` codemod and put `scripts/` inside CI (#287).
+- docs: `workflow-format-v2.md` + ADR 0014 record the two structural rulings (single-node containers,
+  `sequence` over an optional body) with their rejected alternatives; `mvp-spec`, `CONTEXT`, and the
+  glossary graduate to `@2` (#269–#275).
+
 ## v0.5.0 — 2026-08-16
 
 Two things grow up in this release. The **engine learns to fan out and rejoin** — `wait-one` races

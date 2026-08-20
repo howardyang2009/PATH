@@ -10,7 +10,7 @@ launch, and resume runs live in a web viewer. See
 
 | Package | What it is |
 |---|---|
-| `@path/schema` | The domain: workflow file format (`path/workflow@1`), plus the runtime vocabulary its execution produces (run status, log events, traces, the v0 wire shapes) |
+| `@path/schema` | The domain: workflow file format (`path/workflow@2`), plus the runtime vocabulary its execution produces (run status, log events, traces, the v0 wire shapes) |
 | `@path/engine` | Runs workflows locally; `path` CLI |
 | `@path/server` | HTTP + SSE API over the engine; `path-server` CLI |
 | `@path/client-core` | Pure-TS API client + SSE client + run view-model + run/workflow write surface (no framework, no Node) |
@@ -53,11 +53,11 @@ The bins are TypeScript entry points run through `tsx`; there is no build step a
 first argument is the project directory — where `.path/` is read and written — and it defaults to the
 cwd; the engine CLI instead derives its project directory from the workflow file's own location.
 
-## Status (2026-08-16)
+## Status (2026-08-20)
 
-Latest release: **v0.5.0** (2026-08-16) — see `CHANGELOG.md` for the full history. `main` is green:
-`pnpm -r run typecheck` clean, 1055 tests passing (schema 219, engine 540, viewer 121, server 124,
-client-core 51).
+Latest release: **v0.5.1** (2026-08-20) — see `CHANGELOG.md` for the full history. `main` is green:
+`pnpm -r run typecheck` clean, 1119 tests passing (schema 235, engine 564, viewer 121, server 134,
+client-core 51, scripts 14).
 
 The MVP is done — all three wayfinder maps are closed (#1 spec, #29 server API, #40 viewer) and the
 release-notes pipeline passes its acceptance run (mvp spec §11). Since the **cancellation** phase
@@ -81,6 +81,13 @@ started opening its deferred doors:
   node identity is rebuilt on a durable GUID (format `path/workflow@1`) so a rename never breaks reuse
   or resume; each root run now records its source-workflow identity, and `path runs list` grows a
   `workflow` column and `--workflow` / `--workflow-id` filters.
+- **v0.5.1** — the workflow format grows up again. `path/workflow@1`'s three container slot shapes
+  collapse into one uniform node shape, and a new `sequence` logicer carries the multi-step case that
+  used to hide in a bare node array (ADR 0014). A parallel branch is now just a node, and branch arm /
+  `else` / `while-do` each hold one `node`. Clean-slate and codemod-migrated
+  (`scripts/migrate-workflow-format-v2.ts`, fill-once, idempotent), format `path/workflow@2`; no DB
+  break. Two Opus 5 refactors ride along (#290): `loadWorkflowTree` hands back a `LoadedWorkflow`, and
+  both launch routes collapse behind one `prepareWorkflow`.
 
 ### What's next
 
