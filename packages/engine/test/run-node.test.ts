@@ -92,6 +92,16 @@ function echo(id: string, text: string): Node {
   return { type: "binary", id, name: id, command: "node", args: ["-e", `process.stdout.write(${JSON.stringify(text)})`] };
 }
 
+/**
+ * A step that appends to whatever arrived on stdin — its default input, so its predecessor's output.
+ * Chained, these spell out the default-input chain in the block's output: the suffixes appear in
+ * exactly the order the nodes ran.
+ */
+function append(id: string, suffix: string): Node {
+  const script = `let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+${JSON.stringify(suffix)}))`;
+  return { type: "binary", id, name: id, command: "node", args: ["-e", script] };
+}
+
 describe("runNode — checkpoint", () => {
   const node: CheckpointNode = { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.ready" } };
 
@@ -169,6 +179,29 @@ describe("runNode — branch", () => {
     // No arm was taken, so nothing may narrate one.
     expect(observed.find((o) => o.type === "branch-taken")).toBeUndefined();
   });
+
+  // An arm holds one node (`@2` §4.3), and a `sequence` is a legal occupant of that slot. The block
+  // output is that node's output — for a `sequence`, its last child's (§5.4) — and the arm's first
+  // node is seeded by the branch's predecessor, exactly as a single-step arm is.
+  it("returns the taken arm's node output when that node is a sequence (§5.4)", async () => {
+    const { run, observed } = makeRun();
+    const node: BranchNode = {
+      type: "branch",
+      id: "route", name: "route",
+      arms: [
+        {
+          when: { type: "equals", path: "context.pick", value: "a" },
+          node: { type: "sequence", id: "arm-a", name: "arm-a", body: [append("a1", "-1"), append("a2", "-2")] },
+        },
+      ],
+      else: echo("fallback", "F"),
+    };
+
+    const outcome = await runNode(run, node, "seed", makeExec({ pick: "a" }));
+
+    expect(outcome).toEqual({ status: "succeeded", output: "seed-1-2" });
+    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({ arm: 0 });
+  });
 });
 
 describe("runNode — while-do", () => {
@@ -236,6 +269,26 @@ describe("runNode — while-do", () => {
     expect(observed.filter((o) => o.type === "loop-exited")).toHaveLength(0);
   });
 
+  // The cross-iteration chain over a `sequence` body (§5.4): iteration 1's node reads the block's
+  // predecessor's output; iteration N's node reads iteration N−1's node's output — the *last child's*
+  // when that node is a `sequence`. The suffixes spell the order out: "a" + ("*" then "!") twice.
+  it("chains across iterations through a sequence body, reading the previous iteration's last child (§5.4)", async () => {
+    const { run, observed } = makeRun();
+    const spin: WhileDoNode = {
+      type: "while-do",
+      id: "spin-seq", name: "spin-seq",
+      // Stop once the loop's own output carries two full passes.
+      condition: { type: "not", of: { type: "matches", path: "output", pattern: "\\*!\\*!$" } },
+      max_iterations: 5,
+      node: { type: "sequence", id: "pass", name: "pass", body: [append("grow", "*"), append("tag", "!")] },
+    };
+
+    const outcome = await runNode(run, spin, "a", makeExec());
+
+    expect(outcome).toEqual({ status: "succeeded", output: "a*!*!" });
+    expect(observed.filter((o) => o.type === "iteration-started")).toHaveLength(2);
+  });
+
   it("resolves an interpolated max_iterations against config before capping", async () => {
     const { run, observed } = makeRun({ fileConfig: { cap: "1" } });
     const capped: WhileDoNode = { ...loop, condition: { type: "range", path: "context.count", max: 100 }, max_iterations: "${config.cap}" };
@@ -259,6 +312,66 @@ describe("runNode — while-do", () => {
       /while-do "spin": max_iterations resolved to "zero", which is not a positive integer/,
     );
     expect(observed).toEqual([]);
+  });
+});
+
+describe("runNode — sequence", () => {
+  // The `@2` logicer for "this single-node slot needs several nodes in order" (format §4.4). It adds
+  // no execution rule: its output is its last child's, its first child is seeded by the `sequence`'s
+  // own predecessor, and it narrates nothing of its own — the block-slot rules of §5.4, restated over
+  // one node.
+  it("returns its last child's output, seeding its first child from its own predecessor (§5.4)", async () => {
+    const { run, observed } = makeRun();
+    const node: Node = { type: "sequence", id: "steps", name: "steps", body: [append("one", "-1"), append("two", "-2")] };
+
+    expect(await runNode(run, node, "seed", makeExec())).toEqual({ status: "succeeded", output: "seed-1-2" });
+    // A logicer has no worker, task or run of its own: only its children are narrated.
+    expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["one", "two"]);
+  });
+
+  it("chains the same way at any depth, a sequence inside a sequence included", async () => {
+    const { run } = makeRun();
+    const inner: Node = { type: "sequence", id: "inner", name: "inner", body: [append("a", "-a"), append("b", "-b")] };
+    const outer: Node = {
+      type: "sequence",
+      id: "outer", name: "outer",
+      body: [append("head", "-head"), inner, append("tail", "-tail")],
+    };
+
+    expect(await runNode(run, outer, "seed", makeExec())).toEqual({ status: "succeeded", output: "seed-head-a-b-tail" });
+  });
+
+  // Transparent on the context side too: a child's publish lands as that child succeeds, not buffered
+  // to some sequence-level join (there is none — only `parallel` buffers, §5.3).
+  it("lands a child's publish as the child succeeds, before the next child starts (§5.3)", async () => {
+    const { run } = makeRun();
+    const exec = makeExec();
+    const landed: { [key: string]: JsonValue }[] = [];
+    const node: Node = {
+      type: "sequence",
+      id: "steps", name: "steps",
+      body: [{ ...echo("greet", "hi"), publish: { greeting: "${output}" } } as Node, append("after", "!")],
+    };
+
+    const outcome = await runNode(run, node, "seed", { ...exec, onPublish: async (u) => void landed.push(u) });
+
+    expect(outcome).toEqual({ status: "succeeded", output: "hi!" });
+    expect(exec.context).toEqual({ greeting: "hi" });
+    expect(landed).toEqual([{ greeting: "hi" }]);
+  });
+
+  it("fails at its first failing child and runs nothing after it", async () => {
+    const { run, observed } = makeRun();
+    const node: Node = {
+      type: "sequence",
+      id: "steps", name: "steps",
+      body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }, echo("never", "x")],
+    };
+
+    const outcome = await runNode(run, node, "seed", makeExec());
+
+    expect(outcome.status).toBe("failed");
+    expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["boom"]);
   });
 });
 

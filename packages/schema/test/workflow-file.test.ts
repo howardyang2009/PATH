@@ -441,6 +441,38 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
     expect(result.success).toBe(false);
   });
 
+  // A `do-not-wait` branch node's publish set must be empty — its whole set, reached through a
+  // `sequence` and any nesting below it, not just the `publish` written on the branch node itself.
+  it("rejects a publish reached through a sequence within a do-not-wait branch", () => {
+    const result = safeParseWorkflowFile({
+      ...minimal,
+      body: [
+        {
+          type: "parallel",
+          id: UUID,
+          name: "fire",
+          join: "do-not-wait",
+          branches: [
+            {
+              type: "sequence",
+              id: UUID,
+              name: "notify",
+              body: [
+                { type: "binary", id: UUID, name: "x1", command: "echo" },
+                { type: "binary", id: UUID, name: "x2", command: "echo", publish: { result: "${output}" } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      // Named, so the test cannot pass on some unrelated rejection of the file.
+      expect(result.errors.join("\n")).toMatch(/do-not-wait/);
+    }
+  });
+
   it("still allows publishes in collect and wait-one blocks (the reject is do-not-wait-only)", () => {
     const result = WorkflowFileSchema.safeParse({
       ...minimal,
