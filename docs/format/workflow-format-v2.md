@@ -46,6 +46,14 @@ the format.
   [`scripts/migrate-workflow-format-v2.ts`](../../scripts/migrate-workflow-format-v2.ts) (§11),
   following its `@0`→`@1` predecessor `scripts/migrate-workflow-format-v1.ts`.
 
+  An `@0` file names **both** scripts, in the order they must run, because the `@2` codemod migrates
+  `@1` and nothing else — handed an `@0` file it reports "skipped" and leaves it untouched, so
+  naming it alone would name a fix that is not one:
+
+  ```
+  path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2
+  ```
+
 ## 2. Top-level workflow object
 
 | Field | Required | Meaning |

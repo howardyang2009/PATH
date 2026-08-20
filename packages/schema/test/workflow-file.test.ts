@@ -533,12 +533,14 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 
-  it("reports the spec §1 targeted error for a superseded @0 file", () => {
+  // `@0` names both codemods, in order (§1): the `@2` script migrates `@1` and nothing else, so it
+  // would report "skipped" on an `@0` file and leave it exactly as unreadable as it was.
+  it("reports the spec §1 targeted error for a superseded @0 file, naming both codemods in order", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@0" });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
+        "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
       ]);
     }
   });

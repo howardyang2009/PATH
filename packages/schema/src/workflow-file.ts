@@ -192,14 +192,15 @@ export interface WorkflowFileParseFailure {
 function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   if (typeof json !== "object" || json === null) return null;
   const format = (json as { format?: unknown }).format;
-  const superseded = SUPERSEDED_FORMAT_VERSIONS.find((version) => version === format);
-  if (superseded === undefined) return null;
-  // Verbatim per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never
-  // a generic zod "invalid literal" on `format`.
+  if (typeof format !== "string" || !(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
+  // Per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never a generic
+  // zod "invalid literal" on `format`. `@1`'s sentence is the spec's verbatim; `@0` names its two
+  // scripts in the order they must run, because the `@2` codemod alone would not move the file.
+  const codemods = SUPERSEDED_FORMAT_VERSIONS[format as keyof typeof SUPERSEDED_FORMAT_VERSIONS];
   return {
     success: false,
     errors: [
-      `${superseded} is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to ${FORMAT_VERSION}`,
+      `${format} is no longer read — run ${codemods.join(" then ")} to migrate this file to ${FORMAT_VERSION}`,
     ],
   };
 }

@@ -59,10 +59,10 @@ describe("cli main()", () => {
       superseded,
       JSON.stringify({
         format: "path/workflow@1",
-        id: "7b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+        id: "d8503fa6-27e1-4c09-95b8-af631074e2dc",
         name: "old-v1",
         worker: { type: "engine" },
-        body: [{ type: "binary", id: "8b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10", name: "step-one", command: "echo" }],
+        body: [{ type: "binary", id: "6194c7de-b3a8-4f62-80d1-59e2fb0a4738", name: "step-one", command: "echo" }],
       }),
     );
 

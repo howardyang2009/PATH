@@ -73,10 +73,14 @@ describe("loadWorkflowTree", () => {
 describe("loadWorkflowTree — superseded format versions", () => {
   let dir: string;
 
-  const CODEMOD_ERROR = {
-    v0: "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
-    v1: "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
-  };
+  // The two §1 sentences, spelled out rather than templated — the loader is meant to pass the
+  // schema's wording through untouched, so a template here could only hide a change to it. `@0`
+  // names both codemods in order: the `@2` script migrates `@1` and nothing else, so alone it would
+  // leave an `@0` file exactly as unreadable as it was.
+  const V1_REJECTION =
+    "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2";
+  const V0_REJECTION =
+    "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2";
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "path-superseded-format-"));
@@ -88,20 +92,20 @@ describe("loadWorkflowTree — superseded format versions", () => {
       join(dir, "v1.workflow.json"),
       JSON.stringify({
         format: "path/workflow@1",
-        id: "1b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+        id: "e7c4a1d2-3f88-4b16-9c50-24af6d0b83e1",
         name: "old-v1",
         worker: { type: "engine" },
         body: [
           {
             type: "parallel",
-            id: "2b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+            id: "5a0f92bd-c714-4e33-8a67-1d9e40c5f2b8",
             name: "fan-out",
             join: "collect",
             branches: [
               {
-                id: "3b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+                id: "b3184ce9-6d20-4f51-92ac-708be1d3a64f",
                 name: "left",
-                body: [{ type: "binary", id: "4b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10", name: "left-step", command: "echo" }],
+                body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "left-step", command: "echo" }],
               },
             ],
           },
@@ -126,10 +130,10 @@ describe("loadWorkflowTree — superseded format versions", () => {
       join(dir, "parent.workflow.json"),
       JSON.stringify({
         format: "path/workflow@2",
-        id: "5b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+        id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "parent",
         worker: { type: "engine" },
-        body: [{ type: "workflow", id: "6b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10", name: "child-step", ref: "./v1.workflow.json" }],
+        body: [{ type: "workflow", id: "42be13f7-a05c-4986-b7d4-6e1f28903cba", name: "child-step", ref: "./v1.workflow.json" }],
       }),
     );
   });
@@ -143,7 +147,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     const result = loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([`${absPath}: ${CODEMOD_ERROR.v1}`]);
+      expect(result.errors).toEqual([`${absPath}: ${V1_REJECTION}`]);
     }
   });
 
@@ -152,7 +156,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     const result = loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
-      expect(result.errors).toEqual([`${absPath}: ${CODEMOD_ERROR.v0}`]);
+      expect(result.errors).toEqual([`${absPath}: ${V0_REJECTION}`]);
     }
   });
 
@@ -161,7 +165,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       // The parent itself is fine — only the child is named, so the operator knows which file to migrate.
-      expect(result.errors).toEqual([`${join(dir, "v1.workflow.json")}: ${CODEMOD_ERROR.v1}`]);
+      expect(result.errors).toEqual([`${join(dir, "v1.workflow.json")}: ${V1_REJECTION}`]);
     }
   });
 });
