@@ -22,8 +22,10 @@
  *
  * **Refuses rather than inventing.** If unwrapping a branch would rename its node to a `name` that
  * already exists elsewhere in the file, the codemod stops and reports the file rather than minting a
- * disambiguated name (§11). Across this repo's files no such collision occurs and no `sequence` is
- * minted.
+ * disambiguated name (§11). It refuses an **empty** container slot on the same grounds: a `sequence`
+ * body is min 1, so the only rewrite available would be a file the schema rejects. Both refusals
+ * leave the file byte-unchanged and exit 1. Across this repo's files neither fires and no `sequence`
+ * is minted.
  *
  * Idempotent: a file already at `@2` (or still at `@0`) is left untouched.
  *
@@ -39,8 +41,16 @@ const NEXT_FORMAT = "path/workflow@2";
 
 type JsonObject = { [key: string]: unknown };
 
-/** Thrown when a file cannot be migrated without inventing a name — reported, and the file is left as-is. */
+/** Thrown when a file cannot be migrated without inventing something — reported, and the file is left as-is. */
 class MigrationRefused extends Error {}
+
+/**
+ * An empty container slot has no `@2` spelling: a `sequence`'s `body` is min 1 (`nodes.ts`), so the
+ * only rewrite available would be a file the schema then rejects. A valid `@1` file cannot reach
+ * here (its slots were min 1 too) and this codemod validates nothing on the way in, so the input is
+ * hand-broken — refuse it rather than write an unloadable file.
+ */
+const EMPTY_SLOT_REASON = "an empty slot has no @2 shape (a `sequence` body is min 1) — file left unchanged";
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -91,6 +101,7 @@ function mintName(base: string, ctx: Ctx): string {
  */
 function toSingleNode(nodes: unknown[], baseName: string, ctx: Ctx): unknown {
   const migrated = migrateNodeArray(nodes, ctx);
+  if (migrated.length === 0) throw new MigrationRefused(`the slot behind "${baseName}" is empty — ${EMPTY_SLOT_REASON}`);
   if (migrated.length === 1) return migrated[0];
   return { type: "sequence", id: randomUUID(), name: mintName(baseName, ctx), body: migrated };
 }
@@ -100,13 +111,16 @@ function unwrapBranch(branch: unknown, ctx: Ctx): unknown {
   if (!isObject(branch)) return branch;
   const wrapperName = branch.name;
   const migratedBody = Array.isArray(branch.body) ? migrateNodeArray(branch.body, ctx) : [];
+  if (migratedBody.length === 0) {
+    throw new MigrationRefused(`branch "${asName(wrapperName)}" holds no nodes — ${EMPTY_SLOT_REASON}`);
+  }
   if (migratedBody.length === 1 && isObject(migratedBody[0])) {
     // The single occupant *is* the branch. Rename it to the wrapper's name to preserve the collect key.
     const node = migratedBody[0];
     node.name = wrapperName ?? node.name;
     return node;
   }
-  // Several nodes (or none) — the wrapper already had a sequence's shape, so tag it as one.
+  // Several nodes — the wrapper already had a sequence's shape, so tag it as one.
   return { type: "sequence", id: branch.id ?? randomUUID(), name: wrapperName, body: migratedBody };
 }
 

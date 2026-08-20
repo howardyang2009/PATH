@@ -165,6 +165,24 @@ importers:
         specifier: ^2.1.9
         version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)
 
+  scripts:
+    devDependencies:
+      '@path/schema':
+        specifier: workspace:*
+        version: link:../packages/schema
+      '@types/node':
+        specifier: ^22.13.1
+        version: 22.20.1
+      tsx:
+        specifier: ^4.19.2
+        version: 4.23.1
+      typescript:
+        specifier: ^5.7.3
+        version: 5.9.3
+      vitest:
+        specifier: ^2.1.9
+        version: 2.1.9(@types/node@22.20.1)(jsdom@25.0.1)
+
 packages:
 
   '@adobe/css-tools@4.5.0':
