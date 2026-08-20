@@ -98,6 +98,31 @@ describe("runNode — parallel", () => {
     });
   });
 
+  // A branch is one node (`@2` §4.3): the collect key is that node's own `name`, and its value is
+  // that node's output object — for a `sequence` branch, its **last child's** (§5.4). Both children
+  // run, seeded by the block's predecessor and then by each other, so the value proves the chain.
+  it("values a sequence branch by its last child's output, keyed by the branch node's name (§5.4)", async () => {
+    const { run } = makeRun();
+    const appendStdin = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-2'))";
+    const node: Node = {
+      type: "parallel",
+      id: "fan", name: "fan",
+      join: "collect",
+      branches: [
+        {
+          type: "sequence",
+          id: "pair", name: "pair",
+          body: [echo("p1", "one"), { type: "binary", id: "p2", name: "p2", command: "node", args: ["-e", appendStdin] }],
+        },
+        echo("solo", "S"),
+      ],
+    };
+
+    const outcome = await runNode(run, node, "seed", makeExec());
+
+    expect(outcome).toEqual({ status: "succeeded", output: { pair: "one-2", solo: "S" } });
+  });
+
   it("lands a branch's publishes only at the join, never before", async () => {
     const { run } = makeRun();
     const exec = makeExec();
