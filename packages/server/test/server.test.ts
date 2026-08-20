@@ -214,6 +214,33 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(body.error.details.join("\n")).toContain("bogus_field");
   });
 
+  // #280 / workflow-format-v2.md §1 — the server reads `@2` only, same as the CLI. A pre-migration
+  // file is a 400 at load with the targeted codemod sentence, not a silent upconvert, so an API
+  // client gets the same fix an operator reads on stderr.
+  it("400s a superseded @1 workflow file, naming the codemod, and starts no run", async () => {
+    writeFileSync(
+      join(projectDir, "superseded.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: "9b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+        name: "superseded",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: "ab57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10", name: "step-one", command: "echo" }],
+      }),
+    );
+
+    const res = await postRun({ workflow_path: "superseded.workflow.json" });
+    expect(res.status).toBe(400);
+    const body = (await res.json()) as { error: { message: string; details: string[] } };
+    expect(body.error.details).toHaveLength(1);
+    expect(body.error.details[0]).toContain(
+      "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
+    );
+
+    const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+    expect(runs.runs).toEqual([]);
+  });
+
   // ADR 0012 / #231 — operator-supplied override config may carry a literal `$secret` but must not
   // source from the server box's environment via `$env`. `ConfigObjectSchema` (shared with
   // workflow-authored config) accepts `$env`, so the reject is a post-parse walk on the operator

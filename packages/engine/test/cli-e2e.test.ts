@@ -258,7 +258,7 @@ describe("path run — secret masking at the persistence boundary (ticket #20, r
     // A step whose interpolated secret reaches argv (the real process), then flows into stdout
     // (its output), stderr, publish/context, and the workflow output map — every persisted surface.
     const workflow = stampGuids({
-      format: "path/workflow@0",
+      format: "path/workflow@2",
       name: "secret-flow",
       worker: { type: "engine" },
       config: { apiKey: { $secret: SECRET } },

@@ -101,6 +101,29 @@ describe("GET /v0/workflows", () => {
     expect(broken.error?.message).toBeTruthy();
   });
 
+  // A project mid-migration lists its pre-`@2` files as invalid rather than hiding or upconverting
+  // them, and the error carried into the listing is the targeted codemod sentence (#280,
+  // workflow-format-v2.md §1) — so the operator reads the fix in the workflow list itself.
+  it("reports a superseded @1 file as invalid, with the codemod named in its error", async () => {
+    write(
+      "old.workflow.json",
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: uuid(),
+        name: "old",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: uuid(), name: "step-one", command: "echo" }],
+      }),
+    );
+
+    const old = byPath((await listWorkflows()).body).get("old.workflow.json")!;
+    expect(old).toMatchObject({ valid: false, is_root: null, name: "old" });
+    expect(old.error?.message).toBe(
+      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+    );
+    expect(old.error?.details).toHaveLength(1);
+  });
+
   it("yields null id/name for a syntactically broken file", async () => {
     write("garbage.workflow.json", "{ not valid json");
 

@@ -49,6 +49,33 @@ describe("cli main()", () => {
     expect(io.log).not.toHaveBeenCalled();
   });
 
+  // The load-time rejection of pre-migration files (#280, workflow-format-v2.md §1) as an operator
+  // sees it: `path run` refuses and the one line on stderr names the codemod to run. Written here
+  // rather than checked in as a fixture because `scripts/migrate-workflow-format-v2.ts` discovers
+  // every `*.workflow.json` in the repo and would migrate a checked-in `@1` file out from under it.
+  it("refuses a superseded @1 file at load and names the codemod", async () => {
+    const superseded = join(fixtures, "superseded-v1.workflow.json");
+    writeFileSync(
+      superseded,
+      JSON.stringify({
+        format: "path/workflow@1",
+        id: "7b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10",
+        name: "old-v1",
+        worker: { type: "engine" },
+        body: [{ type: "binary", id: "8b57f0e6-2f0e-4a4a-9a37-0a2f5f0c9a10", name: "step-one", command: "echo" }],
+      }),
+    );
+
+    const io = fakeIo();
+    const code = await main(["run", superseded], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(
+      `${superseded}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+    );
+    // No silent upconvert: the load failed, so no step ran and no output was printed.
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
   it("exits non-zero and reports a ref cycle before running anything", async () => {
     const io = fakeIo();
     const code = await main(["run", join(fixtures, "cycle-a.workflow.json")], io);
