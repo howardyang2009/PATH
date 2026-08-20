@@ -1,5 +1,8 @@
 packages:
   - "packages/*"
+  # The codemods are a tested surface, not loose files: `pnpm test` / `pnpm typecheck` are
+  # `pnpm -r`, so `scripts/` only reaches CI as a workspace package of its own (#287).
+  - "scripts"
 allowBuilds:
   esbuild: true
   better-sqlite3: true
