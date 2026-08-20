@@ -1,13 +1,10 @@
-import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, relative } from "node:path";
-import { loadWorkflowTree } from "@path/engine";
 import { ConfigObjectSchema, formatIssues, isTerminal, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import { ResumeNotFound } from "../live-runs.js";
-import { operatorConfigEnvError } from "../operator-config.js";
-import { resolveWorkflowPath, type RunsRouteContext } from "./post-runs.js";
+import type { RunsRouteContext } from "./post-runs.js";
 
 /** The one optional field: a config override for the resumed run (§4.3). No `input` — see below. */
 const ResumeBodySchema = z.object({ config: ConfigObjectSchema.optional() }).strict();
@@ -79,32 +76,28 @@ export async function handleResumeRun(
     return;
   }
 
-  const absPath = resolveWorkflowPath(ctx.project.dir, root.workflowPath);
-  if (!absPath || !existsSync(absPath)) {
-    sendError(res, 404, `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`);
+  // Re-read and re-validate the workflow as it stands now, the same escape/not-found/invalid gate a
+  // fresh launch runs (launch.ts) — a file that has since become invalid is a `400`, exactly as a
+  // fresh launch of it would be. The path comes from the predecessor's row, so a resume's not-found
+  // message names the run whose recorded file vanished, not a path a caller just sent.
+  // No `escapesRoot`: the path came from a row this server wrote relative to the project root, so an
+  // escape is unreachable and folds into the same "recorded file is gone" 404 the pre-launch-module
+  // route used — one message for both, as before.
+  const prepared = prepareWorkflow(ctx.project.dir, root.workflowPath, {
+    notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+  });
+  if (!prepared.ok) {
+    sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
     return;
   }
-
-  // Re-read and re-validate the workflow: a resumed successor runs the file as it stands now, so a
-  // file that has since become invalid is a `400`, exactly as a fresh launch of it would be.
-  const loadResult = loadWorkflowTree(absPath);
-  if (!loadResult.success) {
-    sendError(res, 400, "workflow validation failed", loadResult.errors);
-    return;
-  }
-  const { tree } = loadResult;
-  const rootFile = tree.files.get(tree.rootPath);
-  if (!rootFile) {
-    sendError(res, 500, "internal error: root file missing from loaded tree");
-    return;
-  }
+  const { workflow } = prepared;
 
   // The file at that path must still be the *same workflow* this run ran (identity is the `id`, ADR
   // 0006). The path was recovered from the row, not re-confirmed by the operator as it is on `path
   // run --resume`, so a different workflow swapped in at that path would otherwise be resumed against
   // the predecessor's restored context — nodes keyed to a structure that may no longer exist. Only
   // enforced when the predecessor recorded an id (every run since #169 does).
-  if (root.workflowId && rootFile.id !== root.workflowId) {
+  if (root.workflowId && workflow.rootFile.id !== root.workflowId) {
     sendError(
       res,
       409,
@@ -115,13 +108,13 @@ export async function handleResumeRun(
 
   let ids;
   try {
-    ids = await ctx.live.resume(rootFile, rootRunId, dirname(tree.rootPath), {
-      files: tree.files,
+    ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
+      files: workflow.files,
       // The operator's override for the resumed run — shadows the workflow's declared config key by
       // key (engine `run-workflow.ts`), applied to the steps that re-run.
       operatorConfig: config,
       // Recorded on the successor's root row so it is itself resumable.
-      sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {
     // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).

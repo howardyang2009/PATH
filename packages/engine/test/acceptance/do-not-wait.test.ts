@@ -210,7 +210,7 @@ async function killWithBranchInFlight(): Promise<string> {
 
   const loaded = loadWorkflowTree(join(harness.projectDir, WORKFLOW_FILE));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
-  const rootFile = loaded.tree.files.get(loaded.tree.rootPath)!;
+  const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);
   if (!opened.success) throw new Error(opened.error);
   try {
@@ -219,7 +219,7 @@ async function killWithBranchInFlight(): Promise<string> {
       // abort lands, but short enough that the resumed run's barrier (which re-runs the branch under
       // this same restored config) finishes well inside the test timeout.
       operatorConfig: { branch_delay_ms: "1500" },
-      files: loaded.tree.files,
+      files: loaded.workflow.files,
       signal: controller.signal,
       extraObservers: [abortOnAfterFinished],
     });

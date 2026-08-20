@@ -57,10 +57,10 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * read — no engine exec path. Fresh scan each call, no pagination or cache.
  *
  * Two passes over the discovered files. The first loads each with `loadWorkflowTree` and, for every
- * one that loads, folds its nested-ref set — `keys(tree.files) \ {itself}`, all absolute — into a
+ * one that loads, folds its nested-ref set — `keys(workflow.files) \ {itself}`, all absolute — into a
  * shared `referenced` set. The second builds the response: a file that loaded is `is_root: false`
  * exactly when some valid root referenced it (ADR 0011 — list all, flag roots), `is_root: true`
- * otherwise; a file that failed to load carries `is_root: null` (a failed load has no `tree.files`,
+ * otherwise; a file that failed to load carries `is_root: null` (a failed load has no `workflow.files`,
  * so it cannot be classified) with the shared error envelope and a best-effort id/name.
  */
 export function handleGetWorkflows(res: ServerResponse, ctx: RunsRouteContext): void {
@@ -77,7 +77,7 @@ export function handleGetWorkflows(res: ServerResponse, ctx: RunsRouteContext): 
   const referenced = new Set<string>();
   for (const { absPath, result } of loaded) {
     if (!result.success) continue;
-    for (const key of result.tree.files.keys()) {
+    for (const key of result.workflow.files.keys()) {
       if (key !== absPath) referenced.add(key);
     }
   }
@@ -86,7 +86,7 @@ export function handleGetWorkflows(res: ServerResponse, ctx: RunsRouteContext): 
     const relativePath = relative(projectDir, absPath);
     if (result.success) {
       // The root of this file's own load is the file itself — its parsed id/name.
-      const file = result.tree.files.get(absPath)!;
+      const file = result.workflow.rootFile;
       return {
         relative_path: relativePath,
         id: file.id,

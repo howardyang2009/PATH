@@ -450,13 +450,13 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
 
   const loaded = loadWorkflowTree(join(harness.projectDir, "release-notes.workflow.json"));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
-  const rootFile = loaded.tree.files.get(loaded.tree.rootPath)!;
+  const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);
   if (!opened.success) throw new Error(opened.error);
   try {
     const result = await opened.project.run(rootFile, harness.projectDir, {
       operatorConfig: { commit_range: "HEAD~3..HEAD" },
-      files: loaded.tree.files,
+      files: loaded.workflow.files,
       llmWorker: worker,
       signal: controller.signal,
     });

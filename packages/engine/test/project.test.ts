@@ -356,11 +356,11 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
 
     const project = open();
     try {
-      const tree = loadWorkflowTree(join(sub, "parent.workflow.json"));
-      if (!tree.success) throw new Error(tree.errors.join("\n"));
+      const loaded = loadWorkflowTree(join(sub, "parent.workflow.json"));
+      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
 
       // `dir` is the project (where `.path/` is); `sub` is the workflow's own directory.
-      const result = await project.run(tree.tree.files.get(tree.tree.rootPath)!, sub, { files: tree.tree.files });
+      const result = await project.run(loaded.workflow.rootFile, sub, { files: loaded.workflow.files });
 
       expect(result.status).toBe("succeeded");
       // ...and the run was still recorded under the project's `.path/`, not the subdirectory's.

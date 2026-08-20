@@ -1,15 +1,49 @@
 import { readFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { dirname, relative, resolve } from "node:path";
 import { safeParseWorkflowFile, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
 
-export interface WorkflowTree {
-  /** Absolute path of the entry file passed to `path run`. */
+/**
+ * One workflow, loaded: the entry file itself, where it sits, and every file it reaches.
+ *
+ * **What this interface exists to own.** It used to be `{ rootPath, files }`, and every caller
+ * re-derived the same three facts from the pair: the root file (`files.get(rootPath)`, plus a
+ * "missing from the loaded tree" branch none of them could reach), the directory the engine
+ * resolves nested `ref`s and binary `cwd`s against (`dirname(rootPath)`), and the store-relative
+ * path a root run records as provenance (`relative(storeDir, rootPath)`). Eight sites did it —
+ * `cli.ts`, three `@path/server` routes, and four tests — which is what made the project-dir /
+ * workflow-dir confusion of #59 available to be made at all.
+ *
+ * Everything derivable from the load is derived here, once. `files` stays public because the
+ * engine genuinely indexes it (`RunOptions.files`, a `workflow` step resolving its `ref`), and
+ * `rootPath` because discovery compares it against paths of its own (`get-workflows.ts`).
+ */
+export interface LoadedWorkflow {
+  /** Absolute path of the entry file passed to `loadWorkflowTree`. */
   rootPath: string;
+  /**
+   * The parsed entry file — where a run starts. Guaranteed present: a load that could not read or
+   * parse the entry file fails, so no caller carries a missing-root branch of its own.
+   */
+  rootFile: WorkflowFile;
+  /**
+   * The entry file's **own** directory — what the engine resolves nested `workflow` refs and binary
+   * `cwd`s against (`Project.run`'s `workflowDir`). Never the project directory, whose `.path/` is
+   * a separate question: passing that here is what broke nested refs in #59, and `-C` relocating a
+   * store must not re-root the workflow (ADR 0005).
+   */
+  workflowDir: string;
   /** Every file reachable from the root via `workflow` step refs, keyed by absolute path. */
   files: Map<string, WorkflowFile>;
+  /**
+   * The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (#202,
+   * ADR 0006), which is how a central `-C` store segments runs by the workflow that produced them.
+   * A call rather than a field because the store dir is the caller's (a CLI `-C`, the server's
+   * project root) while the absolute path it is measured from is the load's.
+   */
+  storeRelativePath(storeDir: string): string;
 }
 
-export type LoadResult = { success: true; tree: WorkflowTree } | { success: false; errors: string[] };
+export type LoadResult = { success: true; workflow: LoadedWorkflow } | { success: false; errors: string[] };
 
 // A `workflow` step's ref can sit inside any nesting of control blocks, so this walks the whole
 // body — using @path/schema's descent rather than restating it, which is what let a new block type
@@ -61,5 +95,23 @@ export function loadWorkflowTree(entryPath: string): LoadResult {
   if (errors.length > 0) {
     return { success: false, errors };
   }
-  return { success: true, tree: { rootPath, files } };
+
+  // `visit` either records the entry file or pushes an error, and every error path returned above —
+  // so this is unreachable. It stays as the *one* place that says so: it used to be a branch each
+  // caller wrote out, guarding against a state the loader had already ruled out for them.
+  const rootFile = files.get(rootPath);
+  if (!rootFile) {
+    return { success: false, errors: [`${rootPath}: internal error: entry file missing from the loaded tree`] };
+  }
+
+  return {
+    success: true,
+    workflow: {
+      rootPath,
+      rootFile,
+      workflowDir: dirname(rootPath),
+      files,
+      storeRelativePath: (storeDir: string) => relative(storeDir, rootPath),
+    },
+  };
 }

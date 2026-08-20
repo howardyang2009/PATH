@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
-import { dirname, join } from "node:path";
+import { dirname, join, relative } from "node:path";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 
@@ -12,8 +12,8 @@ describe("loadWorkflowTree", () => {
     const result = loadWorkflowTree(join(fixtures, "two-binary-steps.workflow.json"));
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.tree.files.size).toBe(1);
-      expect(result.tree.files.get(result.tree.rootPath)?.name).toBe("two-binary-steps");
+      expect(result.workflow.files.size).toBe(1);
+      expect(result.workflow.rootFile.name).toBe("two-binary-steps");
     }
   });
 
@@ -21,9 +21,11 @@ describe("loadWorkflowTree", () => {
     const result = loadWorkflowTree(join(fixtures, "parent-with-child.workflow.json"));
     expect(result.success).toBe(true);
     if (result.success) {
-      expect(result.tree.files.size).toBe(2);
-      const names = [...result.tree.files.values()].map((f) => f.name).sort();
+      expect(result.workflow.files.size).toBe(2);
+      const names = [...result.workflow.files.values()].map((f) => f.name).sort();
       expect(names).toEqual(["child", "parent-with-child"]);
+      // The entry file, not just any member of the tree: `rootFile` is where the run starts.
+      expect(result.workflow.rootFile.name).toBe("parent-with-child");
     }
   });
 
@@ -55,6 +57,39 @@ describe("loadWorkflowTree", () => {
   it("reports a not-found entry file", () => {
     const result = loadWorkflowTree(join(fixtures, "nope.workflow.json"));
     expect(result.success).toBe(false);
+  });
+});
+
+/**
+ * The three facts eight call sites used to derive from `{ rootPath, files }` by hand — the entry
+ * file, the directory the engine resolves refs and `cwd`s against, and the store-relative path a
+ * root run records as provenance. They are pinned here, once, because that is now the only place
+ * they are computed.
+ */
+describe("loadWorkflowTree — what the load already knows", () => {
+  const entry = join(fixtures, "parent-with-child.workflow.json");
+
+  it("resolves a relative entry path and reports the entry file's own directory", () => {
+    const result = loadWorkflowTree(relative(process.cwd(), entry));
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    expect(result.workflow.rootPath).toBe(entry);
+    // Never the caller's cwd and never a project directory: this is what a nested `ref` and a
+    // binary step's `cwd` resolve against (#59, ADR 0005).
+    expect(result.workflow.workflowDir).toBe(fixtures);
+  });
+
+  it("measures the store-relative path from the store dir the caller names, not from the file", () => {
+    const result = loadWorkflowTree(entry);
+    expect(result.success).toBe(true);
+    if (!result.success) return;
+    // `path run` with no `-C`: the store is the file's own directory, so provenance is the filename.
+    expect(result.workflow.storeRelativePath(fixtures)).toBe("parent-with-child.workflow.json");
+    // A relocated `-C` store one level up: the path keeps the segment that tells two same-named
+    // workflows apart (#202, ADR 0006).
+    expect(result.workflow.storeRelativePath(dirname(fixtures))).toBe(
+      join("fixtures", "parent-with-child.workflow.json"),
+    );
   });
 });
 

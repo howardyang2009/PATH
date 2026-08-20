@@ -1,10 +1,9 @@
-import { existsSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
-import { loadWorkflowTree, LOG_BACKEND_IDS, type Project } from "@path/engine";
-import { ConfigObjectSchema, formatIssues, mapEnv, type JsonValue, type StartRunResponse } from "@path/schema";
+import { LOG_BACKEND_IDS, type Project } from "@path/engine";
+import { ConfigObjectSchema, formatIssues, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { LiveRuns } from "../live-runs.js";
 
 const PostRunsBodySchema = z
@@ -16,19 +15,6 @@ const PostRunsBodySchema = z
     llm_concurrency: z.number().int().positive().optional(),
   })
   .strict();
-
-/**
- * `workflow_path` resolves against the server's fixed project root, the same way `path run
- * <workflow.json>` resolves against the cwd (server-api-v0.md §2) — except a path that escapes
- * the project root is rejected rather than followed, since the server (unlike the CLI) isn't
- * trusted with the operator's whole filesystem.
- */
-export function resolveWorkflowPath(projectDir: string, workflowPath: string): string | undefined {
-  const absPath = resolve(projectDir, workflowPath);
-  const rel = relative(projectDir, absPath);
-  if (rel.startsWith("..") || isAbsolute(rel)) return undefined;
-  return absPath;
-}
 
 export interface RunsRouteContext {
   /**
@@ -55,67 +41,45 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, llm_concurrency: llmConcurrency } =
     parsed.data;
 
-  // ADR 0012 / #231: operator-supplied override config may name a literal `{"$secret": "..."}` but
-  // not `{"$env": "NAME"}` — an `$env` would let a browser operator read a variable of the *server
-  // process* back through a step's output. `ConfigObjectSchema` is shared with workflow-authored
-  // config (where `$env` is legitimate), so the reject can't live in the schema; it's this post-parse
-  // walk on the operator path only. `mapEnv` descends *through* a `$secret` wrapper, so the composed
-  // `{"$secret": {"$env": "NAME"}}` form is caught by the same walk, and reports the config key as
-  // the path (not `key.$secret`). A `$env` authored inside the workflow.json is untouched.
+  // ADR 0012 / #231: operator config may carry a literal `{"$secret": "..."}` but not `{"$env":
+  // "NAME"}`. Rejected before the filesystem is touched, as a bad config invalidates the request
+  // whatever the workflow turns out to be. `resume-run.ts` makes the same call — one spelling of the
+  // rule (launch.ts), not two.
   if (config !== undefined) {
-    const envPaths: string[] = [];
-    mapEnv(config as JsonValue, (_name, path) => {
-      envPaths.push(path);
-      return null;
-    });
-    if (envPaths.length > 0) {
-      sendError(
-        res,
-        400,
-        `operator config may not source from the server environment: $env at ${envPaths
-          .map((p) => `"${p}"`)
-          .join(", ")}`,
-      );
+    const envError = operatorConfigEnvError(config);
+    if (envError) {
+      sendError(res, 400, envError);
       return;
     }
   }
 
-  const absPath = resolveWorkflowPath(ctx.project.dir, workflowPath);
-  if (!absPath) {
-    sendError(res, 404, `workflow_path "${workflowPath}" resolves outside the project root`);
+  // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts). A fresh launch
+  // distinguishes an escaping `workflow_path` from a merely missing one — both 404, both naming the
+  // path the caller sent.
+  const prepared = prepareWorkflow(ctx.project.dir, workflowPath, {
+    notFound: (p) => `workflow file not found: "${p}"`,
+    escapesRoot: (p) => `workflow_path "${p}" resolves outside the project root`,
+  });
+  if (!prepared.ok) {
+    sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
     return;
   }
-  if (!existsSync(absPath)) {
-    sendError(res, 404, `workflow file not found: "${workflowPath}"`);
-    return;
-  }
-
-  const loadResult = loadWorkflowTree(absPath);
-  if (!loadResult.success) {
-    sendError(res, 400, "workflow validation failed", loadResult.errors);
-    return;
-  }
-  const { tree } = loadResult;
-  const rootFile = tree.files.get(tree.rootPath);
-  if (!rootFile) {
-    sendError(res, 500, "internal error: root file missing from loaded tree");
-    return;
-  }
+  const { workflow } = prepared;
 
   let ids;
   try {
-    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
-    // binary `cwd`s against. Distinct from the project directory, which is where `.path/` lives;
-    // passing the latter here is what broke nested refs in #59.
-    ids = await ctx.live.start(rootFile, dirname(tree.rootPath), {
+    // `workflow.workflowDir` is the *root workflow file's own* directory — what the engine resolves
+    // nested `workflow` refs and binary `cwd`s against. Distinct from the project directory, which is
+    // where `.path/` lives; passing the latter here is what broke nested refs in #59.
+    ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
       input: input as { [key: string]: JsonValue } | undefined,
       operatorConfig: config,
-      files: tree.files,
+      files: workflow.files,
       logBackends: logBackendIds,
       llmConcurrency,
       // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`
       // stores — the normalized path, not the raw request string.
-      sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {
     sendError(res, 500, `run failed to start: ${err instanceof Error ? err.message : String(err)}`);

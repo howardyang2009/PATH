@@ -1,4 +1,4 @@
-export { loadWorkflowTree, type WorkflowTree, type LoadResult } from "./load-workflow-tree.js";
+export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-workflow-tree.js";
 export { runWorkflow, type ResumeInput, type RunOptions, type RunResult } from "./run-workflow.js";
 export { openProject, type OpenProjectResult, type Project, type ProjectRunOptions, type ResumeResult } from "./project.js";
 export { type ListRootsOptions, type RunArchive, type RunBlobName, type RunTree } from "./run-archive.js";
