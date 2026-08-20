@@ -95,27 +95,22 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     sendError(res, 400, "workflow validation failed", loadResult.errors);
     return;
   }
-  const { tree } = loadResult;
-  const rootFile = tree.files.get(tree.rootPath);
-  if (!rootFile) {
-    sendError(res, 500, "internal error: root file missing from loaded tree");
-    return;
-  }
+  const { workflow } = loadResult;
 
   let ids;
   try {
-    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
-    // binary `cwd`s against. Distinct from the project directory, which is where `.path/` lives;
-    // passing the latter here is what broke nested refs in #59.
-    ids = await ctx.live.start(rootFile, dirname(tree.rootPath), {
+    // `workflow.workflowDir` is the *root workflow file's own* directory — what the engine resolves
+    // nested `workflow` refs and binary `cwd`s against. Distinct from the project directory, which is
+    // where `.path/` lives; passing the latter here is what broke nested refs in #59.
+    ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
       input: input as { [key: string]: JsonValue } | undefined,
       operatorConfig: config,
-      files: tree.files,
+      files: workflow.files,
       logBackends: logBackendIds,
       llmConcurrency,
       // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`
       // stores — the normalized path, not the raw request string.
-      sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {
     sendError(res, 500, `run failed to start: ${err instanceof Error ? err.message : String(err)}`);

@@ -1,5 +1,4 @@
 import { readFileSync } from "node:fs";
-import { dirname, relative } from "node:path";
 import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
@@ -338,23 +337,18 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 1;
   }
 
-  const { tree } = loadResult;
   // Whole-tree validation happened above; execution starts at the root file and follows
   // `workflow` step refs into the rest of the tree (#22) via `runWorkflow`'s `files` option.
-  const rootFile = tree.files.get(tree.rootPath);
-  if (!rootFile) {
-    io.error(`internal error: root file "${tree.rootPath}" missing from loaded tree`);
-    return 1;
-  }
+  const { workflow } = loadResult;
 
   // The CLI's project directory defaults to the workflow file's own directory — it runs one file,
   // in place. `-C <dir>` overrides *only* where the `.path/` store lives (#201, ADR 0005): the store
-  // is opened at `projectDir`, but `workflowDir` — what the engine resolves nested `workflow` refs
-  // and binary `cwd`s against — stays the workflow file's own directory. The server, serving a whole
-  // project, must tell the two apart (#59); `Project.run` takes both so neither caller can conflate
-  // them, and that same seam is what lets `-C` relocate the store without re-rooting the workflow.
-  const workflowDir = dirname(tree.rootPath);
-  const projectDir = parsed.args.storeDir ?? workflowDir;
+  // is opened at `projectDir`, but `workflow.workflowDir` — what the engine resolves nested
+  // `workflow` refs and binary `cwd`s against — stays the workflow file's own directory. The server,
+  // serving a whole project, must tell the two apart (#59); `Project.run` takes both so neither
+  // caller can conflate them, and that same seam is what lets `-C` relocate the store without
+  // re-rooting the workflow.
+  const projectDir = parsed.args.storeDir ?? workflow.workflowDir;
   const opened = openProject(projectDir);
   if (!opened.success) {
     io.error(opened.error);
@@ -373,7 +367,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // restores its context from the original tree instead, so `resume` never carries an `input`.
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
-    files: tree.files,
+    files: workflow.files,
     logBackends: parsed.args.logBackends,
     llmConcurrency: parsed.args.llmConcurrency,
     llmWorker: overrides.llmWorker,
@@ -383,13 +377,18 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     // relative to the store dir, so a central `-C` store distinguishes two same-named workflows by
     // where each lives. Default (no `-C`) collapses to the bare filename, store dir being the file's
     // own directory. Recorded on a fresh run *and* a resume — a successor is still that workflow's run.
-    sourceWorkflowPath: relative(projectDir, tree.rootPath),
+    sourceWorkflowPath: workflow.storeRelativePath(projectDir),
   };
 
   if (parsed.args.resumeRootRunId !== undefined) {
     let resumeResult: ResumeResult;
     try {
-      resumeResult = await project.resume(rootFile, parsed.args.resumeRootRunId, workflowDir, projectOptions);
+      resumeResult = await project.resume(
+        workflow.rootFile,
+        parsed.args.resumeRootRunId,
+        workflow.workflowDir,
+        projectOptions,
+      );
     } finally {
       sigint.dispose();
       project.close();
@@ -399,7 +398,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
 
   let runResult;
   try {
-    runResult = await project.run(rootFile, workflowDir, { ...projectOptions, input: contextSeed.context });
+    runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
+      ...projectOptions,
+      input: contextSeed.context,
+    });
   } finally {
     sigint.dispose();
     project.close();

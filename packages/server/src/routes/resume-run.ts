@@ -92,19 +92,14 @@ export async function handleResumeRun(
     sendError(res, 400, "workflow validation failed", loadResult.errors);
     return;
   }
-  const { tree } = loadResult;
-  const rootFile = tree.files.get(tree.rootPath);
-  if (!rootFile) {
-    sendError(res, 500, "internal error: root file missing from loaded tree");
-    return;
-  }
+  const { workflow } = loadResult;
 
   // The file at that path must still be the *same workflow* this run ran (identity is the `id`, ADR
   // 0006). The path was recovered from the row, not re-confirmed by the operator as it is on `path
   // run --resume`, so a different workflow swapped in at that path would otherwise be resumed against
   // the predecessor's restored context — nodes keyed to a structure that may no longer exist. Only
   // enforced when the predecessor recorded an id (every run since #169 does).
-  if (root.workflowId && rootFile.id !== root.workflowId) {
+  if (root.workflowId && workflow.rootFile.id !== root.workflowId) {
     sendError(
       res,
       409,
@@ -115,13 +110,13 @@ export async function handleResumeRun(
 
   let ids;
   try {
-    ids = await ctx.live.resume(rootFile, rootRunId, dirname(tree.rootPath), {
-      files: tree.files,
+    ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
+      files: workflow.files,
       // The operator's override for the resumed run — shadows the workflow's declared config key by
       // key (engine `run-workflow.ts`), applied to the steps that re-run.
       operatorConfig: config,
       // Recorded on the successor's root row so it is itself resumable.
-      sourceWorkflowPath: relative(ctx.project.dir, tree.rootPath),
+      sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {
     // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).
