@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "5c848796-afae-40a2-8748-9157fb15c136",
   "name": "github-release-notes",
   "worker": {

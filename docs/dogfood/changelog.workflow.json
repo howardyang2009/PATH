@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@1",
+  "format": "path/workflow@2",
   "id": "cb1e0f26-5091-4185-a49b-6ddfa6e60c27",
   "name": "changelog",
   "worker": {
@@ -44,54 +44,36 @@
       "join": "collect",
       "branches": [
         {
-          "id": "319b8df0-33a0-45c3-8324-9dd5d58b2497",
+          "type": "binary",
+          "id": "a6d7befc-6526-4fce-b89c-2fa789228030",
           "name": "features",
-          "body": [
-            {
-              "type": "binary",
-              "id": "a6d7befc-6526-4fce-b89c-2fa789228030",
-              "name": "grep-features",
-              "input": "${context.raw_subjects}",
-              "command": "sh",
-              "args": [
-                "-c",
-                "grep -E '^feat(\\([^)]*\\))?:' || true"
-              ]
-            }
+          "input": "${context.raw_subjects}",
+          "command": "sh",
+          "args": [
+            "-c",
+            "grep -E '^feat(\\([^)]*\\))?:' || true"
           ]
         },
         {
-          "id": "036a2dd2-1b47-4391-949e-d08253a5c783",
+          "type": "binary",
+          "id": "c0ca53ea-ef44-4603-82a1-b20d0db511fb",
           "name": "fixes",
-          "body": [
-            {
-              "type": "binary",
-              "id": "c0ca53ea-ef44-4603-82a1-b20d0db511fb",
-              "name": "grep-fixes",
-              "input": "${context.raw_subjects}",
-              "command": "sh",
-              "args": [
-                "-c",
-                "grep -E '^fix(\\([^)]*\\))?:' || true"
-              ]
-            }
+          "input": "${context.raw_subjects}",
+          "command": "sh",
+          "args": [
+            "-c",
+            "grep -E '^fix(\\([^)]*\\))?:' || true"
           ]
         },
         {
-          "id": "8d538ab2-b1a4-43cc-8e97-e567aac39e78",
+          "type": "binary",
+          "id": "dab1f44d-492d-41b2-b89f-b44f1b9afd80",
           "name": "other",
-          "body": [
-            {
-              "type": "binary",
-              "id": "dab1f44d-492d-41b2-b89f-b44f1b9afd80",
-              "name": "grep-other",
-              "input": "${context.raw_subjects}",
-              "command": "sh",
-              "args": [
-                "-c",
-                "grep -Ev '^(feat|fix)(\\([^)]*\\))?:' || true"
-              ]
-            }
+          "input": "${context.raw_subjects}",
+          "command": "sh",
+          "args": [
+            "-c",
+            "grep -Ev '^(feat|fix)(\\([^)]*\\))?:' || true"
           ]
         }
       ]
