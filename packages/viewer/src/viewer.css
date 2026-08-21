@@ -689,6 +689,100 @@ button.workflow-row:focus-visible {
 /* Resume reuses the launch form's card + submit-button styling (`.launch-form`/`.launch-submit`),
    expanded under a run row exactly as the launch form sits under a workflow row. */
 
+/* The action panel under an expanded run row: Resume (when applicable) and Delete, stacked. */
+.run-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Delete's card, mirroring `.launch-form` but tinted with the failed color so it never reads as a
+   neutral action — this is the one affordance with no undo. */
+.delete-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 8px 8px 10px;
+  margin: 2px 0 6px;
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--status-failed-fg) 35%, var(--border));
+  border-radius: 8px;
+}
+
+/* The disarmed trigger: a quiet outline button, not a filled one, so the loud step is the confirm. */
+.delete-arm {
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--status-failed-fg);
+  background: none;
+  border: 1px solid color-mix(in srgb, var(--status-failed-fg) 55%, transparent);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.delete-warning {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--status-failed-fg);
+}
+
+/* The identity of the run about to go — label→value like the run-detail head, ids/path in mono. */
+.delete-identity {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 0;
+  font-size: var(--fs-xs);
+}
+
+.delete-identity dt {
+  color: var(--text-muted);
+}
+
+.delete-identity dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.delete-identity .run-id,
+.delete-identity .run-workflow-id,
+.delete-identity .run-workflow-path {
+  font-family: var(--font-mono);
+}
+
+.delete-cancel {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+/* The one loud button: filled with the failed color, since confirming here destroys data. */
+.delete-confirm {
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: #fff;
+  background: var(--status-failed-fg);
+  border: none;
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+}
+
+.delete-arm:disabled,
+.delete-cancel:disabled,
+.delete-confirm:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* ---------- run tree ---------- */
 
 .run-tree {

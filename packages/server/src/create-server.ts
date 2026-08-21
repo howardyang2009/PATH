@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { openProject } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { handleCancelRun } from "./routes/cancel-run.js";
+import { handleDeleteRun } from "./routes/delete-run.js";
 import { handleResumeRun } from "./routes/resume-run.js";
 import { handleGetRun } from "./routes/get-run.js";
 import { handleGetRunBlob } from "./routes/get-run-blob.js";
@@ -96,6 +97,11 @@ async function handleRequest(
     const match = RUN_ID_ROUTE.exec(pathname);
     if (req.method === "GET" && match) {
       handleGetRun(res, ctx, decodeURIComponent(match[1]!));
+      return;
+    }
+
+    if (req.method === "DELETE" && match) {
+      handleDeleteRun(res, ctx, decodeURIComponent(match[1]!), url.searchParams.get("force") === "true");
       return;
     }
 

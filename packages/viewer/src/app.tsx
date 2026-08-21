@@ -42,6 +42,16 @@ export function App({ client }: { client: PathApiClient }) {
     setRunsReloadNonce((nonce) => nonce + 1);
   };
 
+  // A delete removes the run from both stores: if the centre pane was watching it, stop (its tree is
+  // gone), and re-read the rail so the row disappears now rather than at the next periodic tick.
+  const handleDeleted = (rootRunId: string): void => {
+    if (rootRunId === selectedRootRunId) {
+      setSelectedRootRunId(null);
+      setSelectedRunId(null);
+    }
+    setRunsReloadNonce((nonce) => nonce + 1);
+  };
+
   // The tree is the only source of the selected run: taking the record from the same snapshot the
   // tree renders is what keeps the pane's refs and status current as the run executes.
   const selectedRun =
@@ -56,6 +66,7 @@ export function App({ client }: { client: PathApiClient }) {
           selectedRootRunId={selectedRootRunId}
           onSelectRootRun={selectRootRun}
           onResumed={handleLaunched}
+          onDeleted={handleDeleted}
           reloadNonce={runsReloadNonce}
         />
       }

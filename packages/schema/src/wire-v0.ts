@@ -53,6 +53,8 @@ export interface RunTreeResponse {
 export interface RootRunSummary {
   run_id: string;
   workflow_name: string | null;
+  workflow_id: string | null;
+  workflow_path: string | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
@@ -143,6 +145,8 @@ export function toRootRunSummary(row: RunRecord): RootRunSummary {
   return {
     run_id: row.runId,
     workflow_name: row.workflowName,
+    workflow_id: row.workflowId,
+    workflow_path: row.workflowPath,
     status: row.status,
     started_at: row.startedAt,
     finished_at: row.finishedAt,

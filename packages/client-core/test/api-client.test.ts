@@ -66,6 +66,38 @@ describe("PathApiClient", () => {
     await expect(client.cancelRun("r1")).resolves.toBeUndefined();
   });
 
+  it("DELETE /v0/runs/:id sends no body and percent-encodes the id", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ root_run_id: "r 1" }, 200);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteRun("r 1")).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/r%201");
+    expect(inits[0]?.method).toBe("DELETE");
+    expect(inits[0]?.body).toBeUndefined();
+  });
+
+  it("deleteRun appends ?force=true only when force is set", async () => {
+    const stub = stubFetch(() => json({ root_run_id: "r1" }, 200));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.deleteRun("r1", { force: true });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/r1?force=true");
+  });
+
+  it.each([
+    [404, "an unknown or already-deleted run", `no run found with id "r1"`],
+    [409, "a run still running", `run "r1" is still running; cancel it before deleting`],
+  ])("deleteRun surfaces the %i for %s with its status and message", async (status, _case, message) => {
+    const stub = stubFetch(() => json({ error: { message } }, status));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteRun("r1")).rejects.toMatchObject({ name: "PathApiError", status, message });
+  });
+
   // One 409 is enough — the client cannot tell an already-terminal run from one this server process
   // is not executing, and does not try to; that the route sends both is `server.test.ts`'s to prove.
   it.each([

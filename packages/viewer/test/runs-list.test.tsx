@@ -23,6 +23,8 @@ function stubClient(runs: RootRunSummary[]): { client: PathApiClient; urls: stri
 const SUCCEEDED: RootRunSummary = {
   run_id: "run_alpha",
   workflow_name: "Build Report",
+  workflow_id: "wf-alpha",
+  workflow_path: "build-report.workflow.json",
   status: "succeeded",
   started_at: "2026-07-25T09:14:05.000Z",
   finished_at: "2026-07-25T09:14:31.000Z",
@@ -31,6 +33,8 @@ const SUCCEEDED: RootRunSummary = {
 const RUNNING: RootRunSummary = {
   run_id: "run_beta",
   workflow_name: "Nightly Sync",
+  workflow_id: "wf-beta",
+  workflow_path: "nightly-sync.workflow.json",
   status: "running",
   started_at: "2026-07-25T09:20:00.000Z",
   finished_at: null,
@@ -39,6 +43,8 @@ const RUNNING: RootRunSummary = {
 const CANCELLED: RootRunSummary = {
   run_id: "run_gamma",
   workflow_name: null,
+  workflow_id: null,
+  workflow_path: null,
   status: "cancelled",
   started_at: "2026-07-25T09:25:00.000Z",
   finished_at: "2026-07-25T09:25:40.000Z",
@@ -47,6 +53,8 @@ const CANCELLED: RootRunSummary = {
 const FAILED: RootRunSummary = {
   run_id: "run_delta",
   workflow_name: "Deploy Pipeline",
+  workflow_id: "wf-delta",
+  workflow_path: "deploy.workflow.json",
   status: "failed",
   started_at: "2026-07-25T09:30:00.000Z",
   finished_at: "2026-07-25T09:30:12.000Z",
@@ -59,6 +67,7 @@ function renderList(client: PathApiClient, overrides: Partial<Parameters<typeof 
       selectedRootRunId={null}
       onSelectRootRun={() => {}}
       onResumed={() => {}}
+      onDeleted={() => {}}
       {...overrides}
     />,
   );
@@ -147,7 +156,13 @@ describe("RunsList", () => {
     expect(onSelect).toHaveBeenCalledWith("run_alpha");
 
     rerender(
-      <RunsList client={client} selectedRootRunId="run_alpha" onSelectRootRun={onSelect} onResumed={() => {}} />,
+      <RunsList
+        client={client}
+        selectedRootRunId="run_alpha"
+        onSelectRootRun={onSelect}
+        onResumed={() => {}}
+        onDeleted={() => {}}
+      />,
     );
     expect(screen.getByTestId("run-row-run_alpha")).toHaveAttribute("aria-current", "true");
     expect(screen.getByTestId("run-row-run_beta")).not.toHaveAttribute("aria-current");
@@ -174,7 +189,14 @@ describe("RunsList", () => {
     await waitFor(() => expect(urls).toHaveLength(1));
 
     rerender(
-      <RunsList client={client} selectedRootRunId={null} onSelectRootRun={() => {}} onResumed={() => {}} reloadNonce={1} />,
+      <RunsList
+        client={client}
+        selectedRootRunId={null}
+        onSelectRootRun={() => {}}
+        onResumed={() => {}}
+        onDeleted={() => {}}
+        reloadNonce={1}
+      />,
     );
 
     await waitFor(() => expect(urls).toHaveLength(2));
@@ -270,6 +292,68 @@ describe("RunsList", () => {
       expect(await screen.findByRole("alert")).toHaveTextContent("already succeeded");
       expect(button).toHaveTextContent("Resume run");
       expect(onResumed).not.toHaveBeenCalled();
+    });
+  });
+
+  // Delete (§ DELETE /v0/runs/:id) lives in the same expanded panel as Resume, but is offered on
+  // every row — not just finished-but-unsuccessful ones — and is two-step: an arm, then a confirm
+  // that spells out which run goes.
+  describe("delete affordance", () => {
+    it.each([SUCCEEDED, RUNNING, CANCELLED])("offers Delete when a %s row is clicked", async (run) => {
+      const { client } = stubClient([run]);
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+      expect(await screen.findByTestId("delete-arm")).toBeInTheDocument();
+    });
+
+    it("arms a confirmation showing the run's identity, then deletes and notifies the app", async () => {
+      const { client } = stubClient([SUCCEEDED]);
+      const deleteRun = vi.spyOn(client, "deleteRun").mockResolvedValue();
+      const onDeleted = vi.fn();
+      renderList(client, { onDeleted });
+
+      fireEvent.click(await screen.findByTestId(`run-row-${SUCCEEDED.run_id}`));
+      fireEvent.click(await screen.findByTestId("delete-arm"));
+
+      // The confirm spells out exactly which run will be deleted.
+      const identity = screen.getByTestId("delete-identity");
+      expect(identity).toHaveTextContent(SUCCEEDED.run_id);
+      expect(identity).toHaveTextContent("Build Report");
+      expect(identity).toHaveTextContent("wf-alpha");
+      expect(identity).toHaveTextContent("build-report.workflow.json");
+
+      fireEvent.click(screen.getByTestId("delete-confirm"));
+      expect(deleteRun).toHaveBeenCalledWith(SUCCEEDED.run_id);
+      await waitFor(() => expect(onDeleted).toHaveBeenCalledWith(SUCCEEDED.run_id));
+    });
+
+    it("backs out of an armed delete without sending anything (Keep)", async () => {
+      const { client } = stubClient([SUCCEEDED]);
+      const deleteRun = vi.spyOn(client, "deleteRun").mockResolvedValue();
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${SUCCEEDED.run_id}`));
+      fireEvent.click(await screen.findByTestId("delete-arm"));
+      fireEvent.click(screen.getByTestId("delete-keep"));
+
+      expect(screen.queryByTestId("delete-identity")).toBeNull();
+      expect(screen.getByTestId("delete-arm")).toBeInTheDocument();
+      expect(deleteRun).not.toHaveBeenCalled();
+    });
+
+    it("surfaces a delete error rather than claiming it was removed", async () => {
+      const { client } = stubClient([RUNNING]);
+      vi.spyOn(client, "deleteRun").mockRejectedValue(new PathApiError(409, "is still running; cancel it before deleting"));
+      const onDeleted = vi.fn();
+      renderList(client, { onDeleted });
+
+      fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
+      fireEvent.click(await screen.findByTestId("delete-arm"));
+      fireEvent.click(screen.getByTestId("delete-confirm"));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("still running");
+      expect(onDeleted).not.toHaveBeenCalled();
     });
   });
 });
