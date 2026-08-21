@@ -1,6 +1,9 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 
 export interface AppShellProps {
+  /** Top of the left rail: workflow discovery + inline launch (#233). */
+  workflows: ReactNode;
+  /** Bottom of the left rail: the runs list with its status filter (#46). */
   runs: ReactNode;
   detail: ReactNode;
   nodeIo: ReactNode;
@@ -47,7 +50,7 @@ function loadWidths(): RailWidths {
  * The two rails are drag-resizable: grab the divider between panes to widen or narrow it. Widths
  * clamp to `[MIN_RAIL, MAX_RAIL]` and persist in `localStorage`, so the fluid centre never starves.
  */
-export function AppShell({ runs, detail, nodeIo }: AppShellProps) {
+export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
   const [widths, setWidths] = useState<RailWidths>(loadWidths);
   const panesRef = useRef<HTMLDivElement>(null);
   const dragRef = useRef<{ rail: "left" | "right"; startX: number; startWidth: number } | null>(
@@ -118,9 +121,7 @@ export function AppShell({ runs, detail, nodeIo }: AppShellProps) {
         <span className="brand-sub">viewer · read-only</span>
       </header>
       <div className="panes" ref={panesRef} style={style}>
-        <Pane id="pane-runs" title="Runs">
-          {runs}
-        </Pane>
+        <LeftRail workflows={workflows} runs={runs} />
         <Resizer
           rail="left"
           width={widths.left}
@@ -140,6 +141,113 @@ export function AppShell({ runs, detail, nodeIo }: AppShellProps) {
           {nodeIo}
         </Pane>
       </div>
+    </div>
+  );
+}
+
+/** Persisted height of the workflows panel (top of the left rail), in px. Runs take the rest. */
+const LEFT_SPLIT_KEY = "path.viewer.workflows-height";
+const DEFAULT_WORKFLOWS_HEIGHT = 220;
+const MIN_WORKFLOWS_HEIGHT = 80;
+/** Leave at least this much for the runs list so the workflows panel can never swallow the rail. */
+const MIN_RUNS_HEIGHT = 140;
+
+function loadWorkflowsHeight(): number {
+  if (typeof localStorage === "undefined") return DEFAULT_WORKFLOWS_HEIGHT;
+  const raw = Number(localStorage.getItem(LEFT_SPLIT_KEY));
+  return raw >= MIN_WORKFLOWS_HEIGHT ? raw : DEFAULT_WORKFLOWS_HEIGHT;
+}
+
+/**
+ * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below
+ * (the status-filtered run list). Two landmark panes, one drag-resizable divider between them — the
+ * vertical mirror of the column resizers, sharing the `.row-resizer` handle the run-detail pane uses.
+ * The workflows panel's height is drag-set and persisted; the runs list takes whatever is left, since
+ * it is the surface that keeps growing.
+ */
+function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }) {
+  const railRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number>(loadWorkflowsHeight);
+  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+
+  useEffect(() => {
+    if (typeof localStorage === "undefined") return;
+    try {
+      localStorage.setItem(LEFT_SPLIT_KEY, String(Math.round(height)));
+    } catch {
+      /* storage blocked — resize still works this session */
+    }
+  }, [height]);
+
+  const clamp = useCallback((px: number) => {
+    const cap = (railRef.current?.clientHeight ?? Infinity) - MIN_RUNS_HEIGHT;
+    return Math.max(MIN_WORKFLOWS_HEIGHT, Math.min(cap, px));
+  }, []);
+
+  const onPointerMove = useCallback(
+    (e: PointerEvent) => {
+      const drag = dragRef.current;
+      if (!drag) return;
+      setHeight(clamp(drag.startHeight + (e.clientY - drag.startY)));
+    },
+    [clamp],
+  );
+
+  const endDrag = useCallback(() => {
+    dragRef.current = null;
+    document.body.style.removeProperty("cursor");
+    document.body.style.removeProperty("user-select");
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", endDrag);
+  }, [onPointerMove]);
+
+  const startDrag = useCallback(
+    (e: React.PointerEvent) => {
+      e.preventDefault();
+      dragRef.current = { startY: e.clientY, startHeight: height };
+      document.body.style.cursor = "row-resize";
+      document.body.style.userSelect = "none";
+      window.addEventListener("pointermove", onPointerMove);
+      window.addEventListener("pointerup", endDrag);
+    },
+    [height, onPointerMove, endDrag],
+  );
+
+  const onKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      const step = e.shiftKey ? 32 : 8;
+      if (e.key === "ArrowUp") {
+        e.preventDefault();
+        setHeight((h) => clamp(h - step));
+      } else if (e.key === "ArrowDown") {
+        e.preventDefault();
+        setHeight((h) => clamp(h + step));
+      }
+    },
+    [clamp],
+  );
+
+  const style = { gridTemplateRows: `${height}px 8px 1fr` } as React.CSSProperties;
+
+  return (
+    <div className="left-rail" ref={railRef} style={style}>
+      <Pane id="pane-workflows" title="Workflows">
+        {workflows}
+      </Pane>
+      <div
+        className="row-resizer"
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label="Resize workflows panel"
+        aria-valuenow={Math.round(height)}
+        aria-valuemin={MIN_WORKFLOWS_HEIGHT}
+        tabIndex={0}
+        onPointerDown={startDrag}
+        onKeyDown={onKeyDown}
+      />
+      <Pane id="pane-runs" title="Runs">
+        {runs}
+      </Pane>
     </div>
   );
 }

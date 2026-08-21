@@ -123,19 +123,35 @@
   color: var(--status-failed-fg);
 }
 
-/* ---------- launch panel (#233) ---------- */
+/* The left rail is split top/bottom by AppShell: the Workflows pane's height is drag-set (inline
+   `grid-template-rows`), the Runs pane below takes the rest. Rows: workflows, an 8px resizer track,
+   runs. */
+.left-rail {
+  display: grid;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  background: var(--surface);
+}
 
-/* Sits above the runs list in the left pane; a hairline rule separates discovery from the run rail. */
-.launch-panel {
-  padding-bottom: 8px;
-  margin-bottom: 8px;
+/* The two rail panes are flush surfaces, so the divider needs a visible hairline of its own (the
+   `.row-resizer` only lights up on interaction). */
+#pane-workflows {
   border-bottom: 1px solid var(--border);
 }
 
+/* ---------- launch panel (#233) ---------- */
+
+/* Discovery + inline launch; its own pane (top of the left rail), so no separator of its own. */
+.launch-panel {
+  padding-bottom: 4px;
+}
+
+/* Just the workflow count now — the pane header carries the "Workflows" name — so push it right. */
 .launch-head {
   display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: flex-end;
   padding: 2px 4px 6px;
 }
 

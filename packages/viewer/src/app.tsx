@@ -49,17 +49,15 @@ export function App({ client }: { client: PathApiClient }) {
 
   return (
     <AppShell
+      workflows={<LaunchPanel client={client} onLaunched={handleLaunched} />}
       runs={
-        <>
-          <LaunchPanel client={client} onLaunched={handleLaunched} />
-          <RunsList
-            client={client}
-            selectedRootRunId={selectedRootRunId}
-            onSelectRootRun={selectRootRun}
-            onResumed={handleLaunched}
-            reloadNonce={runsReloadNonce}
-          />
-        </>
+        <RunsList
+          client={client}
+          selectedRootRunId={selectedRootRunId}
+          onSelectRootRun={selectRootRun}
+          onResumed={handleLaunched}
+          reloadNonce={runsReloadNonce}
+        />
       }
       detail={
         selectedRootRunId === null ? (

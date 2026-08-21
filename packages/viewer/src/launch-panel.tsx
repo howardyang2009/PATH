@@ -44,10 +44,11 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
 
   return (
     <div className="launch-panel">
-      <div className="launch-head">
-        <span className="field-label">Workflows</span>
-        {state.phase === "ready" && <span className="runs-count">{state.value.length}</span>}
-      </div>
+      {state.phase === "ready" && state.value.length > 0 && (
+        <div className="launch-head">
+          <span className="runs-count">{state.value.length}</span>
+        </div>
+      )}
 
       {state.phase === "loading" && <PaneLoading what="workflows" />}
       {state.phase === "error" && <PaneError what="workflows" message={state.message} />}
