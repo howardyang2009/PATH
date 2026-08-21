@@ -69,6 +69,41 @@ describe("RunDetail", () => {
     expect(head).toHaveTextContent("running");
   });
 
+  it("shows the root run's workflow name, id and file path", async () => {
+    const tree = {
+      root_run_id: ROOT,
+      status: "running",
+      output: null,
+      runs: [
+        record({
+          run_id: ROOT,
+          parent_run_id: null,
+          node_id: null,
+          status: "running",
+          started_at: "2026-07-25T10:00:00.000Z",
+          workflow_id: "018f3a2b-0000-7000-8000-000000000001",
+          workflow_name: "release-notes",
+          workflow_path: "release-notes.workflow.json",
+        }),
+      ],
+    };
+    renderDetail(stubClient({ tree }));
+
+    const head = await screen.findByTestId("run-head");
+    expect(head.querySelector(".run-workflow-name")).toHaveTextContent("release-notes");
+    expect(head.querySelector(".run-workflow-id")).toHaveTextContent("018f3a2b-0000-7000-8000-000000000001");
+    expect(head.querySelector(".run-workflow-path")).toHaveTextContent("release-notes.workflow.json");
+  });
+
+  it("falls back to — for workflow fields the root run has no value for", async () => {
+    renderDetail(stubClient({ tree: TREE })); // TREE's root carries no workflow_* fields
+
+    const head = await screen.findByTestId("run-head");
+    expect(head.querySelector(".run-workflow-name")).toHaveTextContent("—");
+    expect(head.querySelector(".run-workflow-id")).toHaveTextContent("—");
+    expect(head.querySelector(".run-workflow-path")).toHaveTextContent("—");
+  });
+
   it("nests child runs under their parent rather than listing them flat", async () => {
     renderDetail(stubClient({ tree: TREE }));
 

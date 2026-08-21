@@ -51,6 +51,9 @@ async function getRun(rootRunId: string): Promise<Response> {
 
 interface RootRunSummary {
   run_id: string;
+  workflow_name: string | null;
+  workflow_id: string | null;
+  workflow_path: string | null;
   status: string;
   started_at: string | null;
   finished_at: string | null;
@@ -91,6 +94,10 @@ async function resumeRun(rootRunId: string, body?: unknown): Promise<Response> {
     method: "POST",
     ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   });
+}
+
+async function deleteRun(rootRunId: string, query = ""): Promise<Response> {
+  return fetch(`${handle.url}/v0/runs/${rootRunId}${query}`, { method: "DELETE" });
 }
 
 /**
@@ -357,8 +364,18 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const body = (await res.json()) as { runs: RootRunSummary[] };
     // Most-recent-first, and the summary shape only (no tree, no output).
     expect(body.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
-    expect(Object.keys(body.runs[0]!).sort()).toEqual(["finished_at", "run_id", "started_at", "status"]);
+    expect(Object.keys(body.runs[0]!).sort()).toEqual([
+      "finished_at",
+      "run_id",
+      "started_at",
+      "status",
+      "workflow_id",
+      "workflow_name",
+      "workflow_path",
+    ]);
     expect(body.runs[0]!.status).toBe("succeeded");
+    expect(body.runs[0]!.workflow_name).toBe("two-binary-steps");
+    expect(body.runs[0]!.workflow_path).toBe("two-binary-steps.workflow.json");
     expect(body.runs[0]!.started_at).toBeTruthy();
 
     const limited = (await (await listRuns("?limit=1")).json()) as { runs: RootRunSummary[] };
@@ -381,6 +398,62 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
     const body = (await res.json()) as { error: { message: string } };
     expect(body.error.message).toContain("00000000-0000-0000-0000-000000000000");
+  });
+});
+
+describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () => {
+  it("deletes a finished run's rows and blobs, then 404s a re-read", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    const tree = await pollUntilTerminal(root_run_id);
+    expect(tree.status).toBe("succeeded");
+    const shout = tree.runs.find((r) => r.node_name === "shout")!;
+    // The blob is there before the delete…
+    expect((await getBlob(root_run_id, shout.run_id, "output")).status).toBe(200);
+
+    const res = await deleteRun(root_run_id);
+    expect(res.status).toBe(200);
+    expect((await res.json()) as { root_run_id: string }).toEqual({ root_run_id });
+
+    // …and both stores are gone after it: the run is unknown, its blob no longer served, the list empty.
+    expect((await getRun(root_run_id)).status).toBe(404);
+    expect((await getBlob(root_run_id, shout.run_id, "output")).status).toBe(404);
+    const listed = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+    expect(listed.runs).toHaveLength(0);
+  });
+
+  it("404s deleting an unknown run", async () => {
+    const res = await deleteRun("00000000-0000-0000-0000-000000000000");
+    expect(res.status).toBe(404);
+  });
+
+  it("409s deleting a run still in flight (cancel it first)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "slow-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    // The run is running — a delete must refuse rather than pull rows out from under it.
+    const res = await deleteRun(root_run_id);
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("still");
+    // It survived the refused delete.
+    await pollUntilTerminal(root_run_id);
+    expect((await getRun(root_run_id)).status).toBe(200);
+  });
+
+  it("403s a cross-origin delete", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+    const res = await fetch(`${handle.url}/v0/runs/${root_run_id}`, {
+      method: "DELETE",
+      headers: { "Sec-Fetch-Site": "cross-site" },
+    });
+    expect(res.status).toBe(403);
+    // The gate ran before any deletion — the run is still there.
+    expect((await getRun(root_run_id)).status).toBe(200);
   });
 });
 

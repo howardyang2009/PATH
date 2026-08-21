@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
+import { DeleteButton } from "./delete-button.js";
 import { ResumeButton } from "./resume-button.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
@@ -39,6 +40,11 @@ export interface RunsListProps {
    */
   onResumed: (successorRootRunId: string) => void;
   /**
+   * Called after a run is deleted (its row's Delete affordance), so the app can drop the selection if
+   * it was watching that run and force an immediate re-read — the delete's mirror of {@link onResumed}.
+   */
+  onDeleted: (rootRunId: string) => void;
+  /**
    * Bumped by the app after an inline launch (#233) to force an immediate re-read, so the run just
    * started appears in the rail now rather than at the next {@link RUNS_REFRESH_MS} tick — the same
    * one-shot read, triggered a beat early.
@@ -51,14 +57,21 @@ export interface RunsListProps {
  * three-pane console (#44 Variant A). Read-only — no launch or edit affordances (map #40) — and
  * formatting-only: `@path/client-core` owns the wire shapes, this renders them.
  */
-export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed, reloadNonce }: RunsListProps) {
+export function RunsList({
+  client,
+  selectedRootRunId,
+  onSelectRootRun,
+  onResumed,
+  onDeleted,
+  reloadNonce,
+}: RunsListProps) {
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
-  // Which row's Resume form is expanded, or none — a single-open toggle exactly like the launch
-  // form's `expanded` (launch-panel.tsx): clicking a row opens its form, clicking it again closes it,
-  // clicking another row moves the expand there. Independent of `selectedRootRunId`, so collapsing
-  // the form never stops the centre pane watching the run.
-  const [resumeOpenFor, setResumeOpenFor] = useState<string | null>(null);
+  // Which row's action panel is expanded, or none — a single-open toggle exactly like the launch
+  // form's `expanded` (launch-panel.tsx): clicking a row opens its panel, clicking it again closes
+  // it, clicking another row moves the expand there. Independent of `selectedRootRunId`, so
+  // collapsing the panel never stops the centre pane watching the run.
+  const [openFor, setOpenFor] = useState<string | null>(null);
 
   // The current filter, read by the nonce effect without making it a dependency: a launch re-reads
   // the same window the pane is showing, and should not itself be a reason to re-read on filter change.
@@ -154,12 +167,12 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The Resume affordance expands under its own row — the rail's mirror of the launch form
-              // under a workflow row (#233). Only a finished-but-unsuccessful run offers it, and only
-              // when that row's expand is open. Rendered as a sibling of the row button, never inside
-              // it (a button cannot nest the Resume form's own buttons).
+              // Every row expands an action panel under itself — the rail's mirror of the launch form
+              // under a workflow row (#233). The panel always offers Delete; a finished-but-unsuccessful
+              // run also offers Resume. Rendered as a sibling of the row button, never inside it (a
+              // button cannot nest the panel's own buttons).
               const canResume = run.status === "cancelled" || run.status === "failed";
-              const resumeOpen = canResume && resumeOpenFor === run.run_id;
+              const open = openFor === run.run_id;
               return (
                 <li key={run.run_id}>
                   <button
@@ -169,27 +182,41 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed
                     data-run-id={run.run_id}
                     data-testid={`run-row-${run.run_id}`}
                     aria-current={run.run_id === selectedRootRunId ? "true" : undefined}
+                    aria-expanded={open}
                     onClick={() => {
                       onSelectRootRun(run.run_id);
-                      // Toggle this row's Resume expand, single-open, like the launch form.
-                      setResumeOpenFor((current) => (current === run.run_id ? null : run.run_id));
+                      // Toggle this row's action panel, single-open, like the launch form.
+                      setOpenFor((current) => (current === run.run_id ? null : run.run_id));
                     }}
                   >
-                    <span className="run-id">{run.run_id}</span>
+                    <span className="run-workflow">{run.workflow_name ?? "—"}</span>
                     <StatusPill status={run.status} />
+                    <span className="run-id">{run.run_id}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
-                  {resumeOpen && (
-                    <ResumeButton
-                      client={client}
-                      rootRunId={run.run_id}
-                      onResumed={(successorRootRunId) => {
-                        // Collapse on success, as the launch form does on launch — then hand the
-                        // successor to the app to select and watch.
-                        setResumeOpenFor(null);
-                        onResumed(successorRootRunId);
-                      }}
-                    />
+                  {open && (
+                    <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
+                      {canResume && (
+                        <ResumeButton
+                          client={client}
+                          rootRunId={run.run_id}
+                          onResumed={(successorRootRunId) => {
+                            // Collapse on success, as the launch form does on launch — then hand the
+                            // successor to the app to select and watch.
+                            setOpenFor(null);
+                            onResumed(successorRootRunId);
+                          }}
+                        />
+                      )}
+                      <DeleteButton
+                        client={client}
+                        run={run}
+                        onDeleted={(deletedRootRunId) => {
+                          setOpenFor(null);
+                          onDeleted(deletedRootRunId);
+                        }}
+                      />
+                    </div>
                   )}
                 </li>
               );

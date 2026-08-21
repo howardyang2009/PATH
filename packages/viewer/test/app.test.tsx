@@ -33,6 +33,8 @@ describe("App", () => {
   it("frames the three panes of the pinned console layout", async () => {
     render(<App client={stubClient()} />);
 
+    // The left rail is split into two named panes; the centre and right complete the console.
+    expect(screen.getByRole("region", { name: "Workflows" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Runs" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Run detail" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Node I/O" })).toBeInTheDocument();

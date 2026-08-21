@@ -15,6 +15,9 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     finishedAt: null,
     inputRef: null,
     outputRef: null,
+    workflowId: null,
+    workflowName: null,
+    workflowPath: null,
   };
 }
 

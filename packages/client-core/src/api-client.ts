@@ -127,6 +127,20 @@ export class PathApiClient {
   }
 
   /**
+   * `DELETE /v0/runs/:root_run_id` — permanently remove a root run from both stores (its `path.db`
+   * rows and its blob tree). Unlike `cancelRun`, this destroys the audit trail; the caller is
+   * expected to confirm first. `force` overrides the server's live-successor guard (a later run that
+   * resumed from this one), mirroring `path runs rm --force`; omitted, a blocked delete arrives as a
+   * `409` `PathApiError`. Other failures: `404` (unknown or already-deleted id) and `409` (the run is
+   * still running — cancel it first). The `200` body only echoes the id the caller passed, so nothing
+   * is read back.
+   */
+  async deleteRun(rootRunId: string, options: { force?: boolean } = {}): Promise<void> {
+    const qs = options.force ? "?force=true" : "";
+    await this.del(`/v0/runs/${encodeURIComponent(rootRunId)}${qs}`);
+  }
+
+  /**
    * `POST /v0/runs/:root_run_id/resume` — resume a `cancelled`/`failed` root run as a **successor**
    * (server-api-v0.md §4.3). The server recovers the workflow file from the predecessor's row; the
    * one thing the caller may pass is an optional `config` **override** applied to the steps that
@@ -219,6 +233,20 @@ export class PathApiClient {
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);
     return JSON.parse(text) as T;
+  }
+
+  /**
+   * The `DELETE` sibling of `post`: same envelope decoding on a non-2xx, no request body, and the
+   * 2xx reply is not parsed (`deleteRun`'s caller already knows the id). Its own helper, so reading
+   * it tells you the request is a delete without tracing a method flag.
+   */
+  private async del(path: string): Promise<void> {
+    const res = await this.fetch(this.url(path), {
+      method: "DELETE",
+      headers: { Accept: "application/json" },
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
   }
 
   private async postJson<T>(path: string, body: unknown): Promise<T> {

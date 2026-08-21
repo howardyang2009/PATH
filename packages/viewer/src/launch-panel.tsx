@@ -23,9 +23,39 @@ export interface LaunchPanelProps {
  * live feed behind it, and workflow files change on an author's timescale, not a run's — a reload
  * re-scans. The runs list next to it owns the periodic re-read.
  */
+/** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or all. */
+type WorkflowFilter = "all" | "root" | "nested" | "invalid";
+
+/** The filter options in display order — value drives {@link matchesFilter}, label is the visible text. */
+const WORKFLOW_FILTERS: readonly { value: WorkflowFilter; label: string }[] = [
+  { value: "all", label: "all" },
+  { value: "root", label: "root" },
+  { value: "nested", label: "nested" },
+  { value: "invalid", label: "invalid" },
+];
+
+/**
+ * Client-side kind filter (the workflow list is a single one-shot read, not a live feed, so there is
+ * nothing to re-query): `root`/`nested` split the valid files on `is_root`; `invalid` is the files
+ * that failed to load (`is_root` is `null` there, so they are never root or nested).
+ */
+function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boolean {
+  switch (filter) {
+    case "all":
+      return true;
+    case "root":
+      return workflow.valid && workflow.is_root === true;
+    case "nested":
+      return workflow.valid && workflow.is_root === false;
+    case "invalid":
+      return !workflow.valid;
+  }
+}
+
 export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const [state, setState] = useState<Load<WorkflowSummary[]>>({ phase: "loading" });
   const [expanded, setExpanded] = useState<string | null>(null);
+  const [filter, setFilter] = useState<WorkflowFilter>("all");
 
   useEffect(() => {
     let cancelled = false;
@@ -42,21 +72,42 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
     };
   }, [client]);
 
+  const visible = state.phase === "ready" ? state.value.filter((w) => matchesFilter(w, filter)) : [];
+
   return (
     <div className="launch-panel">
-      <div className="launch-head">
-        <span className="field-label">Workflows</span>
-        {state.phase === "ready" && <span className="runs-count">{state.value.length}</span>}
-      </div>
+      {state.phase === "ready" && (
+        <div className="runs-toolbar">
+          <label className="field-label" htmlFor="workflows-kind-filter">
+            Kind
+          </label>
+          <select
+            id="workflows-kind-filter"
+            className="field"
+            value={filter}
+            onChange={(event) => setFilter(event.target.value as WorkflowFilter)}
+          >
+            {WORKFLOW_FILTERS.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+          <span className="runs-count">{visible.length}</span>
+        </div>
+      )}
 
       {state.phase === "loading" && <PaneLoading what="workflows" />}
       {state.phase === "error" && <PaneError what="workflows" message={state.message} />}
       {state.phase === "ready" &&
         (state.value.length === 0 ? (
+          // Two empty states, as in the runs list: "none at all" vs "none of this kind".
           <p className="pane-note">No workflows found.</p>
+        ) : visible.length === 0 ? (
+          <p className="pane-note">No {filter} workflows.</p>
         ) : (
           <ul className="workflows">
-            {state.value.map((workflow) => (
+            {visible.map((workflow) => (
               <li key={workflow.relative_path}>
                 <WorkflowRow
                   workflow={workflow}
@@ -67,17 +118,27 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
                     )
                   }
                 />
-                {expanded === workflow.relative_path && (
-                  <LaunchForm
-                    key={workflow.relative_path}
-                    client={client}
-                    workflow={workflow}
-                    onLaunched={(rootRunId) => {
-                      setExpanded(null);
-                      onLaunched(rootRunId);
-                    }}
-                  />
-                )}
+                {expanded === workflow.relative_path &&
+                  (workflow.valid ? (
+                    <LaunchForm
+                      key={workflow.relative_path}
+                      client={client}
+                      workflow={workflow}
+                      onLaunched={(rootRunId) => {
+                        setExpanded(null);
+                        onLaunched(rootRunId);
+                      }}
+                    />
+                  ) : (
+                    // The invalid file's load error, revealed only while its row is expanded — the
+                    // triage detail, off the row until asked for.
+                    <p
+                      className="workflow-error-detail"
+                      data-testid={`workflow-error-${workflow.relative_path}`}
+                    >
+                      {workflow.error?.message ?? "This workflow could not be loaded."}
+                    </p>
+                  ))}
               </li>
             ))}
           </ul>
@@ -104,14 +165,21 @@ function WorkflowRow({
   );
 
   // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
-  // same load) — so it is shown for triage, with its error, but is not an actionable control.
+  // same load), so it opens no launch form — but it is still a toggle: clicking it expands its load
+  // error below the row (rendered by the caller), the same disclosure the launch form uses, rather
+  // than printing the error inline on every row.
   if (!workflow.valid) {
     return (
-      <div className="workflow-row workflow-row--invalid" data-testid={`workflow-row-${workflow.relative_path}`}>
+      <button
+        type="button"
+        className="workflow-row workflow-row--invalid"
+        data-testid={`workflow-row-${workflow.relative_path}`}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
         <span className="workflow-label">{label}</span>
         <RootTag workflow={workflow} />
-        {workflow.error && <span className="workflow-error">{workflow.error.message}</span>}
-      </div>
+      </button>
     );
   }
 

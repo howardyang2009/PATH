@@ -17,6 +17,9 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
     finishedAt: null,
     inputRef: null,
     outputRef: null,
+    workflowId: null,
+    workflowName: null,
+    workflowPath: null,
     ...overrides,
   };
 }

@@ -38,6 +38,9 @@ export interface RunNodeState {
   finishedAt: string | null;
   inputRef: string | null;
   outputRef: string | null;
+  workflowId: string | null;
+  workflowName: string | null;
+  workflowPath: string | null;
 }
 
 /** The immutable snapshot a view renders. Every mutating call produces a fresh object. */
@@ -69,6 +72,9 @@ function nodeFromRecord(row: WireRunRecord): RunNodeState {
     finishedAt: row.finished_at,
     inputRef: row.input_ref,
     outputRef: row.output_ref,
+    workflowId: row.workflow_id,
+    workflowName: row.workflow_name,
+    workflowPath: row.workflow_path,
   };
 }
 
@@ -152,6 +158,9 @@ export class RunViewModel {
       finishedAt: null,
       inputRef: null,
       outputRef: null,
+      workflowId: null,
+      workflowName: null,
+      workflowPath: null,
     };
 
     if (event.type === "step-started") {
