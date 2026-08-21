@@ -60,13 +60,13 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
     <div className="delete-form" data-testid="delete-form">
       <p className="delete-warning">Permanently delete this run's data from the database and blobs? This cannot be undone.</p>
       <dl className="delete-identity" data-testid="delete-identity">
-        <dt>Run id</dt>
+        <dt>run id</dt>
         <dd className="run-id">{run.run_id}</dd>
-        <dt>Workflow name</dt>
+        <dt>workflow name</dt>
         <dd>{run.workflow_name ?? "—"}</dd>
-        <dt>Workflow id</dt>
+        <dt>workflow id</dt>
         <dd className="run-workflow-id">{run.workflow_id ?? "—"}</dd>
-        <dt>Workflow file</dt>
+        <dt>workflow file</dt>
         <dd className="run-workflow-path">{run.workflow_path ?? "—"}</dd>
       </dl>
 
