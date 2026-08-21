@@ -22,6 +22,7 @@ function stubClient(runs: RootRunSummary[]): { client: PathApiClient; urls: stri
 
 const SUCCEEDED: RootRunSummary = {
   run_id: "run_alpha",
+  workflow_name: "Build Report",
   status: "succeeded",
   started_at: "2026-07-25T09:14:05.000Z",
   finished_at: "2026-07-25T09:14:31.000Z",
@@ -29,6 +30,7 @@ const SUCCEEDED: RootRunSummary = {
 
 const RUNNING: RootRunSummary = {
   run_id: "run_beta",
+  workflow_name: "Nightly Sync",
   status: "running",
   started_at: "2026-07-25T09:20:00.000Z",
   finished_at: null,
@@ -36,6 +38,7 @@ const RUNNING: RootRunSummary = {
 
 const CANCELLED: RootRunSummary = {
   run_id: "run_gamma",
+  workflow_name: null,
   status: "cancelled",
   started_at: "2026-07-25T09:25:00.000Z",
   finished_at: "2026-07-25T09:25:40.000Z",
@@ -43,6 +46,7 @@ const CANCELLED: RootRunSummary = {
 
 const FAILED: RootRunSummary = {
   run_id: "run_delta",
+  workflow_name: "Deploy Pipeline",
   status: "failed",
   started_at: "2026-07-25T09:30:00.000Z",
   finished_at: "2026-07-25T09:30:12.000Z",
@@ -75,6 +79,19 @@ describe("RunsList", () => {
 
     const rows = await screen.findAllByRole("button", { name: /run_/ });
     expect(rows.map((row) => row.getAttribute("data-run-id"))).toEqual(["run_beta", "run_alpha"]);
+  });
+
+  it("shows the workflow name on each row, falling back to — when the run has none", async () => {
+    const { client } = stubClient([RUNNING, CANCELLED]);
+
+    renderList(client);
+    await screen.findByTestId("run-row-run_beta");
+
+    expect(screen.getByTestId("run-row-run_beta").querySelector(".run-workflow")).toHaveTextContent(
+      "Nightly Sync",
+    );
+    // CANCELLED has workflow_name: null — the em dash placeholder stands in.
+    expect(screen.getByTestId("run-row-run_gamma").querySelector(".run-workflow")).toHaveTextContent("—");
   });
 
   it("shows status as color + glyph, never hue alone", async () => {

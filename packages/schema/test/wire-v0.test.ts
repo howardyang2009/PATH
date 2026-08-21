@@ -144,9 +144,10 @@ describe("the v0 wire record", () => {
 });
 
 describe("toRootRunSummary", () => {
-  it("projects the four fields GET /v0/runs returns, and no others", () => {
+  it("projects the five fields GET /v0/runs returns, and no others", () => {
     expect(toRootRunSummary(record)).toEqual({
       run_id: "run-1",
+      workflow_name: "release-notes",
       status: "succeeded",
       started_at: "2026-07-27T10:00:00.000Z",
       finished_at: "2026-07-27T10:00:01.000Z",

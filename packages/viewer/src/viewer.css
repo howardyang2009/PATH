@@ -422,6 +422,18 @@ button.workflow-row:focus-visible {
   outline-offset: 1px;
 }
 
+/* The workflow name is the row's primary line — what an operator scans for. Shares row 1 with the
+   status pill; truncates in the 300px rail rather than wrapping so row height stays uniform. `—`
+   stands in when the archived record has no name. */
+.run-workflow {
+  min-width: 0;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Run ids are UUIDs and the pane is a 300px rail: truncate rather than wrap, so row height stays
    uniform and the list stays scannable. The leading characters are the distinguishing ones; the
    full id is on the row's `title` and in the detail pane. */
@@ -432,6 +444,14 @@ button.workflow-row:focus-visible {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* In the list row the id is secondary to the workflow name: demoted to its own muted line below it,
+   smaller than the name it sits under. (The detail-pane `.run-id` rules are unaffected.) */
+.run-row .run-id {
+  grid-column: 1 / -1;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
 }
 
 /* The detail pane has room for the whole id. */
@@ -568,14 +588,42 @@ button.workflow-row:focus-visible {
   padding: 2px 4px 10px;
 }
 
-.run-head .run-id {
+/* The run's workflow name is the header's title line — what the run *is*, shown before its id. */
+.run-workflow-name {
   font-size: var(--fs-base);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
-.run-meta {
+/* The identity block under the title: a label→value grid, one row each for run id, workflow id,
+   workflow file, and start time. Labels are muted; ids and the file path are mono and wrap rather
+   than truncate — the pane has the width the rail does not. */
+.run-meta-grid {
   flex-basis: 100%;
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 2px 10px;
+  margin: 0;
   font-size: var(--fs-xs);
+}
+
+.run-meta-grid dt {
   color: var(--text-muted);
+}
+
+.run-meta-grid dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.run-meta-grid .run-id,
+.run-meta-grid .run-workflow-id,
+.run-meta-grid .run-workflow-path {
+  font-family: var(--font-mono);
+  /* Undo the list-row `.run-id` truncation: the detail pane has room to wrap the full value. */
+  white-space: normal;
+  overflow: visible;
 }
 
 /* The console's one write affordance (#56): pushed clear of the id/status pill so it never reads as

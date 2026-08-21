@@ -175,8 +175,9 @@ export function RunsList({ client, selectedRootRunId, onSelectRootRun, onResumed
                       setResumeOpenFor((current) => (current === run.run_id ? null : run.run_id));
                     }}
                   >
-                    <span className="run-id">{run.run_id}</span>
+                    <span className="run-workflow">{run.workflow_name ?? "—"}</span>
                     <StatusPill status={run.status} />
+                    <span className="run-id">{run.run_id}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
                   {resumeOpen && (

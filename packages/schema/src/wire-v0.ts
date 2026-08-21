@@ -52,6 +52,7 @@ export interface RunTreeResponse {
 /** One entry of `GET /v0/runs` — the root-run summary shape only (server-api-v0.md §3). */
 export interface RootRunSummary {
   run_id: string;
+  workflow_name: string | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
@@ -141,6 +142,7 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
 export function toRootRunSummary(row: RunRecord): RootRunSummary {
   return {
     run_id: row.runId,
+    workflow_name: row.workflowName,
     status: row.status,
     started_at: row.startedAt,
     finished_at: row.finishedAt,

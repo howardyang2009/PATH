@@ -52,6 +52,19 @@ describe("RunViewModel", () => {
     expect(state.narrative).toHaveLength(0);
   });
 
+  it("carries the root run's workflow identity through hydrate", () => {
+    const model = new RunViewModel(ROOT);
+    const t = tree("running");
+    t.runs[0]!.workflow_id = "018f3a2b-0000-7000-8000-000000000001";
+    t.runs[0]!.workflow_name = "release-notes";
+    t.runs[0]!.workflow_path = "release-notes.workflow.json";
+    model.hydrate(t);
+    const root = model.getState().runs.get(ROOT);
+    expect(root?.workflowId).toBe("018f3a2b-0000-7000-8000-000000000001");
+    expect(root?.workflowName).toBe("release-notes");
+    expect(root?.workflowPath).toBe("release-notes.workflow.json");
+  });
+
   it("folds step lifecycle events into per-run status and the root status", () => {
     const model = new RunViewModel(ROOT);
     model.applyEvent(stepStarted(1, ROOT, null));

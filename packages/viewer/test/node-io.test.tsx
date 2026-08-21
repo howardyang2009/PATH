@@ -21,6 +21,9 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     finishedAt: "2026-07-25T10:00:02.000Z",
     inputRef: `runs/${ROOT}/${RUN}/input.json`,
     outputRef: `runs/${ROOT}/${RUN}/output.json`,
+    workflowId: null,
+    workflowName: null,
+    workflowPath: null,
     ...overrides,
   };
 }

@@ -51,6 +51,7 @@ async function getRun(rootRunId: string): Promise<Response> {
 
 interface RootRunSummary {
   run_id: string;
+  workflow_name: string | null;
   status: string;
   started_at: string | null;
   finished_at: string | null;
@@ -357,8 +358,15 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const body = (await res.json()) as { runs: RootRunSummary[] };
     // Most-recent-first, and the summary shape only (no tree, no output).
     expect(body.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
-    expect(Object.keys(body.runs[0]!).sort()).toEqual(["finished_at", "run_id", "started_at", "status"]);
+    expect(Object.keys(body.runs[0]!).sort()).toEqual([
+      "finished_at",
+      "run_id",
+      "started_at",
+      "status",
+      "workflow_name",
+    ]);
     expect(body.runs[0]!.status).toBe("succeeded");
+    expect(body.runs[0]!.workflow_name).toBe("two-binary-steps");
     expect(body.runs[0]!.started_at).toBeTruthy();
 
     const limited = (await (await listRuns("?limit=1")).json()) as { runs: RootRunSummary[] };
