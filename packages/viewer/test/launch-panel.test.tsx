@@ -77,7 +77,7 @@ describe("LaunchPanel", () => {
     expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toHaveTextContent("nested");
   });
 
-  it("filters the list by kind: root / nested / fail / all", async () => {
+  it("filters the list by kind: root / nested / invalid / all", async () => {
     const { client } = stubClient({ workflows: [ROOT, NESTED, BROKEN] });
     mount(client);
 
@@ -95,8 +95,8 @@ describe("LaunchPanel", () => {
     expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-row-release-notes.workflow.json")).toBeNull();
 
-    // fail — only the invalid file.
-    fireEvent.change(filter, { target: { value: "fail" } });
+    // invalid — only the invalid file.
+    fireEvent.change(filter, { target: { value: "invalid" } });
     expect(screen.getByTestId("workflow-row-broken.workflow.json")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-row-release-notes.workflow.json")).toBeNull();
 
@@ -112,8 +112,8 @@ describe("LaunchPanel", () => {
     mount(client);
 
     await screen.findByTestId("workflow-row-release-notes.workflow.json");
-    fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "fail" } });
-    expect(screen.getByText("No fail workflows.")).toBeInTheDocument();
+    fireEvent.change(screen.getByLabelText("Kind"), { target: { value: "invalid" } });
+    expect(screen.getByText("No invalid workflows.")).toBeInTheDocument();
   });
 
   it("keeps an invalid workflow's error off the row until the row is expanded, and offers no launch", async () => {

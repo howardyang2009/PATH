@@ -24,20 +24,20 @@ export interface LaunchPanelProps {
  * re-scans. The runs list next to it owns the periodic re-read.
  */
 /** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or all. */
-type WorkflowFilter = "all" | "root" | "nested" | "fail";
+type WorkflowFilter = "all" | "root" | "nested" | "invalid";
 
 /** The filter options in display order — value drives {@link matchesFilter}, label is the visible text. */
 const WORKFLOW_FILTERS: readonly { value: WorkflowFilter; label: string }[] = [
   { value: "all", label: "all" },
   { value: "root", label: "root" },
   { value: "nested", label: "nested" },
-  { value: "fail", label: "fail" },
+  { value: "invalid", label: "invalid" },
 ];
 
 /**
  * Client-side kind filter (the workflow list is a single one-shot read, not a live feed, so there is
- * nothing to re-query): `root`/`nested` split the valid files on `is_root`; `fail` is the invalid
- * ones (`is_root` is `null` there, so it is never root or nested).
+ * nothing to re-query): `root`/`nested` split the valid files on `is_root`; `invalid` is the files
+ * that failed to load (`is_root` is `null` there, so they are never root or nested).
  */
 function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boolean {
   switch (filter) {
@@ -47,7 +47,7 @@ function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boole
       return workflow.valid && workflow.is_root === true;
     case "nested":
       return workflow.valid && workflow.is_root === false;
-    case "fail":
+    case "invalid":
       return !workflow.valid;
   }
 }
