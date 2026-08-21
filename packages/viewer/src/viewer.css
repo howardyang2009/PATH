@@ -142,17 +142,10 @@
 
 /* ---------- launch panel (#233) ---------- */
 
-/* Discovery + inline launch; its own pane (top of the left rail), so no separator of its own. */
+/* Discovery + inline launch; its own pane (top of the left rail), so no separator of its own. It
+   reuses the runs list's `.runs-toolbar` for its kind filter, so the two rail panes read alike. */
 .launch-panel {
   padding-bottom: 4px;
-}
-
-/* Just the workflow count now — the pane header carries the "Workflows" name — so push it right. */
-.launch-head {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  padding: 2px 4px 6px;
 }
 
 .workflows {
