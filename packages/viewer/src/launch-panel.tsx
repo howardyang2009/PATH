@@ -118,17 +118,27 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
                     )
                   }
                 />
-                {expanded === workflow.relative_path && (
-                  <LaunchForm
-                    key={workflow.relative_path}
-                    client={client}
-                    workflow={workflow}
-                    onLaunched={(rootRunId) => {
-                      setExpanded(null);
-                      onLaunched(rootRunId);
-                    }}
-                  />
-                )}
+                {expanded === workflow.relative_path &&
+                  (workflow.valid ? (
+                    <LaunchForm
+                      key={workflow.relative_path}
+                      client={client}
+                      workflow={workflow}
+                      onLaunched={(rootRunId) => {
+                        setExpanded(null);
+                        onLaunched(rootRunId);
+                      }}
+                    />
+                  ) : (
+                    // The invalid file's load error, revealed only while its row is expanded — the
+                    // triage detail, off the row until asked for.
+                    <p
+                      className="workflow-error-detail"
+                      data-testid={`workflow-error-${workflow.relative_path}`}
+                    >
+                      {workflow.error?.message ?? "This workflow could not be loaded."}
+                    </p>
+                  ))}
               </li>
             ))}
           </ul>
@@ -155,14 +165,21 @@ function WorkflowRow({
   );
 
   // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
-  // same load) — so it is shown for triage, with its error, but is not an actionable control.
+  // same load), so it opens no launch form — but it is still a toggle: clicking it expands its load
+  // error below the row (rendered by the caller), the same disclosure the launch form uses, rather
+  // than printing the error inline on every row.
   if (!workflow.valid) {
     return (
-      <div className="workflow-row workflow-row--invalid" data-testid={`workflow-row-${workflow.relative_path}`}>
+      <button
+        type="button"
+        className="workflow-row workflow-row--invalid"
+        data-testid={`workflow-row-${workflow.relative_path}`}
+        aria-expanded={expanded}
+        onClick={onToggle}
+      >
         <span className="workflow-label">{label}</span>
         <RootTag workflow={workflow} />
-        {workflow.error && <span className="workflow-error">{workflow.error.message}</span>}
-      </div>
+      </button>
     );
   }
 

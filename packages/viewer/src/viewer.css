@@ -185,10 +185,9 @@ button.workflow-row:focus-visible {
   outline-offset: 1px;
 }
 
-/* An unlaunchable file: not a control, so it reads dimmer and lets its error wrap onto its own line. */
+/* An unlaunchable file: dimmer than a launchable row, but still a toggle for its error detail. */
 .workflow-row--invalid {
   grid-template-columns: 1fr auto;
-  cursor: default;
   opacity: 0.75;
 }
 
@@ -214,12 +213,17 @@ button.workflow-row:focus-visible {
   white-space: nowrap;
 }
 
-.workflow-error {
-  grid-column: 1 / -1;
-  margin-top: 2px;
+/* The invalid file's load error, expanded under its row like the launch form — a bordered card
+   (mirroring `.launch-form`) so the disclosure reads the same for both row kinds. */
+.workflow-error-detail {
+  margin: 2px 0 6px;
+  padding: 8px;
   font-family: var(--font-mono);
   font-size: var(--fs-xs);
   color: var(--status-failed-fg);
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--status-failed-fg) 40%, var(--border));
+  border-radius: 8px;
   overflow-wrap: anywhere;
 }
 

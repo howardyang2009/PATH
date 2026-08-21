@@ -116,13 +116,24 @@ describe("LaunchPanel", () => {
     expect(screen.getByText("No fail workflows.")).toBeInTheDocument();
   });
 
-  it("shows an invalid workflow with its error and offers no launch for it", async () => {
+  it("keeps an invalid workflow's error off the row until the row is expanded, and offers no launch", async () => {
     const { client } = stubClient({ workflows: [BROKEN] });
     mount(client);
 
     const row = await screen.findByTestId("workflow-row-broken.workflow.json");
-    expect(row).toHaveTextContent(/unexpected token/);
-    expect(row.querySelector("button")).toBeNull();
+    // The error is not printed inline on the row.
+    expect(row).not.toHaveTextContent(/unexpected token/);
+    expect(screen.queryByTestId("workflow-error-broken.workflow.json")).toBeNull();
+
+    // Clicking the row expands its error detail; clicking again collapses it.
+    fireEvent.click(row);
+    const detail = screen.getByTestId("workflow-error-broken.workflow.json");
+    expect(detail).toHaveTextContent(/unexpected token/);
+    // Still not launchable — an invalid file opens its error, never a launch form.
+    expect(screen.queryByTestId("launch-form-broken.workflow.json")).toBeNull();
+
+    fireEvent.click(row);
+    expect(screen.queryByTestId("workflow-error-broken.workflow.json")).toBeNull();
   });
 
   it("expands an inline launch form under a clicked workflow, input prefilled with {}", async () => {
