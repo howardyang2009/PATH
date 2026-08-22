@@ -123,7 +123,9 @@ The invariants implementers must not break:
   (ADR 0006). `-C <dir>` reads the store under `<dir>` (default: the working directory) — the read
   side of the same store the `run` `-C` writes.
 - `path runs rm <run-id>` / `path runs prune` — delete run db rows and the run directory
-  **together** (§6).
+  **together** (§6). `prune` is project-wide, so it confirms before deleting: it lists the root runs
+  it would remove and requires an interactive `yes`, or `--yes`/`-y` to skip the prompt for scripts
+  (#166).
 
 Operator config carries the same `$secret`/`$env` wrappers a file's config does; what that means on
 the command line is §8.3's, not this section's.

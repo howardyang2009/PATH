@@ -141,7 +141,9 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
 
-    const { stdout } = await runCli(["runs", "prune"], projectDir);
+    // `--yes` skips the confirmation prompt (#166) — a spawned subprocess has no interactive stdin,
+    // so a bare `prune` would abort rather than delete.
+    const { stdout } = await runCli(["runs", "prune", "--yes"], projectDir);
     expect(stdout).toMatch(/pruned/);
 
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
