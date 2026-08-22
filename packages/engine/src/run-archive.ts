@@ -162,7 +162,13 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     tree(rootRunId: string): RunTree | null {
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
-      return makeTree(db, dir, rootRunId, runs);
+      // Resolve each reuse row's source-tree root (#257) so the record carries the full provenance
+      // pair — run id (stored) plus root run id (looked up here) — for a client to address the source.
+      // A source since `rm`'d resolves to null, matching how its blob read already degrades.
+      const resolved = runs.map((run) =>
+        run.reusedFromRunId === null ? run : { ...run, reusedFromRootRunId: rootRunIdOf(db, run.reusedFromRunId) },
+      );
+      return makeTree(db, dir, rootRunId, resolved);
     },
 
     blockingSuccessors(rootRunId: string): string[] {

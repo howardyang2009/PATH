@@ -300,6 +300,8 @@ describe("Project.resume (#173)", () => {
       const originalARun = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.runId;
       expect(aRow.status).toBe("succeeded");
       expect(aRow.reusedFromRunId).toBe(originalARun);
+      // The archive resolves the source's tree root too (#257), the other half of the provenance pair.
+      expect(aRow.reusedFromRootRunId).toBe(originalRootId);
       expect(aRow.outputRef).toBeNull();
       expect(aRow.estimatedCostUsd).toBeNull();
       expect(bRow.reusedFromRunId).toBeNull();

@@ -503,8 +503,15 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     const keepRow = successorTree.runs.find((r) => r.node_name === "keep")!;
     // The reuse row is a real succeeded row carrying the pointer, but no blob refs of its own.
     expect(keepRow.status).toBe("succeeded");
-    const keepRefs = keepRow as unknown as { reused_from_run_id: string | null; input_ref: string | null; output_ref: string | null };
+    const keepRefs = keepRow as unknown as {
+      reused_from_run_id: string | null;
+      reused_from_root_run_id: string | null;
+      input_ref: string | null;
+      output_ref: string | null;
+    };
     expect(keepRefs.reused_from_run_id).not.toBeNull();
+    // The provenance pair the viewer shows: run id plus the resolved root of the source's tree (#257).
+    expect(keepRefs.reused_from_root_run_id).toBe(original);
     expect(keepRefs.input_ref).toBeNull();
     expect(keepRefs.output_ref).toBeNull();
 

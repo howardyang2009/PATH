@@ -148,6 +148,9 @@ function fromDbRow(row: RunRowDb): RunRecord {
     estimatedCostUsd: row.estimated_cost_usd,
     resumedFromRootRunId: row.resumed_from_root_run_id,
     reusedFromRunId: row.reused_from_run_id,
+    // Not a stored column: the source run's root is resolved on demand by the archive read path
+    // (createRunArchive.tree, #257), the only reader that needs it. A bare row read leaves it null.
+    reusedFromRootRunId: null,
     workflowId: row.workflow_id,
     workflowName: row.workflow_name,
     workflowPath: row.workflow_path,
