@@ -1033,6 +1033,37 @@ button.workflow-row:focus-visible {
   overflow-wrap: anywhere;
 }
 
+/* A reused step (#257): the I/O below belongs to the source run, so the panel says so and names the
+   source's tree + run so the operator can navigate to it. Reads as a note, not an error. */
+.node-io-reused {
+  margin: 8px 4px 4px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-left: 2px solid var(--border-strong, var(--border));
+  background: var(--surface-sunken, transparent);
+  border-radius: 4px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  min-width: 0;
+}
+
+.node-io-reused .reused-ref {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.node-io-reused .reused-label {
+  flex: none;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-weight: 650;
+}
+
 /* Where the object on screen lives on the server's disk — the provenance line the #44 prototype
    pinned under each block. Project-relative, and not fetchable by the browser: it names the
    artifact, it is not a link. */

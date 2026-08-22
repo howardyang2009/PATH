@@ -38,6 +38,9 @@ export interface RunNodeState {
   finishedAt: string | null;
   inputRef: string | null;
   outputRef: string | null;
+  /** Set on a reuse row (#257): the source run this row's I/O is reused from, and the root of its tree. */
+  reusedFromRunId: string | null;
+  reusedFromRootRunId: string | null;
   workflowId: string | null;
   workflowName: string | null;
   workflowPath: string | null;
@@ -72,6 +75,8 @@ function nodeFromRecord(row: WireRunRecord): RunNodeState {
     finishedAt: row.finished_at,
     inputRef: row.input_ref,
     outputRef: row.output_ref,
+    reusedFromRunId: row.reused_from_run_id,
+    reusedFromRootRunId: row.reused_from_root_run_id,
     workflowId: row.workflow_id,
     workflowName: row.workflow_name,
     workflowPath: row.workflow_path,
@@ -158,6 +163,8 @@ export class RunViewModel {
       finishedAt: null,
       inputRef: null,
       outputRef: null,
+      reusedFromRunId: null,
+      reusedFromRootRunId: null,
       workflowId: null,
       workflowName: null,
       workflowPath: null,

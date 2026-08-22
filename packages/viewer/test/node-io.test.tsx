@@ -21,6 +21,8 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     finishedAt: "2026-07-25T10:00:02.000Z",
     inputRef: `runs/${ROOT}/${RUN}/input.json`,
     outputRef: `runs/${ROOT}/${RUN}/output.json`,
+    reusedFromRunId: null,
+    reusedFromRootRunId: null,
     workflowId: null,
     workflowName: null,
     workflowPath: null,
@@ -165,5 +167,46 @@ describe("NodeIo", () => {
     const head = await screen.findByTestId("node-io-head");
     expect(head).toHaveTextContent("draft-notes");
     expect(head).toHaveTextContent("failed");
+  });
+
+  it("names the reused source run+tree when the shown I/O belongs to another run (#257)", async () => {
+    // A reuse row: the panel shows the source run's I/O (already resolved by the server), so it must
+    // also say so and name where those bytes live — the source's root run id and run id.
+    const sourceRoot = "546ca6e6-3699-4d7d-8e4e-77b133528d02";
+    const sourceRun = "5d7a664d-b485-40eb-aced-265119ec5f2d";
+    const client = stubClient({ blobs: { [`${RUN}/input`]: { reused: true } } });
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ outputRef: null, reusedFromRunId: sourceRun, reusedFromRootRunId: sourceRoot })}
+      />,
+    );
+
+    const note = await screen.findByTestId("node-io-reused");
+    expect(note).toHaveTextContent(/reused from an earlier run/i);
+    expect(note).toHaveTextContent(sourceRoot);
+    expect(note).toHaveTextContent(sourceRun);
+  });
+
+  it("shows (deleted) for the reused source tree when it was since removed (#257)", async () => {
+    const client = stubClient({ blobs: {} });
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ status: "succeeded", inputRef: null, outputRef: null, reusedFromRunId: "gone", reusedFromRootRunId: null })}
+      />,
+    );
+
+    const note = await screen.findByTestId("node-io-reused");
+    expect(note).toHaveTextContent("(deleted)");
+    expect(note).toHaveTextContent("gone");
+  });
+
+  it("shows no reuse note for an ordinary executed run", async () => {
+    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
+    render(<NodeIo client={client} run={runState({ outputRef: null })} />);
+
+    await screen.findByTestId("node-io-input");
+    expect(screen.queryByTestId("node-io-reused")).toBeNull();
   });
 });

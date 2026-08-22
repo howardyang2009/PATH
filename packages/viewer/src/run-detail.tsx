@@ -118,7 +118,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
         <StatusPill status={state.status} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <dl className="run-meta-grid">
-          <dt>run id</dt>
+          <dt>root run id</dt>
           <dd className="run-id">{state.rootRunId}</dd>
           <dt>workflow id</dt>
           <dd className="run-workflow-id">{root?.workflowId ?? "—"}</dd>

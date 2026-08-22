@@ -206,12 +206,17 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
 
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
     try {
-      // step-a was reused — no run row of its own in the successor tree; step-b reran and succeeded.
+      // step-a was reused — a `succeeded` reuse row carrying a `reused_from_run_id` pointer (#257),
+      // rather than re-executing; step-b reran and succeeded (no pointer).
       const successorRows = db
-        .prepare("SELECT node_name, status FROM runs WHERE root_run_id = ?")
-        .all(successorRoot) as { node_name: string | null; status: string }[];
-      expect(successorRows.some((r) => r.node_name === "step-a")).toBe(false);
-      expect(successorRows.find((r) => r.node_name === "step-b")?.status).toBe("succeeded");
+        .prepare("SELECT node_name, status, reused_from_run_id FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_name: string | null; status: string; reused_from_run_id: string | null }[];
+      const stepA = successorRows.find((r) => r.node_name === "step-a")!;
+      expect(stepA.status).toBe("succeeded");
+      expect(stepA.reused_from_run_id).not.toBeNull();
+      const stepB = successorRows.find((r) => r.node_name === "step-b")!;
+      expect(stepB.status).toBe("succeeded");
+      expect(stepB.reused_from_run_id).toBeNull();
 
       const successorRootRow = db
         .prepare("SELECT status, resumed_from_root_run_id FROM runs WHERE run_id = ?")

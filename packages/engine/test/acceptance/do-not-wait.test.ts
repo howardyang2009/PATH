@@ -93,13 +93,16 @@ interface RunRow {
   node_name: string | null;
   status: string;
   resumed_from_root_run_id: string | null;
+  reused_from_run_id: string | null;
 }
 
 function readRuns(): RunRow[] {
   const db = new Database(join(harness.projectDir, ".path", "path.db"), { readonly: true });
   try {
     return db
-      .prepare("SELECT run_id, root_run_id, parent_run_id, node_name, status, resumed_from_root_run_id FROM runs")
+      .prepare(
+        "SELECT run_id, root_run_id, parent_run_id, node_name, status, resumed_from_root_run_id, reused_from_run_id FROM runs",
+      )
       .all() as RunRow[];
   } finally {
     db.close();
@@ -267,11 +270,14 @@ describe("acceptance: do-not-wait resume re-fires the detached branch (issue #21
     expect(rootRow(successorRootRunId).status).toBe("succeeded");
     expect(rootRow(successorRootRunId).resumed_from_root_run_id).toBe(killedRootRunId);
 
-    // The re-fire: `after` succeeded before the kill so it reuses (no second run in the successor
-    // tree), while the non-`succeeded` branch re-runs — so the side effect fired a *second* time.
+    // The re-fire: `after` succeeded before the kill so it reuses — now recorded as a reuse row (#257)
+    // carrying a `reused_from_run_id` pointer rather than re-executing — while the non-`succeeded`
+    // branch re-runs, so the side effect fired a *second* time.
     const successorRows = readRuns().filter((row) => row.root_run_id === successorRootRunId);
     expect(successorRows.some((row) => row.node_name === "post-signal" && row.status === "succeeded")).toBe(true);
-    expect(successorRows.some((row) => row.node_name === "after")).toBe(false);
+    const afterRow = successorRows.find((row) => row.node_name === "after")!;
+    expect(afterRow.status).toBe("succeeded");
+    expect(afterRow.reused_from_run_id).not.toBeNull();
     expect(firedCount()).toBe(2);
   }, 20000);
 });

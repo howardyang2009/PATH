@@ -49,6 +49,20 @@ export function NodeIo({ client, run }: NodeIoProps) {
         <span className="run-id">{run.runId}</span>
       </p>
 
+      {run.reusedFromRunId !== null && (
+        <p className="node-io-reused" data-testid="node-io-reused">
+          Reused from an earlier run — the input and output below are that run's.
+          <span className="reused-ref">
+            <span className="reused-label">reused root run</span>
+            <span className="run-id">{run.reusedFromRootRunId ?? "(deleted)"}</span>
+          </span>
+          <span className="reused-ref">
+            <span className="reused-label">reused run</span>
+            <span className="run-id">{run.reusedFromRunId}</span>
+          </span>
+        </p>
+      )}
+
       <BlobBlock
         title="Input"
         load={input}

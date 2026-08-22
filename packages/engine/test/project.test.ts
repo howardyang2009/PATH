@@ -292,16 +292,88 @@ describe("Project.resume (#173)", () => {
       const successor = project.archive.tree(result.rootRunId)!;
       expect(successor.root).not.toBeNull();
 
-      // `a` reused (no row written for it), `b` re-ran (row present) — the reuse is real, not a re-run.
-      expect(successor.runs.some((r) => r.nodeId === "a")).toBe(false);
-      expect(successor.runs.some((r) => r.nodeId === "b")).toBe(true);
-      // And its narrative carries the reuse-marker where the reused node's step-lifecycle would sit.
+      // `a` reused (#257): it records a real `succeeded` reuse row — visible in the tree — pointing
+      // at the original `a` run (direct-to-source), carrying no output ref and no spend. `b` re-ran, so
+      // its row is an ordinary executed row with no reuse pointer.
+      const aRow = successor.runs.find((r) => r.nodeId === "a")!;
+      const bRow = successor.runs.find((r) => r.nodeId === "b")!;
+      const originalARun = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.runId;
+      expect(aRow.status).toBe("succeeded");
+      expect(aRow.reusedFromRunId).toBe(originalARun);
+      // The archive resolves the source's tree root too (#257), the other half of the provenance pair.
+      expect(aRow.reusedFromRootRunId).toBe(originalRootId);
+      expect(aRow.outputRef).toBeNull();
+      expect(aRow.estimatedCostUsd).toBeNull();
+      expect(bRow.reusedFromRunId).toBeNull();
+      // The reuse row holds no blobs of its own, but reading its I/O through the archive follows the
+      // reuse pointer to the source run's tree (#257) — so the viewer's I/O panel shows the reused
+      // values rather than "no input object recorded". They match the original `a` run byte-for-byte.
+      const original = project.archive.tree(originalRootId)!;
+      expect(successor.blob(aRow.runId, "input")).toEqual(original.blob(originalARun, "input"));
+      expect(successor.blob(aRow.runId, "output")).toEqual(original.blob(originalARun, "output"));
+      expect(successor.blob(aRow.runId, "output")).toEqual("A_OUT");
+      // And its narrative still carries the reuse-marker alongside the row (the marker stays the
+      // cost/`rm`-guard record); no step-started/step-finished for the reused node.
       const reuseEvents = readNdjsonLog(dir, result.rootRunId).filter((e) => e.type === "reuse-marker");
       expect(reuseEvents).toHaveLength(1);
 
       // The successor's root row records the lineage; the predecessor's does not.
       expect(successor.root!.resumedFromRootRunId).toBe(originalRootId);
       expect(project.archive.tree(originalRootId)!.root!.resumedFromRootRunId).toBeNull();
+    } finally {
+      project.close();
+    }
+  });
+
+  it("keeps reuse direct-to-source across a resume chain: a node reused one hop back stays reused (#257)", async () => {
+    // Three-deep chain over [a, b, c]. R1 stops at b (a done); R2 resumes and stops at c (a *reused*
+    // from R1, b re-run); R3 resumes R2. In R2, `a` lives only as a reuse row pointing at R1 — it has
+    // no output blob of its own. R3 must reuse `a` straight from that pointer (never re-execute it),
+    // and its marker must reach past R2 to R1 (direct-to-source, ADR 0001).
+    const c1: WorkflowFile = {
+      format: "path/workflow@2",
+      id: "wf-id",
+      name: "chain",
+      worker: { type: "engine" },
+      body: [emit("a", "A_OUT"), emit("b"), emit("c")],
+      output: { a: "${context.from_a}", b: "${context.from_b}", c: "${context.from_c}" },
+    };
+    const c2: WorkflowFile = { ...c1, body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c")] };
+    const c3: WorkflowFile = { ...c1, body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c", "C_OUT")] };
+
+    const project = open();
+    try {
+      const r1 = await project.run(c1, dir);
+      expect(r1.status).toBe("failed");
+      const root1 = project.archive.listRoots()[0]!.runId;
+      const aRunIn1 = project.archive.tree(root1)!.runs.find((r) => r.nodeId === "a")!.runId;
+
+      const r2 = await project.resume(c2, root1, dir);
+      if (!r2.found) throw new Error("expected R2 found");
+      expect(r2.status).toBe("failed");
+      // In R2, `a` is a reuse row pointing straight at R1's run (direct-to-source); `b` re-ran real.
+      const aRowIn2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeId === "a")!;
+      expect(aRowIn2.reusedFromRunId).toBe(aRunIn1);
+      const bRunIn2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeId === "b")!.runId;
+
+      const r3 = await project.resume(c3, r2.rootRunId, dir);
+      if (!r3.found) throw new Error("expected R3 found");
+      expect(r3.status).toBe("succeeded");
+      expect(r3.output).toEqual({ a: "A_OUT", b: "B_OUT", c: "C_OUT" });
+
+      const runs3 = project.archive.tree(r3.rootRunId)!.runs;
+      // `a` and `b` both reuse (reuse rows), only `c` re-ran (an executed row, no reuse pointer).
+      const a3 = runs3.find((r) => r.nodeId === "a")!;
+      const b3 = runs3.find((r) => r.nodeId === "b")!;
+      const c3Row = runs3.find((r) => r.nodeId === "c")!;
+      // `a`'s reuse reaches past R2 straight to R1 (direct-to-source); `b`'s to R2's real run.
+      expect(a3.reusedFromRunId).toBe(aRunIn1);
+      expect(b3.reusedFromRunId).toBe(bRunIn2);
+      expect(c3Row.reusedFromRunId).toBeNull();
+      // The markers agree with the rows: `a` direct to R1, never to R2.
+      const markers3 = readNdjsonLog(dir, r3.rootRunId).filter((e) => e.type === "reuse-marker");
+      expect(markers3.find((e) => e.node_id === "a")?.original_run_id).toBe(aRunIn1);
+      expect(markers3.find((e) => e.node_id === "b")?.original_run_id).toBe(bRunIn2);
     } finally {
       project.close();
     }

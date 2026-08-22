@@ -162,7 +162,13 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     tree(rootRunId: string): RunTree | null {
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
-      return makeTree(db, dir, rootRunId, runs);
+      // Resolve each reuse row's source-tree root (#257) so the record carries the full provenance
+      // pair — run id (stored) plus root run id (looked up here) — for a client to address the source.
+      // A source since `rm`'d resolves to null, matching how its blob read already degrades.
+      const resolved = runs.map((run) =>
+        run.reusedFromRunId === null ? run : { ...run, reusedFromRootRunId: rootRunIdOf(db, run.reusedFromRunId) },
+      );
+      return makeTree(db, dir, rootRunId, resolved);
     },
 
     blockingSuccessors(rootRunId: string): string[] {
@@ -245,12 +251,25 @@ function subtreeCost(db: Database.Database, originalRunId: string): number {
 function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
   const root = runs.find((run) => run.runId === rootRunId) ?? null;
 
-  function blob(runId: string, name: RunBlobName): JsonValue | undefined {
-    if (!runs.some((run) => run.runId === runId)) return undefined;
-    const blobDir = runBlobDir(projectDir, rootRunId, runId);
+  function readBlobAt(blobDir: string, name: RunBlobName): JsonValue | undefined {
     const filename = RUN_BLOB_FILE[name];
     if (!existsSync(join(blobDir, filename))) return undefined;
     return readJsonBlob(blobDir, filename);
+  }
+
+  function blob(runId: string, name: RunBlobName): JsonValue | undefined {
+    const record = runs.find((run) => run.runId === runId);
+    if (record === undefined) return undefined;
+    // A reuse row (#257) holds no blobs of its own: its input/output live under the source run it
+    // reused, in that run's own tree. Follow `reusedFromRunId` there — direct-to-source (ADR 0001) —
+    // so the I/O panel shows the reused values rather than nothing. `rootRunIdOf` locates the source
+    // tree; a source since `rm`'d resolves to null and reads as "no blob", same as an absent file.
+    if (record.reusedFromRunId !== null) {
+      const sourceRootRunId = rootRunIdOf(db, record.reusedFromRunId);
+      if (sourceRootRunId === null) return undefined;
+      return readBlobAt(runBlobDir(projectDir, sourceRootRunId, record.reusedFromRunId), name);
+    }
+    return readBlobAt(runBlobDir(projectDir, rootRunId, runId), name);
   }
 
   return {
