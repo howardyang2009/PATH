@@ -102,8 +102,12 @@ export interface ListRootsOptions {
   workflowId?: string;
 }
 
-/** The blobs a run's directory holds that are readable back through the archive. */
-export type RunBlobName = "input" | "output";
+/**
+ * The blobs a run's directory holds that are readable back through the archive. Only a workflow-run
+ * writes a `context.json` (persisted-observer.ts); a leaf step's directory has none, so a `context`
+ * read for one returns `undefined` like any absent file.
+ */
+export type RunBlobName = "input" | "output" | "context";
 
 /**
  * One root run's tree as it was persisted: its rows, its blobs, and its narrative, addressed by run

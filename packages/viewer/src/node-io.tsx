@@ -13,16 +13,19 @@ export interface NodeIoProps {
 }
 
 /**
- * The node-I/O read surface: the selected run's input and output objects, in the right pane of the
- * pinned console (#44 Variant A). A step has exactly one input object and one output object
- * (CONTEXT.md §Invariants), so the pane is two blocks, not a list. The bytes arrive already
- * secret-masked — masking happens at the persistence boundary (CONTEXT.md §Secret) — so this pane
- * never masks anything itself; it renders what the server serves.
+ * The node-I/O/C read surface: the selected run's input, output, and context objects, in the right
+ * pane of the pinned console (#44 Variant A). A step has exactly one input object and one output
+ * object (CONTEXT.md §Invariants); a workflow-run additionally seeds a `context.json` (format §6.3),
+ * so the pane shows a Context block too — present for a workflow-run, absent for a leaf step. The
+ * bytes arrive already secret-masked — masking happens at the persistence boundary (CONTEXT.md
+ * §Secret) — so this pane never masks anything itself; it renders what the server serves.
  *
  * The pane reads the run from the same live snapshot the tree renders, so when the run finishes and
  * its `output_ref` appears, the output object is re-read on its own: watching a run is not a verb
  * that stops at the pane boundary (map #40). Refresh stays for the one case the refs cannot signal —
- * re-reading an unchanged ref.
+ * re-reading an unchanged ref. Context has no ref column of its own, so it is always fetched and its
+ * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
+ * it after a live write-through changes it.
  */
 export function NodeIo({ client, run }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
@@ -30,6 +33,10 @@ export function NodeIo({ client, run }: NodeIoProps) {
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
+  // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change.
+  // Read unconditionally and trust the 404 (`ref: null, settled: true`): a workflow-run has context,
+  // a leaf step 404s and reads as absent — the same shape as an output object a run never recorded.
+  const context = useRunBlob({ ...blob, name: "context", ref: null, settled: true });
 
   return (
     <div className="node-io">
@@ -82,6 +89,16 @@ export function NodeIo({ client, run }: NodeIoProps) {
             ? "No output object recorded for this run."
             : "No output object yet — a run writes its output when it finishes."
         }
+      />
+      <BlobBlock
+        title="Context"
+        load={context}
+        // Context has no ref column, so there is no on-disk provenance line to show for it.
+        blobRef={null}
+        testId="node-io-context"
+        // Only a workflow-run keeps a context; a leaf step has none, and that is the ordinary case,
+        // not a failure.
+        absentNote="No context recorded for this run — only a workflow-run keeps one."
       />
     </div>
   );

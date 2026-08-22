@@ -529,15 +529,29 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     expect(res.status).toBe(404);
   });
 
-  it("404s for an unknown blob name (only input/output are served)", async () => {
+  it("404s for a blob a run does not have (stderr is unserved; a leaf step keeps no context)", async () => {
     const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
     const shout = tree.runs.find((r) => r.node_name === "shout")!;
 
+    // `stderr` is not a served name at all; `context` is served, but only a workflow-run seeds one,
+    // so a leaf step's context read is an absent file — both 404.
     expect((await getBlob(root_run_id, shout.run_id, "stderr")).status).toBe(404);
     expect((await getBlob(root_run_id, shout.run_id, "context")).status).toBe(404);
+  });
+
+  it("serves a workflow-run's context.json (the root run seeds one, format §6.3)", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(root_run_id);
+
+    // The root run *is* the workflow-run, so its own directory holds context.json.
+    const res = await getBlob(root_run_id, root_run_id, "context");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/application\/json/);
   });
 });
 
