@@ -1,0 +1,25 @@
+{
+  "format": "path/workflow@2",
+  "id": "c0ffee00-0000-4000-8000-00000000abcd",
+  "name": "reuse-then-fail",
+  "worker": {
+    "type": "engine"
+  },
+  "body": [
+    {
+      "type": "binary",
+      "id": "a1a1a1a1-0000-4000-8000-000000000001",
+      "name": "keep",
+      "command": "node",
+      "args": ["-e", "process.stdout.write('KEPT')"],
+      "publish": { "from_keep": "${output}" }
+    },
+    {
+      "type": "binary",
+      "id": "b2b2b2b2-0000-4000-8000-000000000002",
+      "name": "boom",
+      "command": "node",
+      "args": ["-e", "process.exit(3)"]
+    }
+  ]
+}

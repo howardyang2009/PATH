@@ -489,6 +489,34 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     expect(body.error.message).toBeTruthy();
   });
 
+  it("serves a reuse row's blobs by following the pointer to the source run (#257)", async () => {
+    // A run where `keep` succeeds and `boom` fails, then resumed: `keep` reuses. Its reuse row holds
+    // no blobs of its own, so the blob route must reach through to the source run — otherwise the
+    // viewer's I/O panel shows "no input object recorded" for a step that plainly has one.
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "reuse-then-fail.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(original)).status).toBe("failed");
+
+    const { root_run_id: successor } = (await (await resumeRun(original)).json()) as { root_run_id: string };
+    const successorTree = await pollUntilTerminal(successor);
+    const keepRow = successorTree.runs.find((r) => r.node_name === "keep")!;
+    // The reuse row is a real succeeded row carrying the pointer, but no blob refs of its own.
+    expect(keepRow.status).toBe("succeeded");
+    const keepRefs = keepRow as unknown as { reused_from_run_id: string | null; input_ref: string | null; output_ref: string | null };
+    expect(keepRefs.reused_from_run_id).not.toBeNull();
+    expect(keepRefs.input_ref).toBeNull();
+    expect(keepRefs.output_ref).toBeNull();
+
+    // Yet the route resolves both blobs from the source run — the reused values, not a 404.
+    const outputRes = await getBlob(successor, keepRow.run_id, "output");
+    expect(outputRes.status).toBe(200);
+    expect(await outputRes.json()).toBe("KEPT");
+    const inputRes = await getBlob(successor, keepRow.run_id, "input");
+    expect(inputRes.status).toBe(200);
+    expect(await inputRes.json()).toEqual({});
+  });
+
   it("404s for an unknown root_run_id", async () => {
     const res = await getBlob("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000", "output");
     expect(res.status).toBe(404);

@@ -303,6 +303,13 @@ describe("Project.resume (#173)", () => {
       expect(aRow.outputRef).toBeNull();
       expect(aRow.estimatedCostUsd).toBeNull();
       expect(bRow.reusedFromRunId).toBeNull();
+      // The reuse row holds no blobs of its own, but reading its I/O through the archive follows the
+      // reuse pointer to the source run's tree (#257) — so the viewer's I/O panel shows the reused
+      // values rather than "no input object recorded". They match the original `a` run byte-for-byte.
+      const original = project.archive.tree(originalRootId)!;
+      expect(successor.blob(aRow.runId, "input")).toEqual(original.blob(originalARun, "input"));
+      expect(successor.blob(aRow.runId, "output")).toEqual(original.blob(originalARun, "output"));
+      expect(successor.blob(aRow.runId, "output")).toEqual("A_OUT");
       // And its narrative still carries the reuse-marker alongside the row (the marker stays the
       // cost/`rm`-guard record); no step-started/step-finished for the reused node.
       const reuseEvents = readNdjsonLog(dir, result.rootRunId).filter((e) => e.type === "reuse-marker");
