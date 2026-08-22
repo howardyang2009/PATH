@@ -391,7 +391,105 @@ Response `200 OK`:
   classify roots is the cost driver and bounds the scale. Shared children dedupe by absolute-path key
   within one tree load but are re-read across sibling roots — acceptable at that scale.
 
-## 7. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
+## 7. `PUT /v0/workflows` — write a workflow file
+
+New capability ([#257](https://github.com/howardyang2009/PATH/issues/257), part of
+[#254](https://github.com/howardyang2009/PATH/issues/254) — the Designer). `@path/server`'s first
+write path for files: every other route reads, or launches/cancels/resumes a run. One verb serves both
+create and overwrite; the resource path travels in the body, not the URL, so a `/`-bearing
+`relative_path` needs no `%2F` encoding and resolves the same way `POST /v0/runs` resolves
+`workflow_path`. Governing decision: [ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md).
+
+**Origin-gated.** State-changing, so it passes the §2.1 origin gate before the body is read — a
+cross-origin browser call is `403` (same CSRF reasoning as `POST /v0/runs`).
+
+Request body:
+
+```json
+{
+  "workflow_path": "lib/draft.workflow.json",
+  "workflow": { "format": "...", "id": "<uuid>", "name": "draft", "...": "..." }
+}
+```
+
+| Field | Required | Meaning |
+| --- | --- | --- |
+| `workflow_path` | yes | Path to the file to write, relative to the server's fixed project root — the **exact string** discovery returns as `relative_path` (§6), same resolution as §2 `workflow_path`. |
+| `workflow` | yes | The workflow object, snake_case wire (§1). The server serializes it deterministically (`JSON.stringify(wf, null, 2)` + trailing newline, author key order preserved) and owns the on-disk bytes. |
+
+**Precondition (concurrency) is an HTTP conditional header, not a body field.** The single-file read
+(§7.1) hands back a strong `ETag`; the write reads intent from the header:
+
+- **no `If-Match`** → **create-only**: `412` if the file already exists;
+- **`If-Match: <etag>`** → **overwrite-only**: `412` if the on-disk bytes changed or the file is gone.
+
+There is no spelling for a blind last-writer-wins overwrite — every overwrite must present a matching
+ETag. #258's edit lease is politeness; this precondition is what protects the bytes.
+
+**Validation is single-file, not tree-wide.** The route runs `@path/schema` (`WorkflowFileSchema`) plus
+a whole-file duplicate-`id` check, and confines the path. It does **not** run `loadWorkflowTree`: a
+saved file may reference a nested `workflow` not yet on disk (a WIP save, or a parent saved before its
+child). Ref resolution and cycle detection stay at launch (§2). A written file is thus schema-valid but
+not necessarily launch-ready — the §6 "schema-valid ≠ self-sufficient" asymmetry.
+
+- The **duplicate-`id`** check is one flat namespace over the whole file: the workflow's own `id`, every
+  node, every `parallel` branch, every branch arm, and the `else` — the same scope `name` uniqueness
+  already uses. Per [#256](https://github.com/howardyang2009/PATH/issues/256) this check lives in
+  `@path/schema`, so a duplicate-id body fails schema validation and is covered by the existing `400`
+  with no separate code path. `error.details` **names both offending paths**, not a bare "duplicate id":
+  a Designer must mark the canvas and a hand-rolled client must find the line.
+- The route is **identity-agnostic** (ADR 0015): it validates the incoming `id` *shape* but never stamps
+  a missing `id`, never re-mints, and never diffs against the file on disk.
+
+Checks run in order — cheapest and security-first before the disk is touched: origin gate → body is
+valid JSON → envelope schema → path confine/symlink → workflow schema + dup-id → precondition → write.
+
+Responses:
+
+- `201 Created` — a new file was written; `200 OK` — an existing file was overwritten. Body carries the
+  new ETag so the client needs no follow-up `GET`:
+  ```json
+  { "relative_path": "lib/draft.workflow.json", "id": "<uuid>", "etag": "\"<sha256-hex>\"" }
+  ```
+  The same value is returned in the `ETag` response header.
+- `400 Bad Request` — body is not valid JSON, envelope is malformed (`workflow_path` missing/empty,
+  `workflow` absent), or `workflow` fails `@path/schema` (including a duplicate `id`, or an absent `id`).
+  `error.details` carries the validation issues.
+- `404 Not Found` — `workflow_path` resolves outside the project root, or any component of the resolved
+  path is a symlink. The write refuses to *traverse* a symlink (per-component check), a stronger stance
+  than discovery's, which only refuses to *list* one — a symlinked parent directory could otherwise
+  redirect the write outside the root even when the lexical path stays inside.
+- `403 Forbidden` — cross-origin caller, rejected by the origin gate (§2.1) before the body is read.
+- `412 Precondition Failed` — the conditional header did not hold: `If-Match` mismatch (the file changed
+  or is gone), or a create-only write (no `If-Match`) against a path that already exists.
+
+### 7.1 `GET /v0/workflows/file?path=<relative_path>` — read one workflow file (raw)
+
+The read side the precondition needs, and the ADR 0015 handoff the Designer needs. A `GET` carries no
+body, so the path rides a query param — still an opaque `/`-bearing string, no `%2F` router split.
+
+**Always raw.** Streams the file bytes verbatim and returns a strong `ETag` (sha256 of those bytes); it
+**never runs the loader**. That is deliberate: (a) the ETag must hash the exact on-disk bytes anyway;
+(b) the Designer needs the raw body to preserve unknown fields and to receive an **id-less** file so it
+can stamp ids on import (ADR 0015); (c) validation already has homes — discovery reports `valid`/`error`
+(§6) and the write route validates inbound. A re-validating read would duplicate that and would break
+the id-less handoff.
+
+This makes the read/write pair asymmetric on purpose: **`GET` is lenient** (serves an id-less file),
+**`PUT` is strict** (an id-less body is a `400`, since `@path/schema` requires ids). The Designer mints
+ids client-side into its dirty buffer and always saves an id-bearing file. Discovery, which *does* run
+`loadWorkflowTree`, keeps reporting an on-disk id-less file as `valid: false` — not a contradiction:
+discovery reports launch-validity, this route reports bytes.
+
+Responses:
+
+- `200 OK` — `Content-Type: application/json`, body is the file's raw bytes, `ETag` header set.
+- `404 Not Found` — file does not exist, `path` escapes the project root, or a path component is a
+  symlink (same confinement as §7).
+- `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands; listed
+  for shape-parity, not emitted today.
+
+## 8. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
 
 - `run-store`: add a "list root runs" query (§3).
 - Discovery (§6) needs one additive helper: a directory scan + per-file `loadWorkflowTree`
