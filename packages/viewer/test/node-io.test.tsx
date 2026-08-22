@@ -202,7 +202,7 @@ describe("NodeIo", () => {
     expect(note).toHaveTextContent("gone");
   });
 
-  it("shows a workflow-run's context object when the server serves one", async () => {
+  it("shows the run's context object when the server serves one", async () => {
     const client = stubClient({
       blobs: {
         [`${RUN}/input`]: { a: 1 },
@@ -218,9 +218,9 @@ describe("NodeIo", () => {
     expect(context).toHaveTextContent('"token": "[secret:github_token]"');
   });
 
-  it("reads a leaf step's absent context as no context, not an error", async () => {
-    // Only a workflow-run keeps a context.json; a leaf step has none, so its `context` read 404s and
-    // that 404 is trusted rather than surfaced as a failure.
+  it("reads an absent context as no context, not an error", async () => {
+    // A run with no context.json (e.g. still mid-flight) 404s on its `context` read; the 404 is
+    // trusted and rendered as a plain note rather than surfaced as a failure.
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } } });
     render(<NodeIo client={client} run={runState()} />);
 

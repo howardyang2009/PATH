@@ -370,14 +370,17 @@ directory** beside the workflow files (like `.git`), gitignored by default.
   `--log-backends none`. Nearest wins: **CLI flag > engine-settings file > built-in default.**
 - **`.path/runs/<root-run-id>/`** — one directory tree per **root** run, mirroring the run tree:
   inside it, one subdirectory per run in the tree (keyed by run id) holding that run's blobs —
-  `input.json`, `output.json`, for workflow runs `context.json`, and for binary runs
-  `stderr.txt`. `run.log` (§8) sits at the
+  `input.json`, `output.json`, `context.json` (a workflow-run's own blackboard; a leaf step's is a
+  per-step snapshot, see below), and for binary runs `stderr.txt`. `run.log` (§8) sits at the
   tree root. Every blob is a **JSON file** referenced by relative path from its run row. No
   size-threshold inlining: one rule, every object cat-able on disk.
 - **Context write-through:** every workflow-run has its own isolated context, hence its own
   `context.json` in its run subdirectory; each context mutation atomically rewrites it, so on-disk
   state always matches the live blackboard — mid-run inspection works, crashes leave a truthful
-  snapshot, and the door stays open for future resume semantics.
+  snapshot, and the door stays open for future resume semantics. Additionally, every succeeded leaf
+  step writes a `context.json` of its own — a snapshot of the enclosing workflow-run's context taken
+  right after that step's publish landed — so the context is followable step by step alongside each
+  step's input/output.
 - **Retention: keep everything.** No automatic expiry. `path runs rm <root-run-id>`/`prune`
   operate on root runs, deleting the run tree's db rows and its directory tree together, so the
   two stores never drift and nothing can half-delete.

@@ -25,6 +25,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
   "step-usage": { type: "step-usage", ...ids, usage: { in: 1, note: "s3cret-value" }, estimatedCostUsd: 0.01 },
   "step-finished": { type: "step-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
   "context-changed": { type: "context-changed", ...ids, context: { k: "s3cret-value" } },
+  "step-context": { type: "step-context", ...ids, context: { k: "s3cret-value" } },
   "join-applied": { type: "join-applied", ...ids, nodeId: "n1", nodeName: "n1", branches: ["a"], publishedKeys: ["k"] },
   "run-cancelled": { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "n1", cause: "operator", causeRunId: null },
   "run-finished": { type: "run-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
@@ -104,6 +105,7 @@ describe("maskObservation", () => {
   it("masks stderr and context", () => {
     expect(maskObservation(masker, SAMPLES["step-stderr"])).toMatchObject({ stderr: `boom ${TOKEN}` });
     expect(maskObservation(masker, SAMPLES["context-changed"])).toMatchObject({ context: { k: TOKEN } });
+    expect(maskObservation(masker, SAMPLES["step-context"])).toMatchObject({ context: { k: TOKEN } });
   });
 
   it("masks a succeeded output and a failed error, and leaves a cancelled outcome alone", () => {

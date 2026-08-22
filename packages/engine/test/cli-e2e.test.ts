@@ -365,12 +365,18 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
     expect(leafRun!.root_run_id).toBe(root!.run_id);
 
     // Every workflow-run has its own context.json in its own run subdirectory under the one root
-    // run's tree; the leaf binary run has stderr.txt but no context of its own.
+    // run's tree; the leaf binary run also records a context.json — a per-step snapshot of its
+    // enclosing workflow-run's context as it stood when the step finished — plus its stderr.txt.
     const runsRoot = join(projectDir, ".path", "runs", root!.root_run_id);
     expect(existsSync(join(runsRoot, root!.run_id, "context.json"))).toBe(true);
     expect(existsSync(join(runsRoot, childRun!.run_id, "context.json"))).toBe(true);
-    expect(existsSync(join(runsRoot, leafRun!.run_id, "context.json"))).toBe(false);
+    expect(existsSync(join(runsRoot, leafRun!.run_id, "context.json"))).toBe(true);
     expect(existsSync(join(runsRoot, leafRun!.run_id, "stderr.txt"))).toBe(true);
+
+    // The leaf's snapshot is the child workflow-run's context after the leaf's publish landed: the
+    // same post-step state its parent workflow-run records, taken under the leaf's own directory.
+    const leafContext = JSON.parse(readFileSync(join(runsRoot, leafRun!.run_id, "context.json"), "utf8"));
+    expect(leafContext).toEqual({ seed: "hi", shouted: "HI" });
 
     // The child's context.json is its own isolated blackboard — it holds the input-seeded key and
     // the child's own publish, and nothing from the parent.

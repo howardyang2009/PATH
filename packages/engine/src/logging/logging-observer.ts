@@ -38,7 +38,7 @@ function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
  *
  * - **Payloads are dropped.** `input`, `output` and `context` reach the log only as blob refs on the
  *   run row (mvp spec §6), so the events carry none of them.
- * - **Three observations are never narrated.** `step-stderr`, `step-usage` and `context-changed`
+ * - **Four observations are never narrated.** `step-stderr`, `step-usage`, `context-changed` and `step-context`
  *   exist for persistence alone; they return `null`.
  * - **The shapes are not 1:1.** `run-started` and `step-started` both become `step-started`
  *   (a workflow-run is its file's implicit root step, invariant 2); `run-finished` and
@@ -102,6 +102,7 @@ export function toLogEvent(o: Observation, envelope: (runId: string, node?: Node
     case "step-stderr":
     case "step-usage":
     case "context-changed":
+    case "step-context":
       return null;
     default: {
       const exhaustive: never = o;
