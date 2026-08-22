@@ -30,8 +30,13 @@ import Database from "better-sqlite3";
  * nested row, whose own producing node is already carried by `node_id`/`node_name`. ADR 0006 costed
  * this as part of the same v3→v4 bump; the work split across two tickets (#204 shipped v4), so it
  * lands as v5. Same bump-and-break, clean-slate reading: no backfill, no old root row left null.
+ *
+ * Bumped to 6 in #257 for chained-resume reuse rows: a reused node now records a real `succeeded` row
+ * of its own (rather than only a log marker), so `runs` gains `reused_from_run_id` — the source run
+ * that row reuses, direct-to-source (ADR 0001). Null on every executed row. Same bump-and-break: an
+ * existing pre-#257 db refuses to open rather than silently lacking the column a reuse row writes to.
  */
-export const SCHEMA_VERSION = 5;
+export const SCHEMA_VERSION = 6;
 
 export class SchemaVersionError extends Error {}
 
@@ -51,6 +56,7 @@ const RUNS_TABLE_DDL = `
     usage TEXT,
     estimated_cost_usd REAL,
     resumed_from_root_run_id TEXT,
+    reused_from_run_id TEXT,
     workflow_id TEXT,
     workflow_name TEXT,
     workflow_path TEXT

@@ -36,6 +36,8 @@ export interface WireRunRecord {
   usage: JsonValue | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  /** Set on a reuse row alone (#257): the source run whose output it reuses, direct-to-source. */
+  reused_from_run_id: string | null;
   workflow_id: string | null;
   workflow_name: string | null;
   workflow_path: string | null;
@@ -134,6 +136,7 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     usage: row.usage,
     estimated_cost_usd: row.estimatedCostUsd,
     resumed_from_root_run_id: row.resumedFromRootRunId,
+    reused_from_run_id: row.reusedFromRunId,
     workflow_id: row.workflowId,
     workflow_name: row.workflowName,
     workflow_path: row.workflowPath,

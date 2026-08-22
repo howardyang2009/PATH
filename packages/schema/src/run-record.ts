@@ -42,6 +42,14 @@ export interface RunRecord {
   /** Null except on a root row created by resuming a prior tree — that predecessor's root run id (#168). */
   resumedFromRootRunId: string | null;
   /**
+   * Set on a **reuse row** alone (#257): a resumed tree records a reused node with a real (succeeded)
+   * row of its own — rather than only a log marker — and this field is the *source* run whose recorded
+   * output it reuses, direct-to-source (ADR 0001), never the immediate predecessor. Null on every
+   * genuinely-executed row. A reuse row carries no `usage`/`estimatedCostUsd` and no `outputRef`: its
+   * output and spend live under the source run, reached through this pointer, never copied.
+   */
+  reusedFromRunId: string | null;
+  /**
    * The producing workflow's durable GUID `id` (ADR 0006), recorded **root-only** so a central `-C`
    * store (ADR 0005) can group a run by the workflow that produced it. Null on every nested row —
    * its producing node is already named by `nodeId`/`nodeName` (#202).

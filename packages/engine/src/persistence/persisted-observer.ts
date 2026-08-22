@@ -1,9 +1,10 @@
+import { randomUUID } from "node:crypto";
 import type { JsonValue, Worker } from "@path/schema";
 import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeRunBlob } from "./blob-store.js";
 import { RUN_BLOB_FILE, runBlobDir } from "./paths.js";
-import { finishRun, insertRun, setRunOutputRef, setRunUsage } from "./run-store.js";
+import { finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunUsage } from "./run-store.js";
 
 /**
  * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/`
@@ -120,15 +121,29 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           recordFinished(o.rootRunId, o.runId, o);
           return;
 
+        // A reused node now records a real `succeeded` row of its own (#257) — a *reuse row* — so the
+        // node appears in the run tree (`getRunsForRoot`, viewer, `path runs`) rather than being
+        // visible only as a log marker, and a chained resume can reuse it straight from `runs`. The row
+        // holds no blobs and no spend: `reused_from_run_id` points at the source run whose recorded
+        // output and cost it reuses, direct-to-source (ADR 0001), never copied. The `reuse-marker` log
+        // event still fires alongside it (below), and stays the record the cost SUM (#176) and the `rm`
+        // guard (#175) read — the row is additive, not a replacement for the marker.
+        case "reuse-marker":
+          insertReuseRun(db, {
+            runId: randomUUID(),
+            rootRunId: o.rootRunId,
+            parentRunId: o.runId,
+            nodeId: o.nodeId,
+            nodeName: o.nodeName,
+            reusedFromRunId: o.originalRunId,
+          });
+          return;
+
         // Control-node observations have no run of their own (invariant 1), so there is no row to
         // write: they are narrative, and the log stream is where they live. `run-cancelled` included
-        // — the cancelled row is written by the `cancelled` step-finished paired with it. A
-        // `reuse-marker` (#172) is narrative too and writes no row by design: the reused node's real
-        // row already lives in the original tree, and the marker back-references it rather than
-        // duplicating it (resume-restore-semantics.md §5 — reference, never copy).
+        // — the cancelled row is written by the `cancelled` step-finished paired with it.
         case "join-applied":
         case "run-cancelled":
-        case "reuse-marker":
         case "checkpoint-evaluated":
         case "branch-taken":
         case "branch-no-match":

@@ -9,7 +9,7 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { getRunsForRoot } from "./persistence/run-store.js";
+import { getRun, getRunsForRoot } from "./persistence/run-store.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import { type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
@@ -207,10 +207,25 @@ export function openProject(dir: string): OpenProjectResult {
         // (child) id returns nothing too — which is exactly the `found: false` case. The root row's
         // own presence is the second half of "known root run": a set of rows without it is not a tree
         // this can resume from.
-        const originalRuns = getRunsForRoot(db, rootRunId);
-        if (originalRuns.length === 0 || !originalRuns.some((r) => r.parentRunId === null)) {
+        const directRuns = getRunsForRoot(db, rootRunId);
+        if (directRuns.length === 0 || !directRuns.some((r) => r.parentRunId === null)) {
           return { found: false, error: `no run found with root run id "${rootRunId}"` };
         }
+
+        // A reuse row (#257) is a pointer, not the data: its `runId`/`rootRunId` are this predecessor
+        // tree's, but the reused output lives under the *source* run named by `reusedFromRunId`. So
+        // before planning reuse, swap each reuse row for that source record — keeping the reuse row's
+        // own `parentRunId` so it still scopes under the predecessor run `planReuse` matches against,
+        // while `runId`/`rootRunId` become the source so the blob read and the successor's new marker
+        // address the source tree directly (ADR 0001, direct-to-source). This is what carries reuse
+        // across a chain: without it, `planReuse` would see the pointer's empty successor-tree blob and
+        // re-execute. A source whose tree was since `rm`'d resolves to nothing and is dropped — that
+        // node re-executes, mirroring the cost query's tolerance of a deleted original.
+        const originalRuns = directRuns.flatMap((r) => {
+          if (r.reusedFromRunId === null) return [r];
+          const source = getRun(db, r.reusedFromRunId);
+          return source ? [{ ...source, parentRunId: r.parentRunId }] : [];
+        });
 
         // The successor's own root run id, captured off its `run-started` (the root one — a nested
         // run's `parentRunId` is non-null). `runWorkflow` mints it internally and returns only a

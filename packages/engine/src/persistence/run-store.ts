@@ -46,6 +46,34 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
   });
 }
 
+/**
+ * A **reuse row** (#257): the whole record of a node a resumed tree reused, written in one shot
+ * because a reuse has no start/finish pair — it neither ran nor produced blobs. `status` is always
+ * `succeeded` (a node only reuses a succeeded original), `reusedFromRunId` names the source run whose
+ * output it reuses (direct-to-source, ADR 0001), and every execution-only column stays null: no
+ * input/output ref (the payload lives under the source run), no worker, no usage/cost (never
+ * double-counted — the spend lives under the source too). `startedAt`/`finishedAt` are stamped now so
+ * the row sorts into the tree at the point of reuse.
+ */
+export function insertReuseRun(
+  db: Database.Database,
+  row: { runId: string; rootRunId: string; parentRunId: string; nodeId: string; nodeName: string | null; reusedFromRunId: string },
+): void {
+  const now = new Date().toISOString();
+  db.prepare(
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, status, started_at, finished_at, reused_from_run_id)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, 'succeeded', @now, @now, @reusedFromRunId)`,
+  ).run({
+    runId: row.runId,
+    rootRunId: row.rootRunId,
+    parentRunId: row.parentRunId,
+    nodeId: row.nodeId,
+    nodeName: row.nodeName,
+    now,
+    reusedFromRunId: row.reusedFromRunId,
+  });
+}
+
 export function finishRun(db: Database.Database, runId: string, status: TerminalRunStatus): void {
   db.prepare(`UPDATE runs SET status = @status, finished_at = @finishedAt WHERE run_id = @runId`).run({
     status,
@@ -97,6 +125,7 @@ interface RunRowDb {
   usage: string | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  reused_from_run_id: string | null;
   workflow_id: string | null;
   workflow_name: string | null;
   workflow_path: string | null;
@@ -118,10 +147,23 @@ function fromDbRow(row: RunRowDb): RunRecord {
     usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
     estimatedCostUsd: row.estimated_cost_usd,
     resumedFromRootRunId: row.resumed_from_root_run_id,
+    reusedFromRunId: row.reused_from_run_id,
     workflowId: row.workflow_id,
     workflowName: row.workflow_name,
     workflowPath: row.workflow_path,
   };
+}
+
+/**
+ * One run row by its own id, or undefined when no row has it. Resume uses it to resolve a reuse row's
+ * `reusedFromRunId` to the source record — whose real row lives in an ancestor tree, still in this
+ * global table — so a chained resume reads the reused blob and stamps its new marker direct-to-source
+ * (#257, ADR 0001). Undefined when the ancestor tree was since `rm`'d — the caller reads that as "no
+ * recorded data to reuse", exactly as the cost query treats `rootRunIdOf`.
+ */
+export function getRun(db: Database.Database, runId: string): RunRecord | undefined {
+  const row = db.prepare(`SELECT * FROM runs WHERE run_id = @runId`).get({ runId }) as RunRowDb | undefined;
+  return row ? fromDbRow(row) : undefined;
 }
 
 export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRecord[] {
