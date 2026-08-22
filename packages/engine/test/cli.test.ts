@@ -1082,3 +1082,137 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/unknown flag "--frce"/));
   });
 });
+
+describe("cli main() — runs prune confirmation (ticket #166)", () => {
+  let projectDir: string;
+  let cwd: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-prune-confirm-"));
+    cwd = process.cwd();
+    process.chdir(projectDir);
+  });
+
+  afterEach(() => {
+    process.chdir(cwd);
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  function seedRoot(runId: string): void {
+    const db = openDb(dbFilePath(projectDir));
+    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    db.close();
+  }
+
+  const rowCount = (): number => {
+    const db = new Database(dbFilePath(projectDir), { readonly: true });
+    const row = db.prepare("SELECT COUNT(*) AS n FROM runs").get() as { n: number };
+    db.close();
+    return row.n;
+  };
+
+  // The prompt lists what is about to go, then deletes only when the operator says yes.
+  it("prunes after the operator confirms, and names every root in the prompt", async () => {
+    seedRoot("run-aaa");
+    seedRoot("run-bbb");
+    const confirm = vi.fn().mockResolvedValue(true);
+    const io = { log: vi.fn(), error: vi.fn(), confirm };
+
+    const code = await main(["runs", "prune"], io);
+
+    expect(code).toBe(0);
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(io.log).toHaveBeenCalledWith(expect.stringMatching(/all 2 root run\(s\)/));
+    expect(io.log).toHaveBeenCalledWith(expect.stringContaining("run-aaa"));
+    expect(io.log).toHaveBeenCalledWith(expect.stringContaining("run-bbb"));
+    expect(io.log).toHaveBeenCalledWith("pruned 2 run(s)");
+    expect(rowCount()).toBe(0);
+  });
+
+  it("deletes nothing when the operator declines", async () => {
+    seedRoot("run-aaa");
+    const confirm = vi.fn().mockResolvedValue(false);
+    const io = { log: vi.fn(), error: vi.fn(), confirm };
+
+    const code = await main(["runs", "prune"], io);
+
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/aborted: nothing was removed/));
+    expect(io.log).not.toHaveBeenCalledWith(expect.stringMatching(/^pruned/));
+    expect(rowCount()).toBe(1);
+  });
+
+  it("deletes nothing when the surface cannot prompt and no --yes was given", async () => {
+    seedRoot("run-aaa");
+    // A surface with no `confirm` (a pipe/redirect) is treated as "not confirmed".
+    const io = fakeIo();
+
+    const code = await main(["runs", "prune"], io);
+
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/aborted: nothing was removed/));
+    expect(rowCount()).toBe(1);
+  });
+
+  it("skips the prompt and prunes under --yes", async () => {
+    seedRoot("run-aaa");
+    const confirm = vi.fn();
+    const io = { log: vi.fn(), error: vi.fn(), confirm };
+
+    const code = await main(["runs", "prune", "--yes"], io);
+
+    expect(code).toBe(0);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(io.log).toHaveBeenCalledWith("pruned 1 run(s)");
+    expect(rowCount()).toBe(0);
+  });
+
+  it("accepts the -y short flag", async () => {
+    seedRoot("run-aaa");
+    const io = fakeIo();
+
+    const code = await main(["runs", "prune", "-y"], io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith("pruned 1 run(s)");
+    expect(rowCount()).toBe(0);
+  });
+
+  it("prunes an empty project unprompted", async () => {
+    const confirm = vi.fn();
+    const io = { log: vi.fn(), error: vi.fn(), confirm };
+
+    const code = await main(["runs", "prune"], io);
+
+    expect(code).toBe(0);
+    expect(confirm).not.toHaveBeenCalled();
+    expect(io.log).toHaveBeenCalledWith("pruned 0 run(s)");
+  });
+
+  it("still rejects an unknown trailing argument", async () => {
+    seedRoot("run-aaa");
+    const io = fakeIo();
+
+    const code = await main(["runs", "prune", "--older-than", "7d"], io);
+
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/takes no arguments, got "--older-than"/));
+    expect(rowCount()).toBe(1);
+  });
+
+  // `listRoots` pages at 50 rows by default, but `prune` deletes every root — the prompt must count
+  // and delete all of them, never one page (#166). Seed past both the page size and the id-preview cap.
+  it("counts and prunes every root past the default listing page", async () => {
+    for (let i = 0; i < 60; i++) seedRoot(`run-${String(i).padStart(3, "0")}`);
+    const confirm = vi.fn().mockResolvedValue(true);
+    const io = { log: vi.fn(), error: vi.fn(), confirm };
+
+    const code = await main(["runs", "prune"], io);
+
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(expect.stringMatching(/all 60 root run\(s\)/));
+    expect(io.log).toHaveBeenCalledWith(expect.stringContaining("... and 40 more"));
+    expect(io.log).toHaveBeenCalledWith("pruned 60 run(s)");
+    expect(rowCount()).toBe(0);
+  });
+});

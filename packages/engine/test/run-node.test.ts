@@ -460,7 +460,9 @@ describe("runNode — prompt step", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: "hello" });
     expect(prompts).toEqual(["say hi"]);
-    expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished"]);
+    // `step-context` closes the sequence: a succeeded leaf step snapshots its enclosing context under
+    // its own directory, after `step-finished`.
+    expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished", "step-context"]);
     expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ estimatedCostUsd: 0.01 });
   });
 

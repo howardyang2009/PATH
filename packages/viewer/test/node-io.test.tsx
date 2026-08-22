@@ -202,6 +202,46 @@ describe("NodeIo", () => {
     expect(note).toHaveTextContent("gone");
   });
 
+  it("shows the run's context object when the server serves one", async () => {
+    const client = stubClient({
+      blobs: {
+        [`${RUN}/input`]: { a: 1 },
+        [`${RUN}/output`]: { b: 2 },
+        [`${RUN}/context`]: { since_tag: "1.3.0", token: "[secret:github_token]" },
+      },
+    });
+    render(<NodeIo client={client} run={runState()} />);
+
+    const context = await screen.findByTestId("node-io-context");
+    expect(context).toHaveTextContent('"since_tag": "1.3.0"');
+    // Context is masked at the persistence boundary too — the pane renders what it is served.
+    expect(context).toHaveTextContent('"token": "[secret:github_token]"');
+  });
+
+  it("reads an absent context as no context, not an error", async () => {
+    // A run with no context.json (e.g. still mid-flight) 404s on its `context` read; the 404 is
+    // trusted and rendered as a plain note rather than surfaced as a failure.
+    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } } });
+    render(<NodeIo client={client} run={runState()} />);
+
+    const context = await screen.findByTestId("node-io-context");
+    await waitFor(() => expect(context).toHaveTextContent(/No context recorded/i));
+    expect(within(context).queryByRole("alert")).toBeNull();
+  });
+
+  it("re-reads the context on refresh, for a write-through that changed it underneath", async () => {
+    const blobs: Record<string, unknown> = { [`${RUN}/input`]: { a: 1 }, [`${RUN}/context`]: { v: 1 } };
+    const client = stubClient({ blobs });
+    render(<NodeIo client={client} run={runState({ outputRef: null })} />);
+
+    await waitFor(() => expect(screen.getByTestId("node-io-context")).toHaveTextContent('"v": 1'));
+
+    blobs[`${RUN}/context`] = { v: 2 };
+    fireEvent.click(screen.getByTestId("node-io-refresh"));
+
+    await waitFor(() => expect(screen.getByTestId("node-io-context")).toHaveTextContent('"v": 2'));
+  });
+
   it("shows no reuse note for an ordinary executed run", async () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
     render(<NodeIo client={client} run={runState({ outputRef: null })} />);

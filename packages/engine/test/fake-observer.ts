@@ -16,6 +16,7 @@ export const OBSERVATION_TYPES = [
   "step-usage",
   "step-finished",
   "context-changed",
+  "step-context",
   "join-applied",
   "run-cancelled",
   "run-finished",

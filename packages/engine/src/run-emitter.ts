@@ -54,6 +54,12 @@ export interface StepEmitter {
   usage(args: { usage: JsonValue | null; estimatedCostUsd: number | null }): Promise<void>;
   stderr(stderr: string): Promise<void>;
   finished(outcome: StepFinish): Promise<void>;
+  /**
+   * This step's snapshot of the enclosing workflow-run's context, taken after the step finished and
+   * its publish landed — persistence writes it under this step run's own directory so the context as
+   * it stood at each step is followable step by step. Emitted only for a step that succeeded.
+   */
+  context(context: JsonValue): Promise<void>;
   /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled` `step-finished`. */
   cancelled(args: { cause: "sibling-failed" | "sibling-succeeded" | "operator"; causeRunId: string | null }): Promise<void>;
 }
@@ -250,6 +256,9 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         },
         finished(outcome): Promise<void> {
           return emit({ type: "step-finished", runId: stepRunId, rootRunId, ...outcome });
+        },
+        context(context): Promise<void> {
+          return emit({ type: "step-context", runId: stepRunId, rootRunId, context });
         },
         async cancelled(args): Promise<void> {
           await emit({

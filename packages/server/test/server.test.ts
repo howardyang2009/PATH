@@ -529,7 +529,7 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     expect(res.status).toBe(404);
   });
 
-  it("404s for an unknown blob name (only input/output are served)", async () => {
+  it("404s for an unserved blob name (stderr is not served by this route)", async () => {
     const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
       root_run_id: string;
     };
@@ -537,7 +537,24 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     const shout = tree.runs.find((r) => r.node_name === "shout")!;
 
     expect((await getBlob(root_run_id, shout.run_id, "stderr")).status).toBe(404);
-    expect((await getBlob(root_run_id, shout.run_id, "context")).status).toBe(404);
+  });
+
+  it("serves the context.json of both a workflow-run and a leaf step", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    const tree = await pollUntilTerminal(root_run_id);
+    const shout = tree.runs.find((r) => r.node_name === "shout")!;
+
+    // The root run *is* the workflow-run, so its own directory holds context.json.
+    const rootRes = await getBlob(root_run_id, root_run_id, "context");
+    expect(rootRes.status).toBe(200);
+    expect(rootRes.headers.get("content-type")).toMatch(/application\/json/);
+
+    // A leaf step now records a per-step snapshot of its enclosing context too.
+    const leafRes = await getBlob(root_run_id, shout.run_id, "context");
+    expect(leafRes.status).toBe(200);
+    expect(leafRes.headers.get("content-type")).toMatch(/application\/json/);
   });
 });
 

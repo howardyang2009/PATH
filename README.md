@@ -30,7 +30,7 @@ Run a workflow directly with the engine CLI (from the repo root):
 npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>] [--set key=value]...
 npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id>   # re-run a stopped tree
 npx tsx packages/engine/bin/path.ts runs                     # list root runs (--limit, --status, --workflow)
-npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune
+npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune [--yes] (confirms first)
 npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another project's .path/, git-style
 ```
 

@@ -116,6 +116,13 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           writeRunBlob(projectDir, o.rootRunId, o.runId, RUN_BLOB_FILE.context, o.context);
           return;
 
+        // A per-step context snapshot: the same `context.json`, but written under the leaf step's own
+        // run directory (`o.runId` is the step run, not the workflow-run) so each step keeps the
+        // context as it stood when it finished — the input/output pair gains a context companion.
+        case "step-context":
+          writeRunBlob(projectDir, o.rootRunId, o.runId, RUN_BLOB_FILE.context, o.context);
+          return;
+
         case "step-finished":
         case "run-finished":
           recordFinished(o.rootRunId, o.runId, o);

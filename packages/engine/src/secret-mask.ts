@@ -161,6 +161,7 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
     case "step-stderr":
       return { ...o, stderr: masker.maskString(o.stderr) };
     case "context-changed":
+    case "step-context":
       return { ...o, context: masker.maskValue(o.context) };
     case "step-finished":
     case "run-finished":

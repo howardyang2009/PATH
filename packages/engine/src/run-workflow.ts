@@ -432,6 +432,13 @@ interface StepContext {
   exec: NodeExecContext;
   /** This step's config: the file's effective config with the step's own shadowing it (format §8). */
   stepConfig: ConfigObject;
+  /**
+   * A leaf runner reports its minted step emitter here, so `runNode` — which applies the publish and
+   * therefore holds the post-step context — can snapshot that context under this step's own run id
+   * (the per-step `context.json`). Set by `runNode`; a prompt step mints its emitter only after it
+   * holds a processor slot, so the callback fires at that point, not before.
+   */
+  onLeafStep?: (step: StepEmitter) => void;
 }
 
 // The tail every leaf step shares once its worker has produced a raw string output: apply
@@ -514,6 +521,7 @@ async function runPromptNode(
   try {
     // The step's run id is minted (and its row starts) only once a processor slot is really held.
     const step = ctx.run.emitter.step(node);
+    ctx.onLeafStep?.(step);
     await step.started({ stepType: node.type, worker: effectiveWorker, input: stepInput });
 
     result = await ctx.run.llm.worker.runPrompt({
@@ -581,6 +589,7 @@ async function runBinaryNode(
   }
 
   const step = ctx.run.emitter.step(node);
+  ctx.onLeafStep?.(step);
   await step.started({ stepType: node.type, worker: effectiveWorker, input: stepInput });
 
   const result = await runBinaryStep({ name: node.name, command, args, cwd }, stepInput, ctx.exec.signal);
@@ -919,6 +928,11 @@ export async function runNode(
   // reused output identically to a freshly produced one, so the `publish` block below is shared.
   const reused = run.resume?.plan.get(node.id);
   let outcome: SeqOutcome;
+  // A leaf runner reports its minted step emitter here (via `onLeafStep`), so the post-publish
+  // context snapshot below is attributed to the step's own run id. A reused node and a nested
+  // `workflow` node leave this undefined — the former emits no step run, the latter keeps its own
+  // context.json — so neither gets a per-step snapshot here.
+  let leafStep: StepEmitter | undefined;
   if (run.resume && reused) {
     const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
     await run.emitter.reuseMarker(node, { originalRunId: reused.runId });
@@ -934,7 +948,7 @@ export async function runNode(
 
     // One context for all three step types, derived rather than hand-built. These were two literals
     // constructed side by side, sharing seven identical fields (#76).
-    const step: StepContext = { run, exec, stepConfig };
+    const step: StepContext = { run, exec, stepConfig, onLeafStep: (emitted) => (leafStep = emitted) };
     if (node.type === "workflow") {
       outcome = await runWorkflowNode(node, stepInput, step);
     } else if (node.type === "prompt") {
@@ -943,22 +957,33 @@ export async function runNode(
       outcome = await runBinaryNode(node, stepInput, step);
     }
   }
-  if (outcome.status !== "succeeded" || !node.publish) return outcome;
+  if (outcome.status !== "succeeded") return outcome;
 
-  const publishScope: InterpolationScope = { config: configScope(stepConfig), context: exec.context, output: outcome.output };
-  const updates: { [key: string]: JsonValue } = {};
-  try {
-    for (const [key, expr] of Object.entries(node.publish)) {
-      updates[key] = interpolateValue(expr, publishScope);
+  if (node.publish) {
+    const publishScope: InterpolationScope = { config: configScope(stepConfig), context: exec.context, output: outcome.output };
+    const updates: { [key: string]: JsonValue } = {};
+    try {
+      for (const [key, expr] of Object.entries(node.publish)) {
+        updates[key] = interpolateValue(expr, publishScope);
+      }
+    } catch (err) {
+      return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
-  } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.name, err) };
+    // Every entry resolves before any is written, so the publish lands atomically (§5.3), before the
+    // next node starts. A nested workflow-step publishes to *this* run's context only — never the
+    // child's (isolated).
+    Object.assign(exec.context, updates);
+    await exec.onPublish(updates);
   }
-  // Every entry resolves before any is written, so the publish lands atomically (§5.3), before the
-  // next node starts. A nested workflow-step publishes to *this* run's context only — never the
-  // child's (isolated).
-  Object.assign(exec.context, updates);
-  await exec.onPublish(updates);
+
+  // Every succeeded leaf step records the enclosing context as it stands now — after its own publish
+  // landed — under its own directory, so the context is followable step by step. A step with no
+  // publish still snapshots the (unchanged) context, so a run leaves one per step, not one per
+  // publish. `leafStep` is set only for a leaf step that actually executed (never a reuse row or a
+  // nested workflow-run, which keep no per-step context of their own).
+  if (leafStep !== undefined) {
+    await leafStep.context(exec.context);
+  }
   return outcome;
 }
 

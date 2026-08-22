@@ -187,6 +187,7 @@ describe("RunDetail", () => {
         ts: "2026-07-25T10:00:05.000Z",
         run_id: "run_c",
         node_id: "step-c",
+        node_name: "shout",
         step_type: "binary",
         worker: { type: "engine" },
       });
@@ -194,7 +195,7 @@ describe("RunDetail", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("narrative-events")).toHaveTextContent("step-c started · engine");
+      expect(screen.getByTestId("narrative-events")).toHaveTextContent("shout (step-c) started · engine");
     });
   });
 

@@ -147,6 +147,29 @@ describe("createPersistedObserver", () => {
     expect(readJsonBlob(dir, "context.json")).toEqual({ greeting: "hi" });
   });
 
+  it("writes a leaf step's own context.json on stepContext, under that step's directory", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {}, worker: { type: "engine" } });
+    await observer.observe({ type: "step-started",
+      runId: "step-1",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      nodeId: "greet", nodeName: "greet",
+      stepType: "binary",
+      worker: { type: "engine" },
+      input: {},
+    });
+    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", status: "succeeded", output: "HI" });
+    // The per-step snapshot lands under the step run's own directory (`runId: "step-1"`), not the
+    // workflow-run's — so the step's input/output pair gains a context companion of its own.
+    await observer.observe({ type: "step-context", runId: "step-1", rootRunId: "root-1", context: { greeting: "hi", shouted: "HI" } });
+
+    expect(readJsonBlob(runBlobDir(projectDir, "root-1", "step-1"), "context.json")).toEqual({ greeting: "hi", shouted: "HI" });
+    // The workflow-run's own context.json (seeded at run-started as `{}`) is untouched by a step's
+    // snapshot — the step writes under its own directory, not the workflow-run's.
+    expect(readJsonBlob(runBlobDir(projectDir, "root-1", "root-1"), "context.json")).toEqual({});
+  });
+
   it("marks the root run succeeded and writes its output blob", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {}, worker: { type: "engine" } });

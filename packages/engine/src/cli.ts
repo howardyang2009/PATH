@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { createInterface } from "node:readline/promises";
 import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
@@ -10,6 +11,13 @@ import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
 export interface CliIo {
   log(message: string): void;
   error(message: string): void;
+  /**
+   * Ask a yes/no question and resolve to the operator's answer. Undefined means the surface cannot
+   * ask (no attached terminal) — a destructive verb treats "cannot ask" as "not confirmed" (#166),
+   * so a scripted `prune` with no `--yes` aborts rather than deleting unprompted. Optional so a
+   * plain `{ log, error }` still satisfies the interface for the many callers that never prompt.
+   */
+  confirm?(question: string): Promise<boolean> | undefined;
 }
 
 /**
@@ -32,12 +40,26 @@ export interface RunOverrides {
 const consoleIo: CliIo = {
   log: (message) => console.log(message),
   error: (message) => console.error(message),
+  // Only an interactive stdin can answer a prompt; a piped or redirected one returns undefined so
+  // the caller falls through to its "cannot confirm" path (#166) instead of blocking on a read that
+  // would never resolve. `y`/`yes` (any case) is the only accepted yes — everything else is no.
+  confirm: (question) => {
+    if (!process.stdin.isTTY) return undefined;
+    const rl = createInterface({ input: process.stdin, output: process.stdout });
+    return rl
+      .question(`${question} `)
+      .then((answer) => /^y(es)?$/i.test(answer.trim()))
+      .finally(() => rl.close());
+  },
 };
+
+// How many root-run ids `prune` prints before collapsing the rest to "... and N more" (#166).
+const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
   "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
 const RUNS_USAGE =
-  "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune";
+  "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
 interface ParsedRunArgs {
   workflowPath: string;
@@ -650,8 +672,11 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
     // `prune` takes no operands, and used to ignore whatever followed it — so `runs prune --help`,
     // asked by someone who wanted to know what it does, deleted every run in the project instead of
     // answering (#61). A destructive verb must be at least as strict about its input as `run` is.
-    if (rest.length > 0) {
-      io.error(`runs prune takes no arguments, got "${rest[0]!}"\n${RUNS_USAGE}`);
+    // `--yes`/`-y` are the one exception: they skip the confirmation prompt for scripted use (#166).
+    const yes = rest.includes("--yes") || rest.includes("-y");
+    const badArg = rest.find((arg) => arg !== "--yes" && arg !== "-y");
+    if (badArg !== undefined) {
+      io.error(`runs prune takes no arguments, got "${badArg}"\n${RUNS_USAGE}`);
       return 2;
     }
 
@@ -660,14 +685,36 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       io.error(opened.error);
       return 1;
     }
-    let deleted: number;
     try {
-      deleted = opened.archive.prune();
+      // Confirm before deleting (#166): a bare `prune` wipes every root under `.path/`, and the only
+      // deletion that is ever project-wide. `--yes` skips the gate for scripts; an empty project has
+      // nothing to lose so it prunes unprompted (this still clears an orphaned directory with no rows).
+      // `listRoots` defaults to a 50-row page, but `prune` deletes *all* roots — pass an unbounded
+      // limit so the count and the id list describe everything that is about to go, never one page of it.
+      const roots = opened.archive.listRoots({ limit: Number.MAX_SAFE_INTEGER });
+      if (!yes && roots.length > 0) {
+        // Cap the printed ids so a project with thousands of roots does not bury the prompt; the
+        // count above the list is always the true total.
+        const shown = roots.slice(0, PRUNE_ID_PREVIEW);
+        const more = roots.length - shown.length;
+        io.log(
+          `prune will permanently delete all ${roots.length} root run(s) and cannot be undone:\n` +
+            shown.map((root) => `  ${root.runId}`).join("\n") +
+            (more > 0 ? `\n  ... and ${more} more` : "") +
+            `\npass --yes to skip this prompt.`,
+        );
+        const confirmed = await io.confirm?.("delete them? [y/N]");
+        if (!confirmed) {
+          io.error("aborted: nothing was removed");
+          return 1;
+        }
+      }
+      const deleted = opened.archive.prune();
+      io.log(`pruned ${deleted} run(s)`);
     } finally {
       opened.close();
     }
 
-    io.log(`pruned ${deleted} run(s)`);
     return 0;
   }
 

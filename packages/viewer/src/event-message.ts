@@ -1,5 +1,5 @@
 import type { LogEvent } from "@path/client-core";
-import { nodeLabel } from "./node-label.js";
+import { nodeEventLabel } from "./node-label.js";
 
 /**
  * One log event as one line of the narrative — the presentation half of the log stream (the ordering
@@ -10,7 +10,7 @@ import { nodeLabel } from "./node-label.js";
  * *Trace*) that does not fit one dense line. The verdict is what a watcher reads in the stream.
  */
 export function eventMessage(event: LogEvent): string {
-  const label = nodeLabel(event.node_id);
+  const label = nodeEventLabel(event.node_id, event.node_name);
   switch (event.type) {
     case "step-started":
       return `${label} started · ${event.worker.type}`;

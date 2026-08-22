@@ -32,8 +32,8 @@ export type RunOutcome =
  * 1. **Observations carry payloads.** `input`, `output`, `context` and `stderr` ride the
  *    observation, because persistence writes them to blobs (mvp spec §6). The log stream carries
  *    only blob refs, so `toLogEvent` strips them.
- * 2. **Three members are never narrated.** `step-stderr`, `step-usage` and `context-changed` have
- *    no log event at all — they exist purely for persistence.
+ * 2. **Four members are never narrated.** `step-stderr`, `step-usage`, `context-changed` and
+ *    `step-context` have no log event at all — they exist purely for persistence.
  *
  * Every observation reaching an observer is **already secret-masked** (mvp spec §8.3): masking
  * happens at the engine's single emit choke point, not in a wrapper a caller might forget to
@@ -114,6 +114,14 @@ export type Observation =
   | ({ type: "step-finished"; runId: string; rootRunId: string } & RunOutcome)
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
   | { type: "context-changed"; runId: string; rootRunId: string; context: JsonValue }
+  /**
+   * A leaf step run's snapshot of the enclosing workflow-run's context, taken right after the step
+   * finished and its publish (if any) landed — so the step's own directory records the context as it
+   * stood when that step ran, and the viewer can follow the context evolve step by step. `runId` is
+   * the leaf step run's own id (not the workflow-run's), so persistence writes it under that step's
+   * directory alongside its `input.json`/`output.json`. Persistence-only, never narrated.
+   */
+  | { type: "step-context"; runId: string; rootRunId: string; context: JsonValue }
   /**
    * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
    * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the

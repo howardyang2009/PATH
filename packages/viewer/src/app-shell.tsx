@@ -137,7 +137,7 @@ export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
           onPointerDown={startDrag("right")}
           onKeyDown={onKeyDown("right")}
         />
-        <Pane id="pane-io" title="Node I/O">
+        <Pane id="pane-io" title="Node I/O/C">
           {nodeIo}
         </Pane>
       </div>
@@ -269,7 +269,7 @@ function Resizer({
       className="pane-resizer"
       role="separator"
       aria-orientation="vertical"
-      aria-label={`Resize ${rail === "left" ? "runs" : "node I/O"} pane`}
+      aria-label={`Resize ${rail === "left" ? "runs" : "node I/O/C"} pane`}
       aria-valuenow={Math.round(width)}
       aria-valuemin={MIN_RAIL}
       aria-valuemax={MAX_RAIL}

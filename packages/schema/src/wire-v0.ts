@@ -118,8 +118,12 @@ export interface ListWorkflowsResponse {
   workflows: WorkflowSummary[];
 }
 
-/** A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input or output. */
-export type BlobName = "input" | "output";
+/**
+ * A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
+ * context. Only a workflow-run seeds a `context.json` (format §6.3); a leaf step has none, so a
+ * `context` read for one answers 404 like any other absent object.
+ */
+export type BlobName = "input" | "output" | "context";
 
 /** Domain record → wire. The one encode; every route that emits a run row goes through it. */
 export function toWireRunRecord(row: RunRecord): WireRunRecord {

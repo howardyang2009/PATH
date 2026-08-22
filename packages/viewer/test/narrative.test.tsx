@@ -34,7 +34,8 @@ describe("Narrative", () => {
 
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.getAttribute("data-seq"))).toEqual(["1", "2", "3"]);
-    expect(rows[2]).toHaveTextContent("step-a succeeded");
+    // The row names the node by both its human name and its id (here the fixture uses one value for both).
+    expect(rows[2]).toHaveTextContent("step-a (step-a) succeeded");
   });
 
   it("marks a failed step with the failed status and its glyph, not with a hue alone", () => {
@@ -43,7 +44,7 @@ describe("Narrative", () => {
     const row = screen.getAllByRole("listitem")[0]!;
     expect(row).toHaveAttribute("data-status", "failed");
     expect(row).toHaveTextContent(STATUS_GLYPH.failed);
-    expect(row).toHaveTextContent("step-a failed");
+    expect(row).toHaveTextContent("step-a (step-a) failed");
   });
 
   it("gives a pure control-flow event no status of its own", () => {
