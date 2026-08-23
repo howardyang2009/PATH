@@ -3,3 +3,4 @@ dist/
 .DS_Store
 .path/
 *.tsbuildinfo
+*.workflow.json.editing
