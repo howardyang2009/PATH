@@ -1,4 +1,4 @@
-import { isTerminal, type PathApiClient, type RunNodeState } from "@path/client-core";
+import { isReuseRow, isTerminal, type PathApiClient, type RunNodeState } from "@path/client-core";
 import { useState } from "react";
 import { JsonView } from "./json-view.js";
 import { nodeLabel } from "./node-label.js";
@@ -57,7 +57,7 @@ export function NodeIo({ client, run }: NodeIoProps) {
         <span className="run-id">{run.runId}</span>
       </p>
 
-      {run.reusedFromRunId !== null && (
+      {isReuseRow(run) && (
         <p className="node-io-reused" data-testid="node-io-reused">
           Reused from an earlier run — the input and output below are that run's.
           <span className="reused-ref">

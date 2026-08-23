@@ -1,3 +1,4 @@
+import { childrenByParent } from "@path/schema";
 import type { RunNodeState } from "./view-model.js";
 
 /**
@@ -32,22 +33,17 @@ export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNod
   const root = runs.get(rootRunId);
   if (!root) return null;
 
-  const childrenByParent = new Map<string, RunNodeState[]>();
-  for (const run of runs.values()) {
-    if (run.runId === rootRunId) continue;
-    const parent = run.parentRunId !== null && runs.has(run.parentRunId) ? run.parentRunId : rootRunId;
-    const siblings = childrenByParent.get(parent);
-    if (siblings) siblings.push(run);
-    else childrenByParent.set(parent, [run]);
-  }
-  for (const siblings of childrenByParent.values()) siblings.sort(byStartOrder);
+  // A run whose parent the map does not (yet) hold attaches to the root — the event stream runs
+  // ahead of the last tree read, so an orphan waits at the root rather than vanishing (`orphanTo`).
+  const byParent = childrenByParent(runs.values(), { orphanTo: rootRunId });
+  for (const siblings of byParent.values()) siblings.sort(byStartOrder);
 
   // Every run has exactly one parent, so this is a forest and the walk down from the root
   // terminates: a run can be reached by at most one path, and a cycle among parents (which no
   // engine-produced tree contains) is unreachable from the root rather than infinite.
   const nest = (run: RunNodeState): RunTreeNode => ({
     run,
-    children: (childrenByParent.get(run.runId) ?? []).map(nest),
+    children: (byParent.get(run.runId) ?? []).map(nest),
   });
   return nest(root);
 }

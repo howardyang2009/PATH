@@ -8,8 +8,8 @@ import { createDbLogBackend } from "../src/logging/db-backend.js";
 import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
-import { dbFilePath, rootRunTreeDir, runsDir } from "../src/persistence/paths.js";
-import { finishRun, insertRun, setRunOutputRef, setRunUsage } from "../src/persistence/run-store.js";
+import { blobRef, dbFilePath, rootRunTreeDir, runsDir } from "../src/persistence/paths.js";
+import { deleteRunsForRoot, finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunUsage } from "../src/persistence/run-store.js";
 import { createRunArchive, openRunArchive, type RunArchive } from "../src/run-archive.js";
 
 let dir: string;
@@ -156,6 +156,57 @@ describe("run archive — blobs", () => {
     finishRun(db, "root-1", "failed");
 
     expect(archive.tree("root-1")!.output()).toBeUndefined();
+  });
+});
+
+describe("run archive — reuse-row resolution (#257)", () => {
+  /**
+   * A source tree with one leaf that recorded input + output blobs, and a separate successor tree
+   * whose child is a reuse row pointing at that leaf. This is the shape a chained resume leaves in
+   * the global `runs` table: the reuse row owns no blobs of its own.
+   */
+  function seedSourceAndReuse(): void {
+    // Source tree: root + a leaf that ran and recorded blobs.
+    insertRun(db, { runId: "src", rootRunId: "src", parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId: "src-leaf", rootRunId: "src", parentRunId: "src", nodeId: "greet", nodeName: "greet", worker: { type: "engine" }, status: "succeeded" });
+    writeRunBlob(dir, "src", "src-leaf", "input.json", { from: "source" });
+    writeRunBlob(dir, "src", "src-leaf", "output.json", { greeting: "hi from source" });
+
+    // Successor tree: root + a reuse row for the same node, pointing direct-to-source at the leaf.
+    insertRun(db, { runId: "succ", rootRunId: "succ", parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    insertReuseRun(db, { runId: "succ-reuse", rootRunId: "succ", parentRunId: "succ", nodeId: "greet", nodeName: "greet", reusedFromRunId: "src-leaf" });
+  }
+
+  it("resolves a reuse row's provenance onto its record: source root plus synthesized refs", () => {
+    seedSourceAndReuse();
+
+    const reuse = archive.tree("succ")!.runs.find((run) => run.runId === "succ-reuse")!;
+    expect(reuse.reusedFromRunId).toBe("src-leaf");
+    expect(reuse.reusedFromRootRunId).toBe("src");
+    // Refs are synthesized from the source ids — non-null so no reader mistakes a reuse row for one
+    // with no input/output, and addressing the source's blobs.
+    expect(reuse.inputRef).toBe(blobRef("src", "src-leaf", "input.json"));
+    expect(reuse.outputRef).toBe(blobRef("src", "src-leaf", "output.json"));
+  });
+
+  it("reads the reused blobs from the source run (regression, bf4940b)", () => {
+    seedSourceAndReuse();
+
+    const tree = archive.tree("succ")!;
+    expect(tree.blob("succ-reuse", "input")).toEqual({ from: "source" });
+    expect(tree.blob("succ-reuse", "output")).toEqual({ greeting: "hi from source" });
+  });
+
+  it("degrades to null root, null refs, and no blob when the source tree was rm'd", () => {
+    seedSourceAndReuse();
+    deleteRunsForRoot(db, "src"); // the source tree is gone; its rows no longer resolve
+
+    const tree = archive.tree("succ")!;
+    const reuse = tree.runs.find((run) => run.runId === "succ-reuse")!;
+    expect(reuse.reusedFromRootRunId).toBeNull();
+    expect(reuse.inputRef).toBeNull();
+    expect(reuse.outputRef).toBeNull();
+    expect(tree.blob("succ-reuse", "input")).toBeUndefined();
   });
 });
 

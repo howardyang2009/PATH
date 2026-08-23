@@ -160,6 +160,9 @@ translated to snake_case):
       "output_ref": "runs/<root_run_id>/<run_id>/output.json",
       "usage": null,
       "estimated_cost_usd": null,
+      "resumed_from_root_run_id": null,
+      "reused_from_run_id": null,
+      "reused_from_root_run_id": null,
       "workflow_id": "<uuid>",
       "workflow_name": "release-notes",
       "workflow_path": "release-notes.workflow.json"
@@ -177,19 +180,35 @@ translated to snake_case):
 - `input_ref`/`output_ref` are the same project-relative blob paths the engine already stores
   (`blobRef`). A co-located client can read them off disk directly; a browser client cannot, so
   issue #43 added the blob route below (§4.1) to serve their content over HTTP.
+- `resumed_from_root_run_id` is set only on the root row of a resumed tree — the predecessor's root
+  run id (#168). Null on a fresh run and on every nested row.
+- **Reuse rows** (#257): a resumed tree records a reused node as a real `succeeded` row carrying
+  `reused_from_run_id` — the source run whose recorded work it reuses, direct-to-source (ADR 0001) —
+  and `reused_from_root_run_id`, the root of the source's tree. Both are null on a genuinely-executed
+  row. The row owns no blobs of its own, but its `input_ref`/`output_ref` are **resolved to the
+  source run's blobs** (non-null, addressing `runs/<reused_from_root_run_id>/<reused_from_run_id>/…`),
+  so a reuse row reads as a row that *has* input/output rather than one with none, and §4.1 serves
+  that content by following the pointer. A source tree since removed by `runs rm` leaves both
+  `reused_from_root_run_id` and the two refs null — the reused data is genuinely gone.
 - `404 Not Found` if `root_run_id` is unknown.
 
-### 4.1 `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — one run's input or output object
+### 4.1 `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — one run's input, output, or context object
 
 Added by issue #43 for browser clients, which cannot read `input_ref`/`output_ref` off the server's
-filesystem. `name` is a fixed enum — `input` or `output` — never a raw filename, so the path cannot
-escape the run's blob directory. Response `200 OK` with the blob's content as `application/json`,
-verbatim: blobs are already secret-masked on disk (masking happens at the persistence boundary), so
-the route serves what it reads.
+filesystem. `name` is a fixed enum — `input`, `output`, or `context` (#297) — never a raw filename, so
+the path cannot escape the run's blob directory. Response `200 OK` with the blob's content as
+`application/json`, verbatim: blobs are already secret-masked on disk (masking happens at the
+persistence boundary), so the route serves what it reads.
 
 - `404 Not Found` if `root_run_id` is unknown, `run_id` is not in that root's tree, `name` is not a
   served blob, or the blob file is absent (a run has no output until it finishes).
-- `context`/`stderr` blobs are deferred (map #40) — they resolve as unknown names.
+- For a **reuse row** (§4), the route follows `reused_from_run_id` to the source run's tree and serves
+  that run's blob — so a reused node returns the reused content, not a `404`. A source tree since
+  removed resolves to `404` like any absent blob.
+- `context` is served (#297): a workflow-run's `context.json` blackboard, and a leaf step's snapshot
+  of that context as it stood when the step finished. Only a workflow-run and a finished leaf step
+  write one, so a `context` read for a run that recorded none is an absent blob → `404`.
+- `stderr` blobs are deferred (map #40) — the name resolves as unknown.
 
 ### 4.2 `POST /v0/runs/:root_run_id/cancel` — stop a root run in flight
 

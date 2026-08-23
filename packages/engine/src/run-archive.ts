@@ -1,12 +1,12 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { JsonValue, LogEvent, RunRecord, RunStatus } from "@path/schema";
+import { findRootRun, isReuseRow, subtree, type JsonValue, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
 import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
-import { dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
+import { blobRef, dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
 import {
   deleteAllRuns,
   deleteRunsForRoot,
@@ -166,13 +166,9 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     tree(rootRunId: string): RunTree | null {
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
-      // Resolve each reuse row's source-tree root (#257) so the record carries the full provenance
-      // pair — run id (stored) plus root run id (looked up here) — for a client to address the source.
-      // A source since `rm`'d resolves to null, matching how its blob read already degrades.
-      const resolved = runs.map((run) =>
-        run.reusedFromRunId === null ? run : { ...run, reusedFromRootRunId: rootRunIdOf(db, run.reusedFromRunId) },
-      );
-      return makeTree(db, dir, rootRunId, resolved);
+      // Resolve each reuse row's provenance once here (#257), so every reader downstream — `blob()`,
+      // the wire encoder, the viewer — reads a record that no longer lies about what it has.
+      return makeTree(db, dir, rootRunId, runs.map((run) => resolveReuseRow(db, run)));
     },
 
     blockingSuccessors(rootRunId: string): string[] {
@@ -231,29 +227,34 @@ function sumCost(runs: readonly RunRecord[]): number {
 function subtreeCost(db: Database.Database, originalRunId: string): number {
   const originRootRunId = rootRunIdOf(db, originalRunId);
   if (originRootRunId === null) return 0;
-  const runs = getRunsForRoot(db, originRootRunId);
-  const childrenOf = new Map<string, RunRecord[]>();
-  for (const run of runs) {
-    if (run.parentRunId === null) continue;
-    const siblings = childrenOf.get(run.parentRunId) ?? [];
-    siblings.push(run);
-    childrenOf.set(run.parentRunId, siblings);
-  }
-  const byId = new Map(runs.map((run) => [run.runId, run]));
-  const start = byId.get(originalRunId);
-  if (start === undefined) return 0;
-  const subtree: RunRecord[] = [];
-  const stack: RunRecord[] = [start];
-  while (stack.length > 0) {
-    const run = stack.pop()!;
-    subtree.push(run);
-    for (const child of childrenOf.get(run.runId) ?? []) stack.push(child);
-  }
-  return sumCost(subtree);
+  // The original tree is complete, so no `orphanTo` is needed; `subtree` is `[]` when `originalRunId`
+  // has no row (the tree was since `rm`'d in part), which sums to 0 like the deleted-original case.
+  return sumCost(subtree(getRunsForRoot(db, originRootRunId), originalRunId));
+}
+
+/**
+ * A reuse row (#257) owns no blobs and no stored source-tree root: its input/output live under the
+ * source run it reused, in that run's own tree (direct-to-source, ADR 0001). Resolve that provenance
+ * once — the source's root run id, plus the ref strings that address its blobs — so `tree()`,
+ * `blob()`, and the wire all read a record that no longer lies about what it has. The refs are
+ * synthesized from ids (`blobRef`), so this costs one `rootRunIdOf` and no row read. A source since
+ * `rm`'d resolves to a null root; the refs stay null then, matching how the blob read degrades to
+ * "no blob". A non-reuse row is returned untouched.
+ */
+function resolveReuseRow(db: Database.Database, run: RunRecord): RunRecord {
+  if (!isReuseRow(run)) return run;
+  const sourceRootRunId = rootRunIdOf(db, run.reusedFromRunId);
+  if (sourceRootRunId === null) return { ...run, reusedFromRootRunId: null };
+  return {
+    ...run,
+    reusedFromRootRunId: sourceRootRunId,
+    inputRef: blobRef(sourceRootRunId, run.reusedFromRunId, RUN_BLOB_FILE.input),
+    outputRef: blobRef(sourceRootRunId, run.reusedFromRunId, RUN_BLOB_FILE.output),
+  };
 }
 
 function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
-  const root = runs.find((run) => run.runId === rootRunId) ?? null;
+  const root = findRootRun(runs) ?? null;
 
   function readBlobAt(blobDir: string, name: RunBlobName): JsonValue | undefined {
     const filename = RUN_BLOB_FILE[name];
@@ -265,13 +266,12 @@ function makeTree(db: Database.Database, projectDir: string, rootRunId: string, 
     const record = runs.find((run) => run.runId === runId);
     if (record === undefined) return undefined;
     // A reuse row (#257) holds no blobs of its own: its input/output live under the source run it
-    // reused, in that run's own tree. Follow `reusedFromRunId` there — direct-to-source (ADR 0001) —
-    // so the I/O panel shows the reused values rather than nothing. `rootRunIdOf` locates the source
-    // tree; a source since `rm`'d resolves to null and reads as "no blob", same as an absent file.
-    if (record.reusedFromRunId !== null) {
-      const sourceRootRunId = rootRunIdOf(db, record.reusedFromRunId);
-      if (sourceRootRunId === null) return undefined;
-      return readBlobAt(runBlobDir(projectDir, sourceRootRunId, record.reusedFromRunId), name);
+    // reused, in that run's own tree. The record is already resolved (`resolveReuseRow`, direct-to-
+    // source, ADR 0001), so read the source location off it rather than looking it up again — a
+    // source since `rm`'d left `reusedFromRootRunId` null, which reads as "no blob" like an absent file.
+    if (isReuseRow(record)) {
+      if (record.reusedFromRootRunId === null) return undefined;
+      return readBlobAt(runBlobDir(projectDir, record.reusedFromRootRunId, record.reusedFromRunId), name);
     }
     return readBlobAt(runBlobDir(projectDir, rootRunId, runId), name);
   }

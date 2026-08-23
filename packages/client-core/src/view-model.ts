@@ -2,10 +2,10 @@ import {
   isTerminal,
   type JsonValue,
   type LogEvent,
+  type RunRecord,
   type RunStatus,
   type RunTreeResponse,
   type WireRunRecord,
-  type Worker,
 } from "@path/schema";
 
 /**
@@ -25,26 +25,13 @@ import {
  */
 export type StreamPhase = "connecting" | "live" | "reconnecting" | "closed" | "failed";
 
-/** One run's live state — the mutable projection of a `WireRunRecord` plus event-driven updates. */
-export interface RunNodeState {
-  runId: string;
-  rootRunId: string;
-  parentRunId: string | null;
-  nodeId: string | null;
-  nodeName: string | null;
-  worker: Worker | null;
-  status: RunStatus;
-  startedAt: string | null;
-  finishedAt: string | null;
-  inputRef: string | null;
-  outputRef: string | null;
-  /** Set on a reuse row (#257): the source run this row's I/O is reused from, and the root of its tree. */
-  reusedFromRunId: string | null;
-  reusedFromRootRunId: string | null;
-  workflowId: string | null;
-  workflowName: string | null;
-  workflowPath: string | null;
-}
+/**
+ * One run's live state: the client's mutable projection of a run row, event-updated. It is the domain
+ * `RunRecord` (#257) — the two fields a live view once omitted (`usage`, `estimatedCostUsd`) ride the
+ * wire too, so there is no subset shape to maintain in parallel. Kept as a named alias because a
+ * client surface reads "run node state" more plainly than "run record".
+ */
+export type RunNodeState = RunRecord;
 
 /** The immutable snapshot a view renders. Every mutating call produces a fresh object. */
 export interface RunViewState {
@@ -75,6 +62,9 @@ function nodeFromRecord(row: WireRunRecord): RunNodeState {
     finishedAt: row.finished_at,
     inputRef: row.input_ref,
     outputRef: row.output_ref,
+    usage: row.usage,
+    estimatedCostUsd: row.estimated_cost_usd,
+    resumedFromRootRunId: row.resumed_from_root_run_id,
     reusedFromRunId: row.reused_from_run_id,
     reusedFromRootRunId: row.reused_from_root_run_id,
     workflowId: row.workflow_id,
@@ -163,6 +153,9 @@ export class RunViewModel {
       finishedAt: null,
       inputRef: null,
       outputRef: null,
+      usage: null,
+      estimatedCostUsd: null,
+      resumedFromRootRunId: null,
       reusedFromRunId: null,
       reusedFromRootRunId: null,
       workflowId: null,

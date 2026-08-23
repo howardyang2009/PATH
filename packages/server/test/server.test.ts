@@ -501,7 +501,7 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     const { root_run_id: successor } = (await (await resumeRun(original)).json()) as { root_run_id: string };
     const successorTree = await pollUntilTerminal(successor);
     const keepRow = successorTree.runs.find((r) => r.node_name === "keep")!;
-    // The reuse row is a real succeeded row carrying the pointer, but no blob refs of its own.
+    // The reuse row is a real succeeded row carrying the pointer to the source run.
     expect(keepRow.status).toBe("succeeded");
     const keepRefs = keepRow as unknown as {
       reused_from_run_id: string | null;
@@ -512,8 +512,11 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     expect(keepRefs.reused_from_run_id).not.toBeNull();
     // The provenance pair the viewer shows: run id plus the resolved root of the source's tree (#257).
     expect(keepRefs.reused_from_root_run_id).toBe(original);
-    expect(keepRefs.input_ref).toBeNull();
-    expect(keepRefs.output_ref).toBeNull();
+    // The row owns no blobs, but the archive resolves its input/output refs to the source's, so the
+    // reuse row ships non-null refs addressing the source — honest about having I/O, not a null a
+    // reader could mistake for "none" (#257).
+    expect(keepRefs.input_ref).toContain(keepRefs.reused_from_run_id!);
+    expect(keepRefs.output_ref).toContain(keepRefs.reused_from_run_id!);
 
     // Yet the route resolves both blobs from the source run — the reused values, not a 404.
     const outputRes = await getBlob(successor, keepRow.run_id, "output");
