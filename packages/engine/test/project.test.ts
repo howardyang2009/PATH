@@ -5,7 +5,7 @@ import type { WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
-import { pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
+import { blobRef, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import type { LogBackend } from "../src/logging/log-backend.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
@@ -293,16 +293,19 @@ describe("Project.resume (#173)", () => {
       expect(successor.root).not.toBeNull();
 
       // `a` reused (#257): it records a real `succeeded` reuse row — visible in the tree — pointing
-      // at the original `a` run (direct-to-source), carrying no output ref and no spend. `b` re-ran, so
-      // its row is an ordinary executed row with no reuse pointer.
+      // at the original `a` run (direct-to-source), carrying no spend. `b` re-ran, so its row is an
+      // ordinary executed row with no reuse pointer.
       const aRow = successor.runs.find((r) => r.nodeId === "a")!;
       const bRow = successor.runs.find((r) => r.nodeId === "b")!;
       const originalARun = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.runId;
       expect(aRow.status).toBe("succeeded");
       expect(aRow.reusedFromRunId).toBe(originalARun);
-      // The archive resolves the source's tree root too (#257), the other half of the provenance pair.
+      // The archive resolves the source's tree root too (#257), the other half of the provenance pair,
+      // and synthesizes the input/output refs that address the source's blobs — so the reuse row is
+      // honest about having I/O rather than shipping null refs a reader could mistake for "none".
       expect(aRow.reusedFromRootRunId).toBe(originalRootId);
-      expect(aRow.outputRef).toBeNull();
+      expect(aRow.inputRef).toBe(blobRef(originalRootId, originalARun, "input.json"));
+      expect(aRow.outputRef).toBe(blobRef(originalRootId, originalARun, "output.json"));
       expect(aRow.estimatedCostUsd).toBeNull();
       expect(bRow.reusedFromRunId).toBeNull();
       // The reuse row holds no blobs of its own, but reading its I/O through the archive follows the
