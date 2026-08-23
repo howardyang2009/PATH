@@ -8,7 +8,10 @@
 // format — so this package no longer depends on `@path/engine` at all, and a browser surface no
 // longer sits one import away from SQLite, child processes and the Agent SDK.
 export {
+  isReuseRow,
+  isRootRun,
   isTerminal,
+  runKind,
   type BlobName,
   type ConfigObject,
   type JsonValue,
@@ -17,6 +20,7 @@ export {
   type LogBackendId,
   type LogEvent,
   type RootRunSummary,
+  type RunKind,
   type RunRecord,
   type RunStatus,
   type RunTreeResponse,

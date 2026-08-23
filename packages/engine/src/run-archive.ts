@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import type { JsonValue, LogEvent, RunRecord, RunStatus } from "@path/schema";
+import { isReuseRow, type JsonValue, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
 import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
@@ -258,7 +258,7 @@ function subtreeCost(db: Database.Database, originalRunId: string): number {
  * "no blob". A non-reuse row is returned untouched.
  */
 function resolveReuseRow(db: Database.Database, run: RunRecord): RunRecord {
-  if (run.reusedFromRunId === null) return run;
+  if (!isReuseRow(run)) return run;
   const sourceRootRunId = rootRunIdOf(db, run.reusedFromRunId);
   if (sourceRootRunId === null) return { ...run, reusedFromRootRunId: null };
   return {
@@ -285,7 +285,7 @@ function makeTree(db: Database.Database, projectDir: string, rootRunId: string, 
     // reused, in that run's own tree. The record is already resolved (`resolveReuseRow`, direct-to-
     // source, ADR 0001), so read the source location off it rather than looking it up again — a
     // source since `rm`'d left `reusedFromRootRunId` null, which reads as "no blob" like an absent file.
-    if (record.reusedFromRunId !== null) {
+    if (isReuseRow(record)) {
       if (record.reusedFromRootRunId === null) return undefined;
       return readBlobAt(runBlobDir(projectDir, record.reusedFromRootRunId, record.reusedFromRunId), name);
     }

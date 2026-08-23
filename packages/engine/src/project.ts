@@ -1,5 +1,5 @@
 import { resolve } from "node:path";
-import type { JsonValue, WorkflowFile } from "@path/schema";
+import { isReuseRow, type JsonValue, type WorkflowFile } from "@path/schema";
 import type Database from "better-sqlite3";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
@@ -222,7 +222,7 @@ export function openProject(dir: string): OpenProjectResult {
         // re-execute. A source whose tree was since `rm`'d resolves to nothing and is dropped — that
         // node re-executes, mirroring the cost query's tolerance of a deleted original.
         const originalRuns = directRuns.flatMap((r) => {
-          if (r.reusedFromRunId === null) return [r];
+          if (!isReuseRow(r)) return [r];
           const source = getRun(db, r.reusedFromRunId);
           return source ? [{ ...source, parentRunId: r.parentRunId }] : [];
         });
