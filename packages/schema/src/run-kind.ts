@@ -21,13 +21,18 @@ export interface RunKindFields {
   worker: Worker | null;
 }
 
-/** A reuse row (#257): a pointer to a source run's recorded work, owning no execution of its own. */
-export function isReuseRow(run: Pick<RunKindFields, "reusedFromRunId">): boolean {
+/**
+ * A reuse row (#257): a pointer to a source run's recorded work, owning no execution of its own. A
+ * type guard, so the branch that knows a row is a reuse row also knows its `reusedFromRunId` is set.
+ */
+export function isReuseRow<T extends Pick<RunKindFields, "reusedFromRunId">>(
+  run: T,
+): run is T & { reusedFromRunId: string } {
   return run.reusedFromRunId !== null;
 }
 
-/** The tree's top run (invariant 2): no parent, so its own id is the root run id. */
-export function isRootRun(run: Pick<RunKindFields, "parentRunId">): boolean {
+/** The tree's top run (invariant 2): no parent, so its own id is the root run id. A type guard. */
+export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T): run is T & { parentRunId: null } {
   return run.parentRunId === null;
 }
 
