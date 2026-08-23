@@ -1,5 +1,65 @@
 # Changelog
 
+## v0.5.3 — 2026-08-23
+
+Resume learns to **keep its receipts**. When a resumed run reuses a node's earlier work, that node is
+now recorded as a real **reuse row** — a `succeeded` run row of its own — instead of surviving only as
+a log marker (#257). The node shows up in the run tree (`path runs`, the viewer) where it belongs, and
+a chained resume can reuse it straight from `runs` rather than re-deriving it. The row owns no
+execution: it carries no worker, usage, or cost, and its input/output live under the **source** run it
+reused, direct-to-source (ADR 0001). The archive resolves that provenance **once** on read — the
+source tree's root plus the blob refs, synthesized from ids — so a reuse row reads as one that *has*
+input/output (the viewer's NODE I/O panel shows the reused values, and now the source run + its tree),
+rather than a row that looks empty. A source tree since `rm`'d degrades cleanly to "no blob".
+
+The audit read path got **three concepts a name**. A run row's **kind** — root run, nested
+workflow-run, leaf step, or reuse row — is classified in one place (`runKind`, `isRootRun`,
+`isReuseRow`) instead of the null-checks each reader used to re-derive. The **run tree** becomes a
+shared `@path/schema` primitive (`childrenByParent`, `subtree`, `findRootRun`), so the engine's
+read-time cost SUM and the viewer's nested tree read the same tree, not two hand-rolled ones. And the
+client's live run state collapses onto the one domain `RunRecord` — the parallel `RunNodeState` shape
+is gone, and a field it silently dropped (`resumed_from_root_run_id`) now flows through. `CONTEXT.md`
+carries all three terms.
+
+Alongside: each **leaf step now snapshots its context** as it stood when the step finished, so the
+NODE I/O/C panel lets you follow the blackboard evolve step by step; the narrative names steps by
+their node name; a `prune` asks for confirmation; and the blob route serves `context` (#297). The
+server API doc (§4) documents a reuse row's resolved refs and the `context` blob.
+
+## v0.5.2 — 2026-08-21
+
+The left rail grows up. What was one flat list of runnable files becomes **two panes — Workflows and
+Runs** (#262 groundwork). The top pane is the catalog of what you *can* launch; the bottom pane is the
+ledger of what you *have* launched, each run now stamped with the **workflow it came from** so a run in
+the list is no longer an anonymous id — its origin travels with it, in the runs list and in run detail
+alike.
+
+**Workflows filter by kind.** `GET /v0/workflows` already flags every discovered file (root / nested /
+invalid); the pane now lets you narrow to any one of them. `all` shows everything, `root` and `nested`
+split the valid files on `is_root`, and `invalid` collects the files that failed to load — the last
+bucket was briefly labeled `fail`, but a file that doesn't parse hasn't failed a run, it's just not a
+workflow yet. An invalid file keeps its error **folded away**: the row shows the file, and the parse
+error is revealed only on expand, so one bad file doesn't drown the list in a stack trace.
+
+**Delete a run from the rail.** The runs pane gets a per-run delete affordance, backed by a new
+`DELETE /v0/runs/:root_run_id` — the destructive twin of `path runs rm`, removing the run from **both
+stores** (its rows in `path.db` and its blob tree under `.path/runs/<root>/`). Two guards stand in
+front: a **still-running** root is refused (`409`, cancel it first) so rows aren't deleted out from
+under an executing process; and a run a **live successor resumed from** is refused (`409`) so the
+delete never strands a reuse reference, with `?force=true` to override exactly as `path runs rm
+--force` does. An unknown or already-gone id is a `404`. The identity labels on runs and workflows are
+lowercased, a small consistency pass across the rail.
+
+**Designer groundwork.** No Designer ships here, but the map for it lands: a survey of canvas libraries
+(#262) and **ADR 0015 — Designer node identity**. The decision: the Designer *client* mints node ids
+and the server never rewrites one, with a load → edit → save round-trip that preserves every id across
+rename, reorder, and reparent. The reason is concrete — node `id` is the key `plan-reuse` matches a
+successor to a prior run on (ADR 0006), so a canvas that re-minted an id on a reorder would silently
+break resume reuse, the damage surfacing only later when a resume re-runs already-succeeded steps. A
+paste gets a fresh id; a move carries the same one.
+
+No format break, no DB break — an existing `path.db` and `@2` workflow files keep working untouched.
+
 ## v0.5.1 — 2026-08-20
 
 One shape, everywhere. The **workflow format grows up again** — `path/workflow@1`'s three different
