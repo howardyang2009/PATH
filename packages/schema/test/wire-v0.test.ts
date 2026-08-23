@@ -122,6 +122,25 @@ describe("the v0 wire record", () => {
     });
   });
 
+  it("carries a resolved reuse row's provenance and synthesized refs across, non-null (#257)", () => {
+    // As `run-archive.resolveReuseRow` hands it over: the reuse pointer plus the source-tree root and
+    // the refs that address the source's blobs. The encoder must ship these through as non-null so no
+    // wire consumer mistakes a reuse row (which has I/O, via the source) for one that has none.
+    const reuseRow: RunRecord = {
+      ...emptyRecord,
+      status: "succeeded",
+      reusedFromRunId: "src-leaf",
+      reusedFromRootRunId: "src",
+      inputRef: "runs/src/src-leaf/input.json",
+      outputRef: "runs/src/src-leaf/output.json",
+    };
+    const wire = toWireRunRecord(reuseRow);
+    expect(wire.reused_from_run_id).toBe("src-leaf");
+    expect(wire.reused_from_root_run_id).toBe("src");
+    expect(wire.input_ref).toBe("runs/src/src-leaf/input.json");
+    expect(wire.output_ref).toBe("runs/src/src-leaf/output.json");
+  });
+
   it("spells every field snake_case on the wire (server-api-v0.md §1)", () => {
     const wire = toWireRunRecord(record);
     expect(Object.keys(wire).sort()).toEqual([
