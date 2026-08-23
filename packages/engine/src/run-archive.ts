@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { isReuseRow, type JsonValue, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
+import { findRootRun, isReuseRow, subtree, type JsonValue, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
 import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
@@ -227,25 +227,9 @@ function sumCost(runs: readonly RunRecord[]): number {
 function subtreeCost(db: Database.Database, originalRunId: string): number {
   const originRootRunId = rootRunIdOf(db, originalRunId);
   if (originRootRunId === null) return 0;
-  const runs = getRunsForRoot(db, originRootRunId);
-  const childrenOf = new Map<string, RunRecord[]>();
-  for (const run of runs) {
-    if (run.parentRunId === null) continue;
-    const siblings = childrenOf.get(run.parentRunId) ?? [];
-    siblings.push(run);
-    childrenOf.set(run.parentRunId, siblings);
-  }
-  const byId = new Map(runs.map((run) => [run.runId, run]));
-  const start = byId.get(originalRunId);
-  if (start === undefined) return 0;
-  const subtree: RunRecord[] = [];
-  const stack: RunRecord[] = [start];
-  while (stack.length > 0) {
-    const run = stack.pop()!;
-    subtree.push(run);
-    for (const child of childrenOf.get(run.runId) ?? []) stack.push(child);
-  }
-  return sumCost(subtree);
+  // The original tree is complete, so no `orphanTo` is needed; `subtree` is `[]` when `originalRunId`
+  // has no row (the tree was since `rm`'d in part), which sums to 0 like the deleted-original case.
+  return sumCost(subtree(getRunsForRoot(db, originRootRunId), originalRunId));
 }
 
 /**
@@ -270,7 +254,7 @@ function resolveReuseRow(db: Database.Database, run: RunRecord): RunRecord {
 }
 
 function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
-  const root = runs.find((run) => run.runId === rootRunId) ?? null;
+  const root = findRootRun(runs) ?? null;
 
   function readBlobAt(blobDir: string, name: RunBlobName): JsonValue | undefined {
     const filename = RUN_BLOB_FILE[name];
