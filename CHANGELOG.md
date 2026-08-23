@@ -1,5 +1,31 @@
 # Changelog
 
+## v0.5.3 — 2026-08-23
+
+Resume learns to **keep its receipts**. When a resumed run reuses a node's earlier work, that node is
+now recorded as a real **reuse row** — a `succeeded` run row of its own — instead of surviving only as
+a log marker (#257). The node shows up in the run tree (`path runs`, the viewer) where it belongs, and
+a chained resume can reuse it straight from `runs` rather than re-deriving it. The row owns no
+execution: it carries no worker, usage, or cost, and its input/output live under the **source** run it
+reused, direct-to-source (ADR 0001). The archive resolves that provenance **once** on read — the
+source tree's root plus the blob refs, synthesized from ids — so a reuse row reads as one that *has*
+input/output (the viewer's NODE I/O panel shows the reused values, and now the source run + its tree),
+rather than a row that looks empty. A source tree since `rm`'d degrades cleanly to "no blob".
+
+The audit read path got **three concepts a name**. A run row's **kind** — root run, nested
+workflow-run, leaf step, or reuse row — is classified in one place (`runKind`, `isRootRun`,
+`isReuseRow`) instead of the null-checks each reader used to re-derive. The **run tree** becomes a
+shared `@path/schema` primitive (`childrenByParent`, `subtree`, `findRootRun`), so the engine's
+read-time cost SUM and the viewer's nested tree read the same tree, not two hand-rolled ones. And the
+client's live run state collapses onto the one domain `RunRecord` — the parallel `RunNodeState` shape
+is gone, and a field it silently dropped (`resumed_from_root_run_id`) now flows through. `CONTEXT.md`
+carries all three terms.
+
+Alongside: each **leaf step now snapshots its context** as it stood when the step finished, so the
+NODE I/O/C panel lets you follow the blackboard evolve step by step; the narrative names steps by
+their node name; a `prune` asks for confirmation; and the blob route serves `context` (#297). The
+server API doc (§4) documents a reuse row's resolved refs and the `context` blob.
+
 ## v0.5.1 — 2026-08-20
 
 One shape, everywhere. The **workflow format grows up again** — `path/workflow@1`'s three different
