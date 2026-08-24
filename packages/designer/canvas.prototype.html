@@ -102,7 +102,7 @@
 
   .stage { flex: 1; min-height: 0; display: flex; }
   .canvas { flex: 1; min-width: 0; overflow: auto; position: relative; }
-  .pane { width: 320px; border-left: 1px solid var(--border); background: var(--surface);
+  .pane { width: 320px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface);
     overflow: auto; padding: 14px; font-size: var(--fs-sm); }
   .pane h3 { margin: 0 0 4px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
   .pane .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 8px; margin: 8px 0; }
@@ -161,7 +161,7 @@
   .a-add:hover { border-color: var(--accent); color: var(--accent); }
 
   /* ---------- Variant B & C: Scratch blocks ---------- */
-  .scratch-wrap { display: flex; min-height: 100%; }
+  .scratch-wrap { display: flex; min-height: 100%; flex: 1; min-width: 0; }
   .palette { width: 176px; border-right: 1px solid var(--border); background: var(--surface); padding: 12px; flex-shrink: 0; }
   .palette h3 { margin: 0 0 8px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
   .palette .blk { display: flex; align-items: center; gap: 6px; padding: 7px 9px; margin: 6px 0; border-radius: 7px;
@@ -169,7 +169,7 @@
   .palette .blk:active { cursor: grabbing; }
   .palette .blk.illegal { opacity: .32; cursor: not-allowed; }
   .palette .legalnote { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 10px; line-height: 1.4; }
-  .scratch-canvas { flex: 1; padding: 22px; overflow: auto; }
+  .scratch-canvas { flex: 1; min-width: 0; padding: 22px; overflow: auto; }
 
   /* A scratch stack: vertical column of blocks that visually notch together. */
   .stack { display: flex; flex-direction: column; gap: 0; }
@@ -560,13 +560,18 @@ function renderScratchBlock(node, opts = {}) {
       const head = el("div", "arm-head");
       if (node.kind === "parallel") { head.append("branch "); head.appendChild(Object.assign(el("b"), { textContent: arm.name })); }
       else { head.append("when "); const c = el("span", "cond"); c.textContent = condSummary(arm.when); head.appendChild(c); } // conditions live on the arm head (question 2)
+      // Clicking the arm HEAD selects the arm (its occupant node) — so a branch arm selects exactly
+      // like a parallel branch, from the whole arm, not only from the node block inside it.
+      head.style.cursor = "pointer"; head.title = "select this arm";
+      head.onclick = e => { e.stopPropagation(); selectedId = arm.node.id; opts.rerender(); };
       col.appendChild(head);
       col.appendChild(renderScratchBlock(arm.node, opts));
       row.appendChild(col);
     });
     if (node.kind === "branch" && node.else) { // the else fallback is a single node, not a when-arm
-      const col = el("div", "arm-col"); col.appendChild(el("div", "arm-head", "else"));
-      col.appendChild(renderScratchBlock(node.else, opts)); row.appendChild(col);
+      const col = el("div", "arm-col"); const eh = el("div", "arm-head", "else");
+      eh.style.cursor = "pointer"; eh.title = "select the else fallback"; eh.onclick = e => { e.stopPropagation(); selectedId = node.else.id; opts.rerender(); };
+      col.appendChild(eh); col.appendChild(renderScratchBlock(node.else, opts)); row.appendChild(col);
     }
     // Add-arm affordance: a trailing column whose socket adds a NEW branch/arm to the block
     // (question — "how do I add a parallel branch?"). Horizontal sibling of the existing arms,
