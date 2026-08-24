@@ -35,33 +35,86 @@ kinds legal at a given socket, and a block clicks into a socket **only** where t
 an illegal structure is *unsnappable*, not merely rejected on save. The author can never express a
 body the block grammar cannot: no edges, no arbitrary DAG.
 
-### Selection and the properties pane
+### The block shapes the designer commits to
 
-Single-click **selects** a node and populates a right-hand properties pane; clicking empty canvas
-deselects and the pane shows the current **file's** own properties. A `workflow`-ref is the one node
-whose double-click **descends** — the canvas swaps to the ref'd file's body and a **file breadcrumb**
-tracks the crossing (the trail is a navigation stack, not a tree parent: a ref'd file may have several
-parents). Blocks within a file are never descended into; they are already open.
+The canvas authors [`path/workflow@2`](../../CONTEXT.md)'s node shapes directly; the prototype pinned
+four points the UI must honour, each matching the `@path/schema` types
+([`node-type.ts`](../../packages/schema/src/node-type.ts)):
+
+- **A `parallel` branch *is* a node.** `branches` is an array of `WorkflowNode`, each carrying its own
+  `id` + `name`; a branch's **`name` is its `collect`/`wait-one` output key**. There is no separate
+  branch label or arm wrapper — renaming the branch renames the key.
+- **A `branch` arm owns its `when`.** An arm is `{ when: Condition; node }`; the condition **belongs to
+  the arm**, not to the Branch node. The Branch node owns only the **arm order** (first-match-wins) and
+  the optional **`else`** fallback. An arm's (and `else`'s) occupant is a **single node** — a `sequence`
+  where several are needed.
+- **A `while-do` wraps one body node** (`node`) and carries a **mandatory `max_iterations`** bound
+  (`number | string`, the string form an `$env`/`$secret` reference). Both the loop `condition` and the
+  cap are required; no unbounded loop is expressible.
+- **Conditions are the structured [`Condition`](../../packages/schema/src/condition-type.ts) AST**, never
+  free text. Leaf predicates (`exists` / `equals` / `one-of` / `matches` / `range` / `valid-json`) read a
+  `context.`/`output.` dot-path; `all` / `any` / `not` compose them. The pane authors them with a typed
+  builder (pick operator + path + operands), so an ill-typed or unparseable condition is unrepresentable
+  — the structural analogue of the unsnappable socket. This governs **every** condition: a branch arm's
+  `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion.
+
+**Node identity** is the pair from [ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md):
+a durable **`id`** (client-minted UUIDv4, stable across rename / reorder / reparent) and a human
+**`name`** (unique in the file; the parallel output key above). Both are edited in the pane; re-keying
+the `id` is a deliberate, **confirmation-gated** action, because it breaks resume's plan-reuse match for
+that node.
+
+### Structure on the canvas, content in the pane
+
+The governing split, and the rule that fixes where every affordance lives:
+
+- **The canvas edits *structure*** — a node's place in the tree: **add**, **delete**, **reorder**,
+  **replace** a single-slot occupant, add/remove a branch, arm, or `else`, **select**, and **descend**.
+- **The properties pane edits *content*** — a node's own fields: `name`, `id`, `payload`, the parallel
+  **join mode**, an arm's **`when`**, a loop's **`condition` + `max-iterations`**, a checkpoint's
+  **assertion**, and a `workflow`-ref's **target path**.
+- **The canvas may *show* content read-only** — a `join:` badge on the parallel hat, the plain-text
+  condition summary on a branch arm / `while-do` / `checkpoint` — but never *edits* content there. In
+  the pane a condition edits inside a labelled **`when`** / **`condition`** fieldset (the label on the
+  border), the fieldset enclosing the typed builder.
+
+**Selection.** Single-click **selects** a node and populates the pane; clicking empty canvas deselects
+and the pane shows the current **file's** own properties. A `workflow`-ref is the one node whose
+**single-click** selects it (the pane then edits **which file it references**) and whose **double-click
+descends** — the canvas swaps to the ref'd file's body and a **file breadcrumb** tracks the crossing
+(the trail is a navigation stack, not a tree parent: a ref'd file may have several parents). Blocks
+within a file are never descended into; they are already open.
 
 ### Per-kind rendering and edit affordances
 
-| Node | Renders as | Where its controls live |
-|---|---|---|
-| `step` | a leaf block | payload in the properties pane |
-| `checkpoint` | a leaf block **inline in the sequence**, between nodes — never attached to a node | its assertion in the pane; a judgement check is a step that outputs a verdict + a checkpoint that tests it (judge-step pattern) |
-| `parallel` | a C-block; its N branches side by side in the mouth | **join mode** (`collect` / `wait-one` / `do-not-wait`) is a control on the block hat; each branch labelled by its node name |
-| `branch` | a C-block; its N arms side by side | each arm's **condition** on that arm's head (first-match-wins; `else` is the fallback arm) |
-| `while-do` | a C-block wrapping one body node | its **mandatory max-iterations** bound is a required field on the hat; exceeding it fails the run — no unbounded loop is expressible |
-| `sequence` | a vertical stack in the mouth | **order is vertical position**; reordered by move-up/down (or drag) within the container; a legal drop-socket sits at the tail |
-| `workflow` (ref) | a chip, not an inline body | double-click descends across the file boundary |
+| Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |
+|---|---|---|---|
+| `step` | a leaf block | name | `name`, `id`, payload |
+| `checkpoint` | a leaf block **inline in the sequence**, between nodes — never attached to a node | `assert <cond>` summary | its **assertion** (structured `Condition`); a judgement check is a step that outputs a verdict + a checkpoint that tests it (judge-step pattern) |
+| `parallel` | a C-block; its N branches side by side in the mouth | `join:` badge; each branch captioned, labelled by its own node name | **join mode** (`collect` / `wait-one` / `do-not-wait`) |
+| `branch` | a C-block; its N arms side by side, then `else` | `when <cond>` summary per arm head (first-match-wins) | each arm's **`when`** (selected on the arm's own node); the Branch node itself edits only structure |
+| `while-do` | a C-block wrapping one body node | `while <cond> · max N` summary | the loop **`condition`** and the **mandatory `max-iterations`** — exceeding it fails the run |
+| `sequence` | a vertical stack in the mouth | length | `name`; **order is structure** (below) |
+| `workflow` (ref) | a chip, not an inline body | the ref path | the **referenced file path**; double-click descends across the boundary |
 
-### Sequence order, adding, and the empty canvas
+### Adding, reordering, deleting, and the empty canvas
 
-Order is spatial and vertical; reordering is a move **within** a container and never changes a node's
-`id` (per [ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). A node is
-added by dragging a palette block into a legal socket, or via the sequence's tail add-affordance; the
-socket accepts only grammar-legal kinds. An **empty canvas** offers the palette plus a start-a-body
-affordance; a brand-new unsaved workflow holds no lease until its first save (§ Session lifecycle).
+All four are **canvas** actions (structure), never pane controls:
+
+- **Add** — drag a palette block into a **legal socket**, or use a sequence's tail add-affordance; the
+  socket accepts only grammar-legal kinds. A branch whose `else` was deleted offers an **add-`else`**
+  affordance (there is at most one `else`).
+- **Reorder** — move-up / move-down (or drag) **within** a container; a move never changes a node's
+  `id` ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). Order is
+  spatial and vertical.
+- **Replace a single-node slot** — a `while-do` body, and a branch arm's / `else`'s occupant, are **one**
+  node: you **swap** it (drop a block, replacing the occupant) rather than emptying the slot.
+- **Delete** — the **× on a node** or the **Delete key**. Slot rules keep the tree legal: deleting a
+  `while-do` body deletes the whole loop; the **last** parallel branch or branch arm cannot be deleted
+  (a `parallel`/`branch` must keep ≥1); and the **file-body root** is undeletable.
+
+An **empty canvas** offers the palette plus a start-a-body affordance; a brand-new unsaved workflow
+holds no lease until its first save (§ Session lifecycle).
 
 ### Still open (deferred to named #254 tickets)
 
