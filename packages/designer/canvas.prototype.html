@@ -263,7 +263,16 @@
 //  exactly one node, and a `sequence` carries the array where a slot needs several nodes in order.
 //  This sample exercises all four logicers + checkpoints + a workflow-ref, and reaches depth 4.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0");
+let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0"); // short readable ids for the sample
+// A real UUIDv4 (ADR 0015). crypto.randomUUID needs a secure context (missing on file://), so fall
+// back to getRandomValues, which is always available.
+function uuidv4() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x => x.toString(16).padStart(2, "0"));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
+}
 
 // A CONDITION is a structured typed AST (packages/schema/src/condition-type.ts) — NOT a text
 // expression. Leaf predicates read a value at a `path` (a context./output. dot-path); all/any/not
@@ -833,10 +842,26 @@ function paneFor(node, variant, root) {
   const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
   head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
 
+  // Editable name — the human label (^[a-z][a-z0-9-]*$, unique per file). Renaming never touches the id.
+  pane.appendChild(Object.assign(el("label"), { textContent: "name" }));
+  const nameIn = el("input"); nameIn.value = node.name; nameIn.spellcheck = false;
+  const nameWarn = el("p", "hint"); nameWarn.style.color = "var(--status-failed-fg)"; nameWarn.style.display = "none";
+  nameIn.oninput = () => { const ok = /^[a-z][a-z0-9-]*$/.test(nameIn.value); nameWarn.style.display = ok ? "none" : "block"; nameWarn.textContent = "must match ^[a-z][a-z0-9-]*$"; };
+  nameIn.onchange = () => { if (/^[a-z][a-z0-9-]*$/.test(nameIn.value)) { node.name = nameIn.value; toast("renamed → " + node.name); rerender(); } };
+  pane.append(nameIn, nameWarn);
+
+  // Editable id — the durable UUID (ADR 0015: client-minted, preserved across rename/reorder/reparent).
+  // The ⟳ button mints a fresh GUID; normally the id is stable, so this is a deliberate re-key.
+  pane.appendChild(Object.assign(el("label"), { textContent: "id (node GUID)" }));
+  const idRow = el("div"); idRow.style.cssText = "display:flex;gap:6px;align-items:center";
+  const idIn = el("input"); idIn.value = node.id; idIn.spellcheck = false; idIn.style.fontFamily = "var(--font-mono)"; idIn.style.fontSize = "var(--fs-xs)";
+  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; toast("id set"); rerender(); } };
+  const idGen = el("button", "joinpill", "⟳ new GUID"); idGen.style.whiteSpace = "nowrap"; idGen.title = "mint a fresh UUIDv4";
+  idGen.onclick = () => { node.id = uuidv4(); toast("new GUID minted"); rerender(); };
+  idRow.append(idIn, idGen); pane.appendChild(idRow);
+
   const kv = el("dl", "kv");
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
-  add("id", node.id);
-  add("kind", KIND_LABEL[node.kind]);
   if (node.note) add("payload", node.note);
   if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
   if (node.kind === "parallel") add("join", node.join);     // question 1
