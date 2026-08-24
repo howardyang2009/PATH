@@ -14,6 +14,65 @@ the wire does*.
 
 ---
 
+## Canvas interaction model
+
+Resolves [#255](https://github.com/howardyang2009/PATH/issues/255) and **amends map decision 6**;
+settled on the [`proto/designer-canvas-255`](https://github.com/howardyang2009/PATH/blob/proto/designer-canvas-255/packages/designer/canvas.prototype.html)
+prototype (three variants: drill-down, inline-Scratch, hybrid). This section is normative.
+
+### The model: inline within a file, drill-down across a ref boundary
+
+Nesting **inside a single workflow file renders inline and visible** — every node is a block, and the
+three block logicers (`parallel`, `branch`, `while-do`) are C-shaped wrappers whose arms/body nest in
+their mouth. This **supersedes** the pure level-by-level drill-down of decision 6's 2026-08-19
+amendment: the author sees a level's structure without descending into it. The only place the canvas
+drills is a **`workflow`-ref crossing to another file** — a boundary that already forces a separate
+write precondition ([#257](https://github.com/howardyang2009/PATH/issues/257)) and a separate edit
+lease (§ Edit-lock lease protocol), so the navigation hop is not new cost.
+
+The **constraint half of decision 6 is unchanged and tightened.** The palette offers only the block
+kinds legal at a given socket, and a block clicks into a socket **only** where the grammar allows it —
+an illegal structure is *unsnappable*, not merely rejected on save. The author can never express a
+body the block grammar cannot: no edges, no arbitrary DAG.
+
+### Selection and the properties pane
+
+Single-click **selects** a node and populates a right-hand properties pane; clicking empty canvas
+deselects and the pane shows the current **file's** own properties. A `workflow`-ref is the one node
+whose double-click **descends** — the canvas swaps to the ref'd file's body and a **file breadcrumb**
+tracks the crossing (the trail is a navigation stack, not a tree parent: a ref'd file may have several
+parents). Blocks within a file are never descended into; they are already open.
+
+### Per-kind rendering and edit affordances
+
+| Node | Renders as | Where its controls live |
+|---|---|---|
+| `step` | a leaf block | payload in the properties pane |
+| `checkpoint` | a leaf block **inline in the sequence**, between nodes — never attached to a node | its assertion in the pane; a judgement check is a step that outputs a verdict + a checkpoint that tests it (judge-step pattern) |
+| `parallel` | a C-block; its N branches side by side in the mouth | **join mode** (`collect` / `wait-one` / `do-not-wait`) is a control on the block hat; each branch labelled by its node name |
+| `branch` | a C-block; its N arms side by side | each arm's **condition** on that arm's head (first-match-wins; `else` is the fallback arm) |
+| `while-do` | a C-block wrapping one body node | its **mandatory max-iterations** bound is a required field on the hat; exceeding it fails the run — no unbounded loop is expressible |
+| `sequence` | a vertical stack in the mouth | **order is vertical position**; reordered by move-up/down (or drag) within the container; a legal drop-socket sits at the tail |
+| `workflow` (ref) | a chip, not an inline body | double-click descends across the file boundary |
+
+### Sequence order, adding, and the empty canvas
+
+Order is spatial and vertical; reordering is a move **within** a container and never changes a node's
+`id` (per [ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). A node is
+added by dragging a palette block into a legal socket, or via the sequence's tail add-affordance; the
+socket accepts only grammar-legal kinds. An **empty canvas** offers the palette plus a start-a-body
+affordance; a brand-new unsaved workflow holds no lease until its first save (§ Session lifecycle).
+
+### Still open (deferred to named #254 tickets)
+
+These interact with this model but are **not** settled here: whether a `sequence` renders as its own
+inline level or is collapsed; canvas validation-error UX (per-node markers vs a problems panel,
+save-blocking vs save-with-warnings); undo/redo and the dirty-state model; new-file placement and
+naming; and the `$env` / `$secret` authoring affordance. Each is an open ticket on
+[#254](https://github.com/howardyang2009/PATH/issues/254).
+
+---
+
 ## Edit-lock lease protocol
 
 Resolves [#258](https://github.com/howardyang2009/PATH/issues/258); rationale in
