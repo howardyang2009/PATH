@@ -123,13 +123,14 @@
     color: var(--accent); cursor: pointer; padding: 2px 7px; margin-top: 3px; }
   .cond-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--k-branch);
     background: var(--k-branch-bg); border-radius: 5px; padding: 4px 6px; margin: 6px 0; word-break: break-word; }
-  /* A labelled rectangle that groups a condition (or a branch arm's `when`) so it reads as one unit. */
-  .condbox { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
-    border-radius: 6px; padding: 1px 4px 1px 3px; background: var(--surface); vertical-align: middle; }
-  .condbox > .tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-    color: var(--surface); background: var(--text-muted); border-radius: 4px; padding: 1px 5px; }
-  .condbox.when > .tag { background: var(--k-branch); }
-  .condbox > .val { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); word-break: break-word; }
+  /* The pane's condition rectangle: a real fieldset whose legend ("when"/"condition") sits on the
+     border, wrapping the whole editor (summary + builder) as one bordered unit. */
+  fieldset.condfs { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px 10px;
+    margin: 8px 0; min-width: 0; }
+  fieldset.condfs > legend { padding: 1px 7px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--surface); background: var(--text-muted); border-radius: 4px; }
+  fieldset.condfs.when > legend { background: var(--k-branch); }
+  fieldset.condfs .fs-desc { font-size: var(--fs-xs); color: var(--text-muted); margin: 0 0 4px; }
 
   /* Kind chip. */
   .kind { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs);
@@ -384,14 +385,6 @@ function condSummary(c) {
     default:           return "?";
   }
 }
-// A labelled rectangle grouping a condition. `label` is "condition" everywhere except a branch arm's
-// `when`, which passes "when" (and gets the branch hue) so the arm predicate reads as its own unit.
-function condBox(label, cond) {
-  const b = el("div", "condbox" + (label === "when" ? " when" : ""));
-  b.appendChild(el("span", "tag", label));
-  b.appendChild(el("span", "val", condSummary(cond)));
-  return b;
-}
 // setCond(newCond) replaces this node in its parent; onEdit fires after any mutation to re-render.
 function renderCondEditor(cond, setCond, onEdit, depth = 0) {
   const box = el("div", "cond-node"); box.style.marginLeft = depth ? "12px" : "0";
@@ -518,9 +511,9 @@ function renderA(stage) {
     level.appendChild(wrap);
   } else if (cur.kind === "branch") {
     const wrap = el("div", "a-arms");
-    cur.arms.forEach((arm, i) => {
+    cur.arms.forEach(arm => {
       const col = el("div", "a-arm");
-      col.appendChild(el("div", "arm-label", "arm " + (i + 1) + " · select to edit its when"));  // `when` lives in Properties
+      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = condSummary(arm.when); c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
@@ -534,7 +527,7 @@ function renderA(stage) {
     wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
-    level.appendChild(el("p", "arm-label", "loop body · condition & max-iterations are in Properties →"));  // condition is CONTENT, edited in the pane
+    const cl = el("p", "arm-label"); cl.append("while "); const cc = el("code"); cc.textContent = condSummary(cur.condition); cc.style.color = "var(--k-while)"; cl.appendChild(cc); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
     level.appendChild(nodeRow(cur.body));
     const rb = el("button", "a-add", "⟳ replace loop body (fresh step)"); rb.style.marginTop = "6px";
     rb.onclick = () => { cur.body = step("loop-body", "todo"); selectedId = cur.body.id; toast("Replaced loop body of “" + cur.name + "”"); renderA(stage); };
@@ -592,8 +585,13 @@ function renderScratchBlock(node, opts = {}) {
   if (node.kind === "parallel") { // read-only join badge; join is edited in PROPERTIES (structure vs content)
     const jb = el("span", "joinpill", "join: " + node.join); jb.style.cursor = "default"; drop.appendChild(jb);
   }
-  // while-do condition + max-iter, and checkpoint assertion, are CONTENT — shown/edited in PROPERTIES,
-  // not on the canvas. The hat carries only the kind chip + name (structure).
+  // Read-only condition TEXT on the hat (the editable rectangle lives in PROPERTIES).
+  if (node.kind === "while-do") {
+    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition) + " · max " + node.maxIter + " iters"; wc.style.marginLeft = "6px"; drop.appendChild(wc);
+  }
+  if (node.kind === "checkpoint") {
+    const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
+  }
   hat.appendChild(drop);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
   wrap.appendChild(hat);
@@ -633,7 +631,7 @@ function renderScratchBlock(node, opts = {}) {
     };
     if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", b)));
     else {
-      node.arms.forEach((arm, i) => row.appendChild(armColumn("arm " + (i + 1), arm.node)));
+      node.arms.forEach(arm => row.appendChild(armColumn("when " + condSummary(arm.when), arm.node)));
       if (node.else) row.appendChild(armColumn("else", node.else));
     }
     // Add-arm affordance: a trailing column that adds a NEW branch/arm. A parallel branch is a bare
@@ -916,11 +914,16 @@ function paneFor(node, variant, root) {
   // while-do `condition`, checkpoint `condition`. You never type an expression — you pick an
   // operator + a context./output. path + operands, or compose with all/any/not.
   const condEditor = (labelTxt, getC, setC, help, boxLabel) => {
-    pane.appendChild(Object.assign(el("label"), { textContent: labelTxt }));
-    pane.appendChild(condBox(boxLabel || "condition", getC()));            // labelled read-back rectangle (lives here, not on the canvas)
+    // The rectangle: a fieldset whose legend is the "when"/"condition" label, enclosing the whole
+    // editor. The canvas shows only the plain-text summary; editing lives inside this box.
+    const fs = el("fieldset", "condfs" + (boxLabel === "when" ? " when" : ""));
+    fs.appendChild(el("legend", null, boxLabel || "condition"));
+    if (labelTxt) fs.appendChild(el("p", "fs-desc", labelTxt));
+    fs.appendChild(el("div", "cond-preview", condSummary(getC())));         // read-back summary
     const onEdit = () => { toast("condition updated"); rerender(); };       // rerender rebuilds the pane from state
-    pane.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
-    if (help) pane.appendChild(el("p", "hint", help));
+    fs.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
+    if (help) fs.appendChild(el("p", "hint", help));
+    pane.appendChild(fs);
   };
 
   // Arm metadata: a branch arm owns its `when` (edited here); a parallel branch owns nothing extra —
