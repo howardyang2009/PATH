@@ -102,16 +102,39 @@
 
   .stage { flex: 1; min-height: 0; display: flex; }
   .canvas { flex: 1; min-width: 0; overflow: auto; position: relative; }
-  .pane { width: 320px; border-left: 1px solid var(--border); background: var(--surface);
+  .pane { width: 320px; flex-shrink: 0; border-left: 1px solid var(--border); background: var(--surface);
     overflow: auto; padding: 14px; font-size: var(--fs-sm); }
   .pane h3 { margin: 0 0 4px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
   .pane .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 8px; margin: 8px 0; }
   .pane .kv dt { color: var(--text-muted); }
   .pane .kv dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-word; }
   .pane .hint { color: var(--text-muted); font-style: italic; }
-  .pane select, .pane input { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
+  /* Node explanation, gathered at the top of the pane above the "properties" line. */
+  .pane-help { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .pane-help .hint { margin: 0 0 6px; }
+  .pane-help .hint:last-child { margin-bottom: 0; }
+  .pane select, .pane input, .pane textarea { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
     background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
   .pane label { display: block; margin: 10px 0 2px; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; }
+  /* structured condition builder */
+  .cond-node { margin: 4px 0; border-left: 2px solid var(--k-branch-bg); padding-left: 6px; }
+  .cond-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 3px 0; }
+  .cond-row select.cond-type { width: auto; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 4px; }
+  .cond-row input.cond-path { flex: 1; min-width: 110px; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 5px; }
+  .cond-row input.cond-op { width: 78px; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 5px; }
+  .cond-rm { background: none; border: none; color: var(--k-workflow); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; }
+  .cond-add { font: inherit; font-size: var(--fs-xs); background: none; border: 1px dashed var(--border); border-radius: 5px;
+    color: var(--accent); cursor: pointer; padding: 2px 7px; margin-top: 3px; }
+  .cond-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--k-branch);
+    background: var(--k-branch-bg); border-radius: 5px; padding: 4px 6px; margin: 6px 0; word-break: break-word; }
+  /* The pane's condition rectangle: a real fieldset whose legend ("when"/"condition") sits on the
+     border, wrapping the whole editor (summary + builder) as one bordered unit. */
+  fieldset.condfs { border: 1px solid var(--border); border-radius: 8px; padding: 6px 10px 10px;
+    margin: 8px 0; min-width: 0; }
+  fieldset.condfs > legend { padding: 1px 7px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .05em; color: var(--surface); background: var(--text-muted); border-radius: 4px; }
+  fieldset.condfs.when > legend { background: var(--k-branch); }
+  fieldset.condfs .fs-desc { font-size: var(--fs-xs); color: var(--text-muted); margin: 0 0 4px; }
 
   /* Kind chip. */
   .kind { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs);
@@ -143,6 +166,14 @@
   .a-node.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
   .a-node .nm { font-weight: 600; }
   .a-node .desc-badge { margin-left: auto; font-size: var(--fs-xs); color: var(--text-muted); }
+  /* delete controls */
+  .danger-btn { font: inherit; font-size: var(--fs-sm); width: 100%; margin-top: 14px; padding: 7px 10px;
+    background: var(--status-failed-bg); color: var(--status-failed-fg); border: 1px solid var(--status-failed-fg);
+    border-radius: 7px; cursor: pointer; }
+  .danger-btn:hover { background: var(--status-failed-fg); color: #fff; }
+  .node-x { border: none; background: none; color: var(--k-workflow); cursor: pointer; font-size: 15px; line-height: 1;
+    padding: 0 4px; border-radius: 4px; opacity: .55; }
+  .node-x:hover { opacity: 1; background: var(--status-failed-bg); }
   .a-node .idx { width: 20px; text-align: center; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
   .a-add { display: block; width: 100%; text-align: left; padding: 9px 12px; margin: 6px 0;
     border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--text-muted);
@@ -150,7 +181,7 @@
   .a-add:hover { border-color: var(--accent); color: var(--accent); }
 
   /* ---------- Variant B & C: Scratch blocks ---------- */
-  .scratch-wrap { display: flex; min-height: 100%; }
+  .scratch-wrap { display: flex; min-height: 100%; flex: 1; min-width: 0; }
   .palette { width: 176px; border-right: 1px solid var(--border); background: var(--surface); padding: 12px; flex-shrink: 0; }
   .palette h3 { margin: 0 0 8px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
   .palette .blk { display: flex; align-items: center; gap: 6px; padding: 7px 9px; margin: 6px 0; border-radius: 7px;
@@ -158,7 +189,7 @@
   .palette .blk:active { cursor: grabbing; }
   .palette .blk.illegal { opacity: .32; cursor: not-allowed; }
   .palette .legalnote { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 10px; line-height: 1.4; }
-  .scratch-canvas { flex: 1; padding: 22px; overflow: auto; }
+  .scratch-canvas { flex: 1; min-width: 0; padding: 22px; overflow: auto; }
 
   /* A scratch stack: vertical column of blocks that visually notch together. */
   .stack { display: flex; flex-direction: column; gap: 0; }
@@ -169,6 +200,9 @@
     border-left: 5px solid var(--kc, var(--border)); }
   .sblock.leaf .hat { border-radius: 7px; }
   .sblock .hat .nm { font-weight: 600; }
+  /* Leading control cluster (delete + reorder). Left-anchored so it stays visible even when a wide
+     nested block overflows the canvas column to the right — the reason delete felt "missing" before. */
+  .ctl-slot { display: inline-flex; gap: 2px; align-items: center; flex-shrink: 0; }
   .sblock .hat .drop { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
   .sblock .socket-note { font-size: var(--fs-xs); color: var(--text-muted); padding: 0 10px 7px; }
   /* C-block mouth: the nested body, inset with a left rail in the kind's hue. */
@@ -244,42 +278,77 @@
 //  exactly one node, and a `sequence` carries the array where a slot needs several nodes in order.
 //  This sample exercises all four logicers + checkpoints + a workflow-ref, and reaches depth 4.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0");
+let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0"); // short readable ids for the sample
+// A real UUIDv4 (ADR 0015). crypto.randomUUID needs a secure context (missing on file://), so fall
+// back to getRandomValues, which is always available.
+function uuidv4() {
+  if (crypto.randomUUID) return crypto.randomUUID();
+  const b = crypto.getRandomValues(new Uint8Array(16));
+  b[6] = (b[6] & 0x0f) | 0x40; b[8] = (b[8] & 0x3f) | 0x80;
+  const h = [...b].map(x => x.toString(16).padStart(2, "0"));
+  return `${h[0]}${h[1]}${h[2]}${h[3]}-${h[4]}${h[5]}-${h[6]}${h[7]}-${h[8]}${h[9]}-${h[10]}${h[11]}${h[12]}${h[13]}${h[14]}${h[15]}`;
+}
 
-const step  = (name, note)          => ({ id: gid(), name, kind: "step", note });
-const check = (name, assertion)     => ({ id: gid(), name, kind: "checkpoint", assertion });
-const seq   = (name, nodes)         => ({ id: gid(), name, kind: "sequence", nodes });
-const par   = (name, join, arms)    => ({ id: gid(), name, kind: "parallel", join, arms }); // arms: [{name,node}]
-const branch= (name, arms)          => ({ id: gid(), name, kind: "branch", arms });          // arms: [{cond,node}]
-const whilez= (name, maxIter, body) => ({ id: gid(), name, kind: "while-do", maxIter, body });
-const wfref = (name, ref)           => ({ id: gid(), name, kind: "workflow", ref });
+// A CONDITION is a structured typed AST (packages/schema/src/condition-type.ts) — NOT a text
+// expression. Leaf predicates read a value at a `path` (a context./output. dot-path); all/any/not
+// compose. The SAME Condition type is the branch arm's `when`, the while-do's `condition`, and the
+// checkpoint's `condition` — so one builder authors all three.
+const cExists    = path            => ({ type: "exists", path });
+const cEquals    = (path, value)   => ({ type: "equals", path, value });
+const cOneOf     = (path, values)  => ({ type: "one-of", path, values });
+const cMatches   = (path, pattern) => ({ type: "matches", path, pattern });
+const cRange     = (path, min, max)=> ({ type: "range", path, ...(min != null ? { min } : {}), ...(max != null ? { max } : {}) });
+const cValidJson = path            => ({ type: "valid-json", path });
+const cAll       = (...of)         => ({ type: "all", of });
+const cAny       = (...of)         => ({ type: "any", of });
+const cNot       = of              => ({ type: "not", of });
+const LEAF_TYPES = ["exists","equals","one-of","matches","range","valid-json"];
+const COMBO_TYPES = ["all","any","not"];
+
+// A leaf step is one of three worker types (@2, node-type.ts): PromptStep (LLM), BinaryStep (command),
+// WorkflowStep (sub-workflow ref). LLM + command share the step hue; the ref keeps its own kind/hue
+// because it is the one boundary-crosser. `type` is a creation-time discriminant, so it is chosen from
+// the palette up front, not flipped in a dropdown.
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+const llm   = (name, prompt, model)      => ({ id: gid(), name, kind: "step", stype: "llm", prompt: prompt || "", model: model || DEFAULT_MODEL });
+const cmd   = (name, command, args, cwd) => ({ id: gid(), name, kind: "step", stype: "command", command: command || "", args: args || [], cwd: cwd || "." });
+const step  = (name, note)               => llm(name, note);   // internal default leaf = an LLM step
+const check = (name, condition)          => ({ id: gid(), name, kind: "checkpoint", condition });   // condition: Condition
+const seq   = (name, nodes)              => ({ id: gid(), name, kind: "sequence", nodes });
+// A parallel branch IS a node (@2, node-type.ts): its own `name` is the collect/wait-one output key —
+// there is no separate arm name. So `parallel.branches` is a plain node array. A branch logicer's arm,
+// by contrast, wraps a node with its own `when` condition.
+const par   = (name, join, branches)     => ({ id: gid(), name, kind: "parallel", join, branches }); // branches: node[]
+const branch= (name, arms, elseNode)     => ({ id: gid(), name, kind: "branch", arms, else: elseNode }); // arms: [{when:Condition,node}], else?: node
+const whilez= (name, condition, maxIter, body) => ({ id: gid(), name, kind: "while-do", condition, maxIter, body }); // condition: Condition
+const wfref = (name, ref)                => ({ id: gid(), name, kind: "workflow", ref });
 
 const MODEL = seq("release-pipeline", [
-  step("fetch-source", "clone + checkout the release ref"),
-  check("assert-source-present", "ctx.source_dir exists && non-empty"),
-  par("verify", "collect", [
-    { name: "lint",  node: seq("lint-seq", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", "exit-code == 0") ]) },
-    { name: "test",  node: whilez("retry-tests", 3, step("run-flaky-tests", "pytest -q; may flake")) },
-    { name: "build", node: step("build-artifact", "docker build -t rel:$sha .") },
+  llm("plan-release", "Given {{context.diff}}, classify the release as patch, minor, or major and note risks."),
+  cmd("fetch-source", "git", ["clone", "--depth", "1", "$REPO"], "."),
+  check("assert-source-present", cExists("context.source_dir")),
+  par("verify", "collect", [                                           // branch keys = these nodes' names
+    seq("lint", [ cmd("run-lint", "eslint", ["--max-warnings", "0", "."], "."), check("lint-clean", cEquals("output.exit_code", 0)) ]),
+    whilez("test", cEquals("output.status", "flaky"), 3, cmd("run-flaky-tests", "pytest", ["-q"], ".")),
+    cmd("build", "docker", ["build", "-t", "rel:$sha", "."], "."),
   ]),
   branch("route-deploy", [
-    { cond: "ctx.target == 'prod'",    node: par("ship-prod", "wait-one", [
-        { name: "us", node: step("deploy-us", "push to us-east-1") },
-        { name: "eu", node: step("deploy-eu", "push to eu-west-1") },
+    { when: cEquals("context.target", "prod"),    node: par("ship-prod", "wait-one", [
+        cmd("us", "deployctl", ["push", "us-east-1"], "."),
+        cmd("eu", "deployctl", ["push", "eu-west-1"], "."),
     ]) },
-    { cond: "ctx.target == 'staging'", node: step("deploy-staging", "push to staging") },
-    { cond: "else",                    node: check("no-target", "fail: no deploy target set") },
-  ]),
-  check("assert-deployed", "healthcheck 200 within 60s"),
+    { when: cEquals("context.target", "staging"), node: cmd("deploy-staging", "deployctl", ["push", "staging"], ".") },
+  ], check("no-target", cExists("context.target"))), // else arm is a single node, not a when-arm
+  check("assert-deployed", cRange("output.http_status", 200, 299)),
   wfref("notify-team", "./notify.workflow.json"),
 ]);
 
 // A second file, reached only through the workflow-ref — lets variant C demo the file-boundary drill-down.
 const NOTIFY_FILE = seq("notify", [
-  step("render-message", "template the release notes"),
+  llm("render-message", "Draft concise release notes from {{context.changelog}} for a Slack post."),
   par("fan-out", "do-not-wait", [
-    { name: "slack", node: step("post-slack", "chat.postMessage") },
-    { name: "email", node: step("send-email", "SES send") },
+    cmd("slack", "slackctl", ["post", "#releases"], "."),
+    cmd("email", "sesctl", ["send", "--to", "team@co"], "."),
   ]),
 ]);
 
@@ -289,7 +358,17 @@ const KVAR = { step:"--k-step", checkpoint:"--k-checkpoint", parallel:"--k-paral
   "while-do":"--k-while", sequence:"--k-sequence", workflow:"--k-workflow" };
 const isContainer = n => ["parallel","branch","while-do","sequence","workflow"].includes(n.kind);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-function kindChip(kind) { const c = el("span", "kind " + kind, KIND_LABEL[kind]); return c; }
+// Chip label follows the node's real identity: an LLM vs command step (both step-hued), a sub-workflow
+// ref (its own hue), else the kind name. Hue stays keyed on `kind` so llm+command share the step colour.
+function chipLabel(node) {
+  if (node.kind === "step") return node.stype === "command" ? "command" : "llm";
+  if (node.kind === "workflow") return "sub-workflow";
+  return KIND_LABEL[node.kind];
+}
+function kindChip(kind, label) { return el("span", "kind " + kind, label || KIND_LABEL[kind]); }
+// Palette drag keys → display label (keys distinguish llm/command, which share the `step` kind).
+const KEY_LABEL = { llm:"llm", command:"command", workflow:"sub-workflow", checkpoint:"checkpoint",
+  parallel:"parallel", branch:"branch", "while-do":"while-do", sequence:"sequence" };
 
 // Shared selection + a tiny toast so every mutation "surfaces the state" (skill rule 5).
 let selectedId = null;
@@ -303,6 +382,81 @@ function toast(msg) {
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  CONDITION toolkit — a compact read-only summary + a structured builder. Answers "how do I input
+//  the condition?" for branch `when`, while-do `condition`, and checkpoint `condition`: you do NOT
+//  type an expression; you pick an operator + a path + operands, or compose with all/any/not.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+function jsonScalar(s) { // parse an operand input into a JSON scalar (number/bool/null/string)
+  const t = s.trim();
+  if (t === "true") return true; if (t === "false") return false; if (t === "null") return null;
+  if (t !== "" && !isNaN(Number(t))) return Number(t);
+  return s;
+}
+function condSummary(c) {
+  if (!c) return "—";
+  switch (c.type) {
+    case "exists":     return `${c.path} exists`;
+    case "equals":     return `${c.path} == ${JSON.stringify(c.value)}`;
+    case "one-of":     return `${c.path} in [${(c.values||[]).map(v=>JSON.stringify(v)).join(", ")}]`;
+    case "matches":    return `${c.path} ~ /${c.pattern}/`;
+    case "range":      return `${c.path} ∈ [${c.min ?? "−∞"}..${c.max ?? "+∞"}]`;
+    case "valid-json": return `${c.path} is valid-json`;
+    case "all":        return "(" + (c.of||[]).map(condSummary).join(" AND ") + ")";
+    case "any":        return "(" + (c.of||[]).map(condSummary).join(" OR ")  + ")";
+    case "not":        return "NOT " + condSummary(c.of);
+    default:           return "?";
+  }
+}
+// setCond(newCond) replaces this node in its parent; onEdit fires after any mutation to re-render.
+function renderCondEditor(cond, setCond, onEdit, depth = 0) {
+  const box = el("div", "cond-node"); box.style.marginLeft = depth ? "12px" : "0";
+  const row = el("div", "cond-row");
+  const typeSel = el("select", "cond-type");
+  [...LEAF_TYPES, "—", ...COMBO_TYPES].forEach(t => { const o = el("option", null, t); if (t === "—") o.disabled = true; o.value = t; if (t === cond.type) o.selected = true; typeSel.appendChild(o); });
+  typeSel.onchange = () => {
+    const nt = typeSel.value; let next;
+    if (LEAF_TYPES.includes(nt)) {
+      const path = cond.path || "context.field";
+      next = nt === "equals" ? cEquals(path, "") : nt === "one-of" ? cOneOf(path, [""]) : nt === "matches" ? cMatches(path, ".*")
+        : nt === "range" ? cRange(path, 0, null) : nt === "valid-json" ? cValidJson(path) : cExists(path);
+    } else if (nt === "not") next = cNot(LEAF_TYPES.includes(cond.type) ? cond : cExists("context.field"));
+    else next = { type: nt, of: cond.of || [LEAF_TYPES.includes(cond.type) ? cond : cExists("context.field")] };
+    setCond(next); onEdit();
+  };
+  row.appendChild(typeSel);
+
+  if (LEAF_TYPES.includes(cond.type)) {
+    const path = el("input", "cond-path"); path.value = cond.path || ""; path.placeholder = "context.field | output.field";
+    path.onchange = () => { cond.path = path.value; onEdit(); };
+    row.appendChild(path);
+    if (cond.type === "equals") { const v = el("input", "cond-op"); v.value = String(cond.value ?? ""); v.placeholder = "value"; v.onchange = () => { cond.value = jsonScalar(v.value); onEdit(); }; row.appendChild(v); }
+    if (cond.type === "one-of") { const v = el("input", "cond-op"); v.value = (cond.values||[]).join(", "); v.placeholder = "a, b, c"; v.onchange = () => { cond.values = v.value.split(",").map(s => jsonScalar(s)); onEdit(); }; row.appendChild(v); }
+    if (cond.type === "matches") { const v = el("input", "cond-op"); v.value = cond.pattern || ""; v.placeholder = "regex"; v.onchange = () => { cond.pattern = v.value; onEdit(); }; row.appendChild(v); }
+    if (cond.type === "range") {
+      const mn = el("input", "cond-op"); mn.style.width = "56px"; mn.value = cond.min ?? ""; mn.placeholder = "min"; mn.onchange = () => { const n = mn.value.trim(); if (n === "") delete cond.min; else cond.min = Number(n); onEdit(); };
+      const mx = el("input", "cond-op"); mx.style.width = "56px"; mx.value = cond.max ?? ""; mx.placeholder = "max"; mx.onchange = () => { const n = mx.value.trim(); if (n === "") delete cond.max; else cond.max = Number(n); onEdit(); };
+      row.append(mn, mx);
+    }
+    box.appendChild(row);
+  } else if (cond.type === "not") {
+    box.appendChild(row);
+    box.appendChild(renderCondEditor(cond.of, nc => { cond.of = nc; }, onEdit, depth + 1));
+  } else { // all / any
+    box.appendChild(row);
+    cond.of.forEach((child, i) => {
+      const holder = renderCondEditor(child, nc => { cond.of[i] = nc; }, onEdit, depth + 1);
+      const rm = el("button", "cond-rm", "×"); rm.title = "remove"; rm.onclick = () => { cond.of.splice(i, 1); if (!cond.of.length) cond.of.push(cExists("context.field")); onEdit(); };
+      holder.querySelector(".cond-row")?.appendChild(rm);
+      box.appendChild(holder);
+    });
+    const addC = el("button", "cond-add", "＋ condition"); addC.style.marginLeft = ((depth + 1) * 12) + "px";
+    addC.onclick = () => { cond.of.push(cExists("context.field")); onEdit(); };
+    box.appendChild(addC);
+  }
+  return box;
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 //  VARIANT A — DRILL-DOWN. One level at a time. Single-click selects, double-click descends,
 //  breadcrumb stack ascends. Containers show N arms side by side AT that level; a block costs
 //  exactly one level of depth. Right pane = properties of the selected node (or the level itself).
@@ -310,7 +464,9 @@ function toast(msg) {
 let aStack = [MODEL]; // navigation stack; top = current level container
 
 function renderA(stage) {
-  aStack = aStack.filter(Boolean); if (!aStack.length) aStack = [MODEL];
+  activeRoot = MODEL;
+  // Drop any level whose node was deleted out from under the navigation stack.
+  aStack = aStack.filter(n => n && (n === MODEL || findNode(MODEL, n.id))); if (!aStack.length) aStack = [MODEL];
   const cur = aStack[aStack.length - 1];
   stage.innerHTML = "";
   const canvas = el("div", "canvas");
@@ -332,12 +488,28 @@ function renderA(stage) {
   const descend = node => { aStack = [...aStack, node]; selectedId = null; renderA(stage); };
   const selectNode = node => { selectedId = node.id; renderA(stage); };
 
+  // Add-arm column for a parallel/branch level (question — "how do I add a parallel branch?").
+  const addArmCol = block => {
+    const col = el("div", "a-arm"); col.style.borderStyle = "dashed";
+    const b = el("button", "a-add", block.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm");
+    b.style.margin = "0";
+    b.onclick = () => {
+      if (block.kind === "parallel") { const nm = "branch-" + (block.branches.length + 1); block.branches.push(step(nm, "todo")); toast("Added parallel branch “" + nm + "”"); }
+      else { block.arms.push({ when: cExists("context.field"), node: step("arm-step", "todo") }); toast("Added branch arm (else stays last)"); }
+      renderA(stage);
+    };
+    col.appendChild(b); return col;
+  };
+
   const nodeRow = (node, idx) => {
     const row = el("div", "a-node" + (node.id === selectedId ? " sel" : ""));
     if (idx != null) row.appendChild(el("span", "idx", idx + 1));
-    row.appendChild(kindChip(node.kind));
+    row.appendChild(kindChip(node.kind, chipLabel(node)));
     row.appendChild(el("span", "nm", node.name));
     if (isContainer(node)) { const d = el("span", "desc-badge", "double-click to open ▸"); row.appendChild(d); }
+    const xb = el("button", "node-x", "×"); xb.title = "delete this node"; xb.style.marginLeft = isContainer(node) ? "8px" : "auto";
+    xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    row.appendChild(xb);
     row.onclick = e => { e.stopPropagation(); selectNode(node); };
     row.ondblclick = e => { e.stopPropagation(); if (isContainer(node)) descend(node); };
     return row;
@@ -346,37 +518,49 @@ function renderA(stage) {
   // Render current level. A sequence shows an ordered, reorderable list; the block kinds show arms side by side.
   if (cur.kind === "sequence") {
     cur.nodes.forEach((n, i) => level.appendChild(nodeRow(n, i)));
-    const add = el("button", "a-add", "＋ add node here  (step · checkpoint · parallel · branch · while-do)");
+    const add = el("button", "a-add", "＋ add node here  (llm · command · sub-workflow · checkpoint · parallel · branch · while-do)");
     add.onclick = () => { cur.nodes.push(step("new-step", "todo")); toast("Added step to “" + cur.name + "”"); renderA(stage); };
     level.appendChild(add);
   } else if (cur.kind === "parallel") {
     const wrap = el("div", "a-arms");
-    cur.arms.forEach(arm => {
+    cur.branches.forEach(bnode => {                          // a parallel branch is just a node; its name is the key
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.append("branch ", Object.assign(el("b"), { textContent: arm.name })); col.appendChild(lbl);
-      col.appendChild(nodeRow(arm.node));
+      col.appendChild(el("div", "arm-label", "parallel branch"));
+      col.appendChild(nodeRow(bnode));
       wrap.appendChild(col);
     });
+    wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "branch") {
     const wrap = el("div", "a-arms");
     cur.arms.forEach(arm => {
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = arm.cond; c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
+      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = condSummary(arm.when); c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
+    if (cur.else) { const col = el("div", "a-arm"); col.appendChild(el("div", "arm-label", "else (no arm matched)")); col.appendChild(nodeRow(cur.else)); wrap.appendChild(col); }
+    else { // else was deleted — offer to add one back
+      const col = el("div", "a-arm"); col.style.borderStyle = "dashed";
+      const b = el("button", "a-add", "＋ add else (fallback)"); b.style.margin = "0";
+      b.onclick = () => { cur.else = step("else-step", "todo"); selectedId = cur.else.id; toast("Added else fallback to “" + cur.name + "”"); renderA(stage); };
+      col.appendChild(b); wrap.appendChild(col);
+    }
+    wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
-    level.appendChild(el("p", "arm-label", "loop body (runs up to max-iterations times):"));
+    const cl = el("p", "arm-label"); cl.append("while "); const cc = el("code"); cc.textContent = condSummary(cur.condition); cc.style.color = "var(--k-while)"; cl.appendChild(cc); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
     level.appendChild(nodeRow(cur.body));
+    const rb = el("button", "a-add", "⟳ replace loop body (fresh step)"); rb.style.marginTop = "6px";
+    rb.onclick = () => { cur.body = step("loop-body", "todo"); selectedId = cur.body.id; toast("Replaced loop body of “" + cur.name + "”"); renderA(stage); };
+    level.appendChild(rb);
   } else if (cur.kind === "workflow") {
     level.appendChild(el("p", "hint", "This is a workflow-ref — its body lives in another file (" + cur.ref + ") behind a separate write precondition and edit lease. Descending crosses files."));
   }
 
   canvas.appendChild(level);
   stage.appendChild(canvas);
-  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) || cur : cur, "A"));
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) || cur : cur, "A", MODEL));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -393,32 +577,42 @@ function renderScratchBlock(node, opts = {}) {
 
   if (node.kind === "workflow") { // a ref renders as a chip even in pure-inline B (its body is another file)
     const chip = el("div", "refchip");
-    chip.appendChild(kindChip("workflow"));
+    const ctl = el("span", "ctl-slot");                     // leading cluster so delete is reachable even when the ref path makes the chip overflow
+    const cx = el("button", "node-x", "×"); cx.title = "delete this workflow-ref node (the ref'd file is untouched)";
+    cx.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    ctl.appendChild(cx);
+    chip.appendChild(ctl);
+    chip.appendChild(kindChip("workflow", "sub-workflow"));
     chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
     const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
-    chip.appendChild(el("span", "cross", opts.hybrid ? "descend ↳" : "another file"));
-    chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
+    chip.appendChild(el("span", "cross", opts.hybrid ? "double-click to open ↳" : "another file"));
+    // Single click selects (Properties edits which file this references). Double click descends into it.
+    chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
+    chip.ondblclick = e => { e.stopPropagation(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
     return chip;
   }
 
   const hat = el("div", "hat"); hat.style.setProperty("--kc", kc);
-  hat.appendChild(kindChip(node.kind));
+  const ctl = el("span", "ctl-slot");                       // leading: delete (+ reorder, injected by renderStack) — always visible regardless of block width
+  if (node.id !== opts.rootId) {                            // the file body root can't be deleted, so it shows no ×
+    const xb = el("button", "node-x", "×"); xb.title = "delete this node";
+    xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    ctl.appendChild(xb);
+  }
+  hat.appendChild(ctl);
+  hat.appendChild(kindChip(node.kind, chipLabel(node)));
   hat.appendChild(Object.assign(el("span", "nm"), { textContent: node.name }));
   const drop = el("span", "drop");
 
-  if (node.kind === "parallel") { // join mode switched right on the hat (question 1)
-    const sel = el("select"); sel.className = "joinpill";
-    ["collect","wait-one","do-not-wait"].forEach(j => { const o = el("option", null, "join: " + j); o.value = j; if (j === node.join) o.selected = true; sel.appendChild(o); });
-    sel.onchange = e => { e.stopPropagation(); node.join = sel.value; toast("“" + node.name + "” join → " + sel.value); opts.rerender(); };
-    sel.onclick = e => e.stopPropagation();
-    drop.appendChild(sel);
+  if (node.kind === "parallel") { // read-only join badge; join is edited in PROPERTIES (structure vs content)
+    const jb = el("span", "joinpill", "join: " + node.join); jb.style.cursor = "default"; drop.appendChild(jb);
   }
-  if (node.kind === "while-do") { // mandatory max-iterations bound sits on the hat (question 3)
-    const mi = el("span", "maxiter"); mi.append("max ");
-    const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
-    inp.onclick = e => e.stopPropagation();
-    inp.onchange = e => { node.maxIter = Math.max(1, +inp.value || 1); toast("“" + node.name + "” max-iter → " + node.maxIter); };
-    mi.append(inp, " iters"); drop.appendChild(mi);
+  // Read-only condition TEXT on the hat (the editable rectangle lives in PROPERTIES).
+  if (node.kind === "while-do") {
+    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition) + " · max " + node.maxIter + " iters"; wc.style.marginLeft = "6px"; drop.appendChild(wc);
+  }
+  if (node.kind === "checkpoint") {
+    const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
   }
   hat.appendChild(drop);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
@@ -431,18 +625,72 @@ function renderScratchBlock(node, opts = {}) {
   if (node.kind === "sequence") {
     mouth.appendChild(renderStack(node.nodes, node, opts));
   } else if (node.kind === "while-do") {
+    // The loop body is one node. You edit its content by selecting it; you swap the whole body node
+    // (change the step, or make it a block) by dropping a palette block on this socket, or clicking it.
     mouth.appendChild(renderScratchBlock(node.body, opts));
+    const rep = el("div", "socket"); rep.textContent = "⟳ replace loop body — drop a block, or click for a fresh step";
+    rep.style.cursor = "pointer"; rep.style.marginTop = "6px";
+    const swap = maker => { node.body = maker(); selectedId = node.body.id; toast("Replaced loop body of “" + node.name + "”"); opts.rerender(); };
+    rep.onclick = e => { e.stopPropagation(); swap(() => step("loop-body", "todo")); };
+    rep.ondragover = ev => { ev.preventDefault(); rep.classList.add("legal-hover"); };   // any leaf/block is a legal body, incl. a sub-workflow
+    rep.ondragleave = () => rep.classList.remove("legal-hover", "illegal-hover");
+    rep.ondrop = ev => { ev.preventDefault(); rep.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k) return; swap(() => makeDefault(k)); };
+    mouth.appendChild(rep);
   } else if (node.kind === "parallel" || node.kind === "branch") {
     const row = el("div", "arm-row");
-    node.arms.forEach(arm => {
+    // Each column: a caption that selects the occupant, then the occupant block. A parallel branch's
+    // caption is just "parallel branch" (its name is the node name, shown on the block); a branch arm's
+    // caption is its `when` condition (question 2).
+    const armColumn = (caption, occupant) => {
       const col = el("div", "arm-col");
-      const head = el("div", "arm-head");
-      if (node.kind === "parallel") { head.append("branch "); head.appendChild(Object.assign(el("b"), { textContent: arm.name })); }
-      else { head.append("when "); const c = el("span", "cond"); c.textContent = arm.cond; head.appendChild(c); } // conditions live on the arm head (question 2)
+      const head = el("div", "arm-head");              // structural caption only; the arm's `when` lives in PROPERTIES
+      head.textContent = caption;
+      head.style.cursor = "pointer"; head.title = "select this branch/arm (edit its when in Properties)";
+      head.onclick = e => { e.stopPropagation(); selectedId = occupant.id; opts.rerender(); };
       col.appendChild(head);
-      col.appendChild(renderScratchBlock(arm.node, opts));
-      row.appendChild(col);
-    });
+      col.appendChild(renderScratchBlock(occupant, opts));
+      return col;
+    };
+    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", b)));
+    else {
+      node.arms.forEach(arm => row.appendChild(armColumn("when " + condSummary(arm.when), arm.node)));
+      if (node.else) row.appendChild(armColumn("else", node.else));
+    }
+    // Add-arm affordance: a trailing column that adds a NEW branch/arm. A parallel branch is a bare
+    // node (its name is the key); a branch arm wraps a node with a `when`.
+    const addCol = el("div", "arm-col");
+    addCol.appendChild(el("div", "arm-head", node.kind === "parallel" ? "new branch" : "new arm"));
+    const addSock = el("div", "socket");
+    addSock.textContent = node.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm";
+    addSock.style.cursor = "pointer"; addSock.style.minHeight = "42px"; addSock.style.display = "flex";
+    addSock.style.alignItems = "center"; addSock.style.justifyContent = "center";
+    const addOf = maker => {
+      if (node.kind === "parallel") { const nm = "branch-" + (node.branches.length + 1); node.branches.push(maker(nm)); toast("Added parallel branch to “" + node.name + "”"); }
+      else { node.arms.push({ when: cExists("context.field"), node: maker("arm-step") }); toast("Added branch arm to “" + node.name + "” (else stays the fallback)"); }
+      opts.rerender();
+    };
+    addSock.onclick = e => { e.stopPropagation(); addOf(nm => step(nm, "todo")); };
+    addSock.ondragover = ev => { ev.preventDefault(); addSock.classList.add("legal-hover"); };
+    addSock.ondragleave = () => addSock.classList.remove("legal-hover");
+    addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover"); const k = window._dragKind; if (!k) return; addOf(() => makeDefault(k)); };
+    addCol.appendChild(addSock);
+    row.appendChild(addCol);
+    // A branch whose `else` was deleted has no fallback — offer a column to add one back (there is at
+    // most one else, so this appears only while node.else is empty).
+    if (node.kind === "branch" && !node.else) {
+      const elseCol = el("div", "arm-col");
+      elseCol.appendChild(el("div", "arm-head", "no else"));
+      const es = el("div", "socket"); es.textContent = "＋ add else (fallback) — drop a block, or click for a step";
+      es.style.cursor = "pointer"; es.style.minHeight = "42px"; es.style.display = "flex";
+      es.style.alignItems = "center"; es.style.justifyContent = "center";
+      const addElse = maker => { node.else = maker(); selectedId = node.else.id; toast("Added else fallback to “" + node.name + "”"); opts.rerender(); };
+      es.onclick = e => { e.stopPropagation(); addElse(() => step("else-step", "todo")); };
+      es.ondragover = ev => { ev.preventDefault(); es.classList.add("legal-hover"); };
+      es.ondragleave = () => es.classList.remove("legal-hover", "illegal-hover");
+      es.ondrop = ev => { ev.preventDefault(); es.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k) return; addElse(() => makeDefault(k)); };
+      elseCol.appendChild(es);
+      row.appendChild(elseCol);
+    }
     mouth.appendChild(row);
   }
   wrap.appendChild(mouth);
@@ -454,51 +702,52 @@ function renderScratchBlock(node, opts = {}) {
 function renderStack(nodes, parent, opts) {
   const stack = el("div", "stack");
   nodes.forEach((n, i) => {
-    const holder = el("div"); holder.style.position = "relative";
     const b = renderScratchBlock(n, opts);
-    // reorder controls
-    const ctl = el("span"); ctl.style.cssText = "position:absolute;right:6px;top:6px;display:flex;gap:2px;z-index:1";
+    // Reorder controls join the leading cluster next to delete, so both live in one always-visible spot.
+    const slot = b.querySelector(".ctl-slot");
     const mk = (t, dir, dis) => { const x = el("button", "joinpill", t); x.style.padding = "0 5px"; if (dis) x.disabled = true;
+      x.title = dir < 0 ? "move up" : "move down";
       x.onclick = e => { e.stopPropagation(); const j = i + dir; [nodes[i], nodes[j]] = [nodes[j], nodes[i]]; toast("Reordered within “" + parent.name + "”"); opts.rerender(); }; return x; };
-    ctl.append(mk("↑", -1, i === 0), mk("↓", 1, i === nodes.length - 1));
-    if (b.classList) b.appendChild(ctl);
-    holder.appendChild(b);
-    stack.appendChild(holder);
+    if (slot) slot.prepend(mk("↑", -1, i === 0), mk("↓", 1, i === nodes.length - 1));
+    stack.appendChild(b);
   });
   // legal socket at the end of the sequence
   const sock = el("div", "socket", "▽ drop a step / checkpoint / block here  (legal socket)");
-  sock.ondragover = e => { e.preventDefault(); sock.classList.toggle("legal-hover", window._dragKind !== "workflow"); sock.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+  sock.ondragover = e => { e.preventDefault(); sock.classList.add("legal-hover"); };   // a sub-workflow is a legal sequence member too
   sock.ondragleave = () => sock.classList.remove("legal-hover", "illegal-hover");
   sock.ondrop = e => { e.preventDefault(); sock.classList.remove("legal-hover", "illegal-hover");
     const k = window._dragKind; if (!k) return;
-    nodes.push(makeDefault(k)); toast("Snapped a " + KIND_LABEL[k] + " into “" + parent.name + "”"); opts.rerender(); };
+    nodes.push(makeDefault(k)); toast("Snapped a " + (KEY_LABEL[k] || k) + " into “" + parent.name + "”"); opts.rerender(); };
   stack.appendChild(sock);
   return stack;
 }
 
-function makeDefault(kind) {
-  switch (kind) {
-    case "step": return step("new-step", "todo");
-    case "checkpoint": return check("new-check", "assert: todo");
-    case "parallel": return par("new-parallel", "collect", [{ name: "a", node: step("a", "") }, { name: "b", node: step("b", "") }]);
-    case "branch": return branch("new-branch", [{ cond: "todo", node: step("a", "") }, { cond: "else", node: step("b", "") }]);
-    case "while-do": return whilez("new-loop", 5, step("body", ""));
-    case "sequence": return seq("new-seq", [step("a", "")]);
-    default: return step("new-step", "");
+function makeDefault(key) {
+  switch (key) {
+    case "llm": return llm("new-llm", "");
+    case "command": return cmd("new-command", "", [], ".");
+    case "workflow": return wfref("new-ref", "./sub.workflow.json");
+    case "checkpoint": return check("new-check", cExists("context.field"));
+    case "parallel": return par("new-parallel", "collect", [llm("a", ""), llm("b", "")]);
+    case "branch": return branch("new-branch", [{ when: cExists("context.field"), node: llm("a", "") }], llm("b", ""));
+    case "while-do": return whilez("new-loop", cExists("context.field"), 5, llm("body", ""));
+    case "sequence": return seq("new-seq", [llm("a", "")]);
+    default: return llm("new-llm", "");
   }
 }
 
 function renderB(stage) {
+  activeRoot = MODEL;
   stage.innerHTML = "";
   const wrap = el("div", "scratch-wrap");
   wrap.appendChild(palette(false));
   const canvas = el("div", "scratch-canvas canvas");
-  const opts = { rerender: () => renderB(stage) };
+  const opts = { rerender: () => renderB(stage), rootId: MODEL.id };
   canvas.onclick = e => { if (e.target === canvas) { selectedId = null; renderB(stage); } };
   canvas.appendChild(renderScratchBlock(MODEL, opts));
   wrap.appendChild(canvas);
   stage.appendChild(wrap);
-  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) : MODEL, "B"));
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) : MODEL, "B", MODEL));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -511,6 +760,7 @@ let cFileStack = [{ name: "release-pipeline.workflow.json", body: MODEL }];
 
 function renderC(stage) {
   const cur = cFileStack[cFileStack.length - 1];
+  activeRoot = cur.body;
   document.getElementById("chrome-file").textContent = cur.name;
   stage.innerHTML = "";
   const wrap = el("div", "scratch-wrap");
@@ -528,7 +778,7 @@ function renderC(stage) {
   if (cFileStack.length > 1) { const note = el("span", "sep", "· separate write precondition + edit lease per file (#257/#258)"); note.style.marginLeft = "auto"; note.style.fontSize = "11px"; fb.appendChild(note); }
 
   const canvas = el("div", "scratch-canvas canvas");
-  const opts = { rerender: () => renderC(stage), hybrid: true, onDescend: node => {
+  const opts = { rerender: () => renderC(stage), hybrid: true, rootId: cur.body.id, onDescend: node => {
     const target = node.ref === "./notify.workflow.json" ? NOTIFY_FILE : seq(node.name, [step("(empty)", "")]);
     cFileStack = [...cFileStack, { name: node.ref.replace("./",""), body: target }]; selectedId = null; renderC(stage);
     toast("Crossed file boundary into " + node.ref);
@@ -539,29 +789,44 @@ function renderC(stage) {
   right.appendChild(fb); right.appendChild(canvas);
   wrap.appendChild(right);
   stage.appendChild(wrap);
-  stage.appendChild(paneFor(selectedId ? findNode(cur.body, selectedId) : cur.body, "C"));
+  stage.appendChild(paneFor(selectedId ? findNode(cur.body, selectedId) : cur.body, "C", cur.body));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 //  Shared bits: palette, properties pane, node lookup.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+// Two groups: STEPS (the three leaf worker types) and BLOCKS (the structural logicers + checkpoint).
+// A step's `type` is a creation-time choice, so each of the three is its own palette entry; sub-workflow
+// keeps its own hue as the one boundary-crosser.
+const STEP_ENTRIES  = [
+  { key: "llm",      kind: "step" },      // PromptStep
+  { key: "command",  kind: "step" },      // BinaryStep
+  { key: "workflow", kind: "workflow" },  // WorkflowStep (sub-workflow ref)
+];
+const BLOCK_ENTRIES = [
+  { key: "checkpoint", kind: "checkpoint" },
+  { key: "parallel",   kind: "parallel" },
+  { key: "branch",     kind: "branch" },
+  { key: "while-do",   kind: "while-do" },
+  { key: "sequence",   kind: "sequence" },
+];
 function palette(hybrid) {
   const p = el("div", "palette");
-  p.appendChild(el("h3", null, "blocks"));
-  const kinds = ["step", "checkpoint", "parallel", "branch", "while-do", "sequence"];
-  kinds.forEach(k => {
-    const b = el("div", "blk"); b.style.background = `var(${KVAR[k]}-bg, var(--surface))`; b.style.color = `var(${KVAR[k]})`;
-    b.appendChild(kindChip(k)); b.draggable = true;
-    b.ondragstart = () => { window._dragKind = k; };
-    b.ondragend = () => { window._dragKind = null; };
-    p.appendChild(b);
-  });
-  // workflow-ref shown but marked: it snaps in, but its body is a separate file
-  const wf = el("div", "blk illegal"); wf.appendChild(kindChip("workflow")); wf.title = "a ref points at another file; add via New-file flow";
-  p.appendChild(wf);
+  const group = (title, entries) => {
+    p.appendChild(el("h3", null, title));
+    entries.forEach(e => {
+      const b = el("div", "blk"); b.style.background = `var(${KVAR[e.kind]}-bg, var(--surface))`; b.style.color = `var(${KVAR[e.kind]})`;
+      b.appendChild(kindChip(e.kind, KEY_LABEL[e.key])); b.draggable = true;
+      b.ondragstart = () => { window._dragKind = e.key; };
+      b.ondragend = () => { window._dragKind = null; };
+      p.appendChild(b);
+    });
+  };
+  group("steps", STEP_ENTRIES);
+  group("blocks", BLOCK_ENTRIES);
   p.appendChild(el("div", "legalnote", hybrid
-    ? "Drag a block into any legal socket. A socket only accepts what the grammar allows there, so an illegal tree is unsnappable. A workflow-ref is the one block you descend into (double-click)."
-    : "Drag a block into any legal socket. A socket only accepts what the grammar allows there — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
+    ? "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal tree is unsnappable. Sub-workflow is the one you descend into (double-click)."
+    : "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
   return p;
 }
 
@@ -570,31 +835,180 @@ function findNode(root, id) {
   if (root.id === id) return root;
   const kids = root.kind === "sequence" ? root.nodes
     : root.kind === "while-do" ? [root.body]
-    : (root.kind === "parallel" || root.kind === "branch") ? root.arms.map(a => a.node) : [];
+    : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
+    : root.kind === "parallel" ? root.branches : [];
   for (const k of kids) { const f = findNode(k, id); if (f) return f; }
   return null;
 }
 
-function paneFor(node, variant) {
+// The arm/branch a node occupies, if any — so a branch arm's `when` is edited where the node is
+// selected. A parallel branch has no separate metadata (its name IS the node name), so it just
+// reports which parallel it belongs to.
+function findArmContext(root, id) {
+  if (!root) return null;
+  if (root.kind === "parallel") {
+    for (let i = 0; i < root.branches.length; i++) if (root.branches[i].id === id) return { block: root, index: i };
+  }
+  if (root.kind === "branch") {
+    for (let i = 0; i < root.arms.length; i++) if (root.arms[i].node.id === id) return { block: root, arm: root.arms[i], index: i };
+    if (root.else && root.else.id === id) return { block: root, isElse: true };
+  }
+  const kids = root.kind === "sequence" ? root.nodes
+    : root.kind === "while-do" ? [root.body]
+    : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
+    : root.kind === "parallel" ? root.branches : [];
+  for (const k of kids) { const f = findArmContext(k, id); if (f) return f; }
+  return null;
+}
+
+// The file body the active variant is editing — set at each render so the delete key / inline × know
+// which tree to search.
+let activeRoot = MODEL;
+
+// Locate a node's deletion slot: a sequence entry, an arm occupant, a branch else, or a while-do body.
+// Returns a `remove()` closure plus slot metadata so deleteNode can enforce the single-node-slot rules.
+function nodeDeleter(root, id) {
+  const visit = n => {
+    if (n.kind === "sequence") {
+      for (let i = 0; i < n.nodes.length; i++) { if (n.nodes[i].id === id) return { slot: "sequence", parent: n, remove: () => n.nodes.splice(i, 1) }; const r = visit(n.nodes[i]); if (r) return r; }
+    } else if (n.kind === "while-do") {
+      if (n.body.id === id) return { slot: "while-body", parent: n };
+      const r = visit(n.body); if (r) return r;
+    } else if (n.kind === "parallel") {
+      for (let i = 0; i < n.branches.length; i++) { if (n.branches[i].id === id) return { slot: "parallel-arm", parent: n, count: n.branches.length, remove: () => n.branches.splice(i, 1) }; const r = visit(n.branches[i]); if (r) return r; }
+    } else if (n.kind === "branch") {
+      for (let i = 0; i < n.arms.length; i++) { if (n.arms[i].node.id === id) return { slot: "branch-arm", parent: n, count: n.arms.length, remove: () => n.arms.splice(i, 1) }; const r = visit(n.arms[i].node); if (r) return r; }
+      if (n.else && n.else.id === id) return { slot: "branch-else", parent: n, remove: () => { delete n.else; } };
+      if (n.else) { const r = visit(n.else); if (r) return r; }
+    }
+    return null;
+  };
+  return visit(root);
+}
+
+// Delete a node, honoring the grammar: a slot cannot be left empty (@2 single-node slots), a while-do
+// body is mandatory (so deleting it deletes the loop), and the workflow body itself is undeletable.
+function deleteNode(root, id) {
+  if (root.id === id) return { ok: false, msg: "Can't delete the workflow body itself." };
+  const ctx = nodeDeleter(root, id);
+  if (!ctx) return { ok: false, msg: "Node not found in this file." };
+  if (ctx.slot === "while-body") { const r = deleteNode(root, ctx.parent.id); return r.ok ? { ok: true, msg: "Loop body is a mandatory slot — deleted the whole while-do." } : r; }
+  if (ctx.slot === "parallel-arm" && ctx.count <= 1) return { ok: false, msg: "A parallel needs at least one branch — delete the parallel block instead." };
+  if (ctx.slot === "branch-arm" && ctx.count <= 1 && !ctx.parent.else) return { ok: false, msg: "A branch needs an arm or an else — delete the branch block instead." };
+  ctx.remove();
+  const what = ctx.slot === "parallel-arm" ? "parallel branch" : ctx.slot === "branch-arm" ? "branch arm" : ctx.slot === "branch-else" ? "else fallback" : "node";
+  return { ok: true, msg: "Deleted " + what + "." };
+}
+
+// Delete the selected node against the active file body, then clear selection and re-render.
+function deleteSelected(id) {
+  if (!id) return;
+  const r = deleteNode(activeRoot, id);
+  toast(r.msg);
+  if (r.ok) selectedId = null;
+  rerender();
+}
+
+function paneFor(node, variant, root) {
+  const armCtx = node ? findArmContext(root, node.id) : null;
   const pane = el("div", "pane");
   if (!node) { pane.appendChild(el("p", "hint", "Nothing selected. Click a node to edit its properties; click empty canvas to edit the level/file itself.")); return pane; }
+  // Explanatory copy is collected here and rendered as ONE block at the very top (above the
+  // "properties" line), not interleaved with the fields — so in production it reads as node help,
+  // not per-field clutter.
+  const notes = [];
+  let role = null;   // the node's role label (branch arm / else / parallel branch) — rendered topmost
   pane.appendChild(el("h3", null, "properties"));
-  const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
+  const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind, chipLabel(node)));
   head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
+
+  // Editable name — the human label (^[a-z][a-z0-9-]*$, unique per file). Renaming never touches the id.
+  pane.appendChild(Object.assign(el("label"), { textContent: "name" }));
+  const nameIn = el("input"); nameIn.value = node.name; nameIn.spellcheck = false;
+  const nameWarn = el("p", "hint"); nameWarn.style.color = "var(--status-failed-fg)"; nameWarn.style.display = "none";
+  nameIn.oninput = () => { const ok = /^[a-z][a-z0-9-]*$/.test(nameIn.value); nameWarn.style.display = ok ? "none" : "block"; nameWarn.textContent = "must match ^[a-z][a-z0-9-]*$"; };
+  nameIn.onchange = () => { if (/^[a-z][a-z0-9-]*$/.test(nameIn.value)) { node.name = nameIn.value; toast("renamed → " + node.name); rerender(); } };
+  pane.append(nameIn, nameWarn);
+
+  // Editable id — the durable UUID (ADR 0015: client-minted, preserved across rename/reorder/reparent).
+  // The ⟳ button mints a fresh GUID; normally the id is stable, so this is a deliberate re-key.
+  // Header row: the "id" label and the re-key button share one line; the input sits below it.
+  const idHead = el("div"); idHead.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px";
+  idHead.appendChild(Object.assign(el("label"), { textContent: "id" }));
+  const idGen = el("button", "joinpill", "⟳ new ID"); idGen.style.whiteSpace = "nowrap"; idGen.title = "mint a fresh UUIDv4";
+  idGen.onclick = () => {
+    // Re-keying breaks resume's plan-reuse match for this node (ADR 0015: the id is normally stable),
+    // so gate it behind a confirm rather than mutating on a single click.
+    const ok = confirm("Mint a new GUID for “" + node.name + "”?\n\nThe id is normally stable. Re-keying breaks resume's plan-reuse for this node — a resumed run will re-execute it instead of reusing its output. This cannot be undone.");
+    if (!ok) return;
+    node.id = uuidv4(); if (selectedId != null) selectedId = node.id; toast("new GUID minted"); rerender();
+  };
+  idHead.appendChild(idGen); pane.appendChild(idHead);
+  const idIn = el("input"); idIn.value = node.id; idIn.spellcheck = false; idIn.style.fontFamily = "var(--font-mono)"; idIn.style.fontSize = "var(--fs-xs)";
+  // Changing the id must move the selection with it, or findNode() loses the node after re-key.
+  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; if (selectedId != null) selectedId = v; toast("id set"); rerender(); } };
+  pane.appendChild(idIn);
 
   const kv = el("dl", "kv");
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
-  add("id", node.id);
-  add("kind", KIND_LABEL[node.kind]);
-  if (node.note) add("payload", node.note);
-  if (node.assertion) add("assert", node.assertion);        // checkpoint — question 4
-  if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
-  if (node.kind === "parallel") add("join", node.join);     // question 1
-  if (node.kind === "parallel") add("arms", node.arms.map(a => a.name).join(", "));
-  if (node.kind === "branch") add("conds", node.arms.map(a => a.cond).join("  |  ")); // question 2
-  if (node.kind === "while-do") add("max-iter", String(node.maxIter)); // question 3
+  if (node.kind === "parallel") add("branches", node.branches.map(b => b.name).join(", "));
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
+
+  // Step payload — the three worker types have different fields (the whole reason they are three
+  // palette entries). A small helper for a labelled text input bound to a node field.
+  const field = (labelTxt, get, set, opts = {}) => {
+    pane.appendChild(Object.assign(el("label"), { textContent: labelTxt }));
+    const inp = opts.multiline ? el("textarea") : el("input");
+    if (opts.multiline) inp.rows = 4;
+    inp.value = get(); inp.spellcheck = false;
+    if (opts.mono) { inp.style.fontFamily = "var(--font-mono)"; inp.style.fontSize = "var(--fs-xs)"; }
+    inp.onchange = () => { set(inp.value); toast(labelTxt + " set"); rerender(); };
+    pane.appendChild(inp);
+  };
+  if (node.kind === "step" && node.stype === "llm") {
+    field("model", () => node.model, v => { node.model = v.trim(); }, { mono: true });
+    field("prompt", () => node.prompt, v => { node.prompt = v; }, { multiline: true });
+    notes.push("An LLM step (PromptStep): the worker runs `prompt` against `model` and publishes its output.");
+  }
+  if (node.kind === "step" && node.stype === "command") {
+    field("command", () => node.command, v => { node.command = v.trim(); }, { mono: true });
+    field("args (space-separated)", () => node.args.join(" "), v => { node.args = v.split(/\s+/).filter(Boolean); }, { mono: true });
+    field("cwd", () => node.cwd, v => { node.cwd = v.trim() || "."; }, { mono: true });
+    notes.push("A command step (BinaryStep): runs `command` with `args` in `cwd`; its stdout + exit code are the output.");
+  }
+
+  // A structured condition builder, reused everywhere a Condition is authored: branch `when`,
+  // while-do `condition`, checkpoint `condition`. You never type an expression — you pick an
+  // operator + a context./output. path + operands, or compose with all/any/not.
+  const condEditor = (labelTxt, getC, setC, help, boxLabel) => {
+    // The rectangle: a fieldset whose legend is the "when"/"condition" label, enclosing the whole
+    // editor. The canvas shows only the plain-text summary; editing lives inside this box.
+    const fs = el("fieldset", "condfs" + (boxLabel === "when" ? " when" : ""));
+    fs.appendChild(el("legend", null, boxLabel || "condition"));
+    if (labelTxt) fs.appendChild(el("p", "fs-desc", labelTxt));
+    fs.appendChild(el("div", "cond-preview", condSummary(getC())));         // read-back summary
+    const onEdit = () => { toast("condition updated"); rerender(); };       // rerender rebuilds the pane from state
+    fs.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
+    if (help) notes.push(help);
+    pane.appendChild(fs);
+  };
+
+  // Arm metadata: a branch arm owns its `when` (edited here); a parallel branch owns nothing extra —
+  // its output key IS its node name, edited via the `name` field above.
+  if (armCtx && !armCtx.isElse) {
+    if (armCtx.block.kind === "parallel") {
+      role = "parallel branch";
+      notes.push("A branch of parallel “" + armCtx.block.name + "”. Its collect / wait-one output key is this node's own name — edit it in the name field above; there is no separate branch name.");
+    } else {
+      role = "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")";
+      condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
+        "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.", "when");
+    }
+  } else if (armCtx && armCtx.isElse) {
+    role = "branch else fallback";
+    notes.push("Runs when no arm's `when` matched, in Branch node “" + armCtx.block.name + "”. It is a plain node with no condition of its own.");
+  }
 
   // Editable affordances the properties pane owns (mirror what's inline, for the drill-down variant especially).
   if (node.kind === "parallel") {
@@ -605,24 +1019,52 @@ function paneFor(node, variant) {
     const modeHelp = { collect: "waits every branch, lands all publishes, outputs {branch: output}.",
       "wait-one": "races branches; first-to-succeed wins; losers cancelled (sibling-succeeded).",
       "do-not-wait": "launches all, waits none; successor runs immediately; branches may not publish." };
-    pane.appendChild(el("p", "hint", modeHelp[node.join]));
+    notes.push(modeHelp[node.join]);
   }
   if (node.kind === "while-do") {
-    pane.appendChild(Object.assign(el("label"), { textContent: "max-iterations (mandatory)" }));
+    condEditor("loop condition (keeps iterating while true)", () => node.condition, nc => { node.condition = nc; },
+      "A structured Condition — the same builder as a branch arm and a checkpoint.");
+    pane.appendChild(Object.assign(el("label"), { textContent: "max-iterations (mandatory bound)" }));
     const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
     inp.onchange = () => { node.maxIter = Math.max(1, +inp.value || 1); toast("max-iter → " + node.maxIter); rerender(); };
     pane.appendChild(inp);
-    pane.appendChild(el("p", "hint", "Exceeding the bound fails the run. The format requires this — no unbounded loop is expressible."));
+    notes.push("Loop condition AND a max-iterations cap — both required. Exceeding the cap fails the run; no unbounded loop is expressible.");
   }
   if (node.kind === "branch") {
-    pane.appendChild(Object.assign(el("label"), { textContent: "conditions (one per arm, first match wins; 'else' is the fallback)" }));
-    node.arms.forEach((a, i) => { const inp = el("input"); inp.value = a.cond; inp.style.marginTop = "4px";
-      inp.onchange = () => { a.cond = inp.value; toast("arm " + (i+1) + " condition updated"); rerender(); }; pane.appendChild(inp); });
+    // The Branch node owns only the arm ORDER + the else fallback — not the conditions. Each arm's
+    // `when` is edited on the arm itself (select the arm's node). Shown read-only here for orientation.
+    pane.appendChild(Object.assign(el("label"), { textContent: "arms (first match wins) — select an arm to edit its when" }));
+    const list = el("div"); list.style.margin = "4px 0";
+    node.arms.forEach((a, i) => { const r = el("div", "cond-preview"); r.textContent = (i + 1) + ". when " + condSummary(a.when) + "  →  " + a.node.name; list.appendChild(r); });
+    if (node.else) { const r = el("div", "cond-preview"); r.style.opacity = ".8"; r.textContent = "else  →  " + node.else.name; list.appendChild(r); }
+    pane.appendChild(list);
+    notes.push("A branch arm is self-contained, like a parallel branch: its condition lives on the arm, not on this node. The Branch node holds only the arm order and the else fallback.");
   }
   if (node.kind === "checkpoint") {
-    pane.appendChild(el("p", "hint", "A checkpoint is an inline node in the sequence (question 4): a fail-fast assertion with no worker. It sits BETWEEN nodes, not attached to one — judgement checks are a step that outputs a verdict + a checkpoint that tests it."));
+    condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
+      "A checkpoint is an inline node with no worker; its assertion is a structured Condition. Judgement checks are a step that outputs a verdict + a checkpoint that tests it.");
   }
-  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only."));
+  if (node.kind === "workflow") {
+    // The one node whose content is which OTHER file it references — edited here; opened by double-click on the canvas.
+    pane.appendChild(Object.assign(el("label"), { textContent: "referenced workflow file" }));
+    const refIn = el("input"); refIn.value = node.ref; refIn.spellcheck = false;
+    refIn.style.fontFamily = "var(--font-mono)"; refIn.style.fontSize = "var(--fs-xs)";
+    refIn.onchange = () => { const v = refIn.value.trim(); if (v) { node.ref = v; toast("ref → " + node.ref); rerender(); } };
+    pane.appendChild(refIn);
+    notes.push("This node references another workflow file — its body lives there, behind that file's own write precondition + edit lease (#257/#258). Change the path here; double-click the node on the canvas to open (descend into) it.");
+  }
+  // Structure — add / delete / reorder — lives on the CANVAS, not here (content vs structure split).
+  // The pane only edits this node's own fields. Delete via the × on a node or the Delete key.
+  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Structure (delete, reorder, add) is done on the canvas: the × on a node, or the Delete key."));
+
+  // Render the role label (topmost) + every collected explanation as ONE block at the top of the
+  // pane, above the "properties" line.
+  if (role || notes.length) {
+    const help = el("div", "pane-help");
+    if (role) help.appendChild(el("h3", null, role));
+    notes.forEach(t => help.appendChild(el("p", "hint", t)));
+    pane.insertBefore(help, pane.firstChild);
+  }
   return pane;
 }
 
@@ -654,6 +1096,7 @@ document.addEventListener("keydown", e => {
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if (e.key === "ArrowLeft") cycle(-1);
   if (e.key === "ArrowRight") cycle(1);
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedId) { e.preventDefault(); deleteSelected(selectedId); }
 });
 rerender();
 </script>
