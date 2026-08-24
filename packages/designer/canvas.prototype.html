@@ -293,7 +293,10 @@ const COMBO_TYPES = ["all","any","not"];
 const step  = (name, note)               => ({ id: gid(), name, kind: "step", note });
 const check = (name, condition)          => ({ id: gid(), name, kind: "checkpoint", condition });   // condition: Condition
 const seq   = (name, nodes)              => ({ id: gid(), name, kind: "sequence", nodes });
-const par   = (name, join, arms)         => ({ id: gid(), name, kind: "parallel", join, arms });     // arms: [{name,node}]
+// A parallel branch IS a node (@2, node-type.ts): its own `name` is the collect/wait-one output key —
+// there is no separate arm name. So `parallel.branches` is a plain node array. A branch logicer's arm,
+// by contrast, wraps a node with its own `when` condition.
+const par   = (name, join, branches)     => ({ id: gid(), name, kind: "parallel", join, branches }); // branches: node[]
 const branch= (name, arms, elseNode)     => ({ id: gid(), name, kind: "branch", arms, else: elseNode }); // arms: [{when:Condition,node}], else?: node
 const whilez= (name, condition, maxIter, body) => ({ id: gid(), name, kind: "while-do", condition, maxIter, body }); // condition: Condition
 const wfref = (name, ref)                => ({ id: gid(), name, kind: "workflow", ref });
@@ -301,15 +304,15 @@ const wfref = (name, ref)                => ({ id: gid(), name, kind: "workflow"
 const MODEL = seq("release-pipeline", [
   step("fetch-source", "clone + checkout the release ref"),
   check("assert-source-present", cExists("context.source_dir")),
-  par("verify", "collect", [
-    { name: "lint",  node: seq("lint-seq", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", cEquals("output.exit_code", 0)) ]) },
-    { name: "test",  node: whilez("retry-tests", cEquals("output.status", "flaky"), 3, step("run-flaky-tests", "pytest -q; may flake")) },
-    { name: "build", node: step("build-artifact", "docker build -t rel:$sha .") },
+  par("verify", "collect", [                                           // branch keys = these nodes' names
+    seq("lint", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", cEquals("output.exit_code", 0)) ]),
+    whilez("test", cEquals("output.status", "flaky"), 3, step("run-flaky-tests", "pytest -q; may flake")),
+    step("build", "docker build -t rel:$sha ."),
   ]),
   branch("route-deploy", [
     { when: cEquals("context.target", "prod"),    node: par("ship-prod", "wait-one", [
-        { name: "us", node: step("deploy-us", "push to us-east-1") },
-        { name: "eu", node: step("deploy-eu", "push to eu-west-1") },
+        step("us", "push to us-east-1"),
+        step("eu", "push to eu-west-1"),
     ]) },
     { when: cEquals("context.target", "staging"), node: step("deploy-staging", "push to staging") },
   ], check("no-target", cExists("context.target"))), // else arm is a single node, not a when-arm
@@ -321,8 +324,8 @@ const MODEL = seq("release-pipeline", [
 const NOTIFY_FILE = seq("notify", [
   step("render-message", "template the release notes"),
   par("fan-out", "do-not-wait", [
-    { name: "slack", node: step("post-slack", "chat.postMessage") },
-    { name: "email", node: step("send-email", "SES send") },
+    step("slack", "chat.postMessage"),
+    step("email", "SES send"),
   ]),
 ]);
 
@@ -458,7 +461,7 @@ function renderA(stage) {
     const b = el("button", "a-add", block.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm");
     b.style.margin = "0";
     b.onclick = () => {
-      if (block.kind === "parallel") { const nm = "branch-" + (block.arms.length + 1); block.arms.push({ name: nm, node: step(nm + "-step", "todo") }); toast("Added parallel branch “" + nm + "”"); }
+      if (block.kind === "parallel") { const nm = "branch-" + (block.branches.length + 1); block.branches.push(step(nm, "todo")); toast("Added parallel branch “" + nm + "”"); }
       else { block.arms.push({ when: cExists("context.field"), node: step("arm-step", "todo") }); toast("Added branch arm (else stays last)"); }
       renderA(stage);
     };
@@ -487,10 +490,10 @@ function renderA(stage) {
     level.appendChild(add);
   } else if (cur.kind === "parallel") {
     const wrap = el("div", "a-arms");
-    cur.arms.forEach(arm => {
+    cur.branches.forEach(bnode => {                          // a parallel branch is just a node; its name is the key
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.append("branch ", Object.assign(el("b"), { textContent: arm.name })); col.appendChild(lbl);
-      col.appendChild(nodeRow(arm.node));
+      col.appendChild(el("div", "arm-label", "parallel branch"));
+      col.appendChild(nodeRow(bnode));
       wrap.appendChild(col);
     });
     wrap.appendChild(addArmCol(cur));
@@ -555,13 +558,8 @@ function renderScratchBlock(node, opts = {}) {
     sel.onclick = e => e.stopPropagation();
     drop.appendChild(sel);
   }
-  if (node.kind === "while-do") { // loop condition summary + mandatory max-iterations bound (question 3)
-    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition); wc.style.marginLeft = "6px"; drop.appendChild(wc);
-    const mi = el("span", "maxiter"); mi.append(" max ");
-    const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
-    inp.onclick = e => e.stopPropagation();
-    inp.onchange = e => { node.maxIter = Math.max(1, +inp.value || 1); toast("“" + node.name + "” max-iter → " + node.maxIter); };
-    mi.append(inp, " iters"); drop.appendChild(mi);
+  if (node.kind === "while-do") { // read-only summary on the block; max-iter is edited in PROPERTIES only
+    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition) + " · max " + node.maxIter + " iters"; wc.style.marginLeft = "6px"; drop.appendChild(wc);
   }
   if (node.kind === "checkpoint") { // the assertion is a structured condition; summary sits on the hat (question 4)
     const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
@@ -583,55 +581,42 @@ function renderScratchBlock(node, opts = {}) {
     mouth.appendChild(renderScratchBlock(node.body, opts));
   } else if (node.kind === "parallel" || node.kind === "branch") {
     const row = el("div", "arm-row");
-    node.arms.forEach(arm => {
+    // Each column: a caption that selects the occupant, then the occupant block. A parallel branch's
+    // caption is just "parallel branch" (its name is the node name, shown on the block); a branch arm's
+    // caption is its `when` condition (question 2).
+    const armColumn = (captionText, isCond, occupant) => {
       const col = el("div", "arm-col");
       const head = el("div", "arm-head");
-      if (node.kind === "parallel") { head.append("branch "); head.appendChild(Object.assign(el("b"), { textContent: arm.name })); }
-      else { head.append("when "); const c = el("span", "cond"); c.textContent = condSummary(arm.when); head.appendChild(c); } // conditions live on the arm head (question 2)
-      // Clicking the arm HEAD selects the arm (its occupant node) — so a branch arm selects exactly
-      // like a parallel branch, from the whole arm, not only from the node block inside it.
-      head.style.cursor = "pointer"; head.title = "select this arm";
-      head.onclick = e => { e.stopPropagation(); selectedId = arm.node.id; opts.rerender(); };
+      if (isCond) { head.append("when "); const c = el("span", "cond"); c.textContent = captionText; head.appendChild(c); }
+      else head.textContent = captionText;
+      head.style.cursor = "pointer"; head.title = "select this branch/arm";
+      head.onclick = e => { e.stopPropagation(); selectedId = occupant.id; opts.rerender(); };
       col.appendChild(head);
-      col.appendChild(renderScratchBlock(arm.node, opts));
-      row.appendChild(col);
-    });
-    if (node.kind === "branch" && node.else) { // the else fallback is a single node, not a when-arm
-      const col = el("div", "arm-col"); const eh = el("div", "arm-head", "else");
-      eh.style.cursor = "pointer"; eh.title = "select the else fallback"; eh.onclick = e => { e.stopPropagation(); selectedId = node.else.id; opts.rerender(); };
-      col.appendChild(eh); col.appendChild(renderScratchBlock(node.else, opts)); row.appendChild(col);
+      col.appendChild(renderScratchBlock(occupant, opts));
+      return col;
+    };
+    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", false, b)));
+    else {
+      node.arms.forEach(arm => row.appendChild(armColumn(condSummary(arm.when), true, arm.node)));
+      if (node.else) row.appendChild(armColumn("else", false, node.else));
     }
-    // Add-arm affordance: a trailing column whose socket adds a NEW branch/arm to the block
-    // (question — "how do I add a parallel branch?"). Horizontal sibling of the existing arms,
-    // mirroring the sequence's tail socket. A parallel arm is named; a branch arm carries a condition.
+    // Add-arm affordance: a trailing column that adds a NEW branch/arm. A parallel branch is a bare
+    // node (its name is the key); a branch arm wraps a node with a `when`.
     const addCol = el("div", "arm-col");
     addCol.appendChild(el("div", "arm-head", node.kind === "parallel" ? "new branch" : "new arm"));
     const addSock = el("div", "socket");
     addSock.textContent = node.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm";
     addSock.style.cursor = "pointer"; addSock.style.minHeight = "42px"; addSock.style.display = "flex";
     addSock.style.alignItems = "center"; addSock.style.justifyContent = "center";
-    addSock.onclick = e => {
-      e.stopPropagation();
-      if (node.kind === "parallel") {
-        const nm = "branch-" + (node.arms.length + 1);
-        node.arms.push({ name: nm, node: step(nm + "-step", "todo") });
-        toast("Added parallel branch “" + nm + "” to “" + node.name + "”");
-      } else {
-        // a new when-arm; the separate `else` node always stays the last-resort fallback
-        node.arms.push({ when: cExists("context.field"), node: step("arm-step", "todo") });
-        toast("Added branch arm to “" + node.name + "” (else stays the fallback)");
-      }
+    const addOf = maker => {
+      if (node.kind === "parallel") { const nm = "branch-" + (node.branches.length + 1); node.branches.push(maker(nm)); toast("Added parallel branch to “" + node.name + "”"); }
+      else { node.arms.push({ when: cExists("context.field"), node: maker("arm-step") }); toast("Added branch arm to “" + node.name + "” (else stays the fallback)"); }
       opts.rerender();
     };
-    // dropping a palette block onto the add-socket also creates a new arm wrapping that block
+    addSock.onclick = e => { e.stopPropagation(); addOf(nm => step(nm, "todo")); };
     addSock.ondragover = ev => { ev.preventDefault(); addSock.classList.add("legal-hover"); };
     addSock.ondragleave = () => addSock.classList.remove("legal-hover");
-    addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover");
-      const k = window._dragKind; if (!k) return;
-      if (node.kind === "parallel") { const nm = "branch-" + (node.arms.length + 1); node.arms.push({ name: nm, node: makeDefault(k) }); }
-      else { node.arms.push({ when: cExists("context.field"), node: makeDefault(k) }); }
-      toast("Added " + KIND_LABEL[k] + " as a new arm of “" + node.name + "”"); opts.rerender();
-    };
+    addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover"); const k = window._dragKind; if (!k) return; addOf(() => makeDefault(k)); };
     addCol.appendChild(addSock);
     row.appendChild(addCol);
     mouth.appendChild(row);
@@ -671,7 +656,7 @@ function makeDefault(kind) {
   switch (kind) {
     case "step": return step("new-step", "todo");
     case "checkpoint": return check("new-check", cExists("context.field"));
-    case "parallel": return par("new-parallel", "collect", [{ name: "a", node: step("a", "") }, { name: "b", node: step("b", "") }]);
+    case "parallel": return par("new-parallel", "collect", [step("a", ""), step("b", "")]);
     case "branch": return branch("new-branch", [{ when: cExists("context.field"), node: step("a", "") }], step("b", ""));
     case "while-do": return whilez("new-loop", cExists("context.field"), 5, step("body", ""));
     case "sequence": return seq("new-seq", [step("a", "")]);
@@ -764,24 +749,27 @@ function findNode(root, id) {
   const kids = root.kind === "sequence" ? root.nodes
     : root.kind === "while-do" ? [root.body]
     : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
-    : root.kind === "parallel" ? root.arms.map(a => a.node) : [];
+    : root.kind === "parallel" ? root.branches : [];
   for (const k of kids) { const f = findNode(k, id); if (f) return f; }
   return null;
 }
 
-// The arm a node occupies, if any — so the arm's OWN metadata (a branch arm's `when`, a parallel
-// arm's `name`) is edited where the node is selected, i.e. attached to the arm, not to the parent
-// container. Mirrors the parallel/branch symmetry: an arm is a self-contained thing.
+// The arm/branch a node occupies, if any — so a branch arm's `when` is edited where the node is
+// selected. A parallel branch has no separate metadata (its name IS the node name), so it just
+// reports which parallel it belongs to.
 function findArmContext(root, id) {
   if (!root) return null;
-  if (root.kind === "parallel" || root.kind === "branch") {
+  if (root.kind === "parallel") {
+    for (let i = 0; i < root.branches.length; i++) if (root.branches[i].id === id) return { block: root, index: i };
+  }
+  if (root.kind === "branch") {
     for (let i = 0; i < root.arms.length; i++) if (root.arms[i].node.id === id) return { block: root, arm: root.arms[i], index: i };
-    if (root.kind === "branch" && root.else && root.else.id === id) return { block: root, isElse: true };
+    if (root.else && root.else.id === id) return { block: root, isElse: true };
   }
   const kids = root.kind === "sequence" ? root.nodes
     : root.kind === "while-do" ? [root.body]
     : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
-    : root.kind === "parallel" ? root.arms.map(a => a.node) : [];
+    : root.kind === "parallel" ? root.branches : [];
   for (const k of kids) { const f = findArmContext(k, id); if (f) return f; }
   return null;
 }
@@ -800,7 +788,7 @@ function nodeDeleter(root, id) {
       if (n.body.id === id) return { slot: "while-body", parent: n };
       const r = visit(n.body); if (r) return r;
     } else if (n.kind === "parallel") {
-      for (let i = 0; i < n.arms.length; i++) { if (n.arms[i].node.id === id) return { slot: "parallel-arm", parent: n, count: n.arms.length, remove: () => n.arms.splice(i, 1) }; const r = visit(n.arms[i].node); if (r) return r; }
+      for (let i = 0; i < n.branches.length; i++) { if (n.branches[i].id === id) return { slot: "parallel-arm", parent: n, count: n.branches.length, remove: () => n.branches.splice(i, 1) }; const r = visit(n.branches[i]); if (r) return r; }
     } else if (n.kind === "branch") {
       for (let i = 0; i < n.arms.length; i++) { if (n.arms[i].node.id === id) return { slot: "branch-arm", parent: n, count: n.arms.length, remove: () => n.arms.splice(i, 1) }; const r = visit(n.arms[i].node); if (r) return r; }
       if (n.else && n.else.id === id) return { slot: "branch-else", parent: n, remove: () => { delete n.else; } };
@@ -872,8 +860,7 @@ function paneFor(node, variant, root) {
   if (node.note) add("payload", node.note);
   if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
   if (node.kind === "parallel") add("join", node.join);     // question 1
-  if (node.kind === "parallel") add("arms", node.arms.map(a => a.name).join(", "));
-  if (node.kind === "while-do") add("max-iter", String(node.maxIter)); // question 3
+  if (node.kind === "parallel") add("branches", node.branches.map(b => b.name).join(", "));
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
 
@@ -888,18 +875,14 @@ function paneFor(node, variant, root) {
     if (help) pane.appendChild(el("p", "hint", help));
   };
 
-  // Arm metadata belongs to the ARM, not the parent container — so it is edited here, where the arm's
-  // occupant node is selected. A branch arm owns its `when`; a parallel arm owns its `name`. This is
-  // what makes a branch arm feel like a parallel branch: each arm is self-contained.
+  // Arm metadata: a branch arm owns its `when` (edited here); a parallel branch owns nothing extra —
+  // its output key IS its node name, edited via the `name` field above.
   if (armCtx && !armCtx.isElse) {
-    pane.appendChild(el("h3", null, armCtx.block.kind === "branch" ? "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")" : "parallel branch"));
     if (armCtx.block.kind === "parallel") {
-      pane.appendChild(Object.assign(el("label"), { textContent: "branch name — this arm's output key" }));
-      const inp = el("input"); inp.value = armCtx.arm.name;
-      inp.onchange = () => { armCtx.arm.name = inp.value; toast("branch name → " + inp.value); rerender(); };
-      pane.appendChild(inp);
-      pane.appendChild(el("p", "hint", "The key this arm contributes to the collect / wait-one output object. It is the arm's, held beside the arm's node in “" + armCtx.block.name + "”."));
+      pane.appendChild(el("h3", null, "parallel branch"));
+      pane.appendChild(el("p", "hint", "A branch of parallel “" + armCtx.block.name + "”. Its collect / wait-one output key is this node's own name — edit it in the name field above; there is no separate branch name."));
     } else {
+      pane.appendChild(el("h3", null, "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")"));
       condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
         "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.");
     }
