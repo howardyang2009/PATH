@@ -551,12 +551,8 @@ function renderScratchBlock(node, opts = {}) {
   hat.appendChild(Object.assign(el("span", "nm"), { textContent: node.name }));
   const drop = el("span", "drop");
 
-  if (node.kind === "parallel") { // join mode switched right on the hat (question 1)
-    const sel = el("select"); sel.className = "joinpill";
-    ["collect","wait-one","do-not-wait"].forEach(j => { const o = el("option", null, "join: " + j); o.value = j; if (j === node.join) o.selected = true; sel.appendChild(o); });
-    sel.onchange = e => { e.stopPropagation(); node.join = sel.value; toast("“" + node.name + "” join → " + sel.value); opts.rerender(); };
-    sel.onclick = e => e.stopPropagation();
-    drop.appendChild(sel);
+  if (node.kind === "parallel") { // read-only join badge; join is edited in PROPERTIES (structure vs content)
+    const jb = el("span", "joinpill", "join: " + node.join); jb.style.cursor = "default"; drop.appendChild(jb);
   }
   if (node.kind === "while-do") { // read-only summary on the block; max-iter is edited in PROPERTIES only
     const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition) + " · max " + node.maxIter + " iters"; wc.style.marginLeft = "6px"; drop.appendChild(wc);
@@ -859,7 +855,6 @@ function paneFor(node, variant, root) {
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
   if (node.note) add("payload", node.note);
   if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
-  if (node.kind === "parallel") add("join", node.join);     // question 1
   if (node.kind === "parallel") add("branches", node.branches.map(b => b.name).join(", "));
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
@@ -925,22 +920,9 @@ function paneFor(node, variant, root) {
     condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
       "A checkpoint is an inline node with no worker; its assertion is a structured Condition. Judgement checks are a step that outputs a verdict + a checkpoint that tests it.");
   }
-  // Delete this node. Slot rules live in deleteNode(); the button label warns when a delete cascades.
-  if (root && node.id !== root.id) {
-    const dc = nodeDeleter(root, node.id);
-    const label = dc && dc.slot === "while-body" ? "Delete loop (body can't be empty)"
-      : dc && dc.slot === "parallel-arm" ? "Delete this parallel branch"
-      : dc && dc.slot === "branch-arm" ? "Delete this branch arm"
-      : dc && dc.slot === "branch-else" ? "Delete else fallback"
-      : "Delete this " + KIND_LABEL[node.kind];
-    const del = el("button", "danger-btn", "🗑  " + label);
-    del.onclick = () => deleteSelected(node.id);
-    pane.appendChild(del);
-    if (isContainer(node) && node.kind !== "workflow") pane.appendChild(el("p", "hint", "Deleting a block deletes everything nested inside it."));
-  } else if (root && node.id === root.id) {
-    pane.appendChild(el("p", "hint", "This is the workflow body — it cannot be deleted."));
-  }
-  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Delete: this button, the × on a node, or the Delete key."));
+  // Structure — add / delete / reorder — lives on the CANVAS, not here (content vs structure split).
+  // The pane only edits this node's own fields. Delete via the × on a node or the Delete key.
+  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Structure (delete, reorder, add) is done on the canvas: the × on a node, or the Delete key."));
   return pane;
 }
 
