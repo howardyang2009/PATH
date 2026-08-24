@@ -113,7 +113,7 @@
   .pane-help { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
   .pane-help .hint { margin: 0 0 6px; }
   .pane-help .hint:last-child { margin-bottom: 0; }
-  .pane select, .pane input { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
+  .pane select, .pane input, .pane textarea { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
     background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
   .pane label { display: block; margin: 10px 0 2px; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; }
   /* structured condition builder */
@@ -305,7 +305,14 @@ const cNot       = of              => ({ type: "not", of });
 const LEAF_TYPES = ["exists","equals","one-of","matches","range","valid-json"];
 const COMBO_TYPES = ["all","any","not"];
 
-const step  = (name, note)               => ({ id: gid(), name, kind: "step", note });
+// A leaf step is one of three worker types (@2, node-type.ts): PromptStep (LLM), BinaryStep (command),
+// WorkflowStep (sub-workflow ref). LLM + command share the step hue; the ref keeps its own kind/hue
+// because it is the one boundary-crosser. `type` is a creation-time discriminant, so it is chosen from
+// the palette up front, not flipped in a dropdown.
+const DEFAULT_MODEL = "claude-sonnet-4-5";
+const llm   = (name, prompt, model)      => ({ id: gid(), name, kind: "step", stype: "llm", prompt: prompt || "", model: model || DEFAULT_MODEL });
+const cmd   = (name, command, args, cwd) => ({ id: gid(), name, kind: "step", stype: "command", command: command || "", args: args || [], cwd: cwd || "." });
+const step  = (name, note)               => llm(name, note);   // internal default leaf = an LLM step
 const check = (name, condition)          => ({ id: gid(), name, kind: "checkpoint", condition });   // condition: Condition
 const seq   = (name, nodes)              => ({ id: gid(), name, kind: "sequence", nodes });
 // A parallel branch IS a node (@2, node-type.ts): its own `name` is the collect/wait-one output key —
@@ -317,19 +324,20 @@ const whilez= (name, condition, maxIter, body) => ({ id: gid(), name, kind: "whi
 const wfref = (name, ref)                => ({ id: gid(), name, kind: "workflow", ref });
 
 const MODEL = seq("release-pipeline", [
-  step("fetch-source", "clone + checkout the release ref"),
+  llm("plan-release", "Given {{context.diff}}, classify the release as patch, minor, or major and note risks."),
+  cmd("fetch-source", "git", ["clone", "--depth", "1", "$REPO"], "."),
   check("assert-source-present", cExists("context.source_dir")),
   par("verify", "collect", [                                           // branch keys = these nodes' names
-    seq("lint", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", cEquals("output.exit_code", 0)) ]),
-    whilez("test", cEquals("output.status", "flaky"), 3, step("run-flaky-tests", "pytest -q; may flake")),
-    step("build", "docker build -t rel:$sha ."),
+    seq("lint", [ cmd("run-lint", "eslint", ["--max-warnings", "0", "."], "."), check("lint-clean", cEquals("output.exit_code", 0)) ]),
+    whilez("test", cEquals("output.status", "flaky"), 3, cmd("run-flaky-tests", "pytest", ["-q"], ".")),
+    cmd("build", "docker", ["build", "-t", "rel:$sha", "."], "."),
   ]),
   branch("route-deploy", [
     { when: cEquals("context.target", "prod"),    node: par("ship-prod", "wait-one", [
-        step("us", "push to us-east-1"),
-        step("eu", "push to eu-west-1"),
+        cmd("us", "deployctl", ["push", "us-east-1"], "."),
+        cmd("eu", "deployctl", ["push", "eu-west-1"], "."),
     ]) },
-    { when: cEquals("context.target", "staging"), node: step("deploy-staging", "push to staging") },
+    { when: cEquals("context.target", "staging"), node: cmd("deploy-staging", "deployctl", ["push", "staging"], ".") },
   ], check("no-target", cExists("context.target"))), // else arm is a single node, not a when-arm
   check("assert-deployed", cRange("output.http_status", 200, 299)),
   wfref("notify-team", "./notify.workflow.json"),
@@ -337,10 +345,10 @@ const MODEL = seq("release-pipeline", [
 
 // A second file, reached only through the workflow-ref — lets variant C demo the file-boundary drill-down.
 const NOTIFY_FILE = seq("notify", [
-  step("render-message", "template the release notes"),
+  llm("render-message", "Draft concise release notes from {{context.changelog}} for a Slack post."),
   par("fan-out", "do-not-wait", [
-    step("slack", "chat.postMessage"),
-    step("email", "SES send"),
+    cmd("slack", "slackctl", ["post", "#releases"], "."),
+    cmd("email", "sesctl", ["send", "--to", "team@co"], "."),
   ]),
 ]);
 
@@ -350,7 +358,17 @@ const KVAR = { step:"--k-step", checkpoint:"--k-checkpoint", parallel:"--k-paral
   "while-do":"--k-while", sequence:"--k-sequence", workflow:"--k-workflow" };
 const isContainer = n => ["parallel","branch","while-do","sequence","workflow"].includes(n.kind);
 const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
-function kindChip(kind) { const c = el("span", "kind " + kind, KIND_LABEL[kind]); return c; }
+// Chip label follows the node's real identity: an LLM vs command step (both step-hued), a sub-workflow
+// ref (its own hue), else the kind name. Hue stays keyed on `kind` so llm+command share the step colour.
+function chipLabel(node) {
+  if (node.kind === "step") return node.stype === "command" ? "command" : "llm";
+  if (node.kind === "workflow") return "sub-workflow";
+  return KIND_LABEL[node.kind];
+}
+function kindChip(kind, label) { return el("span", "kind " + kind, label || KIND_LABEL[kind]); }
+// Palette drag keys → display label (keys distinguish llm/command, which share the `step` kind).
+const KEY_LABEL = { llm:"llm", command:"command", workflow:"sub-workflow", checkpoint:"checkpoint",
+  parallel:"parallel", branch:"branch", "while-do":"while-do", sequence:"sequence" };
 
 // Shared selection + a tiny toast so every mutation "surfaces the state" (skill rule 5).
 let selectedId = null;
@@ -486,7 +504,7 @@ function renderA(stage) {
   const nodeRow = (node, idx) => {
     const row = el("div", "a-node" + (node.id === selectedId ? " sel" : ""));
     if (idx != null) row.appendChild(el("span", "idx", idx + 1));
-    row.appendChild(kindChip(node.kind));
+    row.appendChild(kindChip(node.kind, chipLabel(node)));
     row.appendChild(el("span", "nm", node.name));
     if (isContainer(node)) { const d = el("span", "desc-badge", "double-click to open ▸"); row.appendChild(d); }
     const xb = el("button", "node-x", "×"); xb.title = "delete this node"; xb.style.marginLeft = isContainer(node) ? "8px" : "auto";
@@ -500,7 +518,7 @@ function renderA(stage) {
   // Render current level. A sequence shows an ordered, reorderable list; the block kinds show arms side by side.
   if (cur.kind === "sequence") {
     cur.nodes.forEach((n, i) => level.appendChild(nodeRow(n, i)));
-    const add = el("button", "a-add", "＋ add node here  (step · checkpoint · parallel · branch · while-do)");
+    const add = el("button", "a-add", "＋ add node here  (llm · command · sub-workflow · checkpoint · parallel · branch · while-do)");
     add.onclick = () => { cur.nodes.push(step("new-step", "todo")); toast("Added step to “" + cur.name + "”"); renderA(stage); };
     level.appendChild(add);
   } else if (cur.kind === "parallel") {
@@ -564,7 +582,7 @@ function renderScratchBlock(node, opts = {}) {
     cx.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
     ctl.appendChild(cx);
     chip.appendChild(ctl);
-    chip.appendChild(kindChip("workflow"));
+    chip.appendChild(kindChip("workflow", "sub-workflow"));
     chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
     const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
     chip.appendChild(el("span", "cross", opts.hybrid ? "double-click to open ↳" : "another file"));
@@ -582,7 +600,7 @@ function renderScratchBlock(node, opts = {}) {
     ctl.appendChild(xb);
   }
   hat.appendChild(ctl);
-  hat.appendChild(kindChip(node.kind));
+  hat.appendChild(kindChip(node.kind, chipLabel(node)));
   hat.appendChild(Object.assign(el("span", "nm"), { textContent: node.name }));
   const drop = el("span", "drop");
 
@@ -614,9 +632,9 @@ function renderScratchBlock(node, opts = {}) {
     rep.style.cursor = "pointer"; rep.style.marginTop = "6px";
     const swap = maker => { node.body = maker(); selectedId = node.body.id; toast("Replaced loop body of “" + node.name + "”"); opts.rerender(); };
     rep.onclick = e => { e.stopPropagation(); swap(() => step("loop-body", "todo")); };
-    rep.ondragover = ev => { ev.preventDefault(); rep.classList.toggle("legal-hover", window._dragKind !== "workflow"); rep.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+    rep.ondragover = ev => { ev.preventDefault(); rep.classList.add("legal-hover"); };   // any leaf/block is a legal body, incl. a sub-workflow
     rep.ondragleave = () => rep.classList.remove("legal-hover", "illegal-hover");
-    rep.ondrop = ev => { ev.preventDefault(); rep.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k || k === "workflow") return; swap(() => makeDefault(k)); };
+    rep.ondrop = ev => { ev.preventDefault(); rep.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k) return; swap(() => makeDefault(k)); };
     mouth.appendChild(rep);
   } else if (node.kind === "parallel" || node.kind === "branch") {
     const row = el("div", "arm-row");
@@ -667,9 +685,9 @@ function renderScratchBlock(node, opts = {}) {
       es.style.alignItems = "center"; es.style.justifyContent = "center";
       const addElse = maker => { node.else = maker(); selectedId = node.else.id; toast("Added else fallback to “" + node.name + "”"); opts.rerender(); };
       es.onclick = e => { e.stopPropagation(); addElse(() => step("else-step", "todo")); };
-      es.ondragover = ev => { ev.preventDefault(); es.classList.toggle("legal-hover", window._dragKind !== "workflow"); es.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+      es.ondragover = ev => { ev.preventDefault(); es.classList.add("legal-hover"); };
       es.ondragleave = () => es.classList.remove("legal-hover", "illegal-hover");
-      es.ondrop = ev => { ev.preventDefault(); es.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k || k === "workflow") return; addElse(() => makeDefault(k)); };
+      es.ondrop = ev => { ev.preventDefault(); es.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k) return; addElse(() => makeDefault(k)); };
       elseCol.appendChild(es);
       row.appendChild(elseCol);
     }
@@ -695,24 +713,26 @@ function renderStack(nodes, parent, opts) {
   });
   // legal socket at the end of the sequence
   const sock = el("div", "socket", "▽ drop a step / checkpoint / block here  (legal socket)");
-  sock.ondragover = e => { e.preventDefault(); sock.classList.toggle("legal-hover", window._dragKind !== "workflow"); sock.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+  sock.ondragover = e => { e.preventDefault(); sock.classList.add("legal-hover"); };   // a sub-workflow is a legal sequence member too
   sock.ondragleave = () => sock.classList.remove("legal-hover", "illegal-hover");
   sock.ondrop = e => { e.preventDefault(); sock.classList.remove("legal-hover", "illegal-hover");
     const k = window._dragKind; if (!k) return;
-    nodes.push(makeDefault(k)); toast("Snapped a " + KIND_LABEL[k] + " into “" + parent.name + "”"); opts.rerender(); };
+    nodes.push(makeDefault(k)); toast("Snapped a " + (KEY_LABEL[k] || k) + " into “" + parent.name + "”"); opts.rerender(); };
   stack.appendChild(sock);
   return stack;
 }
 
-function makeDefault(kind) {
-  switch (kind) {
-    case "step": return step("new-step", "todo");
+function makeDefault(key) {
+  switch (key) {
+    case "llm": return llm("new-llm", "");
+    case "command": return cmd("new-command", "", [], ".");
+    case "workflow": return wfref("new-ref", "./sub.workflow.json");
     case "checkpoint": return check("new-check", cExists("context.field"));
-    case "parallel": return par("new-parallel", "collect", [step("a", ""), step("b", "")]);
-    case "branch": return branch("new-branch", [{ when: cExists("context.field"), node: step("a", "") }], step("b", ""));
-    case "while-do": return whilez("new-loop", cExists("context.field"), 5, step("body", ""));
-    case "sequence": return seq("new-seq", [step("a", "")]);
-    default: return step("new-step", "");
+    case "parallel": return par("new-parallel", "collect", [llm("a", ""), llm("b", "")]);
+    case "branch": return branch("new-branch", [{ when: cExists("context.field"), node: llm("a", "") }], llm("b", ""));
+    case "while-do": return whilez("new-loop", cExists("context.field"), 5, llm("body", ""));
+    case "sequence": return seq("new-seq", [llm("a", "")]);
+    default: return llm("new-llm", "");
   }
 }
 
@@ -775,23 +795,38 @@ function renderC(stage) {
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 //  Shared bits: palette, properties pane, node lookup.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+// Two groups: STEPS (the three leaf worker types) and BLOCKS (the structural logicers + checkpoint).
+// A step's `type` is a creation-time choice, so each of the three is its own palette entry; sub-workflow
+// keeps its own hue as the one boundary-crosser.
+const STEP_ENTRIES  = [
+  { key: "llm",      kind: "step" },      // PromptStep
+  { key: "command",  kind: "step" },      // BinaryStep
+  { key: "workflow", kind: "workflow" },  // WorkflowStep (sub-workflow ref)
+];
+const BLOCK_ENTRIES = [
+  { key: "checkpoint", kind: "checkpoint" },
+  { key: "parallel",   kind: "parallel" },
+  { key: "branch",     kind: "branch" },
+  { key: "while-do",   kind: "while-do" },
+  { key: "sequence",   kind: "sequence" },
+];
 function palette(hybrid) {
   const p = el("div", "palette");
-  p.appendChild(el("h3", null, "blocks"));
-  const kinds = ["step", "checkpoint", "parallel", "branch", "while-do", "sequence"];
-  kinds.forEach(k => {
-    const b = el("div", "blk"); b.style.background = `var(${KVAR[k]}-bg, var(--surface))`; b.style.color = `var(${KVAR[k]})`;
-    b.appendChild(kindChip(k)); b.draggable = true;
-    b.ondragstart = () => { window._dragKind = k; };
-    b.ondragend = () => { window._dragKind = null; };
-    p.appendChild(b);
-  });
-  // workflow-ref shown but marked: it snaps in, but its body is a separate file
-  const wf = el("div", "blk illegal"); wf.appendChild(kindChip("workflow")); wf.title = "a ref points at another file; add via New-file flow";
-  p.appendChild(wf);
+  const group = (title, entries) => {
+    p.appendChild(el("h3", null, title));
+    entries.forEach(e => {
+      const b = el("div", "blk"); b.style.background = `var(${KVAR[e.kind]}-bg, var(--surface))`; b.style.color = `var(${KVAR[e.kind]})`;
+      b.appendChild(kindChip(e.kind, KEY_LABEL[e.key])); b.draggable = true;
+      b.ondragstart = () => { window._dragKind = e.key; };
+      b.ondragend = () => { window._dragKind = null; };
+      p.appendChild(b);
+    });
+  };
+  group("steps", STEP_ENTRIES);
+  group("blocks", BLOCK_ENTRIES);
   p.appendChild(el("div", "legalnote", hybrid
-    ? "Drag a block into any legal socket. A socket only accepts what the grammar allows there, so an illegal tree is unsnappable. A workflow-ref is the one block you descend into (double-click)."
-    : "Drag a block into any legal socket. A socket only accepts what the grammar allows there — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
+    ? "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal tree is unsnappable. Sub-workflow is the one you descend into (double-click)."
+    : "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
   return p;
 }
 
@@ -884,7 +919,7 @@ function paneFor(node, variant, root) {
   const notes = [];
   let role = null;   // the node's role label (branch arm / else / parallel branch) — rendered topmost
   pane.appendChild(el("h3", null, "properties"));
-  const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
+  const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind, chipLabel(node)));
   head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
 
   // Editable name — the human label (^[a-z][a-z0-9-]*$, unique per file). Renaming never touches the id.
@@ -916,10 +951,32 @@ function paneFor(node, variant, root) {
 
   const kv = el("dl", "kv");
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
-  if (node.note) add("payload", node.note);
   if (node.kind === "parallel") add("branches", node.branches.map(b => b.name).join(", "));
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
+
+  // Step payload — the three worker types have different fields (the whole reason they are three
+  // palette entries). A small helper for a labelled text input bound to a node field.
+  const field = (labelTxt, get, set, opts = {}) => {
+    pane.appendChild(Object.assign(el("label"), { textContent: labelTxt }));
+    const inp = opts.multiline ? el("textarea") : el("input");
+    if (opts.multiline) inp.rows = 4;
+    inp.value = get(); inp.spellcheck = false;
+    if (opts.mono) { inp.style.fontFamily = "var(--font-mono)"; inp.style.fontSize = "var(--fs-xs)"; }
+    inp.onchange = () => { set(inp.value); toast(labelTxt + " set"); rerender(); };
+    pane.appendChild(inp);
+  };
+  if (node.kind === "step" && node.stype === "llm") {
+    field("model", () => node.model, v => { node.model = v.trim(); }, { mono: true });
+    field("prompt", () => node.prompt, v => { node.prompt = v; }, { multiline: true });
+    notes.push("An LLM step (PromptStep): the worker runs `prompt` against `model` and publishes its output.");
+  }
+  if (node.kind === "step" && node.stype === "command") {
+    field("command", () => node.command, v => { node.command = v.trim(); }, { mono: true });
+    field("args (space-separated)", () => node.args.join(" "), v => { node.args = v.split(/\s+/).filter(Boolean); }, { mono: true });
+    field("cwd", () => node.cwd, v => { node.cwd = v.trim() || "."; }, { mono: true });
+    notes.push("A command step (BinaryStep): runs `command` with `args` in `cwd`; its stdout + exit code are the output.");
+  }
 
   // A structured condition builder, reused everywhere a Condition is authored: branch `when`,
   // while-do `condition`, checkpoint `condition`. You never type an expression — you pick an
