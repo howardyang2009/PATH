@@ -855,9 +855,16 @@ function paneFor(node, variant, root) {
   pane.appendChild(Object.assign(el("label"), { textContent: "id (node GUID)" }));
   const idRow = el("div"); idRow.style.cssText = "display:flex;gap:6px;align-items:center";
   const idIn = el("input"); idIn.value = node.id; idIn.spellcheck = false; idIn.style.fontFamily = "var(--font-mono)"; idIn.style.fontSize = "var(--fs-xs)";
-  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; toast("id set"); rerender(); } };
+  // Changing the id must move the selection with it, or findNode() loses the node after re-key.
+  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; if (selectedId != null) selectedId = v; toast("id set"); rerender(); } };
   const idGen = el("button", "joinpill", "⟳ new GUID"); idGen.style.whiteSpace = "nowrap"; idGen.title = "mint a fresh UUIDv4";
-  idGen.onclick = () => { node.id = uuidv4(); toast("new GUID minted"); rerender(); };
+  idGen.onclick = () => {
+    // Re-keying breaks resume's plan-reuse match for this node (ADR 0015: the id is normally stable),
+    // so gate it behind a confirm rather than mutating on a single click.
+    const ok = confirm("Mint a new GUID for “" + node.name + "”?\n\nThe id is normally stable. Re-keying breaks resume's plan-reuse for this node — a resumed run will re-execute it instead of reusing its output. This cannot be undone.");
+    if (!ok) return;
+    node.id = uuidv4(); if (selectedId != null) selectedId = node.id; toast("new GUID minted"); rerender();
+  };
   idRow.append(idIn, idGen); pane.appendChild(idRow);
 
   const kv = el("dl", "kv");
