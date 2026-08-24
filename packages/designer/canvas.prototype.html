@@ -123,6 +123,13 @@
     color: var(--accent); cursor: pointer; padding: 2px 7px; margin-top: 3px; }
   .cond-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--k-branch);
     background: var(--k-branch-bg); border-radius: 5px; padding: 4px 6px; margin: 6px 0; word-break: break-word; }
+  /* A labelled rectangle that groups a condition (or a branch arm's `when`) so it reads as one unit. */
+  .condbox { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--border);
+    border-radius: 6px; padding: 1px 4px 1px 3px; background: var(--surface); vertical-align: middle; }
+  .condbox > .tag { font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
+    color: var(--surface); background: var(--text-muted); border-radius: 4px; padding: 1px 5px; }
+  .condbox.when > .tag { background: var(--k-branch); }
+  .condbox > .val { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--text); word-break: break-word; }
 
   /* Kind chip. */
   .kind { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs);
@@ -377,6 +384,14 @@ function condSummary(c) {
     default:           return "?";
   }
 }
+// A labelled rectangle grouping a condition. `label` is "condition" everywhere except a branch arm's
+// `when`, which passes "when" (and gets the branch hue) so the arm predicate reads as its own unit.
+function condBox(label, cond) {
+  const b = el("div", "condbox" + (label === "when" ? " when" : ""));
+  b.appendChild(el("span", "tag", label));
+  b.appendChild(el("span", "val", condSummary(cond)));
+  return b;
+}
 // setCond(newCond) replaces this node in its parent; onEdit fires after any mutation to re-render.
 function renderCondEditor(cond, setCond, onEdit, depth = 0) {
   const box = el("div", "cond-node"); box.style.marginLeft = depth ? "12px" : "0";
@@ -505,16 +520,25 @@ function renderA(stage) {
     const wrap = el("div", "a-arms");
     cur.arms.forEach(arm => {
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = condSummary(arm.when); c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
+      const lbl = el("div", "arm-label"); lbl.appendChild(condBox("when", arm.when)); col.appendChild(lbl);
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
     if (cur.else) { const col = el("div", "a-arm"); col.appendChild(el("div", "arm-label", "else (no arm matched)")); col.appendChild(nodeRow(cur.else)); wrap.appendChild(col); }
+    else { // else was deleted — offer to add one back
+      const col = el("div", "a-arm"); col.style.borderStyle = "dashed";
+      const b = el("button", "a-add", "＋ add else (fallback)"); b.style.margin = "0";
+      b.onclick = () => { cur.else = step("else-step", "todo"); selectedId = cur.else.id; toast("Added else fallback to “" + cur.name + "”"); renderA(stage); };
+      col.appendChild(b); wrap.appendChild(col);
+    }
     wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
-    const cl = el("p", "arm-label"); cl.append("while "); const cc = el("code"); cc.textContent = condSummary(cur.condition); cc.style.color = "var(--k-while)"; cl.appendChild(cc); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
+    const cl = el("p", "arm-label"); cl.append("while "); cl.appendChild(condBox("condition", cur.condition)); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
     level.appendChild(nodeRow(cur.body));
+    const rb = el("button", "a-add", "⟳ replace loop body (fresh step)"); rb.style.marginTop = "6px";
+    rb.onclick = () => { cur.body = step("loop-body", "todo"); selectedId = cur.body.id; toast("Replaced loop body of “" + cur.name + "”"); renderA(stage); };
+    level.appendChild(rb);
   } else if (cur.kind === "workflow") {
     level.appendChild(el("p", "hint", "This is a workflow-ref — its body lives in another file (" + cur.ref + ") behind a separate write precondition and edit lease. Descending crosses files."));
   }
@@ -567,10 +591,11 @@ function renderScratchBlock(node, opts = {}) {
     const jb = el("span", "joinpill", "join: " + node.join); jb.style.cursor = "default"; drop.appendChild(jb);
   }
   if (node.kind === "while-do") { // read-only summary on the block; max-iter is edited in PROPERTIES only
-    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition) + " · max " + node.maxIter + " iters"; wc.style.marginLeft = "6px"; drop.appendChild(wc);
+    drop.appendChild(el("span", null, "while")); drop.appendChild(condBox("condition", node.condition));
+    drop.appendChild(el("span", "cond", "· max " + node.maxIter + " iters"));
   }
   if (node.kind === "checkpoint") { // the assertion is a structured condition; summary sits on the hat (question 4)
-    const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
+    drop.appendChild(el("span", null, "assert")); drop.appendChild(condBox("condition", node.condition));
   }
   hat.appendChild(drop);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
@@ -583,27 +608,37 @@ function renderScratchBlock(node, opts = {}) {
   if (node.kind === "sequence") {
     mouth.appendChild(renderStack(node.nodes, node, opts));
   } else if (node.kind === "while-do") {
+    // The loop body is one node. You edit its content by selecting it; you swap the whole body node
+    // (change the step, or make it a block) by dropping a palette block on this socket, or clicking it.
     mouth.appendChild(renderScratchBlock(node.body, opts));
+    const rep = el("div", "socket"); rep.textContent = "⟳ replace loop body — drop a block, or click for a fresh step";
+    rep.style.cursor = "pointer"; rep.style.marginTop = "6px";
+    const swap = maker => { node.body = maker(); selectedId = node.body.id; toast("Replaced loop body of “" + node.name + "”"); opts.rerender(); };
+    rep.onclick = e => { e.stopPropagation(); swap(() => step("loop-body", "todo")); };
+    rep.ondragover = ev => { ev.preventDefault(); rep.classList.toggle("legal-hover", window._dragKind !== "workflow"); rep.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+    rep.ondragleave = () => rep.classList.remove("legal-hover", "illegal-hover");
+    rep.ondrop = ev => { ev.preventDefault(); rep.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k || k === "workflow") return; swap(() => makeDefault(k)); };
+    mouth.appendChild(rep);
   } else if (node.kind === "parallel" || node.kind === "branch") {
     const row = el("div", "arm-row");
     // Each column: a caption that selects the occupant, then the occupant block. A parallel branch's
     // caption is just "parallel branch" (its name is the node name, shown on the block); a branch arm's
     // caption is its `when` condition (question 2).
-    const armColumn = (captionText, isCond, occupant) => {
+    const armColumn = (caption, cond, occupant) => {
       const col = el("div", "arm-col");
       const head = el("div", "arm-head");
-      if (isCond) { head.append("when "); const c = el("span", "cond"); c.textContent = captionText; head.appendChild(c); }
-      else head.textContent = captionText;
+      if (cond) head.appendChild(condBox("when", cond));   // branch arm: `when` grouped in its own rectangle
+      else head.textContent = caption;
       head.style.cursor = "pointer"; head.title = "select this branch/arm";
       head.onclick = e => { e.stopPropagation(); selectedId = occupant.id; opts.rerender(); };
       col.appendChild(head);
       col.appendChild(renderScratchBlock(occupant, opts));
       return col;
     };
-    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", false, b)));
+    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", null, b)));
     else {
-      node.arms.forEach(arm => row.appendChild(armColumn(condSummary(arm.when), true, arm.node)));
-      if (node.else) row.appendChild(armColumn("else", false, node.else));
+      node.arms.forEach(arm => row.appendChild(armColumn(null, arm.when, arm.node)));
+      if (node.else) row.appendChild(armColumn("else", null, node.else));
     }
     // Add-arm affordance: a trailing column that adds a NEW branch/arm. A parallel branch is a bare
     // node (its name is the key); a branch arm wraps a node with a `when`.
@@ -624,6 +659,22 @@ function renderScratchBlock(node, opts = {}) {
     addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover"); const k = window._dragKind; if (!k) return; addOf(() => makeDefault(k)); };
     addCol.appendChild(addSock);
     row.appendChild(addCol);
+    // A branch whose `else` was deleted has no fallback — offer a column to add one back (there is at
+    // most one else, so this appears only while node.else is empty).
+    if (node.kind === "branch" && !node.else) {
+      const elseCol = el("div", "arm-col");
+      elseCol.appendChild(el("div", "arm-head", "no else"));
+      const es = el("div", "socket"); es.textContent = "＋ add else (fallback) — drop a block, or click for a step";
+      es.style.cursor = "pointer"; es.style.minHeight = "42px"; es.style.display = "flex";
+      es.style.alignItems = "center"; es.style.justifyContent = "center";
+      const addElse = maker => { node.else = maker(); selectedId = node.else.id; toast("Added else fallback to “" + node.name + "”"); opts.rerender(); };
+      es.onclick = e => { e.stopPropagation(); addElse(() => step("else-step", "todo")); };
+      es.ondragover = ev => { ev.preventDefault(); es.classList.toggle("legal-hover", window._dragKind !== "workflow"); es.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+      es.ondragleave = () => es.classList.remove("legal-hover", "illegal-hover");
+      es.ondrop = ev => { ev.preventDefault(); es.classList.remove("legal-hover", "illegal-hover"); const k = window._dragKind; if (!k || k === "workflow") return; addElse(() => makeDefault(k)); };
+      elseCol.appendChild(es);
+      row.appendChild(elseCol);
+    }
     mouth.appendChild(row);
   }
   wrap.appendChild(mouth);
