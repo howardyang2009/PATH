@@ -518,9 +518,9 @@ function renderA(stage) {
     level.appendChild(wrap);
   } else if (cur.kind === "branch") {
     const wrap = el("div", "a-arms");
-    cur.arms.forEach(arm => {
+    cur.arms.forEach((arm, i) => {
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.appendChild(condBox("when", arm.when)); col.appendChild(lbl);
+      col.appendChild(el("div", "arm-label", "arm " + (i + 1) + " · select to edit its when"));  // `when` lives in Properties
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
@@ -534,7 +534,7 @@ function renderA(stage) {
     wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
-    const cl = el("p", "arm-label"); cl.append("while "); cl.appendChild(condBox("condition", cur.condition)); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
+    level.appendChild(el("p", "arm-label", "loop body · condition & max-iterations are in Properties →"));  // condition is CONTENT, edited in the pane
     level.appendChild(nodeRow(cur.body));
     const rb = el("button", "a-add", "⟳ replace loop body (fresh step)"); rb.style.marginTop = "6px";
     rb.onclick = () => { cur.body = step("loop-body", "todo"); selectedId = cur.body.id; toast("Replaced loop body of “" + cur.name + "”"); renderA(stage); };
@@ -570,8 +570,10 @@ function renderScratchBlock(node, opts = {}) {
     chip.appendChild(kindChip("workflow"));
     chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
     const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
-    chip.appendChild(el("span", "cross", opts.hybrid ? "descend ↳" : "another file"));
-    chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
+    chip.appendChild(el("span", "cross", opts.hybrid ? "double-click to open ↳" : "another file"));
+    // Single click selects (Properties edits which file this references). Double click descends into it.
+    chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
+    chip.ondblclick = e => { e.stopPropagation(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
     return chip;
   }
 
@@ -590,13 +592,8 @@ function renderScratchBlock(node, opts = {}) {
   if (node.kind === "parallel") { // read-only join badge; join is edited in PROPERTIES (structure vs content)
     const jb = el("span", "joinpill", "join: " + node.join); jb.style.cursor = "default"; drop.appendChild(jb);
   }
-  if (node.kind === "while-do") { // read-only summary on the block; max-iter is edited in PROPERTIES only
-    drop.appendChild(el("span", null, "while")); drop.appendChild(condBox("condition", node.condition));
-    drop.appendChild(el("span", "cond", "· max " + node.maxIter + " iters"));
-  }
-  if (node.kind === "checkpoint") { // the assertion is a structured condition; summary sits on the hat (question 4)
-    drop.appendChild(el("span", null, "assert")); drop.appendChild(condBox("condition", node.condition));
-  }
+  // while-do condition + max-iter, and checkpoint assertion, are CONTENT — shown/edited in PROPERTIES,
+  // not on the canvas. The hat carries only the kind chip + name (structure).
   hat.appendChild(drop);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
   wrap.appendChild(hat);
@@ -624,21 +621,20 @@ function renderScratchBlock(node, opts = {}) {
     // Each column: a caption that selects the occupant, then the occupant block. A parallel branch's
     // caption is just "parallel branch" (its name is the node name, shown on the block); a branch arm's
     // caption is its `when` condition (question 2).
-    const armColumn = (caption, cond, occupant) => {
+    const armColumn = (caption, occupant) => {
       const col = el("div", "arm-col");
-      const head = el("div", "arm-head");
-      if (cond) head.appendChild(condBox("when", cond));   // branch arm: `when` grouped in its own rectangle
-      else head.textContent = caption;
-      head.style.cursor = "pointer"; head.title = "select this branch/arm";
+      const head = el("div", "arm-head");              // structural caption only; the arm's `when` lives in PROPERTIES
+      head.textContent = caption;
+      head.style.cursor = "pointer"; head.title = "select this branch/arm (edit its when in Properties)";
       head.onclick = e => { e.stopPropagation(); selectedId = occupant.id; opts.rerender(); };
       col.appendChild(head);
       col.appendChild(renderScratchBlock(occupant, opts));
       return col;
     };
-    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", null, b)));
+    if (node.kind === "parallel") node.branches.forEach(b => row.appendChild(armColumn("parallel branch", b)));
     else {
-      node.arms.forEach(arm => row.appendChild(armColumn(null, arm.when, arm.node)));
-      if (node.else) row.appendChild(armColumn("else", null, node.else));
+      node.arms.forEach((arm, i) => row.appendChild(armColumn("arm " + (i + 1), arm.node)));
+      if (node.else) row.appendChild(armColumn("else", node.else));
     }
     // Add-arm affordance: a trailing column that adds a NEW branch/arm. A parallel branch is a bare
     // node (its name is the key); a branch arm wraps a node with a `when`.
@@ -912,7 +908,6 @@ function paneFor(node, variant, root) {
   const kv = el("dl", "kv");
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
   if (node.note) add("payload", node.note);
-  if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
   if (node.kind === "parallel") add("branches", node.branches.map(b => b.name).join(", "));
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
@@ -920,9 +915,9 @@ function paneFor(node, variant, root) {
   // A structured condition builder, reused everywhere a Condition is authored: branch `when`,
   // while-do `condition`, checkpoint `condition`. You never type an expression — you pick an
   // operator + a context./output. path + operands, or compose with all/any/not.
-  const condEditor = (labelTxt, getC, setC, help) => {
+  const condEditor = (labelTxt, getC, setC, help, boxLabel) => {
     pane.appendChild(Object.assign(el("label"), { textContent: labelTxt }));
-    pane.appendChild(el("div", "cond-preview", condSummary(getC())));      // read-back summary
+    pane.appendChild(condBox(boxLabel || "condition", getC()));            // labelled read-back rectangle (lives here, not on the canvas)
     const onEdit = () => { toast("condition updated"); rerender(); };       // rerender rebuilds the pane from state
     pane.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
     if (help) pane.appendChild(el("p", "hint", help));
@@ -937,7 +932,7 @@ function paneFor(node, variant, root) {
     } else {
       pane.appendChild(el("h3", null, "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")"));
       condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
-        "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.");
+        "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.", "when");
     }
   } else if (armCtx && armCtx.isElse) {
     pane.appendChild(el("h3", null, "branch else fallback"));
@@ -977,6 +972,15 @@ function paneFor(node, variant, root) {
   if (node.kind === "checkpoint") {
     condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
       "A checkpoint is an inline node with no worker; its assertion is a structured Condition. Judgement checks are a step that outputs a verdict + a checkpoint that tests it.");
+  }
+  if (node.kind === "workflow") {
+    // The one node whose content is which OTHER file it references — edited here; opened by double-click on the canvas.
+    pane.appendChild(Object.assign(el("label"), { textContent: "referenced workflow file" }));
+    const refIn = el("input"); refIn.value = node.ref; refIn.spellcheck = false;
+    refIn.style.fontFamily = "var(--font-mono)"; refIn.style.fontSize = "var(--fs-xs)";
+    refIn.onchange = () => { const v = refIn.value.trim(); if (v) { node.ref = v; toast("ref → " + node.ref); rerender(); } };
+    pane.appendChild(refIn);
+    pane.appendChild(el("p", "hint", "This node references another workflow file — its body lives there, behind that file's own write precondition + edit lease (#257/#258). Change the path here; double-click the node on the canvas to open (descend into) it."));
   }
   // Structure — add / delete / reorder — lives on the CANVAS, not here (content vs structure split).
   // The pane only edits this node's own fields. Delete via the × on a node or the Delete key.
