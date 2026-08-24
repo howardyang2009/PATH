@@ -154,6 +154,14 @@
   .a-node.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
   .a-node .nm { font-weight: 600; }
   .a-node .desc-badge { margin-left: auto; font-size: var(--fs-xs); color: var(--text-muted); }
+  /* delete controls */
+  .danger-btn { font: inherit; font-size: var(--fs-sm); width: 100%; margin-top: 14px; padding: 7px 10px;
+    background: var(--status-failed-bg); color: var(--status-failed-fg); border: 1px solid var(--status-failed-fg);
+    border-radius: 7px; cursor: pointer; }
+  .danger-btn:hover { background: var(--status-failed-fg); color: #fff; }
+  .node-x { border: none; background: none; color: var(--k-workflow); cursor: pointer; font-size: 15px; line-height: 1;
+    padding: 0 4px; border-radius: 4px; opacity: .55; }
+  .node-x:hover { opacity: 1; background: var(--status-failed-bg); }
   .a-node .idx { width: 20px; text-align: center; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
   .a-add { display: block; width: 100%; text-align: left; padding: 9px 12px; margin: 6px 0;
     border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--text-muted);
@@ -411,7 +419,9 @@ function renderCondEditor(cond, setCond, onEdit, depth = 0) {
 let aStack = [MODEL]; // navigation stack; top = current level container
 
 function renderA(stage) {
-  aStack = aStack.filter(Boolean); if (!aStack.length) aStack = [MODEL];
+  activeRoot = MODEL;
+  // Drop any level whose node was deleted out from under the navigation stack.
+  aStack = aStack.filter(n => n && (n === MODEL || findNode(MODEL, n.id))); if (!aStack.length) aStack = [MODEL];
   const cur = aStack[aStack.length - 1];
   stage.innerHTML = "";
   const canvas = el("div", "canvas");
@@ -452,6 +462,9 @@ function renderA(stage) {
     row.appendChild(kindChip(node.kind));
     row.appendChild(el("span", "nm", node.name));
     if (isContainer(node)) { const d = el("span", "desc-badge", "double-click to open ▸"); row.appendChild(d); }
+    const xb = el("button", "node-x", "×"); xb.title = "delete this node"; xb.style.marginLeft = isContainer(node) ? "8px" : "auto";
+    xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    row.appendChild(xb);
     row.onclick = e => { e.stopPropagation(); selectNode(node); };
     row.ondblclick = e => { e.stopPropagation(); if (isContainer(node)) descend(node); };
     return row;
@@ -514,6 +527,9 @@ function renderScratchBlock(node, opts = {}) {
     chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
     const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
     chip.appendChild(el("span", "cross", opts.hybrid ? "descend ↳" : "another file"));
+    const cx = el("button", "node-x", "×"); cx.title = "delete this workflow-ref node (the ref'd file is untouched)";
+    cx.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    chip.appendChild(cx);
     chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
     return chip;
   }
@@ -542,6 +558,9 @@ function renderScratchBlock(node, opts = {}) {
     const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
   }
   hat.appendChild(drop);
+  const xb = el("button", "node-x", "×"); xb.title = "delete this node";
+  xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+  hat.appendChild(xb);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
   wrap.appendChild(hat);
 
@@ -652,6 +671,7 @@ function makeDefault(kind) {
 }
 
 function renderB(stage) {
+  activeRoot = MODEL;
   stage.innerHTML = "";
   const wrap = el("div", "scratch-wrap");
   wrap.appendChild(palette(false));
@@ -674,6 +694,7 @@ let cFileStack = [{ name: "release-pipeline.workflow.json", body: MODEL }];
 
 function renderC(stage) {
   const cur = cFileStack[cFileStack.length - 1];
+  activeRoot = cur.body;
   document.getElementById("chrome-file").textContent = cur.name;
   stage.innerHTML = "";
   const wrap = el("div", "scratch-wrap");
@@ -754,6 +775,54 @@ function findArmContext(root, id) {
     : root.kind === "parallel" ? root.arms.map(a => a.node) : [];
   for (const k of kids) { const f = findArmContext(k, id); if (f) return f; }
   return null;
+}
+
+// The file body the active variant is editing — set at each render so the delete key / inline × know
+// which tree to search.
+let activeRoot = MODEL;
+
+// Locate a node's deletion slot: a sequence entry, an arm occupant, a branch else, or a while-do body.
+// Returns a `remove()` closure plus slot metadata so deleteNode can enforce the single-node-slot rules.
+function nodeDeleter(root, id) {
+  const visit = n => {
+    if (n.kind === "sequence") {
+      for (let i = 0; i < n.nodes.length; i++) { if (n.nodes[i].id === id) return { slot: "sequence", parent: n, remove: () => n.nodes.splice(i, 1) }; const r = visit(n.nodes[i]); if (r) return r; }
+    } else if (n.kind === "while-do") {
+      if (n.body.id === id) return { slot: "while-body", parent: n };
+      const r = visit(n.body); if (r) return r;
+    } else if (n.kind === "parallel") {
+      for (let i = 0; i < n.arms.length; i++) { if (n.arms[i].node.id === id) return { slot: "parallel-arm", parent: n, count: n.arms.length, remove: () => n.arms.splice(i, 1) }; const r = visit(n.arms[i].node); if (r) return r; }
+    } else if (n.kind === "branch") {
+      for (let i = 0; i < n.arms.length; i++) { if (n.arms[i].node.id === id) return { slot: "branch-arm", parent: n, count: n.arms.length, remove: () => n.arms.splice(i, 1) }; const r = visit(n.arms[i].node); if (r) return r; }
+      if (n.else && n.else.id === id) return { slot: "branch-else", parent: n, remove: () => { delete n.else; } };
+      if (n.else) { const r = visit(n.else); if (r) return r; }
+    }
+    return null;
+  };
+  return visit(root);
+}
+
+// Delete a node, honoring the grammar: a slot cannot be left empty (@2 single-node slots), a while-do
+// body is mandatory (so deleting it deletes the loop), and the workflow body itself is undeletable.
+function deleteNode(root, id) {
+  if (root.id === id) return { ok: false, msg: "Can't delete the workflow body itself." };
+  const ctx = nodeDeleter(root, id);
+  if (!ctx) return { ok: false, msg: "Node not found in this file." };
+  if (ctx.slot === "while-body") { const r = deleteNode(root, ctx.parent.id); return r.ok ? { ok: true, msg: "Loop body is a mandatory slot — deleted the whole while-do." } : r; }
+  if (ctx.slot === "parallel-arm" && ctx.count <= 1) return { ok: false, msg: "A parallel needs at least one branch — delete the parallel block instead." };
+  if (ctx.slot === "branch-arm" && ctx.count <= 1 && !ctx.parent.else) return { ok: false, msg: "A branch needs an arm or an else — delete the branch block instead." };
+  ctx.remove();
+  const what = ctx.slot === "parallel-arm" ? "parallel branch" : ctx.slot === "branch-arm" ? "branch arm" : ctx.slot === "branch-else" ? "else fallback" : "node";
+  return { ok: true, msg: "Deleted " + what + "." };
+}
+
+// Delete the selected node against the active file body, then clear selection and re-render.
+function deleteSelected(id) {
+  if (!id) return;
+  const r = deleteNode(activeRoot, id);
+  toast(r.msg);
+  if (r.ok) selectedId = null;
+  rerender();
 }
 
 function paneFor(node, variant, root) {
@@ -841,7 +910,22 @@ function paneFor(node, variant, root) {
     condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
       "A checkpoint is an inline node with no worker; its assertion is a structured Condition. Judgement checks are a step that outputs a verdict + a checkpoint that tests it.");
   }
-  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only."));
+  // Delete this node. Slot rules live in deleteNode(); the button label warns when a delete cascades.
+  if (root && node.id !== root.id) {
+    const dc = nodeDeleter(root, node.id);
+    const label = dc && dc.slot === "while-body" ? "Delete loop (body can't be empty)"
+      : dc && dc.slot === "parallel-arm" ? "Delete this parallel branch"
+      : dc && dc.slot === "branch-arm" ? "Delete this branch arm"
+      : dc && dc.slot === "branch-else" ? "Delete else fallback"
+      : "Delete this " + KIND_LABEL[node.kind];
+    const del = el("button", "danger-btn", "🗑  " + label);
+    del.onclick = () => deleteSelected(node.id);
+    pane.appendChild(del);
+    if (isContainer(node) && node.kind !== "workflow") pane.appendChild(el("p", "hint", "Deleting a block deletes everything nested inside it."));
+  } else if (root && node.id === root.id) {
+    pane.appendChild(el("p", "hint", "This is the workflow body — it cannot be deleted."));
+  }
+  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Delete: this button, the × on a node, or the Delete key."));
   return pane;
 }
 
@@ -873,6 +957,7 @@ document.addEventListener("keydown", e => {
   if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
   if (e.key === "ArrowLeft") cycle(-1);
   if (e.key === "ArrowRight") cycle(1);
+  if ((e.key === "Delete" || e.key === "Backspace") && selectedId) { e.preventDefault(); deleteSelected(selectedId); }
 });
 rerender();
 </script>
