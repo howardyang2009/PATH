@@ -493,7 +493,7 @@ function renderA(stage) {
 
   canvas.appendChild(level);
   stage.appendChild(canvas);
-  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) || cur : cur, "A"));
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) || cur : cur, "A", MODEL));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -656,7 +656,7 @@ function renderB(stage) {
   canvas.appendChild(renderScratchBlock(MODEL, opts));
   wrap.appendChild(canvas);
   stage.appendChild(wrap);
-  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) : MODEL, "B"));
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) : MODEL, "B", MODEL));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -697,7 +697,7 @@ function renderC(stage) {
   right.appendChild(fb); right.appendChild(canvas);
   wrap.appendChild(right);
   stage.appendChild(wrap);
-  stage.appendChild(paneFor(selectedId ? findNode(cur.body, selectedId) : cur.body, "C"));
+  stage.appendChild(paneFor(selectedId ? findNode(cur.body, selectedId) : cur.body, "C", cur.body));
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -734,7 +734,25 @@ function findNode(root, id) {
   return null;
 }
 
-function paneFor(node, variant) {
+// The arm a node occupies, if any — so the arm's OWN metadata (a branch arm's `when`, a parallel
+// arm's `name`) is edited where the node is selected, i.e. attached to the arm, not to the parent
+// container. Mirrors the parallel/branch symmetry: an arm is a self-contained thing.
+function findArmContext(root, id) {
+  if (!root) return null;
+  if (root.kind === "parallel" || root.kind === "branch") {
+    for (let i = 0; i < root.arms.length; i++) if (root.arms[i].node.id === id) return { block: root, arm: root.arms[i], index: i };
+    if (root.kind === "branch" && root.else && root.else.id === id) return { block: root, isElse: true };
+  }
+  const kids = root.kind === "sequence" ? root.nodes
+    : root.kind === "while-do" ? [root.body]
+    : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
+    : root.kind === "parallel" ? root.arms.map(a => a.node) : [];
+  for (const k of kids) { const f = findArmContext(k, id); if (f) return f; }
+  return null;
+}
+
+function paneFor(node, variant, root) {
+  const armCtx = node ? findArmContext(root, node.id) : null;
   const pane = el("div", "pane");
   if (!node) { pane.appendChild(el("p", "hint", "Nothing selected. Click a node to edit its properties; click empty canvas to edit the level/file itself.")); return pane; }
   pane.appendChild(el("h3", null, "properties"));
@@ -764,6 +782,26 @@ function paneFor(node, variant) {
     if (help) pane.appendChild(el("p", "hint", help));
   };
 
+  // Arm metadata belongs to the ARM, not the parent container — so it is edited here, where the arm's
+  // occupant node is selected. A branch arm owns its `when`; a parallel arm owns its `name`. This is
+  // what makes a branch arm feel like a parallel branch: each arm is self-contained.
+  if (armCtx && !armCtx.isElse) {
+    pane.appendChild(el("h3", null, armCtx.block.kind === "branch" ? "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")" : "parallel branch"));
+    if (armCtx.block.kind === "parallel") {
+      pane.appendChild(Object.assign(el("label"), { textContent: "branch name — this arm's output key" }));
+      const inp = el("input"); inp.value = armCtx.arm.name;
+      inp.onchange = () => { armCtx.arm.name = inp.value; toast("branch name → " + inp.value); rerender(); };
+      pane.appendChild(inp);
+      pane.appendChild(el("p", "hint", "The key this arm contributes to the collect / wait-one output object. It is the arm's, held beside the arm's node in “" + armCtx.block.name + "”."));
+    } else {
+      condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
+        "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.");
+    }
+  } else if (armCtx && armCtx.isElse) {
+    pane.appendChild(el("h3", null, "branch else fallback"));
+    pane.appendChild(el("p", "hint", "Runs when no arm's `when` matched, in Branch node “" + armCtx.block.name + "”. It is a plain node with no condition of its own."));
+  }
+
   // Editable affordances the properties pane owns (mirror what's inline, for the drill-down variant especially).
   if (node.kind === "parallel") {
     pane.appendChild(Object.assign(el("label"), { textContent: "join mode" }));
@@ -785,9 +823,14 @@ function paneFor(node, variant) {
     pane.appendChild(el("p", "hint", "Loop condition AND a max-iterations cap — both required. Exceeding the cap fails the run; no unbounded loop is expressible."));
   }
   if (node.kind === "branch") {
-    pane.appendChild(el("p", "hint", "One when-condition per arm, first match wins; the else node is the fallback when none match."));
-    node.arms.forEach((a, i) => condEditor("arm " + (i + 1) + " · when", () => a.when, nc => { a.when = nc; }));
-    if (node.else) pane.appendChild(Object.assign(el("label"), { textContent: "else → node “" + node.else.name + "” (no condition)" }));
+    // The Branch node owns only the arm ORDER + the else fallback — not the conditions. Each arm's
+    // `when` is edited on the arm itself (select the arm's node). Shown read-only here for orientation.
+    pane.appendChild(Object.assign(el("label"), { textContent: "arms (first match wins) — select an arm to edit its when" }));
+    const list = el("div"); list.style.margin = "4px 0";
+    node.arms.forEach((a, i) => { const r = el("div", "cond-preview"); r.textContent = (i + 1) + ". when " + condSummary(a.when) + "  →  " + a.node.name; list.appendChild(r); });
+    if (node.else) { const r = el("div", "cond-preview"); r.style.opacity = ".8"; r.textContent = "else  →  " + node.else.name; list.appendChild(r); }
+    pane.appendChild(list);
+    pane.appendChild(el("p", "hint", "A branch arm is self-contained, like a parallel branch: its condition lives on the arm, not on this node. The Branch node holds only the arm order and the else fallback."));
   }
   if (node.kind === "checkpoint") {
     condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
