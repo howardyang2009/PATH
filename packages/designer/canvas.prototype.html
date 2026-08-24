@@ -109,6 +109,10 @@
   .pane .kv dt { color: var(--text-muted); }
   .pane .kv dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-word; }
   .pane .hint { color: var(--text-muted); font-style: italic; }
+  /* Node explanation, gathered at the top of the pane above the "properties" line. */
+  .pane-help { margin: 0 0 12px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .pane-help .hint { margin: 0 0 6px; }
+  .pane-help .hint:last-child { margin-bottom: 0; }
   .pane select, .pane input { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
     background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
   .pane label { display: block; margin: 10px 0 2px; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; }
@@ -874,6 +878,10 @@ function paneFor(node, variant, root) {
   const armCtx = node ? findArmContext(root, node.id) : null;
   const pane = el("div", "pane");
   if (!node) { pane.appendChild(el("p", "hint", "Nothing selected. Click a node to edit its properties; click empty canvas to edit the level/file itself.")); return pane; }
+  // Explanatory copy is collected here and rendered as ONE block at the very top (above the
+  // "properties" line), not interleaved with the fields — so in production it reads as node help,
+  // not per-field clutter.
+  const notes = [];
   pane.appendChild(el("h3", null, "properties"));
   const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
   head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
@@ -924,7 +932,7 @@ function paneFor(node, variant, root) {
     fs.appendChild(el("div", "cond-preview", condSummary(getC())));         // read-back summary
     const onEdit = () => { toast("condition updated"); rerender(); };       // rerender rebuilds the pane from state
     fs.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
-    if (help) fs.appendChild(el("p", "hint", help));
+    if (help) notes.push(help);
     pane.appendChild(fs);
   };
 
@@ -933,7 +941,7 @@ function paneFor(node, variant, root) {
   if (armCtx && !armCtx.isElse) {
     if (armCtx.block.kind === "parallel") {
       pane.appendChild(el("h3", null, "parallel branch"));
-      pane.appendChild(el("p", "hint", "A branch of parallel “" + armCtx.block.name + "”. Its collect / wait-one output key is this node's own name — edit it in the name field above; there is no separate branch name."));
+      notes.push("A branch of parallel “" + armCtx.block.name + "”. Its collect / wait-one output key is this node's own name — edit it in the name field above; there is no separate branch name.");
     } else {
       pane.appendChild(el("h3", null, "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")"));
       condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
@@ -941,7 +949,7 @@ function paneFor(node, variant, root) {
     }
   } else if (armCtx && armCtx.isElse) {
     pane.appendChild(el("h3", null, "branch else fallback"));
-    pane.appendChild(el("p", "hint", "Runs when no arm's `when` matched, in Branch node “" + armCtx.block.name + "”. It is a plain node with no condition of its own."));
+    notes.push("Runs when no arm's `when` matched, in Branch node “" + armCtx.block.name + "”. It is a plain node with no condition of its own.");
   }
 
   // Editable affordances the properties pane owns (mirror what's inline, for the drill-down variant especially).
@@ -953,7 +961,7 @@ function paneFor(node, variant, root) {
     const modeHelp = { collect: "waits every branch, lands all publishes, outputs {branch: output}.",
       "wait-one": "races branches; first-to-succeed wins; losers cancelled (sibling-succeeded).",
       "do-not-wait": "launches all, waits none; successor runs immediately; branches may not publish." };
-    pane.appendChild(el("p", "hint", modeHelp[node.join]));
+    notes.push(modeHelp[node.join]);
   }
   if (node.kind === "while-do") {
     condEditor("loop condition (keeps iterating while true)", () => node.condition, nc => { node.condition = nc; },
@@ -962,7 +970,7 @@ function paneFor(node, variant, root) {
     const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
     inp.onchange = () => { node.maxIter = Math.max(1, +inp.value || 1); toast("max-iter → " + node.maxIter); rerender(); };
     pane.appendChild(inp);
-    pane.appendChild(el("p", "hint", "Loop condition AND a max-iterations cap — both required. Exceeding the cap fails the run; no unbounded loop is expressible."));
+    notes.push("Loop condition AND a max-iterations cap — both required. Exceeding the cap fails the run; no unbounded loop is expressible.");
   }
   if (node.kind === "branch") {
     // The Branch node owns only the arm ORDER + the else fallback — not the conditions. Each arm's
@@ -972,7 +980,7 @@ function paneFor(node, variant, root) {
     node.arms.forEach((a, i) => { const r = el("div", "cond-preview"); r.textContent = (i + 1) + ". when " + condSummary(a.when) + "  →  " + a.node.name; list.appendChild(r); });
     if (node.else) { const r = el("div", "cond-preview"); r.style.opacity = ".8"; r.textContent = "else  →  " + node.else.name; list.appendChild(r); }
     pane.appendChild(list);
-    pane.appendChild(el("p", "hint", "A branch arm is self-contained, like a parallel branch: its condition lives on the arm, not on this node. The Branch node holds only the arm order and the else fallback."));
+    notes.push("A branch arm is self-contained, like a parallel branch: its condition lives on the arm, not on this node. The Branch node holds only the arm order and the else fallback.");
   }
   if (node.kind === "checkpoint") {
     condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
@@ -985,11 +993,18 @@ function paneFor(node, variant, root) {
     refIn.style.fontFamily = "var(--font-mono)"; refIn.style.fontSize = "var(--fs-xs)";
     refIn.onchange = () => { const v = refIn.value.trim(); if (v) { node.ref = v; toast("ref → " + node.ref); rerender(); } };
     pane.appendChild(refIn);
-    pane.appendChild(el("p", "hint", "This node references another workflow file — its body lives there, behind that file's own write precondition + edit lease (#257/#258). Change the path here; double-click the node on the canvas to open (descend into) it."));
+    notes.push("This node references another workflow file — its body lives there, behind that file's own write precondition + edit lease (#257/#258). Change the path here; double-click the node on the canvas to open (descend into) it.");
   }
   // Structure — add / delete / reorder — lives on the CANVAS, not here (content vs structure split).
   // The pane only edits this node's own fields. Delete via the × on a node or the Delete key.
   pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Structure (delete, reorder, add) is done on the canvas: the × on a node, or the Delete key."));
+
+  // Render every collected explanation as ONE block at the top, above the "properties" line.
+  if (notes.length) {
+    const help = el("div", "pane-help");
+    notes.forEach(t => help.appendChild(el("p", "hint", t)));
+    pane.insertBefore(help, pane.firstChild);
+  }
   return pane;
 }
 
