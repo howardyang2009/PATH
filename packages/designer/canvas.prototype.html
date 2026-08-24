@@ -882,6 +882,7 @@ function paneFor(node, variant, root) {
   // "properties" line), not interleaved with the fields — so in production it reads as node help,
   // not per-field clutter.
   const notes = [];
+  let role = null;   // the node's role label (branch arm / else / parallel branch) — rendered topmost
   pane.appendChild(el("h3", null, "properties"));
   const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
   head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
@@ -940,15 +941,15 @@ function paneFor(node, variant, root) {
   // its output key IS its node name, edited via the `name` field above.
   if (armCtx && !armCtx.isElse) {
     if (armCtx.block.kind === "parallel") {
-      pane.appendChild(el("h3", null, "parallel branch"));
+      role = "parallel branch";
       notes.push("A branch of parallel “" + armCtx.block.name + "”. Its collect / wait-one output key is this node's own name — edit it in the name field above; there is no separate branch name.");
     } else {
-      pane.appendChild(el("h3", null, "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")"));
+      role = "branch arm (" + (armCtx.index + 1) + " of " + armCtx.block.arms.length + ")";
       condEditor("this arm's `when` (belongs to the arm)", () => armCtx.arm.when, nc => { armCtx.arm.when = nc; },
         "The condition is the arm's, not the Branch node “" + armCtx.block.name + "”'s. Sibling arms are first-match-wins; the else node is the fallback.", "when");
     }
   } else if (armCtx && armCtx.isElse) {
-    pane.appendChild(el("h3", null, "branch else fallback"));
+    role = "branch else fallback";
     notes.push("Runs when no arm's `when` matched, in Branch node “" + armCtx.block.name + "”. It is a plain node with no condition of its own.");
   }
 
@@ -999,9 +1000,11 @@ function paneFor(node, variant, root) {
   // The pane only edits this node's own fields. Delete via the × on a node or the Delete key.
   pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only. Structure (delete, reorder, add) is done on the canvas: the × on a node, or the Delete key."));
 
-  // Render every collected explanation as ONE block at the top, above the "properties" line.
-  if (notes.length) {
+  // Render the role label (topmost) + every collected explanation as ONE block at the top of the
+  // pane, above the "properties" line.
+  if (role || notes.length) {
     const help = el("div", "pane-help");
+    if (role) help.appendChild(el("h3", null, role));
     notes.forEach(t => help.appendChild(el("p", "hint", t)));
     pane.insertBefore(help, pane.firstChild);
   }
