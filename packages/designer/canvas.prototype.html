@@ -1,0 +1,659 @@
+<title>Designer Canvas Prototype — #255</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<!--
+  THROWAWAY PROTOTYPE — issue #255 (part of map #254). Not production code. Double-click to open.
+
+  Question (#255, sharpened by locked decision 6): how does a CONSTRAINED canvas render and edit
+  a workflow body — an ordered sequence of nodes with nested blocks, a tree not a DAG — such that
+  the author can never express a structure the block grammar cannot? Decision 6 is split between two
+  live models and floats a hybrid; this prototype is what resolves that split:
+
+    Variant A — DRILL-DOWN     (2026-08-19 amendment): one level at a time, single-click selects,
+                                double-click descends, a back/breadcrumb stack ascends.
+    Variant B — SCRATCH SNAP   (2026-08-21 proposal): every node a Lego block, wrappers are C-shaped,
+                                all nesting inline and visible, a block only clicks into a legal socket.
+    Variant C — HYBRID         (the reconciliation decision 6 itself floats): inline Scratch stacks
+                                WITHIN a file, drill-down ONLY across a workflow-ref file boundary.
+
+  All three render the SAME sample workflow (below) so they are directly comparable, and each answers
+  the seven open questions from #255 the same way it would in the real Designer:
+    (1) parallel block + its three join modes collect / wait-one / do-not-wait, shown and switched
+    (2) branch block + where its conditions live
+    (3) while-do + its mandatory max-iterations bound
+    (4) where checkpoints sit — inline in the sequence, or attached to a node
+    (5) sequence order expressed spatially + how it is reordered (drag / move within a container)
+    (6) how nesting reads at depth 3+ without becoming unreadable  <-- the crux of the A-vs-B tension
+    (7) the add-node gesture, and what an empty canvas offers
+
+  Switch variants: floating bottom bar, the <- / -> arrow keys, or ?variant=A|B|C .
+  No build, no server, no persistence — the workflow lives in memory and edits are lost on reload,
+  which is the point (persistence is #257's job, not this prototype's). Precedent: the launch-panel
+  prototype on map #40 (packages/viewer/src/launch-panel.prototype.html).
+-->
+<style>
+  /* Tokens copied verbatim from packages/viewer/src/tokens.css — honor the pinned design system. */
+  :root {
+    --ground: #fbfcfd; --surface: #ffffff; --border: #d8dee4;
+    --text: #1c2128; --text-muted: #656d76; --accent: #4c6ef5;
+    --status-running-fg: #1f6feb; --status-running-bg: #ddf0ff;
+    --status-succeeded-fg: #1a7f37; --status-succeeded-bg: #dcfce7;
+    --status-failed-fg: #cf222e; --status-failed-bg: #ffebe9;
+    --status-cancelled-fg: #656d76; --status-cancelled-bg: #eaeef2;
+    --status-pending-fg: #9a6700; --status-pending-bg: #fff8c5;
+    --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
+    --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
+    --fs-xs: 11px; --fs-sm: 12px; --fs-base: 13px; --fs-md: 15px; --fs-lg: 19px; --fs-xl: 24px;
+    /* block-kind hues — one hue per node kind, shared across all three variants so a reader
+       learns the palette once. */
+    --k-step: #4c6ef5; --k-step-bg: #eef2ff;
+    --k-checkpoint: #9a6700; --k-checkpoint-bg: #fff8c5;
+    --k-parallel: #1a7f37; --k-parallel-bg: #dcfce7;
+    --k-branch: #8250df; --k-branch-bg: #f3edff;
+    --k-while: #bc4c00; --k-while-bg: #fff1e5;
+    --k-sequence: #656d76; --k-sequence-bg: #eaeef2;
+    --k-workflow: #cf222e; --k-workflow-bg: #ffebe9;
+  }
+  :root[data-theme="dark"] {
+    --ground: #0e1116; --surface: #161b22; --border: #30363d;
+    --text: #e6edf3; --text-muted: #8b949e; --accent: #5c7cff;
+    --k-step: #6b8bff; --k-step-bg: #131b33;
+    --k-checkpoint: #d29922; --k-checkpoint-bg: #2a2213;
+    --k-parallel: #3fb950; --k-parallel-bg: #12261a;
+    --k-branch: #a371f7; --k-branch-bg: #1d1533;
+    --k-while: #ec8e2c; --k-while-bg: #2a1a0e;
+    --k-sequence: #8b949e; --k-sequence-bg: #21262d;
+    --k-workflow: #f85149; --k-workflow-bg: #2d1416;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #0e1116; --surface: #161b22; --border: #30363d;
+      --text: #e6edf3; --text-muted: #8b949e; --accent: #5c7cff;
+      --k-step: #6b8bff; --k-step-bg: #131b33;
+      --k-checkpoint: #d29922; --k-checkpoint-bg: #2a2213;
+      --k-parallel: #3fb950; --k-parallel-bg: #12261a;
+      --k-branch: #a371f7; --k-branch-bg: #1d1533;
+      --k-while: #ec8e2c; --k-while-bg: #2a1a0e;
+      --k-sequence: #8b949e; --k-sequence-bg: #21262d;
+      --k-workflow: #f85149; --k-workflow-bg: #2d1416;
+    }
+  }
+
+  * { box-sizing: border-box; }
+  html, body { height: 100%; }
+  body { margin: 0; background: var(--ground); color: var(--text);
+         font-family: var(--font-sans); font-size: var(--fs-base);
+         display: flex; flex-direction: column; }
+
+  /* Prototype banner. */
+  .proto-banner { display: flex; gap: 12px; align-items: baseline; flex-wrap: wrap;
+    background: var(--status-pending-bg); color: var(--status-pending-fg);
+    border-bottom: 1px solid var(--border); padding: 6px 14px; font-size: var(--fs-sm); }
+  .proto-banner strong { font-weight: 700; letter-spacing: .04em; text-transform: uppercase; }
+  .proto-banner .q { color: var(--text-muted); }
+
+  /* App chrome shared by every variant — a fake designer window so variants butt against real density. */
+  .chrome-top { display: flex; align-items: center; gap: 14px; padding: 8px 14px;
+    border-bottom: 1px solid var(--border); background: var(--surface); }
+  .chrome-top .title { font-weight: 600; font-size: var(--fs-md); }
+  .chrome-top .file { font-family: var(--font-mono); font-size: var(--fs-sm); color: var(--text-muted); }
+  .chrome-top .lease { margin-left: auto; font-size: var(--fs-xs); color: var(--status-succeeded-fg);
+    background: var(--status-succeeded-bg); border-radius: 999px; padding: 3px 9px; }
+  .variant-name { font-size: var(--fs-xs); color: var(--text-muted); text-transform: uppercase; letter-spacing: .05em; }
+
+  .stage { flex: 1; min-height: 0; display: flex; }
+  .canvas { flex: 1; min-width: 0; overflow: auto; position: relative; }
+  .pane { width: 320px; border-left: 1px solid var(--border); background: var(--surface);
+    overflow: auto; padding: 14px; font-size: var(--fs-sm); }
+  .pane h3 { margin: 0 0 4px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+  .pane .kv { display: grid; grid-template-columns: 92px 1fr; gap: 4px 8px; margin: 8px 0; }
+  .pane .kv dt { color: var(--text-muted); }
+  .pane .kv dd { margin: 0; font-family: var(--font-mono); font-size: var(--fs-xs); word-break: break-word; }
+  .pane .hint { color: var(--text-muted); font-style: italic; }
+  .pane select, .pane input { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
+    background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
+  .pane label { display: block; margin: 10px 0 2px; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; }
+
+  /* Kind chip. */
+  .kind { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs);
+    font-weight: 600; padding: 1px 7px; border-radius: 999px; text-transform: uppercase; letter-spacing: .03em; }
+  .kind::before { content: ""; width: 7px; height: 7px; border-radius: 2px; background: currentColor; }
+  .kind.step { color: var(--k-step); background: var(--k-step-bg); }
+  .kind.checkpoint { color: var(--k-checkpoint); background: var(--k-checkpoint-bg); }
+  .kind.parallel { color: var(--k-parallel); background: var(--k-parallel-bg); }
+  .kind.branch { color: var(--k-branch); background: var(--k-branch-bg); }
+  .kind\.while-do, .kind.while-do { color: var(--k-while); background: var(--k-while-bg); }
+  .kind.sequence { color: var(--k-sequence); background: var(--k-sequence-bg); }
+  .kind.workflow { color: var(--k-workflow); background: var(--k-workflow-bg); }
+
+  /* ---------- Variant A: drill-down ---------- */
+  .a-breadcrumb { display: flex; align-items: center; gap: 6px; padding: 10px 16px; flex-wrap: wrap;
+    border-bottom: 1px solid var(--border); position: sticky; top: 0; background: var(--ground); z-index: 2; }
+  .a-breadcrumb button { font: inherit; font-size: var(--fs-sm); background: none; border: none; cursor: pointer;
+    color: var(--accent); padding: 2px 4px; border-radius: 4px; }
+  .a-breadcrumb .sep { color: var(--text-muted); }
+  .a-breadcrumb .cur { color: var(--text); font-weight: 600; }
+  .a-level { max-width: 720px; margin: 18px auto; padding: 0 16px 120px; }
+  .a-level-head { color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; margin: 0 0 10px; }
+  .a-arms { display: flex; gap: 14px; align-items: flex-start; }
+  .a-arm { flex: 1; min-width: 0; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); padding: 10px; }
+  .a-arm > .arm-label { font-size: var(--fs-xs); color: var(--text-muted); margin-bottom: 8px; display: flex; gap: 6px; align-items: center; }
+  .a-node { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin: 6px 0;
+    border: 1px solid var(--border); border-radius: 9px; background: var(--surface); cursor: pointer; user-select: none; }
+  .a-node:hover { border-color: var(--accent); }
+  .a-node.sel { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent) inset; }
+  .a-node .nm { font-weight: 600; }
+  .a-node .desc-badge { margin-left: auto; font-size: var(--fs-xs); color: var(--text-muted); }
+  .a-node .idx { width: 20px; text-align: center; color: var(--text-muted); font-family: var(--font-mono); font-size: var(--fs-xs); }
+  .a-add { display: block; width: 100%; text-align: left; padding: 9px 12px; margin: 6px 0;
+    border: 1px dashed var(--border); border-radius: 9px; background: none; color: var(--text-muted);
+    cursor: pointer; font: inherit; }
+  .a-add:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* ---------- Variant B & C: Scratch blocks ---------- */
+  .scratch-wrap { display: flex; min-height: 100%; }
+  .palette { width: 176px; border-right: 1px solid var(--border); background: var(--surface); padding: 12px; flex-shrink: 0; }
+  .palette h3 { margin: 0 0 8px; font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .06em; color: var(--text-muted); }
+  .palette .blk { display: flex; align-items: center; gap: 6px; padding: 7px 9px; margin: 6px 0; border-radius: 7px;
+    cursor: grab; font-size: var(--fs-sm); font-weight: 600; border: 1px solid transparent; }
+  .palette .blk:active { cursor: grabbing; }
+  .palette .blk.illegal { opacity: .32; cursor: not-allowed; }
+  .palette .legalnote { font-size: var(--fs-xs); color: var(--text-muted); margin-top: 10px; line-height: 1.4; }
+  .scratch-canvas { flex: 1; padding: 22px; overflow: auto; }
+
+  /* A scratch stack: vertical column of blocks that visually notch together. */
+  .stack { display: flex; flex-direction: column; gap: 0; }
+  .sblock { position: relative; border-radius: 7px; border: 1px solid var(--border);
+    background: var(--surface); margin-bottom: 4px; cursor: pointer; }
+  .sblock.sel { box-shadow: 0 0 0 2px var(--accent); border-color: var(--accent); }
+  .sblock .hat { display: flex; align-items: center; gap: 8px; padding: 7px 10px; border-radius: 7px 7px 0 0;
+    border-left: 5px solid var(--kc, var(--border)); }
+  .sblock.leaf .hat { border-radius: 7px; }
+  .sblock .hat .nm { font-weight: 600; }
+  .sblock .hat .drop { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
+  .sblock .socket-note { font-size: var(--fs-xs); color: var(--text-muted); padding: 0 10px 7px; }
+  /* C-block mouth: the nested body, inset with a left rail in the kind's hue. */
+  .mouth { margin: 0 8px 8px 20px; padding: 8px; border-left: 3px solid var(--kc, var(--border));
+    border-radius: 0 8px 8px 0; background: color-mix(in srgb, var(--kc, #888) 7%, transparent); }
+  .arm-row { display: flex; gap: 12px; }
+  .arm-col { flex: 1; min-width: 150px; }
+  .arm-head { font-size: var(--fs-xs); color: var(--text-muted); margin: 2px 0 6px; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; }
+  .arm-head .cond { font-family: var(--font-mono); background: var(--k-branch-bg); color: var(--k-branch);
+    padding: 1px 6px; border-radius: 5px; }
+  .socket { border: 1px dashed var(--border); border-radius: 6px; padding: 6px; text-align: center;
+    color: var(--text-muted); font-size: var(--fs-xs); margin-top: 4px; }
+  .socket.legal-hover { border-color: var(--accent); color: var(--accent); background: var(--k-step-bg); }
+  .socket.illegal-hover { border-color: var(--k-workflow); color: var(--k-workflow); background: var(--k-workflow-bg); }
+  .joinpill { font-family: var(--font-mono); font-size: var(--fs-xs); border: 1px solid var(--border);
+    background: var(--ground); color: var(--text); border-radius: 6px; padding: 2px 5px; cursor: pointer; }
+  .maxiter { font-family: var(--font-mono); font-size: var(--fs-xs); }
+  .maxiter input { width: 42px; font: inherit; font-family: var(--font-mono); text-align: center;
+    border: 1px solid var(--border); border-radius: 5px; background: var(--ground); color: var(--text); }
+  /* workflow-ref chip — the file boundary. */
+  .refchip { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 7px;
+    border: 1px solid var(--k-workflow); background: var(--k-workflow-bg); cursor: pointer; }
+  .refchip .cross { margin-left: auto; font-size: var(--fs-xs); color: var(--k-workflow); font-weight: 600; }
+  .c-filebar { display: flex; align-items: center; gap: 6px; padding: 8px 14px; border-bottom: 1px solid var(--border);
+    background: var(--ground); position: sticky; top: 0; z-index: 2; }
+  .c-filebar button { font: inherit; font-size: var(--fs-sm); background: none; border: none; cursor: pointer; color: var(--accent); }
+  .c-filebar .curfile { font-family: var(--font-mono); font-size: var(--fs-sm); font-weight: 600; }
+  .c-filebar .sep { color: var(--text-muted); }
+
+  /* Empty-canvas offer (question 7). */
+  .empty-offer { max-width: 460px; margin: 60px auto; text-align: center; color: var(--text-muted); }
+  .empty-offer .row { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; margin-top: 14px; }
+  .empty-offer .row button { font: inherit; padding: 8px 12px; border: 1px solid var(--border);
+    border-radius: 8px; background: var(--surface); color: var(--text); cursor: pointer; }
+
+  /* Floating variant switcher. */
+  .switcher { position: fixed; bottom: 16px; left: 50%; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 10px; background: #1c2128; color: #fff;
+    padding: 8px 12px; border-radius: 999px; box-shadow: 0 8px 24px rgba(0,0,0,.28); z-index: 50; }
+  :root[data-theme="dark"] .switcher, .switcher { color: #fff; }
+  .switcher button { background: rgba(255,255,255,.14); color: #fff; border: none; width: 30px; height: 30px;
+    border-radius: 50%; cursor: pointer; font-size: 15px; line-height: 1; }
+  .switcher button:hover { background: rgba(255,255,255,.28); }
+  .switcher .lbl { font-size: var(--fs-sm); min-width: 210px; text-align: center; }
+  .switcher .lbl b { letter-spacing: .04em; }
+  .switcher .lbl small { display: block; opacity: .7; font-size: var(--fs-xs); }
+</style>
+
+<div class="proto-banner">
+  <strong>Prototype</strong>
+  <span class="q">#255 — constrained-canvas interaction model. Resolves decision 6's drill-down&nbsp;vs&nbsp;Scratch-snap&nbsp;vs&nbsp;hybrid split. Throwaway; edits lost on reload.</span>
+</div>
+
+<div class="chrome-top">
+  <span class="title">@path/designer</span>
+  <span class="file" id="chrome-file">release-pipeline.workflow.json</span>
+  <span class="variant-name" id="chrome-variant"></span>
+  <span class="lease">● edit lease held · 41s to renew</span>
+</div>
+
+<div class="stage" id="stage"></div>
+
+<div class="switcher">
+  <button id="prev" title="Previous (←)">‹</button>
+  <div class="lbl" id="switch-lbl"></div>
+  <button id="next" title="Next (→)">›</button>
+</div>
+
+<script>
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  Shared in-memory workflow model — the SAME body rendered by all three variants.
+//  Grammar mirrors path/workflow@2: every node carries {id,name,kind}; a container slot holds
+//  exactly one node, and a `sequence` carries the array where a slot needs several nodes in order.
+//  This sample exercises all four logicers + checkpoints + a workflow-ref, and reaches depth 4.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0");
+
+const step  = (name, note)          => ({ id: gid(), name, kind: "step", note });
+const check = (name, assertion)     => ({ id: gid(), name, kind: "checkpoint", assertion });
+const seq   = (name, nodes)         => ({ id: gid(), name, kind: "sequence", nodes });
+const par   = (name, join, arms)    => ({ id: gid(), name, kind: "parallel", join, arms }); // arms: [{name,node}]
+const branch= (name, arms)          => ({ id: gid(), name, kind: "branch", arms });          // arms: [{cond,node}]
+const whilez= (name, maxIter, body) => ({ id: gid(), name, kind: "while-do", maxIter, body });
+const wfref = (name, ref)           => ({ id: gid(), name, kind: "workflow", ref });
+
+const MODEL = seq("release-pipeline", [
+  step("fetch-source", "clone + checkout the release ref"),
+  check("assert-source-present", "ctx.source_dir exists && non-empty"),
+  par("verify", "collect", [
+    { name: "lint",  node: seq("lint-seq", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", "exit-code == 0") ]) },
+    { name: "test",  node: whilez("retry-tests", 3, step("run-flaky-tests", "pytest -q; may flake")) },
+    { name: "build", node: step("build-artifact", "docker build -t rel:$sha .") },
+  ]),
+  branch("route-deploy", [
+    { cond: "ctx.target == 'prod'",    node: par("ship-prod", "wait-one", [
+        { name: "us", node: step("deploy-us", "push to us-east-1") },
+        { name: "eu", node: step("deploy-eu", "push to eu-west-1") },
+    ]) },
+    { cond: "ctx.target == 'staging'", node: step("deploy-staging", "push to staging") },
+    { cond: "else",                    node: check("no-target", "fail: no deploy target set") },
+  ]),
+  check("assert-deployed", "healthcheck 200 within 60s"),
+  wfref("notify-team", "./notify.workflow.json"),
+]);
+
+// A second file, reached only through the workflow-ref — lets variant C demo the file-boundary drill-down.
+const NOTIFY_FILE = seq("notify", [
+  step("render-message", "template the release notes"),
+  par("fan-out", "do-not-wait", [
+    { name: "slack", node: step("post-slack", "chat.postMessage") },
+    { name: "email", node: step("send-email", "SES send") },
+  ]),
+]);
+
+const KIND_LABEL = { step:"step", checkpoint:"checkpoint", parallel:"parallel", branch:"branch",
+  "while-do":"while-do", sequence:"sequence", workflow:"workflow-ref" };
+const KVAR = { step:"--k-step", checkpoint:"--k-checkpoint", parallel:"--k-parallel", branch:"--k-branch",
+  "while-do":"--k-while", sequence:"--k-sequence", workflow:"--k-workflow" };
+const isContainer = n => ["parallel","branch","while-do","sequence","workflow"].includes(n.kind);
+const el = (tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; return e; };
+function kindChip(kind) { const c = el("span", "kind " + kind, KIND_LABEL[kind]); return c; }
+
+// Shared selection + a tiny toast so every mutation "surfaces the state" (skill rule 5).
+let selectedId = null;
+function toast(msg) {
+  let t = document.getElementById("toast");
+  if (!t) { t = el("div"); t.id = "toast"; Object.assign(t.style, { position:"fixed", bottom:"64px", left:"50%",
+    transform:"translateX(-50%)", background:"#1c2128", color:"#fff", padding:"7px 14px", borderRadius:"8px",
+    fontSize:"12px", zIndex:60, opacity:0, transition:"opacity .15s", pointerEvents:"none", maxWidth:"70vw", textAlign:"center" });
+    document.body.appendChild(t); }
+  t.textContent = msg; t.style.opacity = 1; clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 1600);
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  VARIANT A — DRILL-DOWN. One level at a time. Single-click selects, double-click descends,
+//  breadcrumb stack ascends. Containers show N arms side by side AT that level; a block costs
+//  exactly one level of depth. Right pane = properties of the selected node (or the level itself).
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+let aStack = [MODEL]; // navigation stack; top = current level container
+
+function renderA(stage) {
+  aStack = aStack.filter(Boolean); if (!aStack.length) aStack = [MODEL];
+  const cur = aStack[aStack.length - 1];
+  stage.innerHTML = "";
+  const canvas = el("div", "canvas");
+  const pane = el("div", "pane");
+
+  // breadcrumb
+  const bc = el("div", "a-breadcrumb");
+  aStack.forEach((node, i) => {
+    if (i) bc.appendChild(el("span", "sep", "›"));
+    if (i === aStack.length - 1) { const s = el("span", "cur", node.name); bc.appendChild(s); }
+    else { const b = el("button", null, node.name); b.onclick = () => { aStack = aStack.slice(0, i + 1); renderA(stage); }; bc.appendChild(b); }
+  });
+  canvas.appendChild(bc);
+
+  const level = el("div", "a-level");
+  level.onclick = e => { if (e.target === level) { selectedId = cur.id; renderA(stage); } }; // click empty -> select level itself
+  level.appendChild(el("p", "a-level-head", `Editing ${KIND_LABEL[cur.kind]} “${cur.name}” · double-click a container to descend`));
+
+  const descend = node => { aStack = [...aStack, node]; selectedId = null; renderA(stage); };
+  const selectNode = node => { selectedId = node.id; renderA(stage); };
+
+  const nodeRow = (node, idx) => {
+    const row = el("div", "a-node" + (node.id === selectedId ? " sel" : ""));
+    if (idx != null) row.appendChild(el("span", "idx", idx + 1));
+    row.appendChild(kindChip(node.kind));
+    row.appendChild(el("span", "nm", node.name));
+    if (isContainer(node)) { const d = el("span", "desc-badge", "double-click to open ▸"); row.appendChild(d); }
+    row.onclick = e => { e.stopPropagation(); selectNode(node); };
+    row.ondblclick = e => { e.stopPropagation(); if (isContainer(node)) descend(node); };
+    return row;
+  };
+
+  // Render current level. A sequence shows an ordered, reorderable list; the block kinds show arms side by side.
+  if (cur.kind === "sequence") {
+    cur.nodes.forEach((n, i) => level.appendChild(nodeRow(n, i)));
+    const add = el("button", "a-add", "＋ add node here  (step · checkpoint · parallel · branch · while-do)");
+    add.onclick = () => { cur.nodes.push(step("new-step", "todo")); toast("Added step to “" + cur.name + "”"); renderA(stage); };
+    level.appendChild(add);
+  } else if (cur.kind === "parallel") {
+    const wrap = el("div", "a-arms");
+    cur.arms.forEach(arm => {
+      const col = el("div", "a-arm");
+      const lbl = el("div", "arm-label"); lbl.append("branch ", Object.assign(el("b"), { textContent: arm.name })); col.appendChild(lbl);
+      col.appendChild(nodeRow(arm.node));
+      wrap.appendChild(col);
+    });
+    level.appendChild(wrap);
+  } else if (cur.kind === "branch") {
+    const wrap = el("div", "a-arms");
+    cur.arms.forEach(arm => {
+      const col = el("div", "a-arm");
+      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = arm.cond; c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
+      col.appendChild(nodeRow(arm.node));
+      wrap.appendChild(col);
+    });
+    level.appendChild(wrap);
+  } else if (cur.kind === "while-do") {
+    level.appendChild(el("p", "arm-label", "loop body (runs up to max-iterations times):"));
+    level.appendChild(nodeRow(cur.body));
+  } else if (cur.kind === "workflow") {
+    level.appendChild(el("p", "hint", "This is a workflow-ref — its body lives in another file (" + cur.ref + ") behind a separate write precondition and edit lease. Descending crosses files."));
+  }
+
+  canvas.appendChild(level);
+  stage.appendChild(canvas);
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) || cur : cur, "A"));
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  VARIANT B — SCRATCH SNAP. Every node a block; wrappers (parallel/branch/while-do) are C-shaped
+//  with the body nested INSIDE their mouth. Everything visible inline at every depth. The palette
+//  offers block types; a socket lights green (legal) or red (illegal) — an illegal structure is
+//  literally unsnappable, which is the constraint made physical.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+function renderScratchBlock(node, opts = {}) {
+  const kc = `var(${KVAR[node.kind]})`;
+  const leaf = !isContainer(node) || node.kind === "workflow";
+  const wrap = el("div", "sblock" + (leaf ? " leaf" : "") + (node.id === selectedId ? " sel" : ""));
+  wrap.style.setProperty("--kc", kc);
+
+  if (node.kind === "workflow") { // a ref renders as a chip even in pure-inline B (its body is another file)
+    const chip = el("div", "refchip");
+    chip.appendChild(kindChip("workflow"));
+    chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
+    const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
+    chip.appendChild(el("span", "cross", opts.hybrid ? "descend ↳" : "another file"));
+    chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
+    return chip;
+  }
+
+  const hat = el("div", "hat"); hat.style.setProperty("--kc", kc);
+  hat.appendChild(kindChip(node.kind));
+  hat.appendChild(Object.assign(el("span", "nm"), { textContent: node.name }));
+  const drop = el("span", "drop");
+
+  if (node.kind === "parallel") { // join mode switched right on the hat (question 1)
+    const sel = el("select"); sel.className = "joinpill";
+    ["collect","wait-one","do-not-wait"].forEach(j => { const o = el("option", null, "join: " + j); o.value = j; if (j === node.join) o.selected = true; sel.appendChild(o); });
+    sel.onchange = e => { e.stopPropagation(); node.join = sel.value; toast("“" + node.name + "” join → " + sel.value); opts.rerender(); };
+    sel.onclick = e => e.stopPropagation();
+    drop.appendChild(sel);
+  }
+  if (node.kind === "while-do") { // mandatory max-iterations bound sits on the hat (question 3)
+    const mi = el("span", "maxiter"); mi.append("max ");
+    const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
+    inp.onclick = e => e.stopPropagation();
+    inp.onchange = e => { node.maxIter = Math.max(1, +inp.value || 1); toast("“" + node.name + "” max-iter → " + node.maxIter); };
+    mi.append(inp, " iters"); drop.appendChild(mi);
+  }
+  hat.appendChild(drop);
+  hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
+  wrap.appendChild(hat);
+
+  if (leaf) return wrap;
+
+  // Container mouth.
+  const mouth = el("div", "mouth"); mouth.style.setProperty("--kc", kc);
+  if (node.kind === "sequence") {
+    mouth.appendChild(renderStack(node.nodes, node, opts));
+  } else if (node.kind === "while-do") {
+    mouth.appendChild(renderScratchBlock(node.body, opts));
+  } else if (node.kind === "parallel" || node.kind === "branch") {
+    const row = el("div", "arm-row");
+    node.arms.forEach(arm => {
+      const col = el("div", "arm-col");
+      const head = el("div", "arm-head");
+      if (node.kind === "parallel") { head.append("branch "); head.appendChild(Object.assign(el("b"), { textContent: arm.name })); }
+      else { head.append("when "); const c = el("span", "cond"); c.textContent = arm.cond; head.appendChild(c); } // conditions live on the arm head (question 2)
+      col.appendChild(head);
+      col.appendChild(renderScratchBlock(arm.node, opts));
+      row.appendChild(col);
+    });
+    mouth.appendChild(row);
+  }
+  wrap.appendChild(mouth);
+  return wrap;
+}
+
+// A reorderable stack of blocks (question 5: sequence order is vertical position; ↑/↓ reorder,
+// and a socket at the bottom accepts a dropped palette block).
+function renderStack(nodes, parent, opts) {
+  const stack = el("div", "stack");
+  nodes.forEach((n, i) => {
+    const holder = el("div"); holder.style.position = "relative";
+    const b = renderScratchBlock(n, opts);
+    // reorder controls
+    const ctl = el("span"); ctl.style.cssText = "position:absolute;right:6px;top:6px;display:flex;gap:2px;z-index:1";
+    const mk = (t, dir, dis) => { const x = el("button", "joinpill", t); x.style.padding = "0 5px"; if (dis) x.disabled = true;
+      x.onclick = e => { e.stopPropagation(); const j = i + dir; [nodes[i], nodes[j]] = [nodes[j], nodes[i]]; toast("Reordered within “" + parent.name + "”"); opts.rerender(); }; return x; };
+    ctl.append(mk("↑", -1, i === 0), mk("↓", 1, i === nodes.length - 1));
+    if (b.classList) b.appendChild(ctl);
+    holder.appendChild(b);
+    stack.appendChild(holder);
+  });
+  // legal socket at the end of the sequence
+  const sock = el("div", "socket", "▽ drop a step / checkpoint / block here  (legal socket)");
+  sock.ondragover = e => { e.preventDefault(); sock.classList.toggle("legal-hover", window._dragKind !== "workflow"); sock.classList.toggle("illegal-hover", window._dragKind === "workflow"); };
+  sock.ondragleave = () => sock.classList.remove("legal-hover", "illegal-hover");
+  sock.ondrop = e => { e.preventDefault(); sock.classList.remove("legal-hover", "illegal-hover");
+    const k = window._dragKind; if (!k) return;
+    nodes.push(makeDefault(k)); toast("Snapped a " + KIND_LABEL[k] + " into “" + parent.name + "”"); opts.rerender(); };
+  stack.appendChild(sock);
+  return stack;
+}
+
+function makeDefault(kind) {
+  switch (kind) {
+    case "step": return step("new-step", "todo");
+    case "checkpoint": return check("new-check", "assert: todo");
+    case "parallel": return par("new-parallel", "collect", [{ name: "a", node: step("a", "") }, { name: "b", node: step("b", "") }]);
+    case "branch": return branch("new-branch", [{ cond: "todo", node: step("a", "") }, { cond: "else", node: step("b", "") }]);
+    case "while-do": return whilez("new-loop", 5, step("body", ""));
+    case "sequence": return seq("new-seq", [step("a", "")]);
+    default: return step("new-step", "");
+  }
+}
+
+function renderB(stage) {
+  stage.innerHTML = "";
+  const wrap = el("div", "scratch-wrap");
+  wrap.appendChild(palette(false));
+  const canvas = el("div", "scratch-canvas canvas");
+  const opts = { rerender: () => renderB(stage) };
+  canvas.onclick = e => { if (e.target === canvas) { selectedId = null; renderB(stage); } };
+  canvas.appendChild(renderScratchBlock(MODEL, opts));
+  wrap.appendChild(canvas);
+  stage.appendChild(wrap);
+  stage.appendChild(paneFor(selectedId ? findNode(MODEL, selectedId) : MODEL, "B"));
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  VARIANT C — HYBRID. Inline Scratch stacks WITHIN a file (readable at depth via the same blocks),
+//  but a workflow-ref is the ONE boundary you drill across: double-click the ref chip and the whole
+//  canvas swaps to that file's body, a file breadcrumb tracks the crossing. Blocks stay inline; only
+//  the file boundary costs a navigation hop (which it must — a ref is a separate file + lease anyway).
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+let cFileStack = [{ name: "release-pipeline.workflow.json", body: MODEL }];
+
+function renderC(stage) {
+  const cur = cFileStack[cFileStack.length - 1];
+  document.getElementById("chrome-file").textContent = cur.name;
+  stage.innerHTML = "";
+  const wrap = el("div", "scratch-wrap");
+  wrap.appendChild(palette(true));
+  const right = el("div"); right.style.cssText = "flex:1;display:flex;flex-direction:column;min-width:0";
+
+  // file breadcrumb — the only drill-down axis in the hybrid
+  const fb = el("div", "c-filebar");
+  fb.appendChild(el("span", null, "file:"));
+  cFileStack.forEach((f, i) => {
+    if (i) fb.appendChild(el("span", "sep", "›"));
+    if (i === cFileStack.length - 1) fb.appendChild(el("span", "curfile", f.name));
+    else { const b = el("button", null, f.name); b.onclick = () => { cFileStack = cFileStack.slice(0, i + 1); selectedId = null; renderC(stage); }; fb.appendChild(b); }
+  });
+  if (cFileStack.length > 1) { const note = el("span", "sep", "· separate write precondition + edit lease per file (#257/#258)"); note.style.marginLeft = "auto"; note.style.fontSize = "11px"; fb.appendChild(note); }
+
+  const canvas = el("div", "scratch-canvas canvas");
+  const opts = { rerender: () => renderC(stage), hybrid: true, onDescend: node => {
+    const target = node.ref === "./notify.workflow.json" ? NOTIFY_FILE : seq(node.name, [step("(empty)", "")]);
+    cFileStack = [...cFileStack, { name: node.ref.replace("./",""), body: target }]; selectedId = null; renderC(stage);
+    toast("Crossed file boundary into " + node.ref);
+  } };
+  canvas.onclick = e => { if (e.target === canvas) { selectedId = null; renderC(stage); } };
+  canvas.appendChild(renderScratchBlock(cur.body, opts));
+
+  right.appendChild(fb); right.appendChild(canvas);
+  wrap.appendChild(right);
+  stage.appendChild(wrap);
+  stage.appendChild(paneFor(selectedId ? findNode(cur.body, selectedId) : cur.body, "C"));
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  Shared bits: palette, properties pane, node lookup.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+function palette(hybrid) {
+  const p = el("div", "palette");
+  p.appendChild(el("h3", null, "blocks"));
+  const kinds = ["step", "checkpoint", "parallel", "branch", "while-do", "sequence"];
+  kinds.forEach(k => {
+    const b = el("div", "blk"); b.style.background = `var(${KVAR[k]}-bg, var(--surface))`; b.style.color = `var(${KVAR[k]})`;
+    b.appendChild(kindChip(k)); b.draggable = true;
+    b.ondragstart = () => { window._dragKind = k; };
+    b.ondragend = () => { window._dragKind = null; };
+    p.appendChild(b);
+  });
+  // workflow-ref shown but marked: it snaps in, but its body is a separate file
+  const wf = el("div", "blk illegal"); wf.appendChild(kindChip("workflow")); wf.title = "a ref points at another file; add via New-file flow";
+  p.appendChild(wf);
+  p.appendChild(el("div", "legalnote", hybrid
+    ? "Drag a block into any legal socket. A socket only accepts what the grammar allows there, so an illegal tree is unsnappable. A workflow-ref is the one block you descend into (double-click)."
+    : "Drag a block into any legal socket. A socket only accepts what the grammar allows there — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
+  return p;
+}
+
+function findNode(root, id) {
+  if (!root) return null;
+  if (root.id === id) return root;
+  const kids = root.kind === "sequence" ? root.nodes
+    : root.kind === "while-do" ? [root.body]
+    : (root.kind === "parallel" || root.kind === "branch") ? root.arms.map(a => a.node) : [];
+  for (const k of kids) { const f = findNode(k, id); if (f) return f; }
+  return null;
+}
+
+function paneFor(node, variant) {
+  const pane = el("div", "pane");
+  if (!node) { pane.appendChild(el("p", "hint", "Nothing selected. Click a node to edit its properties; click empty canvas to edit the level/file itself.")); return pane; }
+  pane.appendChild(el("h3", null, "properties"));
+  const head = el("div"); head.style.margin = "6px 0 10px"; head.appendChild(kindChip(node.kind));
+  head.append(" "); head.appendChild(Object.assign(el("b"), { textContent: node.name })); pane.appendChild(head);
+
+  const kv = el("dl", "kv");
+  const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
+  add("id", node.id);
+  add("kind", KIND_LABEL[node.kind]);
+  if (node.note) add("payload", node.note);
+  if (node.assertion) add("assert", node.assertion);        // checkpoint — question 4
+  if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
+  if (node.kind === "parallel") add("join", node.join);     // question 1
+  if (node.kind === "parallel") add("arms", node.arms.map(a => a.name).join(", "));
+  if (node.kind === "branch") add("conds", node.arms.map(a => a.cond).join("  |  ")); // question 2
+  if (node.kind === "while-do") add("max-iter", String(node.maxIter)); // question 3
+  if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
+  pane.appendChild(kv);
+
+  // Editable affordances the properties pane owns (mirror what's inline, for the drill-down variant especially).
+  if (node.kind === "parallel") {
+    pane.appendChild(Object.assign(el("label"), { textContent: "join mode" }));
+    const sel = el("select"); ["collect","wait-one","do-not-wait"].forEach(j => { const o = el("option", null, j); if (j === node.join) o.selected = true; sel.appendChild(o); });
+    sel.onchange = () => { node.join = sel.value; toast("join → " + sel.value); rerender(); };
+    pane.appendChild(sel);
+    const modeHelp = { collect: "waits every branch, lands all publishes, outputs {branch: output}.",
+      "wait-one": "races branches; first-to-succeed wins; losers cancelled (sibling-succeeded).",
+      "do-not-wait": "launches all, waits none; successor runs immediately; branches may not publish." };
+    pane.appendChild(el("p", "hint", modeHelp[node.join]));
+  }
+  if (node.kind === "while-do") {
+    pane.appendChild(Object.assign(el("label"), { textContent: "max-iterations (mandatory)" }));
+    const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
+    inp.onchange = () => { node.maxIter = Math.max(1, +inp.value || 1); toast("max-iter → " + node.maxIter); rerender(); };
+    pane.appendChild(inp);
+    pane.appendChild(el("p", "hint", "Exceeding the bound fails the run. The format requires this — no unbounded loop is expressible."));
+  }
+  if (node.kind === "branch") {
+    pane.appendChild(Object.assign(el("label"), { textContent: "conditions (one per arm, first match wins; 'else' is the fallback)" }));
+    node.arms.forEach((a, i) => { const inp = el("input"); inp.value = a.cond; inp.style.marginTop = "4px";
+      inp.onchange = () => { a.cond = inp.value; toast("arm " + (i+1) + " condition updated"); rerender(); }; pane.appendChild(inp); });
+  }
+  if (node.kind === "checkpoint") {
+    pane.appendChild(el("p", "hint", "A checkpoint is an inline node in the sequence (question 4): a fail-fast assertion with no worker. It sits BETWEEN nodes, not attached to one — judgement checks are a step that outputs a verdict + a checkpoint that tests it."));
+  }
+  pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only."));
+  return pane;
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  Variant plumbing: ?variant=, floating bar, arrow keys.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+const VARIANTS = {
+  A: { name: "Drill-down", sub: "one level at a time (2026-08-19 amendment)", render: renderA },
+  B: { name: "Scratch snap", sub: "all nesting inline & visible (2026-08-21 proposal)", render: renderB },
+  C: { name: "Hybrid", sub: "inline within a file, drill-down across ref boundary", render: renderC },
+};
+const ORDER = ["A", "B", "C"];
+function currentVariant() { const p = new URLSearchParams(location.search).get("variant"); return VARIANTS[p] ? p : "A"; }
+function rerender() {
+  const v = currentVariant();
+  document.getElementById("chrome-variant").textContent = "variant " + v;
+  document.getElementById("chrome-file").textContent = v === "C" ? cFileStack[cFileStack.length - 1].name : "release-pipeline.workflow.json";
+  const lbl = document.getElementById("switch-lbl");
+  lbl.innerHTML = `<b>${v} — ${VARIANTS[v].name}</b><small>${VARIANTS[v].sub}</small>`;
+  VARIANTS[v].render(document.getElementById("stage"));
+}
+function setVariant(v) { const u = new URL(location); u.searchParams.set("variant", v); history.replaceState(null, "", u); selectedId = null; aStack = [MODEL]; cFileStack = [{ name: "release-pipeline.workflow.json", body: MODEL }]; rerender(); }
+function cycle(dir) { const i = ORDER.indexOf(currentVariant()); setVariant(ORDER[(i + dir + ORDER.length) % ORDER.length]); }
+
+document.getElementById("prev").onclick = () => cycle(-1);
+document.getElementById("next").onclick = () => cycle(1);
+document.addEventListener("keydown", e => {
+  const t = e.target;
+  if (t && (t.tagName === "INPUT" || t.tagName === "TEXTAREA" || t.tagName === "SELECT" || t.isContentEditable)) return;
+  if (e.key === "ArrowLeft") cycle(-1);
+  if (e.key === "ArrowRight") cycle(1);
+});
+rerender();
+</script>

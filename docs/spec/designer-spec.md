@@ -14,6 +14,118 @@ the wire does*.
 
 ---
 
+## Canvas interaction model
+
+Resolves [#255](https://github.com/howardyang2009/PATH/issues/255) and **amends map decision 6**;
+settled on the [`proto/designer-canvas-255`](https://github.com/howardyang2009/PATH/blob/proto/designer-canvas-255/packages/designer/canvas.prototype.html)
+prototype (three variants: drill-down, inline-Scratch, hybrid). This section is normative.
+
+### The model: inline within a file, drill-down across a ref boundary
+
+Nesting **inside a single workflow file renders inline and visible** — every node is a block, and the
+three block logicers (`parallel`, `branch`, `while-do`) are C-shaped wrappers whose arms/body nest in
+their mouth. This **supersedes** the pure level-by-level drill-down of decision 6's 2026-08-19
+amendment: the author sees a level's structure without descending into it. The only place the canvas
+drills is a **`workflow`-ref crossing to another file** — a boundary that already forces a separate
+write precondition ([#257](https://github.com/howardyang2009/PATH/issues/257)) and a separate edit
+lease (§ Edit-lock lease protocol), so the navigation hop is not new cost.
+
+The **constraint half of decision 6 is unchanged and tightened.** The palette offers only the block
+kinds legal at a given socket, and a block clicks into a socket **only** where the grammar allows it —
+an illegal structure is *unsnappable*, not merely rejected on save. The author can never express a
+body the block grammar cannot: no edges, no arbitrary DAG.
+
+### The block shapes the designer commits to
+
+The canvas authors [`path/workflow@2`](../../CONTEXT.md)'s node shapes directly; the prototype pinned
+four points the UI must honour, each matching the `@path/schema` types
+([`node-type.ts`](../../packages/schema/src/node-type.ts)):
+
+- **A `parallel` branch *is* a node.** `branches` is an array of `WorkflowNode`, each carrying its own
+  `id` + `name`; a branch's **`name` is its `collect`/`wait-one` output key**. There is no separate
+  branch label or arm wrapper — renaming the branch renames the key.
+- **A `branch` arm owns its `when`.** An arm is `{ when: Condition; node }`; the condition **belongs to
+  the arm**, not to the Branch node. The Branch node owns only the **arm order** (first-match-wins) and
+  the optional **`else`** fallback. An arm's (and `else`'s) occupant is a **single node** — a `sequence`
+  where several are needed.
+- **A `while-do` wraps one body node** (`node`) and carries a **mandatory `max_iterations`** bound
+  (`number | string`, the string form an `$env`/`$secret` reference). Both the loop `condition` and the
+  cap are required; no unbounded loop is expressible.
+- **Conditions are the structured [`Condition`](../../packages/schema/src/condition-type.ts) AST**, never
+  free text. Leaf predicates (`exists` / `equals` / `one-of` / `matches` / `range` / `valid-json`) read a
+  `context.`/`output.` dot-path; `all` / `any` / `not` compose them. The pane authors them with a typed
+  builder (pick operator + path + operands), so an ill-typed or unparseable condition is unrepresentable
+  — the structural analogue of the unsnappable socket. This governs **every** condition: a branch arm's
+  `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion.
+
+**Node identity** is the pair from [ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md):
+a durable **`id`** (client-minted UUIDv4, stable across rename / reorder / reparent) and a human
+**`name`** (unique in the file; the parallel output key above). Both are edited in the pane; re-keying
+the `id` is a deliberate, **confirmation-gated** action, because it breaks resume's plan-reuse match for
+that node.
+
+### Structure on the canvas, content in the pane
+
+The governing split, and the rule that fixes where every affordance lives:
+
+- **The canvas edits *structure*** — a node's place in the tree: **add**, **delete**, **reorder**,
+  **replace** a single-slot occupant, add/remove a branch, arm, or `else`, **select**, and **descend**.
+- **The properties pane edits *content*** — a node's own fields: `name`, `id`, `payload`, the parallel
+  **join mode**, an arm's **`when`**, a loop's **`condition` + `max-iterations`**, a checkpoint's
+  **assertion**, and a `workflow`-ref's **target path**.
+- **The canvas may *show* content read-only** — a `join:` badge on the parallel hat, the plain-text
+  condition summary on a branch arm / `while-do` / `checkpoint` — but never *edits* content there. In
+  the pane a condition edits inside a labelled **`when`** / **`condition`** fieldset (the label on the
+  border), the fieldset enclosing the typed builder.
+
+**Selection.** Single-click **selects** a node and populates the pane; clicking empty canvas deselects
+and the pane shows the current **file's** own properties. A `workflow`-ref is the one node whose
+**single-click** selects it (the pane then edits **which file it references**) and whose **double-click
+descends** — the canvas swaps to the ref'd file's body and a **file breadcrumb** tracks the crossing
+(the trail is a navigation stack, not a tree parent: a ref'd file may have several parents). Blocks
+within a file are never descended into; they are already open.
+
+### Per-kind rendering and edit affordances
+
+| Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |
+|---|---|---|---|
+| `step` | a leaf block | name | `name`, `id`, payload |
+| `checkpoint` | a leaf block **inline in the sequence**, between nodes — never attached to a node | `assert <cond>` summary | its **assertion** (structured `Condition`); a judgement check is a step that outputs a verdict + a checkpoint that tests it (judge-step pattern) |
+| `parallel` | a C-block; its N branches side by side in the mouth | `join:` badge; each branch captioned, labelled by its own node name | **join mode** (`collect` / `wait-one` / `do-not-wait`) |
+| `branch` | a C-block; its N arms side by side, then `else` | `when <cond>` summary per arm head (first-match-wins) | each arm's **`when`** (selected on the arm's own node); the Branch node itself edits only structure |
+| `while-do` | a C-block wrapping one body node | `while <cond> · max N` summary | the loop **`condition`** and the **mandatory `max-iterations`** — exceeding it fails the run |
+| `sequence` | a vertical stack in the mouth | length | `name`; **order is structure** (below) |
+| `workflow` (ref) | a chip, not an inline body | the ref path | the **referenced file path**; double-click descends across the boundary |
+
+### Adding, reordering, deleting, and the empty canvas
+
+All four are **canvas** actions (structure), never pane controls:
+
+- **Add** — drag a palette block into a **legal socket**, or use a sequence's tail add-affordance; the
+  socket accepts only grammar-legal kinds. A branch whose `else` was deleted offers an **add-`else`**
+  affordance (there is at most one `else`).
+- **Reorder** — move-up / move-down (or drag) **within** a container; a move never changes a node's
+  `id` ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). Order is
+  spatial and vertical.
+- **Replace a single-node slot** — a `while-do` body, and a branch arm's / `else`'s occupant, are **one**
+  node: you **swap** it (drop a block, replacing the occupant) rather than emptying the slot.
+- **Delete** — the **× on a node** or the **Delete key**. Slot rules keep the tree legal: deleting a
+  `while-do` body deletes the whole loop; the **last** parallel branch or branch arm cannot be deleted
+  (a `parallel`/`branch` must keep ≥1); and the **file-body root** is undeletable.
+
+An **empty canvas** offers the palette plus a start-a-body affordance; a brand-new unsaved workflow
+holds no lease until its first save (§ Session lifecycle).
+
+### Still open (deferred to named #254 tickets)
+
+These interact with this model but are **not** settled here: whether a `sequence` renders as its own
+inline level or is collapsed; canvas validation-error UX (per-node markers vs a problems panel,
+save-blocking vs save-with-warnings); undo/redo and the dirty-state model; new-file placement and
+naming; and the `$env` / `$secret` authoring affordance. Each is an open ticket on
+[#254](https://github.com/howardyang2009/PATH/issues/254).
+
+---
+
 ## Edit-lock lease protocol
 
 Resolves [#258](https://github.com/howardyang2009/PATH/issues/258); rationale in
