@@ -112,6 +112,17 @@
   .pane select, .pane input { font: inherit; font-size: var(--fs-sm); padding: 4px 6px; width: 100%;
     background: var(--ground); color: var(--text); border: 1px solid var(--border); border-radius: 5px; }
   .pane label { display: block; margin: 10px 0 2px; color: var(--text-muted); font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: .05em; }
+  /* structured condition builder */
+  .cond-node { margin: 4px 0; border-left: 2px solid var(--k-branch-bg); padding-left: 6px; }
+  .cond-row { display: flex; gap: 4px; align-items: center; flex-wrap: wrap; margin: 3px 0; }
+  .cond-row select.cond-type { width: auto; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 4px; }
+  .cond-row input.cond-path { flex: 1; min-width: 110px; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 5px; }
+  .cond-row input.cond-op { width: 78px; font-family: var(--font-mono); font-size: var(--fs-xs); padding: 2px 5px; }
+  .cond-rm { background: none; border: none; color: var(--k-workflow); cursor: pointer; font-size: 14px; line-height: 1; padding: 0 3px; }
+  .cond-add { font: inherit; font-size: var(--fs-xs); background: none; border: 1px dashed var(--border); border-radius: 5px;
+    color: var(--accent); cursor: pointer; padding: 2px 7px; margin-top: 3px; }
+  .cond-preview { font-family: var(--font-mono); font-size: var(--fs-xs); color: var(--k-branch);
+    background: var(--k-branch-bg); border-radius: 5px; padding: 4px 6px; margin: 6px 0; word-break: break-word; }
 
   /* Kind chip. */
   .kind { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-xs);
@@ -246,31 +257,46 @@
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0");
 
-const step  = (name, note)          => ({ id: gid(), name, kind: "step", note });
-const check = (name, assertion)     => ({ id: gid(), name, kind: "checkpoint", assertion });
-const seq   = (name, nodes)         => ({ id: gid(), name, kind: "sequence", nodes });
-const par   = (name, join, arms)    => ({ id: gid(), name, kind: "parallel", join, arms }); // arms: [{name,node}]
-const branch= (name, arms)          => ({ id: gid(), name, kind: "branch", arms });          // arms: [{cond,node}]
-const whilez= (name, maxIter, body) => ({ id: gid(), name, kind: "while-do", maxIter, body });
-const wfref = (name, ref)           => ({ id: gid(), name, kind: "workflow", ref });
+// A CONDITION is a structured typed AST (packages/schema/src/condition-type.ts) — NOT a text
+// expression. Leaf predicates read a value at a `path` (a context./output. dot-path); all/any/not
+// compose. The SAME Condition type is the branch arm's `when`, the while-do's `condition`, and the
+// checkpoint's `condition` — so one builder authors all three.
+const cExists    = path            => ({ type: "exists", path });
+const cEquals    = (path, value)   => ({ type: "equals", path, value });
+const cOneOf     = (path, values)  => ({ type: "one-of", path, values });
+const cMatches   = (path, pattern) => ({ type: "matches", path, pattern });
+const cRange     = (path, min, max)=> ({ type: "range", path, ...(min != null ? { min } : {}), ...(max != null ? { max } : {}) });
+const cValidJson = path            => ({ type: "valid-json", path });
+const cAll       = (...of)         => ({ type: "all", of });
+const cAny       = (...of)         => ({ type: "any", of });
+const cNot       = of              => ({ type: "not", of });
+const LEAF_TYPES = ["exists","equals","one-of","matches","range","valid-json"];
+const COMBO_TYPES = ["all","any","not"];
+
+const step  = (name, note)               => ({ id: gid(), name, kind: "step", note });
+const check = (name, condition)          => ({ id: gid(), name, kind: "checkpoint", condition });   // condition: Condition
+const seq   = (name, nodes)              => ({ id: gid(), name, kind: "sequence", nodes });
+const par   = (name, join, arms)         => ({ id: gid(), name, kind: "parallel", join, arms });     // arms: [{name,node}]
+const branch= (name, arms, elseNode)     => ({ id: gid(), name, kind: "branch", arms, else: elseNode }); // arms: [{when:Condition,node}], else?: node
+const whilez= (name, condition, maxIter, body) => ({ id: gid(), name, kind: "while-do", condition, maxIter, body }); // condition: Condition
+const wfref = (name, ref)                => ({ id: gid(), name, kind: "workflow", ref });
 
 const MODEL = seq("release-pipeline", [
   step("fetch-source", "clone + checkout the release ref"),
-  check("assert-source-present", "ctx.source_dir exists && non-empty"),
+  check("assert-source-present", cExists("context.source_dir")),
   par("verify", "collect", [
-    { name: "lint",  node: seq("lint-seq", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", "exit-code == 0") ]) },
-    { name: "test",  node: whilez("retry-tests", 3, step("run-flaky-tests", "pytest -q; may flake")) },
+    { name: "lint",  node: seq("lint-seq", [ step("run-lint", "eslint --max-warnings 0"), check("lint-clean", cEquals("output.exit_code", 0)) ]) },
+    { name: "test",  node: whilez("retry-tests", cEquals("output.status", "flaky"), 3, step("run-flaky-tests", "pytest -q; may flake")) },
     { name: "build", node: step("build-artifact", "docker build -t rel:$sha .") },
   ]),
   branch("route-deploy", [
-    { cond: "ctx.target == 'prod'",    node: par("ship-prod", "wait-one", [
+    { when: cEquals("context.target", "prod"),    node: par("ship-prod", "wait-one", [
         { name: "us", node: step("deploy-us", "push to us-east-1") },
         { name: "eu", node: step("deploy-eu", "push to eu-west-1") },
     ]) },
-    { cond: "ctx.target == 'staging'", node: step("deploy-staging", "push to staging") },
-    { cond: "else",                    node: check("no-target", "fail: no deploy target set") },
-  ]),
-  check("assert-deployed", "healthcheck 200 within 60s"),
+    { when: cEquals("context.target", "staging"), node: step("deploy-staging", "push to staging") },
+  ], check("no-target", cExists("context.target"))), // else arm is a single node, not a when-arm
+  check("assert-deployed", cRange("output.http_status", 200, 299)),
   wfref("notify-team", "./notify.workflow.json"),
 ]);
 
@@ -300,6 +326,81 @@ function toast(msg) {
     fontSize:"12px", zIndex:60, opacity:0, transition:"opacity .15s", pointerEvents:"none", maxWidth:"70vw", textAlign:"center" });
     document.body.appendChild(t); }
   t.textContent = msg; t.style.opacity = 1; clearTimeout(t._h); t._h = setTimeout(() => t.style.opacity = 0, 1600);
+}
+
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+//  CONDITION toolkit — a compact read-only summary + a structured builder. Answers "how do I input
+//  the condition?" for branch `when`, while-do `condition`, and checkpoint `condition`: you do NOT
+//  type an expression; you pick an operator + a path + operands, or compose with all/any/not.
+//= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
+function jsonScalar(s) { // parse an operand input into a JSON scalar (number/bool/null/string)
+  const t = s.trim();
+  if (t === "true") return true; if (t === "false") return false; if (t === "null") return null;
+  if (t !== "" && !isNaN(Number(t))) return Number(t);
+  return s;
+}
+function condSummary(c) {
+  if (!c) return "—";
+  switch (c.type) {
+    case "exists":     return `${c.path} exists`;
+    case "equals":     return `${c.path} == ${JSON.stringify(c.value)}`;
+    case "one-of":     return `${c.path} in [${(c.values||[]).map(v=>JSON.stringify(v)).join(", ")}]`;
+    case "matches":    return `${c.path} ~ /${c.pattern}/`;
+    case "range":      return `${c.path} ∈ [${c.min ?? "−∞"}..${c.max ?? "+∞"}]`;
+    case "valid-json": return `${c.path} is valid-json`;
+    case "all":        return "(" + (c.of||[]).map(condSummary).join(" AND ") + ")";
+    case "any":        return "(" + (c.of||[]).map(condSummary).join(" OR ")  + ")";
+    case "not":        return "NOT " + condSummary(c.of);
+    default:           return "?";
+  }
+}
+// setCond(newCond) replaces this node in its parent; onEdit fires after any mutation to re-render.
+function renderCondEditor(cond, setCond, onEdit, depth = 0) {
+  const box = el("div", "cond-node"); box.style.marginLeft = depth ? "12px" : "0";
+  const row = el("div", "cond-row");
+  const typeSel = el("select", "cond-type");
+  [...LEAF_TYPES, "—", ...COMBO_TYPES].forEach(t => { const o = el("option", null, t); if (t === "—") o.disabled = true; o.value = t; if (t === cond.type) o.selected = true; typeSel.appendChild(o); });
+  typeSel.onchange = () => {
+    const nt = typeSel.value; let next;
+    if (LEAF_TYPES.includes(nt)) {
+      const path = cond.path || "context.field";
+      next = nt === "equals" ? cEquals(path, "") : nt === "one-of" ? cOneOf(path, [""]) : nt === "matches" ? cMatches(path, ".*")
+        : nt === "range" ? cRange(path, 0, null) : nt === "valid-json" ? cValidJson(path) : cExists(path);
+    } else if (nt === "not") next = cNot(LEAF_TYPES.includes(cond.type) ? cond : cExists("context.field"));
+    else next = { type: nt, of: cond.of || [LEAF_TYPES.includes(cond.type) ? cond : cExists("context.field")] };
+    setCond(next); onEdit();
+  };
+  row.appendChild(typeSel);
+
+  if (LEAF_TYPES.includes(cond.type)) {
+    const path = el("input", "cond-path"); path.value = cond.path || ""; path.placeholder = "context.field | output.field";
+    path.onchange = () => { cond.path = path.value; onEdit(); };
+    row.appendChild(path);
+    if (cond.type === "equals") { const v = el("input", "cond-op"); v.value = String(cond.value ?? ""); v.placeholder = "value"; v.onchange = () => { cond.value = jsonScalar(v.value); onEdit(); }; row.appendChild(v); }
+    if (cond.type === "one-of") { const v = el("input", "cond-op"); v.value = (cond.values||[]).join(", "); v.placeholder = "a, b, c"; v.onchange = () => { cond.values = v.value.split(",").map(s => jsonScalar(s)); onEdit(); }; row.appendChild(v); }
+    if (cond.type === "matches") { const v = el("input", "cond-op"); v.value = cond.pattern || ""; v.placeholder = "regex"; v.onchange = () => { cond.pattern = v.value; onEdit(); }; row.appendChild(v); }
+    if (cond.type === "range") {
+      const mn = el("input", "cond-op"); mn.style.width = "56px"; mn.value = cond.min ?? ""; mn.placeholder = "min"; mn.onchange = () => { const n = mn.value.trim(); if (n === "") delete cond.min; else cond.min = Number(n); onEdit(); };
+      const mx = el("input", "cond-op"); mx.style.width = "56px"; mx.value = cond.max ?? ""; mx.placeholder = "max"; mx.onchange = () => { const n = mx.value.trim(); if (n === "") delete cond.max; else cond.max = Number(n); onEdit(); };
+      row.append(mn, mx);
+    }
+    box.appendChild(row);
+  } else if (cond.type === "not") {
+    box.appendChild(row);
+    box.appendChild(renderCondEditor(cond.of, nc => { cond.of = nc; }, onEdit, depth + 1));
+  } else { // all / any
+    box.appendChild(row);
+    cond.of.forEach((child, i) => {
+      const holder = renderCondEditor(child, nc => { cond.of[i] = nc; }, onEdit, depth + 1);
+      const rm = el("button", "cond-rm", "×"); rm.title = "remove"; rm.onclick = () => { cond.of.splice(i, 1); if (!cond.of.length) cond.of.push(cExists("context.field")); onEdit(); };
+      holder.querySelector(".cond-row")?.appendChild(rm);
+      box.appendChild(holder);
+    });
+    const addC = el("button", "cond-add", "＋ condition"); addC.style.marginLeft = ((depth + 1) * 12) + "px";
+    addC.onclick = () => { cond.of.push(cExists("context.field")); onEdit(); };
+    box.appendChild(addC);
+  }
+  return box;
 }
 
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
@@ -339,7 +440,7 @@ function renderA(stage) {
     b.style.margin = "0";
     b.onclick = () => {
       if (block.kind === "parallel") { const nm = "branch-" + (block.arms.length + 1); block.arms.push({ name: nm, node: step(nm + "-step", "todo") }); toast("Added parallel branch “" + nm + "”"); }
-      else { const ei = block.arms.findIndex(a => a.cond === "else"); const arm = { cond: "todo-condition", node: step("arm-step", "todo") }; if (ei >= 0) block.arms.splice(ei, 0, arm); else block.arms.push(arm); toast("Added branch arm (before else)"); }
+      else { block.arms.push({ when: cExists("context.field"), node: step("arm-step", "todo") }); toast("Added branch arm (else stays last)"); }
       renderA(stage);
     };
     col.appendChild(b); return col;
@@ -376,14 +477,15 @@ function renderA(stage) {
     const wrap = el("div", "a-arms");
     cur.arms.forEach(arm => {
       const col = el("div", "a-arm");
-      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = arm.cond; c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
+      const lbl = el("div", "arm-label"); lbl.append("when "); const c = el("code"); c.textContent = condSummary(arm.when); c.style.color = "var(--k-branch)"; lbl.appendChild(c); col.appendChild(lbl);
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
+    if (cur.else) { const col = el("div", "a-arm"); col.appendChild(el("div", "arm-label", "else (no arm matched)")); col.appendChild(nodeRow(cur.else)); wrap.appendChild(col); }
     wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
-    level.appendChild(el("p", "arm-label", "loop body (runs up to max-iterations times):"));
+    const cl = el("p", "arm-label"); cl.append("while "); const cc = el("code"); cc.textContent = condSummary(cur.condition); cc.style.color = "var(--k-while)"; cl.appendChild(cc); cl.append(" — max " + cur.maxIter + " iters. Loop body:"); level.appendChild(cl);
     level.appendChild(nodeRow(cur.body));
   } else if (cur.kind === "workflow") {
     level.appendChild(el("p", "hint", "This is a workflow-ref — its body lives in another file (" + cur.ref + ") behind a separate write precondition and edit lease. Descending crosses files."));
@@ -428,12 +530,16 @@ function renderScratchBlock(node, opts = {}) {
     sel.onclick = e => e.stopPropagation();
     drop.appendChild(sel);
   }
-  if (node.kind === "while-do") { // mandatory max-iterations bound sits on the hat (question 3)
-    const mi = el("span", "maxiter"); mi.append("max ");
+  if (node.kind === "while-do") { // loop condition summary + mandatory max-iterations bound (question 3)
+    const wc = el("span", "cond"); wc.textContent = "while " + condSummary(node.condition); wc.style.marginLeft = "6px"; drop.appendChild(wc);
+    const mi = el("span", "maxiter"); mi.append(" max ");
     const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
     inp.onclick = e => e.stopPropagation();
     inp.onchange = e => { node.maxIter = Math.max(1, +inp.value || 1); toast("“" + node.name + "” max-iter → " + node.maxIter); };
     mi.append(inp, " iters"); drop.appendChild(mi);
+  }
+  if (node.kind === "checkpoint") { // the assertion is a structured condition; summary sits on the hat (question 4)
+    const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
   }
   hat.appendChild(drop);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
@@ -453,11 +559,15 @@ function renderScratchBlock(node, opts = {}) {
       const col = el("div", "arm-col");
       const head = el("div", "arm-head");
       if (node.kind === "parallel") { head.append("branch "); head.appendChild(Object.assign(el("b"), { textContent: arm.name })); }
-      else { head.append("when "); const c = el("span", "cond"); c.textContent = arm.cond; head.appendChild(c); } // conditions live on the arm head (question 2)
+      else { head.append("when "); const c = el("span", "cond"); c.textContent = condSummary(arm.when); head.appendChild(c); } // conditions live on the arm head (question 2)
       col.appendChild(head);
       col.appendChild(renderScratchBlock(arm.node, opts));
       row.appendChild(col);
     });
+    if (node.kind === "branch" && node.else) { // the else fallback is a single node, not a when-arm
+      const col = el("div", "arm-col"); col.appendChild(el("div", "arm-head", "else"));
+      col.appendChild(renderScratchBlock(node.else, opts)); row.appendChild(col);
+    }
     // Add-arm affordance: a trailing column whose socket adds a NEW branch/arm to the block
     // (question — "how do I add a parallel branch?"). Horizontal sibling of the existing arms,
     // mirroring the sequence's tail socket. A parallel arm is named; a branch arm carries a condition.
@@ -474,11 +584,9 @@ function renderScratchBlock(node, opts = {}) {
         node.arms.push({ name: nm, node: step(nm + "-step", "todo") });
         toast("Added parallel branch “" + nm + "” to “" + node.name + "”");
       } else {
-        // a new branch arm inserts BEFORE the else fallback so first-match order stays sane
-        const elseIdx = node.arms.findIndex(a => a.cond === "else");
-        const arm = { cond: "todo-condition", node: step("arm-step", "todo") };
-        if (elseIdx >= 0) node.arms.splice(elseIdx, 0, arm); else node.arms.push(arm);
-        toast("Added branch arm to “" + node.name + "” (before else)");
+        // a new when-arm; the separate `else` node always stays the last-resort fallback
+        node.arms.push({ when: cExists("context.field"), node: step("arm-step", "todo") });
+        toast("Added branch arm to “" + node.name + "” (else stays the fallback)");
       }
       opts.rerender();
     };
@@ -488,8 +596,7 @@ function renderScratchBlock(node, opts = {}) {
     addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover");
       const k = window._dragKind; if (!k) return;
       if (node.kind === "parallel") { const nm = "branch-" + (node.arms.length + 1); node.arms.push({ name: nm, node: makeDefault(k) }); }
-      else { const elseIdx = node.arms.findIndex(a => a.cond === "else"); const arm = { cond: "todo-condition", node: makeDefault(k) };
-        if (elseIdx >= 0) node.arms.splice(elseIdx, 0, arm); else node.arms.push(arm); }
+      else { node.arms.push({ when: cExists("context.field"), node: makeDefault(k) }); }
       toast("Added " + KIND_LABEL[k] + " as a new arm of “" + node.name + "”"); opts.rerender();
     };
     addCol.appendChild(addSock);
@@ -530,10 +637,10 @@ function renderStack(nodes, parent, opts) {
 function makeDefault(kind) {
   switch (kind) {
     case "step": return step("new-step", "todo");
-    case "checkpoint": return check("new-check", "assert: todo");
+    case "checkpoint": return check("new-check", cExists("context.field"));
     case "parallel": return par("new-parallel", "collect", [{ name: "a", node: step("a", "") }, { name: "b", node: step("b", "") }]);
-    case "branch": return branch("new-branch", [{ cond: "todo", node: step("a", "") }, { cond: "else", node: step("b", "") }]);
-    case "while-do": return whilez("new-loop", 5, step("body", ""));
+    case "branch": return branch("new-branch", [{ when: cExists("context.field"), node: step("a", "") }], step("b", ""));
+    case "while-do": return whilez("new-loop", cExists("context.field"), 5, step("body", ""));
     case "sequence": return seq("new-seq", [step("a", "")]);
     default: return step("new-step", "");
   }
@@ -621,7 +728,8 @@ function findNode(root, id) {
   if (root.id === id) return root;
   const kids = root.kind === "sequence" ? root.nodes
     : root.kind === "while-do" ? [root.body]
-    : (root.kind === "parallel" || root.kind === "branch") ? root.arms.map(a => a.node) : [];
+    : root.kind === "branch" ? [...root.arms.map(a => a.node), ...(root.else ? [root.else] : [])]
+    : root.kind === "parallel" ? root.arms.map(a => a.node) : [];
   for (const k of kids) { const f = findNode(k, id); if (f) return f; }
   return null;
 }
@@ -638,14 +746,23 @@ function paneFor(node, variant) {
   add("id", node.id);
   add("kind", KIND_LABEL[node.kind]);
   if (node.note) add("payload", node.note);
-  if (node.assertion) add("assert", node.assertion);        // checkpoint — question 4
   if (node.ref) add("ref", node.ref);                       // workflow-ref — file boundary
   if (node.kind === "parallel") add("join", node.join);     // question 1
   if (node.kind === "parallel") add("arms", node.arms.map(a => a.name).join(", "));
-  if (node.kind === "branch") add("conds", node.arms.map(a => a.cond).join("  |  ")); // question 2
   if (node.kind === "while-do") add("max-iter", String(node.maxIter)); // question 3
   if (node.kind === "sequence") add("length", node.nodes.length + " nodes");
   pane.appendChild(kv);
+
+  // A structured condition builder, reused everywhere a Condition is authored: branch `when`,
+  // while-do `condition`, checkpoint `condition`. You never type an expression — you pick an
+  // operator + a context./output. path + operands, or compose with all/any/not.
+  const condEditor = (labelTxt, getC, setC, help) => {
+    pane.appendChild(Object.assign(el("label"), { textContent: labelTxt }));
+    pane.appendChild(el("div", "cond-preview", condSummary(getC())));      // read-back summary
+    const onEdit = () => { toast("condition updated"); rerender(); };       // rerender rebuilds the pane from state
+    pane.appendChild(renderCondEditor(getC(), nc => setC(nc), onEdit));
+    if (help) pane.appendChild(el("p", "hint", help));
+  };
 
   // Editable affordances the properties pane owns (mirror what's inline, for the drill-down variant especially).
   if (node.kind === "parallel") {
@@ -659,19 +776,22 @@ function paneFor(node, variant) {
     pane.appendChild(el("p", "hint", modeHelp[node.join]));
   }
   if (node.kind === "while-do") {
-    pane.appendChild(Object.assign(el("label"), { textContent: "max-iterations (mandatory)" }));
+    condEditor("loop condition (keeps iterating while true)", () => node.condition, nc => { node.condition = nc; },
+      "A structured Condition — the same builder as a branch arm and a checkpoint.");
+    pane.appendChild(Object.assign(el("label"), { textContent: "max-iterations (mandatory bound)" }));
     const inp = el("input"); inp.type = "number"; inp.min = 1; inp.value = node.maxIter;
     inp.onchange = () => { node.maxIter = Math.max(1, +inp.value || 1); toast("max-iter → " + node.maxIter); rerender(); };
     pane.appendChild(inp);
-    pane.appendChild(el("p", "hint", "Exceeding the bound fails the run. The format requires this — no unbounded loop is expressible."));
+    pane.appendChild(el("p", "hint", "Loop condition AND a max-iterations cap — both required. Exceeding the cap fails the run; no unbounded loop is expressible."));
   }
   if (node.kind === "branch") {
-    pane.appendChild(Object.assign(el("label"), { textContent: "conditions (one per arm, first match wins; 'else' is the fallback)" }));
-    node.arms.forEach((a, i) => { const inp = el("input"); inp.value = a.cond; inp.style.marginTop = "4px";
-      inp.onchange = () => { a.cond = inp.value; toast("arm " + (i+1) + " condition updated"); rerender(); }; pane.appendChild(inp); });
+    pane.appendChild(el("p", "hint", "One when-condition per arm, first match wins; the else node is the fallback when none match."));
+    node.arms.forEach((a, i) => condEditor("arm " + (i + 1) + " · when", () => a.when, nc => { a.when = nc; }));
+    if (node.else) pane.appendChild(Object.assign(el("label"), { textContent: "else → node “" + node.else.name + "” (no condition)" }));
   }
   if (node.kind === "checkpoint") {
-    pane.appendChild(el("p", "hint", "A checkpoint is an inline node in the sequence (question 4): a fail-fast assertion with no worker. It sits BETWEEN nodes, not attached to one — judgement checks are a step that outputs a verdict + a checkpoint that tests it."));
+    condEditor("assertion (true continues, false fails the run)", () => node.condition, nc => { node.condition = nc; },
+      "A checkpoint is an inline node with no worker; its assertion is a structured Condition. Judgement checks are a step that outputs a verdict + a checkpoint that tests it.");
   }
   pane.appendChild(el("p", "hint", "Variant " + variant + " · edits are in-memory only."));
   return pane;
