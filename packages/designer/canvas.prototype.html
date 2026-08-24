@@ -332,6 +332,19 @@ function renderA(stage) {
   const descend = node => { aStack = [...aStack, node]; selectedId = null; renderA(stage); };
   const selectNode = node => { selectedId = node.id; renderA(stage); };
 
+  // Add-arm column for a parallel/branch level (question — "how do I add a parallel branch?").
+  const addArmCol = block => {
+    const col = el("div", "a-arm"); col.style.borderStyle = "dashed";
+    const b = el("button", "a-add", block.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm");
+    b.style.margin = "0";
+    b.onclick = () => {
+      if (block.kind === "parallel") { const nm = "branch-" + (block.arms.length + 1); block.arms.push({ name: nm, node: step(nm + "-step", "todo") }); toast("Added parallel branch “" + nm + "”"); }
+      else { const ei = block.arms.findIndex(a => a.cond === "else"); const arm = { cond: "todo-condition", node: step("arm-step", "todo") }; if (ei >= 0) block.arms.splice(ei, 0, arm); else block.arms.push(arm); toast("Added branch arm (before else)"); }
+      renderA(stage);
+    };
+    col.appendChild(b); return col;
+  };
+
   const nodeRow = (node, idx) => {
     const row = el("div", "a-node" + (node.id === selectedId ? " sel" : ""));
     if (idx != null) row.appendChild(el("span", "idx", idx + 1));
@@ -357,6 +370,7 @@ function renderA(stage) {
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
+    wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "branch") {
     const wrap = el("div", "a-arms");
@@ -366,6 +380,7 @@ function renderA(stage) {
       col.appendChild(nodeRow(arm.node));
       wrap.appendChild(col);
     });
+    wrap.appendChild(addArmCol(cur));
     level.appendChild(wrap);
   } else if (cur.kind === "while-do") {
     level.appendChild(el("p", "arm-label", "loop body (runs up to max-iterations times):"));
@@ -443,6 +458,42 @@ function renderScratchBlock(node, opts = {}) {
       col.appendChild(renderScratchBlock(arm.node, opts));
       row.appendChild(col);
     });
+    // Add-arm affordance: a trailing column whose socket adds a NEW branch/arm to the block
+    // (question — "how do I add a parallel branch?"). Horizontal sibling of the existing arms,
+    // mirroring the sequence's tail socket. A parallel arm is named; a branch arm carries a condition.
+    const addCol = el("div", "arm-col");
+    addCol.appendChild(el("div", "arm-head", node.kind === "parallel" ? "new branch" : "new arm"));
+    const addSock = el("div", "socket");
+    addSock.textContent = node.kind === "parallel" ? "＋ add parallel branch" : "＋ add branch arm";
+    addSock.style.cursor = "pointer"; addSock.style.minHeight = "42px"; addSock.style.display = "flex";
+    addSock.style.alignItems = "center"; addSock.style.justifyContent = "center";
+    addSock.onclick = e => {
+      e.stopPropagation();
+      if (node.kind === "parallel") {
+        const nm = "branch-" + (node.arms.length + 1);
+        node.arms.push({ name: nm, node: step(nm + "-step", "todo") });
+        toast("Added parallel branch “" + nm + "” to “" + node.name + "”");
+      } else {
+        // a new branch arm inserts BEFORE the else fallback so first-match order stays sane
+        const elseIdx = node.arms.findIndex(a => a.cond === "else");
+        const arm = { cond: "todo-condition", node: step("arm-step", "todo") };
+        if (elseIdx >= 0) node.arms.splice(elseIdx, 0, arm); else node.arms.push(arm);
+        toast("Added branch arm to “" + node.name + "” (before else)");
+      }
+      opts.rerender();
+    };
+    // dropping a palette block onto the add-socket also creates a new arm wrapping that block
+    addSock.ondragover = ev => { ev.preventDefault(); addSock.classList.add("legal-hover"); };
+    addSock.ondragleave = () => addSock.classList.remove("legal-hover");
+    addSock.ondrop = ev => { ev.preventDefault(); addSock.classList.remove("legal-hover");
+      const k = window._dragKind; if (!k) return;
+      if (node.kind === "parallel") { const nm = "branch-" + (node.arms.length + 1); node.arms.push({ name: nm, node: makeDefault(k) }); }
+      else { const elseIdx = node.arms.findIndex(a => a.cond === "else"); const arm = { cond: "todo-condition", node: makeDefault(k) };
+        if (elseIdx >= 0) node.arms.splice(elseIdx, 0, arm); else node.arms.push(arm); }
+      toast("Added " + KIND_LABEL[k] + " as a new arm of “" + node.name + "”"); opts.rerender();
+    };
+    addCol.appendChild(addSock);
+    row.appendChild(addCol);
     mouth.appendChild(row);
   }
   wrap.appendChild(mouth);
