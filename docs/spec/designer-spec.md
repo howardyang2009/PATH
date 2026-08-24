@@ -38,9 +38,14 @@ body the block grammar cannot: no edges, no arbitrary DAG.
 ### The block shapes the designer commits to
 
 The canvas authors [`path/workflow@2`](../../CONTEXT.md)'s node shapes directly; the prototype pinned
-four points the UI must honour, each matching the `@path/schema` types
+these points the UI must honour, each matching the `@path/schema` types
 ([`node-type.ts`](../../packages/schema/src/node-type.ts)):
 
+- **A `step` leaf is one of three worker types.** The executable leaf is a `PromptStep` (LLM — a
+  `prompt` against a `model`), a `BinaryStep` (a `command` + `args` + `cwd`), or a `WorkflowStep` (a
+  sub-workflow `ref`). All three share `id` + `name`; the `type` is a **creation-time** discriminant —
+  switching it would discard the payload — so it is chosen up front, never a mutable dropdown. LLM and
+  command share the step hue; the sub-workflow ref keeps its own hue, being the one boundary-crosser.
 - **A `parallel` branch *is* a node.** `branches` is an array of `WorkflowNode`, each carrying its own
   `id` + `name`; a branch's **`name` is its `collect`/`wait-one` output key**. There is no separate
   branch label or arm wrapper — renaming the branch renames the key.
@@ -97,20 +102,23 @@ straight at the fields.
 
 | Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |
 |---|---|---|---|
-| `step` | a leaf block | name | `name`, `id`, payload |
+| `step` — LLM (`prompt`) | a leaf block, `LLM` chip | name | `name`, `id`, **`model`**, **`prompt`** |
+| `step` — command (`binary`) | a leaf block, `COMMAND` chip | name | `name`, `id`, **`command`**, **`args`**, **`cwd`** |
+| `step` — sub-workflow (`workflow`) | a chip, not an inline body — its own hue | the ref path | `name`, `id`, the **referenced file path**; double-click descends across the boundary |
 | `checkpoint` | a leaf block **inline in the sequence**, between nodes — never attached to a node | `assert <cond>` summary | its **assertion** (structured `Condition`); a judgement check is a step that outputs a verdict + a checkpoint that tests it (judge-step pattern) |
 | `parallel` | a C-block; its N branches side by side in the mouth | `join:` badge; each branch captioned, labelled by its own node name | **join mode** (`collect` / `wait-one` / `do-not-wait`) |
 | `branch` | a C-block; its N arms side by side, then `else` | `when <cond>` summary per arm head (first-match-wins) | each arm's **`when`** (selected on the arm's own node); the Branch node itself edits only structure |
 | `while-do` | a C-block wrapping one body node | `while <cond> · max N` summary | the loop **`condition`** and the **mandatory `max-iterations`** — exceeding it fails the run |
 | `sequence` | a vertical stack in the mouth | length | `name`; **order is structure** (below) |
-| `workflow` (ref) | a chip, not an inline body | the ref path | the **referenced file path**; double-click descends across the boundary |
 
 ### Adding, reordering, deleting, and the empty canvas
 
 All four are **canvas** actions (structure), never pane controls:
 
 - **Add** — drag a palette block into a **legal socket**, or use a sequence's tail add-affordance; the
-  socket accepts only grammar-legal kinds. A branch whose `else` was deleted offers an **add-`else`**
+  socket accepts only grammar-legal kinds. The palette is **grouped into Steps** (the three leaf worker
+  types — LLM, command, sub-workflow) **and Blocks** (the logicers + checkpoint), each step type its own
+  entry so the worker is picked up front. A branch whose `else` was deleted offers an **add-`else`**
   affordance (there is at most one `else`).
 - **Reorder** — move-up / move-down (or drag) **within** a container; a move never changes a node's
   `id` ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). Order is
