@@ -85,6 +85,14 @@ descends** — the canvas swaps to the ref'd file's body and a **file breadcrumb
 (the trail is a navigation stack, not a tree parent: a ref'd file may have several parents). Blocks
 within a file are never descended into; they are already open.
 
+**Pane layout.** The pane reads top-to-bottom **orientation before editing**: (1) the node's **role**,
+when it has one an occupant-of gives it — `branch arm (N of M)`, `branch else fallback`, `parallel
+branch`; (2) any **explanatory copy** for the kind, gathered into one block rather than scattered per
+field; then a divider and (3) the **editable fields** — `name` first, then the `id` (its re-key button
+on the same row, the change confirmation-gated), then the kind-specific fields. Explanation and role
+lead so the author knows *what they are editing* before the inputs; a plain node with neither opens
+straight at the fields.
+
 ### Per-kind rendering and edit affordances
 
 | Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |
