@@ -23,7 +23,7 @@ ticket's open questions (parallel join modes, where conditions live, mandatory w
 inline checkpoints, spatial sequence order, depth-3+ readability, the add-node gesture). Its validated
 decisions are folded into the spec above; the file is kept as the **primary source** behind them.
 
-The in-tree file is the version that landed with the spec; the prototype's later interaction
-refinements are captured on branch
-[`proto/designer-canvas-255`](https://github.com/howardyang2009/PATH/blob/proto/designer-canvas-255/packages/designer/canvas.prototype.html),
-its primary-source home.
+The **fully-iterated prototype is on `main`** — this in-tree file — merged via
+[#305](https://github.com/howardyang2009/PATH/pull/305). Its development branch
+[`proto/designer-canvas-255`](https://github.com/howardyang2009/PATH/tree/proto/designer-canvas-255)
+is kept as the primary-source history (and as the target of the spec's blob links); it is not deleted.
