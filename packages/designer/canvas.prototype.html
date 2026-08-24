@@ -188,6 +188,9 @@
     border-left: 5px solid var(--kc, var(--border)); }
   .sblock.leaf .hat { border-radius: 7px; }
   .sblock .hat .nm { font-weight: 600; }
+  /* Leading control cluster (delete + reorder). Left-anchored so it stays visible even when a wide
+     nested block overflows the canvas column to the right — the reason delete felt "missing" before. */
+  .ctl-slot { display: inline-flex; gap: 2px; align-items: center; flex-shrink: 0; }
   .sblock .hat .drop { margin-left: auto; display: inline-flex; gap: 6px; align-items: center; }
   .sblock .socket-note { font-size: var(--fs-xs); color: var(--text-muted); padding: 0 10px 7px; }
   /* C-block mouth: the nested body, inset with a left rail in the kind's hue. */
@@ -535,18 +538,27 @@ function renderScratchBlock(node, opts = {}) {
 
   if (node.kind === "workflow") { // a ref renders as a chip even in pure-inline B (its body is another file)
     const chip = el("div", "refchip");
+    const ctl = el("span", "ctl-slot");                     // leading cluster so delete is reachable even when the ref path makes the chip overflow
+    const cx = el("button", "node-x", "×"); cx.title = "delete this workflow-ref node (the ref'd file is untouched)";
+    cx.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    ctl.appendChild(cx);
+    chip.appendChild(ctl);
     chip.appendChild(kindChip("workflow"));
     chip.appendChild(Object.assign(el("b"), { textContent: node.name }));
     const r = el("code"); r.textContent = node.ref; r.style.fontSize = "11px"; r.style.color = "var(--text-muted)"; chip.appendChild(r);
     chip.appendChild(el("span", "cross", opts.hybrid ? "descend ↳" : "another file"));
-    const cx = el("button", "node-x", "×"); cx.title = "delete this workflow-ref node (the ref'd file is untouched)";
-    cx.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
-    chip.appendChild(cx);
     chip.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); if (opts.hybrid && opts.onDescend) opts.onDescend(node); };
     return chip;
   }
 
   const hat = el("div", "hat"); hat.style.setProperty("--kc", kc);
+  const ctl = el("span", "ctl-slot");                       // leading: delete (+ reorder, injected by renderStack) — always visible regardless of block width
+  if (node.id !== opts.rootId) {                            // the file body root can't be deleted, so it shows no ×
+    const xb = el("button", "node-x", "×"); xb.title = "delete this node";
+    xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
+    ctl.appendChild(xb);
+  }
+  hat.appendChild(ctl);
   hat.appendChild(kindChip(node.kind));
   hat.appendChild(Object.assign(el("span", "nm"), { textContent: node.name }));
   const drop = el("span", "drop");
@@ -561,9 +573,6 @@ function renderScratchBlock(node, opts = {}) {
     const cc = el("span", "cond"); cc.textContent = "assert " + condSummary(node.condition); drop.appendChild(cc);
   }
   hat.appendChild(drop);
-  const xb = el("button", "node-x", "×"); xb.title = "delete this node";
-  xb.onclick = e => { e.stopPropagation(); deleteSelected(node.id); };
-  hat.appendChild(xb);
   hat.onclick = e => { e.stopPropagation(); selectedId = node.id; opts.rerender(); };
   wrap.appendChild(hat);
 
@@ -626,16 +635,14 @@ function renderScratchBlock(node, opts = {}) {
 function renderStack(nodes, parent, opts) {
   const stack = el("div", "stack");
   nodes.forEach((n, i) => {
-    const holder = el("div"); holder.style.position = "relative";
     const b = renderScratchBlock(n, opts);
-    // reorder controls
-    const ctl = el("span"); ctl.style.cssText = "position:absolute;right:6px;top:6px;display:flex;gap:2px;z-index:1";
+    // Reorder controls join the leading cluster next to delete, so both live in one always-visible spot.
+    const slot = b.querySelector(".ctl-slot");
     const mk = (t, dir, dis) => { const x = el("button", "joinpill", t); x.style.padding = "0 5px"; if (dis) x.disabled = true;
+      x.title = dir < 0 ? "move up" : "move down";
       x.onclick = e => { e.stopPropagation(); const j = i + dir; [nodes[i], nodes[j]] = [nodes[j], nodes[i]]; toast("Reordered within “" + parent.name + "”"); opts.rerender(); }; return x; };
-    ctl.append(mk("↑", -1, i === 0), mk("↓", 1, i === nodes.length - 1));
-    if (b.classList) b.appendChild(ctl);
-    holder.appendChild(b);
-    stack.appendChild(holder);
+    if (slot) slot.prepend(mk("↑", -1, i === 0), mk("↓", 1, i === nodes.length - 1));
+    stack.appendChild(b);
   });
   // legal socket at the end of the sequence
   const sock = el("div", "socket", "▽ drop a step / checkpoint / block here  (legal socket)");
@@ -666,7 +673,7 @@ function renderB(stage) {
   const wrap = el("div", "scratch-wrap");
   wrap.appendChild(palette(false));
   const canvas = el("div", "scratch-canvas canvas");
-  const opts = { rerender: () => renderB(stage) };
+  const opts = { rerender: () => renderB(stage), rootId: MODEL.id };
   canvas.onclick = e => { if (e.target === canvas) { selectedId = null; renderB(stage); } };
   canvas.appendChild(renderScratchBlock(MODEL, opts));
   wrap.appendChild(canvas);
@@ -702,7 +709,7 @@ function renderC(stage) {
   if (cFileStack.length > 1) { const note = el("span", "sep", "· separate write precondition + edit lease per file (#257/#258)"); note.style.marginLeft = "auto"; note.style.fontSize = "11px"; fb.appendChild(note); }
 
   const canvas = el("div", "scratch-canvas canvas");
-  const opts = { rerender: () => renderC(stage), hybrid: true, onDescend: node => {
+  const opts = { rerender: () => renderC(stage), hybrid: true, rootId: cur.body.id, onDescend: node => {
     const target = node.ref === "./notify.workflow.json" ? NOTIFY_FILE : seq(node.name, [step("(empty)", "")]);
     cFileStack = [...cFileStack, { name: node.ref.replace("./",""), body: target }]; selectedId = null; renderC(stage);
     toast("Crossed file boundary into " + node.ref);
