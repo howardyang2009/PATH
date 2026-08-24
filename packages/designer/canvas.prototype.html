@@ -888,12 +888,10 @@ function paneFor(node, variant, root) {
 
   // Editable id — the durable UUID (ADR 0015: client-minted, preserved across rename/reorder/reparent).
   // The ⟳ button mints a fresh GUID; normally the id is stable, so this is a deliberate re-key.
-  pane.appendChild(Object.assign(el("label"), { textContent: "id (node GUID)" }));
-  const idRow = el("div"); idRow.style.cssText = "display:flex;gap:6px;align-items:center";
-  const idIn = el("input"); idIn.value = node.id; idIn.spellcheck = false; idIn.style.fontFamily = "var(--font-mono)"; idIn.style.fontSize = "var(--fs-xs)";
-  // Changing the id must move the selection with it, or findNode() loses the node after re-key.
-  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; if (selectedId != null) selectedId = v; toast("id set"); rerender(); } };
-  const idGen = el("button", "joinpill", "⟳ new GUID"); idGen.style.whiteSpace = "nowrap"; idGen.title = "mint a fresh UUIDv4";
+  // Header row: the "id" label and the re-key button share one line; the input sits below it.
+  const idHead = el("div"); idHead.style.cssText = "display:flex;justify-content:space-between;align-items:center;gap:8px";
+  idHead.appendChild(Object.assign(el("label"), { textContent: "id" }));
+  const idGen = el("button", "joinpill", "⟳ new ID"); idGen.style.whiteSpace = "nowrap"; idGen.title = "mint a fresh UUIDv4";
   idGen.onclick = () => {
     // Re-keying breaks resume's plan-reuse match for this node (ADR 0015: the id is normally stable),
     // so gate it behind a confirm rather than mutating on a single click.
@@ -901,7 +899,11 @@ function paneFor(node, variant, root) {
     if (!ok) return;
     node.id = uuidv4(); if (selectedId != null) selectedId = node.id; toast("new GUID minted"); rerender();
   };
-  idRow.append(idIn, idGen); pane.appendChild(idRow);
+  idHead.appendChild(idGen); pane.appendChild(idHead);
+  const idIn = el("input"); idIn.value = node.id; idIn.spellcheck = false; idIn.style.fontFamily = "var(--font-mono)"; idIn.style.fontSize = "var(--fs-xs)";
+  // Changing the id must move the selection with it, or findNode() loses the node after re-key.
+  idIn.onchange = () => { const v = idIn.value.trim(); if (v) { node.id = v; if (selectedId != null) selectedId = v; toast("id set"); rerender(); } };
+  pane.appendChild(idIn);
 
   const kv = el("dl", "kv");
   const add = (k, v) => { kv.appendChild(el("dt", null, k)); kv.appendChild(el("dd", null, v)); };
