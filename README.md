@@ -1,20 +1,22 @@
 # PATH
 
-Workflow management system. Author a workflow as JSON (steps, workers, parallel/branch/while-do
-blocks, `wait-one` and `do-not-wait` joins, checkpoints), run it locally or over HTTP, and watch,
-launch, and resume runs live in a web viewer. See
-`CONTEXT.md` for the domain glossary (step, worker, task, run, logicer, checkpoint, ...) and
-`docs/spec/mvp-spec.md` / `docs/api/server-api-v0.md` for the specs.
+PATH is a workflow management system. You write a workflow as JSON. A workflow has steps, workers,
+and blocks (parallel, branch, while-do). A parallel block uses a `wait-one` or `do-not-wait` join. A
+workflow can also have checkpoints. You run a workflow on your machine or over HTTP. You watch,
+launch, and resume runs in a web viewer.
+
+Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, logicer, checkpoint,
+and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the specs.
 
 ## Packages
 
 | Package | What it is |
 |---|---|
-| `@path/schema` | The domain: workflow file format (`path/workflow@2`), plus the runtime vocabulary its execution produces (run status, log events, traces, the v0 wire shapes) |
-| `@path/engine` | Runs workflows locally; `path` CLI |
-| `@path/server` | HTTP + SSE API over the engine; `path-server` CLI |
-| `@path/client-core` | Pure-TS API client + SSE client + run view-model + run/workflow write surface (no framework, no Node) |
-| `@path/viewer` | React web console over `client-core` — monitors runs live, and launches and resumes them |
+| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@2`). It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
+| `@path/engine` | Runs workflows locally. Provides the `path` CLI. |
+| `@path/server` | An HTTP and SSE API over the engine. Provides the `path-server` CLI. |
+| `@path/client-core` | A pure-TypeScript API client. It has an SSE client, a run view-model, and a run/workflow write surface. It needs no framework and no Node. |
+| `@path/viewer` | A React web console over `client-core`. It monitors runs live. It launches and resumes runs. |
 
 ## Getting started
 
@@ -34,11 +36,12 @@ npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune [--
 npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another project's .path/, git-style
 ```
 
-`--resume` re-runs a stopped tree as a *successor* run: it reuses every node that already succeeded
-and re-runs the rest. Resume is **at-least-once** — a re-run step that already had an external effect
-(a `git push`, an API `POST`) can fire it again, and the engine cannot detect or prevent the
-duplicate. Making steps idempotent is the workflow author's job (mvp spec §5.6,
-`docs/research/resume-side-effect-contract.md`).
+`--resume` re-runs a stopped tree as a *successor* run. It reuses every node that already succeeded.
+It re-runs the other nodes.
+
+**Warning:** Resume is **at-least-once**. A re-run step can fire an external effect again, for example
+a `git push` or an API `POST`. The engine cannot detect or prevent the duplicate. The workflow author
+must make steps idempotent (mvp spec §5.6, `docs/research/resume-side-effect-contract.md`).
 
 Or serve it over HTTP and watch it in the viewer:
 
@@ -48,60 +51,65 @@ npx tsx packages/server/bin/path-server.ts . --port 8080   # v0 API + the built 
 pnpm --filter @path/viewer run dev                 # or: viewer dev server, proxies API calls
 ```
 
-The bins are TypeScript entry points run through `tsx`; there is no build step and no linked
-`path`/`path-server` on your `PATH`, so `pnpm exec path-server` will not find them. `path-server`'s
-first argument is the project directory — where `.path/` is read and written — and it defaults to the
-cwd; the engine CLI instead derives its project directory from the workflow file's own location.
+The bins are TypeScript entry points. `tsx` runs them. There is no build step. There is no linked
+`path` or `path-server` on your `PATH`. Thus `pnpm exec path-server` cannot find them.
+
+The first argument to `path-server` is the project directory. The server reads and writes `.path/`
+there. This argument defaults to the current directory. The engine CLI is different: it finds its
+project directory from the workflow file location.
 
 ## Status (2026-08-20)
 
-Latest release: **v0.5.1** (2026-08-20) — see `CHANGELOG.md` for the full history. `main` is green:
-`pnpm -r run typecheck` clean, 1119 tests passing (schema 235, engine 564, viewer 121, server 134,
-client-core 51, scripts 14).
+The latest release is **v0.5.1** (2026-08-20). See `CHANGELOG.md` for the full history. The `main`
+branch is green. `pnpm -r run typecheck` is clean. 1119 tests pass: schema 235, engine 564, viewer
+121, server 134, client-core 51, scripts 14.
 
-The MVP is done — all three wayfinder maps are closed (#1 spec, #29 server API, #40 viewer) and the
-release-notes pipeline passes its acceptance run (mvp spec §11). Since the **cancellation** phase
-(v0.4.0), the codebase took two architecture-review passes (v0.4.1–v0.4.2, then v0.4.3) and then
-started opening its deferred doors:
+The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
+release-notes pipeline passes its acceptance run (mvp spec §11).
 
-- **v0.4.3** — `$env` config sourcing (map #113), the first of #109's deferred doors: a config value
-  that names an environment variable and composes with `$secret`, so the sourced value is both
+The **cancellation** phase shipped as v0.4.0. After it, the codebase took two architecture-review
+passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred doors:
+
+- **v0.4.3** — `$env` config sourcing (map #113). This is the first of #109's deferred doors. A config
+  value can name an environment variable. It composes with `$secret`. Thus the sourced value is both
   addressable and masked.
-- **v0.4.4** — **resume** (map #158 → #168), the second door. A crash-interrupted or cancelled run
-  re-runs as a *successor* that reuses every node whose recorded run already succeeded and re-runs the
-  rest — `path run <workflow.json> --resume <root-run-id>`. At-least-once: a re-run step that already
-  had an external effect can fire it again, so idempotency is the workflow author's burden (mvp spec
-  §5.6).
-- **v0.5.0** — two things grow up. The engine learns to **fan out and rejoin**: `wait-one` races its
-  branches and keeps the first winner (ADR 0004), `do-not-wait` launches a branch and lets the
-  enclosing run continue behind a join barrier (ADR 0008/0009). And the **viewer stops being
-  read-only** — it discovers the store's workflows, launches runs, and resumes cancelled or failed
-  runs from the console, backed by a new `client-core` write surface and a server `GET /v0/workflows`
-  discovery endpoint (with a CSRF/origin gate on every mutating route). Underneath both, workflow and
-  node identity is rebuilt on a durable GUID (format `path/workflow@1`) so a rename never breaks reuse
-  or resume; each root run now records its source-workflow identity, and `path runs list` grows a
-  `workflow` column and `--workflow` / `--workflow-id` filters.
-- **v0.5.1** — the workflow format grows up again. `path/workflow@1`'s three container slot shapes
-  collapse into one uniform node shape, and a new `sequence` logicer carries the multi-step case that
-  used to hide in a bare node array (ADR 0014). A parallel branch is now just a node, and branch arm /
-  `else` / `while-do` each hold one `node`. Clean-slate and codemod-migrated
-  (`scripts/migrate-workflow-format-v2.ts`, fill-once, idempotent), format `path/workflow@2`; no DB
-  break. Two Opus 5 refactors ride along (#290): `loadWorkflowTree` hands back a `LoadedWorkflow`, and
-  both launch routes collapse behind one `prepareWorkflow`.
+- **v0.4.4** — **resume** (map #158, then #168). This is the second door. A run can stop from a crash
+  or a cancel. It then re-runs as a *successor*. The successor reuses every node whose recorded run
+  already succeeded. It re-runs the other nodes. The command is
+  `path run <workflow.json> --resume <root-run-id>`. Resume is at-least-once. A re-run step can fire an
+  external effect again. Thus the workflow author must make steps idempotent (mvp spec §5.6).
+- **v0.5.0** — two parts grow up. First, the engine learns to fan out and rejoin. `wait-one` races its
+  branches and keeps the first winner (ADR 0004). `do-not-wait` launches a branch. The enclosing run
+  then continues behind a join barrier (ADR 0008 and 0009). Second, the viewer stops being read-only.
+  It discovers the store's workflows. It launches runs. It resumes cancelled or failed runs from the
+  console. A new `client-core` write surface and a server `GET /v0/workflows` discovery endpoint
+  support this. A CSRF/origin gate protects every mutating route. Under both parts, a durable GUID
+  rebuilds workflow and node identity (format `path/workflow@1`). Thus a rename never breaks reuse or
+  resume. Each root run now records its source-workflow identity. `path runs list` gains a `workflow`
+  column and the `--workflow` and `--workflow-id` filters.
+- **v0.5.1** — the workflow format grows up again. The three container slot shapes of
+  `path/workflow@1` collapse into one uniform node shape. A new `sequence` logicer carries the
+  multi-step case. That case used to hide in a bare node array (ADR 0014). A parallel branch is now a
+  node. The branch arm, `else`, and `while-do` slots each hold one `node`. The new format is
+  `path/workflow@2`. It is clean-slate and codemod-migrated. The codemod
+  `scripts/migrate-workflow-format-v2.ts` fills once and is idempotent. There is no DB break. Two
+  Opus 5 refactors are included (#290). `loadWorkflowTree` returns a `LoadedWorkflow`. Both launch
+  routes collapse behind one `prepareWorkflow`.
 
 ### What's next
 
 - #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
-  The one known product gap: the audit record is complete, the API just cannot serve it.
-- #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. Stays
-  open; each door graduates into its own wayfinder map when its trigger fires. `$env` (v0.4.3) and
-  resume (v0.4.4) have shipped, leaving an API-endpoint step type and automatic in-run retry deferred.
+  This is the one known product gap. The audit record is complete. The API cannot serve it yet.
+- #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. This
+  stays open. Each door moves into its own wayfinder map when its trigger fires. `$env` (v0.4.3) and
+  resume (v0.4.4) have shipped. An API-endpoint step type and automatic in-run retry are still
+  deferred.
 
 ## Maintenance notes
 
 - The warmed sandcastle store is a snapshot of today's lockfile. If agents add dependencies,
-  `pnpm install` in the sandbox will download just the new packages — still fine. But if the
-  lockfile drifts a lot over time, rebuild the image
-  (`pnpm exec sandcastle docker build-image --dockerfile .sandcastle/Dockerfile`) to re-warm it.
-- The "limit hit mid-merge" failure mode can recur on long cycles. If it does, the same recovery
-  applies — check `git status` for a half-finished merge before rerunning the loop.
+  `pnpm install` in the sandbox downloads only the new packages. This is still fine. But the lockfile
+  can drift a lot over time. If it does, rebuild the image to re-warm it:
+  `pnpm exec sandcastle docker build-image --dockerfile .sandcastle/Dockerfile`.
+- The "limit hit mid-merge" failure can happen again on long cycles. If it does, use the same
+  recovery. Check `git status` for a half-finished merge before you run the loop again.

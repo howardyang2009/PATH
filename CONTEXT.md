@@ -1,39 +1,125 @@
 # PATH — Ubiquitous Language
 
-Glossary for the PATH workflow management system. Terms here are canonical; code, specs, and issues use them exactly.
+This is the glossary for the PATH workflow management system. These terms are canonical. Code, specs,
+and issues use them exactly.
 
 ## Core execution model
 
-- **Step** — the unit of work in a workflow. Has exactly one input object and one output object. A step declares *what* to do (its type and payload), not *who* does it.
-- **Worker** — *who/where* a step executes: the binding to an execution capability (e.g. local engine, an LLM subagent). Declared per step; inherited from the enclosing workflow when unspecified.
+- **Step** — the unit of work in a workflow. It has exactly one input object and one output object. A
+  step declares *what* to do (its type and payload). It does not declare *who* does it.
+- **Worker** — *who* runs a step and *where*. It is the binding to an execution capability, for
+  example the local engine or an LLM subagent. You declare a worker per step. When you do not, the
+  step inherits the worker from the enclosing workflow.
 - **Task** — a step bound to a worker. `task = step + worker`.
-- **Run** — one executing (or executed) instance of a task. The only execution term in PATH: there is no separate "workflow execution" concept.
-- **Processor** — one live instance of a worker that a run executes on (e.g. a local process, a thread, an LLM chat session).
-- **Cancellation** — best-effort abort of a run: the engine asks (kills the child process, tears down the processor) and holds no deadline and no force path. Three **causes**: **operator** — a cancel request against a root run — **sibling-failed** — a parallel branch failed, so its in-flight siblings are cancelled — and **sibling-succeeded** — a `wait-one` branch reached `succeeded`, so the still-running losers of the race are cancelled (mvp spec §5.6). A cancelled run ends `cancelled` (a distinct status from `failed`: an operator stopping a run is not the workflow breaking), lands no publishes, and is narrated by a `run-cancelled` log event carrying its cause.
-- **Workflow** — a composition of steps. A workflow is itself a valid step type ("workflow-as-step"), so executing a workflow means running the task of the step that wraps it. The top-level workflow is wrapped in an implicit root step. A workflow-step's run spawns **child runs** for its inner steps, forming a **run tree**.
-- **Run tree** — the tree of runs one **root run** spawns: a workflow-step's run spawns child runs for its inner steps (workflow-as-step), and those recurse, so the runs under one root form a tree keyed by each run's parent run id. The audit rows mirror it (a parent and root id on every row) and `.path/runs/<root-run-id>/<run-id>/` mirrors it on disk. The shape is built and walked from the flat rows by one shared primitive in `@path/schema` (`childrenByParent`, `subtree`, `findRootRun`) — the engine's read-time cost SUM and a client's nested view read the same tree, not two hand-rolled ones.
-- **Run kind** — which of four shapes a run row is, classified in one place (`@path/schema` `runKind`, with `isRootRun`/`isReuseRow`): a **root run** (no parent run id), a **nested workflow-run** (a workflow-step's run — a workflow-run, so it carries no worker), a **leaf step** (a `binary`/`prompt` run, the only kind bound to a worker), or a **reuse row** (Resume, below). The `runs` table is one flat row shape across all four; `runKind` names the distinction that scattered null-checks (`parentRunId === null`, `reusedFromRunId !== null`) used to re-derive at each reader.
+- **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
+  There is no separate "workflow execution" concept.
+- **Processor** — one live instance of a worker that a run executes on, for example a local process, a
+  thread, or an LLM chat session.
+- **Cancellation** — a best-effort abort of a run. The engine only asks: it kills the child process
+  and tears down the processor. It holds no deadline and no force path. There are three **causes**.
+  **operator** is a cancel request against a root run. **sibling-failed** means a parallel branch
+  failed, so the engine cancels its in-flight siblings. **sibling-succeeded** means a `wait-one` branch
+  reached `succeeded`, so the engine cancels the still-running losers of the race (mvp spec §5.6). A
+  cancelled run ends with the `cancelled` status. This status is distinct from `failed`: an operator
+  that stops a run is not the workflow breaking. A cancelled run lands no publishes. A `run-cancelled`
+  log event describes it and carries its cause.
+- **Workflow** — a composition of steps. A workflow is itself a valid step type ("workflow-as-step").
+  Thus to execute a workflow is to run the task of the step that wraps it. An implicit root step wraps
+  the top-level workflow. The run of a workflow-step spawns **child runs** for its inner steps. These
+  runs form a **run tree**.
+- **Run tree** — the tree of runs that one **root run** spawns. The run of a workflow-step spawns child
+  runs for its inner steps (workflow-as-step). Those runs recurse. Thus the runs under one root form a
+  tree. Each run's parent run id is the key. The audit rows mirror the tree: every row carries a parent
+  id and a root id. The disk layout `.path/runs/<root-run-id>/<run-id>/` also mirrors it. One shared
+  primitive in `@path/schema` builds and walks the tree from the flat rows (`childrenByParent`,
+  `subtree`, `findRootRun`). The engine's read-time cost SUM and a client's nested view read the same
+  tree. They do not read two hand-rolled trees.
+- **Run kind** — which of four shapes a run row is. `@path/schema` classifies it in one place
+  (`runKind`, with `isRootRun` and `isReuseRow`). A **root run** has no parent run id. A **nested
+  workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is a `binary` or
+  `prompt` run; it is the only kind bound to a worker. A **reuse row** is part of Resume (below). The
+  `runs` table is one flat row shape across all four kinds. `runKind` names the distinction. Scattered
+  null-checks (`parentRunId === null`, `reusedFromRunId !== null`) used to re-derive it at each reader.
 
 ## Composition
 
-- **Workflow body** — an ordered sequence of **nodes**; a node is a step, a parallel block, a branch block, a while-do block, a sequence block, or a checkpoint. Blocks nest arbitrarily (the *nested block grammar*); under `path/workflow@2` every container slot holds exactly one node, and a `sequence` carries the node array where a slot needs several in order. Checkpoints may appear anywhere in a sequence.
-- **Logicer** — an engine-evaluated control construct that routes and coordinates step execution, realized in the block grammar: collect, wait-one, and do-not-wait are **join modes of the parallel block**; branch, while-do, and sequence are **block types**. A logicer has no worker, no task, and no run — the engine of the enclosing workflow evaluates it. (Spelled *logicer*.) MVP subset, **four logicers** under `path/workflow@2`: parallel (its collect, wait-one, and do-not-wait joins), branch, while-do with a mandatory max-iterations bound (exceeded → run fails), and sequence — the block type carrying the node array wherever a single-node slot needs several nodes in order ([ADR 0014](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0014-single-node-container-slots-and-sequence-logicer.md)). The subset grew from three to four when `@2` made every container slot hold one node. `checkpoint` sits beside the logicers, not inside them (below); no "special node" term exists. All three joins have shipped.
-- **Join mode** — how a parallel block resolves its branches. **collect** waits every branch, lands every branch's buffered publishes at the join, and outputs `{branch-node-name: output}` deterministically. **wait-one** races the branches: **first-to-succeed** wins; a branch that fails is ignored and the race continues; the still-running losers are cancelled (cause `sibling-succeeded`); the join lands the **winner's buffered publishes only**; the block outputs `{winner: {name, output}}`; and all branches failing fails the block with an aggregate error. Same-key sibling publishes are rejected under collect (a real last-writer race) but allowed under wait-one (only the winner's land). **do-not-wait** launches every branch and waits for none at the join: the block completes at once with output `{}`, the successor runs while the branches keep going, and each branch is awaited at the enclosing-workflow-run barrier so the tree stays strictly nested. A detached branch **may not publish** (a load error — it lands after its readers); a failed detached branch is **isolated** (recorded on its own row, does not fail the tree — [ADR 0008](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0008-do-not-wait-detached-failure-does-not-fail-tree.md)); it adds **no new cancel cause**; and resume **re-fires** a non-succeeded detached branch with no short-circuit ([ADR 0009](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0009-do-not-wait-resume-re-fires-no-short-circuit.md)).
-- **Checkpoint** — an engine-evaluated assertion node: a fail-fast gate that mechanically tests data or context (format, presence, ranges, exit codes). True → the workflow continues; false → the run stops as failed. A checkpoint has no worker and never exercises judgment — any check requiring judgment (human or LLM) is expressed as a normal step that outputs a verdict, followed by a checkpoint that tests it (the *judge-step pattern*). `assert` vs `if`: branch routes, checkpoint asserts.
+- **Workflow body** — an ordered sequence of **nodes**. A node is a step, a parallel block, a branch
+  block, a while-do block, a sequence block, or a checkpoint. Blocks nest without limit (the *nested
+  block grammar*). Under `path/workflow@2`, every container slot holds exactly one node. A `sequence`
+  carries the node array where a slot needs several nodes in order. Checkpoints can appear anywhere in
+  a sequence.
+- **Logicer** — an engine-evaluated control construct that routes and coordinates step execution. The
+  block grammar realizes it. collect, wait-one, and do-not-wait are **join modes of the parallel
+  block**. branch, while-do, and sequence are **block types**. A logicer has no worker, no task, and no
+  run. The engine of the enclosing workflow evaluates it. (Spell it *logicer*.) The MVP subset has
+  **four logicers** under `path/workflow@2`. The first is parallel (with its collect, wait-one, and
+  do-not-wait joins). The second is branch. The third is while-do; it needs a mandatory max-iterations
+  bound, and the run fails if it exceeds the bound. The fourth is sequence; this block type carries the
+  node array wherever a single-node slot needs several nodes in order
+  ([ADR 0014](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0014-single-node-container-slots-and-sequence-logicer.md)).
+  The subset grew from three to four when `@2` made every container slot hold one node. `checkpoint`
+  sits beside the logicers, not inside them (below). No "special node" term exists. All three joins have
+  shipped.
+- **Join mode** — how a parallel block resolves its branches. **collect** waits for every branch. It
+  lands every branch's buffered publishes at the join. It outputs `{branch-node-name: output}`
+  deterministically. **wait-one** races the branches. The **first-to-succeed** branch wins. The engine
+  ignores a branch that fails and continues the race. It cancels the still-running losers (cause
+  `sibling-succeeded`). The join lands the **winner's buffered publishes only**. The block outputs
+  `{winner: {name, output}}`. If all branches fail, the block fails with an aggregate error. collect
+  rejects same-key sibling publishes (a real last-writer race). wait-one allows them (only the winner's
+  publishes land). **do-not-wait** launches every branch and waits for none at the join. The block
+  completes at once with output `{}`. The successor runs while the branches continue. The engine awaits
+  each branch at the enclosing-workflow-run barrier, so the tree stays strictly nested. A detached
+  branch **must not publish**; it is a load error, because the branch lands after its readers. A failed
+  detached branch is **isolated**: the engine records it on its own row and does not fail the tree
+  ([ADR 0008](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0008-do-not-wait-detached-failure-does-not-fail-tree.md)).
+  It adds **no new cancel cause**. Resume **re-fires** a non-succeeded detached branch with no
+  short-circuit
+  ([ADR 0009](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0009-do-not-wait-resume-re-fires-no-short-circuit.md)).
+- **Checkpoint** — an engine-evaluated assertion node. It is a fail-fast gate. It mechanically tests
+  data or context (format, presence, ranges, exit codes). If the test is true, the workflow continues.
+  If the test is false, the run stops as failed. A checkpoint has no worker. It never exercises
+  judgment. Any check that needs judgment (human or LLM) is a normal step that outputs a verdict,
+  followed by a checkpoint that tests the verdict (the *judge-step pattern*). Compare `assert` and
+  `if`: a branch routes, a checkpoint asserts.
 
 ## Identity
 
-- **Id** — the stable GUID (UUIDv4) borne by the workflow and by every node. The *machine* identity: unique by construction, assigned once, never regenerated. It is the audit `node_id` a run row and log event carry, and the key **resume** matches on — a successor node reuses a predecessor run by shared id (`plan-reuse`), so renaming or moving a node never breaks reuse. Required in the format (`path/workflow@2`); a missing id is a load error, not a silent auto-stamp (a one-time codemod stamped every pre-existing file — Store note, ADR 0006, ADR 0007). Under `@2` a branch **is** a node — the container change collapsed branch-identity into the node, so "and branch" is gone: every slot occupant carries its own `id` (ADR 0014).
-- **Name** — the human label (`^[a-z][a-z0-9-]*$`, unique across a file) borne by the workflow and by every node. The *readable* identity: the key of a `collect`/`wait-one` output object (`{branch-node-name: output}`, and `wait-one`'s `{winner: {name, output}}`), the node the log stream narrates, and the display/filter key in `path runs list`. Formerly the node's `id` field; the GUID took that name and the human string moved to `name` (ADR 0006). Carried into the audit layer as **`node_name`** — a field on both the run row and the log-event envelope, sitting beside the GUID `node_id` so a run tree and log stream read human-legibly without re-loading the workflow (ADR 0007).
-- **Source-workflow identity** — the `{id, name, relative-path}` trio recorded once on a **root run**, naming the `workflow.json` that produced it: the workflow's **id** (the durable grouping key, stable across runs and machines), its **name** (the display/filter key), and its path relative to the store dir (provenance — where the file sat, brittle across machines, so never the identity). Stored root-only (nested rows already carry `node_id`/`worker`); it is what lets a relocated **store** segment an otherwise anonymous pile of run-ids by workflow.
+- **Id** — the stable GUID (UUIDv4) that the workflow and every node carry. It is the *machine*
+  identity: unique by construction, assigned once, never regenerated. It is the audit `node_id` that a
+  run row and a log event carry. It is the key that **resume** matches on: a successor node reuses a
+  predecessor run by shared id (`plan-reuse`). Thus a rename or a move of a node never breaks reuse.
+  The format requires it (`path/workflow@2`). A missing id is a load error, not a silent auto-stamp. A
+  one-time codemod stamped every pre-existing file (Store note, ADR 0006, ADR 0007). Under `@2`, a
+  branch **is** a node. The container change collapsed branch-identity into the node. Thus "and branch"
+  is gone: every slot occupant carries its own `id` (ADR 0014).
+- **Name** — the human label that the workflow and every node carry (`^[a-z][a-z0-9-]*$`, unique across
+  a file). It is the *readable* identity. It is the key of a `collect` or `wait-one` output object
+  (`{branch-node-name: output}`, and `wait-one`'s `{winner: {name, output}}`). It is the node that the
+  log stream describes. It is the display and filter key in `path runs list`. It was formerly the
+  node's `id` field. The GUID took the `id` name, and the human string moved to `name` (ADR 0006). It
+  is carried into the audit layer as **`node_name`**. This field sits on both the run row and the
+  log-event envelope, beside the GUID `node_id`. Thus a run tree and a log stream read human-legibly
+  without a re-load of the workflow (ADR 0007).
+- **Source-workflow identity** — the `{id, name, relative-path}` trio recorded once on a **root run**.
+  It names the `workflow.json` that produced the run. The **id** is the durable grouping key, stable
+  across runs and machines. The **name** is the display and filter key. The **relative-path** is the
+  path relative to the store dir; it is provenance (where the file sat), it is brittle across machines,
+  so it is never the identity. It is stored root-only, because nested rows already carry `node_id` and
+  `worker`. It is what lets a relocated **store** segment an otherwise anonymous pile of run-ids by
+  workflow.
 
 ## Invariants
 
-1. Only steps execute on workers. Logicers and checkpoints are engine constructs — no worker, no task, no run.
-2. Every execution is a run of a task; there is no separate "workflow execution" concept (workflow-as-step).
+1. Only steps execute on workers. Logicers and checkpoints are engine constructs: no worker, no task,
+   no run.
+2. Every execution is a run of a task. There is no separate "workflow execution" concept
+   (workflow-as-step).
 3. One step has exactly one input object and one output object.
-4. Config flows in from outside (author/operator); context is written from inside (steps at runtime).
-5. Worker and config are inherited downward from the enclosing workflow unless a step overrides them.
+4. Config flows in from outside (author or operator). Context is written from inside (steps at
+   runtime).
+5. A step inherits worker and config downward from the enclosing workflow, unless the step overrides
+   them.
 
 ## Relationships
 
@@ -48,43 +134,148 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 
 ## Data
 
-- **Config** — key-value data injected into a run *from outside*: supplied by the workflow author or operator at design/launch time (API tokens, model names, endpoints, flags). Declared per step; when unspecified, inherited from the enclosing workflow ("upper config inherited by downside steps"). Config never originates from a step's execution.
-- **Operator config** — the subset of config an *operator* supplies at launch to override authored values (the CLI `--config`/`--set`, the `POST /v0/runs` `config` field), as opposed to config authored into a `workflow.json`. Its trust source is the launching operator, not the machine: it may carry a literal **Secret**, but it may not name the server's environment with an **Env-sourced value** (a browser operator who launches a discovered workflow cannot otherwise read the server box's environment). A `$env` authored inside a workflow file is unaffected — that is the author's, not the operator's.
-- **Context** — key-value data written *from inside* the run: produced by steps at runtime and readable by the other steps of the same workflow (a computed temp dir, a branch name, accumulated results). Scoped to one workflow-run and isolated: a nested workflow-step starts with a fresh, empty context and exchanges data with its parent only through its input and output objects.
-- **Publish set** — of a node: the set of `publish` keys declared on that node plus the publish sets of every node reachable through its child bodies (the nested block grammar) — reaching through any depth of nesting — **excluding** a nested `workflow` step's ref'd file, which has its own isolated context. The scope over which the load-time publish checks are stated: under a `collect` parallel two **concurrent** sibling branches' publish sets must be disjoint (a same-key last-writer race, a load error); `wait-one` lifts that ban (only the winner lands); a `do-not-wait` branch's publish set must be **empty** (it lands after its readers). Within a single branch a key may recur (sequential steps, deterministic last-writer) and does not collide with itself.
+- **Config** — key-value data injected into a run *from outside*. The workflow author or operator
+  supplies it at design or launch time (API tokens, model names, endpoints, flags). You declare it per
+  step. When you do not, the step inherits it from the enclosing workflow ("upper config inherited by
+  downside steps"). Config never comes from a step's execution.
+- **Operator config** — the subset of config that an *operator* supplies at launch to override authored
+  values. Sources are the CLI `--config` and `--set`, and the `POST /v0/runs` `config` field. It is
+  the opposite of config authored into a `workflow.json`. Its trust source is the launching operator,
+  not the machine. It can carry a literal **Secret**. But it must not name the server's environment
+  with an **Env-sourced value**. Otherwise a browser operator who launches a discovered workflow could
+  read the server box's environment. A `$env` authored inside a workflow file is not affected: that
+  value is the author's, not the operator's.
+- **Context** — key-value data written *from inside* the run. Steps produce it at runtime. The other
+  steps of the same workflow can read it (a computed temp dir, a branch name, accumulated results). It
+  is scoped to one workflow-run and isolated. A nested workflow-step starts with a fresh, empty
+  context. It exchanges data with its parent only through its input and output objects.
+- **Publish set** — of a node: the set of `publish` keys declared on that node, plus the publish sets
+  of every node reachable through its child bodies (the nested block grammar), through any depth of
+  nesting. It **excludes** the file that a nested `workflow` step refs, because that file has its own
+  isolated context. It is the scope over which the load-time publish checks apply. Under a `collect`
+  parallel, the publish sets of two **concurrent** sibling branches must be disjoint; a same-key
+  last-writer race is a load error. `wait-one` lifts that ban, because only the winner lands. A
+  `do-not-wait` branch's publish set must be **empty**, because the branch lands after its readers.
+  Within a single branch a key can recur (sequential steps, deterministic last-writer). It does not
+  collide with itself.
 
-Rule of thumb: **Config flows in from outside; Context is written from inside.**
+Rule of thumb: **Config flows in from outside. Context is written from inside.**
 
 ## Audit
 
-- **Observation** — one typed record of run activity the engine emits to its **observer**: the full set, and the engine's only audit seam. An observation carries its payload (`input`, `output`, `context`, `stderr`), because persistence writes those to blobs; three of them (`step-stderr`, `step-usage`, `context-changed`) exist for persistence alone and are never narrated. Every observation is already **secret**-masked when it crosses the seam — the engine masks at one emit point, so masking is not something an observer or a wrapper can be partial about.
-- **Emitter** — the run-scoped producer of **observations**: one built per workflow-run from its identity, owning the shared envelope so a call site declares only what a given observation adds. It holds `run_id`/`root_run_id` for the run tier, pulls `node_id`/`node_name` off the node for control-node observations, and computes the root-only run-started extras (source-workflow identity, `resumed_from_root_run_id`) from the run's own identity — the `node_id`/`node_name` audit fields (ADR 0007) are threaded here, not respelled at each site. A leaf step takes a **step-scoped** sub-emitter that mints the step run's own `run_id` once and carries it across that step's `step-started` → `step-usage`/`step-stderr` → `step-finished`. The emitter sits *above* the mask point (Observation): it composes the record, the single emit choke point masks it. One emitter, one envelope — the reason an identity-shape change lands in one module rather than every observation literal.
-- **Log event** — a **narrated observation**: the append-only subset that reaches a **log backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set covers step lifecycle (`step-started`, `step-finished`) and control-node activity (`branch-taken`, `branch-no-match`, `checkpoint-passed`/`-failed`, `iteration-started`, `loop-exited`, `join-applied`, `run-cancelled`). Shared envelope: `seq` (monotonic per root run — the ordering truth), `ts`, `type` (flat discriminated union), `run_id`, `node_id`. The projection is not one-to-one: a workflow-run's own start and a leaf step's start are both `step-started` (invariant 2), the two finishes likewise, and one `checkpoint-evaluated` observation becomes `checkpoint-passed` or `checkpoint-failed`. The log stream is the complete chronological narrative of a run tree; run rows remain the authoritative queryable step record.
-- **Trace** — the per-predicate evaluation record carried by condition-bearing log events: the condition tree annotated with each leaf's dot-path, outcome (`true` / `false` / `error` + message), and the actual value read (post-masking).
-- **Log backend** — a dumb sink implementing `open`/`write`/`close`, instantiated per root run. The engine serializes writes and delivers fully-formed, already-masked events; fan-out to multiple backends is engine-level configuration (MVP default: SQLite log table + per-root-run NDJSON file, both on). A backend write failure fails the run.
-- **Env-sourced value** — a config value wrapped as `{"$env": "<NAME>"}`: sourced from the environment, read once at run start by the engine (never by `@path/schema`, which owns only the shape and the walk). It composes with **Secret** by nesting — `{"$secret": {"$env": "NAME"}}` is a value both sourced and masked — and resolution runs *before* the masker collects, because masking is by value. A variable that is not set fails the run before its first step, in one failure naming every unset variable; the check covers every config object of the whole loaded tree, so a declaration a parent's config shadows still counts. An empty variable is a set one.
-- **Secret** — a config value wrapped as `{"$secret": ...}`; secrecy rides the value through shallow-merge inheritance. The engine scrubs every secret value from all persisted artifacts (log events, input/output objects, `context.json`, the error a failed `step-finished` carries, stderr, condition **trace** values) at the persistence boundary, replacing it with `[secret:<key>]`. A failed run's error is recorded in the log stream alone — the run row carries status and no error (the text can still reach `stderr.txt` too, since a binary step's error is its stderr tail). That boundary is the engine's emit of an **observation**: one choke point every observation passes through, rather than a wrapper a caller applies. Workers receive real values — masking is an audit-surface concern, not a dataflow restriction. What a finished run hands back to its caller is scrubbed too — the CLI and the server both print it to a terminal that in CI is a retained log — with one exception, which is the rule's point: a **succeeded** run's output is the product, and an operator is owed the real answer. A failed or cancelled run has no output contract, so its returned output is masked like its error. A thrown *bug* escapes masking entirely (the engine re-throws rather than swallowing it into a failed run) — a documented limit, not a hole to plug.
+- **Observation** — one typed record of run activity that the engine emits to its **observer**. It is
+  the full set and the engine's only audit seam. An observation carries its payload (`input`, `output`,
+  `context`, `stderr`), because persistence writes those to blobs. Three of them (`step-stderr`,
+  `step-usage`, `context-changed`) exist for persistence alone and are never narrated. The engine masks
+  every observation for secrets before it crosses the seam. The engine masks at one emit point. Thus
+  masking is not something an observer or a wrapper can be partial about.
+- **Emitter** — the run-scoped producer of **observations**. The engine builds one per workflow-run
+  from the run's identity. It owns the shared envelope, so a call site declares only what a given
+  observation adds. It holds `run_id` and `root_run_id` for the run tier. It pulls `node_id` and
+  `node_name` off the node for control-node observations. It computes the root-only run-started extras
+  (source-workflow identity, `resumed_from_root_run_id`) from the run's own identity. Thus the code
+  threads the `node_id` and `node_name` audit fields (ADR 0007) here, not at each site. A leaf step
+  takes a **step-scoped** sub-emitter. This sub-emitter mints the step run's own `run_id` once. It
+  carries that id across the step's `step-started`, then `step-usage` and `step-stderr`, then
+  `step-finished`. The emitter sits *above* the mask point (Observation): it composes the record, and
+  the single emit choke point masks it. One emitter, one envelope. Thus an identity-shape change lands
+  in one module, not in every observation literal.
+- **Log event** — a **narrated observation**. It is the append-only subset that reaches a **log
+  backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set
+  covers step lifecycle (`step-started`, `step-finished`) and control-node activity (`branch-taken`,
+  `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`, `loop-exited`,
+  `join-applied`, `run-cancelled`). The shared envelope has `seq` (monotonic per root run, the ordering
+  truth), `ts`, `type` (a flat discriminated union), `run_id`, and `node_id`. The projection is not
+  one-to-one. A workflow-run's own start and a leaf step's start are both `step-started` (invariant 2).
+  The two finishes are alike. One `checkpoint-evaluated` observation becomes `checkpoint-passed` or
+  `checkpoint-failed`. The log stream is the complete chronological narrative of a run tree. Run rows
+  remain the authoritative queryable step record.
+- **Trace** — the per-predicate evaluation record that condition-bearing log events carry. It is the
+  condition tree, annotated with each leaf's dot-path, its outcome (`true`, `false`, or `error` plus a
+  message), and the actual value read (post-masking).
+- **Log backend** — a dumb sink that implements `open`, `write`, and `close`. The engine instantiates
+  one per root run. The engine serializes the writes. It delivers fully-formed, already-masked events.
+  Fan-out to multiple backends is engine-level configuration (the MVP default is a SQLite log table
+  plus a per-root-run NDJSON file, both on). A backend write failure fails the run.
+- **Env-sourced value** — a config value wrapped as `{"$env": "<NAME>"}`. It is sourced from the
+  environment. The engine reads it once at run start (`@path/schema` never reads it, because that
+  package owns only the shape and the walk). It composes with **Secret** by nesting:
+  `{"$secret": {"$env": "NAME"}}` is a value both sourced and masked. Resolution runs *before* the
+  masker collects, because masking is by value. A variable that is not set fails the run before its
+  first step. One failure names every unset variable. The check covers every config object of the whole
+  loaded tree, so a declaration that a parent's config shadows still counts. An empty variable is a set
+  one.
+- **Secret** — a config value wrapped as `{"$secret": ...}`. Secrecy rides the value through
+  shallow-merge inheritance. The engine scrubs every secret value from all persisted artifacts (log
+  events, input and output objects, `context.json`, the error that a failed `step-finished` carries,
+  stderr, condition **trace** values) at the persistence boundary. It replaces the value with
+  `[secret:<key>]`. A failed run records its error in the log stream alone; the run row carries the
+  status and no error. (The text can still reach `stderr.txt`, because a binary step's error is its
+  stderr tail.) That boundary is the engine's emit of an **observation**: one choke point that every
+  observation passes through, not a wrapper that a caller applies. Workers receive real values, because
+  masking is an audit-surface concern, not a dataflow restriction. What a finished run hands back to its
+  caller is scrubbed too; the CLI and the server both print it to a terminal that in CI is a retained
+  log. There is one exception, and it is the rule's point. A **succeeded** run's output is the product,
+  and an operator is owed the real answer. A failed or cancelled run has no output contract, so the
+  engine masks its returned output like its error. A thrown *bug* escapes masking entirely: the engine
+  re-throws it rather than swallow it into a failed run. This is a documented limit, not a hole to plug.
 
 ## Store
 
-- **Project directory** — the directory whose `.path/` subtree is the **store** for a run: `path.db` (the run rows and log events) plus per-run blobs under `runs/<root-run-id>/<run-id>/`. Chosen per command, not baked into a workflow. Default for `path run` is the workflow file's own directory (it runs one file, in place); `path run -C <dir>` and `path runs -C <dir>` override it, pointing the command at a `.path` store elsewhere. `-C` is **store-only**: it moves where `.path` lives and nothing else — the `workflow.json` positional still resolves against the real working directory, never re-rooted under `<dir>` (contrast `git -C`). A relocated store is how one central directory holds runs from many workflows; each root run records its **source-workflow identity** (Identity) — the producing workflow's id, name, and store-relative path — so a shared store segments its runs by workflow instead of listing anonymous run-ids.
+- **Project directory** — the directory whose `.path/` subtree is the **store** for a run. The store
+  holds `path.db` (the run rows and log events) plus per-run blobs under
+  `runs/<root-run-id>/<run-id>/`. You choose it per command; it is not baked into a workflow. The
+  default for `path run` is the workflow file's own directory (it runs one file, in place). `path run
+  -C <dir>` and `path runs -C <dir>` override the default; they point the command at a `.path` store
+  elsewhere. `-C` is **store-only**: it moves where `.path` lives and nothing else. The `workflow.json`
+  positional still resolves against the real working directory; it is never re-rooted under `<dir>`
+  (contrast `git -C`). A relocated store is how one central directory holds runs from many workflows.
+  Each root run records its **source-workflow identity** (Identity): the producing workflow's id, name,
+  and store-relative path. Thus a shared store segments its runs by workflow instead of a list of
+  anonymous run-ids.
 
 ## Discovery
 
-- **Root workflow (file)** — a discovered `*.workflow.json` that no *other* discovered workflow
-  references as a nested `workflow` step. The distinction is **referential**, not about validity or
-  launchability: a **nested-ref file** (one reachable from another via `ref`) is an equally
-  complete, schema-valid workflow, launchable on its own with the right input and config
-  (workflow-as-step). "Root" here names a file's position in the discovered ref graph — distinct
-  from a **root run** (an execution's top run) and from the implicit **root step**. Workflow
-  discovery lists *both* kinds, flagging each as root or nested; it reports existence, validity, and
-  root-ness, and promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6).
+- **Root workflow (file)** — a discovered `*.workflow.json` that no *other* discovered workflow refs as
+  a nested `workflow` step. The distinction is **referential**. It is not about validity or
+  launchability. A **nested-ref file** (one reachable from another via `ref`) is an equally complete,
+  schema-valid workflow. It is launchable on its own with the right input and config
+  (workflow-as-step). "Root" here names a file's position in the discovered ref graph. It is distinct
+  from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery
+  lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
+  promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6).
 
 ## Resume
 
-- **Root run** — a run tree's own top run: the run of the workflow's implicit root step (Composition, "Workflow"), the one with no parent run id. Its id is what `.path/runs/<root-run-id>/` and a log event's per-root `seq` (Audit, "Log event") key off.
-- **Successor run** — a resumed tree's own root run: a fresh root run id, distinct from the tree it resumed. The predecessor tree becomes permanent and read-only the instant a successor starts — never mutated, appended to, or reopened. Whatever the successor needs from the predecessor (a reused node's output, a restored context, usage/cost figures) is read once at the point of reuse and referenced going forward, never copied.
-- **Resumed-from** — a successor run's own record of which root run it was resumed from: always the *immediate* predecessor, one hop, regardless of how far back the data it actually reuses lives.
-- **Reuse-marker** — a log event on a successor run's stream naming, for one reused node, the original run holding that node's real data: direct-to-source, skipping any predecessor tree that never held that node. Keeps every reuse-marker a single, always-true hop, independent of how long the resumed-from chain runs.
-- **Reuse row** — the run row a successor tree writes for a reused node (#257): a real `succeeded` row, so the node appears in the **run tree** (`path runs`, the viewer) and a chained resume can reuse it straight from `runs` — but owning no execution of its own. It carries `reused_from_run_id`, the source run whose recorded output it reuses **direct-to-source** (never the immediate predecessor, ADR 0001), and no worker, usage, or cost (the spend lives under the source, never double-counted). Its input/output blobs live under the source too; the archive resolves the row's I/O refs to the source's on read — `reused_from_root_run_id` names the source's tree, both refs synthesized to address its blobs — so a reuse row reads as one that *has* input/output rather than one with none. A source tree since `rm`'d resolves both to null, the data being genuinely gone. The **Reuse-marker** log event still fires alongside it and stays the record the cost SUM (§5.7) and the `rm` guard read: the row is additive, not a replacement for the marker.
-- **Live (tree)** — a root run whose rows still exist in `runs` (i.e. not yet removed by `path runs rm`/`prune`), regardless of its own status. A **succeeded** successor is still live: its reuse-marker and the §5.7 cost-SUM traversal keep reaching into the original tree for as long as the successor tree itself exists, not just while the successor is running. Liveness is what `path runs rm`'s block-by-default check tests for (resume-run-identity.md).
+- **Root run** — a run tree's own top run. It is the run of the workflow's implicit root step
+  (Composition, "Workflow"), the one with no parent run id. Its id is what `.path/runs/<root-run-id>/`
+  and a log event's per-root `seq` (Audit, "Log event") key off.
+- **Successor run** — a resumed tree's own root run. It has a fresh root run id, distinct from the tree
+  it resumed. The predecessor tree becomes permanent and read-only the instant a successor starts. The
+  engine never mutates, appends to, or reopens it. Whatever the successor needs from the predecessor (a
+  reused node's output, a restored context, usage or cost figures) is read once at the point of reuse
+  and referenced from then on. It is never copied.
+- **Resumed-from** — a successor run's own record of which root run it resumed from. It is always the
+  *immediate* predecessor, one hop. This holds regardless of how far back the data it actually reuses
+  lives.
+- **Reuse-marker** — a log event on a successor run's stream. For one reused node, it names the original
+  run that holds that node's real data. It is direct-to-source: it skips any predecessor tree that never
+  held that node. Thus every reuse-marker is a single, always-true hop, independent of how long the
+  resumed-from chain runs.
+- **Reuse row** — the run row that a successor tree writes for a reused node (#257). It is a real
+  `succeeded` row, so the node appears in the **run tree** (`path runs`, the viewer). A chained resume
+  can reuse it straight from `runs`. But it owns no execution of its own. It carries
+  `reused_from_run_id`, the source run whose recorded output it reuses **direct-to-source** (never the
+  immediate predecessor, ADR 0001). It has no worker, usage, or cost; the spend lives under the source
+  and is never double-counted. Its input and output blobs live under the source too. The archive
+  resolves the row's I/O refs to the source's on read. `reused_from_root_run_id` names the source's
+  tree, and it synthesizes both refs to address the source's blobs. Thus a reuse row reads as one that
+  *has* input and output, not one with none. If the source tree was since `rm`'d, the archive resolves
+  both to null, because the data is genuinely gone. The **Reuse-marker** log event still fires alongside
+  the row. It stays the record that the cost SUM (§5.7) and the `rm` guard read. The row is additive,
+  not a replacement for the marker.
+- **Live (tree)** — a root run whose rows still exist in `runs` (that is, `path runs rm` or `prune` has
+  not yet removed them), regardless of its own status. A **succeeded** successor is still live. Its
+  reuse-marker and the §5.7 cost-SUM traversal keep reaching into the original tree for as long as the
+  successor tree itself exists, not just while the successor runs. Liveness is what the block-by-default
+  check of `path runs rm` tests for (resume-run-identity.md).
