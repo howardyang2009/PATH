@@ -4,3 +4,4 @@ dist/
 .path/
 *.tsbuildinfo
 *.workflow.json.editing
+.pnpm-store/
