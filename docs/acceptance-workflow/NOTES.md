@@ -1,11 +1,11 @@
 # Acceptance workflow: repo release-notes pipeline
 
-Resolves wayfinder ticket #9. This is the concrete LLM/agent pipeline the PATH MVP must run
-end-to-end on macOS — the acceptance case every spec decision is tested against.
+Resolves wayfinder ticket #9. This is the concrete LLM/agent pipeline the PATH MVP must run end-to-end
+on macOS, the acceptance case every spec decision is tested against.
 
-The JSON files are written in the real **format v0** defined by ticket #10 — see
-[docs/format/workflow-format-v0.md](../format/workflow-format-v0.md). Binding here are both the
-pipeline itself and, now, the format it is expressed in.
+The JSON files are written in the real **format v0** defined by ticket #10. See
+[docs/format/workflow-format-v0.md](../format/workflow-format-v0.md). Binding here are both the pipeline
+itself and, now, the format it is expressed in.
 
 ## The pipeline
 
@@ -13,11 +13,11 @@ Given a local git repo and a commit range, produce `RELEASE_NOTES.md`:
 
 1. `gather-changes` (binary, local engine) — `git log --stat` over the range
 2. checkpoint `have-changes` — fail fast on an empty range
-3. parallel + collect — `summarize-features` ∥ `summarize-fixes` (LLM)
+3. parallel plus collect — `summarize-features` alongside `summarize-fixes` (LLM)
 4. `draft-notes` (LLM) — write the draft from the collected summaries
-5. `judge-draft` (LLM) → checkpoint `verdict-wellformed` — the judge-step pattern
-6. while-do `revise-loop` (max `config.max_revisions`) — nested workflow `revise-cycle`
-   (revise → judge → checkpoint), exchanging `{draft, feedback}` / `{draft, verdict}` through
+5. `judge-draft` (LLM), then checkpoint `verdict-wellformed` — the judge-step pattern
+6. while-do `revise-loop` (max `config.max_revisions`) — the nested workflow `revise-cycle` (revise,
+   then judge, then checkpoint), which exchanges `{draft, feedback}` and `{draft, verdict}` through
    input/output objects only
 7. branch `pick-format` on `verdict.suggested_format` — short vs long formatting (LLM)
 8. `write-file` (binary, local engine) — write the final notes to disk
@@ -42,35 +42,34 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 | Worker inheritance + override | workflow default = LLM (agent-sdk); binary steps override to local engine |
 | Agent SDK worker, parallel fan-out | two concurrent LLM sessions in the parallel block (within the default cap of 4) |
 
-Deliberately absent from *this* pipeline: wait-one join, API/MCP/skill step types, config paths in
-conditions, templates/inheritance mechanics. The **`do-not-wait` join** is no longer among them: it
+Deliberately absent from *this* pipeline: the wait-one join, API/MCP/skill step types, config paths in
+conditions, and templates/inheritance mechanics. The **`do-not-wait` join** is no longer among them: it
 shipped (register #109, spec [do-not-wait-join.md](../spec/do-not-wait-join.md)) and has its own
-**synthetic** acceptance case — a block that fires a fire-and-forget side-effect branch and moves on
-— in [do-not-wait-probe.workflow.json](./do-not-wait-probe.workflow.json), driven by
+**synthetic** acceptance case, a block that fires a fire-and-forget side-effect branch and moves on, in
+[do-not-wait-probe.workflow.json](./do-not-wait-probe.workflow.json), driven by
 `packages/engine/test/acceptance/do-not-wait.test.ts` and documented in
 [do-not-wait-probe.NOTES.md](./do-not-wait-probe.NOTES.md). It is synthetic because no motivating
-workflow exists yet (spec §1), the same way this file marks `valid-json` absent-not-deferred below;
-the release-notes pipeline has no honest home for a detached branch.
+workflow exists yet (spec §1), the same way this file marks `valid-json` absent-not-deferred below. The
+release-notes pipeline has no honest home for a detached branch.
 
-Also absent, and not deferred — **`valid-json`**. The map claimed it until #26's acceptance run
-went looking for the node that exercised it and found none. It has no honest home in this
-pipeline: `valid-json` requires a *string* value, and the only JSON-shaped thing here is
-`context.verdict`, which `judge-draft` already declares `parse: "json"` on — so by the time a
-condition could read it, it is a parsed object and the predicate would evaluate to `error`. The
-parse itself is what fails the step on malformed judge output, which makes a separate predicate
-redundant rather than missing. Exercising `valid-json` needs a pipeline that carries unparsed JSON
-in context; this one deliberately does not.
+Also absent, and not deferred: **`valid-json`**. The map claimed it until #26's acceptance run went
+looking for the node that exercised it and found none. It has no honest home in this pipeline.
+`valid-json` requires a *string* value, and the only JSON-shaped thing here is `context.verdict`, which
+`judge-draft` already declares `parse: "json"` on. So by the time a condition could read it, it is a
+parsed object and the predicate would evaluate to `error`. The parse itself is what fails the step on
+malformed judge output, which makes a separate predicate redundant rather than missing. To exercise
+`valid-json` needs a pipeline that carries unparsed JSON in context; this one deliberately does not.
 
 ## Questions this pipeline raised
 
-The format needs surfaced by the original sketch were settled by #10 (interpolation syntax and
-scope, uniform `input` maps, `publish` maps, `parse: "json"`, binary stdin/stdout convention —
-see the format doc). Still open, owned by #11 (engine execution semantics):
+The format needs surfaced by the original sketch were settled by #10 (interpolation syntax and scope,
+uniform `input` maps, `publish` maps, `parse: "json"`, binary stdin/stdout convention; see the format
+doc). Still open, owned by #11 (engine execution semantics):
 
-- **Branch-arm matching** — the pipeline assumes ordered arms, first-match-wins,
-  no-match → run fails.
-- **Collect-join output shape** — what the merged output object of a parallel block looks like as
-  the next step's input.
-- **While-do condition timing** — the pipeline needs check-before-each-iteration against current
-  context (a do-while would never run `revise-cycle` when the first draft passes).
+- **Branch-arm matching** — the pipeline assumes ordered arms, first-match-wins, and no-match fails the
+  run.
+- **Collect-join output shape** — what the merged output object of a parallel block looks like as the
+  next step's input.
+- **While-do condition timing** — the pipeline needs check-before-each-iteration against current context
+  (a do-while would never run `revise-cycle` when the first draft passes).
 - **When `publish` writes land** in context relative to parallel siblings.
