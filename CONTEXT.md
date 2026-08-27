@@ -43,12 +43,16 @@ and issues use them exactly.
 
 ## Step-type plugins
 
-- **Step-type plugin** — a `./step-plugins/<name>/` folder that contributes one new **leaf step** type
-  (its config/payload fields) bundled with an in-process TypeScript executor. The folder name *is* the
+- **Step-type plugin** — a folder under `packages/engine/step-plugins/` that contributes one new **leaf
+  step** type: its own extra fields, bundled with the type's named **workers**. The folder name *is* the
   type name: an `api-call` plugin makes `api-call` a first-class leaf step type, peer to `binary` and
-  `prompt`. The engine discovers and registers plugins before it validates a workflow, so a built-in and
-  a plugin type are indistinguishable to a workflow author. Control constructs (parallel, branch,
-  while-do, sequence, checkpoint) stay engine-owned and are never plugin-contributed (map #308).
+  `prompt`. The folder states the type name nowhere else, so it cannot disagree with itself. The engine
+  discovers and registers plugins before it validates a workflow, so a built-in and a plugin type are
+  indistinguishable to a workflow author — `binary` and `prompt` are themselves plugin folders, not a
+  privileged kind beside them. One directory holds every plugin, which is why no plugin can shadow
+  another and no precedence order exists. Control constructs (parallel, branch, while-do, sequence,
+  checkpoint) stay engine-owned and are never plugin-contributed: their names are **reserved**, and a
+  folder claiming one is refused (map #308, ADR 0019).
 - **Step-plugin registry** — the set of loaded step-type plugins, injected as data into schema
   validation before any workflow parses. The engine builds it (it owns plugin discovery); `@path/schema`
   only receives it, so the schema package stays a pure function of its inputs with no filesystem access.
@@ -57,8 +61,10 @@ and issues use them exactly.
   `publish?`), the `worker` selector typed to that type's own worker names, the discriminant, and
   strictness, so a plugin cannot declare those wrong. A workflow that names a type the registry does
   not hold fails to load with a legible error that names the type, the same stance as an unset
-  `$env` variable. The empty
-  registry reproduces the built-in-only grammar exactly.
+  `$env` variable. The registry holds *every* leaf step type there is — `binary` and `prompt` included,
+  since they are plugin folders like any other — so the set of valid step types is a fact about what is
+  installed, not about the schema. `@path/schema` reproduces exactly the grammar its registry describes,
+  and an empty one describes no leaf steps at all.
 
 ## Composition
 
