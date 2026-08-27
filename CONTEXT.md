@@ -9,7 +9,13 @@ and issues use them exactly.
   step declares *what* to do (its type and payload). It does not declare *who* does it.
 - **Worker** — *who* runs a step and *where*. It is the binding to an execution capability, for
   example the local engine or an LLM subagent. You declare a worker per step. When you do not, the
-  step inherits the worker from the enclosing workflow.
+  step inherits the worker from the enclosing workflow. A worker's `run` is in-process TypeScript
+  loaded into the engine, so a worker is **author-trusted code** at the level of PATH's own source: it
+  holds every **Secret** of the run and not only its own step's, and to add one is to edit the engine
+  (ADR 0020). Two rules follow from that trust, and review is what enforces them. A worker reports
+  diagnostics by *returning* `stderr`, never by writing to a process stream. And it reads the
+  environment only through a resolved **Env-sourced value**, never `process.env` directly, because that
+  is the door an operator's config is checked at (ADR 0012).
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
   There is no separate "workflow execution" concept.
@@ -252,8 +258,14 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   caller is scrubbed too; the CLI and the server both print it to a terminal that in CI is a retained
   log. There is one exception, and it is the rule's point. A **succeeded** run's output is the product,
   and an operator is owed the real answer. A failed or cancelled run has no output contract, so the
-  engine masks its returned output like its error. A thrown *bug* escapes masking entirely: the engine
-  re-throws it rather than swallow it into a failed run. This is a documented limit, not a hole to plug.
+  engine masks its returned output like its error. A thrown *bug* escapes the *failed-run contract*: the
+  engine re-throws it rather than swallow it into a failed run. It no longer escapes the masker, which
+  scrubs the message on the way out (ADR 0020). Two limits remain, and they are limits, not holes to
+  plug. A worker that **mints** a new secret at runtime — an access token exchanged for a `$secret`
+  client secret — holds a value the masker never collected, the same class as a transformed secret. And
+  a **Worker** is in-process, so whatever it writes to a process stream bypasses the choke point
+  entirely; the sanctioned channel is the `stderr` it returns, which becomes an observation like any
+  other.
 
 ## Store
 
