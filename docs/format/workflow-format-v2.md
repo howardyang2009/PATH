@@ -33,6 +33,13 @@ records the trade this change makes and the alternatives weighed. This document 
 - Every file declares `"format": "path/workflow@2"`. This is identity and version in one required
   string, **exact-match validated**. An engine that does not speak the declared version **fails at
   load**.
+- **The declared version does not track the set of step types.** `format` fixes the *grammar shape* —
+  the container rules, the envelope, the common step fields — and it keys the codemod chain (§11). The
+  set of valid **leaf step types** is a fact about the **step-plugin registry** the engine loaded, not
+  about the format (§4). A file that uses a plugin-contributed step type is a `@2` file and stays one:
+  a plugin type needs no codemod, because there is no earlier *shape* to lift such a file from. The
+  thing it lacks on a given machine is a plugin folder, and the fix is to add one, not to run a script.
+  (#315.)
 - Validation is **strict**: unknown fields anywhere are rejected.
 - **`@1` and `@0` files are rejected at load** with a targeted message that names the codemod, per the
   ADR 0007 precedent. It is never a generic zod "invalid literal" on `format`:
@@ -130,9 +137,24 @@ Three step types, four logicers, and `checkpoint`. The logicer list grows from t
 `sequence`). `checkpoint` stays beside the logicers, not inside them. No "special node" or "control
 node" taxonomy term is introduced. The taxonomy is otherwise unchanged from `@1`.
 
-Step-type-specific fields sit **directly on the node** (no `payload` wrapper). Future step types must
-choose field names that do not collide with engine-owned fields (`type`, `id`, `name`, `worker`,
-`config`, `input`, `parse`, `publish`).
+**The union has a closed half and an open half.** Six `type` values are **engine-owned and reserved**:
+`workflow`, `parallel`, `branch`, `while-do`, `sequence`, and `checkpoint`. They are the constructs the
+walker evaluates itself, they hold no worker and no run (CONTEXT invariant 1), and nothing can
+contribute or replace them. Every *other* `type` value is a **leaf step type**, and that set is **open**:
+it is exactly what the **step-plugin registry** holds, one entry per folder under
+`packages/engine/step-plugins/`. `prompt` and `binary` appear in the table above because PATH ships
+them, not because the format names them — they are plugin folders like any other
+([ADR 0019](../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md)). A file is
+therefore valid **against a registry**, never in the abstract; the same bytes load in a tree that holds
+the plugin and fail in one that does not, both correctly. There is no `requires` block: the `type`
+values in `body` *are* the file's dependency list, and a reader derives it with the walk it already has
+(#315).
+
+Step-type-specific fields sit **directly on the node** (no `payload` wrapper). A leaf step type's fields
+cannot collide with the engine-owned ones (`type`, `id`, `name`, `worker`, `config`, `input`, `parse`,
+`publish`): a plugin declares only its *extra*-field fragment and the schema layer composes the
+envelope, rejecting a collision loudly at registry freeze
+([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md) sub-decision 4).
 
 ### 4.1 Common step fields
 
@@ -526,6 +548,10 @@ by the build map, not this script. A `*.workflow.json` codemod does not size tha
   triggers.
 - **`checkpoint` failure semantics** (an early-return or graceful-stop terminal state). A different
   door.
+- **Everything about a step-type plugin except the two sentences §1 and §4 add.** How the registry is
+  built and frozen is ADR 0018; where a plugin lives and what it consists of is ADR 0019; how discovery
+  reports a file whose plugin is absent is [server-api-v0.md §6](../api/server-api-v0.md); a plugin's
+  own version is #324. This document fixes only that `format` does not move when the type set does.
 
 ## 13. Authoring & navigation
 
