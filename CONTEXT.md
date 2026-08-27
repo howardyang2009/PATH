@@ -41,6 +41,23 @@ and issues use them exactly.
   `runs` table is one flat row shape across all four kinds. `runKind` names the distinction. Scattered
   null-checks (`parentRunId === null`, `reusedFromRunId !== null`) used to re-derive it at each reader.
 
+## Step-type plugins
+
+- **Step-type plugin** — a `./step-plugins/<name>/` folder that contributes one new **leaf step** type
+  (its config/payload fields) bundled with an in-process TypeScript executor. The folder name *is* the
+  type name: an `api-call` plugin makes `api-call` a first-class leaf step type, peer to `binary` and
+  `prompt`. The engine discovers and registers plugins before it validates a workflow, so a built-in and
+  a plugin type are indistinguishable to a workflow author. Control constructs (parallel, branch,
+  while-do, sequence, checkpoint) stay engine-owned and are never plugin-contributed (map #308).
+- **Step-plugin registry** — the set of loaded step-type plugins, injected as data into schema
+  validation before any workflow parses. The engine builds it (it owns plugin discovery); `@path/schema`
+  only receives it, so the schema package stays a pure function of its inputs with no filesystem access.
+  Each entry contributes only its *extra* fields; the schema layer adds the shared step envelope (`id`,
+  `name`, `worker?`, `config?`, `input?`, `parse?`, `publish?`), the discriminant, and strictness, so a
+  plugin cannot declare those wrong. A workflow that names a type the registry does not hold fails to
+  load with a legible error that names the type, the same stance as an unset `$env` variable. The empty
+  registry reproduces the built-in-only grammar exactly.
+
 ## Composition
 
 - **Workflow body** — an ordered sequence of **nodes**. A node is a step, a parallel block, a branch
