@@ -7,15 +7,24 @@ and issues use them exactly.
 
 - **Step** — the unit of work in a workflow. It has exactly one input object and one output object. A
   step declares *what* to do (its type and payload). It does not declare *who* does it.
-- **Worker** — *who* runs a step and *where*. It is the binding to an execution capability, for
-  example the local engine or an LLM subagent. You declare a worker per step. When you do not, the
-  step inherits the worker from the enclosing workflow. A worker's `run` is in-process TypeScript
-  loaded into the engine, so a worker is **author-trusted code** at the level of PATH's own source: it
+- **Worker** — *how* a step's type produces its output: a named `run` method, one of the set its step
+  type ships. A Worker is no longer a venue (`engine`, `llm` are gone) — it is the method itself, so
+  `Task = Step + Worker` reads literally. A step type ships one or more workers, all reaching the same
+  result by a different route (a local method, a library, a remote service); "same result" is an
+  author-trust contract, not an enforced check. The pair `(type, name)` is a worker's identity, so a
+  name is unique only inside its type. You select a worker per step by **name** (`"worker": "sdk"`);
+  when you do not, the step uses its type's **default worker**. There is no worker inheritance: a
+  type-scoped name is meaningless across types, so shared data like `model` travels through config
+  instead. A worker's `run` is in-process TypeScript loaded into the engine, so a worker is
+  **author-trusted code** at the level of PATH's own source: it
   holds every **Secret** of the run and not only its own step's, and to add one is to edit the engine
   (ADR 0020). Two rules follow from that trust, and review is what enforces them. A worker reports
   diagnostics by *returning* `stderr`, never by writing to a process stream. And it reads the
   environment only through a resolved **Env-sourced value**, never `process.env` directly, because that
   is the door an operator's config is checked at (ADR 0012).
+- **Default worker** — the worker a step of a given type uses when it names none. Each step type
+  declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use it and write no `worker`
+  field. It is a required key on the type, not a reserved worker name.
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
   There is no separate "workflow execution" concept.
@@ -42,8 +51,10 @@ and issues use them exactly.
   tree. They do not read two hand-rolled trees.
 - **Run kind** — which of four shapes a run row is. `@path/schema` classifies it in one place
   (`runKind`, with `isRootRun` and `isReuseRow`). A **root run** has no parent run id. A **nested
-  workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is a `binary` or
-  `prompt` run; it is the only kind bound to a worker. A **reuse row** is part of Resume (below). The
+  workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is the run of any
+  leaf step type — `binary`, `prompt`, or any plugin folder; it is the only kind bound to a worker.
+  `binary` and `prompt` are two such folders, not a privileged pair. A **reuse row** is part of Resume
+  (below). The
   `runs` table is one flat row shape across all four kinds. `runKind` names the distinction. Scattered
   null-checks (`parentRunId === null`, `reusedFromRunId !== null`) used to re-derive it at each reader.
 
@@ -159,14 +170,15 @@ and issues use them exactly.
 3. One step has exactly one input object and one output object.
 4. Config flows in from outside (author or operator). Context is written from inside (steps at
    runtime).
-5. A step inherits worker and config downward from the enclosing workflow, unless the step overrides
-   them.
+5. A step inherits config downward from the enclosing workflow, unless the step overrides it. Worker
+   does **not** inherit: a worker name is type-scoped, so a step selects its own by name or takes its
+   type's default (#309).
 
 ## Relationships
 
 ```
 Workflow ──body──> sequence of Nodes (Step | Parallel | Branch | While-do | Sequence | Checkpoint)
-Step ("what") + Worker ("who") = Task
+Step ("what") + Worker ("how", a named run method) = Task
 Task ──executing instance──> Run  (on a Processor = live Worker instance)
 Workflow-as-step: a workflow-step's run spawns child runs → run tree
 Config ──injected into──> Run (per step, inheritable)
