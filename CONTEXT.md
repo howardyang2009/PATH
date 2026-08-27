@@ -52,7 +52,13 @@ and issues use them exactly.
   privileged kind beside them. One directory holds every plugin, which is why no plugin can shadow
   another and no precedence order exists. Control constructs (parallel, branch, while-do, sequence,
   checkpoint) stay engine-owned and are never plugin-contributed: their names are **reserved**, and a
-  folder claiming one is refused (map #308, ADR 0019).
+  folder claiming one is refused (map #308, ADR 0019). A workflow file that names a plugin type is
+  **portable within a fork lineage, not across forks**: PATH's distribution is clone-or-fork, so the
+  plugin a file needs lives in the reader's own PATH tree. A plugin type is therefore the second thing
+  that is brittle across machines, beside the **relative-path** of source-workflow identity (Identity).
+  The file's **id** stays portable; only its loadability was ever environment-relative. A file declares
+  no dependency block — the `type` values in its body *are* its dependency list — and it can pin no
+  plugin version: a version is **observable, never requirable** (#315, #324).
 - **Step-plugin registry** — the set of loaded step-type plugins, injected as data into schema
   validation before any workflow parses. The engine builds it (it owns plugin discovery); `@path/schema`
   only receives it, so the schema package stays a pure function of its inputs with no filesystem access.
@@ -64,7 +70,11 @@ and issues use them exactly.
   `$env` variable. The registry holds *every* leaf step type there is — `binary` and `prompt` included,
   since they are plugin folders like any other — so the set of valid step types is a fact about what is
   installed, not about the schema. `@path/schema` reproduces exactly the grammar its registry describes,
-  and an empty one describes no leaf steps at all.
+  and an empty one describes no leaf steps at all. Thus **validity is registry-relative**. A workflow
+  file is valid *against a registry*, never in the abstract: the same bytes load where the plugin is
+  present and fail where it is absent, and both verdicts are correct. There is no registry-free notion
+  of a valid workflow file, which is why a consumer that cannot scan the folder — a browser design
+  surface, say — **receives** a registry as data rather than assuming one (#315).
 
 ## Composition
 
@@ -268,7 +278,10 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   (workflow-as-step). "Root" here names a file's position in the discovered ref graph. It is distinct
   from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery
   lists *both* kinds and flags each as root or nested. It reports existence, validity, and root-ness. It
-  promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6).
+  promises nothing about standalone launch-readiness (ADR 0011, server-api-v0.md §6). The validity it
+  reports is **registry-relative** (Step-type plugins): a file naming a step type this tree holds no
+  plugin for is reported **invalid**, not valid-but-unlaunchable, because it is invalid against the only
+  registry this tree has (#315).
 
 ## Resume
 

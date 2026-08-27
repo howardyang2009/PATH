@@ -12,6 +12,12 @@ dispatch). Informed by [step-plugin-prior-art.md](../research/step-plugin-prior-
 amendments are stated in full below, under "What this amends". No code implements ADR 0018 or #313 yet,
 so these are in-place corrections rather than superseding records.
 
+**Built on** by the [#315](https://github.com/howardyang2009/PATH/issues/315) resolution
+(workflow-file portability and format versioning), which draws the consequences of sub-decisions 9, 16
+and 17 out to the file format, discovery, and a pure consumer. Nothing here is amended by it;
+sub-decisions 16 and 17 below carry its consequences inline, and the Consequences section records what
+it settled.
+
 ADR 0018 fixed *how* a plugin's schema reaches the parser — the engine builds a registry and injects it
 into a pure factory — and named `loadWorkflowTree` as the function that owns the freeze point. #313
 fixed *what* a registry entry holds: `{fields, workers, defaultWorker}`. Neither said where a plugin
@@ -191,6 +197,14 @@ in this design.
     that fails only on reference — buys a smaller blast radius for a deferred error path, and was
     declined for the same reason PATH fails loudly at load everywhere else.
 
+    **Consequence drawn out by #315.** This blast radius reaches `GET /v0/workflows`, which calls
+    `loadWorkflowTree` once per discovered file. One broken plugin folder therefore makes **every entry
+    in the discovery list** read `valid: false`, files that never name the plugin included. Each entry's
+    `error` still names the folder and the reason, so the list stays diagnosable, but the same message
+    repeats N times and no entry is classifiable (`is_root: null`). #315 accepted this rather than carve
+    a partial-success mode into the loader, which is the third registry state this sub-decision already
+    declined.
+
 ### Freshness
 
 17. **The registry is built per load, and a plugin is re-imported when its folder has changed.** Node's
@@ -214,6 +228,14 @@ in this design.
     construction per tree; N trees meaning N constructions is that same accepted cost. Memoizing by
     location is a pure optimization that changes nothing observable, and is deliberately left undecided
     here.
+
+    **Consequence drawn out by #315.** Because the registry is rebuilt per load, a consumer that
+    *receives* a registry rather than scanning for one — a browser design surface — holds a copy that can
+    go stale mid-session. #315 pinned that copy as a **bare snapshot with no staleness contract**: it is
+    not versioned, and no write is gated on it. `PUT /v0/workflows` keeps its ETag precondition on the
+    file's bytes (ADR 0016) and the server re-validates against its own live registry, so a stale
+    consumer's write fails as an ordinary schema error. That is the same stance as the in-flight property
+    above, one layer out (ADR 0018 sub-decision 3, as amended).
 
 ## What this amends
 
@@ -277,10 +299,22 @@ in this design.
   loosen it.
 - **PATH's distribution model is fixed as clone-or-fork** (sub-decision 9), and publishing
   `@path/engine` as a package would require revisiting the plugin location first.
-- **Plugin lifecycle and versioning stay open**, as #308 has them: a plugin's own version, its
-  engine-compat range, and two versions of one type. Sub-decision 1 fixes only that a version, when it
-  arrives, is a key in the entry module's export and never a second file.
-- **[#315](https://github.com/howardyang2009/PATH/issues/315) is unaffected in scope but better
-  informed.** Workflow-file portability now has a concrete answer to "where would the plugin have to
-  be" — in the reader's own PATH tree — which is what makes a plugin-typed workflow file non-portable
-  between forks in the first place.
+- **Plugin lifecycle and versioning stay open**, as #308 has them, but they are now bounded on one side.
+  Sub-decision 1 fixes that a version, when it arrives, is a key in the entry module's export and never a
+  second file. #315 adds the other bound: a plugin version is **observable, never requirable**. It may
+  appear in provenance, diagnostics, and error text; no workflow file, config value, or operator input
+  may pin or range over one, because #315 declined a `requires` block outright. Two versions of one type
+  therefore cannot coexist in a registry — one folder, one name, one version.
+  [#324](https://github.com/howardyang2009/PATH/issues/324) starts from "what is a version *for*, if
+  nothing can demand one", not from "should files pin versions", which is answered. This is the constraint the map's circular #315/#324 coupling called for
+  whichever ticket grilled first to hand over.
+- **[#315](https://github.com/howardyang2009/PATH/issues/315) is resolved on this ADR's foundation.**
+  Sub-decision 9's clone-or-fork distribution is what fixes the answer: a workflow file naming a plugin
+  type is **portable within a fork lineage, not across forks**, because the plugin it needs lives in the
+  reader's own PATH tree. #315 states that and adds no mechanism — no `requires` block (the `type` values
+  in `body` are the dependency list), no `format` bump (the registry owns the type set, `format` owns the
+  grammar shape), and no plugin data on source-workflow identity, which stays `{id, name, relative-path}`.
+  A plugin type simply joins `relative-path` as the second thing in PATH that is brittle across machines;
+  the file's `id` stays portable, and only its *loadability* was ever environment-relative. The record
+  lands in ADR 0018 sub-decisions 3 and 5, [workflow-format-v2.md](../format/workflow-format-v2.md)
+  §1/§4, [server-api-v0.md](../api/server-api-v0.md) §6, and CONTEXT.md.

@@ -393,10 +393,27 @@ Response `200 OK`:
 | `relative_path` | string | Path relative to the project root — the **exact string** a client feeds back as §2 `workflow_path` (same resolution). The launch handle. |
 | `id` | string \| null | The workflow's source-identity GUID (top-level `id`, ADR 0006). Best-effort shallow-parsed for an invalid file so the list stays human-legible; `null` when even the top-level parse fails. |
 | `name` | string \| null | The workflow's human `name` (same best-effort rule as `id`). |
-| `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. |
+| `valid` | boolean | `loadWorkflowTree(f).success` — a static load + schema/ref/cycle validate that never executes a step. It is **registry-relative**: a file naming a step type this tree holds no plugin for is `false`. |
 | `is_root` | boolean \| null | `true` unreferenced; `false` reachable as another discovered workflow's nested ref; `null` when `valid: false`. |
-| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle); `null` otherwise. |
+| `error` | object \| null | The shared error shape (§1) when `valid: false` (bad JSON, schema violation, missing ref, cycle, unknown step type, broken plugin folder); `null` otherwise. |
 
+- **A file whose step-type plugin is absent is `valid: false`, not valid-but-unlaunchable**
+  ([#315](https://github.com/howardyang2009/PATH/issues/315)). The set of valid leaf step types is a fact
+  about the **step-plugin registry** this tree loaded, not about the format
+  ([ADR 0019](../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md),
+  [workflow-format-v2.md](../format/workflow-format-v2.md) §4). So a file naming `api-call` where no
+  `api-call` plugin folder exists is invalid **against the only registry this server has**, and `valid`
+  reports exactly that. No `launchable` field is added: §6 has never reported launch-readiness (see the
+  bullet below and ADR 0011), and a valid-but-unlaunchable state would need the loader to gain a
+  partial-success mode — the third registry state ADR 0019 sub-decision 16 declined. The `error` names
+  every missing type in one message, plus the `packages/engine/step-plugins/<name>/` folder that would
+  supply it (ADR 0018 sub-decision 5, as amended), so one call tells a client the whole list of what this
+  tree lacks. Since a workflow file carries no `requires` block, that message *is* the dependency report.
+- **One broken plugin folder invalidates the whole list.** A candidate folder with no `index.ts`, a
+  throwing import, or a malformed export is a hard load failure for *every* workflow, including files
+  that never name it (ADR 0019 sub-decision 16). Because §6 calls `loadWorkflowTree` once per discovered
+  file, every entry then reads `valid: false, is_root: null` with the same folder-naming `error`. This is
+  legible but repetitive, and it is the accepted cost of PATH failing loudly at load.
 - **No input hint.** The format declares no input schema (the top-level `WorkflowFileSchema` carries
   `format`, `id`, `name`, `worker`, `config`, `body`, and `output`, no `input`). So an entry says
   nothing about what `input` a launch needs; the operator supplies it as raw JSON (#228). An inner
