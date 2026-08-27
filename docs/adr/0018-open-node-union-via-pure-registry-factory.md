@@ -6,6 +6,11 @@ resolving [#310](https://github.com/howardyang2009/PATH/issues/310). Informed by
 [step-plugin-prior-art.md](../research/step-plugin-prior-art.md) §7 (cross-engine shape). Does not
 re-open #308's locked decisions or the #309 keystone.
 
+**Amended** by the [#313](https://github.com/howardyang2009/PATH/issues/313) resolution (the executor
+seam and dispatch), which pinned the registry entry's full shape. Sub-decisions 3, 4 and 6 below carry
+the amendment inline; nothing here is superseded. No code implements this ADR yet, so the amendment is an
+in-place correction rather than a superseding record.
+
 `NodeSchema` is a **closed** `z.discriminatedUnion("type", [...])`
 ([`packages/schema/src/nodes.ts:129`](../../packages/schema/src/nodes.ts)), validated inside `@path/schema`
 — a **pure** package with zero runtime deps but zod — before the engine runs a workflow
@@ -44,13 +49,27 @@ The seven pinned sub-decisions:
    registry reproduces today's built-in-only grammar exactly**, so nothing downstream changes until a plugin
    drops in. No `fs`, `glob`, or import-time side effect ever enters `@path/schema`.
 
+   **Amended (#313).** A registry entry is not a bare `ZodRawShape`. It is
+   `{fields, workers, defaultWorker}`: the extra-field fragment, the type's named workers, and which
+   worker is the default. `@path/schema` reads `fields` and the worker **names**; the workers' `run`
+   methods are data it never calls, so the package's purity is unchanged. One registry rather than a
+   schema one beside a dispatch one is what stops a type validating at load and finding no worker at
+   dispatch.
+
 4. **A plugin declares only its extra-field fragment; the schema layer composes the envelope.** A registry
    entry contributes a `ZodRawShape` of its *extra* fields only (e.g. `{ url, method }`). The factory adds
-   `type: z.literal(<registry key>)`, spreads the shared `commonStepFields` (`id`, `name`, `worker?`,
+   `type: z.literal(<registry key>)`, spreads the shared `commonStepFields` (`id`, `name`,
    `config?`, `input?`, `parse?`, `publish?`), and applies `.strict()`. The three invariants — strictness
    present, common fields present, discriminant equal to the folder name — become **impossible for a plugin
    author to declare wrong**, because the package owns them, not each plugin. A fragment key colliding with a
    `commonStepFields` name is rejected loud at registry-freeze, naming the field.
+
+   **Amended (#313).** `worker` has left `commonStepFields`. Under the #309 keystone a worker is a
+   type-scoped **name**, so the factory builds `worker` **per member** as a `z.enum` of that type's
+   worker names, taken from the same registry entry. A workflow naming a worker the type does not have
+   then fails at load, with the valid names listed, from zod's own error. `parse` deliberately stays
+   shared: the registry knows the worker names statically, but it cannot know whether a given run's
+   result is a string, so there is no load-time check to move.
 
 5. **The no-plugin-loaded error names the offending type, via one custom `error` callback.** A workflow that
    references a type the registry does not hold fails to load. v3's default `invalid_union_discriminator`
@@ -69,6 +88,13 @@ The seven pinned sub-decisions:
    stable regardless of zod's phrasing. A shadow is rejected, never an override — the built-in always wins.
    (zod's own duplicate-value throw at construction, installed `zod/v3/types.js:2478-2481`, is the backstop,
    not the primary check.) Two plugin folders of one name collide earlier, in #314's discovery.
+
+   **Amended (#313).** The reserved-name set and the dispatch registry are two different sets, and the
+   ADR should not be read as making them one. The **reserved set** stays the eight built-in node type
+   names above, because a plugin named `while-do` must be rejected even though a control node never
+   holds a worker (CONTEXT invariant 1). The **dispatch registry** holds leaf step types only, seeded
+   with `binary` and `prompt` before the folder scan, so a plugin shadowing a seeded leaf type also
+   collides on an existing key. The reserved list is checked first, so the message stays PATH's own.
 
 7. **The factory produces the whole `WorkflowFileSchema`, and the schema is built once per registry
    freeze.** Because `NodeArraySchema` and `WorkflowFileSchema` transitively embed the union, the real
