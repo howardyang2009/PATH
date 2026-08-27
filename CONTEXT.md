@@ -187,10 +187,26 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 
 ## Data
 
+- **Type field** — a step type's own author-fixed datum, declared by the type and written on the node. It
+  is **operator-invariant**: the same for every operator and every run. It says *what the step does*
+  (`binary`'s `command` / `args` / `cwd`, `prompt`'s `prompt`, `api-call`'s `endpoint` / `method`). It is
+  interpolable (`${config.x}`, `${context.y}`) and author-written per step. It is the counterpart of
+  **Config** across the operator-invariance line: a datum fixed on the node is a field; a datum injected
+  from outside is config. A type declares its fields as a typed fragment, validated at **load**. A field
+  holds no `$env`/`$secret` wrapper (secret-bearing data enters only through config, **Secret**); it may
+  still interpolate `${config.token}`, masked by value. A type also declares a typed **Config** fragment
+  beside its fields (ADR 0022).
 - **Config** — key-value data injected into a run *from outside*. The workflow author or operator
-  supplies it at design or launch time (API tokens, model names, endpoints, flags). You declare it per
-  step. When you do not, the step inherits it from the enclosing workflow ("upper config inherited by
-  downside steps"). Config never comes from a step's execution.
+  supplies it at design or launch time (API tokens, model names, flags). It is the **operator-variable**
+  counterpart of a **Type field**: injected, inheritable, and operator-overridable, where a field is
+  author-fixed on the node. The sharp test is not "does the user type it at launch" but "is it injected
+  from outside": `model` is config because it is inheritable and operator-overridable, even though an
+  author writes it at the file top and no user supplies their own. You declare it per step. When you do
+  not, the step inherits it from the enclosing workflow ("upper config inherited by downside steps").
+  Config never comes from a step's execution. A step type declares the config keys it needs as a typed
+  **open** (passthrough) fragment, some keys required (a required key is a non-optional key, ADR 0021's
+  `prompt.model` the first case); the fragment is validated at **run-start** on the effective merged
+  config, after `$env`/`$secret` resolution, before the first step (ADR 0022).
 - **Operator config** — the subset of config that an *operator* supplies at launch to override authored
   values. Sources are the CLI `--config` and `--set`, and the `POST /v0/runs` `config` field. It is
   the opposite of config authored into a `workflow.json`. Its trust source is the launching operator,
