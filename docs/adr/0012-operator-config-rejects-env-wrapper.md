@@ -62,3 +62,10 @@ masks every secret value out of persisted artifacts at the observation seam (CON
 - server-api-spec.md §2 and server-api-v0.md §2 both carry the old "allow `$env`, argued not gated"
   wording and need an edit to match.
 - #228's map ("operator may override config — security fork to pin") records this as the pin.
+- **The boundary this ADR pre-committed to re-open has moved, and the channel is re-closed in
+  [ADR 0020](0020-plugin-masking-is-inherited-and-a-plugin-is-engine-trust.md) sub-decision 9.** Step
+  plugins (#308) make a worker's `run` in-process TypeScript, which can call `process.env` directly and
+  can declare a field that *names* a variable — routing around this value-layer check, because no
+  wrapper ever appears in the operator's config. The decision above is unchanged: the `$env` reject
+  stands. ADR 0020 adds the rule that keeps it true — the engine's `$env` resolution is a worker's only
+  env door — enforced by review of the PATH tree, since a plugin is engine code.
