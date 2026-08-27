@@ -52,10 +52,12 @@ and issues use them exactly.
 - **Step-plugin registry** — the set of loaded step-type plugins, injected as data into schema
   validation before any workflow parses. The engine builds it (it owns plugin discovery); `@path/schema`
   only receives it, so the schema package stays a pure function of its inputs with no filesystem access.
-  Each entry contributes only its *extra* fields; the schema layer adds the shared step envelope (`id`,
-  `name`, `worker?`, `config?`, `input?`, `parse?`, `publish?`), the discriminant, and strictness, so a
-  plugin cannot declare those wrong. A workflow that names a type the registry does not hold fails to
-  load with a legible error that names the type, the same stance as an unset `$env` variable. The empty
+  Each entry carries that type's *extra* fields, its named **workers**, and which worker is the default;
+  the schema layer adds the shared step envelope (`id`, `name`, `config?`, `input?`, `parse?`,
+  `publish?`), the `worker` selector typed to that type's own worker names, the discriminant, and
+  strictness, so a plugin cannot declare those wrong. A workflow that names a type the registry does
+  not hold fails to load with a legible error that names the type, the same stance as an unset
+  `$env` variable. The empty
   registry reproduces the built-in-only grammar exactly.
 
 ## Composition
