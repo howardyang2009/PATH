@@ -1,7 +1,10 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    "outDir": "dist"
+    "outDir": "dist",
+    // Disambiguate the project root so `@path/engine`'s own `exports` map resolves for the
+    // self-referential `@path/engine/plugin` import the plugin contract fixture makes (#333).
+    "rootDir": "."
   },
   "include": ["src", "test", "bin"]
 }
