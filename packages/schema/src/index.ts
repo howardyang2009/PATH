@@ -15,13 +15,24 @@ export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";
 export {
   WorkflowFileSchema,
+  makeWorkflowFileSchema,
   safeParseWorkflowFile,
+  safeParseWorkflowFileWith,
   parseWorkflowFile,
   type WorkflowFileParseSuccess,
   type WorkflowFileParseFailure,
 } from "./workflow-file.js";
 
-export { NodeSchema, NodeArraySchema } from "./nodes.js";
+export {
+  NodeSchema,
+  NodeArraySchema,
+  buildCoreMembers,
+  makeNodeSchema,
+  RESERVED_TYPE_NAMES,
+  type NodeRecursion,
+  type RegistryStepType,
+  type StepPluginRegistry,
+} from "./nodes.js";
 export type {
   WorkflowNode,
   PromptStep,
