@@ -4,23 +4,29 @@ import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { childBodies, walkNodes } from "./node-walk.js";
-import { NodeArraySchema } from "./nodes.js";
+import { makeNodeSchema, NodeArraySchema, type StepPluginRegistry } from "./nodes.js";
 import { STEP_ROOTS } from "./roots.js";
 import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
 
 export { FORMAT_VERSION };
 
-const BaseWorkflowFileSchema = z
-  .object({
-    format: z.literal(FORMAT_VERSION),
-    id: IdSchema,
-    name: NameSchema,
-    config: ConfigObjectSchema.optional(),
-    body: NodeArraySchema,
-    output: z.record(interpolatedJsonValue(STEP_ROOTS)).optional(),
-  })
-  .strict();
+// The file envelope, parameterised by its `body` schema so the same shape wraps both the closed
+// module union and a plugin factory's opened union. Everything except `body` is fixed grammar.
+function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
+  return z
+    .object({
+      format: z.literal(FORMAT_VERSION),
+      id: IdSchema,
+      name: NameSchema,
+      config: ConfigObjectSchema.optional(),
+      body: bodySchema,
+      output: z.record(interpolatedJsonValue(STEP_ROOTS)).optional(),
+    })
+    .strict();
+}
+
+const BaseWorkflowFileSchema = buildBaseWorkflowFileSchema(NodeArraySchema);
 
 interface NameOccurrence {
   name: string;
@@ -47,6 +53,16 @@ function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): Nam
   return found;
 }
 
+// The `publish` map of any node that carries one — the three built-in publishing step types and
+// every plugin leaf step (all draw `publish` from `commonStepFields`). Detected by presence, not a
+// built-in-type allowlist, so a plugin step's publishes fall under the same race / do-not-wait guards
+// once the open union admits them (ADR 0018). Control nodes never carry `publish`, so widening from
+// the allowlist to presence changes nothing for the closed union.
+function nodePublish(node: WorkflowNode): Record<string, unknown> | undefined {
+  const publish = (node as { publish?: unknown }).publish;
+  return publish !== null && typeof publish === "object" ? (publish as Record<string, unknown>) : undefined;
+}
+
 // Publish keys are static strings, so a race between sibling parallel branches writing the same
 // context key is detectable — and rejected — at load time (workflow-format-v0.md §10). Walks nested
 // control blocks but not into a `workflow` step's ref'd file: that file has its own isolated
@@ -54,8 +70,9 @@ function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): Nam
 function collectPublishKeys(nodes: WorkflowNode[]): string[] {
   const keys: string[] = [];
   for (const node of walkNodes(nodes)) {
-    if ((node.type === "prompt" || node.type === "binary" || node.type === "workflow") && node.publish) {
-      keys.push(...Object.keys(node.publish));
+    const publish = nodePublish(node);
+    if (publish) {
+      keys.push(...Object.keys(publish));
     }
   }
   return keys;
@@ -121,8 +138,9 @@ function findDoNotWaitPublishes(
   nodes.forEach((node, index) => {
     const nodePath = [...basePath, index];
 
-    if (insideDoNotWait && (node.type === "prompt" || node.type === "binary" || node.type === "workflow") && node.publish) {
-      for (const key of Object.keys(node.publish)) {
+    const publish = insideDoNotWait ? nodePublish(node) : undefined;
+    if (publish) {
+      for (const key of Object.keys(publish)) {
         violations.push({ key, path: [...nodePath, "publish", key] });
       }
     }
@@ -136,7 +154,11 @@ function findDoNotWaitPublishes(
   return violations;
 }
 
-export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchema.superRefine((file, ctx) => {
+// The cross-node invariants zod's per-field parse cannot express: file-unique names, no two
+// concurrent parallel branches publishing one key, and no publish inside a `do-not-wait` branch.
+// Shared by the closed `WorkflowFileSchema` and the plugin factory's schema, so both doors enforce
+// the same rules over their (respectively closed / open) node sets.
+function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx): void {
   const occurrences = collectNames(file.body, ["body"]);
   const byName = new Map<string, NameOccurrence[]>();
   for (const occurrence of occurrences) {
@@ -171,7 +193,23 @@ export const WorkflowFileSchema: z.ZodType<WorkflowFile> = BaseWorkflowFileSchem
       message: `publish "${violation.key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
     });
   }
-});
+}
+
+export const WorkflowFileSchema: z.ZodType<WorkflowFile> =
+  BaseWorkflowFileSchema.superRefine(checkWorkflowFileInvariants);
+
+/**
+ * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
+ * wrapping the open node union `makeNodeSchema(registry)` builds, plus the same cross-node invariants
+ * the closed schema enforces. The registry is required and has no default — a caller with no plugins
+ * still passes an empty registry, which describes a grammar with the six control members and no leaf
+ * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
+ */
+export function makeWorkflowFileSchema(registry: StepPluginRegistry): z.ZodType<WorkflowFile> {
+  const nodeSchema = makeNodeSchema(registry);
+  const bodySchema = z.array(nodeSchema).min(1) as unknown as z.ZodType<WorkflowNode[]>;
+  return buildBaseWorkflowFileSchema(bodySchema).superRefine(checkWorkflowFileInvariants) as z.ZodType<WorkflowFile>;
+}
 
 export interface WorkflowFileParseSuccess {
   success: true;
@@ -204,16 +242,32 @@ function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   };
 }
 
-export function safeParseWorkflowFile(
+// The superseded-format pre-check and the success/failure shaping both doors share: parse a file
+// against an already-built schema. `loadWorkflowTree` builds the schema once per registry freeze and
+// calls this per file in the ref tree (ADR 0018 sub-decision 7).
+export function safeParseWorkflowFileWith(
+  schema: z.ZodType<WorkflowFile>,
   json: unknown,
 ): WorkflowFileParseSuccess | WorkflowFileParseFailure {
   const superseded = supersededFormatError(json);
   if (superseded) return superseded;
-  const result = WorkflowFileSchema.safeParse(json);
+  const result = schema.safeParse(json);
   if (result.success) {
     return { success: true, data: result.data };
   }
   return { success: false, errors: formatIssues(result.error) };
+}
+
+// The single-file convenience door. With no `registry` it parses against the closed built-in union,
+// which keeps every existing caller green; the cutover (#7) makes the registry required and deletes
+// the closed schema. With a `registry` it builds the open schema and parses against it — the
+// build-then-parse path a one-off caller wants without holding the schema itself.
+export function safeParseWorkflowFile(
+  json: unknown,
+  registry?: StepPluginRegistry,
+): WorkflowFileParseSuccess | WorkflowFileParseFailure {
+  const schema = registry === undefined ? WorkflowFileSchema : makeWorkflowFileSchema(registry);
+  return safeParseWorkflowFileWith(schema, json);
 }
 
 export function parseWorkflowFile(json: unknown): WorkflowFile {
