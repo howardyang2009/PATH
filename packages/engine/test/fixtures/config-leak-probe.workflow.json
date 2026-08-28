@@ -14,7 +14,7 @@
       "args": [
         "-e",
         "process.stdout.write(String(process.argv[1]))",
-        "${config.llm.concurrency}"
+        "${config.processor.concurrency}"
       ],
       "publish": {
         "seen": "${output}"

@@ -57,7 +57,7 @@ const consoleIo: CliIo = {
 const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--llm-concurrency <n>]";
+  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
@@ -74,7 +74,7 @@ interface ParsedRunArgs {
   contextFile?: string;
   setContextPairs: [string, string][];
   logBackends?: LogBackendId[];
-  llmConcurrency?: number;
+  processorConcurrency?: number;
 }
 
 type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; error: string };
@@ -108,7 +108,7 @@ function parseRunArgs(argv: string[]): ParseResult {
   let contextFile: string | undefined;
   const setContextPairs: [string, string][] = [];
   let logBackends: LogBackendId[] | undefined;
-  let llmConcurrency: number | undefined;
+  let processorConcurrency: number | undefined;
 
   for (let i = 0; i < rest.length; i += 1) {
     const flag = rest[i];
@@ -145,11 +145,11 @@ function parseRunArgs(argv: string[]): ParseResult {
       if (!parsed.success) return parsed;
       logBackends = parsed.ids;
       i += 1;
-    } else if (flag === "--llm-concurrency") {
+    } else if (flag === "--processor-concurrency") {
       const value = rest[i + 1];
-      const parsed = parseLlmConcurrency(value);
+      const parsed = parseProcessorConcurrency(value);
       if (!parsed.success) return parsed;
-      llmConcurrency = parsed.value;
+      processorConcurrency = parsed.value;
       i += 1;
     } else {
       return { success: false, error: `unrecognized argument "${flag}"\n${RUN_USAGE}` };
@@ -169,7 +169,7 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   return {
     success: true,
-    args: { workflowPath, storeDir, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, llmConcurrency },
+    args: { workflowPath, storeDir, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
   };
 }
 
@@ -189,7 +189,7 @@ function takeValue(args: string[], i: number, flag: string, noun: string, usage:
 
 type PositiveIntResult = { success: true; value: number } | { success: false; error: string };
 
-// The one positive-integer flag check, shared by `--llm-concurrency`'s memory cap and `runs`'
+// The one positive-integer flag check, shared by `--processor-concurrency`'s memory cap and `runs`'
 // `--limit` page size (#174). `flag`/`usage` name the offending flag and its command's usage, so the
 // two call sites can't drift on the wording the way two copy-pasted checks eventually would.
 function parsePositiveInt(flag: string, value: string | undefined, usage: string): PositiveIntResult {
@@ -200,10 +200,10 @@ function parsePositiveInt(flag: string, value: string | undefined, usage: string
   return { success: true, value: parsed };
 }
 
-// The engine-wide LLM processor cap (mvp spec §5.5, §7): a positive integer overriding the default
+// The engine-wide Processor cap (mvp spec §5.5, §7): a positive integer overriding the default
 // of 4. The ceiling is memory (~400 MB per live processor), so this is the operator's memory knob.
-function parseLlmConcurrency(value: string | undefined): PositiveIntResult {
-  return parsePositiveInt("--llm-concurrency", value, RUN_USAGE);
+function parseProcessorConcurrency(value: string | undefined): PositiveIntResult {
+  return parsePositiveInt("--processor-concurrency", value, RUN_USAGE);
 }
 
 type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
@@ -391,7 +391,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     operatorConfig: operatorConfig.config,
     files: workflow.files,
     logBackends: parsed.args.logBackends,
-    llmConcurrency: parsed.args.llmConcurrency,
+    processorConcurrency: parsed.args.processorConcurrency,
     llmWorker: overrides.llmWorker,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,

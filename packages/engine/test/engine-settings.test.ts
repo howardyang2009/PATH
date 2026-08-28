@@ -28,11 +28,11 @@ describe("loadEngineSettings", () => {
     expect(result).toEqual({ success: true, settings: {} });
   });
 
-  it("reads log.backends and llm.concurrency from the file", () => {
-    writeSettings(JSON.stringify({ "log.backends": ["ndjson"], "llm.concurrency": 7 }));
+  it("reads log.backends and processor.concurrency from the file", () => {
+    writeSettings(JSON.stringify({ "log.backends": ["ndjson"], "processor.concurrency": 7 }));
 
     const result = loadEngineSettings(projectDir);
-    expect(result).toEqual({ success: true, settings: { logBackends: ["ndjson"], llmConcurrency: 7 } });
+    expect(result).toEqual({ success: true, settings: { logBackends: ["ndjson"], processorConcurrency: 7 } });
   });
 
   it("reads an empty log.backends list as 'no backends', not as an absent setting", () => {
@@ -67,11 +67,11 @@ describe("loadEngineSettings", () => {
   });
 
   it("rejects a non-positive-integer cap", () => {
-    writeSettings(JSON.stringify({ "llm.concurrency": 0 }));
+    writeSettings(JSON.stringify({ "processor.concurrency": 0 }));
 
     const result = loadEngineSettings(projectDir);
     expect(result.success).toBe(false);
-    expect(result.success === false && result.error).toMatch(/llm\.concurrency/);
+    expect(result.success === false && result.error).toMatch(/processor\.concurrency/);
   });
 
   it("rejects a file that is not a JSON object", () => {

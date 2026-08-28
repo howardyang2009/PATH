@@ -66,9 +66,9 @@ describe("openProject", () => {
     expect(bare.settings).toEqual({});
     bare.close();
 
-    writeSettings({ "log.backends": ["db"], "llm.concurrency": 2 });
+    writeSettings({ "log.backends": ["db"], "processor.concurrency": 2 });
     const configured = open();
-    expect(configured.settings).toEqual({ logBackends: ["db"], llmConcurrency: 2 });
+    expect(configured.settings).toEqual({ logBackends: ["db"], processorConcurrency: 2 });
     configured.close();
   });
 
@@ -122,11 +122,11 @@ describe("Project.run — settings precedence", () => {
     }
   });
 
-  it("applies the same three levels to the LLM cap", async () => {
-    writeSettings({ "llm.concurrency": 2 });
+  it("applies the same three levels to the Processor cap", async () => {
+    writeSettings({ "processor.concurrency": 2 });
     const project = open();
     try {
-      expect(project.settings.llmConcurrency).toBe(2);
+      expect(project.settings.processorConcurrency).toBe(2);
     } finally {
       project.close();
     }

@@ -61,8 +61,8 @@ export interface StartRunOptions {
   config?: ConfigObject;
   /** Which log backends to write (`path run --log-backends`). Omitted: the project's settings, else `["db", "ndjson"]`. */
   logBackends?: LogBackendId[];
-  /** LLM concurrency cap (`path run --llm-concurrency`). Omitted: the project's settings, else the engine default. */
-  llmConcurrency?: number;
+  /** Processor concurrency cap (`path run --processor-concurrency`). Omitted: the project's settings, else the engine default. */
+  processorConcurrency?: number;
 }
 
 /**
@@ -172,7 +172,7 @@ export class PathApiClient {
     if (options.input !== undefined) body.input = options.input;
     if (options.config !== undefined) body.config = options.config;
     if (options.logBackends !== undefined) body.log_backends = options.logBackends;
-    if (options.llmConcurrency !== undefined) body.llm_concurrency = options.llmConcurrency;
+    if (options.processorConcurrency !== undefined) body.processor_concurrency = options.processorConcurrency;
     return this.postJson<StartRunResponse>("/v0/runs", body);
   }
 

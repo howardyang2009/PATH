@@ -12,7 +12,7 @@ const PostRunsBodySchema = z
     input: z.record(z.unknown()).optional(),
     config: ConfigObjectSchema.optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
-    llm_concurrency: z.number().int().positive().optional(),
+    processor_concurrency: z.number().int().positive().optional(),
   })
   .strict();
 
@@ -38,7 +38,7 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     sendError(res, 400, "invalid request body", formatIssues(parsed.error));
     return;
   }
-  const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, llm_concurrency: llmConcurrency } =
+  const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, processor_concurrency: processorConcurrency } =
     parsed.data;
 
   // ADR 0012 / #231: operator config may carry a literal `{"$secret": "..."}` but not `{"$env":
@@ -76,7 +76,7 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       operatorConfig: config,
       files: workflow.files,
       logBackends: logBackendIds,
-      llmConcurrency,
+      processorConcurrency,
       // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`
       // stores — the normalized path, not the raw request string.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),

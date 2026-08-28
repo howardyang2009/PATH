@@ -514,17 +514,17 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   });
 
   // The separation that matters (CONTEXT.md: Config is read *by steps*, engine settings by the
-  // *engine*). A step asking for `${config.llm.concurrency}` must find nothing there even when the
-  // settings file sets it: the plausible regression is an implementer merging the settings into
+  // *engine*). A step asking for `${config.processor.concurrency}` must find nothing there even when
+  // the settings file sets it: the plausible regression is an implementer merging the settings into
   // operator Config under nested keys, which would make this run succeed and print the cap.
   it("never leaks an engine setting into a step's Config", async () => {
-    writeSettings({ "llm.concurrency": 2 });
+    writeSettings({ "processor.concurrency": 2 });
     cpSync(join(realFixtures, "config-leak-probe.workflow.json"), join(projectDir, "probe.workflow.json"));
 
     const io = fakeIo();
     const code = await main(["run", join(projectDir, "probe.workflow.json")], io);
     expect(code).toBe(1);
-    expect(io.error.mock.calls.join("\n")).toMatch(/cannot resolve "config\.llm\.concurrency"/);
+    expect(io.error.mock.calls.join("\n")).toMatch(/cannot resolve "config\.processor\.concurrency"/);
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -569,29 +569,29 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
     return main(["run", join(projectDir, "fanout.workflow.json"), ...args], fakeIo(), { llmWorker });
   }
 
-  it("applies the file's llm.concurrency cap with no CLI flags", async () => {
-    writeSettings({ "llm.concurrency": 2 });
+  it("applies the file's processor.concurrency cap with no CLI flags", async () => {
+    writeSettings({ "processor.concurrency": 2 });
     const llm = countingLlmWorker();
 
     expect(await runFanout(llm.worker)).toBe(0);
     expect(llm.peakLive).toBe(2);
   });
 
-  it("lets --llm-concurrency override the file's cap for that run", async () => {
-    writeSettings({ "llm.concurrency": 2 });
+  it("lets --processor-concurrency override the file's cap for that run", async () => {
+    writeSettings({ "processor.concurrency": 2 });
     const llm = countingLlmWorker();
 
-    expect(await runFanout(llm.worker, "--llm-concurrency", "1")).toBe(0);
+    expect(await runFanout(llm.worker, "--processor-concurrency", "1")).toBe(0);
     expect(llm.peakLive).toBe(1);
   });
 
   it("refuses to run on an unknown settings key", async () => {
-    writeSettings({ "llm.concurrancy": 2 });
+    writeSettings({ "processor.concurrancy": 2 });
 
     const io = fakeIo();
     const code = await main(["run", join(projectDir, "workflow.json")], io);
     expect(code).toBe(2);
-    expect(io.error.mock.calls.join("\n")).toMatch(/llm\.concurrancy/);
+    expect(io.error.mock.calls.join("\n")).toMatch(/processor\.concurrancy/);
   });
 });
 
@@ -742,19 +742,19 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   });
 });
 
-describe("cli main() — LLM processor cap (ticket #25)", () => {
-  it("accepts --llm-concurrency to override the engine-wide cap and still runs the workflow", async () => {
+describe("cli main() — Processor cap (ticket #25)", () => {
+  it("accepts --processor-concurrency to override the engine-wide cap and still runs the workflow", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--llm-concurrency", "2"], io);
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "2"], io);
     expect(code).toBe(0);
     expect(io.error).not.toHaveBeenCalled();
   });
 
   it("rejects a non-positive-integer cap with a clear error", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--llm-concurrency", "0"], io);
+    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "0"], io);
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--llm-concurrency/));
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--processor-concurrency/));
   });
 });
 

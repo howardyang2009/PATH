@@ -80,7 +80,7 @@ export interface StartRunRequest {
   input?: JsonValue;
   config?: ConfigObject;
   log_backends?: LogBackendId[];
-  llm_concurrency?: number;
+  processor_concurrency?: number;
 }
 
 /** `POST /v0/runs` — the 202 body (server-api-v0.md §4.1). */
