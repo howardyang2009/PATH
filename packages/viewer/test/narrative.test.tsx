@@ -13,7 +13,7 @@ function started(seq: number, nodeId: string | null): LogEvent {
     node_id: nodeId,
     node_name: nodeId,
     step_type: "binary",
-    worker: { type: "engine" },
+    worker_name: "spawn",
   };
 }
 

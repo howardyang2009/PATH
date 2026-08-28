@@ -8,7 +8,6 @@ const started: Observation = {
   parentRunId: null,
   nodeId: null, nodeName: null,
   input: {},
-  worker: { type: "engine" },
 };
 const finished: Observation = { type: "step-finished", runId: "r", rootRunId: "r", status: "succeeded", output: {} };
 

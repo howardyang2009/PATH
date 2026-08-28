@@ -32,7 +32,7 @@ function workflow(name: string, refs: string[] = []): string {
     refs.length > 0
       ? refs.map((ref, i) => ({ type: "workflow", id: uuid(), name: `child-${i}`, ref }))
       : [{ type: "binary", id: uuid(), name: "step-one", command: "echo" }];
-  return JSON.stringify({ format: "path/workflow@2", id: uuid(), name, worker: { type: "engine" }, body });
+  return JSON.stringify({ format: "path/workflow@3", id: uuid(), name, body });
 }
 
 function write(relPath: string, content: string): void {
@@ -119,7 +119,7 @@ describe("GET /v0/workflows", () => {
     const old = byPath((await listWorkflows()).body).get("old.workflow.json")!;
     expect(old).toMatchObject({ valid: false, is_root: null, name: "old" });
     expect(old.error?.message).toBe(
-      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3`,
     );
     expect(old.error?.details).toHaveLength(1);
   });

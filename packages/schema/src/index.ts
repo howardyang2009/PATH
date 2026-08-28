@@ -70,8 +70,14 @@ export {
   type ConditionRoot,
 } from "./roots.js";
 
-export { WorkerSchema } from "./worker.js";
-export type { Worker, EngineWorker, LlmWorker } from "./worker-type.js";
+export {
+  BINARY_WORKER_NAMES,
+  BINARY_DEFAULT_WORKER,
+  PROMPT_WORKER_NAMES,
+  PROMPT_DEFAULT_WORKER,
+  type BinaryWorkerName,
+  type PromptWorkerName,
+} from "./worker-names.js";
 
 export { ConfigValueSchema, ConfigObjectSchema } from "./config.js";
 export type { ConfigValue, ConfigObject, EnvWrapper, SecretWrapper } from "./config-value-type.js";

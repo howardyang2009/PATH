@@ -6,7 +6,7 @@ const ROOT = "root-1";
 const CHILD = "child-1";
 
 function stepStarted(seq: number, runId: string, nodeId: string | null): LogEvent {
-  return { type: "step-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, step_type: "workflow", worker: { type: "engine" } };
+  return { type: "step-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, step_type: "workflow", worker_name: "spawn" };
 }
 
 function stepFinished(seq: number, runId: string, nodeId: string | null, status: "succeeded" | "failed" | "cancelled" = "succeeded"): LogEvent {
@@ -25,7 +25,7 @@ function tree(status: RunViewState["status"], output: RunTreeResponse["output"] 
         parent_run_id: null,
         node_id: null,
         node_name: null,
-        worker: { type: "engine" },
+        worker_name: "spawn",
         status,
         started_at: "t0",
         finished_at: null,
@@ -71,7 +71,7 @@ describe("RunViewModel", () => {
     const model = new RunViewModel(ROOT);
     model.applyEvent(stepStarted(1, ROOT, null));
     expect(model.getState().status).toBe("running");
-    expect(model.getState().runs.get(ROOT)?.worker).toEqual({ type: "engine" });
+    expect(model.getState().runs.get(ROOT)?.workerName).toBe("spawn");
 
     model.applyEvent(stepStarted(2, CHILD, "draft"));
     expect(model.getState().runs.get(CHILD)?.status).toBe("running");
@@ -107,7 +107,7 @@ describe("RunViewModel", () => {
     model.applyEvent(stepStarted(1, ROOT, null));
 
     expect(model.getState().status).toBe("succeeded");
-    expect(model.getState().runs.get(ROOT)?.worker).toEqual({ type: "engine" });
+    expect(model.getState().runs.get(ROOT)?.workerName).toBe("spawn");
   });
 
   it("takes structure from a re-read tree without regressing a run the events already finished", () => {
@@ -122,7 +122,7 @@ describe("RunViewModel", () => {
       parent_run_id: ROOT,
       node_id: "draft",
       node_name: "draft",
-      worker: { type: "engine" },
+      worker_name: "spawn",
       // The row was read before the engine persisted the finish.
       status: "running",
       started_at: "t1",

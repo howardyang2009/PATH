@@ -35,8 +35,14 @@ import Database from "better-sqlite3";
  * of its own (rather than only a log marker), so `runs` gains `reused_from_run_id` — the source run
  * that row reuses, direct-to-source (ADR 0001). Null on every executed row. Same bump-and-break: an
  * existing pre-#257 db refuses to open rather than silently lacking the column a reuse row writes to.
+ *
+ * Bumped to 7 in #332 for the worker-name migration (ADR 0021 sub-14): a worker is a *name* now, so
+ * the `runs.worker` column (which held a JSON-encoded `{type, model, …}` object) becomes
+ * `runs.worker_name`, a bare string — the resolved worker name a leaf step ran on, null on a
+ * workflow-run's own row. Clean-slate bump-and-break, no backfill: an existing pre-#332 db refuses to
+ * open rather than reading the old object-shaped column as a name.
  */
-export const SCHEMA_VERSION = 6;
+export const SCHEMA_VERSION = 7;
 
 export class SchemaVersionError extends Error {}
 
@@ -47,7 +53,7 @@ const RUNS_TABLE_DDL = `
     parent_run_id TEXT,
     node_id TEXT,
     node_name TEXT,
-    worker TEXT,
+    worker_name TEXT,
     status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','cancelled')),
     started_at TEXT,
     finished_at TEXT,

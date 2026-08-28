@@ -15,7 +15,7 @@ const TREE = {
       root_run_id: ROOT,
       parent_run_id: null,
       node_id: null,
-      worker: { type: "engine" },
+      worker_name: "spawn",
       status: "running",
       started_at: "2026-07-25T10:00:00.000Z",
       finished_at: null,

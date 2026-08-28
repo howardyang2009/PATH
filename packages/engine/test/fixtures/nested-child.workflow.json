@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "c3362ce3-8fc2-4b17-ad2d-4f990c758738",
   "name": "nested-child",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

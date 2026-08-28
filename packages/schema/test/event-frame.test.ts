@@ -11,7 +11,7 @@ function stepStarted(seq: number): LogEvent {
     node_id: "greet",
     node_name: "greet",
     step_type: "binary",
-    worker: { type: "engine" },
+    worker_name: "spawn",
   };
 }
 

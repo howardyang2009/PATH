@@ -3,7 +3,6 @@ import type { JsonValue } from "./json-value.js";
 import type { LogBackendId } from "./log-backend-id.js";
 import type { RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
-import type { Worker } from "./worker-type.js";
 
 /**
  * The wire shapes of the `@path/server` v0 HTTP contract (docs/api/server-api-v0.md).
@@ -27,7 +26,8 @@ export interface WireRunRecord {
   parent_run_id: string | null;
   node_id: string | null;
   node_name: string | null;
-  worker: Worker | null;
+  /** Null for a workflow-run's own row; a leaf step run carries its worker's *name* (ADR 0021 sub-14). */
+  worker_name: string | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
@@ -133,7 +133,7 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     parent_run_id: row.parentRunId,
     node_id: row.nodeId,
     node_name: row.nodeName,
-    worker: row.worker,
+    worker_name: row.workerName,
     status: row.status,
     started_at: row.startedAt,
     finished_at: row.finishedAt,

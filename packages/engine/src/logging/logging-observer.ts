@@ -52,9 +52,12 @@ function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
 export function toLogEvent(o: Observation, envelope: (runId: string, node?: NodeIdentity) => Envelope): LogEvent | null {
   switch (o.type) {
     case "run-started":
-      return { type: "step-started", ...envelope(o.runId), step_type: WORKFLOW_STEP_TYPE, worker: o.worker };
+      // A workflow-run is its file's implicit root step (invariant 2) and runs a nested run, not a
+      // worker (ADR 0021 sub-14) — so its log event's `worker_name` is the step type itself,
+      // `"workflow"`, the one string a workflow-shaped step can honestly name here.
+      return { type: "step-started", ...envelope(o.runId), step_type: WORKFLOW_STEP_TYPE, worker_name: WORKFLOW_STEP_TYPE };
     case "step-started":
-      return { type: "step-started", ...envelope(o.runId), step_type: o.stepType, worker: o.worker };
+      return { type: "step-started", ...envelope(o.runId), step_type: o.stepType, worker_name: o.workerName };
     case "step-finished":
     case "run-finished":
       return finishedEvent(envelope(o.runId), o);

@@ -1,25 +1,19 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "0141fbab-90a7-4f63-b030-91b89c0cb508",
   "name": "release-notes",
-  "worker": {
-    "type": "llm",
-    "model": "claude-sonnet-5"
-  },
   "config": {
     "repo_path": ".",
     "commit_range": "HEAD~15..HEAD",
     "max_revisions": 3,
-    "output_file": "RELEASE_NOTES.md"
+    "output_file": "RELEASE_NOTES.md",
+    "model": "claude-sonnet-5"
   },
   "body": [
     {
       "type": "binary",
       "id": "772e1536-ccd9-4aad-bbdb-a654768cd0a4",
       "name": "gather-changes",
-      "worker": {
-        "type": "engine"
-      },
       "command": "git",
       "args": [
         "log",
@@ -198,9 +192,6 @@
       "type": "binary",
       "id": "0b65a81d-823f-4db3-b002-9e75cb0ca35d",
       "name": "write-file",
-      "worker": {
-        "type": "engine"
-      },
       "input": "${context.final_notes}",
       "command": "sh",
       "args": [

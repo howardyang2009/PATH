@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "6699bc46-e0a3-48c9-bd39-ea74bf3491a0",
   "name": "do-not-wait-probe",
-  "worker": {
-    "type": "engine"
-  },
   "config": {
     "signal_file": "signal.log",
     "branch_delay_ms": "0",

@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "61c0e299-167e-4141-b6c0-a5cf40dbcb13",
   "name": "slow-step",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

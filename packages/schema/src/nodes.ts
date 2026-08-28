@@ -5,13 +5,17 @@ import { IdSchema, NameSchema } from "./ids.js";
 import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
 import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
-import { WorkerSchema } from "./worker.js";
+import { BINARY_WORKER_NAMES, PROMPT_WORKER_NAMES } from "./worker-names.js";
 
 
+// `worker` is now a worker-*name* string, not a tagged object (`@3` §4, ADR 0021 sub-8): each step
+// type's `worker` is a `z.enum` of that type's own worker names, so a step naming a worker its type
+// does not ship fails at load with the valid names listed. It is optional — an omitted `worker`
+// resolves to the type's default worker (`binary` → `spawn`, `prompt` → `sdk`). The node union is
+// still closed, so the names are fixed here; when it opens to plugins the enums come off the registry.
 const commonStepFields = {
   id: IdSchema,
   name: NameSchema,
-  worker: WorkerSchema.optional(),
   config: ConfigObjectSchema.optional(),
   input: interpolatedJsonValue(STEP_ROOTS).optional(),
   parse: z.enum(["text", "json"]).optional(),
@@ -22,6 +26,7 @@ const PromptStepSchema = z
   .object({
     type: z.literal("prompt"),
     ...commonStepFields,
+    worker: z.enum(PROMPT_WORKER_NAMES).optional(),
     prompt: interpolableString(STEP_ROOTS),
   })
   .strict();
@@ -30,6 +35,7 @@ const BinaryStepSchema = z
   .object({
     type: z.literal("binary"),
     ...commonStepFields,
+    worker: z.enum(BINARY_WORKER_NAMES).optional(),
     command: interpolableString(STEP_ROOTS),
     args: z.array(interpolableString(STEP_ROOTS)).optional(),
     cwd: interpolableString(STEP_ROOTS).optional(),

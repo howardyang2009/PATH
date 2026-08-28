@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "cb1e0f26-5091-4185-a49b-6ddfa6e60c27",
   "name": "changelog",
-  "worker": {
-    "type": "engine"
-  },
   "config": {
     "repo_path": "../..",
     "commit_range": "v0.1.0..HEAD",

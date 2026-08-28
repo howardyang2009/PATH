@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "06a5b61c-9c84-4485-9dc2-09ba384c6e1d",
   "name": "config-leak-probe",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { JsonValue, RunRecord, RunStatus, TerminalRunStatus, Worker } from "@path/schema";
+import type { JsonValue, RunRecord, RunStatus, TerminalRunStatus } from "@path/schema";
 
 // `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
 // What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
@@ -11,7 +11,8 @@ export interface NewRunRow {
   parentRunId: string | null;
   nodeId: string | null;
   nodeName: string | null;
-  worker: Worker | null;
+  /** A leaf step run's worker *name* (ADR 0021 sub-14); null for a workflow-run's own row. */
+  workerName: string | null;
   status: RunStatus;
   /** Written with the row: the input blob is always on disk before the row exists (#72). */
   inputRef?: string;
@@ -27,15 +28,16 @@ export interface NewRunRow {
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker, status, started_at, input_ref, resumed_from_root_run_id, workflow_id, workflow_name, workflow_path)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @worker, @status, @startedAt, @inputRef, @resumedFromRootRunId, @workflowId, @workflowName, @workflowPath)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, status, started_at, input_ref, resumed_from_root_run_id, workflow_id, workflow_name, workflow_path)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @status, @startedAt, @inputRef, @resumedFromRootRunId, @workflowId, @workflowName, @workflowPath)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
     parentRunId: row.parentRunId,
     nodeId: row.nodeId,
     nodeName: row.nodeName,
-    worker: row.worker ? JSON.stringify(row.worker) : null,
+    // A bare string now (ADR 0021 sub-14): the JSON.stringify the object-shaped worker needed is gone.
+    workerName: row.workerName,
     status: row.status,
     startedAt: new Date().toISOString(),
     inputRef: row.inputRef ?? null,
@@ -116,7 +118,7 @@ interface RunRowDb {
   parent_run_id: string | null;
   node_id: string | null;
   node_name: string | null;
-  worker: string | null;
+  worker_name: string | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
@@ -138,7 +140,7 @@ function fromDbRow(row: RunRowDb): RunRecord {
     parentRunId: row.parent_run_id,
     nodeId: row.node_id,
     nodeName: row.node_name,
-    worker: row.worker ? (JSON.parse(row.worker) as Worker) : null,
+    workerName: row.worker_name,
     status: row.status,
     startedAt: row.started_at,
     finishedAt: row.finished_at,

@@ -34,7 +34,7 @@ function seedTree(rootRunId = "root-1"): void {
     rootRunId,
     parentRunId: null,
     nodeId: null, nodeName: null,
-    worker: { type: "engine" },
+    workerName: null,
     status: "running",
   });
   insertRun(db, {
@@ -42,7 +42,7 @@ function seedTree(rootRunId = "root-1"): void {
     rootRunId,
     parentRunId: rootRunId,
     nodeId: "greet", nodeName: "greet",
-    worker: { type: "engine" },
+    workerName: "spawn",
     status: "running",
   });
 }
@@ -61,7 +61,7 @@ function stepStarted(seq: number, runId: string): LogEvent {
     run_id: runId,
     node_id: "greet", node_name: "greet",
     step_type: "binary",
-    worker: { type: "engine" },
+    worker_name: "spawn",
   };
 }
 
@@ -105,7 +105,7 @@ describe("run archive — tree", () => {
       rootRunId: "root-1",
       parentRunId: "root-1",
       nodeId: "greet", nodeName: "greet",
-      worker: { type: "engine" },
+      workerName: "spawn",
       status: "succeeded",
     });
 
@@ -167,13 +167,13 @@ describe("run archive — reuse-row resolution (#257)", () => {
    */
   function seedSourceAndReuse(): void {
     // Source tree: root + a leaf that ran and recorded blobs.
-    insertRun(db, { runId: "src", rootRunId: "src", parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
-    insertRun(db, { runId: "src-leaf", rootRunId: "src", parentRunId: "src", nodeId: "greet", nodeName: "greet", worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId: "src", rootRunId: "src", parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
+    insertRun(db, { runId: "src-leaf", rootRunId: "src", parentRunId: "src", nodeId: "greet", nodeName: "greet", workerName: "spawn", status: "succeeded" });
     writeRunBlob(dir, "src", "src-leaf", "input.json", { from: "source" });
     writeRunBlob(dir, "src", "src-leaf", "output.json", { greeting: "hi from source" });
 
     // Successor tree: root + a reuse row for the same node, pointing direct-to-source at the leaf.
-    insertRun(db, { runId: "succ", rootRunId: "succ", parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId: "succ", rootRunId: "succ", parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
     insertReuseRun(db, { runId: "succ-reuse", rootRunId: "succ", parentRunId: "succ", nodeId: "greet", nodeName: "greet", reusedFromRunId: "src-leaf" });
   }
 
@@ -301,21 +301,21 @@ describe("run archive — listRoots", () => {
     // for. Each `seedTree` also writes a child row, which must never pick up the identity.
     insertRun(db, {
       runId: "acc-1", rootRunId: "acc-1", parentRunId: null, nodeId: null, nodeName: null,
-      worker: { type: "engine" }, status: "running",
+      workerName: "spawn", status: "running",
       workflowId: "guid-acc", workflowName: "access", workflowPath: "a/access.workflow.json",
     });
     insertRun(db, {
       runId: "acc-1-child", rootRunId: "acc-1", parentRunId: "acc-1", nodeId: "greet", nodeName: "greet",
-      worker: { type: "engine" }, status: "running",
+      workerName: "spawn", status: "running",
     });
     insertRun(db, {
       runId: "acc-2", rootRunId: "acc-2", parentRunId: null, nodeId: null, nodeName: null,
-      worker: { type: "engine" }, status: "running",
+      workerName: "spawn", status: "running",
       workflowId: "guid-acc-fork", workflowName: "access", workflowPath: "b/access.workflow.json",
     });
     insertRun(db, {
       runId: "foo-1", rootRunId: "foo-1", parentRunId: null, nodeId: null, nodeName: null,
-      worker: { type: "engine" }, status: "running",
+      workerName: "spawn", status: "running",
       workflowId: "guid-foo", workflowName: "foo", workflowPath: "foo.workflow.json",
     });
 
@@ -462,7 +462,7 @@ function seedLeaf(opts: {
     rootRunId: opts.rootRunId,
     parentRunId: opts.parentRunId,
     nodeId: opts.nodeId, nodeName: opts.nodeId,
-    worker: { type: "llm", model: "claude" },
+    workerName: "sdk",
     status: "succeeded",
   });
   setRunUsage(db, opts.runId, { usage: { input_tokens: 1 }, estimatedCostUsd: opts.cost });
@@ -503,7 +503,7 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
       rootRunId: "orig",
       parentRunId: "orig",
       nodeId: "loop", nodeName: "loop",
-      worker: { type: "engine" },
+      workerName: "spawn",
       status: "succeeded",
     });
     seedLeaf({ runId: "orig-wf-1", rootRunId: "orig", parentRunId: "orig-wf", nodeId: "x", cost: 0.2 });

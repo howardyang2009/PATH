@@ -128,8 +128,9 @@ interface RunRow {
   parent_run_id: string | null;
   node_id: string | null;
   node_name: string | null;
-  // Nullable: the root workflow-run is inserted without a worker (persisted-observer.ts).
-  worker: string | null;
+  // Nullable: a workflow-run row is inserted without a worker (persisted-observer.ts); a leaf step
+  // carries its worker's name (ADR 0021 sub-14).
+  worker_name: string | null;
   status: string;
   input_ref: string | null;
   output_ref: string | null;
@@ -167,7 +168,8 @@ function classifyRuns(runs: RunRow[]): { root: RunRow; workflowRuns: RunRow[]; l
 }
 
 function isLlmRun(row: RunRow): boolean {
-  return row.worker !== null && (JSON.parse(row.worker) as { type: string }).type === "llm";
+  // A `prompt` step runs on the `sdk` worker (ADR 0021 sub-2); its name is the bare column value now.
+  return row.worker_name === "sdk";
 }
 
 function readDbLogEvents(projectDir: string, rootRunId: string): { seq: number; type: string }[] {

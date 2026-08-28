@@ -1,4 +1,4 @@
-import type { JsonValue, Worker } from "@path/schema";
+import type { JsonValue } from "@path/schema";
 import type { Trace } from "./condition.js";
 
 /**
@@ -50,8 +50,9 @@ export type Observation =
    * `workflow` node's id — workflow-as-step means the child run *is* that step's run, so a nested
    * workflow-run is reported here (with its own context) rather than as `step-started`.
    *
-   * `worker` is this workflow-run's own file worker (inheritance never crosses the file boundary) —
-   * every workflow-run is its file's implicit root workflow-step (invariant 2), so logging emits its
+   * A workflow-run carries no `worker` of its own (ADR 0021 sub-14 removed the file worker): a
+   * worker is a per-step name now, and a workflow-run is its file's implicit root workflow-step
+   * (invariant 2), which runs a nested run rather than a worker. Logging still emits its
    * `step-started`/`step-finished` as the run's own lifecycle (mvp spec §8.1).
    */
   | {
@@ -62,7 +63,6 @@ export type Observation =
       nodeId: string | null;
       nodeName: string | null;
       input: JsonValue;
-      worker: Worker;
       /**
        * The predecessor's root run id (#173), set only on a resumed tree's **root** run-started —
        * the one identity fact that marks this fresh root run as a successor of another (#168). Absent
@@ -91,7 +91,8 @@ export type Observation =
       nodeId: string;
       nodeName: string;
       stepType: string;
-      worker: Worker;
+      /** The *name* of the worker this leaf step ran on (ADR 0021 sub-14): `spawn`/`sdk`. */
+      workerName: string;
       input: JsonValue;
     }
   /** A binary step's captured stderr — never passed downstream (format doc §4.2), audit only. */

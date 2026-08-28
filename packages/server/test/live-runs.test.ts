@@ -251,7 +251,6 @@ describe("LiveRuns — a run that rejects without a terminal event", () => {
             nodeId: null,
             nodeName: null,
             input: {},
-            worker: { type: "engine" },
           });
         }
         throw new Error("engine bug");

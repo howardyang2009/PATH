@@ -4,7 +4,7 @@ import { toLogEvent } from "../../src/logging/logging-observer.js";
 import type { Observation } from "../../src/run-observer.js";
 
 const ids = { runId: "r1", rootRunId: "r0" };
-const worker = { type: "engine" } as const;
+const workerName = "spawn";
 const trace = { type: "exists", path: "context.k", outcome: "true" } as const;
 
 type NodeIdentity = { id: string; name: string };
@@ -49,9 +49,8 @@ describe("toLogEvent", () => {
       nodeId: null,
       nodeName: null,
       input: { secret: "payload" },
-      worker,
     });
-    expect(event).toMatchObject({ type: "step-started", step_type: "workflow", worker });
+    expect(event).toMatchObject({ type: "step-started", step_type: "workflow", worker_name: "workflow" });
     expect(event).not.toHaveProperty("input");
   });
 
@@ -63,7 +62,7 @@ describe("toLogEvent", () => {
       nodeId: "n1",
       nodeName: "step-one",
       stepType: "binary",
-      worker,
+      workerName,
       input: { big: "payload" },
     }).event;
     expect(started).not.toHaveProperty("input");
@@ -137,8 +136,8 @@ describe("toLogEvent", () => {
   it("emits only events that validate against the log-event schema", () => {
     const every: Observation[] = [
       { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "step-one", originalRunId: "orig-run" },
-      { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: {}, worker },
-      { type: "step-started", ...ids, parentRunId: "r0", nodeId: "n1", nodeName: "step-one", stepType: "binary", worker, input: {} },
+      { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: {} },
+      { type: "step-started", ...ids, parentRunId: "r0", nodeId: "n1", nodeName: "step-one", stepType: "binary", workerName, input: {} },
       { type: "step-finished", ...ids, status: "succeeded", output: {} },
       { type: "run-finished", ...ids, status: "cancelled" },
       { type: "checkpoint-evaluated", ...ids, nodeId: "n1", nodeName: "gate", passed: true, trace },

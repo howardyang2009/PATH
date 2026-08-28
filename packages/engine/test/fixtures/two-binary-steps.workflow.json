@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "9a4d7499-777a-42a8-8711-6b99756a674c",
   "name": "two-binary-steps",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

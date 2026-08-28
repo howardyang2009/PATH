@@ -18,14 +18,36 @@ describe("step nodes", () => {
     const result = NodeSchema.safeParse({
       type: "prompt",
       id: ID, name: "summarize",
-      worker: { type: "llm", model: "claude-sonnet-5" },
-      config: { temperature: 0 },
+      worker: "sdk",
+      config: { model: "claude-sonnet-5", temperature: 0 },
       input: { raw_changes: "${context.raw_changes}" },
       parse: "json",
       prompt: "Summarize ${context.raw_changes}.",
       publish: { summary: "${output}" },
     });
     expect(result.success).toBe(true);
+  });
+
+  it("accepts an omitted worker (the type default) and the type's own worker name (`@3` §4)", () => {
+    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", prompt: "hi" }).success).toBe(true);
+    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "sdk", prompt: "hi" }).success).toBe(true);
+    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "spawn", command: "git" }).success).toBe(true);
+  });
+
+  it("rejects a worker name the step type does not ship, listing the valid names (ADR 0021 sub-8)", () => {
+    const promptResult = NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "spawn", prompt: "hi" });
+    expect(promptResult.success).toBe(false);
+    if (!promptResult.success) {
+      expect(JSON.stringify(promptResult.error.issues)).toContain("sdk");
+    }
+    // `binary` ships `spawn`, not `sdk` — a step type's worker names are its own (the pair is the identity).
+    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "sdk", command: "git" }).success).toBe(false);
+  });
+
+  it("rejects a worker on a workflow step — a workflow step runs a nested run, not a worker (`@3` §4)", () => {
+    expect(
+      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./child.workflow.json", worker: "sdk" }).success,
+    ).toBe(false);
   });
 
   it("rejects an unknown field on a step (strict)", () => {
@@ -92,7 +114,7 @@ describe("logicers reject step-only fields", () => {
         type: "checkpoint",
         id: ID, name: "gate",
         condition: { type: "exists", path: "context.x" },
-        worker: { type: "engine" },
+        worker: "spawn",
       }).success,
     ).toBe(false);
   });
@@ -115,7 +137,7 @@ describe("logicers reject step-only fields", () => {
         type: "sequence",
         id: ID, name: "s",
         body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
-        worker: { type: "engine" },
+        worker: "sdk",
       }).success,
     ).toBe(false);
   });

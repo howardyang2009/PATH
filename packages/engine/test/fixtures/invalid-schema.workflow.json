@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "e0c61835-819b-4b42-9edc-f604c86bf6a6",
   "name": "invalid-schema",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",
