@@ -101,7 +101,7 @@ export interface ProjectRunOptions extends Omit<RunOptions, "observer"> {
   /** Overrides `.path/settings.json`, which overrides the built-in default. */
   logBackends?: LogBackendId[];
   /** Overrides `.path/settings.json`, which overrides the built-in default. */
-  llmConcurrency?: number;
+  processorConcurrency?: number;
   /**
    * Backends alongside the configured ones — the server's live-forwarding backend, which pushes to
    * SSE subscribers regardless of what the run persists to.
@@ -162,7 +162,7 @@ export function openProject(dir: string): OpenProjectResult {
     resume: ResumeInput | undefined,
     appendObservers: RunObserver[],
   ): Promise<RunResult> {
-    const { logBackends, llmConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
+    const { logBackends, processorConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
 
     // Nearest wins, one rule for every caller: explicit override (a CLI flag, a request field)
     // beats `.path/settings.json`, which beats the built-in default.
@@ -182,7 +182,7 @@ export function openProject(dir: string): OpenProjectResult {
     return runWorkflow(rootFile, workflowDir, {
       ...runOptions,
       observer,
-      llmConcurrency: llmConcurrency ?? settings.llmConcurrency,
+      processorConcurrency: processorConcurrency ?? settings.processorConcurrency,
       resume,
     });
   }

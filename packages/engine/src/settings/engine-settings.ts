@@ -5,25 +5,25 @@ import { LOG_BACKEND_IDS, type LogBackendId } from "../logging/backends.js";
 import { engineSettingsFilePath } from "../persistence/paths.js";
 
 /**
- * Keys are spelled as the spec names the settings (`log.backends`, §8.2 — the LLM cap, §5.5),
+ * Keys are spelled as the spec names the settings (`log.backends`, §8.2 — the Processor cap, §5.5),
  * dots and all: this is a flat settings file, not a nested object, so a dot is just a character.
  */
 const EngineSettingsFileSchema = z
   .object({
     "log.backends": z.array(z.enum(LOG_BACKEND_IDS)).optional(),
-    "llm.concurrency": z.number().int().positive().optional(),
+    "processor.concurrency": z.number().int().positive().optional(),
   })
   .strict();
 
 /**
  * The engine-level operator settings (mvp spec §9, ticket #27): the two knobs the engine itself
  * reads. Deliberately *not* workflow Config — Config is read by steps and inherits per file,
- * while these are read by the engine and the LLM cap in particular is one engine-wide value.
+ * while these are read by the engine and the Processor cap in particular is one engine-wide value.
  * Every field is optional: absent means "fall back to the built-in default".
  */
 export interface EngineSettings {
   logBackends?: LogBackendId[];
-  llmConcurrency?: number;
+  processorConcurrency?: number;
 }
 
 export type LoadEngineSettingsResult =
@@ -52,6 +52,6 @@ export function loadEngineSettings(projectDir: string): LoadEngineSettingsResult
 
   const settings: EngineSettings = {};
   if (parsed.data["log.backends"] !== undefined) settings.logBackends = parsed.data["log.backends"];
-  if (parsed.data["llm.concurrency"] !== undefined) settings.llmConcurrency = parsed.data["llm.concurrency"];
+  if (parsed.data["processor.concurrency"] !== undefined) settings.processorConcurrency = parsed.data["processor.concurrency"];
   return { success: true, settings };
 }

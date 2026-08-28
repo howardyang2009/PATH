@@ -359,9 +359,9 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     expect(worker.maxConcurrent).toBe(2);
   });
 
-  it("criterion 4 — respects the LLM fan-out cap when it binds", async () => {
+  it("criterion 4 — respects the Processor fan-out cap when it binds", async () => {
     const worker = createScriptedLlmWorker(happyPathScript());
-    await expect(runPipeline(worker, ["--llm-concurrency", "1"])).resolves.toBe(0);
+    await expect(runPipeline(worker, ["--processor-concurrency", "1"])).resolves.toBe(0);
     // Same block, cap lowered below its width: it serialises instead of fanning out. Removing the
     // semaphore fails this assertion, which is what makes it a test of the cap.
     expect(worker.maxConcurrent).toBe(1);

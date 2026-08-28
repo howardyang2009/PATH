@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
-import { DEFAULT_LLM_CONCURRENCY } from "../src/llm/processor-semaphore.js";
+import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/llm/processor-semaphore.js";
 import { fakeObserver, type FakeObserver } from "./fake-observer.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { runWorkflow } from "../src/run-workflow.js";
@@ -1426,7 +1426,7 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
     });
     const result = await runWorkflow(stampNames(file), fixturesDir, {
       llmWorker: llm.worker,
-      llmConcurrency: 1,
+      processorConcurrency: 1,
       files: new Map([[childPath, child]]),
     });
 
@@ -1458,7 +1458,7 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
     const result = await runWorkflow(stampNames(file), fixturesDir, { llmWorker: llm.worker });
 
     expect(result.status).toBe("succeeded");
-    expect(llm.peakLive).toBe(DEFAULT_LLM_CONCURRENCY);
+    expect(llm.peakLive).toBe(DEFAULT_PROCESSOR_CONCURRENCY);
   });
 
 });

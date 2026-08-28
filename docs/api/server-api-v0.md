@@ -54,7 +54,7 @@ Request body:
   "input": { "...": "..." },
   "config": { "...": "..." },
   "log_backends": ["db", "ndjson"],
-  "llm_concurrency": 4
+  "processor_concurrency": 4
 }
 ```
 
@@ -64,7 +64,7 @@ Request body:
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
 | `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, validated here by `ConfigObjectSchema`. Accepts a literal `{"$secret": "..."}` wrapper (format doc §8.3; masked on the return path). **Rejects** any `{"$env": "NAME"}` wrapper — including the composed `{"$secret": {"$env": "NAME"}}` form — with a `400`: operator override config may not source from the server process environment ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), server spec §2). An `$env` wrapper authored *inside* a `workflow.json` is unaffected. |
 | `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
-| `llm_concurrency` | no | Same as `path run --llm-concurrency`. Omitted: the project's `.path/settings.json` `"llm.concurrency"`, else the engine default (4). |
+| `processor_concurrency` | no | Same as `path run --processor-concurrency`. Omitted: the project's `.path/settings.json` `"processor.concurrency"`, else the engine default (4). |
 
 The two engine settings resolve the same way here as they do for `path run`, nearest wins: **request
 field, then `.path/settings.json`, then built-in default** (mvp spec §9). Before #64 the server ignored

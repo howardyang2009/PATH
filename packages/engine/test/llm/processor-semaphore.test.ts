@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProcessorSemaphore, DEFAULT_LLM_CONCURRENCY } from "../../src/llm/processor-semaphore.js";
+import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "../../src/llm/processor-semaphore.js";
 
 /** A promise plus the handle that settles it — lets a test hold acquired slots open deliberately. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {
@@ -11,8 +11,8 @@ function deferred(): { promise: Promise<void>; resolve: () => void } {
 }
 
 describe("processor-semaphore", () => {
-  it("defaults to a cap of 4 concurrent LLM processors (mvp spec §5.5)", () => {
-    expect(DEFAULT_LLM_CONCURRENCY).toBe(4);
+  it("defaults to a cap of 4 concurrent Processors (mvp spec §5.5)", () => {
+    expect(DEFAULT_PROCESSOR_CONCURRENCY).toBe(4);
   });
 
   it("never lets more than `limit` holders run at once", async () => {

@@ -255,8 +255,8 @@ their input and output sides.
   format §4.2; a non-zero exit fails the step). stderr is not data. The engine captures it to
   `stderr.txt` in the step-run's directory (§6), secret-scrubbed like every persisted artifact (§8.3),
   and never passes it downstream.
-- One **engine-wide semaphore** caps concurrent LLM processors: **default 4**, overridable in engine
-  config (§7 memory budget). Use the `--llm-concurrency` flag or the `llm.concurrency` key of the
+- One **engine-wide semaphore** caps concurrent Processors: **default 4**, overridable in engine
+  config (§7 memory budget). Use the `--processor-concurrency` flag or the `processor.concurrency` key of the
   engine-settings file (§6, §9), **not** workflow Config. (The cap is one engine-wide value, so
   Config's per-file inherited override would be wrong.) It spans the entire run tree, including nested
   workflows and nested parallels. A branch whose next step cannot get a slot waits. Binary steps are
@@ -358,7 +358,7 @@ directory** beside the workflow files (like `.git`), gitignored by default.
 - **`.path/path.db`** — SQLite via **better-sqlite3** (the synchronous API fits the single-process
   engine). It holds structured records only: the **runs table** (§5.7) and the **log table** (§8).
 - **`.path/settings.json`** — the **engine-settings file** (§9): a flat JSON object that carries the two
-  engine-level operator settings, `log.backends` (§8.2) and `llm.concurrency` (§5.5). The engine reads
+  engine-level operator settings, `log.backends` (§8.2) and `processor.concurrency` (§5.5). The engine reads
   it; a step never does. It is not workflow Config and never merges into `${config.x}`. An absent file
   means built-in defaults. Unknown keys and bad values are rejected loudly, like the workflow format. An
   empty `log.backends` list selects no backends, the file spelling of `--log-backends none`. Nearest
@@ -537,9 +537,9 @@ Decided-by-omission. Implementers may choose freely, provided the semantics abov
 - Exact CLI flag spellings and the operator config-file format (§3).
 - SQLite DDL (table and column names, indexes) behind the run-row and log-event contracts.
 - Run-id format; internal engine module structure; error-message wording.
-- The engine-settings file location and format (it must carry `log.backends` and the LLM cap). Settled
+- The engine-settings file location and format (it must carry `log.backends` and the Processor cap). Settled
   in #27 as `.path/settings.json`, a flat strict-unknown-field JSON object keyed `"log.backends"` and
-  `"llm.concurrency"` (§6). Being inside the gitignored `.path/`, it is a per-checkout operator setting,
+  `"processor.concurrency"` (§6). Being inside the gitignored `.path/`, it is a per-checkout operator setting,
   not a committed project artifact.
 
 ## 10. Deferred register (doors deliberately held open)

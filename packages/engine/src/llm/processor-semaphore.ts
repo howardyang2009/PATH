@@ -1,9 +1,9 @@
 /**
- * The engine-wide cap on concurrent LLM processors (mvp spec §5.5, §7): ~400 MB of RSS per live
+ * The engine-wide cap on concurrent Processors (mvp spec §5.5, §7): ~400 MB of RSS per live
  * Agent SDK session means memory, not CPU, is the ceiling — 4 processors is ~1.5 GB, comfortable
  * on a 16 GB machine. Overridable in engine config; binary steps are uncapped.
  */
-export const DEFAULT_LLM_CONCURRENCY = 4;
+export const DEFAULT_PROCESSOR_CONCURRENCY = 4;
 
 /** Returns a slot to the semaphore. Idempotent — calling it twice must not widen the cap. */
 export type ReleaseSlot = () => void;

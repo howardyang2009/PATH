@@ -85,7 +85,7 @@ export interface StartRunOptions {
   /** The whole validated workflow tree, so nested `workflow` refs resolve without re-reading. */
   files: Map<string, WorkflowFile>;
   logBackends?: LogBackendId[];
-  llmConcurrency?: number;
+  processorConcurrency?: number;
   /**
    * The root workflow file's path relative to the project root, recorded on the root run row so a
    * later `resume` (§4.3) can recover which file to re-run — the same value `path run` stores
@@ -103,7 +103,7 @@ export interface StartRunOptions {
 export interface ResumeRunOptions {
   files: Map<string, WorkflowFile>;
   logBackends?: LogBackendId[];
-  llmConcurrency?: number;
+  processorConcurrency?: number;
   /**
    * An optional config override for the resumed run (§4.3). Unlike `input` — which a resume discards
    * in favour of the restored context — operator config is still applied on the resume path (the

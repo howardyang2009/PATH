@@ -20,7 +20,7 @@ import { createEmitter, type Emitter, type StepEmitter } from "./run-emitter.js"
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
 import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
 import type { LlmWorker } from "./llm/llm-worker.js";
-import { createProcessorSemaphore, DEFAULT_LLM_CONCURRENCY } from "./llm/processor-semaphore.js";
+import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./llm/processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
@@ -52,10 +52,10 @@ export interface RunOptions {
    */
   llmWorker?: LlmWorker;
   /**
-   * The engine-wide cap on concurrent LLM processors (mvp spec §5.5) — default 4. One semaphore
+   * The engine-wide cap on concurrent Processors (mvp spec §5.5) — default 4. One semaphore
    * covers the whole run tree, so nested workflows and nested parallels share it.
    */
-  llmConcurrency?: number;
+  processorConcurrency?: number;
   /**
    * External abort (#52): the way an operator stops this root run in flight. Aborting it kills the
    * in-flight leaf steps of the whole run tree best-effort — a binary step's child process, an LLM
@@ -674,7 +674,7 @@ export async function runWorkflow(
     // nested workflows and nested parallels alike (mvp spec §5.5).
     llm: {
       worker: options.llmWorker ?? createAgentSdkWorker(),
-      semaphore: createProcessorSemaphore(options.llmConcurrency ?? DEFAULT_LLM_CONCURRENCY),
+      semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
     },
     // Resume (#172): the root run's original counterpart is the original tree's own root run.
     // From there `executeWorkflowRun` plans reuse and restores context, recursing into every

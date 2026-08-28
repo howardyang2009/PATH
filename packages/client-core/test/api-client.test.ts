@@ -175,7 +175,7 @@ describe("PathApiClient", () => {
       input: { tag: "v1" },
       config: { model: "sonnet" },
       logBackends: ["db", "ndjson"],
-      llmConcurrency: 4,
+      processorConcurrency: 4,
     });
 
     expect(res).toEqual({ run_id: "r1", root_run_id: "r1" });
@@ -187,7 +187,7 @@ describe("PathApiClient", () => {
       input: { tag: "v1" },
       config: { model: "sonnet" },
       log_backends: ["db", "ndjson"],
-      llm_concurrency: 4,
+      processor_concurrency: 4,
     });
   });
 
