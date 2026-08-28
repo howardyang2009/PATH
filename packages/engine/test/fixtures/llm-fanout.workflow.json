@@ -1,11 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "7c14cd06-ec54-4092-aa9a-70a24bbe4c73",
   "name": "llm-fanout",
-  "worker": {
-    "type": "llm",
-    "model": "claude-sonnet-5"
-  },
   "body": [
     {
       "type": "parallel",
@@ -67,5 +63,8 @@
         }
       ]
     }
-  ]
+  ],
+  "config": {
+    "model": "claude-sonnet-5"
+  }
 }

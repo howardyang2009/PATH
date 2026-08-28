@@ -15,7 +15,7 @@ function record(overrides: Record<string, unknown>) {
     root_run_id: ROOT,
     parent_run_id: ROOT,
     node_id: "step-x",
-    worker: { type: "engine" },
+    worker_name: "spawn",
     status: "pending",
     started_at: null,
     finished_at: null,
@@ -156,7 +156,7 @@ describe("RunDetail", () => {
         run_id: "run_c",
         node_id: "step-c",
         step_type: "binary",
-        worker: { type: "engine" },
+        worker_name: "spawn",
       });
       await Promise.resolve();
     });
@@ -189,13 +189,13 @@ describe("RunDetail", () => {
         node_id: "step-c",
         node_name: "shout",
         step_type: "binary",
-        worker: { type: "engine" },
+        worker_name: "spawn",
       });
       await Promise.resolve();
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("narrative-events")).toHaveTextContent("shout (step-c) started · engine");
+      expect(screen.getByTestId("narrative-events")).toHaveTextContent("shout (step-c) started · spawn");
     });
   });
 

@@ -7,18 +7,18 @@ const masker = collectSecrets([{ token: { $secret: "s3cret-value" } }]);
 const TOKEN = "[secret:token]";
 
 const ids = { runId: "r1", rootRunId: "r0" };
-const worker = { type: "engine" } as const;
+const workerName = "spawn";
 
 /** Every observation type, so a member added without a masking decision fails to compile here. */
 const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> } = {
-  "run-started": { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: { k: "s3cret-value" }, worker },
+  "run-started": { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: { k: "s3cret-value" } },
   "step-started": {
     type: "step-started",
     ...ids,
     parentRunId: "r0",
     nodeId: "n1", nodeName: "n1",
     stepType: "binary",
-    worker,
+    workerName,
     input: { k: "s3cret-value" },
   },
   "step-stderr": { type: "step-stderr", ...ids, stderr: "boom s3cret-value" },

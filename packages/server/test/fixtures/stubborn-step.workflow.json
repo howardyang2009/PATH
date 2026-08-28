@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "e87d2e8b-577e-40b5-8174-d012c4854991",
   "name": "stubborn-step",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

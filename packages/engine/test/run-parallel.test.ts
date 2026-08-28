@@ -22,10 +22,9 @@ import { runNode } from "../src/run-workflow.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "walkers",
-  worker: { type: "engine" },
   body: [],
 };
 
@@ -282,7 +281,7 @@ describe("runNode — parallel", () => {
       type: "sequence" as const,
       id,
       name: id,
-      body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: "Hi.", worker: { type: "llm" as const, model: "m" } }],
+      body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: "Hi.", config: { model: "m" } }],
     });
     const node: Node = { type: "parallel", id: "fan", name: "fan", join: "collect", branches: [ask("a"), ask("b"), ask("c"), ask("d")] };
 

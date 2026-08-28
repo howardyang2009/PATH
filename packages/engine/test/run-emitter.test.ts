@@ -1,4 +1,4 @@
-import type { JsonValue, Worker } from "@path/schema";
+import type { JsonValue } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { Trace } from "../src/condition.js";
 import { createEmitter } from "../src/run-emitter.js";
@@ -22,7 +22,6 @@ const NESTED: RunIdentity = {
   nodeName: "child",
 };
 
-const WORKER = { type: "llm", model: "test-model" } as unknown as Worker;
 const TRACE = { fake: "trace" } as unknown as Trace;
 
 function sink(): { seen: Observation[]; emit: (o: Observation) => Promise<void> } {
@@ -35,7 +34,6 @@ describe("createEmitter — run-started envelope", () => {
     const { seen, emit } = sink();
     await createEmitter(ROOT, emit).runStarted({
       input: { seed: 1 },
-      worker: WORKER,
       resumedFromRootRunId: "prev-root",
       workflowId: "wf-guid",
       workflowName: "release",
@@ -51,7 +49,6 @@ describe("createEmitter — run-started envelope", () => {
         nodeId: null,
         nodeName: null,
         input: { seed: 1 },
-        worker: WORKER,
         resumedFromRootRunId: "prev-root",
         workflowId: "wf-guid",
         workflowName: "release",
@@ -64,7 +61,6 @@ describe("createEmitter — run-started envelope", () => {
     const { seen, emit } = sink();
     await createEmitter(NESTED, emit).runStarted({
       input: {},
-      worker: WORKER,
       workflowId: "wf-guid",
       workflowName: "release",
       workflowPath: "flows/release.workflow.json",
@@ -85,7 +81,7 @@ describe("createEmitter — run-started envelope", () => {
 
   it("omits every optional key when none is supplied", async () => {
     const { seen, emit } = sink();
-    await createEmitter(ROOT, emit).runStarted({ input: {}, worker: WORKER });
+    await createEmitter(ROOT, emit).runStarted({ input: {} });
 
     const [obs] = seen;
     expect(obs).not.toHaveProperty("resumedFromRootRunId");
@@ -166,7 +162,7 @@ describe("createEmitter — step sub-emitter", () => {
     const { seen, emit } = sink();
     const step = createEmitter(NESTED, emit).step(node);
 
-    await step.started({ stepType: "binary", worker: WORKER, input: { x: 1 } });
+    await step.started({ stepType: "binary", workerName: "spawn", input: { x: 1 } });
     await step.usage({ usage: { tokens: 10 }, estimatedCostUsd: 0.02 });
     await step.stderr("warn: slow");
     await step.finished({ status: "succeeded", output: "done" });

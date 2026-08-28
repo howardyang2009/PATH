@@ -6,10 +6,9 @@ import { WorkflowFileSchema, safeParseWorkflowFile } from "../src/workflow-file.
 const UUID = "11111111-1111-4111-8111-111111111111";
 
 const minimal = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: UUID,
   name: "my-workflow",
-  worker: { type: "engine" },
   body: [{ type: "binary", id: UUID, name: "step-one", command: "echo" }],
 };
 
@@ -19,15 +18,16 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 
   it("rejects a superseded or wrong format version", () => {
-    // `@2` is the only accepted format string; `@0`/`@1` are superseded (the loader gives a targeted
-    // "run the codemod" message — see the actionable-errors block below).
+    // `@3` is the only accepted format string; `@0`/`@1`/`@2` are superseded (the loader gives a
+    // targeted "run the codemod" message — see the actionable-errors block below).
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0" }).success).toBe(false);
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@1" }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@2" }).success).toBe(false);
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "workflow" }).success).toBe(false);
   });
 
   it("requires an exact format string match", () => {
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@2 " }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@3 " }).success).toBe(false);
   });
 
   it("requires a workflow-level id (the durable GUID)", () => {
@@ -63,9 +63,11 @@ describe("WorkflowFileSchema — envelope", () => {
     ).toBe(true);
   });
 
-  it("requires worker at workflow level", () => {
-    const { worker, ...withoutWorker } = minimal;
-    expect(WorkflowFileSchema.safeParse(withoutWorker).success).toBe(false);
+  it("rejects a file-level worker (a worker is a per-step name now, `@3` §4)", () => {
+    // `@2` required a file-level `worker`; `@3` has none — the field is deleted, so a strict parse
+    // rejects it as an unknown top-level key.
+    expect(WorkflowFileSchema.safeParse({ ...minimal, worker: { type: "engine" } }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, worker: "spawn" }).success).toBe(false);
   });
 
   it("accepts optional config and output", () => {
@@ -533,14 +535,15 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 
-  // `@0` names both codemods, in order (§1): the `@2` script migrates `@1` and nothing else, so it
-  // would report "skipped" on an `@0` file and leave it exactly as unreadable as it was.
-  it("reports the spec §1 targeted error for a superseded @0 file, naming both codemods in order", () => {
+  // `@0` names its whole codemod chain, in order (§1): each script migrates one step and nothing
+  // else, so it would report "skipped" on a file two or three versions behind and leave it exactly as
+  // unreadable as it was.
+  it("reports the spec §1 targeted error for a superseded @0 file, naming every codemod in order", () => {
     const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@0" });
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
+        "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3",
       ]);
     }
   });
@@ -550,7 +553,17 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2",
+        "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3",
+      ]);
+    }
+  });
+
+  it("reports the spec §1 targeted error for a superseded @2 file", () => {
+    const result = safeParseWorkflowFile({ ...minimal, format: "path/workflow@2" });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      expect(result.errors).toEqual([
+        "path/workflow@2 is no longer read — run scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3",
       ]);
     }
   });

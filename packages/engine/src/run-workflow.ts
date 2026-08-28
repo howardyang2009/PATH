@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type Worker, type WorkflowFile } from "@path/schema";
+import { BINARY_DEFAULT_WORKER, PROMPT_DEFAULT_WORKER, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { runBinaryStep } from "./binary-worker.js";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
@@ -225,7 +225,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   let previousOutput: JsonValue = input;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
-  // declared defaults key by key, nearest wins (format doc §8); worker never crosses (§7). One of
+  // declared defaults key by key, nearest wins (format doc §8). One of
   // the two points a run materializes effective config, so one of the two that resolve `$env`
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
@@ -287,7 +287,6 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     // to the root row) only when supplied. A nested run passes the file id/name and they are dropped.
     await emitter.runStarted({
       input,
-      worker: file.worker,
       resumedFromRootRunId: params.resumedFromRootRunId,
       workflowId: file.id,
       workflowName: file.name,
@@ -352,8 +351,8 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
 
 // A `workflow` step: resolve `ref` against the loaded tree and run the child file as a nested
 // workflow-run. The child starts from a fresh context seeded only by `stepInput` (context is
-// isolated — CONTEXT invariant); the parent's effective config crosses the boundary but its
-// worker default does not; the child's `output` map is this step's output object (format §6.4).
+// isolated — CONTEXT invariant); the parent's effective config crosses the boundary (§8), and
+// `model` rides it now (`@3` §8); the child's `output` map is this step's output object (format §6.4).
 async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
@@ -418,8 +417,8 @@ async function runWorkflowNode(
   return { status: "succeeded", output: childResult.output };
 }
 
-// Everything a leaf step run needs from its enclosing workflow-run: the effective config and file
-// worker it inherits, its place in the run tree, the context it interpolates against, the `signal`
+// Everything a leaf step run needs from its enclosing workflow-run: the effective config it
+// inherits, its place in the run tree, the context it interpolates against, the `signal`
 // that kills it in flight — an enclosing `parallel` block's (#24) or the operator's (#52) — and the
 // `cancellation` that says which of the two it was.
 /**
@@ -496,21 +495,34 @@ async function runPromptNode(
   ctx: StepContext,
 ): Promise<SeqOutcome> {
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.exec.context };
-  const effectiveWorker: Worker = node.worker ?? ctx.run.file.worker;
+  // `prompt`'s worker is a name now (`@3` §4): the one this step names, or the type default `sdk`.
+  // The node union is still closed, so there is one `prompt` worker and the name only selects it.
+  const workerName = node.worker ?? PROMPT_DEFAULT_WORKER;
 
-  // Worker is a *binding*, not a suggestion: a prompt step bound to the local engine has no
-  // processor to run on, and silently treating it as an LLM step would hide the authoring bug.
-  if (effectiveWorker.type !== "llm") {
+  // `model` is fixed config (`@3` §8, ADR 0021 sub-9) — literal, never interpolated against context.
+  // A prompt step with no resolved `config.model` fails **here, at run start**, not at load
+  // (ADR 0021 sub-10): config is a free-form map with no per-key required declaration, so the check
+  // has no load to live at. Giving `sdk` a default model would silently spend on a model the author
+  // never named. The common case survives: one `config.model` at the file top inherits to every prompt.
+  const modelValue = ctx.stepConfig.model;
+  if (typeof modelValue !== "string") {
     return {
       status: "failed",
-      error: `prompt step "${node.name}": needs an llm worker, but its effective worker is "${effectiveWorker.type}" (format doc §7)`,
+      error: `prompt step "${node.name}": config.model is required (a string) and none resolved (ADR 0021 sub-10)`,
     };
   }
+  const model = modelValue;
 
-  let model: string;
+  // The `options` bag is config now (`@3` §8): masking reaches it, and it passes to the worker
+  // verbatim (mvp spec §7). A non-object `config.options` is not a bag, so it is ignored.
+  const optionsValue = ctx.stepConfig.options;
+  const options =
+    optionsValue !== undefined && typeof optionsValue === "object" && optionsValue !== null && !Array.isArray(optionsValue)
+      ? (optionsValue as { [key: string]: unknown })
+      : undefined;
+
   let prompt: string;
   try {
-    model = interpolateToString(effectiveWorker.model, scope); // worker values are interpolable (§7)
     prompt = interpolateToString(node.prompt, scope);
   } catch (err) {
     return { status: "failed", error: describeInterpolationError(node.name, err) };
@@ -522,16 +534,16 @@ async function runPromptNode(
     // The step's run id is minted (and its row starts) only once a processor slot is really held.
     const step = ctx.run.emitter.step(node);
     ctx.onLeafStep?.(step);
-    await step.started({ stepType: node.type, worker: effectiveWorker, input: stepInput });
+    await step.started({ stepType: node.type, workerName, input: stepInput });
 
     result = await ctx.run.llm.worker.runPrompt({
       nodeName: node.name,
       model,
       prompt,
       input: stepInput,
-      // The `options` bag is worker-side: MCP servers and skills pass straight through, and no
-      // engine code interprets them (mvp spec §7).
-      options: effectiveWorker.options,
+      // The `options` bag passes straight through: MCP servers and skills, and no engine code
+      // interprets them (mvp spec §7).
+      options,
       cwd: ctx.run.fileDir,
       signal: ctx.exec.signal,
     });
@@ -571,7 +583,8 @@ async function runBinaryNode(
   ctx: StepContext,
 ): Promise<SeqOutcome> {
   const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.exec.context };
-  const effectiveWorker: Worker = node.worker ?? ctx.run.file.worker;
+  // `binary`'s worker is a name now (`@3` §4): the one this step names, or the type default `spawn`.
+  const workerName = node.worker ?? BINARY_DEFAULT_WORKER;
 
   let command: string;
   let args: string[];
@@ -590,7 +603,7 @@ async function runBinaryNode(
 
   const step = ctx.run.emitter.step(node);
   ctx.onLeafStep?.(step);
-  await step.started({ stepType: node.type, worker: effectiveWorker, input: stepInput });
+  await step.started({ stepType: node.type, workerName, input: stepInput });
 
   const result = await runBinaryStep({ name: node.name, command, args, cwd }, stepInput, ctx.exec.signal);
   await step.stderr(result.stderr);

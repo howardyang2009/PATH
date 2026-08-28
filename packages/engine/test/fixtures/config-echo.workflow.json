@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "246ceca6-b42f-4bf8-aa53-ead76955d735",
   "name": "config-echo",
-  "worker": {
-    "type": "engine"
-  },
   "config": {
     "greeting": "file-default"
   },

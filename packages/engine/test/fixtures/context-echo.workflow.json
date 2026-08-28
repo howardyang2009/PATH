@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "f27dd8a2-b672-468c-ade2-711350e696f0",
   "name": "context-echo",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

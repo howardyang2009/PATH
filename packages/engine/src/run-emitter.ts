@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue, Worker } from "@path/schema";
+import type { JsonValue } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
@@ -50,7 +50,7 @@ type StepFinish = Exclude<RunOutcome, { status: "cancelled" }>;
 export interface StepEmitter {
   /** This step run's own minted id — the `causeRunId` its failure hands its cancelling siblings. */
   readonly runId: string;
-  started(args: { stepType: string; worker: Worker; input: JsonValue }): Promise<void>;
+  started(args: { stepType: string; workerName: string; input: JsonValue }): Promise<void>;
   usage(args: { usage: JsonValue | null; estimatedCostUsd: number | null }): Promise<void>;
   stderr(stderr: string): Promise<void>;
   finished(outcome: StepFinish): Promise<void>;
@@ -71,14 +71,13 @@ export interface StepEmitter {
  */
 export interface Emitter {
   /**
-   * This workflow-run begins. `input`/`worker` are the run's own; the rest are root-only and gated
-   * here: the source-workflow trio (`workflowId`/`workflowName`/`workflowPath`, ADR 0006) rides only
-   * a root run's `run-started`, and `resumedFromRootRunId` (ADR 0009 lineage) only when the run is a
+   * This workflow-run begins. `input` is the run's own; the rest are root-only and gated here: the
+   * source-workflow trio (`workflowId`/`workflowName`/`workflowPath`, ADR 0006) rides only a root
+   * run's `run-started`, and `resumedFromRootRunId` (ADR 0009 lineage) only when the run is a
    * successor. A nested run passes them and they are dropped — `isRoot` is read off `identity`.
    */
   runStarted(args: {
     input: JsonValue;
-    worker: Worker;
     resumedFromRootRunId?: string;
     workflowId?: string;
     workflowName?: string;
@@ -130,7 +129,6 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         nodeId,
         nodeName,
         input: args.input,
-        worker: args.worker,
         // Successor lineage rides presence, not root-ness — the caller sets it on the root alone.
         ...(args.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: args.resumedFromRootRunId } : {}),
         // Source-workflow identity is root-only (ADR 0006): a nested run's producing node is already
@@ -238,7 +236,7 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
             nodeId: node.id,
             nodeName: node.name,
             stepType: args.stepType,
-            worker: args.worker,
+            workerName: args.workerName,
             input: args.input,
           });
         },

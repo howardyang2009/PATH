@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue, Worker } from "@path/schema";
+import type { JsonValue } from "@path/schema";
 import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeRunBlob } from "./blob-store.js";
@@ -46,7 +46,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       parentRunId: string | null;
       nodeId: string | null;
       nodeName: string | null;
-      worker: Worker | null;
+      workerName: string | null;
       input: JsonValue;
       // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
       resumedFromRootRunId?: string;
@@ -58,7 +58,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, nodeName, worker, input, resumedFromRootRunId } = fact;
+    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, input, resumedFromRootRunId } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
     insertRun(db, {
@@ -67,7 +67,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       parentRunId,
       nodeId,
       nodeName,
-      worker,
+      workerName,
       status: "running",
       inputRef,
       resumedFromRootRunId,
@@ -90,10 +90,11 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     observe(o) {
       switch (o.type) {
         case "run-started":
-          // Root run: parentRunId/nodeId null, worker null. Nested workflow-run (#22): its parent
-          // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step.
+          // Root run: parentRunId/nodeId null, workerName null. Nested workflow-run (#22): its parent
+          // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step. A
+          // workflow-run carries no worker of its own (ADR 0021 sub-14), so `worker_name` is null.
           // A workflow-run's input seeds its context (format doc §6.3), which a leaf step's does not.
-          recordStarted({ ...o, worker: null }, true);
+          recordStarted({ ...o, workerName: null }, true);
           return;
 
         case "step-started":

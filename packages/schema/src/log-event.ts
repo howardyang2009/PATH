@@ -1,7 +1,6 @@
 import { z } from "zod";
 import { TerminalRunStatusSchema } from "./run-status.js";
 import { TraceSchema } from "./trace.js";
-import { WorkerSchema } from "./worker.js";
 
 /**
  * The typed log-event stream (mvp spec §8.1). Every event shares an envelope — `seq` (monotonic
@@ -34,7 +33,10 @@ const StepStartedSchema = z
     type: z.literal("step-started"),
     ...envelope,
     step_type: z.string(),
-    worker: WorkerSchema,
+    // The *name* of the worker the step ran on (ADR 0021 sub-14). A leaf step carries its resolved
+    // worker name (`spawn`/`sdk`); a workflow-run's implicit-root-step event carries `"workflow"`,
+    // the step type itself — a workflow step runs a nested run, not a worker.
+    worker_name: z.string(),
   })
   .strict();
 

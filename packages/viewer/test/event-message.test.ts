@@ -17,8 +17,8 @@ const TRACE: Trace = { type: "exists", path: "output.status", outcome: "true" };
 
 describe("eventMessage", () => {
   it("names the step by its human name and id, plus its worker, on step-started", () => {
-    expect(eventMessage({ ...ENVELOPE, type: "step-started", step_type: "binary", worker: { type: "engine" } })).toBe(
-      "step-a (n1) started · engine",
+    expect(eventMessage({ ...ENVELOPE, type: "step-started", step_type: "binary", worker_name: "spawn" })).toBe(
+      "step-a (n1) started · spawn",
     );
   });
 
@@ -30,9 +30,9 @@ describe("eventMessage", () => {
         node_name: null,
         type: "step-started",
         step_type: "workflow",
-        worker: { type: "engine" },
+        worker_name: "workflow",
       }),
-    ).toBe("root started · engine");
+    ).toBe("root started · workflow");
   });
 
   it("carries the failure message on a failed step-finished", () => {

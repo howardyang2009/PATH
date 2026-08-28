@@ -11,7 +11,7 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
     parentRunId: ROOT,
     nodeId: "step",
     nodeName: "step",
-    worker: { type: "engine" },
+    workerName: "spawn",
     status: "running",
     startedAt: null,
     finishedAt: null,

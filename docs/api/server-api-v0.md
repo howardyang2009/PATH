@@ -151,7 +151,7 @@ snake_case):
       "parent_run_id": null,
       "node_id": null,
       "node_name": null,
-      "worker": { "...": "..." },
+      "worker_name": "<worker-name-or-null>",
       "status": "succeeded",
       "started_at": "...",
       "finished_at": "...",
@@ -301,7 +301,7 @@ envelope level (`run_id`, `node_id`, `seq`, `ts`), so no field translation is ne
 other endpoints.
 
 ```
-data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker":{...}}
+data: {"type":"step-started","seq":1,"ts":"...","run_id":"...","node_id":null,"node_name":null,"step_type":"workflow","worker_name":"workflow"}
 
 data: {"type":"step-finished","seq":2,"ts":"...","run_id":"...","node_id":"<uuid>","node_name":"draft","status":"succeeded"}
 ```
@@ -415,7 +415,7 @@ Response `200 OK`:
   file, every entry then reads `valid: false, is_root: null` with the same folder-naming `error`. This is
   legible but repetitive, and it is the accepted cost of PATH failing loudly at load.
 - **No input hint.** The format declares no input schema (the top-level `WorkflowFileSchema` carries
-  `format`, `id`, `name`, `worker`, `config`, `body`, and `output`, no `input`). So an entry says
+  `format`, `id`, `name`, `config`, `body`, and `output`, no `input`). So an entry says
   nothing about what `input` a launch needs; the operator supplies it as raw JSON (#228). An inner
   workflow's *effective config* (invariant 5: config inherits downward) is likewise not surfaced.
   **Schema-valid does not equal self-sufficient standalone.** Discovery reports existence, validity, and

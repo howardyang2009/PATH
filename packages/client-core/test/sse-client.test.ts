@@ -6,8 +6,8 @@ import type { LogEvent } from "@path/schema";
 import { subscribeRunEvents } from "../src/sse-client.js";
 
 const EVENTS: LogEvent[] = [
-  { type: "step-started", seq: 1, ts: "t1", run_id: "root", node_id: null, node_name: null, step_type: "workflow", worker: { type: "engine" } },
-  { type: "step-started", seq: 2, ts: "t2", run_id: "child", node_id: "draft", node_name: "draft", step_type: "prompt", worker: { type: "engine" } },
+  { type: "step-started", seq: 1, ts: "t1", run_id: "root", node_id: null, node_name: null, step_type: "workflow", worker_name: "spawn" },
+  { type: "step-started", seq: 2, ts: "t2", run_id: "child", node_id: "draft", node_name: "draft", step_type: "prompt", worker_name: "sdk" },
   { type: "step-finished", seq: 3, ts: "t3", run_id: "child", node_id: "draft", node_name: "draft", status: "succeeded" },
   { type: "step-finished", seq: 4, ts: "t4", run_id: "root", node_id: null, node_name: null, status: "succeeded" },
 ];

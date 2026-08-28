@@ -2,10 +2,10 @@ import { describe, expect, it } from "vitest";
 import { isReuseRow, isRootRun, runKind, type RunKindFields } from "../src/run-kind.js";
 
 /** The four row shapes the `runs` table holds, minimal to the fields the kind is read from. */
-const root: RunKindFields = { parentRunId: null, reusedFromRunId: null, worker: null };
-const nested: RunKindFields = { parentRunId: "root-1", reusedFromRunId: null, worker: null };
-const leaf: RunKindFields = { parentRunId: "root-1", reusedFromRunId: null, worker: { type: "engine" } };
-const reuse: RunKindFields = { parentRunId: "root-1", reusedFromRunId: "src-leaf", worker: null };
+const root: RunKindFields = { parentRunId: null, reusedFromRunId: null, workerName: null };
+const nested: RunKindFields = { parentRunId: "root-1", reusedFromRunId: null, workerName: null };
+const leaf: RunKindFields = { parentRunId: "root-1", reusedFromRunId: null, workerName: "spawn" };
+const reuse: RunKindFields = { parentRunId: "root-1", reusedFromRunId: "src-leaf", workerName: null };
 
 describe("runKind", () => {
   it("classifies each of the four row kinds", () => {
@@ -18,7 +18,7 @@ describe("runKind", () => {
   it("reads a reuse row as reuse even though it has a parent (reuse is tested first)", () => {
     // A reuse row carries a parent and no worker, the same as a nested workflow-run — the reuse
     // pointer is what tells them apart, so it must win over the root and worker checks.
-    expect(runKind({ parentRunId: "root-1", reusedFromRunId: "src", worker: null })).toBe("reuse");
+    expect(runKind({ parentRunId: "root-1", reusedFromRunId: "src", workerName: null })).toBe("reuse");
   });
 
   it("never returns a fifth kind (exhaustive over the union)", () => {

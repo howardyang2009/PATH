@@ -240,7 +240,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { message: string; details: string[] } };
     expect(body.error.details).toEqual([
-      `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+      `${join(projectDir, "superseded.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3`,
     ]);
 
     const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
@@ -733,7 +733,7 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
     const db = openDb(dbFilePath(projectDir));
     try {
       db.prepare(
-        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at)
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker_name, status, started_at)
          VALUES (?, ?, NULL, NULL, NULL, 'running', ?)`,
       ).run(rootRunId, rootRunId, new Date().toISOString());
     } finally {
@@ -815,7 +815,7 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
     const db = openDb(dbFilePath(projectDir));
     try {
       db.prepare(
-        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at)
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker_name, status, started_at)
          VALUES (?, ?, ?, 'orphan', NULL, 'succeeded', ?)`,
       ).run("33333333-3333-3333-3333-333333333333", rootRunId, rootRunId, new Date().toISOString());
     } finally {
@@ -974,7 +974,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     const db = openDb(dbFilePath(projectDir));
     try {
       db.prepare(
-        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker, status, started_at, workflow_path)
+        `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, worker_name, status, started_at, workflow_path)
          VALUES (?, ?, NULL, NULL, NULL, 'failed', ?, NULL)`,
       ).run(rootRunId, rootRunId, new Date().toISOString());
     } finally {
@@ -1033,7 +1033,7 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(res.status).toBe(400);
     const body = (await res.json()) as { error: { details: string[] } };
     expect(body.error.details).toEqual([
-      `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+      `${join(projectDir, "failing-step.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3`,
     ]);
   });
 
@@ -1087,10 +1087,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     writeFileSync(
       join(projectDir, "failing-step.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@2",
+        format: "path/workflow@3",
         id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
         name: "swapped",
-        worker: { type: "engine" },
         body: [{ type: "binary", id: "550e8400-e29b-41d4-a716-446655440000", name: "noop", command: "true", args: [] }],
       }),
     );

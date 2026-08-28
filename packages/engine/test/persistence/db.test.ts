@@ -32,7 +32,7 @@ describe("openDb", () => {
         "root_run_id",
         "parent_run_id",
         "node_id",
-        "worker",
+        "worker_name",
         "status",
         "started_at",
         "finished_at",

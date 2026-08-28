@@ -31,10 +31,9 @@ afterEach(() => {
 });
 
 const twoStepWorkflow: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "two-step",
-  worker: { type: "engine" },
   body: [
     { type: "binary", id: "first", name: "first", command: "node", args: ["-e", "process.stdout.write('a')"] },
     { type: "binary", id: "second", name: "second", command: "node", args: ["-e", "process.stdout.write('b')"] },
@@ -93,10 +92,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("records the failing step's step-finished with its error, then the failed root step-finished", async () => {
     const failing: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "boom",
-      worker: { type: "engine" },
       body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }],
     };
     const backends = createLogBackends(["db"], { db, projectDir });
@@ -135,10 +133,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a parallel collect join in both backends, with branch ids and published keys (ticket #24)", async () => {
     const parallelWorkflow: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "parallel-join",
-      worker: { type: "engine" },
       body: [
         {
           type: "parallel",
@@ -167,10 +164,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a run-cancelled in both backends and marks the cancelled step's row cancelled (ticket #24)", async () => {
     const cancellingWorkflow: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "parallel-cancel",
-      worker: { type: "engine" },
       body: [
         {
           type: "parallel",
@@ -206,10 +202,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("ends an externally aborted root run cancelled in both backends, the run rows and context.json (#52)", async () => {
     const cancellableWorkflow: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "operator-cancel",
-      worker: { type: "engine" },
       body: [
         {
           type: "binary",
@@ -267,10 +262,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
       publish: { [id]: "${output}" },
     });
     const file: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "multi-publish",
-      worker: { type: "engine" },
       body: [publishingStep("one"), publishingStep("two"), publishingStep("three")],
     };
 
@@ -313,10 +307,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits checkpoint and branch control events with complete traces to both backends (ticket #21)", async () => {
     const controls: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "controls",
-      worker: { type: "engine" },
       body: [
         { type: "binary", id: "seed", name: "seed", command: "node", args: ["-e", "process.stdout.write('x')"], publish: { pick: "b" } },
         { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.pick" } },
@@ -352,10 +345,9 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits while-do iteration-started and loop-exited control events with traces to both backends (ticket #23)", async () => {
     const loop: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "while-loop",
-      worker: { type: "engine" },
       body: [
         { type: "binary", id: "seed", name: "seed", command: "node", args: ["-e", "process.stdout.write('0')"], parse: "json", publish: { count: "${output}" } },
         {

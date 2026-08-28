@@ -21,10 +21,9 @@ import type { NodeExecContext, RunContext } from "../src/run-context.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "walkers",
-  worker: { type: "engine" },
   body: [],
 };
 
@@ -443,7 +442,7 @@ describe("runNode — prompt step", () => {
     type: "prompt",
     id: "ask", name: "ask",
     prompt: "say ${context.word}",
-    worker: { type: "llm", model: "test-model" },
+    config: { model: "test-model" },
   };
 
   it("runs on the llm worker and reports what the processor spent (§5.7)", async () => {
@@ -466,18 +465,19 @@ describe("runNode — prompt step", () => {
     expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ estimatedCostUsd: 0.01 });
   });
 
-  // A worker is a binding, not a suggestion: treating this as an LLM step would hide the bug.
-  it("fails when its effective worker is not an llm one (§7)", async () => {
+  // `model` is fixed config now (`@3` §8): a prompt step with no resolved `config.model` fails at
+  // run-start, not load (ADR 0021 sub-10) — the run row exists and the step has started.
+  it("fails at run-start when no config.model resolves (ADR 0021 sub-10)", async () => {
     const { run } = makeRun();
-    const { worker: _dropped, ...withoutWorker } = promptNode as Extract<Node, { type: "prompt" }>;
+    const { config: _dropped, ...withoutModel } = promptNode as Extract<Node, { type: "prompt" }>;
 
-    const outcome = await runNode(run, withoutWorker as Node, "seed", makeExec({ word: "hi" }));
+    const outcome = await runNode(run, withoutModel as Node, "seed", makeExec({ word: "hi" }));
 
     expect(outcome.status).toBe("failed");
-    expect(outcome.status === "failed" && outcome.error).toMatch(/needs an llm worker/);
+    expect(outcome.status === "failed" && outcome.error).toMatch(/config\.model is required/);
   });
 
-  it("hands the worker an interpolated model, the step's input object, and the file's directory", async () => {
+  it("hands the worker the config model, the step's input object, and the file's directory", async () => {
     const requests: PromptRequest[] = [];
     const { run } = makeRun({
       fileConfig: { model: "claude-opus-4-8", subject: "the release" },
@@ -488,7 +488,8 @@ describe("runNode — prompt step", () => {
       id: "summarize", name: "summarize",
       prompt: "Summarize ${config.subject}.",
       input: { version: "${context.version}" },
-      worker: { type: "llm", model: "${config.model}", options: { mcpServers: { docs: { type: "stdio" } } } },
+      // `model` inherits from the file config; `options` is the step's own config (`@3` §8).
+      config: { options: { mcpServers: { docs: { type: "stdio" } } } },
     };
 
     expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe("succeeded");
@@ -499,14 +500,17 @@ describe("runNode — prompt step", () => {
       input: { version: "1.2.0" },
       cwd: fileDir,
     });
-    // The options bag is worker-side: no engine code interprets it (§7).
+    // The options bag passes straight through: no engine code interprets it (§7).
     expect(requests[0]?.options).toEqual({ mcpServers: { docs: { type: "stdio" } } });
   });
 
-  it("lets a step-level llm worker override the file's engine worker", async () => {
+  it("lets a step's own config.model override the inherited file model", async () => {
     const requests: PromptRequest[] = [];
-    const { run } = makeRun({ llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) } });
-    const node: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", worker: { type: "llm", model: "claude-haiku-4-5" } };
+    const { run } = makeRun({
+      fileConfig: { model: "inherited" },
+      llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) },
+    });
+    const node: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "claude-haiku-4-5" } };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(requests[0]?.model).toBe("claude-haiku-4-5");
@@ -570,7 +574,7 @@ describe("runNode — prompt step", () => {
       },
     };
     const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
-    const ask = (id: string): Node => ({ type: "prompt", id, name: id, prompt: `${id} question.`, worker: { type: "llm", model: "m" } });
+    const ask = (id: string): Node => ({ type: "prompt", id, name: id, prompt: `${id} question.`, config: { model: "m" } });
 
     const outcome = await runSequence(run, [ask("first"), ask("second")], "seed", makeExec());
 
@@ -600,7 +604,7 @@ describe("runNode — prompt step", () => {
       branches: [
         {
           type: "sequence", id: "slow", name: "slow",
-          body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", worker: { type: "llm", model: "m" }, publish: { answer: "${output}" } }],
+          body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" }, publish: { answer: "${output}" } }],
         },
         { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "fail", name: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
       ],
@@ -617,10 +621,9 @@ describe("runNode — prompt step", () => {
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@2",
+    format: "path/workflow@3",
     id: "wf-id",
     name: "child",
-    worker: { type: "engine" },
     body: [echo("inner", "done")],
     output: { greeting: "${context.name}" },
   };

@@ -1,11 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "f348a778-360b-40d2-9771-b352968d1200",
   "name": "revise-cycle",
-  "worker": {
-    "type": "llm",
-    "model": "claude-sonnet-5"
-  },
   "body": [
     {
       "type": "prompt",
@@ -47,5 +43,8 @@
   "output": {
     "draft": "${context.draft}",
     "verdict": "${context.verdict}"
+  },
+  "config": {
+    "model": "claude-sonnet-5"
   }
 }

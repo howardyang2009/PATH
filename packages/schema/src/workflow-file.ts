@@ -6,7 +6,6 @@ import { interpolatedJsonValue } from "./interpolation.js";
 import { childBodies, walkNodes } from "./node-walk.js";
 import { NodeArraySchema } from "./nodes.js";
 import { STEP_ROOTS } from "./roots.js";
-import { WorkerSchema } from "./worker.js";
 import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
 
@@ -17,7 +16,6 @@ const BaseWorkflowFileSchema = z
     format: z.literal(FORMAT_VERSION),
     id: IdSchema,
     name: NameSchema,
-    worker: WorkerSchema,
     config: ConfigObjectSchema.optional(),
     body: NodeArraySchema,
     output: z.record(interpolatedJsonValue(STEP_ROOTS)).optional(),
@@ -186,16 +184,17 @@ export interface WorkflowFileParseFailure {
 }
 
 // A pre-migration file carrying a superseded `format` string gets a targeted error naming the
-// codemod, not a generic zod "invalid literal": the shape changed (`@1`'s uniform single-node
-// containers, `@0`'s GUID identity), so the fix is to migrate, not to hand-edit `format`
-// (workflow-format-v2.md §1). The engine reads `@2` only — there is no dual reader.
+// codemod, not a generic zod "invalid literal": the shape changed (`@2`'s worker union, `@1`'s
+// uniform single-node containers, `@0`'s GUID identity), so the fix is to migrate, not to hand-edit
+// `format` (workflow-format-v3.md §1). The engine reads `@3` only — there is no dual reader.
 function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   if (typeof json !== "object" || json === null) return null;
   const format = (json as { format?: unknown }).format;
   if (typeof format !== "string" || !(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
   // Per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never a generic
-  // zod "invalid literal" on `format`. `@1`'s sentence is the spec's verbatim; `@0` names its two
-  // scripts in the order they must run, because the `@2` codemod alone would not move the file.
+  // zod "invalid literal" on `format`. Each older string names its whole codemod chain in the order
+  // the scripts must run, because a single codemod migrates one step only and would not move a file
+  // that is two or three versions behind.
   const codemods = SUPERSEDED_FORMAT_VERSIONS[format as keyof typeof SUPERSEDED_FORMAT_VERSIONS];
   return {
     success: false,

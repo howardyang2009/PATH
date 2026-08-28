@@ -49,10 +49,9 @@ function echoToken(id: string): WorkflowFile["body"][number] {
 
 /** checkpoint-evaluated, branch-taken, context-changed. */
 const controls: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "controls",
-  worker: { type: "engine" },
   body: [
     {
       type: "binary",
@@ -75,10 +74,9 @@ const controls: WorkflowFile = {
 
 /** iteration-started, loop-exited. */
 const loop: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "loop",
-  worker: { type: "engine" },
   body: [
     {
       type: "binary",
@@ -107,10 +105,9 @@ const loop: WorkflowFile = {
 
 /** join-applied — every branch succeeds, so the collect join applies at block end. */
 const parallelJoin: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "parallel-join",
-  worker: { type: "engine" },
   body: [
     {
       type: "parallel",
@@ -148,10 +145,9 @@ const parallelJoin: WorkflowFile = {
 
 /** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is killed. */
 const parallelCancel: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "parallel-cancel",
-  worker: { type: "engine" },
   body: [
     {
       type: "parallel",
@@ -173,10 +169,9 @@ const parallelCancel: WorkflowFile = {
 
 /** branch-no-match — no arm matches and there is no `else`, which fails the run (§5.2). */
 const noMatch: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "branch-no-match",
-  worker: { type: "engine" },
   body: [
     {
       type: "binary",
@@ -195,10 +190,10 @@ const noMatch: WorkflowFile = {
 
 /** step-usage — the prompt step is where tokens are spent, on the scripted worker. */
 const prompt: WorkflowFile = {
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "prompt-usage",
-  worker: { type: "llm", model: "test-model" },
+  config: { model: "test-model" },
   body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Say hi. ${config.token}" }],
 };
 
@@ -219,7 +214,9 @@ async function runOnce(file: WorkflowFile, token: ConfigValue): Promise<RunOutco
     const observer = composeObservers(createPersistedObserver(runDb, dir), createLoggingObserver(backends));
     const llmWorker = createScriptedLlmWorker({ ask: () => "hello" });
 
-    const result = await runWorkflow(stampNames({ ...file, config: { token } }), dir, { observer, llmWorker });
+    // Merge, not replace, so a fixture's own config (the prompt fixture's `config.model`, `@3` §8)
+    // survives the token injection.
+    const result = await runWorkflow(stampNames({ ...file, config: { ...file.config, token } }), dir, { observer, llmWorker });
 
     const rootRunId = (
       runDb.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string }

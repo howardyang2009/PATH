@@ -18,7 +18,7 @@ describe("eventOutcome", () => {
   });
 
   it("treats a started step as running", () => {
-    expect(eventOutcome({ ...ENVELOPE, type: "step-started", step_type: "binary", worker: { type: "engine" } })).toBe(
+    expect(eventOutcome({ ...ENVELOPE, type: "step-started", step_type: "binary", worker_name: "spawn" })).toBe(
       "running",
     );
   });

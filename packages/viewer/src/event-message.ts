@@ -13,7 +13,7 @@ export function eventMessage(event: LogEvent): string {
   const label = nodeEventLabel(event.node_id, event.node_name);
   switch (event.type) {
     case "step-started":
-      return `${label} started · ${event.worker.type}`;
+      return `${label} started · ${event.worker_name}`;
     case "step-finished":
       // The `error` tail carries the exit code + a short stderr tail on a binary step (mvp spec §8.1).
       return event.error === undefined ? `${label} ${event.status}` : `${label} ${event.status} · ${event.error}`;

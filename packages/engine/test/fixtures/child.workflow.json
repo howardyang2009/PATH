@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "2e221c5d-e533-415d-8a6f-bf0dbaba09bf",
   "name": "child",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "binary",

@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "5c848796-afae-40a2-8748-9157fb15c136",
   "name": "github-release-notes",
-  "worker": {
-    "type": "engine"
-  },
   "config": {
     "repo": "howardyang2009/PATH",
     "repo_path": "../..",
@@ -155,10 +152,6 @@
       "type": "prompt",
       "id": "a70ce91f-e710-4027-91d4-e680207816c0",
       "name": "draft-notes",
-      "worker": {
-        "type": "llm",
-        "model": "${config.model}"
-      },
       "input": {
         "cited": "${context.enriched.cited}",
         "unresolved": "${context.enriched.unresolved}",

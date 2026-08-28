@@ -1,5 +1,3 @@
-import type { Worker } from "./worker-type.js";
-
 /**
  * The kind of a run row (#257 grew the set to four). A `runs` row is a flat struct standing in for a
  * sum type: root run, nested workflow-run, leaf step, or reuse row. "Which kind" used to be re-derived
@@ -18,7 +16,7 @@ export type RunKind = "root" | "nested-workflow" | "leaf" | "reuse";
 export interface RunKindFields {
   parentRunId: string | null;
   reusedFromRunId: string | null;
-  worker: Worker | null;
+  workerName: string | null;
 }
 
 /**
@@ -38,12 +36,12 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T):
 
 /**
  * Classify one run row. Reuse is tested first (a reuse row has a parent, so it must not read as root
- * or leaf); then root; then worker distinguishes a nested workflow-run (none — workflow-runs carry no
- * worker) from a leaf step (bound to one). Every worker-less non-root non-reuse row is a nested
- * workflow-run, so the fall-through to `leaf` is reached only for a real worker-bound step.
+ * or leaf); then root; then the worker name distinguishes a nested workflow-run (none — workflow-runs
+ * carry no worker) from a leaf step (bound to one). Every worker-less non-root non-reuse row is a
+ * nested workflow-run, so the fall-through to `leaf` is reached only for a real worker-bound step.
  */
 export function runKind(run: RunKindFields): RunKind {
   if (isReuseRow(run)) return "reuse";
   if (isRootRun(run)) return "root";
-  return run.worker === null ? "nested-workflow" : "leaf";
+  return run.workerName === null ? "nested-workflow" : "leaf";
 }

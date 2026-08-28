@@ -33,10 +33,9 @@ function writeSettings(settings: unknown): void {
 }
 
 const oneStep: WorkflowFile = stampNames({
-  format: "path/workflow@2",
+  format: "path/workflow@3",
   id: "wf-id",
   name: "one-step",
-  worker: { type: "engine" },
   body: [{ type: "binary", id: "only", name: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
 });
 
@@ -236,10 +235,9 @@ describe("Project.resume (#173)", () => {
   // v1 stops at `b` (exit 1) after `a` succeeds; v2 is the same tree with `b` fixed to succeed. On
   // resume against v2, `a` reuses its recorded output and only `b` re-runs.
   const v1: WorkflowFile = {
-    format: "path/workflow@2",
+    format: "path/workflow@3",
     id: "wf-id",
     name: "resumable",
-    worker: { type: "engine" },
     body: [emit("a", "A_OUT"), emit("b")],
     output: { a: "${context.from_a}", b: "${context.from_b}" },
   };
@@ -334,10 +332,9 @@ describe("Project.resume (#173)", () => {
     // no output blob of its own. R3 must reuse `a` straight from that pointer (never re-execute it),
     // and its marker must reach past R2 to R1 (direct-to-source, ADR 0001).
     const c1: WorkflowFile = {
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "chain",
-      worker: { type: "engine" },
       body: [emit("a", "A_OUT"), emit("b"), emit("c")],
       output: { a: "${context.from_a}", b: "${context.from_b}", c: "${context.from_c}" },
     };
@@ -412,19 +409,17 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     writeFileSync(
       join(sub, "child.workflow.json"),
       JSON.stringify(stampGuids({
-        format: "path/workflow@2",
+        format: "path/workflow@3",
         id: "wf-id",
         name: "child",
-        worker: { type: "engine" },
         body: [{ type: "binary", id: "inner", name: "inner", command: "node", args: ["-e", "process.stdout.write('inner')"] }],
       })),
       "utf8",
     );
     const parent: WorkflowFile = stampGuids({
-      format: "path/workflow@2",
+      format: "path/workflow@3",
       id: "wf-id",
       name: "parent",
-      worker: { type: "engine" },
       body: [{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }],
     });
     writeFileSync(join(sub, "parent.workflow.json"), JSON.stringify(parent), "utf8");

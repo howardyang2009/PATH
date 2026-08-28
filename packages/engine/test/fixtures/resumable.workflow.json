@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "cf159dd3-4a05-4e24-af75-b0d65210a147",
   "name": "resumable",
-  "worker": {
-    "type": "engine"
-  },
   "config": {
     "mode": "fail"
   },

@@ -1,10 +1,7 @@
 {
-  "format": "path/workflow@2",
+  "format": "path/workflow@3",
   "id": "5ddbf258-8122-4e80-9532-57022b1701f6",
   "name": "cycle-b",
-  "worker": {
-    "type": "engine"
-  },
   "body": [
     {
       "type": "workflow",

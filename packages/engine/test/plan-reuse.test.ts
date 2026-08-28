@@ -10,7 +10,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
   return {
     rootRunId: "root",
     nodeName: overrides.nodeId,
-    worker: null,
+    workerName: null,
     startedAt: "t0",
     finishedAt: null,
     inputRef: null,
@@ -30,7 +30,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
 const root = (overrides: Partial<RunRecord> = {}) => run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded", ...overrides });
 
 function tree(body: WorkflowNode[]): WorkflowFile {
-  return { format: FORMAT_VERSION, id: "11111111-1111-4111-8111-111111111111", name: "t", worker: { type: "engine" }, body };
+  return { format: FORMAT_VERSION, id: "11111111-1111-4111-8111-111111111111", name: "t", body };
 }
 
 function prompt(id: string, overrides: Partial<PromptStep> = {}): PromptStep {

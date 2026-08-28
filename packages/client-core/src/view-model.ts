@@ -56,7 +56,7 @@ function nodeFromRecord(row: WireRunRecord): RunNodeState {
     parentRunId: row.parent_run_id,
     nodeId: row.node_id,
     nodeName: row.node_name,
-    worker: row.worker,
+    workerName: row.worker_name,
     status: row.status,
     startedAt: row.started_at,
     finishedAt: row.finished_at,
@@ -147,7 +147,7 @@ export class RunViewModel {
       parentRunId: null,
       nodeId: event.node_id,
       nodeName: event.node_name,
-      worker: null,
+      workerName: null,
       status: "pending",
       startedAt: null,
       finishedAt: null,
@@ -169,7 +169,7 @@ export class RunViewModel {
       // (the default when there is no `Last-Event-ID` to resume from) walks an already-hydrated
       // `succeeded` run back to `running` and forward again, flickering the status on every open.
       if (!isTerminal(node.status)) node.status = "running";
-      node.worker = event.worker;
+      node.workerName = event.worker_name;
       node.startedAt ??= event.ts;
     } else if (event.type === "step-finished") {
       node.status = event.status;

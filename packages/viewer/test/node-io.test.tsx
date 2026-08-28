@@ -15,7 +15,7 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     parentRunId: ROOT,
     nodeId: "draft-notes",
     nodeName: "draft-notes",
-    worker: { type: "engine" },
+    workerName: "spawn",
     status: "succeeded",
     startedAt: "2026-07-25T10:00:00.000Z",
     finishedAt: "2026-07-25T10:00:02.000Z",

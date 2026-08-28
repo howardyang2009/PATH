@@ -4,12 +4,12 @@ import { LogEventSchema } from "../src/log-event.js";
 const envelope = { seq: 1, ts: "2026-07-19T00:00:00.000Z", run_id: "run-1", node_id: "greet", node_name: "greet" };
 
 describe("LogEventSchema", () => {
-  it("accepts a step-started event with its worker and step_type payload", () => {
+  it("accepts a step-started event with its worker_name and step_type payload", () => {
     const parsed = LogEventSchema.parse({
       type: "step-started",
       ...envelope,
       step_type: "binary",
-      worker: { type: "engine" },
+      worker_name: "spawn",
     });
     expect(parsed.type).toBe("step-started");
   });
@@ -36,7 +36,7 @@ describe("LogEventSchema", () => {
       node_id: null,
       node_name: null,
       step_type: "workflow",
-      worker: { type: "engine" },
+      worker_name: "workflow",
     });
     expect(parsed.node_id).toBeNull();
     expect(parsed.node_name).toBeNull();

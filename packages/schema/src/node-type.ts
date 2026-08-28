@@ -1,14 +1,13 @@
 import type { Condition } from "./condition-type.js";
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
-import type { Worker } from "./worker-type.js";
+import type { BinaryWorkerName, PromptWorkerName } from "./worker-names.js";
 
 interface CommonStepFields {
   /** Durable machine identity — a UUIDv4, the reuse/resume key and audit `node_id` (ADR 0006). */
   id: string;
   /** Human label, unique across the whole file — keys output objects and the log narration. */
   name: string;
-  worker?: Worker;
   config?: ConfigObject;
   input?: JsonValue;
   parse?: "text" | "json";
@@ -17,16 +16,21 @@ interface CommonStepFields {
 
 export interface PromptStep extends CommonStepFields {
   type: "prompt";
+  /** The worker *name* to run on (`@3` §4); omitted resolves to `prompt`'s default worker `sdk`. */
+  worker?: PromptWorkerName;
   prompt: string;
 }
 
 export interface BinaryStep extends CommonStepFields {
   type: "binary";
+  /** The worker *name* to run on (`@3` §4); omitted resolves to `binary`'s default worker `spawn`. */
+  worker?: BinaryWorkerName;
   command: string;
   args?: string[];
   cwd?: string;
 }
 
+// A `workflow` step runs a nested workflow-run, not a worker (`@3` §4) — so it carries no `worker`.
 export interface WorkflowStep extends CommonStepFields {
   type: "workflow";
   ref: string;

@@ -12,7 +12,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
     parent_run_id: ROOT,
     node_id: "draft",
     node_name: "draft",
-    worker: { type: "engine" },
+    worker_name: "spawn",
     status: "running",
     started_at: "t0",
     finished_at: null,
@@ -115,7 +115,7 @@ describe("connectRunViewModel", () => {
       node_id: "draft",
       node_name: "draft",
       step_type: "binary",
-      worker: { type: "engine" },
+      worker_name: "spawn",
     });
     // `runs.has(CHILD)` holds the moment the event folds — the placeholder node the fold creates
     // carries `parentRunId: null`. The re-read landing is what fills the link in, so that is the

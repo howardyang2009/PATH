@@ -61,7 +61,6 @@ describe("cli main()", () => {
         format: "path/workflow@1",
         id: "d8503fa6-27e1-4c09-95b8-af631074e2dc",
         name: "old-v1",
-        worker: { type: "engine" },
         body: [{ type: "binary", id: "6194c7de-b3a8-4f62-80d1-59e2fb0a4738", name: "step-one", command: "echo" }],
       }),
     );
@@ -70,7 +69,7 @@ describe("cli main()", () => {
     const code = await main(["run", superseded], io);
     expect(code).toBe(1);
     expect(io.error).toHaveBeenCalledWith(
-      `${superseded}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2`,
+      `${superseded}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3`,
     );
     // No silent upconvert: the load failed, so no step ran and no output was printed.
     expect(io.log).not.toHaveBeenCalled();
@@ -603,10 +602,10 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   let sigintListenersBefore: number;
 
   const ONE_PROMPT_WORKFLOW = stampGuids({
-    format: "path/workflow@2",
+    format: "path/workflow@3",
     id: "wf-id",
     name: "sigint-cancel",
-    worker: { type: "llm", model: "claude-sonnet-5" },
+    config: { model: "claude-sonnet-5" },
     body: [
       { type: "prompt", id: "ask", name: "ask", prompt: "Question.", publish: { answer: "${output}" } },
       { type: "prompt", id: "never", name: "never", prompt: "Second question." },
@@ -827,7 +826,7 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
       rootRunId: runId,
       parentRunId: null,
       nodeId: null, nodeName: null,
-      worker: { type: "engine" },
+      workerName: null,
       status: "running",
       resumedFromRootRunId: resumedFromRootRunId ?? null,
       workflowId: workflow?.id ?? null,
@@ -988,14 +987,14 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
 
   function seedRoot(runId: string, childNodeId = "greet"): void {
     const db = openDb(dbFilePath(projectDir));
-    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
     insertRun(db, {
       runId: `${runId}-child`,
       rootRunId: runId,
       parentRunId: runId,
       nodeId: childNodeId,
       nodeName: childNodeId,
-      worker: { type: "engine" },
+      workerName: "spawn",
       status: "succeeded",
     });
     db.close();
@@ -1100,7 +1099,7 @@ describe("cli main() — runs prune confirmation (ticket #166)", () => {
 
   function seedRoot(runId: string): void {
     const db = openDb(dbFilePath(projectDir));
-    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, worker: { type: "engine" }, status: "succeeded" });
+    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
     db.close();
   }
 
