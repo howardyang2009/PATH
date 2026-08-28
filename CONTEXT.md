@@ -75,7 +75,11 @@ and issues use them exactly.
   that is brittle across machines, beside the **relative-path** of source-workflow identity (Identity).
   The file's **id** stays portable; only its loadability was ever environment-relative. A file declares
   no dependency block — the `type` values in its body *are* its dependency list — and it can pin no
-  plugin version: a version is **observable, never requirable** (#315, #324).
+  plugin version: a version is **observable, never requirable** (#315). A plugin in fact **declares no
+  version** at all (ADR 0023, #324): nothing resolves against one, so the unit of versioning is the
+  **fork** — a folder's identity and history are a git commit in the reader's own tree, and a tree holds
+  one folder per name, so exactly one version of a type is ever present. `api-call-v2` is a different
+  type, not a second version; a removed type surfaces as the registry's load-time error, not a migration.
 - **Step-plugin registry** — the set of loaded step-type plugins, injected as data into schema
   validation before any workflow parses. The engine builds it (it owns plugin discovery); `@path/schema`
   only receives it, so the schema package stays a pure function of its inputs with no filesystem access.
