@@ -22,9 +22,9 @@ import {
  * end-to-end through `path run` against a real git repo.
  *
  * Everything here is the real thing except the LLM processor: the engine, both workflow files,
- * git, the sqlite db, the blob tree and both log backends. The Agent SDK worker is scripted
- * (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI; the
- * seam it plugs into is the same `llmWorker` option the CLI leaves open.
+ * git, the sqlite db, the blob tree and both log backends. The `prompt`/`sdk` worker is scripted
+ * (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI; the seam it
+ * plugs into is `workerOverrides.prompt.sdk`, the same registry override the CLI leaves open (ADR 0021).
  */
 
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
@@ -56,6 +56,29 @@ function happyPathScript(): Record<string, ScriptedHandler> {
     "format-short": () => FINAL_NOTES,
     "format-long": () => "unexpected: the long arm should not run",
   };
+}
+
+/**
+ * Recover the node name from a prompt request. The `prompt`/`sdk` seam carries no node name (ADR 0021
+ * sub-6), so the scripted worker identifies the node from its interpolated prompt text — each of the
+ * two real workflow files' prompts opens with distinct wording.
+ */
+function labelPrompt(request: { fields: { [key: string]: unknown } }): string {
+  const prompt = String(request.fields.prompt ?? "");
+  if (prompt.includes("FEATURES")) return "summarize-features";
+  if (prompt.includes("BUG FIXES")) return "summarize-fixes";
+  if (prompt.startsWith("Write release notes")) return "draft-notes";
+  if (prompt.startsWith("Judge the release-notes draft")) return "judge-draft";
+  if (prompt.startsWith("Revise the release-notes draft")) return "revise";
+  if (prompt.startsWith("Judge the revised draft")) return "judge";
+  if (prompt.startsWith("Condense the release notes")) return "format-short";
+  if (prompt.startsWith("Expand the release notes")) return "format-long";
+  throw new Error(`labelPrompt: unrecognized prompt "${prompt.slice(0, 40)}..."`);
+}
+
+/** Plug a scripted worker in as the `prompt` type's `sdk` worker (ADR 0021 sub-15). */
+function overrides(worker: ScriptedLlmWorker) {
+  return { prompt: { sdk: worker } };
 }
 
 interface Harness {
@@ -118,7 +141,7 @@ function runPipeline(
       ...extraArgs,
     ],
     harness.io,
-    { llmWorker: worker },
+    { workerOverrides: overrides(worker) },
   );
 }
 
@@ -196,7 +219,7 @@ function readRunLog(projectDir: string, rootRunId: string): { seq: number; type:
 
 describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #26)", () => {
   it("criterion 1 — produces RELEASE_NOTES.md for a real commit range", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
 
     const code = await runPipeline(worker);
 
@@ -208,7 +231,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 1 — exercises every construct in the coverage map, in order", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
 
     await expect(runPipeline(worker)).resolves.toBe(0);
 
@@ -234,7 +257,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 2 — leaves a run row for every step run, mirroring the run tree", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
 
     const runs = readRuns(harness.projectDir);
@@ -270,7 +293,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 2 — writes the log narrative to both backends, matching by seq", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
 
     const rootRunId = readRuns(harness.projectDir).find((row) => row.parent_run_id === null)!.run_id;
@@ -284,7 +307,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 2 — writes every input/output object and context.json under .path/runs/", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
 
     const runs = readRuns(harness.projectDir);
@@ -311,7 +334,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 4 — records usage and estimated_cost_usd on every LLM run, and only those", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
 
     const runs = readRuns(harness.projectDir);
@@ -340,7 +363,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
       ...happyPathScript(),
       "judge-draft": () => verdict(true, "long"),
       "format-long": () => "# Release notes\n\n## Features\n\nThe long form.",
-    });
+    }, labelPrompt);
 
     await expect(runPipeline(worker)).resolves.toBe(0);
 
@@ -353,7 +376,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 4 — fans out the parallel block when the cap leaves room", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
     // The `summarize` block's two branches are the pipeline's only concurrency, and the default cap
     // of 4 leaves room for both. This shows fan-out *happens* — on its own it says nothing about
@@ -362,7 +385,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   });
 
   it("criterion 4 — respects the Processor fan-out cap when it binds", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker, ["--processor-concurrency", "1"])).resolves.toBe(0);
     // Same block, cap lowered below its width: it serialises instead of fanning out. Removing the
     // semaphore fails this assertion, which is what makes it a test of the cap.
@@ -372,7 +395,7 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
 
 describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
   it("an empty commit range trips the have-changes checkpoint", async () => {
-    const worker = createScriptedLlmWorker(happyPathScript());
+    const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
 
     const code = await runPipeline(worker, [], "HEAD..HEAD");
 
@@ -393,7 +416,7 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
       ...happyPathScript(),
       "judge-draft": () => verdict(false),
       judge: () => verdict(false), // never passes, so the loop condition stays true
-    });
+    }, labelPrompt);
 
     const code = await runPipeline(worker, ["--set", "max_revisions=2"]);
 
@@ -442,7 +465,7 @@ function readReuseMarkers(projectDir: string, rootRunId: string): { nodeName: st
  */
 async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: ScriptedLlmWorker }> {
   const controller = new AbortController();
-  const worker = createScriptedLlmWorker(happyPathScript(), {
+  const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt, {
     onCall: ({ nodeName, callNumber }) => {
       // The first `revise` prompt runs inside the while-do's first nested revise-cycle — killing here
       // is a kill mid-iteration, after the pre-loop work (summaries, draft, judge-draft) succeeded.
@@ -450,7 +473,7 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
     },
   });
 
-  const loaded = loadWorkflowTree(join(harness.projectDir, "release-notes.workflow.json"));
+  const loaded = await loadWorkflowTree(join(harness.projectDir, "release-notes.workflow.json"));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
   const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);
@@ -459,7 +482,7 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
     const result = await opened.project.run(rootFile, harness.projectDir, {
       operatorConfig: { commit_range: "HEAD~3..HEAD" },
       files: loaded.workflow.files,
-      llmWorker: worker,
+      workerOverrides: overrides(worker),
       signal: controller.signal,
     });
     expect(result.status).toBe("cancelled");
@@ -488,11 +511,11 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     expect(existsSync(join(harness.projectDir, "RELEASE_NOTES.md"))).toBe(false);
 
     // Resume through the real CLI. A fresh worker, so its `calls` count only what the successor ran.
-    const resumeWorker = createScriptedLlmWorker(happyPathScript());
+    const resumeWorker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     const code = await main(
       ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
       harness.io,
-      { llmWorker: resumeWorker },
+      { workerOverrides: overrides(resumeWorker) },
     );
 
     expect(code).toBe(0);
@@ -515,12 +538,12 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
   it("records the reuse of every succeeded pre-loop node and re-bills none of them", async () => {
     const { rootRunId: killedRootRunId } = await killMidFirstRevise();
 
-    const resumeWorker = createScriptedLlmWorker(happyPathScript());
+    const resumeWorker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(
       main(
         ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
         harness.io,
-        { llmWorker: resumeWorker },
+        { workerOverrides: overrides(resumeWorker) },
       ),
     ).resolves.toBe(0);
     const successorRootRunId = harness.stdout.join("\n").trim();

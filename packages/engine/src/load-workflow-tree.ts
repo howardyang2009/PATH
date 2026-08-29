@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-import { safeParseWorkflowFile, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { makeWorkflowFileSchema, safeParseWorkflowFileWith, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { scanStepPlugins } from "./plugin/scan.js";
 
 /**
  * One workflow, loaded: the entry file itself, where it sits, and every file it reaches.
@@ -56,9 +57,17 @@ function collectWorkflowRefs(nodes: WorkflowNode[]): string[] {
   return refs;
 }
 
-export function loadWorkflowTree(entryPath: string): LoadResult {
+export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
   const files = new Map<string, WorkflowFile>();
   const errors: string[] = [];
+
+  // The one freeze point (ADR 0018 sub-7, ADR 0019 sub-15): scan the plugin folder into a registry and
+  // build the file schema once, before the first parse. A broken plugin folder throws here and fails
+  // the whole load naming the folder and the reason (ADR 0019 sub-16) — it is not caught into a
+  // per-file error, because a skipped plugin is indistinguishable from a genuinely absent type. The
+  // `visit()` recursion below stays synchronous — `readFileSync`/`JSON.parse` unchanged.
+  const registry = await scanStepPlugins();
+  const schema = makeWorkflowFileSchema(registry);
 
   function visit(absPath: string, chain: string[]): void {
     if (chain.includes(absPath)) {
@@ -76,7 +85,7 @@ export function loadWorkflowTree(entryPath: string): LoadResult {
       return;
     }
 
-    const parsed = safeParseWorkflowFile(raw);
+    const parsed = safeParseWorkflowFileWith(schema, raw);
     if (!parsed.success) {
       errors.push(...parsed.errors.map((e) => `${absPath}: ${e}`));
       return;

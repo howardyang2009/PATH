@@ -14,7 +14,6 @@
 export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";
 export {
-  WorkflowFileSchema,
   makeWorkflowFileSchema,
   safeParseWorkflowFile,
   safeParseWorkflowFileWith,
@@ -24,8 +23,6 @@ export {
 } from "./workflow-file.js";
 
 export {
-  NodeSchema,
-  NodeArraySchema,
   buildCoreMembers,
   makeNodeSchema,
   RESERVED_TYPE_NAMES,

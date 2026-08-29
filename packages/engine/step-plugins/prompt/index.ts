@@ -10,9 +10,10 @@ import { renderPromptMessage } from "./render-prompt-message.js";
  * one processor, iterated to its terminal `result` message and torn down when `run` returns, so no
  * conversational state leaks between steps (mvp spec §5.5).
  *
- * The folder name *is* the type name. The old `src/llm/agent-sdk-worker.ts` stays live and still drives
- * dispatch until the cutover (#7); this folder sits beside it. Only the `sdk` worker ships here — the
- * `cli` and `remote` prompt workers named in #309 stay unbuilt.
+ * The folder name *is* the type name. Since the cutover (#337) this folder is the *only* `prompt`
+ * implementation — the old `src/llm/agent-sdk-worker.ts` is gone, and the engine dispatches every
+ * `prompt` step through the worker discovered here. Only the `sdk` worker ships — the `cli` and
+ * `remote` prompt workers named in #309 stay unbuilt.
  */
 
 // The `prompt` type's one author-fixed node field (ADR 0022 sub-1): the instruction text.

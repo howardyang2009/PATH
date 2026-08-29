@@ -60,7 +60,7 @@ async function handleRequest(
     }
 
     if (req.method === "GET" && pathname === "/v0/workflows") {
-      handleGetWorkflows(res, ctx);
+      await handleGetWorkflows(res, ctx);
       return;
     }
 

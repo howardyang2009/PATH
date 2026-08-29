@@ -56,7 +56,7 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts). A fresh launch
   // distinguishes an escaping `workflow_path` from a merely missing one — both 404, both naming the
   // path the caller sent.
-  const prepared = prepareWorkflow(ctx.project.dir, workflowPath, {
+  const prepared = await prepareWorkflow(ctx.project.dir, workflowPath, {
     notFound: (p) => `workflow file not found: "${p}"`,
     escapesRoot: (p) => `workflow_path "${p}" resolves outside the project root`,
   });

@@ -5,14 +5,14 @@ import { IdSchema, NameSchema } from "./ids.js";
 import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
 import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
-import { BINARY_WORKER_NAMES, PROMPT_WORKER_NAMES } from "./worker-names.js";
 
 
-// `worker` is now a worker-*name* string, not a tagged object (`@3` §4, ADR 0021 sub-8): each step
-// type's `worker` is a `z.enum` of that type's own worker names, so a step naming a worker its type
-// does not ship fails at load with the valid names listed. It is optional — an omitted `worker`
-// resolves to the type's default worker (`binary` → `spawn`, `prompt` → `sdk`). The node union is
-// still closed, so the names are fixed here; when it opens to plugins the enums come off the registry.
+// The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a
+// worker-*name* string, not a tagged object (`@3` §4, ADR 0021 sub-8): each step type's `worker` is a
+// `z.enum` of that type's own worker names off the registry, so a step naming a worker its type does
+// not ship fails at load with the valid names listed. It is optional — an omitted `worker` resolves to
+// the type's default worker. There is no closed built-in union here any more: `binary`/`prompt` are two
+// plugin folders discovered by the engine and handed in through the registry (ADR 0019 sub-10, #337).
 export const commonStepFields = {
   id: IdSchema,
   name: NameSchema,
@@ -21,26 +21,6 @@ export const commonStepFields = {
   parse: z.enum(["text", "json"]).optional(),
   publish: z.record(interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
 };
-
-const PromptStepSchema = z
-  .object({
-    type: z.literal("prompt"),
-    ...commonStepFields,
-    worker: z.enum(PROMPT_WORKER_NAMES).optional(),
-    prompt: interpolableString(STEP_ROOTS),
-  })
-  .strict();
-
-const BinaryStepSchema = z
-  .object({
-    type: z.literal("binary"),
-    ...commonStepFields,
-    worker: z.enum(BINARY_WORKER_NAMES).optional(),
-    command: interpolableString(STEP_ROOTS),
-    args: z.array(interpolableString(STEP_ROOTS)).optional(),
-    cwd: interpolableString(STEP_ROOTS).optional(),
-  })
-  .strict();
 
 // `ref` is a relative path to another workflow file — not an interpolated position
 // (workflow-format-v0.md §4.2, §5).
@@ -160,22 +140,6 @@ export function buildCoreMembers({
     CheckpointNodeSchema,
   ];
 }
-
-// A `body` slot is an ordered node array — the workflow top level and a `sequence` (§3.1). A `node`
-// slot is a single node: a `while-do` body, a branch arm, an `else`. `parallel.branches` also holds a
-// node array, but its members are concurrent siblings, not an ordered sequence. All three node-array
-// slots reuse `NodeArraySchema` (array, min 1); the one naming rule of `@2` (workflow-format-v2.md §3.1).
-export const NodeArraySchema: z.ZodType<WorkflowNode[]> = z.lazy(() => z.array(NodeSchema).min(1));
-const SingleNodeSchema: z.ZodType<WorkflowNode> = z.lazy(() => NodeSchema);
-
-// The closed, built-in-only union: today's two leaf step types (`prompt`, `binary`) plus the six
-// control members. The plugin factory (`makeNodeSchema`) builds the *open* union beside it from the
-// six control members and a registry; both stand until the cutover (#7) deletes this const.
-export const NodeSchema: z.ZodType<WorkflowNode> = z.discriminatedUnion("type", [
-  PromptStepSchema,
-  BinaryStepSchema,
-  ...buildCoreMembers({ NodeArraySchema, SingleNodeSchema }),
-] as [ZodDiscriminatedUnionOption<"type">, ...ZodDiscriminatedUnionOption<"type">[]]) as unknown as z.ZodType<WorkflowNode>;
 
 // ── The open node union: a pure, registry-driven factory ────────────────────────────────────────
 //

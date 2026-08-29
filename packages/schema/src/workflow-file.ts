@@ -4,15 +4,16 @@ import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { childBodies, walkNodes } from "./node-walk.js";
-import { makeNodeSchema, NodeArraySchema, type StepPluginRegistry } from "./nodes.js";
+import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
 import { STEP_ROOTS } from "./roots.js";
 import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
 
 export { FORMAT_VERSION };
 
-// The file envelope, parameterised by its `body` schema so the same shape wraps both the closed
-// module union and a plugin factory's opened union. Everything except `body` is fixed grammar.
+// The file envelope, parameterised by its `body` schema so the plugin factory can wrap the opened
+// node union `makeNodeSchema(registry)` builds. Everything except `body` is fixed grammar. There is no
+// closed built-in envelope any more — a file is only ever parsed against a registry (ADR 0019, #337).
 function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
   return z
     .object({
@@ -25,8 +26,6 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
     })
     .strict();
 }
-
-const BaseWorkflowFileSchema = buildBaseWorkflowFileSchema(NodeArraySchema);
 
 interface NameOccurrence {
   name: string;
@@ -156,8 +155,7 @@ function findDoNotWaitPublishes(
 
 // The cross-node invariants zod's per-field parse cannot express: file-unique names, no two
 // concurrent parallel branches publishing one key, and no publish inside a `do-not-wait` branch.
-// Shared by the closed `WorkflowFileSchema` and the plugin factory's schema, so both doors enforce
-// the same rules over their (respectively closed / open) node sets.
+// Applied by the plugin factory's schema (`makeWorkflowFileSchema`) over its open node set.
 function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx): void {
   const occurrences = collectNames(file.body, ["body"]);
   const byName = new Map<string, NameOccurrence[]>();
@@ -194,9 +192,6 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx): 
     });
   }
 }
-
-export const WorkflowFileSchema: z.ZodType<WorkflowFile> =
-  BaseWorkflowFileSchema.superRefine(checkWorkflowFileInvariants);
 
 /**
  * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
@@ -258,20 +253,20 @@ export function safeParseWorkflowFileWith(
   return { success: false, errors: formatIssues(result.error) };
 }
 
-// The single-file convenience door. With no `registry` it parses against the closed built-in union,
-// which keeps every existing caller green; the cutover (#7) makes the registry required and deletes
-// the closed schema. With a `registry` it builds the open schema and parses against it — the
-// build-then-parse path a one-off caller wants without holding the schema itself.
+// The single-file convenience door: build the open schema for `registry` and parse `json` against it.
+// The registry is **required** — there is no closed built-in schema to fall back on (ADR 0019, #337),
+// so a caller with no plugins still passes an empty registry (a grammar of the six control members and
+// no leaf step). A caller parsing many files should build the schema once with `makeWorkflowFileSchema`
+// and reuse it via `safeParseWorkflowFileWith`; this door is for the one-off case.
 export function safeParseWorkflowFile(
   json: unknown,
-  registry?: StepPluginRegistry,
+  registry: StepPluginRegistry,
 ): WorkflowFileParseSuccess | WorkflowFileParseFailure {
-  const schema = registry === undefined ? WorkflowFileSchema : makeWorkflowFileSchema(registry);
-  return safeParseWorkflowFileWith(schema, json);
+  return safeParseWorkflowFileWith(makeWorkflowFileSchema(registry), json);
 }
 
-export function parseWorkflowFile(json: unknown): WorkflowFile {
-  const result = safeParseWorkflowFile(json);
+export function parseWorkflowFile(json: unknown, registry: StepPluginRegistry): WorkflowFile {
+  const result = safeParseWorkflowFile(json, registry);
   if (!result.success) {
     throw new Error(`invalid workflow file:\n${result.errors.join("\n")}`);
   }

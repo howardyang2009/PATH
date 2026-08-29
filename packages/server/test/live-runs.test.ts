@@ -34,8 +34,8 @@ afterEach(() => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
-function startFixture(filename: string, runs = live): Promise<StartedRun> {
-  const loaded = loadWorkflowTree(join(projectDir, filename));
+async function startFixture(filename: string, runs = live): Promise<StartedRun> {
+  const loaded = await loadWorkflowTree(join(projectDir, filename));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
   const { workflow } = loaded;
   return runs.start(workflow.rootFile, workflow.workflowDir, { files: workflow.files });

@@ -4,7 +4,7 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LlmWorker } from "../src/llm/llm-worker.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
 import type { Observation } from "../src/run-observer.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
@@ -45,19 +45,28 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
   };
 }
 
-/** An llm worker that records which nodes actually executed and answers a per-node canned output. */
-function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[]): LlmWorker {
+// The `prompt`/`sdk` seam carries no node name (ADR 0021 sub-6), so these fixtures set each prompt
+// node's `prompt` to its own id — the worker reads `fields.prompt` as the node label.
+function nodeLabel(request: StepRequest): string {
+  return String(request.fields.prompt);
+}
+
+/** A worker that records which nodes actually executed and answers a per-node canned output. */
+function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[]): WorkerDescriptor {
   return {
-    runPrompt: async (request) => {
-      ran.push(request.nodeName);
-      return {
-        status: "succeeded",
-        output: outputs[request.nodeName] ?? `ran-${request.nodeName}`,
-        usage: null,
-        estimatedCostUsd: null,
-      };
+    meters: false,
+    needsProcessorSlot: true,
+    run: async (request) => {
+      const label = nodeLabel(request);
+      ran.push(label);
+      return { status: "succeeded", output: outputs[label] ?? `ran-${label}` };
     },
   };
+}
+
+/** Plug a scripted `prompt`/`sdk` worker in via the registry override seam (ADR 0021 sub-15). */
+function promptOverride(worker: WorkerDescriptor) {
+  return { prompt: { sdk: worker } };
 }
 
 /** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked for. */
@@ -94,15 +103,15 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const observer = fakeObserver();
     const file = tree(
       [
-        { type: "prompt", id: "a", name: "a", prompt: "hi", publish: { fromA: "${output}" } },
-        { type: "prompt", id: "b", name: "b", prompt: "yo", publish: { fromB: "${output}" } },
+        { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", name: "b", prompt: "b", publish: { fromB: "${output}" } },
       ],
       { a: "${context.fromA}", b: "${context.fromB}" },
     );
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
-      llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
+      workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -133,20 +142,22 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const ran: string[] = [];
     const reads: string[] = [];
     const inputs: JsonValue[] = [];
-    const worker: LlmWorker = {
-      runPrompt: async (request) => {
-        ran.push(request.nodeName);
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request) => {
+        ran.push(nodeLabel(request));
         inputs.push(request.input);
-        return { status: "succeeded", output: "FRESH_B", usage: null, estimatedCostUsd: null };
+        return { status: "succeeded", output: "FRESH_B" };
       },
     };
     const file = tree([
-      { type: "prompt", id: "a", name: "a", prompt: "hi" },
-      { type: "prompt", id: "b", name: "b", prompt: "yo" },
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      { type: "prompt", id: "b", name: "b", prompt: "b" },
     ]);
 
     await runWorkflow(file, "/tmp", {
-      llmWorker: worker,
+      workerOverrides: promptOverride(worker),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -165,13 +176,13 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const reads: string[] = [];
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
-    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "deep" }], { r: "${output}" });
+    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner" }], { r: "${output}" });
     const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
       files: new Map([[nestedPath, nested]]),
-      llmWorker: recordingWorker({}, ran),
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -199,15 +210,15 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
     const nested = tree([
-      { type: "prompt", id: "x", name: "x", prompt: "hi", publish: { fromX: "${output}" } },
-      { type: "prompt", id: "y", name: "y", prompt: "yo" },
+      { type: "prompt", id: "x", name: "x", prompt: "x", publish: { fromX: "${output}" } },
+      { type: "prompt", id: "y", name: "y", prompt: "y" },
     ]);
     const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
       files: new Map([[nestedPath, nested]]),
-      llmWorker: recordingWorker({ y: "FRESH_Y" }, ran),
+      workerOverrides: promptOverride(recordingWorker({ y: "FRESH_Y" }, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -257,11 +268,11 @@ describe("resume — reusing a node's recorded output (#172)", () => {
   it("re-runs a from-scratch tree normally when there is nothing to resume from", async () => {
     const ran: string[] = [];
     const observer = fakeObserver();
-    const file = tree([{ type: "prompt", id: "a", name: "a", prompt: "hi" }]);
+    const file = tree([{ type: "prompt", id: "a", name: "a", prompt: "a" }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
-      llmWorker: recordingWorker({ a: "FRESH" }, ran),
+      workerOverrides: promptOverride(recordingWorker({ a: "FRESH" }, ran)),
       resume: { originalRuns: [], readBlob: reader({}, []) },
     });
 
@@ -298,15 +309,15 @@ describe("resume — the original tree is read-only (#172)", () => {
     const ran: string[] = [];
     const file = tree(
       [
-        { type: "prompt", id: "a", name: "a", prompt: "hi", publish: { fromA: "${output}" } },
-        { type: "prompt", id: "b", name: "b", prompt: "yo", publish: { fromB: "${output}" } },
+        { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
+        { type: "prompt", id: "b", name: "b", prompt: "b", publish: { fromB: "${output}" } },
       ],
       { out: "${context.fromA}" },
     );
 
     const result = await runWorkflow(file, newDir, {
       observer,
-      llmWorker: recordingWorker({ b: "FRESH_B" }, ran),
+      workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -339,8 +350,8 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
         id: "race", name: "race",
         join: "wait-one",
         branches: [
-          { type: "sequence", id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "hi", publish: { answer: "${output}" } }] },
-          { type: "sequence", id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "yo", publish: { answer: "${output}" } }] },
+          { type: "sequence", id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "f", publish: { answer: "${output}" } }] },
+          { type: "sequence", id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "s", publish: { answer: "${output}" } }] },
         ],
       },
     ],
@@ -354,7 +365,7 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
 
     const result = await runWorkflow(raceFile, "/tmp", {
       observer,
-      llmWorker: recordingWorker({}, ran),
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -397,9 +408,9 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
           join: "wait-one",
           branches: [
             // Declared first, but finished *later* (t2) — the loser of the photo-finish.
-            { type: "sequence", id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "hi", publish: { answer: "${output}" } }] },
+            { type: "sequence", id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "l", publish: { answer: "${output}" } }] },
             // Declared second, finished *first* (t1) — the recorded winner.
-            { type: "sequence", id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "yo", publish: { answer: "${output}" } }] },
+            { type: "sequence", id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "e", publish: { answer: "${output}" } }] },
           ],
         },
       ],
@@ -408,7 +419,7 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
-      llmWorker: recordingWorker({}, ran),
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -449,13 +460,13 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     [
       // A succeeded predecessor node, reused on resume — proves the reuse machinery is live, so the
       // detached branch's re-run below is a deliberate non-reuse, not resume failing to reuse anything.
-      { type: "prompt", id: "pre", name: "pre", prompt: "hi", publish: { seed: "${output}" } },
+      { type: "prompt", id: "pre", name: "pre", prompt: "pre", publish: { seed: "${output}" } },
       {
         type: "parallel",
         id: "fire", name: "fire",
         join: "do-not-wait",
         branches: [
-          { type: "sequence", id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "notify" }] },
+          { type: "sequence", id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "d" }] },
         ],
       },
     ],
@@ -464,10 +475,12 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
 
   // A worker that reports every `d` re-run as `failed` (records the call), so the re-executed detached
   // branch fails exactly as it did in the predecessor. `pre` is reused and never reaches the worker.
-  const failingBranchWorker = (ran: string[]): LlmWorker => ({
-    runPrompt: async (request) => {
-      ran.push(request.nodeName);
-      return { status: "failed", error: "detached branch failed again on re-run", usage: null, estimatedCostUsd: null };
+  const failingBranchWorker = (ran: string[]): WorkerDescriptor => ({
+    meters: false,
+    needsProcessorSlot: true,
+    run: async (request) => {
+      ran.push(nodeLabel(request));
+      return { status: "failed", error: "detached branch failed again on re-run" };
     },
   });
 
@@ -478,7 +491,7 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
-      llmWorker: failingBranchWorker(ran),
+      workerOverrides: promptOverride(failingBranchWorker(ran)),
       resume: {
         originalRuns: [
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),

@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { BINARY_DEFAULT_WORKER, PROMPT_DEFAULT_WORKER, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type JsonValue, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
-import { runBinaryStep } from "./binary-worker.js";
+import { formatIssues, mapSecrets, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { z } from "zod";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
@@ -9,7 +9,7 @@ import { describeConditionFailure, evaluateCondition, type Trace } from "./condi
 import {
   type Cancellation,
   type Emit,
-  type LlmRuntime,
+  type StepRuntime,
   type NodeExecContext,
   type RunContext,
   type RunIdentity,
@@ -18,14 +18,22 @@ import {
 } from "./run-context.js";
 import { createEmitter, type Emitter, type StepEmitter } from "./run-emitter.js";
 import { InterpolationError, interpolateToString, interpolateValue, type InterpolationScope } from "./interpolate.js";
-import { createAgentSdkWorker } from "./llm/agent-sdk-worker.js";
-import type { LlmWorker } from "./llm/llm-worker.js";
-import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./llm/processor-semaphore.js";
+import { scanStepPlugins, type LoadedStepPluginRegistry } from "./plugin/scan.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "./plugin/seam.js";
+import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
 import { collectSecrets, maskObservation } from "./secret-mask.js";
+
+/**
+ * Test/host worker overrides (ADR 0021 sub-15): a `(type, worker-name)` map of replacement
+ * descriptors, merged over the scanned registry replace-only. Every named pair must already exist in
+ * the scanned registry — the map cannot add a type or a worker name, only swap a shipped worker's
+ * `run`/flags for a substitute.
+ */
+export type WorkerOverrides = { [type: string]: { [name: string]: WorkerDescriptor } };
 
 export interface RunOptions {
   /** The workflow's own input object (format doc §6.1); its top-level keys seed context (§6.3). */
@@ -46,11 +54,14 @@ export interface RunOptions {
    */
   warn?: (message: string) => void;
   /**
-   * Where `prompt` steps execute (#25). Defaults to the pinned Agent SDK worker (mvp spec §7),
-   * which loads the SDK only when a prompt step actually runs; tests and any future alternate
-   * worker (headless CLI, remote runner) substitute their own through this seam.
+   * Replace named `(type, worker)` pairs in the scanned registry before dispatch (ADR 0021 sub-15).
+   * The shape is `{ [type]: { [name]: WorkerDescriptor } }`, merged over the frozen registry inside
+   * `runWorkflow` **replace-only**: an override naming a `(type, name)` pair the scan did not produce
+   * is a hard error, never an insertion — the registry's name set stays owned by the folder scan (ADR
+   * 0019 sub-2). The acceptance run's scripted `prompt`/`sdk` worker plugs in here; a live run passes
+   * nothing and every leaf runs on its shipped worker.
    */
-  llmWorker?: LlmWorker;
+  workerOverrides?: WorkerOverrides;
   /**
    * The engine-wide cap on concurrent Processors (mvp spec §5.5) — default 4. One semaphore
    * covers the whole run tree, so nested workflows and nested parallels share it.
@@ -153,8 +164,8 @@ interface WorkflowRunParams {
    * `$env` variables (#116). The run is still started and recorded; see `runBody`.
    */
   runStartFailure?: string;
-  // Shared by the entire run tree, so the processor cap spans nested runs too (mvp spec §5.5).
-  llm: LlmRuntime;
+  // Shared by the entire run tree, so the registry and processor cap span nested runs too (mvp spec §5.5).
+  runtime: StepRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
   // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). The root run carries the
   // operator's own `RunOptions.signal` when there is one (#52) — with no `cancellation`, since a run
@@ -174,12 +185,38 @@ interface WorkflowRunParams {
 }
 
 type WorkflowNode = WorkflowFile["body"][number];
-type StepNode = Extract<WorkflowNode, { type: "binary" | "workflow" | "prompt" }>;
+type ControlNode = Extract<WorkflowNode, { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" }>;
 
-// Only steps carry `config`/`input`/`publish` and execute on a worker; the control nodes around
-// them are engine-evaluated logicers with no run of their own (CONTEXT invariant 1).
-function isStepNode(node: WorkflowNode): node is StepNode {
-  return node.type === "binary" || node.type === "workflow" || node.type === "prompt";
+// The five engine-evaluated control constructs — everything the node walker owns itself, with no run
+// of its own (CONTEXT invariant 1). `workflow` is *not* here: it runs a nested workflow-run, so it
+// takes the step path beside the leaf types. A `type` that is none of these five is a leaf step —
+// `binary`, `prompt`, or any plugin folder — dispatched through the registry (ADR 0019 sub-10). The
+// closed set is the six reserved names minus `workflow`, so a plugin type can never fall in here.
+function isControlNode(node: WorkflowNode): node is ControlNode {
+  return (
+    node.type === "parallel" ||
+    node.type === "branch" ||
+    node.type === "while-do" ||
+    node.type === "sequence" ||
+    node.type === "checkpoint"
+  );
+}
+
+/**
+ * A leaf step node, read structurally rather than by a closed union: the engine no longer knows every
+ * leaf type at compile time (a plugin folder contributes its own), so a leaf runner reads the envelope
+ * keys it owns and treats the plugin's own `fields` as an open bag keyed off `registry[type].fields`.
+ */
+interface LeafStepNode {
+  type: string;
+  id: string;
+  name: string;
+  worker?: string;
+  config?: ConfigObject;
+  input?: JsonValue;
+  parse?: "text" | "json";
+  publish?: { [key: string]: JsonValue };
+  [field: string]: unknown;
 }
 
 // The interpolated `input` object must be a JSON object so its top-level keys can seed the child's
@@ -230,7 +267,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
   const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
-  const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, llm: params.llm, resume, detached: [] };
+  const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, runtime: params.runtime, resume, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
     await emitter.runFinished({ status: "failed", error });
     return { status: "failed", output: previousOutput, error };
@@ -392,7 +429,7 @@ async function runWorkflowNode(
     // The root run's snapshot, so every file in the tree resolves `$env` against one environment
     // (#116). No `runStartFailure`: unset variables are the root run's own check, over the whole tree.
     env: ctx.run.env,
-    llm: ctx.run.llm,
+    runtime: ctx.run.runtime,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
     // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
@@ -447,10 +484,12 @@ interface StepContext {
 async function finishLeafStep(
   step: StepEmitter,
   node: { name: string; parse?: "text" | "json" },
-  rawOutput: string,
+  rawOutput: JsonValue,
 ): Promise<SeqOutcome> {
   let output: JsonValue = rawOutput;
-  if (node.parse === "json") {
+  // `parse: "json"` applies to a *string* result only (ADR 0021): a worker whose output is already a
+  // JSON value hands it straight through, so a non-string output is never re-parsed.
+  if (node.parse === "json" && typeof rawOutput === "string") {
     try {
       output = parseStepOutput(rawOutput);
     } catch (err) {
@@ -479,147 +518,118 @@ async function cancelLeafStep(step: StepEmitter, cancellation: Cancellation | un
   return { status: "cancelled" };
 }
 
-/**
- * A `prompt` step: run it on the LLM worker as one **fresh processor**, torn down when the step
- * completes (mvp spec §5.5) — no session reuse, so the step reads exactly what its `input` map
- * built. The processor slot comes from the engine-wide semaphore first, so a step that cannot get
- * one simply waits (and its run row only starts once it is really running); binary steps are
- * uncapped and never queue behind it.
- *
- * `usage` and `estimated_cost_usd` are reported here, on this leaf run, for both a succeeded and a
- * failed processor — a step that died mid-conversation still spent tokens (§5.7, §7).
- */
-async function runPromptNode(
-  node: Extract<WorkflowNode, { type: "prompt" }>,
-  stepInput: JsonValue,
-  ctx: StepContext,
-): Promise<SeqOutcome> {
-  const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.exec.context };
-  // `prompt`'s worker is a name now (`@3` §4): the one this step names, or the type default `sdk`.
-  // The node union is still closed, so there is one `prompt` worker and the name only selects it.
-  const workerName = node.worker ?? PROMPT_DEFAULT_WORKER;
+// A never-aborting signal for a leaf run outside any `parallel` block and with no operator abort:
+// `StepRequest.signal` is required (a worker always has one to chain onto), but a top-level step in a
+// non-cancellable run has no enclosing signal. One shared instance — it never fires.
+const NEVER_ABORT = new AbortController().signal;
 
-  // `model` is fixed config (`@3` §8, ADR 0021 sub-9) — literal, never interpolated against context.
-  // A prompt step with no resolved `config.model` fails **here, at run start**, not at load
-  // (ADR 0021 sub-10): config is a free-form map with no per-key required declaration, so the check
-  // has no load to live at. Giving `sdk` a default model would silently spend on a model the author
-  // never named. The common case survives: one `config.model` at the file top inherits to every prompt.
-  const modelValue = ctx.stepConfig.model;
-  if (typeof modelValue !== "string") {
-    return {
-      status: "failed",
-      error: `prompt step "${node.name}": config.model is required (a string) and none resolved (ADR 0021 sub-10)`,
-    };
+// Unwrap every `$secret` in an effective config object to its real value, for the worker (ADR 0022
+// sub-4: config reaches `run` already `$env`/`$secret`-resolved). `$env` is resolved upstream at the
+// effective-config merge; this is the `$secret` half. Per config *value*, keyed by the config key, so
+// a config field awkwardly named `$secret` is not mistaken for a wrapper (the `resolve-env.ts` rule).
+function unwrapConfigSecrets(config: ConfigObject): ConfigObject {
+  const resolved: ConfigObject = {};
+  for (const [key, value] of Object.entries(config)) {
+    resolved[key] = mapSecrets(value as unknown as JsonValue, (secret) => secret) as unknown as ConfigValue;
   }
-  const model = modelValue;
+  return resolved;
+}
 
-  // The `options` bag is config now (`@3` §8): masking reaches it, and it passes to the worker
-  // verbatim (mvp spec §7). A non-object `config.options` is not a bag, so it is ignored.
-  const optionsValue = ctx.stepConfig.options;
-  const options =
-    optionsValue !== undefined && typeof optionsValue === "object" && optionsValue !== null && !Array.isArray(optionsValue)
-      ? (optionsValue as { [key: string]: unknown })
-      : undefined;
+/**
+ * A leaf step of any type: dispatch through the frozen registry to the selected worker and map its
+ * `StepResult` (ADR 0021 sub-8). Leaf dispatch is one `(type, worker-name)` lookup with no built-in
+ * branch — `binary`/`prompt` are two plugin folders like any other. The engine builds the
+ * `StepRequest` (interpolated `fields`, `$env`/`$secret`-resolved `config`, `input`, `cwd`, `signal`),
+ * awaits the worker's `run`, and owns the terminal shaping: `cancelled` is derived from
+ * `signal.aborted` (a worker never reports it — ADR 0021 sub-7), `usage`/`estimatedCostUsd` ride from
+ * a metering worker, `stderr` is captured for the audit blob regardless, and `parse: "json"` applies
+ * to a string result only.
+ *
+ * The processor-concurrency slot is the engine's: a worker whose descriptor sets `needsProcessorSlot`
+ * runs under one acquired slot, held for the call (mvp spec §5.5, ADR 0021 sub-5). Its step row starts
+ * only once the slot is really held, so a step that cannot get one simply waits; an uncapped worker
+ * (`binary`'s `spawn`) never queues. A thrown exception is *not* caught into a failed step: a worker
+ * that means "this step failed" returns `failed`, and a throw propagates as an engine fault (ADR 0020
+ * sub-5), masked on the way out of `runWorkflow`.
+ */
+async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepContext): Promise<SeqOutcome> {
+  const plugin = ctx.run.runtime.registry[node.type];
+  if (!plugin) {
+    // Unreachable through a schema-validated file — the load rejects a type no registry contributes.
+    // A hand-constructed node can still reach here, so it fails the run loudly rather than silently.
+    return { status: "failed", error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it` };
+  }
+  const workerName = node.worker ?? plugin.defaultWorker;
+  const descriptor = plugin.workers[workerName];
+  if (!descriptor) {
+    return { status: "failed", error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"` };
+  }
 
-  let prompt: string;
+  // The plugin's own `fields` are the node keys its `fields` fragment names; the engine interpolates
+  // each against config+context before the worker reads them (ADR 0022 acceptance #4). Every other key
+  // on the node is an envelope field the engine owns, not the worker's.
+  const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.exec.context };
+  let fields: JsonValue;
   try {
-    prompt = interpolateToString(node.prompt, scope);
+    const raw: { [key: string]: JsonValue } = {};
+    for (const key of Object.keys(plugin.fields)) {
+      const value = (node as { [k: string]: unknown })[key];
+      if (value !== undefined) raw[key] = value as JsonValue;
+    }
+    fields = interpolateValue(raw, scope);
   } catch (err) {
     return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
-  const release = await ctx.run.llm.semaphore.acquire();
-  let result;
+  // The worker reads real values: `$env` resolved at the effective-config merge, `$secret` unwrapped
+  // here (ADR 0022 sub-4). Masking stays a persistence-boundary concern only (ADR 0020).
+  const config = unwrapConfigSecrets(ctx.stepConfig);
+
+  const release = descriptor.needsProcessorSlot ? await ctx.run.runtime.semaphore.acquire() : undefined;
   try {
-    // The step's run id is minted (and its row starts) only once a processor slot is really held.
+    // The step's run id is minted (and its row starts) only once any processor slot is really held.
     const step = ctx.run.emitter.step(node);
     ctx.onLeafStep?.(step);
     await step.started({ stepType: node.type, workerName, input: stepInput });
 
-    result = await ctx.run.llm.worker.runPrompt({
-      nodeName: node.name,
-      model,
-      prompt,
+    const request: StepRequest = {
+      fields: fields as StepRequest["fields"],
       input: stepInput,
-      // The `options` bag passes straight through: MCP servers and skills, and no engine code
-      // interprets them (mvp spec §7).
-      options,
+      config: config as unknown as StepRequest["config"],
       cwd: ctx.run.fileDir,
-      signal: ctx.exec.signal,
-    });
+      signal: ctx.exec.signal ?? NEVER_ABORT,
+    };
+    const result = await descriptor.run(request);
 
-    if (result.status === "cancelled") {
-      // A failing sibling parallel branch or an operator's cancel killed this processor (mvp spec
-      // §5.6) — not a failure of this step. Awaited here rather than returned, so the processor slot
-      // is only released once the cancellation has been narrated.
+    // Captured diagnostic text (ADR 0020 sub-7) rides both terminal outcomes for the audit blob.
+    if (result.stderr !== undefined) await step.stderr(result.stderr);
+
+    // The engine owns `cancelled`, deriving it from the signal rather than the worker's reported
+    // status (ADR 0021 sub-7): a failing sibling branch or an operator's cancel kills the worker in
+    // flight, and this relabels whatever it returned as `cancelled` so no publish from it lands.
+    if (ctx.exec.signal?.aborted) {
       return await cancelLeafStep(step, ctx.exec.cancellation);
     }
 
-    // Leaf-only (§5.7): recorded on this run, never rolled up — subtree figures are a read-time SUM.
-    if (result.usage !== null || result.estimatedCostUsd !== null) {
-      await step.usage({ usage: result.usage, estimatedCostUsd: result.estimatedCostUsd });
+    // Leaf-only spend (§5.7), from a metering worker only: recorded on this run, never rolled up —
+    // subtree figures are a read-time SUM.
+    if (descriptor.meters && (result.usage !== undefined || result.estimatedCostUsd !== undefined)) {
+      await step.usage({ usage: result.usage ?? null, estimatedCostUsd: result.estimatedCostUsd ?? null });
     }
 
     if (result.status === "failed") {
-      await step.finished({ status: "failed", error: result.error });
-      return { status: "failed", error: result.error, causeRunId: step.runId };
+      // The worker names no step (ADR 0021 sub-6); the engine owns the node's name and prefixes it
+      // here, so every leaf type's failure reads `step "<name>": <worker error>`.
+      const error = `step "${node.name}": ${result.error}`;
+      await step.finished({ status: "failed", error });
+      return { status: "failed", error, causeRunId: step.runId };
     }
 
     return finishLeafStep(step, node, result.output);
   } finally {
-    // The processor is gone by now either way; holding its slot any longer would shrink the cap.
-    release();
+    // The processor is gone by now; holding its slot any longer would shrink the cap.
+    release?.();
   }
-}
-
-// A `binary` step: resolve command/args/cwd, spawn the child process, apply `parse: "json"`, and
-// emit the leaf step-run's observer lifecycle. stderr is reported (even on success) for the audit
-// blob; publish/default-input threading stays with the caller.
-async function runBinaryNode(
-  node: Extract<WorkflowNode, { type: "binary" }>,
-  stepInput: JsonValue,
-  // `ctx.exec.signal` kills the child in flight — on a sibling branch's failure (#24) or an operator's
-  // cancel of the root run (#52) — and `ctx.exec.cancellation` is what tells those two apart afterwards.
-  ctx: StepContext,
-): Promise<SeqOutcome> {
-  const scope: InterpolationScope = { config: configScope(ctx.stepConfig), context: ctx.exec.context };
-  // `binary`'s worker is a name now (`@3` §4): the one this step names, or the type default `spawn`.
-  const workerName = node.worker ?? BINARY_DEFAULT_WORKER;
-
-  let command: string;
-  let args: string[];
-  let cwd: string;
-  try {
-    command = interpolateToString(node.command, scope);
-    args = (node.args ?? []).map((arg) => interpolateToString(arg, scope));
-    // A relative `cwd` is resolved against the workflow file's directory, not the process's —
-    // the same anchor as the documented default (format doc §4.2). Anchoring it to wherever
-    // `path run` happened to be invoked from would make `"cwd": "."` mean something different
-    // from omitting `cwd`, and would make a workflow's behaviour depend on the caller's shell.
-    cwd = node.cwd !== undefined ? resolve(ctx.run.fileDir, interpolateToString(node.cwd, scope)) : ctx.run.fileDir;
-  } catch (err) {
-    return { status: "failed", error: describeInterpolationError(node.name, err) };
-  }
-
-  const step = ctx.run.emitter.step(node);
-  ctx.onLeafStep?.(step);
-  await step.started({ stepType: node.type, workerName, input: stepInput });
-
-  const result = await runBinaryStep({ name: node.name, command, args, cwd }, stepInput, ctx.exec.signal);
-  await step.stderr(result.stderr);
-
-  if (result.status === "cancelled") {
-    // A failing sibling parallel branch or an operator's cancel killed this child process (mvp spec
-    // §5.6) — not a failure of this step.
-    return cancelLeafStep(step, ctx.exec.cancellation);
-  }
-
-  if (result.status === "failed") {
-    await step.finished({ status: "failed", error: result.error });
-    return { status: "failed", error: result.error, causeRunId: step.runId };
-  }
-
-  return finishLeafStep(step, node, result.output);
 }
 
 /**
@@ -666,41 +676,67 @@ export async function runWorkflow(
       }
     : async () => {};
 
+  // The frozen executor registry for this run: the folder scan (ADR 0019), with `workerOverrides`
+  // merged over it replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`.
+  const registry = await buildExecutorRegistry(options.workerOverrides);
+
+  // The run-start gate (#116, ADR 0022 sub-3), before the first node: unset `$env` variables fail
+  // first (config cannot be validated against values it could not resolve); otherwise the effective,
+  // resolved config of every leaf step is validated against its type's `config` fragment, one failure
+  // naming every missing or mismatched key. `prompt`'s required `model` is enforced here now.
+  const runStartFailure =
+    unset.length > 0
+      ? describeUnsetEnv(unset)
+      : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
+
   // The tree's one masking sink becomes the root run's emitter here; every descendant run gets its
   // own via `emitter.child`, so `emit` itself never travels past this call.
   const rootIdentity: RunIdentity = { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null };
-  const result = await executeWorkflowRun({
-    file,
-    fileDir,
-    input: options.input ?? {},
-    incomingConfig: options.operatorConfig ?? {},
-    identity: rootIdentity,
-    files: options.files,
-    emitter: createEmitter(rootIdentity, emit),
-    env,
-    runStartFailure: unset.length > 0 ? describeUnsetEnv(unset) : undefined,
-    // External abort (#52): the operator's signal is the root run's own, and threads down to every
-    // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
-    // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
-    signal: options.signal,
-    // One worker and one semaphore for the whole run tree: the cap is engine-wide, spanning
-    // nested workflows and nested parallels alike (mvp spec §5.5).
-    llm: {
-      worker: options.llmWorker ?? createAgentSdkWorker(),
-      semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
-    },
-    // Resume (#172): the root run's original counterpart is the original tree's own root run.
-    // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
-    // non-succeeded nested workflow-run.
-    resume: options.resume ? { input: options.resume, counterpart: originalRoot } : undefined,
-    // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
-    // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
-    // never carry one.
-    resumedFromRootRunId: originalRoot?.runId,
-    // Source-workflow provenance (#202): the root file's store-relative path, recorded on the root
-    // row alone. Only `runWorkflow` (the root entry) forwards it; nested runs never carry one.
-    sourceWorkflowPath: options.sourceWorkflowPath,
-  });
+  let result: RunResult;
+  try {
+    result = await executeWorkflowRun({
+      file,
+      fileDir,
+      input: options.input ?? {},
+      incomingConfig: options.operatorConfig ?? {},
+      identity: rootIdentity,
+      files: options.files,
+      emitter: createEmitter(rootIdentity, emit),
+      env,
+      runStartFailure,
+      // External abort (#52): the operator's signal is the root run's own, and threads down to every
+      // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
+      // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
+      signal: options.signal,
+      // One registry and one semaphore for the whole run tree: the cap is engine-wide, spanning
+      // nested workflows and nested parallels alike (mvp spec §5.5).
+      runtime: {
+        registry,
+        semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
+      },
+      // Resume (#172): the root run's original counterpart is the original tree's own root run.
+      // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
+      // non-succeeded nested workflow-run.
+      resume: options.resume ? { input: options.resume, counterpart: originalRoot } : undefined,
+      // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
+      // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
+      // never carry one.
+      resumedFromRootRunId: originalRoot?.runId,
+      // Source-workflow provenance (#202): the root file's store-relative path, recorded on the root
+      // row alone. Only `runWorkflow` (the root entry) forwards it; nested runs never carry one.
+      sourceWorkflowPath: options.sourceWorkflowPath,
+    });
+  } catch (err) {
+    // A worker threw rather than returning `failed` (ADR 0020 sub-5): the engine does not catch it
+    // into a failed step — a crash must not land publishes — but its message may carry a config
+    // secret, so the run's masker scrubs the message on the way out. Class and stack are preserved:
+    // the same error object is re-thrown, only its message replaced. One placement covers the CLI's
+    // stderr and the server's response body at once (sub-6).
+    if (!masker.isEmpty && err instanceof Error) {
+      err.message = masker.maskString(err.message);
+    }
+    throw err;
+  }
 
   // What the caller gets back is masked too (#123) — everything except a *succeeded* run's `output`.
   // The line is the output contract, not the field:
@@ -733,6 +769,96 @@ export async function runWorkflow(
     ...(result.status === "succeeded" ? {} : { output: masker.maskValue(result.output) }),
     ...(result.error !== undefined ? { error: masker.maskString(result.error) } : {}),
   };
+}
+
+/**
+ * The frozen executor registry for one run: the folder scan (ADR 0019 sub-15), with `workerOverrides`
+ * merged over it **replace-only** (ADR 0021 sub-15). The scan is per run, hitting Node's ESM cache for
+ * an unchanged folder. Each plugin and its `workers` map is shallow-cloned before an override is
+ * applied, so a replacement never mutates the cached module object a later run would scan again.
+ *
+ * An override naming a `(type, name)` pair the scan did not produce is a hard error, never an
+ * insertion — the registry's name set stays owned entirely by the folder scan.
+ */
+async function buildExecutorRegistry(overrides: WorkerOverrides | undefined): Promise<LoadedStepPluginRegistry> {
+  const scanned = await scanStepPlugins();
+  const registry: LoadedStepPluginRegistry = {};
+  for (const [type, plugin] of Object.entries(scanned)) {
+    registry[type] = { ...plugin, workers: { ...plugin.workers } };
+  }
+
+  if (!overrides) return registry;
+  for (const [type, workers] of Object.entries(overrides)) {
+    const plugin = registry[type];
+    if (!plugin) {
+      throw new Error(
+        `workerOverrides: unknown step type "${type}" — an override replaces a scanned (type, worker) pair only, never adds one`,
+      );
+    }
+    for (const [name, descriptor] of Object.entries(workers)) {
+      if (!(name in plugin.workers)) {
+        throw new Error(
+          `workerOverrides: step type "${type}" ships no worker "${name}" to replace — an override is replace-only`,
+        );
+      }
+      plugin.workers[name] = descriptor;
+    }
+  }
+  return registry;
+}
+
+/**
+ * The run-start config validation (ADR 0022 sub-3): walk the whole ref tree the way the run will,
+ * threading effective config across each `workflow` boundary exactly as `runWorkflowNode` does, and
+ * validate every leaf step's effective, resolved config against its type's `config` fragment. One
+ * aggregated failure names every missing or mismatched key across the whole tree — this is where
+ * `prompt`'s required `model` is now caught (ADR 0021 sub-10 → ADR 0022 sub-5), before the first step.
+ *
+ * Config is validated **after** resolution (sub-decision 4): `$env` at the effective-config merge and
+ * `$secret` unwrapped, so a fragment's `z.string()` checks the literal a wrapper resolved to. The
+ * fragment is `.passthrough()` — effective config legitimately carries keys a sibling leaf declared.
+ */
+function validateRunStartConfig(
+  rootFile: WorkflowFile,
+  rootDir: string,
+  files: Map<string, WorkflowFile> | undefined,
+  operatorConfig: ConfigObject,
+  env: EnvSource,
+  registry: LoadedStepPluginRegistry,
+): string | undefined {
+  const issues: string[] = [];
+
+  function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): void {
+    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    for (const node of walkNodes(file.body)) {
+      const nodeConfig = "config" in node ? node.config : undefined;
+      if (node.type === "workflow") {
+        // The child file inherits this step's effective config across the boundary (format §8), so it
+        // is validated once per (file, incoming-config) it is reached with — the same file under two
+        // parents is two validations, each against what actually reaches it.
+        const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+        const child = files?.get(resolve(dir, node.ref));
+        if (child) walk(child, stepConfig, dirname(resolve(dir, node.ref)));
+        continue;
+      }
+      const plugin = registry[node.type];
+      if (!plugin) continue; // the schema already rejects a type no registry contributes
+      const stepConfig = unwrapConfigSecrets(resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config);
+      const result = z.object(plugin.config).passthrough().safeParse(stepConfig);
+      if (!result.success) {
+        for (const issue of formatIssues(result.error)) {
+          issues.push(`step "${node.name}" (type ${node.type}): ${issue}`);
+        }
+      }
+    }
+  }
+
+  walk(rootFile, operatorConfig, rootDir);
+
+  if (issues.length === 0) return undefined;
+  return `run failed before its first step: ${
+    issues.length === 1 ? "config validation failed" : `${issues.length} config validation errors`
+  }: ${issues.join("; ")}`;
 }
 
 /**
@@ -904,7 +1030,7 @@ export async function runNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  if (!isStepNode(node)) {
+  if (isControlNode(node)) {
     if (node.type === "parallel") return runParallelNode(run, node, incomingOutput, exec);
     if (node.type === "checkpoint") return runCheckpointNode(run, node, incomingOutput, exec);
     if (node.type === "branch") return runBranchNode(run, node, incomingOutput, exec);
@@ -914,11 +1040,10 @@ export async function runNode(
     // `runSequence` already does. It is transparent to `exec` (same context/cancellation) like the
     // other logicers.
     if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
-    // Two guards, deliberately. The `never` assertion is the compile-time one: if the format gains
-    // a node type this dispatch does not walk, the build fails rather than someone discovering it
-    // by running a workflow. The runtime branch below survives anyway, because a hand-constructed
-    // `WorkflowFile` can reach the engine without passing the schema — it must fail the run loudly
-    // rather than be silently skipped.
+    // The compile-time guard: if the control set grows a member this dispatch does not walk, the build
+    // fails here rather than someone discovering it by running a workflow. A leaf step type never
+    // reaches this branch — `isControlNode` excludes it — so an unknown *leaf* type is caught below,
+    // at the registry lookup, not here.
     const unwalked: never = node;
     const unknown = unwalked as { type: string; id: string };
     return {
@@ -959,15 +1084,14 @@ export async function runNode(
       return { status: "failed", error: describeInterpolationError(node.name, err) };
     }
 
-    // One context for all three step types, derived rather than hand-built. These were two literals
-    // constructed side by side, sharing seven identical fields (#76).
+    // One context for every step kind, derived rather than hand-built. A `workflow` step runs a nested
+    // workflow-run; every other (leaf) type dispatches through the registry — one lookup, no built-in
+    // branch (ADR 0021 sub-8). These were two literals side by side, sharing seven fields (#76).
     const step: StepContext = { run, exec, stepConfig, onLeafStep: (emitted) => (leafStep = emitted) };
     if (node.type === "workflow") {
       outcome = await runWorkflowNode(node, stepInput, step);
-    } else if (node.type === "prompt") {
-      outcome = await runPromptNode(node, stepInput, step);
     } else {
-      outcome = await runBinaryNode(node, stepInput, step);
+      outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
     }
   }
   if (outcome.status !== "succeeded") return outcome;

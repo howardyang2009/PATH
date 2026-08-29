@@ -94,11 +94,11 @@ export interface NotFoundMessages {
  * it is about the config and not the path — and both routes reject a bad config before ever touching
  * the filesystem.
  */
-export function prepareWorkflow(
+export async function prepareWorkflow(
   projectDir: string,
   workflowPath: string,
   messages: NotFoundMessages,
-): PreparedWorkflow {
+): Promise<PreparedWorkflow> {
   const absPath = resolveWorkflowPath(projectDir, workflowPath);
   if (!absPath) {
     const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
@@ -108,7 +108,7 @@ export function prepareWorkflow(
     return { ok: false, refusal: { status: 404, message: messages.notFound(workflowPath) } };
   }
 
-  const loadResult = loadWorkflowTree(absPath);
+  const loadResult = await loadWorkflowTree(absPath);
   if (!loadResult.success) {
     return { ok: false, refusal: { status: 400, message: "workflow validation failed", details: loadResult.errors } };
   }

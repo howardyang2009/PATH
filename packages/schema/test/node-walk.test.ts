@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
 import { childBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
+import { builtinRegistry } from "./builtin-registry.js";
 
 // Structural tests (childBodies/walkNodes) never pass through the schema, so the human id doubles as
 // both `id` and `name` here — walkNodes maps `node.id` and childBodies exposes each slot's nodes.
@@ -167,14 +168,14 @@ describe("validation reaches deeply nested bodies", () => {
   }
 
   it("catches a duplicate id buried under every block kind", () => {
-    const result = safeParseWorkflowFile(file([step("twice"), deeplyNested(step("twice"))]));
+    const result = safeParseWorkflowFile(file([step("twice"), deeplyNested(step("twice"))]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
     expect(result.errors.join("\n")).toMatch(/twice/);
   });
 
   it("catches a parallel branch node's name colliding with a deeply nested node's name", () => {
-    const result = safeParseWorkflowFile(file([deeplyNested(step("route"))]));
+    const result = safeParseWorkflowFile(file([deeplyNested(step("route"))]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
     expect(result.errors.join("\n")).toMatch(/route/);
@@ -203,7 +204,7 @@ describe("validation reaches deeply nested bodies", () => {
         },
       ],
     };
-    const result = safeParseWorkflowFile(file([racing]));
+    const result = safeParseWorkflowFile(file([racing]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
     expect(result.errors.join("\n")).toMatch(/shared/);
@@ -223,6 +224,6 @@ describe("validation reaches deeply nested bodies", () => {
         body: [step("a", { same: "${output}" }), step("b", { same: "${output}" })],
       },
     };
-    expect(safeParseWorkflowFile(file([sequential])).success).toBe(true);
+    expect(safeParseWorkflowFile(file([sequential]), builtinRegistry).success).toBe(true);
   });
 });

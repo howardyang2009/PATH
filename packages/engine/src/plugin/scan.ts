@@ -12,9 +12,10 @@ import type { StepPlugin } from "./seam.js";
  * against the scan rules *before* importing anything, then `await import()`s each surviving entry module
  * and assembles a registry entry in the seam's `StepPlugin` shape.
  *
- * Additive and unwired: nothing on the production load path calls this yet (#335). Its adequacy is
- * proven by unit tests against fixture directories. The freeze point that will call it — an async
- * `loadWorkflowTree` (ADR 0019 sub-15) — is a later ticket.
+ * Wired on the production load path (#337): the async `loadWorkflowTree` freeze point calls this to
+ * build the file schema (ADR 0019 sub-15), and `runWorkflow` calls it again to get the executor
+ * registry it dispatches every leaf step through. Its adequacy is also proven by unit tests against
+ * fixture directories.
  *
  * Everything here is a **hard** failure. A folder present on disk but broken fails the whole scan
  * naming the folder and the reason (ADR 0019 sub-16); there is no skip-with-warning, because a skipped

@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { WorkflowFileSchema, safeParseWorkflowFile } from "../src/workflow-file.js";
+import { makeWorkflowFileSchema, safeParseWorkflowFile as safeParse } from "../src/workflow-file.js";
+import { builtinRegistry } from "./builtin-registry.js";
+
+// The closed `WorkflowFileSchema` const is gone (#337): a file is validated against the open schema a
+// registry builds. These envelope/invariant tests use the built-in `binary`/`prompt` grammar, so they
+// build one schema from the built-in registry fixture and reuse it — the same grammar it encoded.
+const WorkflowFileSchema = makeWorkflowFileSchema(builtinRegistry);
+
+// `safeParseWorkflowFile` now requires a registry; bind the built-in one so the call sites read as
+// before.
+function safeParseWorkflowFile(json: unknown) {
+  return safeParse(json, builtinRegistry);
+}
 
 // One valid UUIDv4. Schema checks name uniqueness across the file, not id uniqueness (ids are unique
 // by construction), so a single valid GUID can stand in for every node's `id` in these fixtures.
@@ -569,9 +581,12 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 
   it("reports a readable error for bad ${} syntax in a disallowed position", () => {
+    // A registry leaf's own fields are plain zod now (#337), so the bad-root check lives on the core
+    // grammar the file schema still owns — here the file `output` map, `interpolatedJsonValue(STEP_ROOTS)`:
+    // `output` is not a STEP root, so referencing it is a load error naming the root.
     const result = safeParseWorkflowFile({
       ...minimal,
-      body: [{ type: "binary", id: UUID, name: "step-one", command: "${output.cmd}" }],
+      output: { bad: "${output.cmd}" },
     });
     expect(result.success).toBe(false);
     if (!result.success) {

@@ -426,7 +426,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
 
     const project = open();
     try {
-      const loaded = loadWorkflowTree(join(sub, "parent.workflow.json"));
+      const loaded = await loadWorkflowTree(join(sub, "parent.workflow.json"));
       if (!loaded.success) throw new Error(loaded.errors.join("\n"));
 
       // `dir` is the project (where `.path/` is); `sub` is the workflow's own directory.
