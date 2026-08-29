@@ -36,6 +36,10 @@ type SdkQuery = typeof import("@anthropic-ai/claude-agent-sdk").query;
 interface SdkResultMessage {
   type: "result";
   subtype: string;
+  // The SDK sets this on a `subtype: "success"` result too: an auth failure comes back as
+  // `subtype: "success", is_error: true, result: "Failed to authenticate: …"`, so `subtype`
+  // alone does not tell a real answer from an error the SDK folded into a success frame (#349).
+  is_error?: boolean;
   result?: string;
   total_cost_usd?: number;
   usage?: unknown;
@@ -54,7 +58,13 @@ function asUsage(usage: unknown): JsonValue | undefined {
 
 // Names no step: the engine owns the node's name and prefixes it when it surfaces the result (ADR 0021 sub-6).
 function describeSdkFailure(message: SdkResultMessage): string {
-  const detail = message.errors?.length ? `: ${message.errors.join("; ")}` : "";
+  // A `success` subtype flagged `is_error` (e.g. an auth failure) carries its text in `result`,
+  // not `errors`; a genuine error subtype carries it in `errors`. Prefer whichever is present.
+  const detail = message.errors?.length
+    ? `: ${message.errors.join("; ")}`
+    : message.result
+      ? `: ${message.result}`
+      : "";
   return `ended with SDK result "${message.subtype}"${detail}`;
 }
 
@@ -110,7 +120,11 @@ async function runSdk(request: StepRequest<typeof fields, typeof config>): Promi
       // cancelled from the signal, so nothing from an aborted step lands downstream (§5.6).
       const usage = asUsage(message.usage);
       const estimatedCostUsd = message.total_cost_usd;
-      if (message.subtype !== "success") {
+      // `is_error` fails the step even under a `success` subtype: the SDK folds auth failures and
+      // other run errors into a success frame whose `result` is the error text, and passing that
+      // downstream as output silently corrupts the run (a `parse: "json"` consumer is the only
+      // thing that happened to catch it).
+      if (message.subtype !== "success" || message.is_error) {
         return { status: "failed", error: describeSdkFailure(message), usage, estimatedCostUsd };
       }
       // Returning abandons the generator, which tears the session down: the processor does not
