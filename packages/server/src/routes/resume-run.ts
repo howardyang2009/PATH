@@ -83,7 +83,7 @@ export async function handleResumeRun(
   // No `escapesRoot`: the path came from a row this server wrote relative to the project root, so an
   // escape is unreachable and folds into the same "recorded file is gone" 404 the pre-launch-module
   // route used — one message for both, as before.
-  const prepared = prepareWorkflow(ctx.project.dir, root.workflowPath, {
+  const prepared = await prepareWorkflow(ctx.project.dir, root.workflowPath, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
   });
   if (!prepared.ok) {

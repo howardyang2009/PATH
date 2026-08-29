@@ -2,19 +2,32 @@ import { mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { parseWorkflowFile, type ConfigObject, type WorkflowFile } from "@path/schema";
+import type { ConfigObject, WorkflowFile } from "@path/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
-import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/llm/processor-semaphore.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
+import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/processor-semaphore.js";
 import { fakeObserver, type FakeObserver } from "./fake-observer.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
-import { runWorkflow } from "../src/run-workflow.js";
+import { runWorkflow, type WorkerOverrides } from "../src/run-workflow.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
+// The fixtures are known-valid `@3` files and `runWorkflow` takes the object directly (it does not
+// re-validate), so a bare parse + cast is enough here — schema validation lives at the load boundary.
 function loadFixture(name: string): WorkflowFile {
-  return parseWorkflowFile(JSON.parse(readFileSync(join(fixturesDir, name), "utf8")));
+  return JSON.parse(readFileSync(join(fixturesDir, name), "utf8")) as WorkflowFile;
+}
+
+/** Plug a scripted `prompt`/`sdk` worker in via the registry override seam (ADR 0021 sub-15). */
+function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
+  return { prompt: { sdk: worker } };
+}
+
+// `stampGuids` already produces a valid `@3` file and `runWorkflow` never re-validates, so this stands
+// in for the schema's registry-scoped `parseWorkflowFile` as an identity pass for these run tests.
+function parseWorkflowFile(file: WorkflowFile): WorkflowFile {
+  return file;
 }
 
 function echoStdinScript() {
@@ -453,8 +466,10 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     // The roll-up is status-blind: a detached branch that burned tokens and then `failed` still spent
     // them. The enclosing-run barrier holds the run open until the branch is terminal, so its
     // `step-usage` is emitted before the run finishes — the spend is final at roll-up time.
-    const worker: LlmWorker = {
-      async runPrompt() {
+    const worker: WorkerDescriptor = {
+      meters: true,
+      needsProcessorSlot: true,
+      async run() {
         await new Promise((r) => setTimeout(r, 60));
         return { status: "failed", error: "sink rejected", usage: { input_tokens: 11, output_tokens: 7 }, estimatedCostUsd: 0.002 };
       },
@@ -481,7 +496,7 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     }));
 
     const observer = fakeObserver();
-    const result = await runWorkflow(file, fixturesDir, { observer, llmWorker: worker });
+    const result = await runWorkflow(file, fixturesDir, { observer, workerOverrides: promptOverride(worker) });
 
     expect(result.status).toBe("succeeded");
 
@@ -1277,7 +1292,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       runId,
       rootRunId: runId,
       status: "failed",
-      error: expect.stringMatching(/not supported by this engine/),
+      error: expect.stringMatching(/unknown step type "telepathy"/),
     });
   });
 
@@ -1313,18 +1328,20 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
 describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)", () => {
   /** A stand-in LLM worker that tracks how many processors were live at once. */
   function fakeLlmWorker(
-    respond: (request: PromptRequest) => Promise<PromptResult> | PromptResult = () => ({
+    respond: (request: StepRequest) => Promise<StepResult> | StepResult = () => ({
       status: "succeeded",
       output: "ok",
       usage: { input_tokens: 1, output_tokens: 2 },
       estimatedCostUsd: 0.001,
     }),
   ) {
-    const requests: PromptRequest[] = [];
+    const requests: StepRequest[] = [];
     let live = 0;
     let peakLive = 0;
-    const worker: LlmWorker = {
-      async runPrompt(request) {
+    const worker: WorkerDescriptor = {
+      meters: true,
+      needsProcessorSlot: true,
+      async run(request) {
         requests.push(request);
         live += 1;
         peakLive = Math.max(peakLive, live);
@@ -1379,10 +1396,10 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
 
     const llm = fakeLlmWorker(async () => {
       await new Promise((r) => setTimeout(r, 20));
-      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+      return { status: "succeeded", output: "ok" };
     });
     const result = await runWorkflow(stampNames(file), fixturesDir, {
-      llmWorker: llm.worker,
+      workerOverrides: promptOverride(llm.worker),
       processorConcurrency: 1,
       files: new Map([[childPath, child]]),
     });
@@ -1395,7 +1412,7 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
   it("defaults the cap to 4 concurrent processors when the operator sets none", async () => {
     const llm = fakeLlmWorker(async () => {
       await new Promise((r) => setTimeout(r, 20));
-      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+      return { status: "succeeded", output: "ok" };
     });
     const branch = (id: string) => ({
       type: "sequence" as const,
@@ -1412,7 +1429,7 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
       },
     ]);
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { llmWorker: llm.worker });
+    const result = await runWorkflow(stampNames(file), fixturesDir, { workerOverrides: promptOverride(llm.worker) });
 
     expect(result.status).toBe("succeeded");
     expect(llm.peakLive).toBe(DEFAULT_PROCESSOR_CONCURRENCY);
@@ -1481,20 +1498,23 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
-  it("cancels a prompt step in flight through the llmWorker seam", async () => {
+  it("cancels a prompt step in flight through the worker seam", async () => {
     const observer = fakeObserver();
     const controller = abortWhenStarted(observer, "ask");
     // Holds the processor open until the abort reaches it — what the Agent SDK worker does for real.
-    const llmWorker: LlmWorker = {
-      async runPrompt(request: PromptRequest): Promise<PromptResult> {
+    // It returns `failed` on the abort; the engine relabels it `cancelled` from the signal (sub-7).
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      async run(request: StepRequest): Promise<StepResult> {
         await new Promise<void>((resolve) => {
-          if (request.signal?.aborted) {
+          if (request.signal.aborted) {
             resolve();
             return;
           }
-          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+          request.signal.addEventListener("abort", () => resolve(), { once: true });
         });
-        return { status: "cancelled" };
+        return { status: "failed", error: "cancelled" };
       },
     };
     const file: WorkflowFile = {
@@ -1505,7 +1525,11 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", publish: { answer: "${output}" } }],
     };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { observer, llmWorker, signal: controller.signal });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      observer,
+      workerOverrides: promptOverride(worker),
+      signal: controller.signal,
+    });
 
     expect(result.status).toBe("cancelled");
     const root = observer["run-started"].mock.calls[0]![0];
@@ -1649,5 +1673,114 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       expect(cancelled).toMatchObject({ cause: "operator", causeRunId: null });
     }
     expect(observer["join-applied"]).not.toHaveBeenCalled();
+  });
+});
+
+describe("runWorkflow — run-start config validation (ADR 0022 sub-3)", () => {
+  it("fails before the first step, naming the step, when a required config key does not resolve", async () => {
+    // A `prompt` step with no `config.model` anywhere: the run starts, is recorded, and ends failed
+    // before its first node — the required `model` is enforced at the run-start gate now (ADR 0021
+    // sub-10 → ADR 0022 sub-5), not mid-run.
+    const observer = fakeObserver();
+    const file: WorkflowFile = {
+      format: "path/workflow@3",
+      id: "wf-id",
+      name: "no-model",
+      body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi." }],
+    };
+
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      observer,
+      workerOverrides: promptOverride({ meters: false, needsProcessorSlot: true, run: async () => ({ status: "succeeded", output: "x" }) }),
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/config validation/);
+    expect(result.error).toMatch(/step "ask"/);
+    expect(result.error).toMatch(/model/);
+    // The run exists and never started a step — the failure is at the gate, before the first node.
+    expect(observer["run-started"]).toHaveBeenCalled();
+    expect(observer["step-started"]).not.toHaveBeenCalled();
+  });
+
+  it("aggregates every offending step in one failure", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@3",
+      id: "wf-id",
+      name: "two-missing",
+      body: [
+        { type: "prompt", id: "a", name: "a", prompt: "Hi." },
+        { type: "prompt", id: "b", name: "b", prompt: "Yo." },
+      ],
+    };
+
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      workerOverrides: promptOverride({ meters: false, needsProcessorSlot: true, run: async () => ({ status: "succeeded", output: "x" }) }),
+    });
+
+    expect(result.status).toBe("failed");
+    expect(result.error).toMatch(/step "a"/);
+    expect(result.error).toMatch(/step "b"/);
+  });
+});
+
+describe("runWorkflow — workerOverrides (ADR 0021 sub-15)", () => {
+  const okWorker: WorkerDescriptor = { meters: false, needsProcessorSlot: false, run: async () => ({ status: "succeeded", output: "x" }) };
+
+  it("hard-errors on an override naming a step type the scan did not produce", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@3",
+      id: "wf-id",
+      name: "override-unknown-type",
+      body: [{ type: "binary", id: "b", name: "b", command: "node", args: ["-e", ""] }],
+    };
+
+    await expect(
+      runWorkflow(stampNames(file), fixturesDir, { workerOverrides: { "no-such-type": { any: okWorker } } }),
+    ).rejects.toThrow(/unknown step type "no-such-type"/);
+  });
+
+  it("hard-errors on an override naming a worker the type does not ship", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@3",
+      id: "wf-id",
+      name: "override-unknown-worker",
+      body: [{ type: "binary", id: "b", name: "b", command: "node", args: ["-e", ""] }],
+    };
+
+    await expect(
+      runWorkflow(stampNames(file), fixturesDir, { workerOverrides: { binary: { "no-such-worker": okWorker } } }),
+    ).rejects.toThrow(/ships no worker "no-such-worker"/);
+  });
+});
+
+describe("runWorkflow — a thrown worker exception is masked on the way out (ADR 0020 sub-5)", () => {
+  it("re-throws with the config secret scrubbed from the message, class and stack preserved", async () => {
+    const file: WorkflowFile = {
+      format: "path/workflow@3",
+      id: "wf-id",
+      name: "throwing-worker",
+      config: { model: "m", token: { $secret: "SUPER-SECRET-VALUE" } },
+      body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi." }],
+    };
+
+    // A worker that crashes (a bug, not a `failed` result), leaking the run's secret into its message.
+    const boom: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request: StepRequest) => {
+        throw new TypeError(`boom with ${String((request.config as { token?: unknown }).token)}`);
+      },
+    };
+
+    await expect(
+      runWorkflow(stampNames(file), fixturesDir, { workerOverrides: promptOverride(boom) }),
+    ).rejects.toSatisfy((err: unknown) => {
+      expect(err).toBeInstanceOf(TypeError); // class preserved
+      const message = (err as Error).message;
+      expect(message).not.toContain("SUPER-SECRET-VALUE"); // secret masked
+      expect((err as Error).stack).toBeTruthy(); // stack preserved
+      return true;
+    });
   });
 });

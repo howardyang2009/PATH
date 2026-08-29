@@ -12,18 +12,18 @@ import { operatorConfigEnvError, prepareWorkflow } from "../src/launch.js";
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 describe("operatorConfigEnvError (ADR 0012)", () => {
-  it("passes a clean config and a literal $secret", () => {
+  it("passes a clean config and a literal $secret", async () => {
     expect(operatorConfigEnvError({})).toBeUndefined();
     expect(operatorConfigEnvError({ token: { $secret: "hunter2" } })).toBeUndefined();
   });
 
-  it("rejects a bare $env, naming the config key", () => {
+  it("rejects a bare $env, naming the config key", async () => {
     const message = operatorConfigEnvError({ repo_path: { $env: "SECRET_X" } });
     expect(message).toContain("$env");
     expect(message).toContain("repo_path");
   });
 
-  it("rejects the composed $secret-over-$env form at the config key, not key.$secret", () => {
+  it("rejects the composed $secret-over-$env form at the config key, not key.$secret", async () => {
     const message = operatorConfigEnvError({ token: { $secret: { $env: "SECRET_X" } } });
     expect(message).toContain("$env");
     expect(message).toContain("token");
@@ -34,8 +34,8 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
 describe("prepareWorkflow", () => {
   const notFound = (p: string) => `not found: ${p}`;
 
-  it("loads a valid workflow within the project root", () => {
-    const prepared = prepareWorkflow(fixturesDir, "two-binary-steps.workflow.json", { notFound });
+  it("loads a valid workflow within the project root", async () => {
+    const prepared = await prepareWorkflow(fixturesDir, "two-binary-steps.workflow.json", { notFound });
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
     expect(prepared.workflow.rootFile.name).toBe("two-binary-steps");
@@ -44,9 +44,9 @@ describe("prepareWorkflow", () => {
     expect(prepared.workflow.storeRelativePath(fixturesDir)).toBe("two-binary-steps.workflow.json");
   });
 
-  it("404s an escaping path with escapesRoot when given, else folds into notFound", () => {
+  it("404s an escaping path with escapesRoot when given, else folds into notFound", async () => {
     // Fresh-launch shape: escape and not-found are distinct messages.
-    const distinct = prepareWorkflow(fixturesDir, "../../etc/passwd", {
+    const distinct = await prepareWorkflow(fixturesDir, "../../etc/passwd", {
       notFound,
       escapesRoot: (p) => `escaped: ${p}`,
     });
@@ -56,23 +56,23 @@ describe("prepareWorkflow", () => {
     expect(distinct.refusal.message).toBe("escaped: ../../etc/passwd");
 
     // Resume shape: no escapesRoot, so an escape reuses the notFound wording (one 404 for both).
-    const folded = prepareWorkflow(fixturesDir, "../../etc/passwd", { notFound });
+    const folded = await prepareWorkflow(fixturesDir, "../../etc/passwd", { notFound });
     expect(folded.ok).toBe(false);
     if (folded.ok) return;
     expect(folded.refusal.status).toBe(404);
     expect(folded.refusal.message).toBe("not found: ../../etc/passwd");
   });
 
-  it("404s a missing file with the caller's notFound message", () => {
-    const prepared = prepareWorkflow(fixturesDir, "does-not-exist.workflow.json", { notFound });
+  it("404s a missing file with the caller's notFound message", async () => {
+    const prepared = await prepareWorkflow(fixturesDir, "does-not-exist.workflow.json", { notFound });
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(404);
     expect(prepared.refusal.message).toBe("not found: does-not-exist.workflow.json");
   });
 
-  it("400s an invalid file, carrying the loader's per-file errors as details", () => {
-    const prepared = prepareWorkflow(fixturesDir, "invalid-schema.workflow.json", { notFound });
+  it("400s an invalid file, carrying the loader's per-file errors as details", async () => {
+    const prepared = await prepareWorkflow(fixturesDir, "invalid-schema.workflow.json", { notFound });
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(400);

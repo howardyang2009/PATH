@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import type { BranchNode, CheckpointNode, JsonValue, WhileDoNode, WorkflowFile } from "@path/schema";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LlmWorker, PromptRequest } from "../src/llm/llm-worker.js";
-import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
+import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
@@ -38,24 +39,39 @@ afterEach(() => {
   rmSync(fileDir, { recursive: true, force: true });
 });
 
-const noLlm: LlmWorker = {
-  runPrompt: async () => ({ status: "failed", error: "no llm here", usage: null, estimatedCostUsd: null }),
-};
+// The real scanned registry (binary/prompt), loaded once. Leaf dispatch reads it; a prompt test swaps
+// in its own `prompt`/`sdk` worker via `promptRuntime`.
+let registry: LoadedStepPluginRegistry;
+beforeAll(async () => {
+  registry = await scanStepPlugins();
+});
+
+/** A run runtime whose `prompt`/`sdk` worker is the given descriptor — for the prompt-step tests. */
+function promptRuntime(worker: WorkerDescriptor, semaphore = createProcessorSemaphore(1)): RunContext["runtime"] {
+  const clone: LoadedStepPluginRegistry = {};
+  for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+  clone.prompt!.workers.sdk = worker;
+  return { registry: clone, semaphore };
+}
 
 /** A worker that records what it was asked, so a test can assert what crossed the seam. */
-function recordingWorker(into: PromptRequest[]): LlmWorker {
+function recordingWorker(into: StepRequest[]): WorkerDescriptor {
   return {
-    runPrompt: async (request) => {
+    meters: false,
+    needsProcessorSlot: true,
+    run: async (request) => {
       into.push(request);
-      return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+      return { status: "succeeded", output: "ok" };
     },
   };
 }
 
 /** A worker that always answers the same thing, for tests about what the engine does with it. */
-function answeringWorker(output: string): LlmWorker {
+function answeringWorker(output: string): WorkerDescriptor {
   return {
-    runPrompt: async () => ({ status: "succeeded", output, usage: null, estimatedCostUsd: null }),
+    meters: false,
+    needsProcessorSlot: true,
+    run: async () => ({ status: "succeeded", output }),
   };
 }
 
@@ -75,7 +91,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       emitter: createEmitter(identity, emit),
       // An empty environment by default: a test about `$env` resolution hands over its own (#116).
       env: {},
-      llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
+      runtime: { registry, semaphore: createProcessorSemaphore(1) },
       detached: [],
       ...overrides,
     },
@@ -445,15 +461,17 @@ describe("runNode — prompt step", () => {
     config: { model: "test-model" },
   };
 
-  it("runs on the llm worker and reports what the processor spent (§5.7)", async () => {
+  it("runs on the worker and reports what the processor spent (§5.7)", async () => {
     const prompts: string[] = [];
-    const worker: LlmWorker = {
-      runPrompt: async (request) => {
-        prompts.push(request.prompt);
+    const worker: WorkerDescriptor = {
+      meters: true,
+      needsProcessorSlot: true,
+      run: async (request) => {
+        prompts.push(String(request.fields.prompt));
         return { status: "succeeded", output: "hello", usage: { input_tokens: 3 }, estimatedCostUsd: 0.01 };
       },
     };
-    const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
+    const { run, observed } = makeRun({ runtime: promptRuntime(worker) });
 
     const outcome = await runNode(run, promptNode, "seed", makeExec({ word: "hi" }));
 
@@ -465,23 +483,11 @@ describe("runNode — prompt step", () => {
     expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ estimatedCostUsd: 0.01 });
   });
 
-  // `model` is fixed config now (`@3` §8): a prompt step with no resolved `config.model` fails at
-  // run-start, not load (ADR 0021 sub-10) — the run row exists and the step has started.
-  it("fails at run-start when no config.model resolves (ADR 0021 sub-10)", async () => {
-    const { run } = makeRun();
-    const { config: _dropped, ...withoutModel } = promptNode as Extract<Node, { type: "prompt" }>;
-
-    const outcome = await runNode(run, withoutModel as Node, "seed", makeExec({ word: "hi" }));
-
-    expect(outcome.status).toBe("failed");
-    expect(outcome.status === "failed" && outcome.error).toMatch(/config\.model is required/);
-  });
-
-  it("hands the worker the config model, the step's input object, and the file's directory", async () => {
-    const requests: PromptRequest[] = [];
+  it("hands the worker the interpolated fields, the config, the step's input, and the file's directory", async () => {
+    const requests: StepRequest[] = [];
     const { run } = makeRun({
       fileConfig: { model: "claude-opus-4-8", subject: "the release" },
-      llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) },
+      runtime: promptRuntime(recordingWorker(requests)),
     });
     const node: Node = {
       type: "prompt",
@@ -494,30 +500,30 @@ describe("runNode — prompt step", () => {
 
     expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe("succeeded");
     expect(requests[0]).toMatchObject({
-      nodeName: "summarize",
-      model: "claude-opus-4-8",
-      prompt: "Summarize the release.",
+      fields: { prompt: "Summarize the release." },
       input: { version: "1.2.0" },
       cwd: fileDir,
     });
-    // The options bag passes straight through: no engine code interprets it (§7).
-    expect(requests[0]?.options).toEqual({ mcpServers: { docs: { type: "stdio" } } });
+    // Config reaches the worker `$env`/`$secret`-resolved, carrying both the inherited `model` and the
+    // step's own `options` — no engine code interprets the options bag (§7).
+    expect(requests[0]?.config.model).toBe("claude-opus-4-8");
+    expect(requests[0]?.config.options).toEqual({ mcpServers: { docs: { type: "stdio" } } });
   });
 
   it("lets a step's own config.model override the inherited file model", async () => {
-    const requests: PromptRequest[] = [];
+    const requests: StepRequest[] = [];
     const { run } = makeRun({
       fileConfig: { model: "inherited" },
-      llm: { worker: recordingWorker(requests), semaphore: createProcessorSemaphore(1) },
+      runtime: promptRuntime(recordingWorker(requests)),
     });
     const node: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "claude-haiku-4-5" } };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
-    expect(requests[0]?.model).toBe("claude-haiku-4-5");
+    expect(requests[0]?.config.model).toBe("claude-haiku-4-5");
   });
 
   it("applies parse: json to the processor's output", async () => {
-    const { run } = makeRun({ llm: { worker: answeringWorker('{"verdict":"pass"}'), semaphore: createProcessorSemaphore(1) } });
+    const { run } = makeRun({ runtime: promptRuntime(answeringWorker('{"verdict":"pass"}')) });
     const node: Node = { ...(promptNode as object), parse: "json" } as Node;
 
     // Parsed, so the output is dot-path addressable rather than an opaque string.
@@ -528,7 +534,7 @@ describe("runNode — prompt step", () => {
   });
 
   it("fails the step when the output is not the JSON its parse declares", async () => {
-    const { run } = makeRun({ llm: { worker: answeringWorker("not json"), semaphore: createProcessorSemaphore(1) } });
+    const { run } = makeRun({ runtime: promptRuntime(answeringWorker("not json")) });
     const node: Node = { ...(promptNode as object), id: "judge", name: "judge", parse: "json" } as Node;
 
     const outcome = await runNode(run, node, "seed", makeExec({ word: "hi" }));
@@ -540,15 +546,17 @@ describe("runNode — prompt step", () => {
 
   // A step that died mid-conversation still spent tokens, and the run row records what was spent.
   it("records what a failed processor spent, then fails the step with the worker's error", async () => {
-    const worker: LlmWorker = {
-      runPrompt: async () => ({
+    const worker: WorkerDescriptor = {
+      meters: true,
+      needsProcessorSlot: true,
+      run: async () => ({
         status: "failed",
-        error: 'prompt step "ask" ended with SDK result "error_max_turns"',
+        error: 'ended with SDK result "error_max_turns"',
         usage: { input_tokens: 9 },
         estimatedCostUsd: 0.02,
       }),
     };
-    const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
+    const { run, observed } = makeRun({ runtime: promptRuntime(worker) });
 
     const outcome = await runNode(run, promptNode, "seed", makeExec({ word: "hi" }));
 
@@ -559,21 +567,23 @@ describe("runNode — prompt step", () => {
   });
 
   it("reports no usage at all for a processor that recorded none", async () => {
-    const { run, observed } = makeRun({ llm: { worker: answeringWorker("ok"), semaphore: createProcessorSemaphore(1) } });
+    const { run, observed } = makeRun({ runtime: promptRuntime(answeringWorker("ok")) });
 
     expect((await runNode(run, promptNode, "seed", makeExec({ word: "hi" }))).status).toBe("succeeded");
     expect(observed.filter((o) => o.type === "step-usage")).toHaveLength(0);
   });
 
   it("spawns a fresh processor per step-run — no conversational state leaks between steps", async () => {
-    const requests: PromptRequest[] = [];
-    const worker: LlmWorker = {
-      runPrompt: async (request) => {
+    const requests: StepRequest[] = [];
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request) => {
         requests.push(request);
-        return { status: "succeeded", output: `answered:${request.nodeName}`, usage: null, estimatedCostUsd: null };
+        return { status: "succeeded", output: `answered:${request.fields.prompt}` };
       },
     };
-    const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(1) } });
+    const { run } = makeRun({ runtime: promptRuntime(worker) });
     const ask = (id: string): Node => ({ type: "prompt", id, name: id, prompt: `${id} question.`, config: { model: "m" } });
 
     const outcome = await runSequence(run, [ask("first"), ask("second")], "seed", makeExec());
@@ -582,21 +592,24 @@ describe("runNode — prompt step", () => {
     expect(requests).toHaveLength(2); // one processor per step-run, not one reused session
     // The second reads exactly what its input map built — here the default-input chain, which
     // carries the predecessor's *output*, not its conversation.
-    expect(requests[1]?.input).toBe("answered:first");
+    expect(requests[1]?.input).toBe("answered:first question.");
   });
 
   it("is cancelled through the worker's signal when a sibling parallel branch fails", async () => {
-    const worker: LlmWorker = {
-      runPrompt: async (request) => {
-        // Hold the processor open until the sibling's failure aborts it.
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      // Hold the processor open until the sibling's failure aborts it; the engine derives cancelled
+      // from the signal, not from this returned status (ADR 0021 sub-7).
+      run: async (request) => {
         await new Promise<void>((resolve) => {
-          if (request.signal?.aborted) return resolve();
-          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+          if (request.signal.aborted) return resolve();
+          request.signal.addEventListener("abort", () => resolve(), { once: true });
         });
-        return { status: "cancelled" };
+        return { status: "failed", error: "cancelled" };
       },
     };
-    const { run, observed } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
+    const { run, observed } = makeRun({ runtime: promptRuntime(worker, createProcessorSemaphore(2)) });
     const node: Node = {
       type: "parallel",
       id: "fan", name: "fan",
@@ -663,7 +676,9 @@ describe("runNode — a node type this engine does not walk", () => {
     const outcome = await runNode(run, { type: "mystery", id: "m", name: "m" } as unknown as Node, "seed", makeExec());
 
     expect(outcome.status).toBe("failed");
-    expect(outcome.status === "failed" && outcome.error).toMatch(/node type "mystery" \(node "m"\)/);
+    // A `type` that is neither a control construct nor a registry leaf reaches the leaf dispatch and
+    // fails at the registry lookup, naming the node and the unknown type (ADR 0019 sub-5 wording).
+    expect(outcome.status === "failed" && outcome.error).toMatch(/step "m": unknown step type "mystery"/);
   });
 });
 

@@ -1,12 +1,11 @@
 export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-workflow-tree.js";
-export { runWorkflow, type ResumeInput, type RunOptions, type RunResult } from "./run-workflow.js";
+export { runWorkflow, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
 export { openProject, type OpenProjectResult, type Project, type ProjectRunOptions, type ResumeResult } from "./project.js";
 export { type ListRootsOptions, type RunArchive, type RunBlobName, type RunTree } from "./run-archive.js";
 export { type Observation, ObserverError, type RunObserver, type RunOutcome } from "./run-observer.js";
 export { LOG_FORMAT, type LogBackend, type LogFormat } from "./logging/log-backend.js";
 export { readNdjsonLog } from "./logging/ndjson-backend.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
-export type { LlmWorker, PromptRequest, PromptResult } from "./llm/llm-worker.js";
 export { openDb, SchemaVersionError } from "./persistence/db.js";
 export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 
@@ -14,17 +13,19 @@ export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 // Two rules decide this list:
 //
 // - **Assembly is not exported.** `openProject` composes the observers, the log backends, the run
-//   archive and `.path/` itself; `runWorkflow` builds the LLM worker, the processor semaphore and
-//   the secret masker. Exporting their ingredients — `composeObservers`, `createLoggingObserver`,
-//   `createPersistedObserver`, `createLogBackends`, `createRunArchive`, `ensurePathDirGitignore`,
-//   `createAgentSdkWorker`, `createProcessorSemaphore`, `collectSecrets` — let a consumer rebuild
-//   that composition by hand, in the wrong order, which is the hazard having an owner removed.
-//   `main` is likewise not here: `bin/path.ts` imports it from `./cli.js`, the only caller there is.
+//   archive and `.path/` itself; `runWorkflow` scans the plugin registry, builds the processor
+//   semaphore and the secret masker. Exporting their ingredients — `composeObservers`,
+//   `createLoggingObserver`, `createPersistedObserver`, `createLogBackends`, `createRunArchive`,
+//   `ensurePathDirGitignore`, `scanStepPlugins`, `createProcessorSemaphore`, `collectSecrets` — let a
+//   consumer rebuild that composition by hand, in the wrong order, which is the hazard having an owner
+//   removed. `main` is likewise not here: `bin/path.ts` imports it from `./cli.js`, the only caller.
 //
-// - **A seam's vocabulary stays, even when its default adapter goes.** `RunOptions.observer`,
-//   `RunOptions.llmWorker` and `LogBackend` are substitution points, so `RunObserver`,
-//   `Observation`, `LlmWorker` and their result shapes are exported — a consumer cannot implement
-//   an interface it cannot name. The engine's own implementations of them are internal.
+// - **A seam's vocabulary stays, even when its default adapter goes.** `RunOptions.observer` and
+//   `LogBackend` are substitution points, so `RunObserver`, `Observation` and their result shapes are
+//   exported — a consumer cannot implement an interface it cannot name. Worker substitution moved to
+//   `@path/engine/plugin`: `WorkerDescriptor` (and the whole plugin seam) lives there, and
+//   `RunOptions.workerOverrides` is a `(type, name)` map of them — so `LlmWorker`/`PromptRequest`/
+//   `PromptResult` are gone from this index (ADR 0021 sub-15). The engine's own implementations are internal.
 //
 // Reading a run goes through `RunArchive`, not through the stores under it: `getRunsForRoot`,
 // `listRootRuns`, `readJsonBlob` and `runBlobDir` are not exported, because a consumer that has

@@ -2,6 +2,7 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { safeParseWorkflowFile } from "@path/schema";
+import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCodemod } from "./run-codemod.js";
 
@@ -43,7 +44,7 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /** The migrated document must be a *loadable* `@3` file, not merely a reshaped one. */
 function expectSchemaValid(file: string): void {
-  const result = safeParseWorkflowFile(read(file));
+  const result = safeParseWorkflowFile(read(file), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
 }
 

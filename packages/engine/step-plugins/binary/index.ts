@@ -9,8 +9,9 @@ import type { StepRequest, StepResult } from "@path/engine/plugin";
  * 0019 sub-10, #336). It is the load-bearing dogfood of that surface: if the subpath cannot express
  * this worker, the gap surfaces here at author time, not in a third party's tree.
  *
- * The folder name *is* the type name, so this file states none. The old `src/binary-worker.ts` stays
- * live and still drives dispatch until the cutover (#7); this folder sits beside it.
+ * The folder name *is* the type name, so this file states none. Since the cutover (#337) this folder
+ * is the *only* `binary` implementation — the old `src/binary-worker.ts` is gone, and the engine
+ * dispatches every `binary` step through the worker discovered here.
  */
 
 // The `binary` type's author-fixed node fields (ADR 0022 sub-1): a command line and an optional

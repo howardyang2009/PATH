@@ -63,14 +63,18 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * otherwise; a file that failed to load carries `is_root: null` (a failed load has no `workflow.files`,
  * so it cannot be classified) with the shared error envelope and a best-effort id/name.
  */
-export function handleGetWorkflows(res: ServerResponse, ctx: RunsRouteContext): void {
+export async function handleGetWorkflows(res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
   // Canonicalized so scan paths (`join` off this root) match `loadWorkflowTree`'s keys (`resolve`)
   // exactly — the map lookups below assume that equality. `project.dir` is already `resolve`d today
   // (openProject); resolving again is a cheap belt-and-braces that keeps the assumption local.
   const projectDir = resolve(ctx.project.dir);
   const absPaths = scanWorkflowFiles(projectDir);
 
-  const loaded = absPaths.map((absPath) => ({ absPath, result: loadWorkflowTree(absPath) }));
+  // `loadWorkflowTree` is async now (ADR 0019 sub-15): the N per-call loads run concurrently, one
+  // `Promise.all`, rather than one blocking scan+parse after another.
+  const loaded = await Promise.all(
+    absPaths.map(async (absPath) => ({ absPath, result: await loadWorkflowTree(absPath) })),
+  );
 
   // A discovered file reachable as a *valid* root's nested ref. Only successful loads contribute:
   // a file whose own load failed carries no ref set, and its own `is_root` is null regardless.

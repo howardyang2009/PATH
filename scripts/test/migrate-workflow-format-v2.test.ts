@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeParseWorkflowFile } from "@path/schema";
+import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { runCodemod } from "./run-codemod.js";
 
@@ -64,7 +65,7 @@ function expectSchemaValid(file: string): void {
   const copy = `${file}.v3.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
   runCodemod([copy], scriptsDir, "migrate-workflow-format-v3.ts");
-  const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")));
+  const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   if (!result.success) throw new Error(`migrated file is not schema-valid @3:\n${result.errors.join("\n")}`);
 }
 

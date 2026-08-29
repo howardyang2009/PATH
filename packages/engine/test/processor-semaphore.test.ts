@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "../../src/llm/processor-semaphore.js";
+import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "../src/processor-semaphore.js";
 
 /** A promise plus the handle that settles it — lets a test hold acquired slots open deliberately. */
 function deferred(): { promise: Promise<void>; resolve: () => void } {

@@ -2,9 +2,10 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonValue, WorkflowFile } from "@path/schema";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LlmWorker } from "../src/llm/llm-worker.js";
-import { createProcessorSemaphore } from "../src/llm/processor-semaphore.js";
+import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
+import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
@@ -39,9 +40,20 @@ afterEach(() => {
   rmSync(fileDir, { recursive: true, force: true });
 });
 
-const noLlm: LlmWorker = {
-  runPrompt: async () => ({ status: "failed", error: "no llm here", usage: null, estimatedCostUsd: null }),
-};
+// The real scanned registry (binary/prompt), loaded once for the whole file. Leaf dispatch reads it;
+// a prompt-fanout test swaps in its own `prompt`/`sdk` worker via `registryWith`.
+let registry: LoadedStepPluginRegistry;
+beforeAll(async () => {
+  registry = await scanStepPlugins();
+});
+
+/** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted `sdk`. */
+function registryWith(type: string, name: string, descriptor: WorkerDescriptor): LoadedStepPluginRegistry {
+  const clone: LoadedStepPluginRegistry = {};
+  for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+  clone[type]!.workers[name] = descriptor;
+  return clone;
+}
 
 function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
   const observed: Observation[] = [];
@@ -58,7 +70,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
       identity,
       emitter: createEmitter(identity, emit),
       env: {},
-      llm: { worker: noLlm, semaphore: createProcessorSemaphore(1) },
+      runtime: { registry, semaphore: createProcessorSemaphore(1) },
       detached: [],
       ...overrides,
     },
@@ -264,19 +276,23 @@ describe("runNode — parallel", () => {
   it("holds concurrent processors to the semaphore's cap across the branches (§5.5)", async () => {
     let live = 0;
     let peakLive = 0;
-    const worker: LlmWorker = {
-      async runPrompt() {
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      async run() {
         live += 1;
         peakLive = Math.max(peakLive, live);
         try {
           await new Promise((r) => setTimeout(r, 20));
-          return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+          return { status: "succeeded", output: "ok" };
         } finally {
           live -= 1;
         }
       },
     };
-    const { run } = makeRun({ llm: { worker, semaphore: createProcessorSemaphore(2) } });
+    const { run } = makeRun({
+      runtime: { registry: registryWith("prompt", "sdk", worker), semaphore: createProcessorSemaphore(2) },
+    });
     const ask = (id: string) => ({
       type: "sequence" as const,
       id,

@@ -6,7 +6,8 @@ import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
 import { stampGuids } from "./stamp-names.js";
-import type { LlmWorker, PromptRequest, PromptResult } from "../src/llm/llm-worker.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerOverrides } from "../src/run-workflow.js";
 import { createDbLogBackend } from "../src/logging/db-backend.js";
 import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
@@ -543,13 +544,17 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   function countingLlmWorker() {
     let live = 0;
     let peakLive = 0;
-    const worker: LlmWorker = {
-      async runPrompt() {
+    // `needsProcessorSlot: true` so the engine's processor cap governs it — `peakLive` is the proof
+    // of the cap the engine actually applied.
+    const worker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      async run() {
         live += 1;
         peakLive = Math.max(peakLive, live);
         try {
           await new Promise((resolve) => setTimeout(resolve, 20));
-          return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+          return { status: "succeeded", output: "ok" };
         } finally {
           live -= 1;
         }
@@ -563,9 +568,13 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
     };
   }
 
-  function runFanout(llmWorker: LlmWorker, ...args: string[]) {
+  function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
+    return { prompt: { sdk: worker } };
+  }
+
+  function runFanout(worker: WorkerDescriptor, ...args: string[]) {
     cpSync(join(realFixtures, "llm-fanout.workflow.json"), join(projectDir, "fanout.workflow.json"));
-    return main(["run", join(projectDir, "fanout.workflow.json"), ...args], fakeIo(), { llmWorker });
+    return main(["run", join(projectDir, "fanout.workflow.json"), ...args], fakeIo(), { workerOverrides: promptOverride(worker) });
   }
 
   it("applies the file's processor.concurrency cap with no CLI flags", async () => {
@@ -623,26 +632,33 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     rmSync(projectDir, { recursive: true, force: true });
   });
 
-  function runIt(llmWorker: LlmWorker, io = fakeIo(), forceExit?: (code: number) => void) {
-    return main(["run", join(projectDir, "workflow.json")], io, { llmWorker, forceExit });
+  function runIt(worker: WorkerDescriptor, io = fakeIo(), forceExit?: (code: number) => void) {
+    return main(["run", join(projectDir, "workflow.json")], io, { workerOverrides: promptOverride(worker), forceExit });
+  }
+
+  function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
+    return { prompt: { sdk: worker } };
   }
 
   /**
    * A prompt step that presses `^C` `presses` times the moment it is in flight and then holds its
-   * processor open until the abort reaches it — what a live Agent SDK turn does for real.
+   * processor open until the abort reaches it — what a live Agent SDK turn does for real. It returns
+   * `failed` on the abort; the engine relabels it `cancelled` from the signal (ADR 0021 sub-7).
    */
-  function pressingLlmWorker(presses = 1): LlmWorker {
+  function pressingLlmWorker(presses = 1): WorkerDescriptor {
     return {
-      async runPrompt(request: PromptRequest): Promise<PromptResult> {
+      meters: false,
+      needsProcessorSlot: true,
+      async run(request: StepRequest): Promise<StepResult> {
         for (let i = 0; i < presses; i += 1) process.emit("SIGINT");
         await new Promise<void>((resolve) => {
-          if (request.signal?.aborted) {
+          if (request.signal.aborted) {
             resolve();
             return;
           }
-          request.signal?.addEventListener("abort", () => resolve(), { once: true });
+          request.signal.addEventListener("abort", () => resolve(), { once: true });
         });
-        return { status: "cancelled" };
+        return { status: "failed", error: "cancelled" };
       },
     };
   }
@@ -703,9 +719,11 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
 
   it("leaves a run that finishes normally untouched, listener included", async () => {
     const io = fakeIo();
-    const llmWorker: LlmWorker = {
-      async runPrompt() {
-        return { status: "succeeded", output: "ok", usage: null, estimatedCostUsd: null };
+    const llmWorker: WorkerDescriptor = {
+      meters: false,
+      needsProcessorSlot: true,
+      async run() {
+        return { status: "succeeded", output: "ok" };
       },
     };
 

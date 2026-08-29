@@ -3,7 +3,7 @@ import { createInterface } from "node:readline/promises";
 import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
-import type { LlmWorker } from "./llm/llm-worker.js";
+import type { WorkerOverrides } from "./run-workflow.js";
 import { mergeConfig } from "./merge-config.js";
 import { openProject, type ProjectRunOptions, type ResumeResult } from "./project.js";
 import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
@@ -27,8 +27,11 @@ export interface CliIo {
  * costs money and never answers the same way twice.
  */
 export interface RunOverrides {
-  /** Where `prompt` steps execute; defaults to the pinned Agent SDK worker (mvp spec §7). */
-  llmWorker?: LlmWorker;
+  /**
+   * Replace named `(type, worker)` pairs in the scanned registry (ADR 0021 sub-15), forwarded to
+   * `runWorkflow` verbatim. The acceptance run substitutes its scripted `prompt`/`sdk` worker here.
+   */
+  workerOverrides?: WorkerOverrides;
   /**
    * How a forced second `^C` leaves the process (#53) — defaults to `process.exit(130)`. The one
    * place the CLI exits abruptly, and only because the operator asked twice; tests substitute their
@@ -353,7 +356,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 2;
   }
 
-  const loadResult = loadWorkflowTree(parsed.args.workflowPath);
+  const loadResult = await loadWorkflowTree(parsed.args.workflowPath);
   if (!loadResult.success) {
     io.error(loadResult.errors.join("\n"));
     return 1;
@@ -392,7 +395,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     files: workflow.files,
     logBackends: parsed.args.logBackends,
     processorConcurrency: parsed.args.processorConcurrency,
-    llmWorker: overrides.llmWorker,
+    workerOverrides: overrides.workerOverrides,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,
     // Source-workflow provenance for the root row (#202, ADR 0006): the workflow file's path

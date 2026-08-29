@@ -150,7 +150,7 @@ describe("acceptance: do-not-wait launch-and-continue + barrier (issue #216, spe
 });
 
 describe("acceptance: do-not-wait publish rejection at load (issue #216, spec §4)", () => {
-  it("rejects the checked-in workflow the moment a publish is injected into its detached branch", () => {
+  it("rejects the checked-in workflow the moment a publish is injected into its detached branch", async () => {
     // Start from the real file and add the one thing §4 forbids — a `publish` inside the branch — so
     // the rejection is pinned against the shipped workflow, not a hand-built lookalike.
     // `@2`: a branch *is* a node, so the forbidden `publish` goes directly on the branch node (§4.3).
@@ -162,7 +162,7 @@ describe("acceptance: do-not-wait publish rejection at load (issue #216, spec §
     writeFileSync(injected, JSON.stringify(file));
 
     // Load-time, whole-tree, before any step runs — the same surface `path run` loads through.
-    const loaded = loadWorkflowTree(injected);
+    const loaded = await loadWorkflowTree(injected);
     expect(loaded.success).toBe(false);
     if (!loaded.success) {
       expect(loaded.errors.join("\n")).toMatch(/do-not-wait/);
@@ -211,7 +211,7 @@ async function killWithBranchInFlight(): Promise<string> {
     },
   };
 
-  const loaded = loadWorkflowTree(join(harness.projectDir, WORKFLOW_FILE));
+  const loaded = await loadWorkflowTree(join(harness.projectDir, WORKFLOW_FILE));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
   const rootFile = loaded.workflow.rootFile;
   const opened = openProject(harness.projectDir);

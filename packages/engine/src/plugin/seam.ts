@@ -8,9 +8,9 @@ import type { z, ZodRawShape } from "zod";
  * named workers; the engine merges/resolves `config`, validates `fields` at load and `config` at
  * run-start, then calls the selected worker's `run` (ADR 0022).
  *
- * Everything here is additive and unwired: nothing in production imports it yet (#333). Its adequacy
- * is load-bearing — the shipped `binary`/`prompt` folders (ADR 0021 sub-6, #6) compile against it, so
- * a gap here breaks PATH's own step types.
+ * Wired into production since the cutover (#337): the engine dispatches every leaf step through the
+ * `WorkerDescriptor.run` here, and the shipped `binary`/`prompt` folders (ADR 0021 sub-6) compile
+ * against it, so a gap here breaks PATH's own step types.
  */
 
 /**

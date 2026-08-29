@@ -8,8 +8,8 @@ import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 const fixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
 describe("loadWorkflowTree", () => {
-  it("loads a single-file workflow", () => {
-    const result = loadWorkflowTree(join(fixtures, "two-binary-steps.workflow.json"));
+  it("loads a single-file workflow", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "two-binary-steps.workflow.json"));
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.workflow.files.size).toBe(1);
@@ -17,8 +17,8 @@ describe("loadWorkflowTree", () => {
     }
   });
 
-  it("follows a workflow-step ref and loads the whole tree", () => {
-    const result = loadWorkflowTree(join(fixtures, "parent-with-child.workflow.json"));
+  it("follows a workflow-step ref and loads the whole tree", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "parent-with-child.workflow.json"));
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.workflow.files.size).toBe(2);
@@ -29,24 +29,24 @@ describe("loadWorkflowTree", () => {
     }
   });
 
-  it("reports a ref cycle before any step would execute, without infinite looping", () => {
-    const result = loadWorkflowTree(join(fixtures, "cycle-a.workflow.json"));
+  it("reports a ref cycle before any step would execute, without infinite looping", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "cycle-a.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors.join("\n")).toMatch(/cycle/i);
     }
   });
 
-  it("reports an unresolvable ref path", () => {
-    const result = loadWorkflowTree(join(fixtures, "missing-ref.workflow.json"));
+  it("reports an unresolvable ref path", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "missing-ref.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors.join("\n")).toMatch(/does-not-exist\.workflow\.json/);
     }
   });
 
-  it("reports a schema violation (unknown field) with the offending file's path", () => {
-    const result = loadWorkflowTree(join(fixtures, "invalid-schema.workflow.json"));
+  it("reports a schema violation (unknown field) with the offending file's path", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "invalid-schema.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors.join("\n")).toMatch(/invalid-schema\.workflow\.json/);
@@ -54,8 +54,8 @@ describe("loadWorkflowTree", () => {
     }
   });
 
-  it("reports a not-found entry file", () => {
-    const result = loadWorkflowTree(join(fixtures, "nope.workflow.json"));
+  it("reports a not-found entry file", async () => {
+    const result = await loadWorkflowTree(join(fixtures, "nope.workflow.json"));
     expect(result.success).toBe(false);
   });
 });
@@ -69,8 +69,8 @@ describe("loadWorkflowTree", () => {
 describe("loadWorkflowTree — what the load already knows", () => {
   const entry = join(fixtures, "parent-with-child.workflow.json");
 
-  it("resolves a relative entry path and reports the entry file's own directory", () => {
-    const result = loadWorkflowTree(relative(process.cwd(), entry));
+  it("resolves a relative entry path and reports the entry file's own directory", async () => {
+    const result = await loadWorkflowTree(relative(process.cwd(), entry));
     expect(result.success).toBe(true);
     if (!result.success) return;
     expect(result.workflow.rootPath).toBe(entry);
@@ -79,8 +79,8 @@ describe("loadWorkflowTree — what the load already knows", () => {
     expect(result.workflow.workflowDir).toBe(fixtures);
   });
 
-  it("measures the store-relative path from the store dir the caller names, not from the file", () => {
-    const result = loadWorkflowTree(entry);
+  it("measures the store-relative path from the store dir the caller names, not from the file", async () => {
+    const result = await loadWorkflowTree(entry);
     expect(result.success).toBe(true);
     if (!result.success) return;
     // `path run` with no `-C`: the store is the file's own directory, so provenance is the filename.
@@ -174,26 +174,26 @@ describe("loadWorkflowTree — superseded format versions", () => {
     rmSync(dir, { recursive: true, force: true });
   });
 
-  it("rejects a @1 entry file with the codemod message and nothing else", () => {
+  it("rejects a @1 entry file with the codemod message and nothing else", async () => {
     const absPath = join(dir, "v1.workflow.json");
-    const result = loadWorkflowTree(absPath);
+    const result = await loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([`${absPath}: ${V1_REJECTION}`]);
     }
   });
 
-  it("rejects a @0 entry file with the codemod message and nothing else", () => {
+  it("rejects a @0 entry file with the codemod message and nothing else", async () => {
     const absPath = join(dir, "v0.workflow.json");
-    const result = loadWorkflowTree(absPath);
+    const result = await loadWorkflowTree(absPath);
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([`${absPath}: ${V0_REJECTION}`]);
     }
   });
 
-  it("rejects a superseded file reached as a nested ref, naming that file's path", () => {
-    const result = loadWorkflowTree(join(dir, "parent.workflow.json"));
+  it("rejects a superseded file reached as a nested ref, naming that file's path", async () => {
+    const result = await loadWorkflowTree(join(dir, "parent.workflow.json"));
     expect(result.success).toBe(false);
     if (!result.success) {
       // The parent itself is fine — only the child is named, so the operator knows which file to migrate.

@@ -212,11 +212,14 @@ async function runOnce(file: WorkflowFile, token: ConfigValue): Promise<RunOutco
   try {
     const backends = createLogBackends(["db", "ndjson"], { db: runDb, projectDir: dir });
     const observer = composeObservers(createPersistedObserver(runDb, dir), createLoggingObserver(backends));
-    const llmWorker = createScriptedLlmWorker({ ask: () => "hello" });
+    const llmWorker = createScriptedLlmWorker({ ask: () => "hello" }, () => "ask");
 
     // Merge, not replace, so a fixture's own config (the prompt fixture's `config.model`, `@3` §8)
     // survives the token injection.
-    const result = await runWorkflow(stampNames({ ...file, config: { ...file.config, token } }), dir, { observer, llmWorker });
+    const result = await runWorkflow(stampNames({ ...file, config: { ...file.config, token } }), dir, {
+      observer,
+      workerOverrides: { prompt: { sdk: llmWorker } },
+    });
 
     const rootRunId = (
       runDb.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string }

@@ -189,7 +189,7 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     expect(harness.stderr).toEqual([]);
     expect(code).toBe(0);
     // The probe writes its **argv** to the receipt, never `process.env.PATH_ACCEPTANCE_TOKEN` —
-    // the child inherits the whole process environment (`binary-worker.ts`), so reading the
+    // the child inherits the whole process environment (`step-plugins/binary`), so reading the
     // variable there would prove nothing about `$env`. Reaching argv means the wrapper resolved,
     // rode inheritance into the step's effective config, and `${config.token}` interpolated to the
     // real credential (mvp spec §8.3: workers get real values; masking is an audit concern).

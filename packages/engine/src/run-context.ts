@@ -1,6 +1,6 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
-import type { LlmWorker } from "./llm/llm-worker.js";
-import type { ProcessorSemaphore } from "./llm/processor-semaphore.js";
+import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
+import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { Emitter } from "./run-emitter.js";
 import type { ReusePlan } from "./plan-reuse.js";
 import type { EnvSource } from "./resolve-env.js";
@@ -29,11 +29,13 @@ import type { ResumeInput } from "./run-workflow.js";
 export type Emit = (o: Observation) => Promise<void>;
 
 /**
- * The LLM execution resources one run tree shares: the worker `prompt` steps run on, and the
- * single semaphore that caps how many of its processors are live at once (mvp spec §5.5).
+ * The step-execution resources one run tree shares: the frozen plugin registry every leaf step
+ * dispatches through — `registry[type].workers[worker]` (ADR 0021 sub-8) — and the single semaphore
+ * that caps how many processor-slot workers are live at once (mvp spec §5.5). The registry is the
+ * scanned one with `options.workerOverrides` already merged over it (`runWorkflow`).
  */
-export interface LlmRuntime {
-  worker: LlmWorker;
+export interface StepRuntime {
+  registry: LoadedStepPluginRegistry;
   semaphore: ProcessorSemaphore;
 }
 
@@ -116,8 +118,8 @@ export interface RunContext {
   /** The run tree's environment snapshot, for the `$env` in a step's own config (#116). */
   env: EnvSource;
   files?: Map<string, WorkflowFile>;
-  /** Shared by the whole run tree, so the processor cap spans nested runs too (mvp spec §5.5). */
-  llm: LlmRuntime;
+  /** Shared by the whole run tree, so the registry and processor cap span nested runs too (mvp spec §5.5). */
+  runtime: StepRuntime;
   /** This workflow-run's resume state (#172), when the run is being resumed; absent for a fresh run. */
   resume?: RunResume;
   /**
