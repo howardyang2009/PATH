@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { WorkflowFile } from "@path/schema";
 import type Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createLogBackends } from "../../src/logging/backends.js";
 import type { LogBackend } from "../../src/logging/log-backend.js";
 import { LogEventSchema } from "@path/schema";
@@ -16,6 +16,11 @@ import { getRunsForRoot } from "../../src/persistence/run-store.js";
 import { composeObservers, type RunObserver } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 import { stampNames } from "../stamp-names.js";
+
+// These drive `runWorkflow` end to end against a real sqlite db and blob tree; the cancellation cases
+// also wait on an abort to propagate. On a loaded CI runner that can exceed the default 5s vitest
+// `testTimeout`, tripping unrelated PRs (#220). 30s gives headroom without masking a real hang.
+vi.setConfig({ testTimeout: 30_000 });
 
 let projectDir: string;
 let db: Database.Database;

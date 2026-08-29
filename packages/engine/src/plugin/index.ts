@@ -10,6 +10,11 @@
 export { z } from "zod";
 
 // The identity/typing helper and the seam types a plugin and the engine both compile against.
+//
+// `StepResult.stderr` is the one sanctioned diagnostic channel a worker has: it is captured diagnostic
+// text, not a process stream. A worker reports diagnostics by returning `stderr` here, never by writing
+// to a process stream — an in-process plugin's `console.log` reaches the engine's own stdout, uncaptured
+// and unmasked (ADR 0019 sub-1, ADR 0020 sub-4/sub-7). The `StepResult` doc carries the full note.
 export { defineStepPlugin } from "./seam.js";
 export type { StepPlugin, WorkerDescriptor, StepRequest, StepResult } from "./seam.js";
 

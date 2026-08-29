@@ -56,9 +56,13 @@ export interface StepRequest<F extends ZodRawShape = ZodRawShape, C extends ZodR
  * `cancelled`, deriving it from `request.signal.aborted` rather than trusting a worker to distinguish a
  * kill from a genuine failure (ADR 0021 sub-7). `usage` (real token counts) and `estimatedCostUsd`
  * ride both outcomes — a step that failed mid-conversation still spent tokens (mvp spec §5.7) — and
- * are omitted by a worker that meters nothing. `stderr` is captured for the audit blob regardless of
- * how the run ended (format doc §4.2). `output` is a `JsonValue`; `parse: "json"` (a shared envelope
- * field, ADR 0022 sub-8) applies only when it is a string.
+ * are omitted by a worker that meters nothing. `stderr` is **captured diagnostic text, not a process
+ * stream**: a worker reports diagnostics by returning it here, never by writing to a process stream —
+ * an in-process plugin's `console.log` goes to the engine process's own stdout (the CLI terminal, a CI
+ * build log), uncaptured and unmasked (ADR 0020 sub-4/sub-7). What is returned lands in the audit blob
+ * regardless of how the run ended (format doc §4.2); for `binary` that text merely happens to be the
+ * child's stderr. `output` is a `JsonValue`; `parse: "json"` (a shared envelope field, ADR 0022 sub-8)
+ * applies only when it is a string.
  */
 export type StepResult =
   | { status: "succeeded"; output: JsonValue; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }

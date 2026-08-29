@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { main, type CliIo } from "../../src/cli.js";
 import { loadWorkflowTree } from "../../src/load-workflow-tree.js";
 import { openProject } from "../../src/project.js";
@@ -26,6 +26,11 @@ import {
  * (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI; the seam it
  * plugs into is `workerOverrides.prompt.sdk`, the same registry override the CLI leaves open (ADR 0021).
  */
+
+// Each test drives the whole pipeline in-process through `main` against a real git repo, sqlite db
+// and blob tree, some resuming a second full run. On a loaded CI runner that I/O-bound work can exceed
+// the default 5s vitest `testTimeout`, tripping unrelated PRs (#220, same headroom as cli-e2e).
+vi.setConfig({ testTimeout: 30_000 });
 
 const packageRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 const acceptanceDir = join(dirname(dirname(packageRoot)), "docs", "acceptance-workflow");
