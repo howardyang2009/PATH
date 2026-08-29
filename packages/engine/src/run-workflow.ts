@@ -63,6 +63,14 @@ export interface RunOptions {
    */
   workerOverrides?: WorkerOverrides;
   /**
+   * Where the folder scan looks for step-type plugins (ADR 0019 sub-8), defaulting to the one fixed
+   * `STEP_PLUGINS_DIR`. A live run never sets it — the location is fixed on purpose. It exists for a
+   * test that must exercise the *scanned* registry over a fixture plugin folder rather than a
+   * hand-built registry (ADR 0020 sub-10): the scan, dispatch, and masking choke point are the real
+   * ones, only the directory differs. `scanStepPlugins` already takes this dir; this threads it in.
+   */
+  stepPluginsDir?: string;
+  /**
    * The engine-wide cap on concurrent Processors (mvp spec §5.5) — default 4. One semaphore
    * covers the whole run tree, so nested workflows and nested parallels share it.
    */
@@ -678,7 +686,7 @@ export async function runWorkflow(
 
   // The frozen executor registry for this run: the folder scan (ADR 0019), with `workerOverrides`
   // merged over it replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`.
-  const registry = await buildExecutorRegistry(options.workerOverrides);
+  const registry = await buildExecutorRegistry(options.workerOverrides, options.stepPluginsDir);
 
   // The run-start gate (#116, ADR 0022 sub-3), before the first node: unset `$env` variables fail
   // first (config cannot be validated against values it could not resolve); otherwise the effective,
@@ -779,9 +787,15 @@ export async function runWorkflow(
  *
  * An override naming a `(type, name)` pair the scan did not produce is a hard error, never an
  * insertion — the registry's name set stays owned entirely by the folder scan.
+ *
+ * `stepPluginsDir` overrides the scanned location; a live run leaves it `undefined` for the one fixed
+ * `STEP_PLUGINS_DIR`, and only a fixture-plugin test sets it (see `RunOptions.stepPluginsDir`).
  */
-async function buildExecutorRegistry(overrides: WorkerOverrides | undefined): Promise<LoadedStepPluginRegistry> {
-  const scanned = await scanStepPlugins();
+async function buildExecutorRegistry(
+  overrides: WorkerOverrides | undefined,
+  stepPluginsDir: string | undefined,
+): Promise<LoadedStepPluginRegistry> {
+  const scanned = await scanStepPlugins(stepPluginsDir);
   const registry: LoadedStepPluginRegistry = {};
   for (const [type, plugin] of Object.entries(scanned)) {
     registry[type] = { ...plugin, workers: { ...plugin.workers } };
