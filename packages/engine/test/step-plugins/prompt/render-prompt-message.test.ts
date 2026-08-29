@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { renderPromptMessage } from "../../src/llm/render-prompt-message.js";
+import { renderPromptMessage } from "../../../step-plugins/prompt/render-prompt-message.js";
 
 describe("render-prompt-message", () => {
   it("puts the instruction text first, then the step's whole input object", () => {

@@ -6,5 +6,5 @@
     // self-referential `@path/engine/plugin` import the plugin contract fixture makes (#333).
     "rootDir": "."
   },
-  "include": ["src", "test", "bin"]
+  "include": ["src", "test", "bin", "step-plugins"]
 }
