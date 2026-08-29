@@ -1,6 +1,6 @@
 import type { JsonValue } from "@path/schema";
 import type { LlmWorker, PromptRequest, PromptResult } from "./llm-worker.js";
-import { renderPromptMessage } from "./render-prompt-message.js";
+import { renderPromptMessage } from "../../step-plugins/prompt/render-prompt-message.js";
 
 /**
  * The pinned Agent SDK's entry point (mvp spec §7 — the spike ran 0.3.214). Taken as a type-only

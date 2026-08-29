@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/schema";
+import type { JsonValue } from "@path/engine/plugin";
 
 /**
  * Renders one `prompt` step into the single message its processor receives: the instruction text

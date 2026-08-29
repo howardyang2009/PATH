@@ -13,5 +13,11 @@ export { z } from "zod";
 export { defineStepPlugin } from "./seam.js";
 export type { StepPlugin, WorkerDescriptor, StepRequest, StepResult } from "./seam.js";
 
+// The JSON value type a worker's `input`/`output` are (the seam's `StepRequest.input`/`StepResult.output`
+// already are `JsonValue`). Re-exported so a plugin that names the type — `prompt`'s worker does, to
+// type its rendered input — takes it from this subpath and never from `@path/schema`, which a
+// third-party plugin folder does not depend on (ADR 0019 sub-5).
+export type { JsonValue } from "@path/schema";
+
 // #313 sub-14's anchor helper — a worker resolves its own relative paths against `request.cwd`.
 export { resolveAgainstWorkflowDir } from "./resolve-against-workflow-dir.js";
