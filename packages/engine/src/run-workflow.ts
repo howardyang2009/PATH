@@ -497,21 +497,79 @@ interface StepContext {
   onLeafStep?: (step: StepEmitter) => void;
 }
 
-// The tail every leaf step shares once its worker has produced a raw string output: apply
-// `parse: "json"` (format doc §6.5) and emit the terminal `stepFinished`. A parse failure fails
-// the step with its own run as the cause; otherwise the (parsed or raw) output succeeds. Keeps the
-// parse/finish shape identical across binary and prompt steps so the two can't drift.
-async function finishLeafStep(
-  step: StepEmitter,
-  node: { name: string; parse?: "text" | "json" },
-  rawOutput: JsonValue,
-): Promise<SeqOutcome> {
-  let output: JsonValue = rawOutput;
-  // `parse: "json"` applies to a *string* result only (ADR 0021): a worker whose output is already a
-  // JSON value hands it straight through, so a non-string output is never re-parsed.
-  if (node.parse === "json" && typeof rawOutput === "string") {
+/** What `settleStepResult` needs to turn one worker's `StepResult` into a leaf step's terminal outcome. */
+export interface SettleStepResult {
+  /** This step run's emitter — the door every terminal observation of the step passes through. */
+  step: StepEmitter;
+  /** The node, for the name the engine prefixes onto a worker error and the `parse` it applies to a string. */
+  node: { name: string; parse?: "text" | "json" };
+  /** What the worker returned (ADR 0021 sub-8) — the only two outcomes a worker reports. */
+  result: StepResult;
+  /** The worker's `meters` flag: a `step-usage` observation is emitted only for a metering worker. */
+  meters: boolean;
+  /** The step's kill signal — a `parallel` block's or the operator's; `aborted` is what makes it `cancelled`. */
+  signal?: AbortSignal;
+  /** The enclosing block's cancellation, read for the cause the `run-cancelled` narrates. */
+  cancellation?: Cancellation;
+}
+
+/**
+ * The whole engine-owned mapping from a worker's `StepResult` to a leaf step's `SeqOutcome`, and the
+ * one place it lives (#349's class of bug). A worker reports only `succeeded`/`failed` and self-judges
+ * which — the SDK-specific "is this success frame really an error" verdict is correctly the worker's,
+ * not the engine's (ADR 0020 sub-5). Everything the *engine* does with whatever the worker returned is
+ * here, in order, so the sequence and its edge cases are one testable unit rather than spread across the
+ * dispatch that calls the worker:
+ *
+ * 1. **stderr rides every outcome.** Captured diagnostic text (ADR 0020 sub-7) lands in the audit blob
+ *    regardless of how the step ended — a cancelled or failed step's diagnostics are still recorded.
+ * 2. **`cancelled` outranks the worker's own verdict.** The engine derives it from `signal.aborted`, not
+ *    the worker's status (ADR 0021 sub-7): a failing sibling branch or an operator's cancel killed the
+ *    worker in flight, and this relabels whatever it returned as `cancelled` so no publish from it lands.
+ *    The `run-cancelled` narration carries the cause — `sibling-failed` (its run named by `causeRunId`),
+ *    `sibling-succeeded` (a `wait-one` winner, no cause run — wait-one-join.md §5), or `operator` (a root
+ *    cancel, also no cause run) — then the `cancelled` `step-finished`, the pair in order.
+ * 3. **usage is leaf-only, from a metering worker, and precedes the finish** (§5.7): a step that died
+ *    mid-conversation still spent tokens, so it is emitted before a `failed` finish too — but not for a
+ *    `cancelled` step, which returns above.
+ * 4. **A `failed` worker's error is prefixed with the node name** (ADR 0021 sub-6): the worker names no
+ *    step, so every leaf type's failure reads `step "<name>": <worker error>`, and the step's own run is
+ *    the cause a cancelling sibling points at (`causeRunId`).
+ * 5. **A `succeeded` worker's output gets `parse: "json"`** (format doc §6.5), applied to a *string* only
+ *    (ADR 0021): a worker whose output is already a JSON value hands it straight through. A parse failure
+ *    fails the step with its own run as the cause. Keeps the parse/finish shape identical across every
+ *    leaf type so they can't drift.
+ */
+export async function settleStepResult(args: SettleStepResult): Promise<SeqOutcome> {
+  const { step, node, result, meters, signal, cancellation } = args;
+
+  // 1. stderr rides every outcome, into the audit blob.
+  if (result.stderr !== undefined) await step.stderr(result.stderr);
+
+  // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status.
+  if (signal?.aborted) {
+    await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
+    return { status: "cancelled" };
+  }
+
+  // 3. Leaf-only spend (§5.7), from a metering worker only: recorded here, never rolled up — subtree
+  //    figures are a read-time SUM. Emitted for a failed step too, before its finish.
+  if (meters && (result.usage !== undefined || result.estimatedCostUsd !== undefined)) {
+    await step.usage({ usage: result.usage ?? null, estimatedCostUsd: result.estimatedCostUsd ?? null });
+  }
+
+  // 4. A worker failure: prefix the node name and end the step, its own run the cancelling cause.
+  if (result.status === "failed") {
+    const error = `step "${node.name}": ${result.error}`;
+    await step.finished({ status: "failed", error });
+    return { status: "failed", error, causeRunId: step.runId };
+  }
+
+  // 5. Success: `parse: "json"` on a string result, then finish.
+  let output: JsonValue = result.output;
+  if (node.parse === "json" && typeof result.output === "string") {
     try {
-      output = parseStepOutput(rawOutput);
+      output = parseStepOutput(result.output);
     } catch (err) {
       if (!(err instanceof OutputParseError)) throw err;
       const parseError = `step "${node.name}": ${err.message}`;
@@ -521,21 +579,6 @@ async function finishLeafStep(
   }
   await step.finished({ status: "succeeded", output });
   return { status: "succeeded", output };
-}
-
-// The tail every leaf step shares once the engine has killed it instead of letting it finish (mvp
-// spec §5.6): narrate the cancellation with its cause, then end the run `cancelled` rather than
-// `failed` — so no publish from it lands. The cause is read off the enclosing `parallel` block's
-// cancellation at kill time. Three sources of an abort: a `collect` sibling failing
-// (`sibling-failed`, its run named by `causeRunId`), a `wait-one` sibling winning the race
-// (`sibling-succeeded`, no cause run — wait-one-join.md §5), or the abort coming from outside the run
-// tree, i.e. an operator cancelling the root run (#52) — the block has recorded no cause, so `cause`
-// is null and this reads as `operator` with no cause run to point at.
-async function cancelLeafStep(step: StepEmitter, cancellation: Cancellation | undefined): Promise<SeqOutcome> {
-  // The step-scoped emitter narrates `run-cancelled` (with the cause) then the `cancelled`
-  // `step-finished`, both under this step's own run id and node — the pair, in order.
-  await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
-  return { status: "cancelled" };
 }
 
 // A never-aborting signal for a leaf run outside any `parallel` block and with no operator abort:
@@ -621,31 +664,17 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     };
     const result = await descriptor.run(request);
 
-    // Captured diagnostic text (ADR 0020 sub-7) rides both terminal outcomes for the audit blob.
-    if (result.stderr !== undefined) await step.stderr(result.stderr);
-
-    // The engine owns `cancelled`, deriving it from the signal rather than the worker's reported
-    // status (ADR 0021 sub-7): a failing sibling branch or an operator's cancel kills the worker in
-    // flight, and this relabels whatever it returned as `cancelled` so no publish from it lands.
-    if (ctx.exec.signal?.aborted) {
-      return await cancelLeafStep(step, ctx.exec.cancellation);
-    }
-
-    // Leaf-only spend (§5.7), from a metering worker only: recorded on this run, never rolled up —
-    // subtree figures are a read-time SUM.
-    if (descriptor.meters && (result.usage !== undefined || result.estimatedCostUsd !== undefined)) {
-      await step.usage({ usage: result.usage ?? null, estimatedCostUsd: result.estimatedCostUsd ?? null });
-    }
-
-    if (result.status === "failed") {
-      // The worker names no step (ADR 0021 sub-6); the engine owns the node's name and prefixes it
-      // here, so every leaf type's failure reads `step "<name>": <worker error>`.
-      const error = `step "${node.name}": ${result.error}`;
-      await step.finished({ status: "failed", error });
-      return { status: "failed", error, causeRunId: step.runId };
-    }
-
-    return finishLeafStep(step, node, result.output);
+    // Everything the engine does with whatever the worker returned lives behind one seam
+    // (`settleStepResult`): stderr capture, the signal-derived `cancelled` relabel, leaf-only usage,
+    // the node-prefixed failure, and `parse: "json"` on success — in that order, testable on its own.
+    return settleStepResult({
+      step,
+      node,
+      result,
+      meters: descriptor.meters,
+      signal: ctx.exec.signal,
+      cancellation: ctx.exec.cancellation,
+    });
   } finally {
     // The processor is gone by now; holding its slot any longer would shrink the cap.
     release?.();
