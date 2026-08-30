@@ -38,7 +38,7 @@ async function startFixture(filename: string, runs = live): Promise<StartedRun> 
   const loaded = await loadWorkflowTree(join(projectDir, filename));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
   const { workflow } = loaded;
-  return runs.start(workflow.rootFile, workflow.workflowDir, { files: workflow.files });
+  return runs.start(workflow.rootFile, workflow.workflowDir, { files: workflow.files, registry: workflow.registry });
 }
 
 /** Waits for the root row to reach a terminal status, then lets the run promise's settle handler run. */

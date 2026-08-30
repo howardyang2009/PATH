@@ -393,6 +393,9 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
     files: workflow.files,
+    // The registry this file was validated against (ADR 0019 sub-15): dispatch reuses it, so the run
+    // never re-scans the folder and cannot execute against a different one than the load validated.
+    registry: workflow.registry,
     logBackends: parsed.args.logBackends,
     processorConcurrency: parsed.args.processorConcurrency,
     workerOverrides: overrides.workerOverrides,
