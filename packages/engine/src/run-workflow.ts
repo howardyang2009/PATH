@@ -25,7 +25,7 @@ import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
 import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
-import { collectSecrets, maskObservation } from "./secret-mask.js";
+import { collectSecrets, maskObservation, type SecretMasker } from "./secret-mask.js";
 
 /**
  * Test/host worker overrides (ADR 0021 sub-15): a `(type, worker-name)` map of replacement
@@ -692,27 +692,26 @@ export async function runWorkflow(
   options: RunOptions = {},
 ): Promise<RunResult> {
   const runId = randomUUID();
-  const configs = collectRunConfigs(file, options);
 
   // One snapshot for the whole run (#116). The environment is read here and nowhere else, so a
   // variable changed mid-run cannot make a step's config disagree with what the masker collected
   // from the same wrapper at run start.
   const env: EnvSource = { ...process.env };
 
-  // Resolve every `$env` **before** collecting, not stylistically: masking is by value (mvp spec
-  // §8.3), so `{"$secret": {"$env": "TOKEN"}}` must already carry the real value here or the masker
-  // collects the literal string `TOKEN` and the credential itself reaches disk unmasked. Unset
-  // variables fail the run before its first node, naming every one of them (#116, see
-  // `runStartFailure` below).
-  const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
+  // The frozen executor registry for this run: the load's own scanned registry (ADR 0019 sub-15),
+  // or — for a caller with no load — a folder scan here, with `workerOverrides` merged over whichever
+  // one replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`. Built
+  // before the run-start analysis, whose config gate validates each leaf against its type's fragment.
+  const registry = await resolveExecutorRegistry(options.registry, options.workerOverrides, options.stepPluginsDir);
 
-  // Collect every `$secret` value in effective config once at run start (mvp spec §8.3, #20), then
-  // scrub at the one point every observation passes through (#62) — the interpolated values handed
-  // to workers stay real, only what crosses into persistence is masked. Masking here rather than in
-  // a wrapper is what makes the guarantee unconditional: there is no hook to leave unimplemented and
-  // no wrapper for a future caller to skip.
-  const masker = collectSecrets(resolvedConfigs);
+  // The whole run-start read of the config tree, behind one seam (#116, #20, ADR 0022 sub-3): collect
+  // every config object, resolve `$env`, collect `$secret` into the masker, and gate the run — unset
+  // `$env` named first, else config-fragment validation. The staging is load-bearing and lives inside
+  // `analyzeRunStart`; here it is one call yielding the two facts the rest of the run needs — the
+  // masker (used at the emit choke point below and the mask-on-return) and the run-start failure.
+  const { masker, runStartFailure } = analyzeRunStart(file, fileDir, options, env, registry);
   for (const warning of masker.warnings) options.warn?.(warning);
+
   const { observer } = options;
 
   // The original tree's own root run (`parentRunId === null`), found once: it is both the root run's
@@ -724,20 +723,6 @@ export async function runWorkflow(
         await observer.observe(masker.isEmpty ? o : maskObservation(masker, o));
       }
     : async () => {};
-
-  // The frozen executor registry for this run: the load's own scanned registry (ADR 0019 sub-15),
-  // or — for a caller with no load — a folder scan here, with `workerOverrides` merged over whichever
-  // one replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`.
-  const registry = await resolveExecutorRegistry(options.registry, options.workerOverrides, options.stepPluginsDir);
-
-  // The run-start gate (#116, ADR 0022 sub-3), before the first node: unset `$env` variables fail
-  // first (config cannot be validated against values it could not resolve); otherwise the effective,
-  // resolved config of every leaf step is validated against its type's `config` fragment, one failure
-  // naming every missing or mismatched key. `prompt`'s required `model` is enforced here now.
-  const runStartFailure =
-    unset.length > 0
-      ? describeUnsetEnv(unset)
-      : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
 
   // The tree's one masking sink becomes the root run's emitter here; every descendant run gets its
   // own via `emitter.child`, so `emit` itself never travels past this call.
@@ -865,6 +850,62 @@ async function resolveExecutorRegistry(
     }
   }
   return registry;
+}
+
+/** The two run-start facts the analysis yields: the masking sink, and the failure that ends the run before its first node (if any). */
+export interface RunStartAnalysis {
+  /**
+   * The `$secret` masking sink built from the run's whole resolved config (mvp spec §8.3, #20). It
+   * escapes the analysis because it lives past run start: it is the emit choke point's masker and the
+   * one that scrubs what a finished run returns. Its `warnings` are the caller's to surface.
+   */
+  masker: SecretMasker;
+  /**
+   * The run-start gate's verdict (#116, ADR 0022 sub-3): `undefined` to proceed, else the message the
+   * run ends `failed` on before its first node. Names unset `$env` variables, or config-fragment
+   * mismatches — never both, because the first pre-empts the second (see below).
+   */
+  runStartFailure?: string;
+}
+
+/**
+ * The run's whole read of its config tree at start, in one place (#116, #20, ADR 0022 sub-3). It exists
+ * so `runWorkflow` reads run-start as a single fact rather than four scattered statements, and so the
+ * gate's staging — which is load-bearing — has one owner and one test surface.
+ *
+ * **Four passes, in a fixed order, and why they are not one.** The order is the point, not an accident:
+ *
+ * 1. **Collect** every config object across the whole tree, unmerged (`collectRunConfigs`) — whole-tree
+ *    because a `$env` a parent's config shadows must still be set, and a `$secret` anywhere must still be
+ *    masked (its comment carries the reasoning).
+ * 2. **Resolve `$env`** over that set (`resolveRunEnv`), *before* collecting secrets: masking is by value
+ *    (§8.3), so `{"$secret": {"$env": "TOKEN"}}` must already carry the real value or the masker collects
+ *    the literal `TOKEN` and the credential reaches disk unmasked. Unset variables surface here.
+ * 3. **Collect `$secret`** from the resolved set into the masker (`collectSecrets`).
+ * 4. **Validate** each leaf's effective, merged, resolved config against its type's fragment
+ *    (`validateRunStartConfig`) — but *only if* no `$env` was unset: config cannot be validated against
+ *    values it could not resolve, so an unset variable pre-empts the fragment check.
+ *
+ * Passes 1 and 4 both walk the tree, but compute different things — 1 flattens raw config pre-resolution,
+ * 4 merges effective config per leaf post-resolution — and 4 is gated on 2's result. Folding them into
+ * one traversal would entangle collection with validation and lose the "resolve every `$env` first, then
+ * validate" staging, so they stay distinct passes behind this one door rather than one merged walk.
+ */
+export function analyzeRunStart(
+  file: WorkflowFile,
+  fileDir: string,
+  options: RunOptions,
+  env: EnvSource,
+  registry: LoadedStepPluginRegistry,
+): RunStartAnalysis {
+  const configs = collectRunConfigs(file, options);
+  const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
+  const masker = collectSecrets(resolvedConfigs);
+  const runStartFailure =
+    unset.length > 0
+      ? describeUnsetEnv(unset)
+      : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
+  return { masker, runStartFailure };
 }
 
 /**
