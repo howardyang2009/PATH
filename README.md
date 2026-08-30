@@ -12,8 +12,8 @@ and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the s
 
 | Package | What it is |
 |---|---|
-| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@2`). It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
-| `@path/engine` | Runs workflows locally. Provides the `path` CLI. |
+| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@3`) and the registry factory that opens its node union to plugin step types. It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
+| `@path/engine` | Runs workflows locally. Provides the `path` CLI. It discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam a step-type plugin compiles against. |
 | `@path/server` | An HTTP and SSE API over the engine. Provides the `path-server` CLI. |
 | `@path/client-core` | A pure-TypeScript API client. It has an SSE client, a run view-model, and a run/workflow write surface. It needs no framework and no Node. |
 | `@path/viewer` | A React web console over `client-core`. It monitors runs live. It launches and resumes runs. |
@@ -58,11 +58,11 @@ The first argument to `path-server` is the project directory. The server reads a
 there. This argument defaults to the current directory. The engine CLI is different: it finds its
 project directory from the workflow file location.
 
-## Status (2026-08-20)
+## Status (2026-08-30)
 
-The latest release is **v0.5.1** (2026-08-20). See `CHANGELOG.md` for the full history. The `main`
-branch is green. `pnpm -r run typecheck` is clean. 1119 tests pass: schema 235, engine 564, viewer
-121, server 134, client-core 51, scripts 14.
+The latest release is **v0.5.4** (2026-08-30). See `CHANGELOG.md` for the full history. The `main`
+branch is green. `pnpm -r run typecheck` is clean. 1253 tests pass: schema 271, engine 624, viewer
+138, server 140, client-core 56, scripts 24.
 
 The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
 release-notes pipeline passes its acceptance run (mvp spec §11).
@@ -95,6 +95,27 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   `scripts/migrate-workflow-format-v2.ts` fills once and is idempotent. There is no DB break. Two
   Opus 5 refactors are included (#290). `loadWorkflowTree` returns a `LoadedWorkflow`. Both launch
   routes collapse behind one `prepareWorkflow`.
+- **v0.5.2** — the viewer's left rail grows up. One flat file list becomes two panes: Workflows (the
+  catalog you can launch) and Runs (the ledger you have launched), each run stamped with the workflow
+  it came from. The Workflows pane filters by kind (`all` / `root` / `nested` / `invalid`); an invalid
+  file folds its parse error away. A per-run delete affordance lands, backed by a new
+  `DELETE /v0/runs/:root_run_id` that removes the run from both stores, guarded against a running root
+  and a live successor's reuse reference (`409`, `?force=true` to override). No format or DB break.
+- **v0.5.3** — resume keeps its receipts. A resumed run's reused node is now a real **reuse row** — a
+  `succeeded` run row of its own, not just a log marker — so it shows in the run tree and a chained
+  resume can reuse it straight from `runs` (#257). The audit read path gets three named concepts: a run
+  **kind** (`runKind`, `isRootRun`, `isReuseRow`), a shared **run tree** primitive in `@path/schema`,
+  and one domain `RunRecord` the client's live state collapses onto. Each leaf step also snapshots its
+  context, so the NODE I/O/C panel follows the blackboard step by step (#297). No format or DB break.
+- **v0.5.4** — a leaf step type stops being hardcoded. The two built-ins, `binary` and `prompt`, leave
+  the closed node union and become the first two **plugins** under `packages/engine/step-plugins/`,
+  each importing the public `@path/engine/plugin` seam a third-party plugin would use (ADR 0018–0024).
+  The engine discovers, validates, and dispatches every leaf step through one registry scanned once per
+  run. The `engine | llm` worker union is gone: `worker` is now an optional worker-name string, the
+  format is `path/workflow@3` (codemod `scripts/migrate-workflow-format-v3.ts`), and the per-Processor
+  concurrency cap is renamed from `llm` to `processor` (#331). A `prompt` step now fails on an Agent SDK
+  `is_error` result instead of passing the error text downstream as output (#349). This release breaks
+  both the format (`@2` → `@3`) and the DB (`SCHEMA_VERSION` 7, clean-slate).
 
 ### What's next
 
@@ -102,8 +123,11 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   This is the one known product gap. The audit record is complete. The API cannot serve it yet.
 - #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. This
   stays open. Each door moves into its own wayfinder map when its trigger fires. `$env` (v0.4.3) and
-  resume (v0.4.4) have shipped. An API-endpoint step type and automatic in-run retry are still
-  deferred.
+  resume (v0.4.4) have shipped. The step-plugin seam (v0.5.4) is now the vehicle for the deferred step
+  types: an API-endpoint step type can ship as a plugin folder rather than a core union member.
+  Automatic in-run retry is still deferred.
+- A **Designer** — the visual canvas over the workflow format. The map is laid (ADR 0015–0017, the
+  `packages/designer` prototype), but no Designer ships yet.
 
 ## Maintenance notes
 

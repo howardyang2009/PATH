@@ -1,5 +1,54 @@
 # Changelog
 
+## v0.5.4 — 2026-08-30
+
+A leaf step type stops being hardcoded. PATH used to ship exactly two leaf step types — `binary` and
+`prompt` — baked into a **closed** discriminated union in `@path/schema`. A leaf step type is now a
+**plugin**: a folder under `packages/engine/step-plugins/`, discovered at load, that contributes its
+own typed `fields` and `config` fragments and its own named `workers`. The two built-ins are now the
+first two plugins, and they import the public `@path/engine/plugin` surface exactly as a third-party
+plugin would — the dogfood that proves the surface adequate (ADR 0019, 0021). Seven ADRs (0018–0024)
+pin the architecture: the union opens through a pure `makeWorkflowFileSchema(registry)` factory (0018);
+a plugin folder is convention-only and named `^[a-z][a-z0-9-]*$` (0019); a plugin inherits masking at
+the emit choke point and runs at engine-level trust (0020); the `fields`-vs-`config`-vs-`input` line
+is operator-invariance (0022); a plugin declares no version and the fork is the unit of versioning
+(0023).
+
+**The `engine | llm` worker union is gone (`path/workflow@3`).** A step's `worker` is now an optional
+worker-**name** string — a per-type `z.enum` (`binary` → `spawn`, `prompt` → `sdk`) — and the
+file-level `worker` is removed. `prompt` reads `config.model` and `config.options` as literal config;
+a missing `config.model` now fails at **run start**, not load. The codemod
+`scripts/migrate-workflow-format-v3.ts` bumps the format, deletes an `engine` worker, hoists an `llm`
+worker's `model`/`options` into that step's own config, and hard-fails (naming file and JSON pointer)
+on an interpolated `model`/`options` or an `engine`-worker `prompt` step.
+
+**One scan per run drives everything.** `loadWorkflowTree` is now async and is the sole freeze point:
+it scans the plugin folder, builds the schema from the registry, and parses each file. The engine
+loads **and dispatches** through that one registry — schema validity, the run-start config check, and
+leaf dispatch all key off a single read of disk, closing the window where an edit between load and run
+could dispatch a file against a registry other than the one that validated it (amends ADR 0019).
+`options.llmWorker` becomes `options.workerOverrides`, merged over the frozen registry replace-only.
+
+**The per-Processor concurrency cap stops saying "llm".** The cap is per-Processor memory, not an LLM
+bound, so it is renamed across every layer: CLI `--processor-concurrency`, engine-settings
+`processor.concurrency`, wire `processor_concurrency` (#331, ADR 0021). The audit records a worker
+name end to end: `runs.worker` becomes `runs.worker_name`, `step-started` carries `workerName`.
+
+**Fix (#349):** the Agent SDK returns an auth failure as a `success`-subtype result with `is_error`
+true. The `sdk` prompt worker checked only the subtype, so it treated the errored result as a
+**succeeded** step and passed the auth-error text downstream as output. The worker now fails the step
+on `is_error`.
+
+Two engine seams get one home each: `settleStepResult` concentrates the whole raw-result → leaf
+outcome mapping — stderr capture, the signal-derived `cancelled` relabel, leaf-only usage, the
+node-prefixed failure, `parse:"json"` on a string result (ADR 0024) — and `analyzeRunStart` runs the
+four run-start passes in their fixed resolve-then-validate order behind one door. Alongside: every ADR,
+spec, research note, plus `README.md` and `CONTEXT.md`, are rewritten in Simplified Technical English.
+
+**Breaking:** this release breaks both the format and the DB. `path/workflow@3` supersedes `@2` —
+codemod-migrated, idempotent. `SCHEMA_VERSION` bumps to **7** (clean-slate); the engine refuses to open
+a `path.db` written at an older version, so an existing run archive does not carry forward.
+
 ## v0.5.3 — 2026-08-23
 
 Resume learns to **keep its receipts**. When a resumed run reuses a node's earlier work, that node is
