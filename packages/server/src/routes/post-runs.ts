@@ -75,6 +75,8 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       input: input as { [key: string]: JsonValue } | undefined,
       operatorConfig: config,
       files: workflow.files,
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      registry: workflow.registry,
       logBackends: logBackendIds,
       processorConcurrency,
       // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`

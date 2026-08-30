@@ -110,6 +110,8 @@ export async function handleResumeRun(
   try {
     ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
       files: workflow.files,
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      registry: workflow.registry,
       // The operator's override for the resumed run — shadows the workflow's declared config key by
       // key (engine `run-workflow.ts`), applied to the steps that re-run.
       operatorConfig: config,

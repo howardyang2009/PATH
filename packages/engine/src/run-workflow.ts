@@ -63,11 +63,23 @@ export interface RunOptions {
    */
   workerOverrides?: WorkerOverrides;
   /**
-   * Where the folder scan looks for step-type plugins (ADR 0019 sub-8), defaulting to the one fixed
-   * `STEP_PLUGINS_DIR`. A live run never sets it — the location is fixed on purpose. It exists for a
-   * test that must exercise the *scanned* registry over a fixture plugin folder rather than a
-   * hand-built registry (ADR 0020 sub-10): the scan, dispatch, and masking choke point are the real
-   * ones, only the directory differs. `scanStepPlugins` already takes this dir; this threads it in.
+   * The frozen step-plugin registry this run dispatches against — the one `loadWorkflowTree` scanned
+   * to build the schema that validated the file (ADR 0019 sub-15, `LoadedWorkflow.registry`). Threaded
+   * in so the file executes against **exactly** the registry it was validated against: one scan of the
+   * folder per run, and no window in which an edit between load and run makes the two disagree. The
+   * production path (`cli.ts`, the server routes) always sets it.
+   *
+   * A caller that reaches `runWorkflow` without a load — a test that builds a `WorkflowFile` in memory,
+   * or an embedder — omits it, and the run scans the folder itself (`scanStepPlugins`) as the
+   * fallback. `workerOverrides` still merges over whichever registry results, replace-only.
+   */
+  registry?: LoadedStepPluginRegistry;
+  /**
+   * Where the self-scan fallback looks for step-type plugins (ADR 0019 sub-8), defaulting to the one
+   * fixed `STEP_PLUGINS_DIR`. Consulted **only when `registry` is absent** — a live run passes the
+   * loaded registry and never reaches the scan, so it never sets this. It exists for a test that must
+   * exercise the *scanned* registry over a fixture plugin folder rather than a hand-built one (ADR 0020
+   * sub-10): the scan, dispatch, and masking choke point are the real ones, only the directory differs.
    */
   stepPluginsDir?: string;
   /**
@@ -684,9 +696,10 @@ export async function runWorkflow(
       }
     : async () => {};
 
-  // The frozen executor registry for this run: the folder scan (ADR 0019), with `workerOverrides`
-  // merged over it replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`.
-  const registry = await buildExecutorRegistry(options.workerOverrides, options.stepPluginsDir);
+  // The frozen executor registry for this run: the load's own scanned registry (ADR 0019 sub-15),
+  // or — for a caller with no load — a folder scan here, with `workerOverrides` merged over whichever
+  // one replace-only (ADR 0021 sub-15). Leaf dispatch reads it — `registry[type].workers`.
+  const registry = await resolveExecutorRegistry(options.registry, options.workerOverrides, options.stepPluginsDir);
 
   // The run-start gate (#116, ADR 0022 sub-3), before the first node: unset `$env` variables fail
   // first (config cannot be validated against values it could not resolve); otherwise the effective,
@@ -780,24 +793,28 @@ export async function runWorkflow(
 }
 
 /**
- * The frozen executor registry for one run: the folder scan (ADR 0019 sub-15), with `workerOverrides`
- * merged over it **replace-only** (ADR 0021 sub-15). The scan is per run, hitting Node's ESM cache for
- * an unchanged folder. Each plugin and its `workers` map is shallow-cloned before an override is
- * applied, so a replacement never mutates the cached module object a later run would scan again.
+ * The frozen executor registry for one run, with `workerOverrides` merged over it **replace-only**
+ * (ADR 0021 sub-15).
  *
- * An override naming a `(type, name)` pair the scan did not produce is a hard error, never an
- * insertion — the registry's name set stays owned entirely by the folder scan.
+ * The base registry is the load's own (`provided`, `LoadedWorkflow.registry`) when the caller ran a
+ * load — so the run dispatches against exactly the registry the schema validated the file against,
+ * with no second scan of the folder. A caller with no load (a test, an embedder) passes none, and the
+ * folder is scanned here as the fallback, hitting Node's ESM cache for an unchanged folder. `stepPluginsDir`
+ * points that fallback scan elsewhere; it is unread when `provided` is set (see `RunOptions.stepPluginsDir`).
  *
- * `stepPluginsDir` overrides the scanned location; a live run leaves it `undefined` for the one fixed
- * `STEP_PLUGINS_DIR`, and only a fixture-plugin test sets it (see `RunOptions.stepPluginsDir`).
+ * Either way each plugin and its `workers` map is shallow-cloned before an override is applied, so a
+ * replacement never mutates the load's frozen registry or the cached module object a later scan would
+ * read again. An override naming a `(type, name)` pair the base did not produce is a hard error, never
+ * an insertion — the registry's name set stays owned by the folder scan (ADR 0019 sub-2).
  */
-async function buildExecutorRegistry(
+async function resolveExecutorRegistry(
+  provided: LoadedStepPluginRegistry | undefined,
   overrides: WorkerOverrides | undefined,
   stepPluginsDir: string | undefined,
 ): Promise<LoadedStepPluginRegistry> {
-  const scanned = await scanStepPlugins(stepPluginsDir);
+  const base = provided ?? (await scanStepPlugins(stepPluginsDir));
   const registry: LoadedStepPluginRegistry = {};
-  for (const [type, plugin] of Object.entries(scanned)) {
+  for (const [type, plugin] of Object.entries(base)) {
     registry[type] = { ...plugin, workers: { ...plugin.workers } };
   }
 

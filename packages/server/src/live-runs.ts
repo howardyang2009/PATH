@@ -1,4 +1,4 @@
-import type { LogBackend, LogBackendId, Project, RunObserver } from "@path/engine";
+import type { LoadedStepPluginRegistry, LogBackend, LogBackendId, Project, RunObserver } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
@@ -84,6 +84,12 @@ export interface StartRunOptions {
   operatorConfig?: ConfigObject;
   /** The whole validated workflow tree, so nested `workflow` refs resolve without re-reading. */
   files: Map<string, WorkflowFile>;
+  /**
+   * The step-plugin registry the workflow was validated against (`LoadedWorkflow.registry`), forwarded
+   * to the engine so the run dispatches against exactly that registry rather than re-scanning the
+   * folder (ADR 0019 sub-15).
+   */
+  registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /**
@@ -102,6 +108,8 @@ export interface StartRunOptions {
  */
 export interface ResumeRunOptions {
   files: Map<string, WorkflowFile>;
+  /** The registry the workflow was validated against (see `StartRunOptions.registry`). */
+  registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /**

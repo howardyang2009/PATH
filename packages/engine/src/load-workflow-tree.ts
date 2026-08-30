@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
 import { makeWorkflowFileSchema, safeParseWorkflowFileWith, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { scanStepPlugins } from "./plugin/scan.js";
+import { scanStepPlugins, type LoadedStepPluginRegistry } from "./plugin/scan.js";
 
 /**
  * One workflow, loaded: the entry file itself, where it sits, and every file it reaches.
@@ -36,6 +36,15 @@ export interface LoadedWorkflow {
   /** Every file reachable from the root via `workflow` step refs, keyed by absolute path. */
   files: Map<string, WorkflowFile>;
   /**
+   * The frozen step-plugin registry this load scanned to build the schema (ADR 0019 sub-15) — the one
+   * fact the load derived that execution also needs and used to re-derive. `runWorkflow` takes it as
+   * `RunOptions.registry`, so a run dispatches against exactly the registry its file was validated
+   * against: one folder scan per run, and no window in which an edit between load and run makes the
+   * validity verdict and the dispatch disagree. It lives here beside `files` and `workflowDir` — the
+   * rest of what the load derives once — rather than being scanned a second time downstream.
+   */
+  registry: LoadedStepPluginRegistry;
+  /**
    * The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (#202,
    * ADR 0006), which is how a central `-C` store segments runs by the workflow that produced them.
    * A call rather than a field because the store dir is the caller's (a CLI `-C`, the server's
@@ -66,6 +75,10 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
   // the whole load naming the folder and the reason (ADR 0019 sub-16) — it is not caught into a
   // per-file error, because a skipped plugin is indistinguishable from a genuinely absent type. The
   // `visit()` recursion below stays synchronous — `readFileSync`/`JSON.parse` unchanged.
+  //
+  // The registry is the *sole* freeze point for dispatch too: it rides out on `LoadedWorkflow.registry`
+  // and `runWorkflow` executes against it (`RunOptions.registry`), so a run never re-scans the folder
+  // and can never dispatch against a registry other than the one that validated its file.
   const registry = await scanStepPlugins();
   const schema = makeWorkflowFileSchema(registry);
 
@@ -120,6 +133,7 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
       rootFile,
       workflowDir: dirname(rootPath),
       files,
+      registry,
       storeRelativePath: (storeDir: string) => relative(storeDir, rootPath),
     },
   };

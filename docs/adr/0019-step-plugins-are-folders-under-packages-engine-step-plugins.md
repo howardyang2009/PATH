@@ -183,6 +183,21 @@ in this design.
     and become async, along with their callers in `packages/server/src/create-server.ts`. The N per-call
     loads in `handleGetWorkflows` fold into one `Promise.all`, which also makes them concurrent.
 
+    **Amended by the frozen-registry cutover.** As shipped, this sub-decision made `loadWorkflowTree` the
+    sole freeze point for the *schema* only: it built a registry, froze the file schema, then discarded
+    the registry. `runWorkflow` then scanned the folder a **second** time to build the executor registry
+    it dispatched through, so a run's validity verdict and its dispatch rested on two separate reads of
+    disk — usually identical (the mtime-keyed ESM cache, sub-decision 17), but with a window in which an
+    edit between load and run makes them disagree, and a file could dispatch against a registry other than
+    the one that validated it. The freeze point is now sole for **dispatch** too. The registry the load
+    scans rides out on `LoadedWorkflow.registry` and threads into `runWorkflow` as `RunOptions.registry`;
+    `runWorkflow` dispatches against it and never re-scans on the loaded path. Schema validity, the
+    run-start config check (ADR 0022 sub-3), and leaf dispatch now key off one scan per run. `runWorkflow`
+    keeps a self-scan **fallback** for a caller that reaches it without a load — an in-memory `WorkflowFile`
+    from a test, or an embedder — so the "each caller awaits a registry and passes it in" hazard this
+    sub-decision rejected never returns for the load path: the *load* is still the one assembler, and only
+    a caller that skipped it scans for itself.
+
 16. **A plugin present on disk but broken is a hard load failure, naming the folder and the reason.** The
     cases are a candidate directory with no `index.ts`, an `index.ts` that throws at import, a missing or
     malformed `stepPlugin` export, and a `fields` key colliding with `commonStepFields` (which ADR 0018
@@ -287,6 +302,12 @@ in this design.
   step types, not just a third party's.
 - **`loadWorkflowTree` returns `Promise<LoadResult>`**, and `prepareWorkflow` and `handleGetWorkflows`
   become async with their callers in `create-server.ts`.
+- **The scanned registry is the load's output, not just its schema's input** (frozen-registry cutover,
+  amending sub-decision 15). `LoadedWorkflow` carries `registry`; `RunOptions.registry` threads it into
+  `runWorkflow`, which dispatches against it and re-scans only on the load-less fallback path. The engine
+  exports `LoadedStepPluginRegistry`, and the server's `StartRunOptions` / `ResumeRunOptions` carry it from
+  the route's load through `LiveRuns` to `Project.run` / `Project.resume`. The redundant per-run scan and
+  its divergence window are gone; a run dispatches against exactly the registry that validated its file.
 - **[#319](https://github.com/howardyang2009/PATH/issues/319) grows materially.** Its title —
   migrate the built-ins to the worker-name model and remove the `engine|llm` union — now also covers
   physically relocating `packages/engine/src/binary-worker.ts` and
