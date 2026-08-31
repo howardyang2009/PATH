@@ -361,3 +361,15 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   reuse-marker and the §5.7 cost-SUM traversal keep reaching into the original tree for as long as the
   successor tree itself exists, not just while the successor runs. Liveness is what the block-by-default
   check of `path runs rm` tests for (resume-run-identity.md).
+
+## Surfaces
+
+- **Viewer** — the client surface where runs are **watched**. It is the `@path/viewer` bundle: it
+  discovers and launches a workflow, then follows its run — status, the run tree, per-node input and
+  output — over the server's read and SSE routes. It authors nothing.
+- **Designer** — the client surface where a workflow is **authored**, as against the Viewer where runs
+  are watched. It is the `@path/designer` bundle, a peer of the Viewer over the same `@path/client-core`
+  (ADR 0028). The author edits a workflow on a node canvas constrained to the block grammar and saves it
+  through the server's write route; the Designer also carries its own run surfaces, shaped to the
+  authoring loop, so a run never leaves it (ADR 0025). Its normative contract is
+  [docs/spec/designer-spec.md](docs/spec/designer-spec.md).

@@ -114,7 +114,18 @@ New capability. The engine has no "list root runs" query today (`getRunsForRoot`
 `root_run_id`). It requires one small additive `run-store` function: root runs are exactly the rows
 where `run_id = root_run_id`.
 
-Query params: `limit` (default 50), `status` (optional filter: one of `RunStatus`).
+Query params: `limit` (default 50), `status` (optional filter: one of `RunStatus`), `workflow_id`
+(optional filter: a workflow source-identity GUID).
+
+**`workflow_id`** ([#260](https://github.com/howardyang2009/PATH/issues/260), part of
+[#254](https://github.com/howardyang2009/PATH/issues/254), the Designer). Omitted, the route is
+unchanged: every root run, most-recent-first (the Viewer's rail). Present, the list is the root runs
+whose producing workflow's `id` equals it — the Designer's per-workflow run history, scoped to the file
+open on its canvas. The scope key is the workflow's **`id`**, not its `workflow_path`: identity, not
+provenance ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)), so a
+rename or a moved file never splits the history. It composes with `limit` and `status` (a `WHERE`
+conjunction). It **must** be a server-side filter, not a client cut of the latest-N window: the window
+would drop older runs of the open workflow before the client saw them. The response shape is unchanged.
 
 Response `200 OK`:
 
@@ -530,7 +541,70 @@ Responses:
 - `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands. It is
   listed for shape-parity, not emitted today.
 
-## 8. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
+## 8. `GET /v0/step-plugins` — the authoring registry
+
+New capability ([#261](https://github.com/howardyang2009/PATH/issues/261), part of
+[#254](https://github.com/howardyang2009/PATH/issues/254), the Designer). It serves the server's
+**step-plugin registry** as data, so the Designer can build a **registry-driven palette**
+([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md), designer-spec.md § The v1
+authoring palette). The Designer is a pure browser consumer: it cannot scan
+`packages/engine/step-plugins/`, so the grammar it may author has to arrive over the wire. This is a
+pure read, with no new engine exec path.
+
+**Ungated read.** It is a `GET`, so it does not pass the §2.1 origin gate (a read has no side effect,
+and the same-origin policy already blocks a cross-origin page from reading the response). No query
+params.
+
+**What the registry holds.** One entry per **registered leaf step type** — the two built-in plugins
+`prompt` and `binary` ([ADR 0021](../adr/0021-built-ins-are-the-first-two-plugins-and-the-engine-llm-union-is-gone.md))
+and every other plugin folder (an `api-call`, and so on), peers of each other (CONTEXT.md § Step-type
+plugins). The `workflow` sub-workflow ref is **not** here: it is grammar-fixed, not a plugin folder, and
+the Designer supplies it from the block grammar itself.
+
+Each entry is exactly ADR 0018's registry entry, snake_case on the wire (§1):
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `name` | string | The step type name — the palette label and the node's `type` discriminant. |
+| `fields` | object | The type's declared **`fields`** fragment (its typed, load-validated field spec), served verbatim. The Designer's generic editor renders one control per field from it ([ADR 0022](../adr/0022-config-vs-field-vs-input-line-for-a-step-type.md)); its internal shape is owned by `@path/schema`, not by this route. |
+| `workers` | string[] | The worker `name`s the type ships. A per-step worker selector is shown only when this holds more than one (CONTEXT.md § Core execution model, invariant 5). |
+| `default_worker` | string | The worker a step of this type uses when it names none. |
+
+`@path/client-core` presents these camelCase (`defaultWorker`) and translates at the wire boundary
+([ADR 0013](../adr/0013-client-write-seam-camelcase-in-wire-out.md)).
+
+Response `200 OK`:
+
+```json
+{
+  "step_plugins": [
+    { "name": "prompt", "fields": { "...": "..." }, "workers": ["sdk"], "default_worker": "sdk" },
+    { "name": "binary", "fields": { "...": "..." }, "workers": ["local"], "default_worker": "local" },
+    {
+      "name": "api-call",
+      "fields": { "...": "..." },
+      "workers": ["fetch", "sdk"],
+      "default_worker": "fetch"
+    }
+  ]
+}
+```
+
+- **The snapshot has no staleness contract** (ADR 0018 sub-decision 3). The registry is fixed at server
+  start by ADR 0018's pure factory over the plugin folders, and this route serves that snapshot. It does
+  not track a client's copy, and it stamps no version or ETag. Currency is re-checked at **write**, not
+  here: `PUT /v0/workflows` (§7) re-validates every save against the live registry. A client that opens a
+  file naming a type absent from its snapshot refreshes via this route and retries
+  ([ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md)).
+- **A running server always has a coherent registry.** A broken plugin folder — no `index.ts`, a
+  throwing import, or a malformed export — is a hard load failure at engine init
+  ([ADR 0019](../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md) sub-decision
+  16), so the server **fails to start**, the same fail-loud stance as a malformed settings file (§2).
+  Thus this route never returns a partial or broken registry; for a live server it is always `200`.
+- `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands. Listed
+  for shape-parity with §7.1, not emitted today.
+
+## 9. Gaps this ticket surfaces (not blockers, flagged for the assembly ticket)
 
 - `run-store`: add a "list root runs" query (§3).
 - Discovery (§6) needs one additive helper: a directory scan plus per-file `loadWorkflowTree`
