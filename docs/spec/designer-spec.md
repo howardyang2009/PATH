@@ -262,3 +262,135 @@ write with a `412`. Thus the lease layer carries no cross-session signalling.
   **second** lease under the same `session_id`. It beats independently. Its `409`s are independent of
   the parent's. What a session does with a still-dirty child lease on ascend is the dirty-state model's
   call (a separate #254 ticket), out of scope here.
+
+---
+
+## Run surfaces
+
+This section resolves [#260](https://github.com/howardyang2009/PATH/issues/260). The rationale is in
+[ADR 0025](../adr/0025-designer-carries-all-seven-run-surfaces-reshaped-run-meaning-moves-into-client-core.md).
+This section is normative.
+
+### The shape of the decision
+
+The Designer carries the **Viewer's seven run surfaces, each reshaped to the authoring loop** — not a
+pared-down subset (map decision 2 already gives the Designer its own run/cancel/resume/detail surfaces;
+the driving dev ruled the run *browser* stays too). The author's question is narrow — *I just changed
+this workflow; does it work, and if not, which step broke and what did it see?* — and that narrowness
+governs the **shape** of each surface, never its presence. The Designer never embeds or imports
+`@path/viewer`; it re-authors the views over the shared core (§ Shared seam).
+
+| # | Surface | In the Designer |
+|---|---|---|
+| 1 | List workflows (picker) | **Collapses to zero as a run surface.** The launch target is the file open on the canvas — no picker precedes a launch. File open/new-file is an authoring affordance (separate #254 ticket), not a run surface. |
+| 2 | Launch the workflow being edited | **Yes, save-first.** Gated on a clean buffer (below). |
+| 3 | Cancel a run in flight | **Yes.** Same two-step arm-then-confirm gesture; "Cancelling…" is a request, not a status. |
+| 4 | Resume a failed/cancelled run | **Yes** (driving-dev call). Same optional config-override form as the Viewer. Authoring caveat below. |
+| 5 | List runs of this workflow | **Yes, full history, scoped to the open workflow by `workflow_id`.** Not session-only, not cross-workflow. |
+| 6 | Run detail + run tree | **Projected onto the canvas nodes + a run-inspector pane.** Not a separate Viewer-style tree pane alone. |
+| 7 | Node input/output | **Yes**, in the inspector pane (surface 6), reached by selecting a run. |
+
+### Launch is save-first
+
+A launch runs the **bytes on disk**: `POST /v0/runs` names a `workflow_path`, and the server loads
+*that file* through `prepareWorkflow` (`packages/server/src/launch.ts`, map decision 7), never the
+client's in-memory buffer. Therefore:
+
+- **Launch is disabled while the canvas buffer is dirty.** A dirty canvas offers a save affordance;
+  the save goes through the write route under the held lease
+  ([ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md), §
+  Edit-lock lease protocol). Launch enables once the buffer is clean.
+- **"Clean" is the one save-point** the lease heartbeat and the `If-Match` precondition already use.
+  The dirty-state/undo model (a separate #254 ticket) defines it once for all three consumers.
+- A **brand-new, unsaved** workflow cannot be launched: with no path there is nothing for
+  `prepareWorkflow` to load. Its first save creates the path (§ Session lifecycle), after which launch
+  behaves as above.
+
+The launch form itself is the raw-JSON `input` (prefilled `{}`, empty allowed) plus an optional
+`config` override, gated client-side by `parseJsonField` (now in `@path/client-core`, § Shared seam)
+and validated server-side — a rejected `$env` override
+([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)) or a schema failure returns a `400`
+the form surfaces without collapsing.
+
+### Cancel and resume
+
+**Cancel** is the console's arm-then-send verb, unchanged in force: the first click arms, a second
+within the arm window sends `POST` cancel, an idle arm disarms itself. A stray cancel destroys minutes
+of paid, unrecoverable LLM work, so the gesture is deliberate. The look is the Designer's own.
+
+**Resume** re-runs the predecessor's remaining steps as a successor
+([ADR 0001](../adr/0001-resumed-run-is-a-successor-run.md)), with the same optional config-override
+form the Viewer offers and no `input` field (a resume restores context from the predecessor). One
+**authoring caveat**, normative as a warning, not as new behaviour: resume matches nodes by
+**plan-reuse against the predecessor's plan**, and after an edit the plan has moved — a resume across
+an edit reuses **reuse rows** for nodes the author may have just changed. The Designer surfaces resume
+and lets the author judge when it is meaningful; the plan-reuse semantics are the engine's existing
+contract.
+
+### Run list, scoped to the open workflow
+
+The list is the Viewer's runs rail, **filtered to the workflow open on the canvas**. The scope key is
+the workflow's **`id`**, not its `relative_path` — identity, not provenance
+([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)) — so a rename or a
+moved file never splits the history.
+
+This adds one optional query parameter to the list route:
+
+**`GET /v0/runs?workflow_id=<id>`** — the runs whose `workflow_id` equals `<id>`, most-recent-first,
+composable with the existing `limit` and `status` filters. Omitted, the route is unchanged (every root
+run, the Viewer's rail). The parameter is needed because the route returns a latest-N window: a
+client-side filter over that window would miss older runs of the open workflow, so the full per-workflow
+history must be a server-side filter. The response shape is the unchanged `ListRunsResponse`.
+
+### Run detail: projected onto the canvas, inspected in a pane
+
+The Designer canvas **is** a node view, so the run relates to it spatially in two coupled parts:
+
+- **Projection.** Live run status **tints/badges the canvas nodes** as the run executes, off the same
+  `connectRunViewModel` snapshot the Viewer's detail pane uses. This answers *where in my workflow is
+  it*. It reads the folded SSE stream; it never opens a second connection.
+- **Inspector pane.** A projection cannot be the whole surface, because **one node produces many
+  runs** — a `while-do` iterates, a `parallel` fans out, a resume writes a **reuse row**, and a
+  `workflow`-ref spawns a child run tree. A canvas node cannot show iteration 3 versus iteration 4. So a
+  **run-inspector pane** holds the run tree (via `buildRunTree`) and, for a selected run, its node
+  input/output/context (surface 7). This answers *which of this node's runs, and what did that one do*.
+
+What is fixed here: **that** run status projects onto canvas nodes, and **that** an inspector pane
+holds the tree and per-node I/O. What is **not** fixed here: the pane geometry (docked, floating,
+overlaid), which the canvas-interaction prototype line (§ Canvas interaction model) resolves.
+
+### Node input/output/context
+
+The inspector's per-run block is the Viewer's node-I/O surface: the selected run's `input`, `output`,
+and `context` blackboard objects, read over `GET /v0/runs/:root_run_id/blobs/:run_id/:name`. The bytes
+arrive already secret-masked (masking is a persistence-boundary concern, CONTEXT.md § Secret); the pane
+renders what the server serves. What a **missing** object *means* — skip the read for a still-running
+run with no ref, but read-anyway-and-trust-the-`404` for a terminal run (#51) — is the shared
+blob-absence rule (§ Shared seam), not a per-surface judgment.
+
+### Shared seam: what the Designer reuses, and what moves into `@path/client-core`
+
+Per map decision 14, run-meaning that must not diverge between surfaces lives in `@path/client-core`;
+React components do not. The Designer **reuses unchanged**: `RunViewModel`, `connectRunViewModel`,
+`buildRunTree`, `eventOutcome`, `PathApiClient`, `subscribeRunEvents`, and the run wire types — the
+watched-run connection, the event folding, the `Last-Event-ID` replay, and the tree shaping are already
+surface-agnostic.
+
+Four units that today sit inside `@path/viewer` as **framework-free logic** move **down** into
+`@path/client-core`, because the Designer needs each and a second copy would drift:
+
+| Moves into client-core | From | Why it must not diverge |
+|---|---|---|
+| `parseJsonField` (+ its result types) | `viewer/src/launch-json.ts` | The launch/resume `input`/`config` gate. One JSON-object contract, two forms. |
+| `eventMessage` | `viewer/src/event-message.ts` | A `LogEvent`'s one narrative line — the textual sibling of `eventOutcome`, already shared. |
+| `nodeLabel` / `nodeEventLabel` | `viewer/src/node-label.ts` | How a node is named (incl. the implicit-root null case), in the tree and the narrative. |
+| the blob-absence rule | `viewer/src/use-run-blob.ts` | *What a missing input/output/context means.* The **decision** moves as a pure resolver; the `useState`/`useEffect` wiring stays per-surface. |
+
+All four translate camelCase-in / snake-on-the-wire at the client seam
+([ADR 0013](../adr/0013-client-write-seam-camelcase-in-wire-out.md)), matching the package's stance.
+
+**Stays view** (each surface authors its own; decision 2 makes them look different): every `.tsx`
+component (panes, forms, buttons, tree renderer); the status glyph and pill styling
+(`status-glyph.ts`, the ordering included); the `Load<T>` phase union and hook wiring
+(`load-state.ts`, `use-run-view.ts`) — the React binding of the already-shared `connectRunViewModel`,
+not logic; and timestamp formatting.
