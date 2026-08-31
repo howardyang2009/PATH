@@ -1,6 +1,6 @@
 import { eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
-import { eventMessage } from "./event-message.js";
+import { eventMessage } from "@path/client-core";
 import { formatClockTime } from "./format-time.js";
 import { STATUS_GLYPH } from "./status-glyph.js";
 

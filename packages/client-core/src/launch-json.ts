@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/client-core";
+import type { JsonValue } from "@path/schema";
 
 /**
  * The result of gating one raw-JSON launch field (`input` or `config`, issue #233 variant A).

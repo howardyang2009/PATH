@@ -1,7 +1,6 @@
-import { isReuseRow, isTerminal, type PathApiClient, type RunNodeState } from "@path/client-core";
+import { isReuseRow, isTerminal, nodeLabel, type PathApiClient, type RunNodeState } from "@path/client-core";
 import { useState } from "react";
 import { JsonView } from "./json-view.js";
-import { nodeLabel } from "./node-label.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunBlob, type BlobLoad } from "./use-run-blob.js";

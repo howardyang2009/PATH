@@ -1,4 +1,4 @@
-import type { LogEvent } from "@path/client-core";
+import type { LogEvent } from "@path/schema";
 import { nodeEventLabel } from "./node-label.js";
 
 /**

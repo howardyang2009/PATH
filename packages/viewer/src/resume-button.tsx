@@ -1,7 +1,7 @@
 import type { PathApiClient } from "@path/client-core";
 import { useState } from "react";
 import { JsonField } from "./json-field.js";
-import { parseJsonField } from "./launch-json.js";
+import { parseJsonField } from "@path/client-core";
 import { errorMessage } from "./load-state.js";
 
 export interface ResumeButtonProps {
