@@ -41,12 +41,16 @@ The canvas authors [`path/workflow@2`](../../CONTEXT.md)'s node shapes directly.
 these points that the UI must honour. Each matches the `@path/schema` types
 ([`node-type.ts`](../../packages/schema/src/node-type.ts)):
 
-- **A `step` leaf is one of three worker types.** The executable leaf is a `PromptStep` (LLM — a
-  `prompt` against a `model`), a `BinaryStep` (a `command` plus `args` plus `cwd`), or a `WorkflowStep`
-  (a sub-workflow `ref`). All three share `id` and `name`. The `type` is a **creation-time**
-  discriminant. To switch it would discard the payload. So the author chooses it up front; it is never
-  a mutable dropdown. LLM and command share the step hue. The sub-workflow ref keeps its own hue,
-  because it is the one boundary-crosser.
+- **A `step` leaf is one of the registry's leaf step types.** `prompt` (LLM — a `prompt` against a
+  `model`), `binary` (a `command` plus `args` plus `cwd`), and `workflow` (a sub-workflow `ref`) are
+  the three the Designer ships a hand-built editor for; they are two step-type plugins plus the
+  workflow-ref, not a closed set (CONTEXT.md § Step-type plugins). The palette is **registry-driven** —
+  it holds one entry per leaf type the received registry describes, and any other type gets a generic
+  editor (§ The v1 authoring palette). All leaf types share `id` and `name`. The `type` is a
+  **creation-time** discriminant — not a **worker**, which is a per-step selector by name (below). To
+  switch the type would discard the payload, so the author chooses the **type** up front; it is never a
+  mutable dropdown. LLM and command share the step hue. The sub-workflow ref keeps its own hue, because
+  it is the one boundary-crosser.
 - **A `parallel` branch *is* a node.** `branches` is an array of `WorkflowNode`. Each carries its own
   `id` and `name`. A branch's **`name` is its `collect`/`wait-one` output key**. There is no separate
   branch label and no arm wrapper. To rename the branch renames the key.
@@ -118,10 +122,12 @@ opens straight at the fields.
 All four are **canvas** actions (structure), never pane controls:
 
 - **Add** — drag a palette block into a **legal socket**, or use a sequence's tail add-affordance. The
-  socket accepts only grammar-legal kinds. The palette is **grouped into Steps** (the three leaf worker
-  types: LLM, command, sub-workflow) **and Blocks** (the logicers plus checkpoint). Each step type is
-  its own entry, so the author picks the worker up front. A branch whose `else` was deleted offers an
-  **add-`else`** affordance (there is at most one `else`).
+  socket accepts only grammar-legal kinds. The palette is **grouped into Steps** (one entry per leaf
+  step type the registry describes — `prompt`, `binary`, `workflow`, and any plugin type such as
+  `api-call`) **and Blocks** (the logicers plus checkpoint). Each step type is its own entry, so the
+  author picks the **type** up front (the worker is a later per-step selection, § The v1 authoring
+  palette). A branch whose `else` was deleted offers an **add-`else`** affordance (there is at most one
+  `else`).
 - **Reorder** — move-up or move-down (or drag) **within** a container. A move never changes a node's
   `id` ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)). Order is
   spatial and vertical.
@@ -141,6 +147,144 @@ inline level or is collapsed; canvas validation-error UX (per-node markers vs a 
 save-blocking vs save-with-warnings); undo/redo and the dirty-state model; new-file placement and
 naming; and the `$env` / `$secret` authoring affordance. Each is an open ticket on
 [#254](https://github.com/howardyang2009/PATH/issues/254).
+
+---
+
+## The v1 authoring palette
+
+This section resolves [#261](https://github.com/howardyang2009/PATH/issues/261). It extends the canvas
+interaction model above with *what the palette can author* — the leaf step types, the control nodes,
+their editors, and what the canvas does with a file it cannot render. The rationale for the last of
+these (refuse-to-open) is in
+[ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md). This section
+is normative.
+
+### The palette is registry-driven
+
+The step half of the palette is **not a closed set**. Leaf step types are step-type plugins (CONTEXT.md
+§ Step-type plugins): `binary` and `prompt` are two folders under
+`packages/engine/step-plugins/`, peers of any `api-call`, not a privileged pair. **Validity is
+registry-relative** — a file is valid *against a registry*, never in the abstract
+([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md)) — so the Designer, a pure browser
+consumer that cannot scan the plugin folder, **receives a registry as data** and reproduces exactly the
+grammar it describes. The palette therefore holds **one Steps entry per leaf step type the received
+registry describes**, `prompt` / `binary` / `workflow` and every plugin type alike. The Blocks half is
+fixed by the grammar (below).
+
+The shape the palette consumes, per leaf type, is exactly ADR 0018's registry entry:
+`{ name, fields, workers, defaultWorker }` — the type name (the palette label and the node's `type`
+discriminant), the `fields` fragment (the generic editor's form spec), the type's worker `names`, and
+which worker is the default. **The wire route and the client-core plumbing that deliver this registry
+to the browser are not designed here** — they are handed to the assembly ticket
+[#263](https://github.com/howardyang2009/PATH/issues/263), which builds them beside the four
+client-core moves it already carries (§ Run surfaces). #261 fixes only that the palette is
+registry-driven and the entry shape it needs; #263 designs the transport. The received registry is a
+**bare snapshot with no staleness contract** (ADR 0018 sub-decision 3): the write route re-validates
+every save against the server's **live** registry, so a stale snapshot surfaces as a rejected write,
+never a corrupt file.
+
+### What is authorable: the whole grammar, nothing deferred to JSON
+
+Every node kind is a palette entry. Nothing is v1-deferred to hand-editing the JSON.
+
+- **Steps** — one entry per registry leaf type (above).
+- **Blocks** — the four logicers and the checkpoint: `parallel` (with its `collect` / `wait-one` /
+  `do-not-wait` join modes), `branch`, `while-do`, `sequence`, and `checkpoint` (CONTEXT.md
+  § Composition). `sequence` is an **explicit** palette block the author places, and it renders as its
+  own inline stack (this resolves the map's open "sequence visibility" question toward *its own level*,
+  not a collapsed one). The block grammar still governs where each snaps — an illegal structure is
+  unsnappable, not merely rejected (§ Canvas interaction model).
+
+### Editors: first-class, generic, and the raw-JSON floor
+
+A step type's properties-pane editor is one of three tiers, and the tiers form a total order — **every
+registry type always opens**:
+
+| Tier | Applies to | The editor |
+|---|---|---|
+| First-class | `prompt`, `binary`, `workflow` | The hand-built editors of § Canvas interaction model (`model`+`prompt`; `command`+`args`+`cwd`; the referenced file path). |
+| Generic | any other registry type (e.g. `api-call`) | A typed form **generated from the type's `fields` fragment** — one control per field, typed by the fragment. |
+| Raw-JSON floor | any type whose `fields` a form cannot lay out | A single **live-validated JSON textarea** for the node's payload. |
+
+The raw-JSON floor is what makes "registry-driven" a guarantee rather than a hope: the worst case for an
+in-registry type is a validated JSON box, never a blocked node. The node stays strict-valid in every
+tier — only the form's fidelity degrades. The clean line the palette draws: **a type present in the
+registry always opens; a type absent from it refuses the file** (§ Opening a file the palette cannot
+render).
+
+### Worker selection
+
+A **worker** is not a palette entry and not the step type. It is a per-step selector **by name** among
+the workers its type ships, and it **does not inherit** (CONTEXT.md § Core execution model, invariant
+5). The pane exposes it as a **dropdown only when the type ships more than one worker** — the names and
+the pre-selected default come from the registry entry's `workers` / `defaultWorker`. A single-worker
+type shows no worker control at all; the step writes no `worker` field and takes the type's default.
+This is the correction to any reading of § Canvas interaction model as "pick the worker up front": the
+author picks the **type** at create time; the worker is a later, optional, per-step name selection.
+
+### Config inheritance display
+
+A step inherits config downward from the enclosing workflow unless it overrides it (invariant 5). The
+config editor must let the author tell **mine from inherited without reading the parent**:
+
+- An **inherited** key renders read-only and ghosted, captioned with its **origin** (`inherited from
+  <workflow name>`).
+- Editing an inherited key (or an explicit **Override** affordance) makes it **local** to the step.
+- An **overridden** key renders solid, with a **revert-to-inherited** control that drops the local value
+  and restores the inherited one.
+
+Config is the operator-variable, inheritable datum; a **Type field** (`command`, `prompt`, `endpoint`)
+is author-fixed on the node and does not inherit (CONTEXT.md § Data,
+[ADR 0022](../adr/0022-config-vs-field-vs-input-line-for-a-step-type.md)). The two edit in distinct pane
+regions, and only config carries the inherited/overridden distinction above.
+
+### Input/output wiring
+
+A step declares its one input object in the pane, **not as canvas edges** — decision 6 forbids any
+structure the block grammar cannot express, and dataflow is a dot-path reference, not a drawn edge. The
+input is an interpolable JSON object: `${…}` placeholders reference `context.` and `output.` dot-paths,
+authored with **path autocomplete** and validated live by `checkInterpolationSyntax`
+([`interpolation.ts`](../../packages/schema/src/interpolation.ts), `dot-path.ts`). An unclosed or
+ill-typed placeholder is rejected in the pane — the structural analogue of the unsnappable socket and
+the typed condition builder. There is no node-to-node wire on the canvas.
+
+### Context reads and writes
+
+Context is a per-workflow-run blackboard written from inside the run (CONTEXT.md § Data). On the canvas
+it is **invisible plumbing**, not drawn structure:
+
+- A read is an ordinary `${context.x}` interpolation in an input or a condition (above).
+- A write is the step's `publish` (and `parse`) — **pane fields on the step**, not canvas edges.
+
+The one concession to visibility: a **publish conflict** the load-time checks reject — a `collect`
+same-key sibling race, or a non-empty publish set on a `do-not-wait` branch (CONTEXT.md § Publish set) —
+surfaces as a **node validation marker**, because it is a load error the author must see. Drawing
+context as edges would re-introduce the DAG the format rejects.
+
+### Opening a file the palette cannot render
+
+Under a registry-driven palette every leaf type the registry describes opens (three tiers above), so
+the only unrenderable node is one whose `type` is **absent from the Designer's received registry** — a
+stale snapshot, or a cross-fork file this tree holds no plugin for (which the server itself reports
+`valid: false`, CONTEXT.md § Discovery). The canvas **refuses to open** such a file. It does not open it
+read-only, and it does not box the unknown node as an opaque round-trip node.
+
+The refusal is **legible and recoverable**: it names **every** absent type in one message and the
+`packages/engine/step-plugins/<name>/` folder that would resolve each — mirroring ADR 0018
+sub-decision 5's aggregate load error — and, because the same-registry-source makes a stale snapshot the
+only in-fork cause, it offers **refresh-the-registry-and-retry**. This matches ADR 0015's
+refuse-on-structural-defect precedent (a duplicate or malformed `id` refuses the open) and the server's
+own `valid: false` verdict. The rationale — why not read-only, and why not an opaque round-trip node —
+is [ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md).
+
+### Still open (deferred to named #254 tickets)
+
+Not settled here: the generic editor's per-field control mapping (which `fields` fragment shapes render
+as which inputs) is an implementation concern for the execution map, not a spec decision; the canvas
+validation-error UX that the publish-conflict marker above plugs into (per-node markers vs a problems
+panel, save-blocking vs save-with-warnings) remains the open #254 ticket named in § Canvas interaction
+model; and the `$env` / `$secret` authoring affordance for a config value (map decision 9) is its own
+open ticket.
 
 ---
 
