@@ -538,3 +538,73 @@ component (panes, forms, buttons, tree renderer); the status glyph and pill styl
 (`status-glyph.ts`, the ordering included); the `Load<T>` phase union and hook wiring
 (`load-state.ts`, `use-run-view.ts`) — the React binding of the already-shared `connectRunViewModel`,
 not logic; and timestamp formatting.
+
+## Serving mounts and navigation
+
+Both bundles are served from **one origin** by `path-server` (map decision 13: the no-auth,
+localhost-bind, no-CORS, [#237](https://github.com/howardyang2009/PATH/issues/237)-origin-gate posture
+rests on a single origin). This section fixes the mount layout, how the server learns the second
+bundle, the two-app SPA fallback, the Vite dev shape, and the (absence of a) cross-surface link.
+Rationale lives in [ADR 0027](../adr/0027-two-bundles-one-origin-named-mounts-with-root-redirect.md);
+this section states the contract.
+
+### Named mounts and the root redirect
+
+The Viewer mounts at **`/viewer/`**, the Designer at **`/designer/`**. Neither holds the bare root.
+A GET to **`/`** returns a **302** to `/viewer/` — the run-watching surface is the default. The 302 is
+deliberate (not 301), so the default target stays changeable without a cached permanent redirect. Any
+other non-`/v0`, non-prefixed path (for example `/foo`) is a plain **404**; the Viewer is router-less,
+so there are no bare deep-links to preserve.
+
+### How the server learns the two directories
+
+`startPathServer` gains a second static-dir parameter beside the existing one:
+
+- the Viewer dir (today's `staticDir`, default `packages/viewer/dist`) — now mounted at `/viewer/`;
+- a new **`designerStaticDir`** (default `packages/designer/dist`) — mounted at `/designer/`.
+
+Two hardcoded mounts, **not** an open mount table: the map fixes exactly two. Both defaults resolve
+relative to the server package, as `DEFAULT_STATIC_DIR` already does.
+
+### Prefix routing and the per-mount SPA fallback
+
+A non-`/v0` GET is routed by **path prefix**:
+
+- `/viewer/*` → the Viewer mount; the `/viewer` prefix is **stripped** and the remainder resolves
+  within the Viewer dir. `/designer/*` → the Designer mount, `/designer` stripped likewise.
+- Each mount keeps its **own** SPA fallback: an unmatched path under `/designer/*` serves the
+  **Designer's** `index.html`, an unmatched path under `/viewer/*` the **Viewer's** — never the other
+  bundle's.
+
+This is a change to `serveStatic`'s current assumption. Today it joins the **full** pathname against
+one root dir; under two mounts it must join the **suffix after the mount prefix**, so `/designer/assets/x.js`
+resolves to `<designerDir>/assets/x.js`. Bare `/designer` and `/designer/` both map to the Designer's
+`index.html` (same for `/viewer`).
+
+`/v0/*` is unchanged: its unmatched routes keep their JSON 404s, never SPA HTML.
+
+**Unbuilt bundles degrade, they do not crash.** Each mount's `serveStatic` already returns `false`
+(falling through to a 404) when its dir or `index.html` is missing. So a Designer that was never built
+404s under `/designer/*` while `/viewer/*` still serves — and the same now holds for the Viewer,
+because it too sits behind a named mount.
+
+### Vite dev
+
+Each bundle builds with a Vite **`base`** matching its mount, so built asset URLs resolve under the
+prefix: the Viewer `base: "/viewer/"` (a change — it builds at root today), the Designer
+`base: "/designer/"`. Both dev servers proxy `/v0` to `PATH_SERVER_URL`
+(default `http://localhost:8787`), the shape the Viewer already uses. In dev the surfaces open at
+`http://localhost:<viteport>/viewer/` and `.../designer/`.
+
+Consequence to hold: anything that assumed `GET /` returns the Viewer's `index.html` — server
+acceptance tests included — must move to `/viewer/` or follow the 302.
+
+### No cross-surface link in v1
+
+The Designer carries **all seven** of its own run surfaces (§ Run surfaces,
+[ADR 0025](../adr/0025-designer-carries-all-seven-run-surfaces-reshaped-run-meaning-moves-into-client-core.md)),
+so "run this workflow" never has to leave the Designer. v1 therefore ships **no** navigation link
+between the two surfaces and **no** run-scoped deep link: each surface is reached by its own URL. A
+deep link (a root-run id in the Viewer's URL) would force a router onto the currently router-less
+Viewer; that is a Viewer-router decision for a later ticket, not a serving decision here.
+
