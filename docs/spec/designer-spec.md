@@ -1,16 +1,76 @@
-# PATH Designer Specification (draft)
+# PATH Designer Specification
 
-This is the destination artifact of [Wayfinder map #254](https://github.com/howardyang2009/PATH/issues/254).
-It is the **`@path/designer`** authoring console: the surface where a workflow is *authored*, as against
-`@path/viewer` where runs are *watched*. This document is **under construction**. The map assembles it
-section by section as each decision ticket closes. It is normative only for the sections present.
-Sections not yet written are open tickets on #254.
+This is the destination artifact of [Wayfinder map #254](https://github.com/howardyang2009/PATH/issues/254),
+assembled by [#263](https://github.com/howardyang2009/PATH/issues/263). It is the **`@path/designer`**
+authoring console: the surface where a workflow is *authored*, as against `@path/viewer` where runs are
+*watched*. Every decision the map charted is settled and recorded here. This document is **normative**:
+a build map is chartable from it without re-opening any decision below.
 
-**How to read this document.** The vocabulary follows [CONTEXT.md](../../CONTEXT.md). The server
+What is **not** in this document is deferred by name to the build (execution) map, not left open: canvas
+validation-error UX, the undo/redo and dirty-state model, new-file placement and naming, whether the
+canvas drills into a nested `workflow`-ref file, the `$secret`/`$env` authoring affordance, and the
+Designer test strategy. Each is a named implementation concern, flagged in the section it touches, not a
+decision this spec ducks.
+
+**How to read this document.** § 0 lists the map's locked constraints — the frame every section below
+respects, not re-litigated here. The vocabulary follows [CONTEXT.md](../../CONTEXT.md). The server
 endpoints it adds are contracted to the standard of [docs/api/server-api-v0.md](../api/server-api-v0.md)
 and the [server API spec](./server-api-spec.md). Where a decision has an ADR, the ADR holds the
 rationale and this spec states the contract. Where they disagree, the ADR wins on *why* and this spec
 wins on *what the wire does*.
+
+---
+
+## 0. Constraints (from the map, not re-litigated here)
+
+These are [map #254](https://github.com/howardyang2009/PATH/issues/254)'s locked decisions. Every section
+below rests on them. They are recorded, not re-argued; each names its ADR where one holds the rationale.
+
+- **Destination is a spec + ADRs**, not the built Designer. #254 is a planning map; construction is a
+  separate execution map, seeded by this document.
+- **`@path/designer` is a separate package**, peer of `@path/viewer`, not a viewer route and not folded
+  into it; no `@path/ui` React package is extracted up front
+  ([ADR 0028](../adr/0028-designer-is-a-separate-package-not-a-viewer-route.md)). The Designer owns its
+  **own** run/cancel/resume/detail surfaces, shaped unlike the Viewer's, and it never embeds or imports
+  `@path/viewer` ([ADR 0025](../adr/0025-designer-carries-all-seven-run-surfaces-reshaped-run-meaning-moves-into-client-core.md)).
+  This reverses map [#40](https://github.com/howardyang2009/PATH/issues/40)'s "reuses this viewer as a
+  component" assumption.
+- **The authoring model is a constrained node canvas**, not a form tree and not a JSON editor. The author
+  can never express a structure the block grammar cannot; a workflow body is an ordered tree of
+  [`path/workflow@2`](../../CONTEXT.md) nodes, never an arbitrary DAG. Extending the format to a real DAG
+  is rejected ([ADR 0029](../adr/0029-designer-canvas-is-the-block-grammar-no-arbitrary-dag.md)).
+- **Authored workflows are saved through the server**, via `PUT /v0/workflows`
+  ([server-api-v0.md §7](../api/server-api-v0.md#7-put-v0workflows--write-a-workflow-file),
+  [ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md)) — not
+  browser-download-and-drop-it-in-yourself. The write reuses `prepareWorkflow`'s resolve/confine/symlink
+  stance (decision 7), and the origin gate `enforceSameOrigin` guards it (decision 8,
+  [#237](https://github.com/howardyang2009/PATH/issues/237)).
+- **The edit-lock is a server-owned expiring file lease**
+  ([ADR 0017](../adr/0017-designer-edit-lock-is-a-server-owned-expiring-file-lease.md)). It **complements**
+  the write precondition; it does not replace it — the lease stops a second Designer tab, the ETag
+  `If-Match` precondition protects the bytes against every writer (decision 10). Its marker sits beside
+  the file as `<name>.workflow.json.editing` (map decision 12); `.gitignore` ignores
+  `*.workflow.json.editing` so the marker never reaches `git status` (ADR 0017).
+- **`$env` is permitted inside an authored workflow file.** ADR 0012 restricts `$env` only in *operator
+  override config*, a different door; a `$env` wrapper authored inside a `workflow.json` is untouched
+  ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), stated so it does not read as a
+  regression).
+- **Node identity is client-minted and save-preserving.** The client mints each `id` (UUIDv4) at
+  node-create time; the server validates shape and confinement and never generates or rewrites one; a
+  save preserves every `id` across rename, reorder, and reparent
+  ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)).
+- **One origin, two named mounts.** `path-server` serves both bundles from one origin: the Viewer at
+  `/viewer/`, the Designer at `/designer/`, with bare `/` a 302 to `/viewer/` (decision 13,
+  [ADR 0027](../adr/0027-two-bundles-one-origin-named-mounts-with-root-redirect.md)). Not two ports: the
+  whole no-auth, localhost-bind, no-CORS, #237-origin-gate posture rests on a single origin.
+- **Shared logic travels through `@path/client-core` only** (decision 14). Logic that must not diverge
+  between surfaces moves *into* client-core; React components are not shared, because the surfaces are
+  meant to look different.
+- **The step palette is registry-driven.** The Designer receives a step-plugin registry as data
+  ([server-api-v0.md §8](../api/server-api-v0.md#8-get-v0step-plugins--the-authoring-registry)) and the
+  canvas **refuses to open** a file naming a step type absent from that registry
+  ([ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md),
+  [ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md)).
 
 ---
 
@@ -174,14 +234,14 @@ fixed by the grammar (below).
 The shape the palette consumes, per leaf type, is exactly ADR 0018's registry entry:
 `{ name, fields, workers, defaultWorker }` — the type name (the palette label and the node's `type`
 discriminant), the `fields` fragment (the generic editor's form spec), the type's worker `names`, and
-which worker is the default. **The wire route and the client-core plumbing that deliver this registry
-to the browser are not designed here** — they are handed to the assembly ticket
-[#263](https://github.com/howardyang2009/PATH/issues/263), which builds them beside the four
-client-core moves it already carries (§ Run surfaces). #261 fixes only that the palette is
-registry-driven and the entry shape it needs; #263 designs the transport. The received registry is a
-**bare snapshot with no staleness contract** (ADR 0018 sub-decision 3): the write route re-validates
-every save against the server's **live** registry, so a stale snapshot surfaces as a rejected write,
-never a corrupt file.
+which worker is the default. **The wire route that delivers this registry to the browser is
+`GET /v0/step-plugins`** ([server-api-v0.md §8](../api/server-api-v0.md#8-get-v0step-plugins--the-authoring-registry)),
+designed by the assembly ticket [#263](https://github.com/howardyang2009/PATH/issues/263) beside the
+four client-core moves it carries (§ Run surfaces); its response is one snake_case entry per registered
+step type. #261 fixed that the palette is registry-driven and the entry shape it needs; the route serves
+that shape. The received registry is a **bare snapshot with no staleness contract** (ADR 0018
+sub-decision 3): the write route re-validates every save against the server's **live** registry, so a
+stale snapshot surfaces as a rejected write, never a corrupt file.
 
 ### What is authorable: the whole grammar, nothing deferred to JSON
 
@@ -478,7 +538,8 @@ the workflow's **`id`**, not its `relative_path` — identity, not provenance
 ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)) — so a rename or a
 moved file never splits the history.
 
-This adds one optional query parameter to the list route:
+This adds one optional query parameter to the list route, contracted in
+[server-api-v0.md §3](../api/server-api-v0.md#3-get-v0runs--list-root-runs):
 
 **`GET /v0/runs?workflow_id=<id>`** — the runs whose `workflow_id` equals `<id>`, most-recent-first,
 composable with the existing `limit` and `status` filters. Omitted, the route is unchanged (every root
