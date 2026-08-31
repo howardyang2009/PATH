@@ -61,3 +61,13 @@ export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "
 // surface reaching different answers would be showing a different run, not a differently styled one.
 export { eventOutcome } from "./event-outcome.js";
 export { buildRunTree, type RunTreeNode } from "./run-tree.js";
+
+// The framework-free run-logic seam both the Viewer and the Designer read (#359, spec § Shared
+// seam). Each unit has one right answer a second surface must reach identically: how a launch field
+// is gated before a request is spent, how one node is named, what one log event says, and what a
+// missing blob means. The surfaces keep only their own wiring — the launch form's inputs, the run
+// tree's rows, the narrative's list, the blob hook's `useState`/`useEffect` — on the other side.
+export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from "./launch-json.js";
+export { nodeLabel, nodeEventLabel } from "./node-label.js";
+export { eventMessage } from "./event-message.js";
+export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";

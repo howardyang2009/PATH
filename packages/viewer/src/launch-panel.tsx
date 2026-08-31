@@ -1,7 +1,7 @@
 import type { PathApiClient, WorkflowSummary } from "@path/client-core";
 import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
-import { parseJsonField } from "./launch-json.js";
+import { parseJsonField } from "@path/client-core";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 

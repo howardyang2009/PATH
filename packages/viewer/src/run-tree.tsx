@@ -1,6 +1,6 @@
 import { buildRunTree, type RunNodeState, type RunTreeNode } from "@path/client-core";
 import { useState } from "react";
-import { nodeLabel } from "./node-label.js";
+import { nodeLabel } from "@path/client-core";
 import { StatusPill } from "./status-pill.js";
 
 /**

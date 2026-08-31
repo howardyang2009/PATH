@@ -1,4 +1,4 @@
-import type { parseJsonField } from "./launch-json.js";
+import type { parseJsonField } from "@path/client-core";
 
 /**
  * One raw-JSON textarea with its live client-side lint line, shared by the launch form's `input`/
