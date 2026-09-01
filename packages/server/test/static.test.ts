@@ -6,18 +6,30 @@ import { startPathServer, type PathServerHandle } from "../src/create-server.js"
 
 let projectDir: string;
 let staticDir: string;
+let designerDir: string;
 let handle: PathServerHandle;
 
 const INDEX_HTML = "<!doctype html><title>path viewer</title><div id=app></div>";
 const APP_JS = "console.log('path viewer bundle');";
+const DESIGNER_INDEX_HTML = "<!doctype html><title>path designer</title><div id=app></div>";
+const DESIGNER_APP_JS = "console.log('path designer bundle');";
+
+/** Starts the server with the Viewer built and the Designer dir chosen by `withDesigner`. */
+async function start(withDesigner: boolean): Promise<PathServerHandle> {
+  return startPathServer(projectDir, 0, staticDir, withDesigner ? designerDir : join(projectDir, "no-designer"));
+}
 
 beforeEach(async () => {
   projectDir = mkdtempSync(join(tmpdir(), "path-server-static-test-"));
   staticDir = join(projectDir, "dist");
+  designerDir = join(projectDir, "designer-dist");
   mkdirSync(join(staticDir, "assets"), { recursive: true });
   writeFileSync(join(staticDir, "index.html"), INDEX_HTML);
   writeFileSync(join(staticDir, "assets", "app.js"), APP_JS);
-  handle = await startPathServer(projectDir, 0, staticDir);
+  mkdirSync(join(designerDir, "assets"), { recursive: true });
+  writeFileSync(join(designerDir, "index.html"), DESIGNER_INDEX_HTML);
+  writeFileSync(join(designerDir, "assets", "app.js"), DESIGNER_APP_JS);
+  handle = await start(false);
 });
 
 afterEach(async () => {
@@ -25,26 +37,58 @@ afterEach(async () => {
   rmSync(projectDir, { recursive: true, force: true });
 });
 
-describe("@path/server static file serving + SPA fallback", () => {
-  it("serves a built asset with the correct Content-Type", async () => {
-    const res = await fetch(`${handle.url}/assets/app.js`);
+describe("@path/server named mounts + per-mount SPA fallback", () => {
+  it("GET / redirects (302) to /viewer/ so the default surface stays a changeable line", async () => {
+    const res = await fetch(`${handle.url}/`, { redirect: "manual" });
+    expect(res.status).toBe(302);
+    expect(res.headers.get("location")).toBe("/viewer/");
+  });
+
+  it("serves the Viewer index.html at the mount root /viewer/", async () => {
+    const res = await fetch(`${handle.url}/viewer/`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-type")).toMatch(/text\/html/);
+    expect(await res.text()).toBe(INDEX_HTML);
+  });
+
+  it("bare /viewer (no trailing slash) also maps to the Viewer index.html", async () => {
+    const res = await fetch(`${handle.url}/viewer`);
+    expect(res.status).toBe(200);
+    expect(await res.text()).toBe(INDEX_HTML);
+  });
+
+  it("serves a built Viewer asset under the prefix with the correct Content-Type", async () => {
+    const res = await fetch(`${handle.url}/viewer/assets/app.js`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/javascript/);
     expect(await res.text()).toBe(APP_JS);
   });
 
-  it("serves index.html at the root", async () => {
-    const res = await fetch(`${handle.url}/`);
+  it("SPA fallback is per-mount: an unknown /viewer/* path returns the Viewer index.html", async () => {
+    const res = await fetch(`${handle.url}/viewer/runs/some-deep-link/detail`);
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toMatch(/text\/html/);
     expect(await res.text()).toBe(INDEX_HTML);
   });
 
-  it("SPA fallback: an unknown non-/v0 GET path returns index.html so client routes deep-link", async () => {
+  it("the Designer mount 404s while its bundle is unbuilt (degrades, never crashes)", async () => {
+    for (const path of ["/designer", "/designer/", "/designer/assets/app.js"]) {
+      const res = await fetch(`${handle.url}${path}`);
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("an unbuilt Designer mount never falls back to the Viewer index.html", async () => {
+    const res = await fetch(`${handle.url}/designer/`);
+    expect(res.status).toBe(404);
+    const body = await res.text();
+    expect(body).not.toBe(INDEX_HTML);
+  });
+
+  it("a non-prefixed, non-/v0 path is a plain 404 (not the SPA index)", async () => {
     const res = await fetch(`${handle.url}/runs/some-deep-link/detail`);
-    expect(res.status).toBe(200);
-    expect(res.headers.get("content-type")).toMatch(/text\/html/);
-    expect(await res.text()).toBe(INDEX_HTML);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toBe(INDEX_HTML);
   });
 
   it("does not fall back to HTML for /v0 API paths — unmatched /v0 stays a JSON 404", async () => {
@@ -68,10 +112,40 @@ describe("@path/server static file serving + SPA fallback", () => {
     expect(got.headers.get("content-type")).toMatch(/application\/json/);
   });
 
-  it("does not serve files outside the static root (path traversal is rejected)", async () => {
-    const res = await fetch(`${handle.url}/../../etc/passwd`);
-    // Normalized away by the URL/fallback; the client never escapes the static root.
+  it("does not serve files outside a mount root (path traversal is rejected)", async () => {
+    // The URL normalizes the `..` segments away to `/etc/passwd` before they reach a mount, so the
+    // request is a plain non-prefixed 404 — the client never escapes the static root.
+    const res = await fetch(`${handle.url}/viewer/../../../etc/passwd`);
+    expect(res.status).toBe(404);
+    expect(await res.text()).not.toContain("root:");
+  });
+});
+
+describe("@path/server with the Designer bundle built", () => {
+  beforeEach(async () => {
+    await handle.close();
+    handle = await start(true);
+  });
+
+  it("serves the Designer index.html at /designer/ and bare /designer", async () => {
+    for (const path of ["/designer/", "/designer"]) {
+      const res = await fetch(`${handle.url}${path}`);
+      expect(res.status).toBe(200);
+      expect(res.headers.get("content-type")).toMatch(/text\/html/);
+      expect(await res.text()).toBe(DESIGNER_INDEX_HTML);
+    }
+  });
+
+  it("serves a Designer asset under its own prefix, not the Viewer's", async () => {
+    const res = await fetch(`${handle.url}/designer/assets/app.js`);
     expect(res.status).toBe(200);
-    expect(await res.text()).toBe(INDEX_HTML);
+    expect(await res.text()).toBe(DESIGNER_APP_JS);
+  });
+
+  it("each mount's SPA fallback serves its own index.html", async () => {
+    const viewer = await fetch(`${handle.url}/viewer/deep/link`);
+    expect(await viewer.text()).toBe(INDEX_HTML);
+    const designer = await fetch(`${handle.url}/designer/deep/link`);
+    expect(await designer.text()).toBe(DESIGNER_INDEX_HTML);
   });
 });

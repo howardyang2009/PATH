@@ -51,16 +51,19 @@ function sendFile(res: ServerResponse, filePath: string): void {
 }
 
 /**
- * Serves the built viewer bundle from `rootDir` (issue #42): a request that names an existing file
- * gets that file with its correct `Content-Type`; every other non-`/v0` path gets `index.html` so
- * the SPA's client-side routes deep-link. Returns `false` (leaving the caller to 404) when there is
- * nothing to serve — an escaping path, or a missing `index.html` (e.g. no bundle built yet).
+ * Serves one built bundle from `rootDir` (issue #42, mounts #360): `suffix` is the request path
+ * **after the mount prefix is stripped** (e.g. `/designer/assets/x.js` arrives here as
+ * `/assets/x.js`), so a request that names an existing file gets that file with its correct
+ * `Content-Type`; the mount root (`/`) and every other suffix get this mount's own `index.html` so
+ * its SPA client-side routes deep-link — never the other mount's bundle. Returns `false` (leaving
+ * the caller to 404) when there is nothing to serve — an escaping path, or a missing `index.html`
+ * (e.g. this bundle not built yet).
  *
- * The caller is responsible for keeping `/v0/*` out: unmatched API routes keep their JSON 404s.
+ * The caller strips the mount prefix and keeps `/v0/*` out: unmatched API routes keep their JSON 404s.
  */
-export function serveStatic(rootDir: string, pathname: string, res: ServerResponse): boolean {
-  const target = resolveWithin(rootDir, pathname);
-  if (target && pathname !== "/" && existsSync(target) && statSync(target).isFile()) {
+export function serveStatic(rootDir: string, suffix: string, res: ServerResponse): boolean {
+  const target = resolveWithin(rootDir, suffix);
+  if (target && suffix !== "/" && existsSync(target) && statSync(target).isFile()) {
     sendFile(res, target);
     return true;
   }

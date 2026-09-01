@@ -29,9 +29,32 @@ const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
  */
 const DEFAULT_STATIC_DIR = fileURLToPath(new URL("../../viewer/dist", import.meta.url));
 
+/**
+ * Where `path-server` looks for the built `@path/designer` bundle when no `designerStaticDir` is
+ * passed: `packages/designer/dist`, resolved relative to this package. The Designer bundle does not
+ * exist yet (#360) — its mount degrades to a 404 (never a crash) until it is built, exactly like the
+ * Viewer's when unbuilt.
+ */
+const DEFAULT_DESIGNER_STATIC_DIR = fileURLToPath(new URL("../../designer/dist", import.meta.url));
+
+/** The two hardcoded mounts (#360, ADR 0027) — not an open table. Prefix has no trailing slash. */
+const VIEWER_PREFIX = "/viewer";
+const DESIGNER_PREFIX = "/designer";
+
 /** True for the `/v0/*` API namespace, whose unmatched routes keep their JSON 404s (never SPA HTML). */
 function isApiPath(pathname: string): boolean {
   return pathname === "/v0" || pathname.startsWith("/v0/");
+}
+
+/**
+ * The request suffix within a mount, or `undefined` when `pathname` is not under `prefix`. Bare
+ * `/designer` and `/designer/` both map to `/` (the mount root, which `serveStatic` answers with the
+ * bundle's `index.html`); `/designer/assets/x.js` maps to `/assets/x.js`.
+ */
+function mountSuffix(prefix: string, pathname: string): string | undefined {
+  if (pathname === prefix) return "/";
+  if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length);
+  return undefined;
 }
 
 async function handleRequest(
@@ -39,6 +62,7 @@ async function handleRequest(
   res: ServerResponse,
   ctx: RunsRouteContext,
   staticDir: string,
+  designerStaticDir: string,
 ): Promise<void> {
   const url = new URL(req.url ?? "/", "http://localhost");
   const pathname = url.pathname;
@@ -105,10 +129,24 @@ async function handleRequest(
       return;
     }
 
-    // Static assets + SPA fallback for the built viewer bundle — never for `/v0/*`, whose unmatched
-    // routes must keep their JSON 404s so API deep-links don't silently receive HTML.
-    if (req.method === "GET" && !isApiPath(pathname) && serveStatic(staticDir, pathname, res)) {
+    // Bare `/` redirects to the default surface. A 302 (not 301) keeps the default target a single
+    // changeable line — no client caches the root as permanently the Viewer (#360, ADR 0027).
+    if (req.method === "GET" && pathname === "/") {
+      res.writeHead(302, { Location: `${VIEWER_PREFIX}/` });
+      res.end();
       return;
+    }
+
+    // Named mounts (#360): a GET is routed by prefix to one bundle, the prefix stripped, the suffix
+    // resolved within that bundle's dir with its **own** SPA fallback to that bundle's `index.html`.
+    // An unbuilt bundle (`serveStatic` returns false) falls through to the plain 404 below — never to
+    // the other mount. `/v0/*` is excluded so its unmatched routes keep JSON 404s.
+    if (req.method === "GET" && !isApiPath(pathname)) {
+      const viewerSuffix = mountSuffix(VIEWER_PREFIX, pathname);
+      if (viewerSuffix !== undefined && serveStatic(staticDir, viewerSuffix, res)) return;
+
+      const designerSuffix = mountSuffix(DESIGNER_PREFIX, pathname);
+      if (designerSuffix !== undefined && serveStatic(designerStaticDir, designerSuffix, res)) return;
     }
 
     sendError(res, 404, "not found");
@@ -128,13 +166,16 @@ export interface PathServerHandle {
  * Boots `@path/server` against one fixed project root (server-api-v0.md §0): opens the same
  * `.path/path.db` `path run` would, in-process — no subprocess, no per-request project switching.
  * `port` defaults to an OS-assigned ephemeral port. Localhost-bind only, no auth (§0). `staticDir`
- * defaults to the built `@path/viewer` bundle (`packages/viewer/dist`); its assets are served — with
- * an SPA fallback to `index.html` — from the same origin as the `/v0/*` API (issue #42).
+ * defaults to the built `@path/viewer` bundle (`packages/viewer/dist`), mounted at `/viewer/`;
+ * `designerStaticDir` defaults to `packages/designer/dist`, mounted at `/designer/`. Each mount's
+ * assets are served — with an SPA fallback to its own `index.html` — from the same origin as the
+ * `/v0/*` API (issue #42, #360). Bare `/` 302-redirects to `/viewer/`; an unbuilt bundle 404s.
  */
 export async function startPathServer(
   projectDir: string,
   port = 0,
   staticDir: string = DEFAULT_STATIC_DIR,
+  designerStaticDir: string = DEFAULT_DESIGNER_STATIC_DIR,
 ): Promise<PathServerHandle> {
   // One project for the process (#64): `.path/` ensured, engine settings loaded, db opened once —
   // the same three steps `path run` performs per invocation, now in one place that also owns how a
@@ -144,9 +185,10 @@ export async function startPathServer(
   const project = opened.project;
 
   const absStaticDir = resolve(staticDir);
+  const absDesignerStaticDir = resolve(designerStaticDir);
   const ctx: RunsRouteContext = { project, live: createLiveRuns(project) };
   const server = createServer((req, res) => {
-    handleRequest(req, res, ctx, absStaticDir).catch((err) => {
+    handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
     });
   });
