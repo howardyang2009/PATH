@@ -1,0 +1,159 @@
+/*
+ * @path/designer chrome. Palette rail + canvas stage, on the shared tokens (`tokens.css`). The
+ * Designer owns its own stylesheet — it never pulls the Viewer's (ADR 0028).
+ */
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--ground);
+  color: var(--text);
+  font-family: var(--font-sans);
+  font-size: var(--fs-base);
+}
+
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  height: 100%;
+}
+
+/* Top bar — brand + surface tag, the counterpart to the Viewer's read-only strip. */
+.topbar {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 14px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.brand-sub {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* Palette rail (left) │ canvas stage (centre). Fixed rail, fluid stage. */
+.panes {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  min-height: 0;
+}
+
+.rail {
+  border-right: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.stage {
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+}
+
+/* Palette. */
+.palette {
+  padding: 10px;
+}
+
+.palette-group + .palette-group {
+  margin-top: 16px;
+}
+
+.palette-group-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.palette-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.palette-card {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg);
+}
+
+.palette-card-swatch {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  border-radius: 3px;
+  background: var(--card-fg);
+}
+
+.palette-card-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.palette-card-label {
+  font-weight: 600;
+  color: var(--card-fg);
+}
+
+.palette-card-blurb {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+/* Canvas. */
+.canvas {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.canvas-empty {
+  text-align: center;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 32px 40px;
+  max-width: 420px;
+}
+
+.canvas-empty-title {
+  margin: 0 0 6px;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.canvas-empty-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+}
