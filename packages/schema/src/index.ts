@@ -153,3 +153,10 @@ export {
   type WireRunRecord,
   type WorkflowSummary,
 } from "./wire-v0.js";
+export {
+  describeField,
+  toWireStepPlugins,
+  type StepPluginsResponse,
+  type WireFieldSpec,
+  type WireStepPlugin,
+} from "./wire-step-plugins.js";

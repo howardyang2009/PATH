@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { openProject } from "@path/engine";
+import { loadStepPluginRegistry, openProject, type LoadedStepPluginRegistry } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { handleCancelRun } from "./routes/cancel-run.js";
 import { handleDeleteRun } from "./routes/delete-run.js";
@@ -12,6 +12,7 @@ import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handleGetWorkflows } from "./routes/get-workflows.js";
 import { handleGetWorkflowFile } from "./routes/get-workflow-file.js";
+import { handleGetStepPlugins } from "./routes/get-step-plugins.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
@@ -100,6 +101,11 @@ async function handleRequest(
       return;
     }
 
+    if (req.method === "GET" && pathname === "/v0/step-plugins") {
+      handleGetStepPlugins(res, ctx);
+      return;
+    }
+
     const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
     if (req.method === "POST" && cancelMatch) {
       handleCancelRun(res, ctx, decodeURIComponent(cancelMatch[1]!));
@@ -182,13 +188,25 @@ export interface PathServerHandle {
  * `designerStaticDir` defaults to `packages/designer/dist`, mounted at `/designer/`. Each mount's
  * assets are served — with an SPA fallback to its own `index.html` — from the same origin as the
  * `/v0/*` API (issue #42, #360). Bare `/` 302-redirects to `/viewer/`; an unbuilt bundle 404s.
+ *
+ * The step-plugin registry is scanned **once, here at start** (server-api-v0.md §8, ADR 0018): `GET
+ * /v0/step-plugins` serves that frozen snapshot as the Designer's palette, and a broken plugin folder
+ * fails the server loudly at start (ADR 0019 sub-16) rather than later on a workflow op. `stepPlugins`
+ * is an injection seam for tests — a caller may hand in a hand-built registry (e.g. a >1-worker type)
+ * instead of scanning the real folder — mirroring `runWorkflow`'s optional `registry`.
  */
 export async function startPathServer(
   projectDir: string,
   port = 0,
   staticDir: string = DEFAULT_STATIC_DIR,
   designerStaticDir: string = DEFAULT_DESIGNER_STATIC_DIR,
+  stepPlugins?: LoadedStepPluginRegistry,
 ): Promise<PathServerHandle> {
+  // Fail loud at start on a broken plugin folder (§8), and freeze the palette snapshot for the
+  // process. Scanned *before* `openProject` so a broken folder throws without leaving an opened db
+  // handle behind — the project is closed only via the returned handle, which a throw here skips.
+  const registry = stepPlugins ?? (await loadStepPluginRegistry());
+
   // One project for the process (#64): `.path/` ensured, engine settings loaded, db opened once —
   // the same three steps `path run` performs per invocation, now in one place that also owns how a
   // run's backends and observers are assembled.
@@ -198,7 +216,7 @@ export async function startPathServer(
 
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
-  const ctx: RunsRouteContext = { project, live: createLiveRuns(project) };
+  const ctx: RunsRouteContext = { project, live: createLiveRuns(project), stepPlugins: registry };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
