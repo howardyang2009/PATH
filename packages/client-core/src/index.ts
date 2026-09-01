@@ -26,8 +26,11 @@ export {
   type RunTreeResponse,
   type StartRunRequest,
   type StartRunResponse,
+  type StepPluginsResponse,
   type WireError,
+  type WireFieldSpec,
   type WireRunRecord,
+  type WireStepPlugin,
   type WorkflowSummary,
 } from "@path/schema";
 
@@ -37,6 +40,7 @@ export {
   type PathApiClientOptions,
   type ListRunsQuery,
   type StartRunOptions,
+  type WorkflowFileRaw,
   type FetchLike,
 } from "./api-client.js";
 

@@ -232,6 +232,49 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
   });
 
+  it("GET /v0/step-plugins returns the registry snapshot", async () => {
+    const stub = stubFetch(() =>
+      json({
+        step_plugins: [
+          { name: "binary", fields: { command: { type: "string", optional: false } }, workers: ["spawn"], default_worker: "spawn" },
+          { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["sdk"], default_worker: "sdk" },
+        ],
+      }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.getStepPlugins();
+    expect(res.step_plugins.map((p) => p.name)).toEqual(["binary", "prompt"]);
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/step-plugins");
+  });
+
+  it("GET /v0/workflows/file returns the raw text plus the ETag and encodes the path query", async () => {
+    const stub = stubFetch(
+      () =>
+        new Response('{"format":"path/workflow@3"}', {
+          status: 200,
+          headers: { "Content-Type": "application/json", ETag: '"abc123"' },
+        }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const raw = await client.getWorkflowFile("flows/main.workflow.json");
+    expect(raw.text).toBe('{"format":"path/workflow@3"}');
+    expect(raw.etag).toBe('"abc123"');
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fmain.workflow.json");
+  });
+
+  it("getWorkflowFile surfaces a 404 as a PathApiError with the server's message", async () => {
+    const stub = stubFetch(() => json({ error: { message: "not found" } }, 404));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.getWorkflowFile("gone.workflow.json")).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 404,
+      message: "not found",
+    });
+  });
+
   it("raises PathApiError carrying the server's error envelope on non-2xx", async () => {
     const stub = stubFetch(() => json({ error: { message: "no run found", details: { id: "nope" } } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });

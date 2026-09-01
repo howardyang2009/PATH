@@ -157,3 +157,193 @@ body {
   margin: 0;
   font-size: var(--fs-sm);
 }
+
+/* Open-file canvas: a breadcrumb strip over the scrolling block body. Overrides the empty canvas's
+ * centering, since an open file reads top-down from the top-left. */
+.canvas:has(.canvas-body) {
+  display: flex;
+  flex-direction: column;
+  place-items: stretch;
+  padding: 0;
+}
+
+.canvas-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 16px 20px;
+}
+
+.pane-note {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* File breadcrumb — the navigation stack across `workflow`-ref crossings. */
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 20px;
+  border-bottom: 1px solid var(--border);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.crumb-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.crumb-sep {
+  color: var(--text-muted);
+}
+
+.crumb {
+  font: inherit;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.crumb-current {
+  color: var(--text);
+  font-weight: 600;
+  cursor: default;
+}
+
+/* Block grammar. Every node is a block; block kind is hue + label, never hue alone. */
+.block-stack {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-block {
+  border: 1px solid var(--block-fg, var(--border));
+  border-radius: 8px;
+  background: var(--surface);
+}
+
+.leaf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--block-bg, var(--surface));
+}
+
+.chip,
+.kind-tag {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--block-fg, var(--text));
+}
+
+.node-name {
+  font-weight: 600;
+}
+
+.summary,
+.ref-path {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.ref-chip {
+  cursor: pointer;
+}
+
+/* C-block: a head over a mouth that nests arms/body inline (the C shape). */
+.c-block {
+  overflow: hidden;
+}
+
+.c-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 7px 10px;
+  background: var(--block-bg, var(--surface));
+  border-bottom: 1px solid var(--block-fg, var(--border));
+}
+
+.c-mouth {
+  padding: 10px;
+  padding-left: 16px;
+}
+
+.c-columns {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.c-column {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 180px;
+}
+
+.col-caption {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.badge {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--block-fg, var(--text));
+  border: 1px solid var(--block-fg, var(--border));
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+/* Stamp-on-import notice and refusal banners. */
+.dirty-badge {
+  margin: 0 0 10px;
+  padding: 6px 10px;
+  font-size: var(--fs-sm);
+  color: var(--k-checkpoint);
+  background: var(--k-checkpoint-bg);
+  border: 1px solid var(--k-checkpoint);
+  border-radius: 6px;
+}
+
+.refusal {
+  max-width: 640px;
+  border: 1px solid var(--k-workflow);
+  background: var(--k-workflow-bg);
+  border-radius: 8px;
+  padding: 14px 16px;
+}
+
+.refusal-heading {
+  margin: 0 0 8px;
+  font-weight: 700;
+  color: var(--k-workflow);
+}
+
+.refusal-body {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+}

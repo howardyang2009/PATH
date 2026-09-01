@@ -9,6 +9,7 @@ import type {
   RunTreeResponse,
   StartRunRequest,
   StartRunResponse,
+  StepPluginsResponse,
   WireError,
 } from "@path/schema";
 
@@ -43,6 +44,19 @@ export class PathApiError extends Error {
 export interface ListRunsQuery {
   limit?: number;
   status?: RunStatus;
+}
+
+/**
+ * The raw read of one workflow file (`GET /v0/workflows/file`, server-api-v0.md §7.1): the exact
+ * on-disk bytes as text, never the loader's parse. The Designer opens a file from this — it must keep
+ * the raw body to preserve unknown fields and to receive an **id-less** file it stamps on import
+ * (ADR 0015), both of which the strict loader would reject. `etag` carries the read route's strong
+ * `ETag` (sha256 of the bytes), the `If-Match` source a later `PUT /v0/workflows` needs; it is `null`
+ * only if a proxy stripped the header.
+ */
+export interface WorkflowFileRaw {
+  text: string;
+  etag: string | null;
 }
 
 /**
@@ -184,6 +198,35 @@ export class PathApiClient {
    */
   async listWorkflows(): Promise<ListWorkflowsResponse> {
     return this.getJson<ListWorkflowsResponse>("/v0/workflows");
+  }
+
+  /**
+   * `GET /v0/step-plugins` — the server's step-plugin registry as data (server-api-v0.md §8), the
+   * grammar the browser Designer may author. The Designer cannot scan `packages/engine/step-plugins/`,
+   * so its palette and its open-time type check are registry-relative (ADR 0018): one snake_case entry
+   * per registered leaf step type. A **bare snapshot with no staleness contract** — the write route
+   * re-validates against the live registry, so a stale copy surfaces as a rejected write, never a
+   * corrupt file. Returns the raw wire `StepPluginsResponse`.
+   */
+  async getStepPlugins(): Promise<StepPluginsResponse> {
+    return this.getJson<StepPluginsResponse>("/v0/step-plugins");
+  }
+
+  /**
+   * `GET /v0/workflows/file?path=<relative_path>` — the raw bytes of one workflow file
+   * (server-api-v0.md §7.1). Unlike every other read, this returns text, not parsed JSON: the Designer
+   * needs the raw body to preserve unknown fields and to open an **id-less** file it stamps on import
+   * (ADR 0015), so the parse is the caller's, against its received registry. Carries the strong `ETag`
+   * back for a later save's `If-Match`. A `404` (the file is gone, `path` escapes the project root, or a
+   * component is a symlink) arrives as a `PathApiError`.
+   */
+  async getWorkflowFile(path: string): Promise<WorkflowFileRaw> {
+    const res = await this.fetch(this.url(`/v0/workflows/file?path=${encodeURIComponent(path)}`), {
+      headers: { Accept: "application/json" },
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
+    return { text, etag: res.headers.get("ETag") };
   }
 
   private async getJson<T>(path: string): Promise<T> {
