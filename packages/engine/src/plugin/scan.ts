@@ -165,6 +165,20 @@ async function maxMtimeMs(dir: string): Promise<number> {
   return max;
 }
 
+/**
+ * Load the frozen step-plugin registry from the one fixed location, as read-only data. The use-facing
+ * seam behind `GET /v0/step-plugins` (server-api-v0.md §8, ADR 0018): the browser Designer cannot scan
+ * the plugin folder, so the server reads the registry here and serves it as the authoring palette. This
+ * is a *read*, not the assembly `scanStepPlugins`'s `dir` override serves (fixture folders for tests) —
+ * so it takes no argument and exposes only the fixed-location snapshot.
+ *
+ * A broken plugin folder throws here exactly as it does on the load/run paths (ADR 0019 sub-16), so a
+ * server that scans at start fails loud rather than ever serving a partial registry.
+ */
+export function loadStepPluginRegistry(): Promise<LoadedStepPluginRegistry> {
+  return scanStepPlugins();
+}
+
 // A shallow structural check on the export. It gates only the four seam keys the scanner assembles; the
 // deeper invariants — a `fields` key colliding with `commonStepFields`, a type shipping no worker — are
 // the schema factory's, thrown when `makeWorkflowFileSchema(registry)` freezes (ADR 0018 sub-4).

@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { LOG_BACKEND_IDS, type Project } from "@path/engine";
+import { LOG_BACKEND_IDS, type LoadedStepPluginRegistry, type Project } from "@path/engine";
 import { ConfigObjectSchema, formatIssues, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
@@ -24,6 +24,12 @@ export interface RunsRouteContext {
   project: Project;
   /** The runs this process is executing: starting, cancelling, and watching them. */
   live: LiveRuns;
+  /**
+   * The step-plugin registry frozen at server start, served by `GET /v0/step-plugins` as the Designer's
+   * authoring palette (server-api-v0.md §8, ADR 0018). A bare snapshot with no staleness contract:
+   * scanned once, never per request, so the palette is fixed for the server's life.
+   */
+  stepPlugins: LoadedStepPluginRegistry;
 }
 
 export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {

@@ -1,6 +1,6 @@
 export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-workflow-tree.js";
 export { validateWorkflowFile, type ValidateWorkflowFileResult } from "./validate-workflow-file.js";
-export { type LoadedStepPluginRegistry } from "./plugin/scan.js";
+export { loadStepPluginRegistry, type LoadedStepPluginRegistry } from "./plugin/scan.js";
 export { runWorkflow, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
 export { openProject, type OpenProjectResult, type Project, type ProjectRunOptions, type ResumeResult } from "./project.js";
 export { type ListRootsOptions, type RunArchive, type RunBlobName, type RunTree } from "./run-archive.js";
@@ -21,6 +21,9 @@ export { dbFilePath, pathDir, rootRunTreeDir } from "./persistence/paths.js";
 //   `ensurePathDirGitignore`, `scanStepPlugins`, `createProcessorSemaphore`, `collectSecrets` — let a
 //   consumer rebuild that composition by hand, in the wrong order, which is the hazard having an owner
 //   removed. `main` is likewise not here: `bin/path.ts` imports it from `./cli.js`, the only caller.
+//   The one seam over the scanner that *is* exported is `loadStepPluginRegistry`: it hands the frozen
+//   registry out as read-only *data* (what `GET /v0/step-plugins` serves the browser Designer, ADR
+//   0018), not as an ingredient to reassemble the engine from — it takes no `dir` and drives no run.
 //
 // - **A seam's vocabulary stays, even when its default adapter goes.** `RunOptions.observer` and
 //   `LogBackend` are substitution points, so `RunObserver`, `Observation` and their result shapes are
