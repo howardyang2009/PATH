@@ -96,10 +96,14 @@ describe("edit-tree — reorder preserves every id (#368, ADR 0015)", () => {
     expect((f.body[3] as { arms: { node: WorkflowNode }[] }).arms.map((a) => a.node.id)).toEqual([uuid(11), uuid(10)]);
   });
 
-  it("is a no-op off either end and for a single-node slot", () => {
+  it("is a no-op off either end and for a single-node slot, returning the same file (no spurious edit)", () => {
     const f = fixture();
-    expect(moveNode(f, uuid(2), -1)).toBe(f); // already first
+    expect(moveNode(f, uuid(2), -1)).toBe(f); // already first in the file body
     expect(moveNode(f, uuid(14), -1)).toBe(f); // while body has no siblings
+    expect(moveNode(f, uuid(7), -1)).toBe(f); // first parallel branch, up
+    expect(moveNode(f, uuid(8), 1)).toBe(f); // last parallel branch, down
+    expect(moveNode(f, uuid(10), -1)).toBe(f); // first branch arm, up
+    expect(moveNode(f, uuid(11), 1)).toBe(f); // last branch arm, down
   });
 });
 

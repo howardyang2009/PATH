@@ -207,21 +207,29 @@ export function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): Workflo
     const swapped = swapAt(file.body, site.index, site.index + delta);
     return swapped ? withBody(file, swapped) : file;
   }
+  // For a list/arm move, guard the bounds against the owner *before* rebuilding — an off-the-end move
+  // must return the same file reference, so it never marks the buffer edited (the caller commits any
+  // new reference `moveNode` hands back).
   if (site.where === "list") {
+    const owner = findById(file.body, site.ownerId);
+    const list = owner?.type === "sequence" ? owner.body : owner?.type === "parallel" ? owner.branches : null;
+    if (!list || site.index + delta < 0 || site.index + delta >= list.length) return file;
     return withBody(
       file,
-      updateNode(file.body, site.ownerId, (owner) => {
-        if (owner.type === "sequence") return { ...owner, body: swapAt(owner.body, site.index, site.index + delta) ?? owner.body };
-        if (owner.type === "parallel") return { ...owner, branches: swapAt(owner.branches, site.index, site.index + delta) ?? owner.branches };
-        return owner;
+      updateNode(file.body, site.ownerId, (o) => {
+        if (o.type === "sequence") return { ...o, body: swapAt(o.body, site.index, site.index + delta) ?? o.body };
+        if (o.type === "parallel") return { ...o, branches: swapAt(o.branches, site.index, site.index + delta) ?? o.branches };
+        return o;
       }),
     );
   }
   if (site.where === "arm") {
+    const owner = findById(file.body, site.ownerId);
+    if (owner?.type !== "branch" || site.armIndex + delta < 0 || site.armIndex + delta >= owner.arms.length) return file;
     return withBody(
       file,
-      updateNode(file.body, site.ownerId, (owner) =>
-        owner.type === "branch" ? { ...owner, arms: swapAt(owner.arms, site.armIndex, site.armIndex + delta) ?? owner.arms } : owner,
+      updateNode(file.body, site.ownerId, (o) =>
+        o.type === "branch" ? { ...o, arms: swapAt(o.arms, site.armIndex, site.armIndex + delta) ?? o.arms } : o,
       ),
     );
   }
