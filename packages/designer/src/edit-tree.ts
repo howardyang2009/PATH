@@ -1,4 +1,4 @@
-import type { BranchArm, WorkflowFile, WorkflowNode } from "@path/schema";
+import type { BranchArm, Condition, WorkflowFile, WorkflowNode } from "@path/schema";
 
 /**
  * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
@@ -127,6 +127,24 @@ function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
 export function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
   if (!locate(file, id)) return file;
   return withBody(file, updateNode(file.body, id, () => next));
+}
+
+/**
+ * Set a branch arm's `when` condition, keeping its occupant node untouched (#370, designer-spec
+ * § Structure on the canvas, content in the pane). An arm owns its `when` (not the Branch node), and the
+ * pane edits it while the arm's **occupant** is selected — so the commit lands on the parent branch's
+ * `arms[armIndex].when`, not on the selected node. A missing branch, a non-branch owner, or an
+ * out-of-range arm is a no-op.
+ */
+export function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when: Condition): WorkflowFile {
+  return withBody(
+    file,
+    updateNode(file.body, branchId, (owner) => {
+      if (owner.type !== "branch" || armIndex < 0 || armIndex >= owner.arms.length) return owner;
+      const arms = owner.arms.map((arm, i) => (i === armIndex ? { ...arm, when } : arm));
+      return { ...owner, arms };
+    }),
+  );
 }
 
 // ── Add into a list socket ────────────────────────────────────────────────────────────────────────

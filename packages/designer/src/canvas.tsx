@@ -2,7 +2,9 @@ import type { MouseEvent } from "react";
 import type { WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
+import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
+import { publishConflicts } from "./publish-conflicts.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
 import { useSelection } from "./selection-context.js";
@@ -145,11 +147,13 @@ function FrameView({
               {badge}
             </p>
           ) : null}
-          {result.file.body.length === 0 ? (
-            <StartBody editor={editor} />
-          ) : (
-            <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
-          )}
+          <ConflictProvider value={publishConflicts(result.file)}>
+            {result.file.body.length === 0 ? (
+              <StartBody editor={editor} />
+            ) : (
+              <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
+            )}
+          </ConflictProvider>
         </div>
       );
     }

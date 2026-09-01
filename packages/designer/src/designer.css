@@ -566,6 +566,157 @@ body {
   word-break: break-word;
 }
 
+/* ── Envelope regions: config inheritance, input wiring, context writes (#370) ─────────────────────── */
+
+.pane-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pane-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.pane-config-row {
+  gap: 3px;
+}
+
+.pane-config-inherited,
+.pane-config-local,
+.pane-publish-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-config-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  flex: 1;
+  word-break: break-all;
+}
+
+/* An inherited key is ghosted read-only until an Override makes it local (§ Config inheritance display). */
+.pane-ghost {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.pane-config-origin {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pane-config-add {
+  margin-top: 2px;
+}
+
+.pane-publish-eq {
+  color: var(--text-muted);
+}
+
+.pane-suggest {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* The typed condition builder — a labelled fieldset enclosing the operator + operand controls (§ ADR 0022). */
+.cond-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px 10px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cond-legend {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  padding: 0 4px;
+}
+
+.cond-node {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cond-op {
+  align-self: flex-start;
+  width: auto;
+  min-width: 8em;
+}
+
+.cond-operand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cond-range,
+.cond-scalar-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cond-scalar-kind {
+  width: auto;
+  flex: none;
+}
+
+/* A combinator's children are indented under it, so the tree structure reads at a glance. */
+.cond-children {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.cond-child,
+.cond-list-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.cond-child > .cond-node,
+.cond-list-row > .cond-scalar {
+  flex: 1;
+}
+
+.cond-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cond-add,
+.cond-remove {
+  align-self: flex-start;
+}
+
+/* The node validation marker for a publish conflict (§ Context reads and writes). */
+.node-marker {
+  flex: none;
+  color: var(--k-workflow);
+  font-size: var(--fs-sm);
+  cursor: help;
+}
+
 /* The empty-body start affordance (§ Adding … and the empty canvas). */
 .start-body {
   display: flex;

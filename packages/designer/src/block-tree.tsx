@@ -1,6 +1,7 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { WorkflowNode } from "@path/schema";
 import { summarizeCondition } from "./condition-summary.js";
+import { ConflictMarker } from "./conflict-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
 import { useSelection } from "./selection-context.js";
@@ -184,6 +185,7 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
     >
       <span className="chip">{leafChip(node.type)}</span>
       <span className="node-name">{node.name}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -206,6 +208,7 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
       <span className="chip">WORKFLOW</span>
       <span className="node-name">{node.name}</span>
       <span className="ref-path">{node.ref}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -225,6 +228,7 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
       <span className="chip">CHECKPOINT</span>
       <span className="node-name">{node.name}</span>
       <span className="summary">assert {summarizeCondition(node.condition)}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -243,6 +247,7 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
     >
       <div className="c-head">
         {head}
+        <ConflictMarker id={node.id} />
         <NodeControls node={node} editor={editor} />
       </div>
       <div className="c-mouth">{children}</div>
