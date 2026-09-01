@@ -36,6 +36,24 @@
   --k-checkpoint: #9a6700;
   --k-checkpoint-bg: #fff8c5;
 
+  /* Run status (#372) — colour + glyph, never hue alone. Foreground + soft background per status. */
+  --run-running: #1f6feb;
+  --run-running-bg: #ddf0ff;
+  --run-succeeded: #1a7f37;
+  --run-succeeded-bg: #dcfce7;
+  --run-failed: #cf222e;
+  --run-failed-bg: #ffebe9;
+  --run-cancelled: #656d76;
+  --run-cancelled-bg: #eaeef2;
+  --run-pending: #9a6700;
+  --run-pending-bg: #fff8c5;
+
+  /* JSON syntax colours for the run inspector's I/O blocks. */
+  --json-key: #4c6ef5;
+  --json-string: #1a7f37;
+  --json-number: #1f6feb;
+  --json-atom: #cf222e;
+
   /* Type. Mono for JSON/ids; system sans for UI chrome. Dense dev-tool scale. */
   --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
   --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
@@ -69,6 +87,22 @@
   --k-sequence-bg: #21262d;
   --k-checkpoint: #d29922;
   --k-checkpoint-bg: #2a2213;
+
+  --run-running: #58a6ff;
+  --run-running-bg: #12283f;
+  --run-succeeded: #3fb950;
+  --run-succeeded-bg: #12261a;
+  --run-failed: #f85149;
+  --run-failed-bg: #2d1416;
+  --run-cancelled: #8b949e;
+  --run-cancelled-bg: #21262d;
+  --run-pending: #d29922;
+  --run-pending-bg: #2a2213;
+
+  --json-key: #6b8bff;
+  --json-string: #3fb950;
+  --json-number: #58a6ff;
+  --json-atom: #f85149;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -94,5 +128,21 @@
     --k-sequence-bg: #21262d;
     --k-checkpoint: #d29922;
     --k-checkpoint-bg: #2a2213;
+
+    --run-running: #58a6ff;
+    --run-running-bg: #12283f;
+    --run-succeeded: #3fb950;
+    --run-succeeded-bg: #12261a;
+    --run-failed: #f85149;
+    --run-failed-bg: #2d1416;
+    --run-cancelled: #8b949e;
+    --run-cancelled-bg: #21262d;
+    --run-pending: #d29922;
+    --run-pending-bg: #2a2213;
+
+    --json-key: #6b8bff;
+    --json-string: #3fb950;
+    --json-number: #58a6ff;
+    --json-atom: #f85149;
   }
 }

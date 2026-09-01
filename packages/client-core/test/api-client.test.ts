@@ -25,6 +25,14 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs?limit=10&status=running");
   });
 
+  it("GET /v0/runs encodes the workflow_id scope filter (#365, the Designer's per-workflow history)", async () => {
+    const stub = stubFetch(() => json({ runs: [] }));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.listRuns({ limit: 10, workflowId: "wf 1" });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs?limit=10&workflow_id=wf+1");
+  });
+
   it("GET /v0/runs/:id returns the run tree", async () => {
     const stub = stubFetch(() => json({ root_run_id: "r1", status: "succeeded", output: { ok: true }, runs: [] }));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });

@@ -6,6 +6,9 @@ import { EditingToolbar } from "./editing-toolbar.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { SelectionProvider } from "./selection-context.js";
+import { RunDock } from "./run/run-dock.js";
+import { RunProjectionProvider } from "./run/run-projection.js";
+import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { openedResultOf, useOpenFile } from "./use-open-file.js";
 
@@ -47,6 +50,29 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
 
+  // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
+  // inspector — the two are views of one live snapshot, and a second connection would tell the same
+  // story a beat apart. Selection (the watched root run, and the run inside its tree) lives here too.
+  const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
+  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
+  const [runsReloadNonce, setRunsReloadNonce] = useState(0);
+  const runLoad = useRunView(client, selectedRootRunId);
+  const runsForProjection = runLoad.phase === "ready" ? runLoad.value.runs : null;
+
+  // Switching root run drops the node selection: a run id from the previous tree names nothing in the
+  // new one.
+  const selectRootRun = (rootRunId: string): void => {
+    setSelectedRootRunId(rootRunId);
+    setSelectedRunId(null);
+  };
+
+  // A launch/resume is the same transition as a click — watch the new run — plus a nudge so the list
+  // re-reads and shows the new row now, not at the next periodic tick.
+  const watchNewRun = (rootRunId: string): void => {
+    selectRootRun(rootRunId);
+    setRunsReloadNonce((nonce) => nonce + 1);
+  };
+
   // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
   // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
@@ -74,9 +100,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       }
       palette={<Palette plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />}
       canvas={
-        <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
-          <Canvas session={session} plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />
-        </SelectionProvider>
+        <RunProjectionProvider runs={runsForProjection}>
+          <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
+            <Canvas session={session} plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />
+          </SelectionProvider>
+        </RunProjectionProvider>
       }
       pane={
         openedFile ? (
@@ -92,6 +120,22 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             <p className="pane-hint">Open a workflow and select a node to edit it.</p>
           </div>
         )
+      }
+      runDock={
+        <RunDock
+          client={client}
+          workflowPath={activePath ?? null}
+          workflowId={openedFile?.id ?? null}
+          dirty={dirty}
+          load={runLoad}
+          rootRunId={selectedRootRunId}
+          selectedRunId={selectedRunId}
+          onSelectRootRun={selectRootRun}
+          onSelectRun={setSelectedRunId}
+          onLaunched={watchNewRun}
+          onResumed={watchNewRun}
+          reloadNonce={runsReloadNonce}
+        />
       }
     />
   );

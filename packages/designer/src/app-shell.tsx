@@ -9,6 +9,8 @@ export interface AppShellProps {
   pane: ReactNode;
   /** The top-bar actions: save, and the edit-lease status/banners (#371). Absent with no file open. */
   toolbar?: ReactNode;
+  /** The bottom-docked run surfaces: launch, run list, and the run inspector (#372). */
+  runDock?: ReactNode;
 }
 
 /**
@@ -20,9 +22,9 @@ export interface AppShellProps {
  * The brand strip says `designer · authoring`, the counterpart to the Viewer's `viewer · read-only`,
  * so the two peer surfaces are told apart at a glance.
  */
-export function AppShell({ palette, canvas, pane, toolbar }: AppShellProps) {
+export function AppShell({ palette, canvas, pane, toolbar, runDock }: AppShellProps) {
   return (
-    <div className="shell">
+    <div className="shell" data-has-dock={runDock ? "true" : "false"}>
       <header className="topbar">
         <span className="brand">PATH</span>
         <span className="brand-sub">designer · authoring</span>
@@ -37,6 +39,7 @@ export function AppShell({ palette, canvas, pane, toolbar }: AppShellProps) {
           {pane}
         </aside>
       </div>
+      {runDock ?? null}
     </div>
   );
 }

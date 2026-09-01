@@ -28,6 +28,39 @@ export interface StubCalls {
   heartbeat: { workflow_path: string; session_id: string }[];
   release: { workflow_path: string; session_id: string }[];
   put: { body: { workflow_path: string; workflow: Record<string, unknown> }; ifMatch: string | null }[];
+  /** The `GET /v0/runs` query strings the run list sent (`?...`), for the `workflow_id`-scope assertions (#372). */
+  listRuns: string[];
+  /** Every `POST /v0/runs` launch body, for the save-first launch assertions (#372). */
+  startRun: { workflow_path: string; input?: unknown; config?: unknown }[];
+  /** Every `POST /v0/runs/:id/cancel` root run id (#372). */
+  cancel: string[];
+  /** Every `POST /v0/runs/:id/resume` — the id and the optional config-override body (#372). */
+  resume: { rootRunId: string; body: unknown }[];
+}
+
+/** An SSE body that stays open until aborted, like the real one — a stream that ends early spins the
+ * core's reconnect loop. Used by the run-surface tests; a silent stream is the default. */
+export class EventStreamStub {
+  private controller: ReadableStreamDefaultController<Uint8Array> | null = null;
+
+  body(signal: AbortSignal | null | undefined): ReadableStream<Uint8Array> {
+    return new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        this.controller = controller;
+        signal?.addEventListener("abort", () => {
+          try {
+            controller.close();
+          } catch {
+            // Already closed by an earlier abort — nothing to tear down.
+          }
+        });
+      },
+    });
+  }
+
+  push(event: Record<string, unknown>): void {
+    this.controller?.enqueue(new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`));
+  }
 }
 
 export interface DesignerStubOptions {
@@ -43,11 +76,23 @@ export interface DesignerStubOptions {
   onLock?: (body: { workflow_path: string; session_id: string; takeover?: boolean }) => Response;
   /** Override `PUT /v0/workflows` per call. Default: 200 with a fresh ETag. */
   onPut?: (body: { workflow_path: string; workflow: Record<string, unknown> }, ifMatch: string | null) => Response;
+  /** Body for `GET /v0/runs` — the run-list window. Defaults to an empty list. */
+  runs?: unknown;
+  /** Body for `GET /v0/runs/:root_run_id` — the run tree. Defaults to an empty tree. */
+  tree?: unknown;
+  /** Status for the tree response, for the not-found path. */
+  treeStatus?: number;
+  /** Supply one to push live events into the open SSE stream; omitted means a silent stream. */
+  stream?: EventStreamStub;
+  /** Bodies for `GET /v0/runs/:root/blobs/:run/:name`, keyed `"<run_id>/<name>"`. A missing key 404s. */
+  blobs?: Record<string, unknown>;
+  /** Override `POST /v0/runs` per call (the launch). Default: 202 with a fresh `root_run_id`. */
+  onStartRun?: (body: { workflow_path: string; input?: unknown; config?: unknown }) => Response;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
 export function makeCalls(): StubCalls {
-  return { lock: [], heartbeat: [], release: [], put: [] };
+  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [] };
 }
 
 /** A granted lease for a session — the default lock response. */
@@ -72,6 +117,42 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
   const fetchLike: FetchLike = async (input, init) => {
     if (input.startsWith("/v0/step-plugins")) {
       return json({ step_plugins: plugins }, options.pluginsStatus ?? 200);
+    }
+
+    // ── Run surfaces (#372) ─────────────────────────────────────────────────────────────────────
+    if (input.endsWith("/events")) {
+      const body = (options.stream ?? new EventStreamStub()).body(init?.signal);
+      return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }
+    const blobKey = blobKeyOf(input);
+    if (blobKey !== null) {
+      const blobs = options.blobs ?? {};
+      if (!(blobKey in blobs)) return json({ error: { message: `no blob "${blobKey}"` } }, 404);
+      return json(blobs[blobKey], 200);
+    }
+    const cancelMatch = /^\/v0\/runs\/([^/]+)\/cancel$/.exec(input);
+    if (cancelMatch && init?.method === "POST") {
+      calls?.cancel.push(decodeURIComponent(cancelMatch[1]!));
+      return json({ root_run_id: decodeURIComponent(cancelMatch[1]!) }, 202);
+    }
+    const resumeMatch = /^\/v0\/runs\/([^/]+)\/resume$/.exec(input);
+    if (resumeMatch && init?.method === "POST") {
+      const rootRunId = decodeURIComponent(resumeMatch[1]!);
+      calls?.resume.push({ rootRunId, body: init?.body ? JSON.parse(init.body as string) : undefined });
+      return json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
+    }
+    if (input === "/v0/runs" && init?.method === "POST") {
+      const b = init?.body ? (JSON.parse(init.body as string) as { workflow_path: string; input?: unknown; config?: unknown }) : { workflow_path: "" };
+      calls?.startRun.push(b);
+      return options.onStartRun ? options.onStartRun(b) : json({ run_id: "new-root", root_run_id: "new-root" }, 202);
+    }
+    if (input === "/v0/runs" || input.startsWith("/v0/runs?")) {
+      calls?.listRuns.push(input.slice("/v0/runs".length));
+      return json(options.runs ?? { runs: [] }, 200);
+    }
+    const treeMatch = /^\/v0\/runs\/([^/?]+)$/.exec(input);
+    if (treeMatch && (init?.method ?? "GET") === "GET") {
+      return json(options.tree ?? { root_run_id: decodeURIComponent(treeMatch[1]!), status: "pending", output: null, runs: [] }, options.treeStatus ?? 200);
     }
     const fileMatch = /^\/v0\/workflows\/file\?path=(.+)$/.exec(input);
     if (fileMatch) {
@@ -109,4 +190,10 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/** `"<run_id>/<name>"` for a blob-route URL, or null for any other path. */
+function blobKeyOf(url: string): string | null {
+  const match = /^\/v0\/runs\/[^/]+\/blobs\/([^/]+)\/([^/?]+)$/.exec(url);
+  return match ? `${decodeURIComponent(match[1]!)}/${decodeURIComponent(match[2]!)}` : null;
 }

@@ -44,6 +44,13 @@ export class PathApiError extends Error {
 export interface ListRunsQuery {
   limit?: number;
   status?: RunStatus;
+  /**
+   * Scope the list to one workflow's `id` (ADR 0015 identity, not path) — the Designer's per-workflow
+   * history (#365, server-api-v0.md §3). A server-side `WHERE workflow_id = ?` past the latest-N window,
+   * so it composes with `limit`/`status` and returns the *complete* history for that workflow, not a
+   * filtered window. An empty string is treated as omitted by the route.
+   */
+  workflowId?: string;
 }
 
 /**
@@ -173,6 +180,7 @@ export class PathApiClient {
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set("limit", String(query.limit));
     if (query.status !== undefined) params.set("status", query.status);
+    if (query.workflowId !== undefined) params.set("workflow_id", query.workflowId);
     const qs = params.toString();
     return this.getJson<ListRunsResponse>(`/v0/runs${qs ? `?${qs}` : ""}`);
   }

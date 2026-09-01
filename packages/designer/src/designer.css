@@ -27,6 +27,11 @@ body {
   height: 100%;
 }
 
+/* With the run dock (#372) a third row holds it below the three columns. */
+.shell[data-has-dock="true"] {
+  grid-template-rows: auto minmax(0, 1fr) auto;
+}
+
 /* Top bar — brand + surface tag, the counterpart to the Viewer's read-only strip. */
 .topbar {
   display: flex;
@@ -832,4 +837,492 @@ body {
 .lease-countdown {
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+/* ============================================================================
+ * Run surfaces (#372): the bottom-docked launch / history / inspector, plus the
+ * canvas run projection. The Designer's own look — never the Viewer's (ADR 0028).
+ * ========================================================================== */
+
+.run-dock {
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.run-dock[data-open="true"] {
+  max-height: 42vh;
+}
+
+.run-dock-bar {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+}
+
+.run-dock-toggle {
+  font: inherit;
+  font-weight: 600;
+  color: var(--text);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 4px 6px;
+}
+
+.run-dock-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(280px, 1.4fr);
+  gap: 1px;
+  background: var(--border);
+  overflow: hidden;
+  min-height: 0;
+}
+
+.run-dock-col {
+  background: var(--surface);
+  padding: 10px 12px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.run-dock-heading {
+  margin: 0 0 8px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+/* Notes, gates, errors, warnings shared by the run surfaces. */
+.run-note {
+  margin: 6px 0;
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.run-error {
+  color: var(--run-failed);
+}
+
+.run-gate {
+  color: var(--run-pending);
+}
+
+.run-warning {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--run-pending-bg);
+  border: 1px solid var(--run-pending);
+  border-radius: 6px;
+}
+
+/* Launch + resume forms. */
+.run-field {
+  margin-bottom: 8px;
+}
+
+.run-field-label {
+  display: block;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.run-textarea {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  padding: 6px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+  resize: vertical;
+}
+
+.run-textarea[aria-invalid="true"] {
+  border-color: var(--run-failed);
+}
+
+.run-lint {
+  margin: 3px 0 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.run-lint--bad {
+  color: var(--run-failed);
+}
+
+.run-disclosure {
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 0;
+}
+
+.run-disclosure-dot {
+  color: var(--accent);
+}
+
+.run-actions {
+  margin-top: 8px;
+}
+
+.run-select {
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 3px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--ground);
+  color: var(--text);
+}
+
+.run-submit {
+  font: inherit;
+  font-weight: 600;
+  padding: 6px 12px;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  background: var(--accent);
+  color: #fff;
+  cursor: pointer;
+}
+
+.run-submit:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Cancel — arm-then-confirm. */
+.run-cancel-slot {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.run-cancel {
+  font: inherit;
+  font-size: var(--fs-sm);
+  padding: 4px 10px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-cancel[data-armed="true"] {
+  border-color: var(--run-failed);
+  background: var(--run-failed-bg);
+  color: var(--run-failed);
+  font-weight: 600;
+}
+
+/* Status pill — colour + glyph + label. */
+.run-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 1px 7px;
+  border-radius: 999px;
+  color: var(--run-pending);
+  background: var(--run-pending-bg);
+}
+
+.run-pill[data-status="running"] {
+  color: var(--run-running);
+  background: var(--run-running-bg);
+}
+.run-pill[data-status="succeeded"] {
+  color: var(--run-succeeded);
+  background: var(--run-succeeded-bg);
+}
+.run-pill[data-status="failed"] {
+  color: var(--run-failed);
+  background: var(--run-failed-bg);
+}
+.run-pill[data-status="cancelled"] {
+  color: var(--run-cancelled);
+  background: var(--run-cancelled-bg);
+}
+.run-pill[data-status="pending"] {
+  color: var(--run-pending);
+  background: var(--run-pending-bg);
+}
+
+/* Run list. */
+.run-list-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.run-list-count {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.run-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 5px 7px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-row:hover {
+  background: var(--ground);
+}
+
+.run-row[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--k-step-bg);
+}
+
+.run-row-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.run-row-started {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* Inspector. */
+.run-inspector-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.run-inspector-title {
+  font-weight: 600;
+}
+
+.run-inspector-id {
+  flex-basis: 100%;
+}
+
+.run-inspector-tree {
+  margin: 8px 0;
+  border-top: 1px solid var(--border);
+  padding-top: 8px;
+}
+
+/* Run tree. */
+.run-tree {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 12px;
+}
+
+.run-inspector-tree > .run-tree {
+  padding-left: 0;
+}
+
+.run-tree-line {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.run-tree-toggle,
+.run-tree-toggle-spacer {
+  width: 16px;
+  height: 16px;
+  flex: none;
+}
+
+.run-tree-toggle {
+  font: inherit;
+  font-size: var(--fs-xs);
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted);
+  padding: 0;
+}
+
+.run-tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  text-align: left;
+  font: inherit;
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-tree-row:hover {
+  background: var(--ground);
+}
+
+.run-tree-row[aria-current="true"] {
+  border-color: var(--accent);
+  background: var(--k-step-bg);
+}
+
+.run-tree-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Node I/O blocks. */
+.run-node-io-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.run-node-io-name {
+  font-weight: 600;
+}
+
+.run-node-io-refresh {
+  margin-left: auto;
+  font: inherit;
+  font-size: var(--fs-xs);
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.run-node-io-run {
+  margin: 0 0 8px;
+}
+
+.run-node-io-reused {
+  margin: 0 0 8px;
+  padding: 6px 8px;
+  font-size: var(--fs-sm);
+  background: var(--run-cancelled-bg);
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.run-io-block {
+  margin-bottom: 10px;
+}
+
+.run-io-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.run-json {
+  margin: 0;
+  padding: 8px;
+  overflow-x: auto;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  color: var(--text);
+}
+
+.run-json-key {
+  color: var(--json-key);
+}
+.run-json-string {
+  color: var(--json-string);
+}
+.run-json-number {
+  color: var(--json-number);
+}
+.run-json-boolean,
+.run-json-null {
+  color: var(--json-atom);
+}
+
+/* Canvas run projection — a status badge on a node the watched run touched. */
+.node-run-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--run-pending);
+  background: var(--run-pending-bg);
+}
+
+.node-run-badge[data-run-status="running"] {
+  color: var(--run-running);
+  background: var(--run-running-bg);
+}
+.node-run-badge[data-run-status="succeeded"] {
+  color: var(--run-succeeded);
+  background: var(--run-succeeded-bg);
+}
+.node-run-badge[data-run-status="failed"] {
+  color: var(--run-failed);
+  background: var(--run-failed-bg);
+}
+.node-run-badge[data-run-status="cancelled"] {
+  color: var(--run-cancelled);
+  background: var(--run-cancelled-bg);
+}
+.node-run-badge[data-run-status="pending"] {
+  color: var(--run-pending);
+  background: var(--run-pending-bg);
 }
