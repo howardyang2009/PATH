@@ -11,6 +11,9 @@ import { defineConfig } from "vite";
 const SERVER_TARGET = process.env.PATH_SERVER_URL ?? "http://localhost:8787";
 
 export default defineConfig({
+  // The Viewer is mounted at `/viewer/` on `path-server` (#360, ADR 0027), so its built asset URLs
+  // must resolve under that prefix. `path-server` 302-redirects bare `/` to `/viewer/`.
+  base: "/viewer/",
   plugins: [react()],
   server: {
     proxy: {
