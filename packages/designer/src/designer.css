@@ -99,10 +99,20 @@ body {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
   padding: 7px 9px;
   border: 1px solid var(--border);
   border-radius: 6px;
   background: var(--card-bg);
+  cursor: pointer;
+}
+
+/* Armed: the palette selection waiting to be placed. The canvas opens its legal sockets (#368). */
+.palette-card[data-armed="true"] {
+  border-color: var(--card-fg);
+  box-shadow: 0 0 0 2px var(--card-fg) inset;
 }
 
 .palette-card-swatch {
@@ -346,4 +356,87 @@ body {
   color: var(--text);
   white-space: pre-wrap;
   word-break: break-word;
+}
+
+/* ── Structure-edit affordances (#368) ──────────────────────────────────────────────────────────── */
+
+/* A list and its tail add-socket travel together. */
+.block-stack-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* Per-node structure controls (reorder / duplicate / delete), pushed to the block's trailing edge. */
+.node-controls {
+  margin-left: auto;
+  display: inline-flex;
+  gap: 2px;
+}
+
+.ctl {
+  font: inherit;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  padding: 1px 5px;
+  cursor: pointer;
+}
+
+.ctl:hover {
+  border-color: var(--border);
+  color: var(--text);
+}
+
+.ctl-del:hover {
+  color: var(--k-workflow);
+  border-color: var(--k-workflow);
+}
+
+/* A socket: an open drop target the grammar admits the armed kind into (a tail add, a single swap,
+ * an add-arm / add-else). It appears only while a legal kind is armed. */
+.socket {
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--accent);
+  background: var(--surface);
+  border: 1px dashed var(--accent);
+  border-radius: 6px;
+  padding: 5px 9px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.socket:hover {
+  background: var(--card-bg, var(--surface));
+}
+
+.socket-swap {
+  align-self: flex-start;
+}
+
+/* A branch's add-arm / add-else row, under its arms. */
+.block-affordances {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* The empty-body start affordance (§ Adding … and the empty canvas). */
+.start-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  align-items: flex-start;
+  color: var(--text-muted);
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 20px;
+}
+
+.start-body-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
 }

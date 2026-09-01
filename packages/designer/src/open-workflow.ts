@@ -39,7 +39,7 @@ export interface AbsentStepType {
 
 /** The outcome of opening a file: a rendered model, or one of the legible refusals. */
 export type OpenResult =
-  | { status: "opened"; file: WorkflowFile; dirty: boolean }
+  | { status: "opened"; file: WorkflowFile; dirty: boolean; edited?: boolean }
   | { status: "unregistered-types"; absent: AbsentStepType[]; message: string }
   | { status: "duplicate-ids"; message: string }
   | { status: "invalid-ids"; message: string }

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import type { WorkflowFile } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
 import { resolveRefPath } from "./resolve-ref.js";
 
@@ -42,6 +43,8 @@ export interface OpenSession {
   descend: (ref: string) => void;
   /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
   goTo: (index: number) => void;
+  /** Commit a structure edit to the active (last) frame's opened file, marking the buffer edited (#368). */
+  applyEdit: (next: WorkflowFile) => void;
 }
 
 function errorMessage(error: unknown): string {
@@ -136,6 +139,17 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setFrames((prev) => (index < 0 || index >= prev.length ? prev : prev.slice(0, index + 1)));
   }, []);
 
+  const applyEdit = useCallback((next: WorkflowFile): void => {
+    setFrames((prev) => {
+      const depth = prev.length - 1;
+      const frame = prev[depth];
+      if (!frame || frame.state.phase !== "open" || frame.state.result.status !== "opened") return prev;
+      const patched = prev.slice();
+      patched[depth] = { ...frame, state: { phase: "open", result: { ...frame.state.result, file: next, edited: true } } };
+      return patched;
+    });
+  }, []);
+
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every
   // registry re-render.
   const openedInitial = useRef(false);
@@ -146,5 +160,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, open, descend, goTo };
+  return { registry, frames, open, descend, goTo, applyEdit };
 }

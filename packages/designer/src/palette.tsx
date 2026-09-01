@@ -1,20 +1,27 @@
-import { PALETTE_GROUPS, type PaletteEntry } from "./palette-data.js";
+import type { WireStepPlugin } from "@path/client-core";
+import { paletteGroups, type PaletteEntry } from "./palette-data.js";
 
 /**
- * The palette shell: the left rail of the Designer, listing what the author can place. Two groups —
- * **Steps** and **Blocks** (§ The v1 authoring palette) — each a named region with one card per entry.
+ * The palette rail (#368): the Steps + Blocks list the author places from. A click **arms** an entry's
+ * kind; the canvas then opens every socket the grammar admits it into (§ Adding — an illegal socket
+ * never opens, so an illegal drop is unreachable). A second click on the armed card disarms it.
  *
- * Static for the tracer bullet (#366): the cards are inert (no drag, no click-to-add) and the Steps
- * list is a hardcoded placeholder for the registry-driven list a later ticket wires from
- * `GET /v0/step-plugins`. It exists so the shell reads true — the author sees the two halves and the
- * kinds each holds — before any authoring affordance lands.
+ * The Steps half is registry-driven (`paletteGroups`): one card per leaf type the received registry
+ * describes, plus the `workflow` ref. Until the registry lands the Steps list is just `workflow`; the
+ * Blocks half is fixed by the grammar and always shown.
  */
-export function Palette() {
+export function Palette({
+  plugins,
+  armedKind,
+  onArm,
+}: {
+  plugins: WireStepPlugin[];
+  armedKind: string | null;
+  onArm: (kind: string | null) => void;
+}) {
   return (
     <div className="palette">
-      {PALETTE_GROUPS.map((group) => {
-        // Slugify the title into the label id so a future multi-word group ("Control blocks") keeps a
-        // valid, space-free id for the `aria-labelledby` association.
+      {paletteGroups(plugins).map((group) => {
         const titleId = `palette-${group.title.toLowerCase().replace(/\s+/g, "-")}`;
         return (
           <section key={group.title} className="palette-group" aria-labelledby={titleId}>
@@ -23,7 +30,7 @@ export function Palette() {
             </h3>
             <ul className="palette-list">
               {group.entries.map((entry) => (
-                <PaletteCard key={entry.id} entry={entry} />
+                <PaletteCard key={entry.kind} entry={entry} armed={armedKind === entry.kind} onArm={onArm} />
               ))}
             </ul>
           </section>
@@ -33,19 +40,28 @@ export function Palette() {
   );
 }
 
-/** One inert palette card. The hue swatch names the kind by color; the label names it in words. */
-function PaletteCard({ entry }: { entry: PaletteEntry }) {
+/** One palette card — a toggle button that arms its kind. The hue swatch names the kind by colour. */
+function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: boolean; onArm: (kind: string | null) => void }) {
   const style = {
-    "--card-fg": `var(--k-${entry.kind})`,
-    "--card-bg": `var(--k-${entry.kind}-bg)`,
+    "--card-fg": `var(--k-${entry.hue})`,
+    "--card-bg": `var(--k-${entry.hue}-bg)`,
   } as React.CSSProperties;
   return (
-    <li className="palette-card" style={style}>
-      <span className="palette-card-swatch" aria-hidden="true" />
-      <span className="palette-card-text">
-        <span className="palette-card-label">{entry.label}</span>
-        <span className="palette-card-blurb">{entry.blurb}</span>
-      </span>
+    <li>
+      <button
+        type="button"
+        className="palette-card"
+        style={style}
+        aria-pressed={armed}
+        data-armed={armed ? "true" : "false"}
+        onClick={() => onArm(armed ? null : entry.kind)}
+      >
+        <span className="palette-card-swatch" aria-hidden="true" />
+        <span className="palette-card-text">
+          <span className="palette-card-label">{entry.label}</span>
+          <span className="palette-card-blurb">{entry.blurb}</span>
+        </span>
+      </button>
     </li>
   );
 }

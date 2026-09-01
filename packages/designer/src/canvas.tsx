@@ -1,16 +1,30 @@
+import type { WireStepPlugin } from "@path/client-core";
+import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
+import { createEditor, type EditorApi } from "./editor-api.js";
+import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
 import type { Frame, OpenSession } from "./use-open-file.js";
 
 /**
- * The canvas region: the centre surface a `path/workflow` body renders read-only on (#367, designer-spec
- * § Canvas interaction model). It shows one of four things: the empty affordance when nothing is open,
- * a registry/fetch problem, a legible **refusal** (an unregistered step type, or a duplicate/invalid id
- * — ADR 0026 / ADR 0015), or the block-grammar render of the open file under a file breadcrumb that
- * tracks each `workflow`-ref crossing. No editing yet — structure and read-only summaries only.
+ * The canvas region: the centre surface a `path/workflow` body renders on. Read-only in #367;
+ * **editable** in #368 (designer-spec § Canvas interaction model). It shows one of: the empty affordance
+ * when nothing is open, a registry/fetch problem, a legible refusal (ADR 0026 / ADR 0015), or the
+ * block-grammar render under a breadcrumb — now with the palette's armed kind driving which sockets
+ * open, and structure edits committed through the session's `applyEdit`.
  */
-export function Canvas({ session }: { session: OpenSession }): JSX.Element {
-  const { registry, frames, descend, goTo } = session;
+export function Canvas({
+  session,
+  plugins,
+  armedKind,
+  onArm,
+}: {
+  session: OpenSession;
+  plugins: WireStepPlugin[];
+  armedKind: string | null;
+  onArm: (kind: string | null) => void;
+}): JSX.Element {
+  const { registry, frames, descend, goTo, applyEdit } = session;
 
   if (registry.phase === "loading") {
     return <CanvasNote title="Loading…" hint="Fetching the step-plugin registry." />;
@@ -32,7 +46,7 @@ export function Canvas({ session }: { session: OpenSession }): JSX.Element {
     <div className="canvas" role="region" aria-label="Workflow canvas">
       <Breadcrumb frames={frames} onCrumb={goTo} />
       <div className="canvas-body">
-        <FrameView frame={active} onDescend={descend} />
+        <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} />
       </div>
     </div>
   );
@@ -72,8 +86,22 @@ function frameLabel(frame: Frame): string {
   return basename(frame.path);
 }
 
-/** Render one frame: loading, a fetch error, a refusal, or the opened block tree. */
-function FrameView({ frame, onDescend }: { frame: Frame; onDescend: (ref: string) => void }): JSX.Element {
+/** Render one frame: loading, a fetch error, a refusal, or the opened (editable) block tree. */
+function FrameView({
+  frame,
+  onDescend,
+  applyEdit,
+  plugins,
+  armedKind,
+  onArm,
+}: {
+  frame: Frame;
+  onDescend: (ref: string) => void;
+  applyEdit: (next: WorkflowFile) => void;
+  plugins: WireStepPlugin[];
+  armedKind: string | null;
+  onArm: (kind: string | null) => void;
+}): JSX.Element {
   const { state } = frame;
   if (state.phase === "loading") {
     return <p className="pane-note">Loading {frame.path}…</p>;
@@ -84,17 +112,24 @@ function FrameView({ frame, onDescend }: { frame: Frame; onDescend: (ref: string
 
   const { result } = state;
   switch (result.status) {
-    case "opened":
+    case "opened": {
+      const editor = createEditor(result.file, applyEdit, armedKind, () => onArm(null), defaultLeafKind(plugins));
+      const badge = result.edited ? "Unsaved edits." : result.dirty ? "Ids stamped on import — unsaved (ADR 0015)." : null;
       return (
-        <div className="opened" data-dirty={result.dirty ? "true" : "false"}>
-          {result.dirty ? (
+        <div className="opened" data-dirty={result.dirty || result.edited ? "true" : "false"}>
+          {badge ? (
             <p className="dirty-badge" role="status">
-              Ids stamped on import — unsaved (ADR 0015).
+              {badge}
             </p>
           ) : null}
-          <BlockTree nodes={result.file.body} onDescend={onDescend} />
+          {result.file.body.length === 0 ? (
+            <StartBody editor={editor} />
+          ) : (
+            <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
+          )}
         </div>
       );
+    }
     case "unregistered-types":
       return <Refusal heading="Unregistered step types" message={result.message} />;
     case "duplicate-ids":
@@ -104,6 +139,23 @@ function FrameView({ frame, onDescend }: { frame: Frame; onDescend: (ref: string
     case "invalid":
       return <Refusal heading="Cannot open the file" message={result.message} />;
   }
+}
+
+/**
+ * The empty-body affordance (§ Adding … and the empty canvas): a start-a-body prompt plus the file
+ * body's own open socket. Arm a kind in the palette and the socket appears; click it to seed the body.
+ */
+function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
+  return (
+    <div className="start-body" role="region" aria-label="Start a body">
+      <p className="start-body-hint">Empty body. Pick a step or block from the palette to start it.</p>
+      {editor.socketOpen("sequence") ? (
+        <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(null)}>
+          + add {editor.armedKind} here
+        </button>
+      ) : null}
+    </div>
+  );
 }
 
 /** A legible refusal banner. The message keeps its line breaks (the aggregate lists one offender per line). */
