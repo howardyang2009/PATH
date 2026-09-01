@@ -5,19 +5,20 @@ export interface AppShellProps {
   palette: ReactNode;
   /** The centre surface: the node canvas the workflow body is authored on. */
   canvas: ReactNode;
+  /** The right rail: the properties pane that edits the selected node (or the file) (#369). */
+  pane: ReactNode;
 }
 
 /**
  * The Designer app frame, a peer of the Viewer's shell but never an import of it (ADR 0028). The
- * tracer-bullet layout (#366) is two landmark regions: the **palette** rail on the left and the
- * **canvas** at the centre. It is deliberately thinner than the spec's full authoring surface — no
- * properties pane, no file breadcrumb, no open/save/run — because those graduate in later tickets. The
- * frame exists so the empty canvas and the palette shell load at `/designer/`.
+ * layout is three landmark regions: the **palette** rail on the left, the **canvas** at the centre, and
+ * (from #369) the **properties** pane on the right. Save and run still graduate in later tickets. The
+ * frame exists so the empty canvas, the palette, and the pane load at `/designer/`.
  *
  * The brand strip says `designer · authoring`, the counterpart to the Viewer's `viewer · read-only`,
  * so the two peer surfaces are told apart at a glance.
  */
-export function AppShell({ palette, canvas }: AppShellProps) {
+export function AppShell({ palette, canvas, pane }: AppShellProps) {
   return (
     <div className="shell">
       <header className="topbar">
@@ -29,6 +30,9 @@ export function AppShell({ palette, canvas }: AppShellProps) {
           {palette}
         </section>
         <main className="stage">{canvas}</main>
+        <aside className="pane-rail" role="region" aria-label="Properties">
+          {pane}
+        </aside>
       </div>
     </div>
   );

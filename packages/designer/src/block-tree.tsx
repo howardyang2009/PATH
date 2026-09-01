@@ -1,8 +1,10 @@
-import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { WorkflowNode } from "@path/schema";
 import { summarizeCondition } from "./condition-summary.js";
+import { ConflictMarker } from "./conflict-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
+import { useSelection } from "./selection-context.js";
 
 /**
  * The block-grammar render of a `path/workflow` body. Read-only in #367; **editable** in #368 when an
@@ -132,6 +134,25 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
   };
 }
 
+/**
+ * The single-click selection props for a block (#369): a click reports the node's id to the selection
+ * context (populating the properties pane), unless it landed on a control or socket button — those own
+ * their action and must not also select. A selected block carries `data-selected` for the highlight. On
+ * a read-only render (no selection context, e.g. #367) it returns nothing, so the block stays inert.
+ */
+function useSelectable(node: WorkflowNode): { "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
+  const selection = useSelection();
+  if (!selection) return {};
+  return {
+    "data-selected": selection.selectedId === node.id ? "true" : undefined,
+    onClick: (event: MouseEvent): void => {
+      if ((event.target as HTMLElement).closest("button")) return;
+      event.stopPropagation();
+      selection.onSelect(node.id);
+    },
+  };
+}
+
 function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
   switch (node.type) {
     case "workflow":
@@ -160,9 +181,11 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
       data-node-type={node.type}
       tabIndex={editor ? 0 : undefined}
       onKeyDown={deleteKeyHandler(node, editor)}
+      {...useSelectable(node)}
     >
       <span className="chip">{leafChip(node.type)}</span>
       <span className="node-name">{node.name}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -180,10 +203,12 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
       title="Double-click to open the referenced file"
       onDoubleClick={() => onDescend(node.ref)}
       onKeyDown={deleteKeyHandler(node, editor)}
+      {...useSelectable(node)}
     >
       <span className="chip">WORKFLOW</span>
       <span className="node-name">{node.name}</span>
       <span className="ref-path">{node.ref}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -198,10 +223,12 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
       data-node-type="checkpoint"
       tabIndex={editor ? 0 : undefined}
       onKeyDown={deleteKeyHandler(node, editor)}
+      {...useSelectable(node)}
     >
       <span className="chip">CHECKPOINT</span>
       <span className="node-name">{node.name}</span>
       <span className="summary">assert {summarizeCondition(node.condition)}</span>
+      <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
   );
@@ -216,9 +243,11 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
       data-node-type={node.type}
       tabIndex={editor ? 0 : undefined}
       onKeyDown={deleteKeyHandler(node, editor)}
+      {...useSelectable(node)}
     >
       <div className="c-head">
         {head}
+        <ConflictMarker id={node.id} />
         <NodeControls node={node} editor={editor} />
       </div>
       <div className="c-mouth">{children}</div>

@@ -47,10 +47,17 @@ body {
   font-size: var(--fs-sm);
 }
 
-/* Palette rail (left) │ canvas stage (centre). Fixed rail, fluid stage. */
+/* Palette rail (left) │ canvas stage (centre) │ properties pane (right). Fixed rails, fluid stage. */
 .panes {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  grid-template-columns: 280px 1fr 320px;
+  min-height: 0;
+}
+
+.pane-rail {
+  border-left: 1px solid var(--border);
+  background: var(--surface);
+  overflow-y: auto;
   min-height: 0;
 }
 
@@ -422,6 +429,292 @@ body {
   display: flex;
   gap: 8px;
   margin-top: 10px;
+}
+
+/* Selected block — the one the properties pane edits (#369). */
+.node-block[data-selected="true"] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/* ── Properties pane (#369) ──────────────────────────────────────────────────────────────────────── */
+
+.pane {
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pane-idle,
+.pane-hint {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.pane-role {
+  margin: 0;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+}
+
+.pane-explain {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.pane-divider {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: 2px 0;
+  width: 100%;
+}
+
+.pane-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pane-field-inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-label {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.pane-input {
+  font: inherit;
+  width: 100%;
+  padding: 5px 7px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--card-bg, var(--surface));
+  color: var(--text);
+}
+
+.pane-input[aria-invalid="true"] {
+  border-color: var(--k-workflow);
+}
+
+.pane-json {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  white-space: pre;
+}
+
+.pane-id-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.pane-id {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  word-break: break-all;
+  flex: 1;
+}
+
+.pane-rekey-confirm {
+  display: inline-flex;
+  gap: 6px;
+}
+
+.pane-btn {
+  font: inherit;
+  font-size: var(--fs-xs);
+  padding: 3px 8px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.pane-btn:hover {
+  border-color: var(--text-muted);
+}
+
+.pane-btn-danger {
+  color: var(--k-workflow);
+  border-color: var(--k-workflow);
+}
+
+.pane-warn {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--k-workflow);
+}
+
+.pane-error {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--k-workflow);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* ── Envelope regions: config inheritance, input wiring, context writes (#370) ─────────────────────── */
+
+.pane-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.pane-section-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.pane-config-row {
+  gap: 3px;
+}
+
+.pane-config-inherited,
+.pane-config-local,
+.pane-publish-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pane-config-value {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text);
+  flex: 1;
+  word-break: break-all;
+}
+
+/* An inherited key is ghosted read-only until an Override makes it local (§ Config inheritance display). */
+.pane-ghost {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+.pane-config-origin {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.pane-config-add {
+  margin-top: 2px;
+}
+
+.pane-publish-eq {
+  color: var(--text-muted);
+}
+
+.pane-suggest {
+  font-family: var(--font-mono);
+  word-break: break-all;
+}
+
+/* The typed condition builder — a labelled fieldset enclosing the operator + operand controls (§ ADR 0022). */
+.cond-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 10px 10px;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cond-legend {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--accent);
+  padding: 0 4px;
+}
+
+.cond-node {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cond-op {
+  align-self: flex-start;
+  width: auto;
+  min-width: 8em;
+}
+
+.cond-operand {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.cond-range,
+.cond-scalar-controls {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.cond-scalar-kind {
+  width: auto;
+  flex: none;
+}
+
+/* A combinator's children are indented under it, so the tree structure reads at a glance. */
+.cond-children {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+}
+
+.cond-child,
+.cond-list-row {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+
+.cond-child > .cond-node,
+.cond-list-row > .cond-scalar {
+  flex: 1;
+}
+
+.cond-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cond-add,
+.cond-remove {
+  align-self: flex-start;
+}
+
+/* The node validation marker for a publish conflict (§ Context reads and writes). */
+.node-marker {
+  flex: none;
+  color: var(--k-workflow);
+  font-size: var(--fs-sm);
+  cursor: help;
 }
 
 /* The empty-body start affordance (§ Adding … and the empty canvas). */

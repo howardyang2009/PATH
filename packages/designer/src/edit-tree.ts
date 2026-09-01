@@ -1,4 +1,4 @@
-import type { BranchArm, WorkflowFile, WorkflowNode } from "@path/schema";
+import type { BranchArm, Condition, WorkflowFile, WorkflowNode } from "@path/schema";
 
 /**
  * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
@@ -112,6 +112,39 @@ function mapChildBodies(node: WorkflowNode, fn: (body: WorkflowNode[]) => Workfl
 /** The file with its body replaced. */
 function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
   return { ...file, body };
+}
+
+// ── Replace a node's content in place ───────────────────────────────────────────────────────────
+
+/**
+ * Replace the node `id` (anywhere in the tree) by `next`, keeping its position and its container's
+ * shape. This is the properties pane's commit primitive (#369): the pane hands back a whole new node
+ * object with the edited content, and the spine down to it is rebuilt while every sibling keeps its
+ * reference. Unlike the structure ops, this one **may change the node's own `id`** — the pane's
+ * confirmation-gated re-key (ADR 0015) passes a `next` carrying a fresh id — so the match is on the
+ * *old* `id` and the replacement is whatever `next` carries. A missing `id` is a no-op.
+ */
+export function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
+  if (!locate(file, id)) return file;
+  return withBody(file, updateNode(file.body, id, () => next));
+}
+
+/**
+ * Set a branch arm's `when` condition, keeping its occupant node untouched (#370, designer-spec
+ * § Structure on the canvas, content in the pane). An arm owns its `when` (not the Branch node), and the
+ * pane edits it while the arm's **occupant** is selected — so the commit lands on the parent branch's
+ * `arms[armIndex].when`, not on the selected node. A missing branch, a non-branch owner, or an
+ * out-of-range arm is a no-op.
+ */
+export function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when: Condition): WorkflowFile {
+  return withBody(
+    file,
+    updateNode(file.body, branchId, (owner) => {
+      if (owner.type !== "branch" || armIndex < 0 || armIndex >= owner.arms.length) return owner;
+      const arms = owner.arms.map((arm, i) => (i === armIndex ? { ...arm, when } : arm));
+      return { ...owner, arms };
+    }),
+  );
 }
 
 // ── Add into a list socket ────────────────────────────────────────────────────────────────────────
