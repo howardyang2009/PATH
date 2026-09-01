@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
@@ -27,9 +27,19 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const active = session.frames[session.frames.length - 1];
   const activePath = active?.path;
   const depth = session.frames.length;
-  // A new active file (descend, pop, or open) deselects — the previous file's node ids mean nothing here.
+  // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
+  // node ids mean nothing here. The *first* population (no file → the initial file) is not a switch:
+  // nothing was selected yet, so resetting then is a no-op that only races an interaction landing right
+  // as the file opens. So track the previous frame and reset only on a genuine change between two states.
+  const prevFrame = useRef<{ path?: string; depth: number } | null>(null);
   useEffect(() => {
-    setSelectedId(null);
+    const prev = prevFrame.current;
+    // Reset only when we were already on a real file and it changed — never on the first population from
+    // "no file" (`prev.path` undefined), which is the transition that raced a just-made selection.
+    if (prev !== null && prev.path !== undefined && (prev.path !== activePath || prev.depth !== depth)) {
+      setSelectedId(null);
+    }
+    prevFrame.current = { path: activePath, depth };
   }, [activePath, depth]);
 
   const openedFile =
