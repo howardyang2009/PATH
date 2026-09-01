@@ -11,6 +11,7 @@ import { handleGetRunBlob } from "./routes/get-run-blob.js";
 import { handleGetRunEvents } from "./routes/get-run-events.js";
 import { handleListRuns } from "./routes/list-runs.js";
 import { handleGetWorkflows } from "./routes/get-workflows.js";
+import { handleGetWorkflowFile } from "./routes/get-workflow-file.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
@@ -85,6 +86,11 @@ async function handleRequest(
 
     if (req.method === "GET" && pathname === "/v0/workflows") {
       await handleGetWorkflows(res, ctx);
+      return;
+    }
+
+    if (req.method === "GET" && pathname === "/v0/workflows/file") {
+      handleGetWorkflowFile(res, ctx, url.searchParams.get("path"));
       return;
     }
 
