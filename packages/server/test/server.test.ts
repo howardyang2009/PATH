@@ -393,6 +393,52 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect((await listRuns("?status=bogus")).status).toBe(400);
   });
 
+  it("GET /v0/runs?workflow_id filters server-side to one workflow, composing with limit and status", async () => {
+    // Two roots of one workflow (`two-binary-steps`, succeeds) and one of another (`failing-step`) — a
+    // set with more than one distinct `workflow_id`, so the filter has something to pick out (#365).
+    const wfIdBinary = "418fca45-8a32-4069-8b17-f3f43ce7c30f";
+    const first = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(first.root_run_id);
+    const other = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(other.root_run_id);
+    const second = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(second.root_run_id);
+
+    // The filter alone: only the two `two-binary-steps` roots, most-recent-first, and past the `failing-step`
+    // root that sits between them in the unfiltered window.
+    const filtered = (await (await listRuns(`?workflow_id=${wfIdBinary}`)).json()) as { runs: RootRunSummary[] };
+    expect(filtered.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
+    expect(filtered.runs.every((r) => r.workflow_id === wfIdBinary)).toBe(true);
+
+    // Composes with `limit` (the newer of the two) and with `status` (both succeeded; the failing one is excluded).
+    const limited = (await (await listRuns(`?workflow_id=${wfIdBinary}&limit=1`)).json()) as { runs: RootRunSummary[] };
+    expect(limited.runs.map((r) => r.run_id)).toEqual([second.root_run_id]);
+    const succeeded = (await (
+      await listRuns(`?workflow_id=${wfIdBinary}&status=succeeded`)
+    ).json()) as { runs: RootRunSummary[] };
+    expect(succeeded.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
+    const failed = (await (await listRuns(`?workflow_id=${wfIdBinary}&status=failed`)).json()) as {
+      runs: RootRunSummary[];
+    };
+    expect(failed.runs).toHaveLength(0);
+
+    // An unknown workflow_id matches nothing rather than erroring — same as the CLI's pass-through.
+    const none = (await (
+      await listRuns("?workflow_id=00000000-0000-0000-0000-000000000000")
+    ).json()) as { runs: RootRunSummary[] };
+    expect(none.runs).toHaveLength(0);
+
+    // Omitted, the route is unchanged: every root run, both workflows.
+    const all = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+    expect(all.runs).toHaveLength(3);
+  });
+
   it("404s GET for an unknown root_run_id", async () => {
     const res = await getRun("00000000-0000-0000-0000-000000000000");
     expect(res.status).toBe(404);
