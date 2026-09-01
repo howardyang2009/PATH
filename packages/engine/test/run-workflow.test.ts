@@ -232,7 +232,7 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
 
 describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => {
   it("acceptance: launches a branch, discharges {} to the successor at once, and waits for the branch at the exit barrier", async () => {
-    // One detached branch that takes 80ms, then an instant successor. Launch-and-continue means the
+    // One detached branch that takes 1s, then an instant successor. Launch-and-continue means the
     // successor runs against the block's `{}` output without waiting for the branch; the enclosing-run
     // barrier means the run does not finish until the branch is terminal (do-not-wait-join.md §2/§1.1).
     const file = parseWorkflowFile(stampGuids({
@@ -252,7 +252,7 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
                   type: "binary",
                   id: "slow-notify", name: "slow-notify",
                   command: "node",
-                  args: ["-e", "setTimeout(()=>process.stdout.write('SENT'),80)"],
+                  args: ["-e", "setTimeout(()=>process.stdout.write('SENT'),1000)"],
                 },
               ],
             },
@@ -286,7 +286,9 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     const finishedIndexOf = (nodeName: string) =>
       all.findIndex((o) => o.type === "step-finished" && o.runId === runIdOf(nodeName));
 
-    // Launch-and-continue: the successor finished before the 80ms branch, so it did not wait on it.
+    // Launch-and-continue: the successor finished before the 1s branch, so it did not wait on it. The
+    // wide margin keeps the ordering deterministic even when a loaded CI runner slows the successor's
+    // own process spawn (an 80ms margin raced and flaked).
     expect(finishedIndexOf("after")).toBeLessThan(finishedIndexOf("slow-notify"));
 
     // Barrier: the detached branch reached `succeeded`, and it did so before the root run finished —
