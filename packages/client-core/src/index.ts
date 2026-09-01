@@ -42,6 +42,13 @@ export {
   type StartRunOptions,
   type WorkflowFileRaw,
   type FetchLike,
+  type WorkflowLease,
+  type AcquireLockInput,
+  type LeaseOpInput,
+  type AcquireLockResult,
+  type HeartbeatResult,
+  type PutWorkflowInput,
+  type PutWorkflowResult,
 } from "./api-client.js";
 
 export {

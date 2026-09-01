@@ -44,6 +44,77 @@ export class PathApiError extends Error {
 export interface ListRunsQuery {
   limit?: number;
   status?: RunStatus;
+  /**
+   * Scope the list to one workflow's `id` (ADR 0015 identity, not path) — the Designer's per-workflow
+   * history (#365, server-api-v0.md §3). A server-side `WHERE workflow_id = ?` past the latest-N window,
+   * so it composes with `limit`/`status` and returns the *complete* history for that workflow, not a
+   * filtered window. An empty string is treated as omitted by the route.
+   */
+  workflowId?: string;
+}
+
+/**
+ * The Designer edit-lock lease, server-authored (ADR 0017). `session_id` is client-minted; the three
+ * timestamps are server-stamped, and `expires_at = heartbeat_at + TTL` is computed by the server, never
+ * trusted from the client. The client presents only its opaque `session_id` to heartbeat, release, or
+ * take over.
+ */
+export interface WorkflowLease {
+  session_id: string;
+  acquired_at: string;
+  heartbeat_at: string;
+  expires_at: string;
+}
+
+/** The camelCase input to a lock acquire/takeover (`POST /v0/workflows/lock`, ADR 0017). */
+export interface AcquireLockInput {
+  /** The workflow's `/`-bearing relative path — the body field, not a URL segment (ADR 0017). */
+  workflowPath: string;
+  /** The client-minted UUIDv4 identifying this editing session. */
+  sessionId: string;
+  /** `true` overwrites a live marker held by another session — gated behind an explicit user confirm. */
+  takeover?: boolean;
+}
+
+/** The camelCase input to a heartbeat or a release — the two lease ops that only renew or free. */
+export interface LeaseOpInput {
+  workflowPath: string;
+  sessionId: string;
+}
+
+/**
+ * The outcome of an acquire. `granted` carries the fresh lease; `held-by-other` is the `409` a **live**
+ * marker under a different session takes — it carries the holder's `expires_at` so the UI can count down
+ * and offer takeover. A `409` is a normal outcome here, not a `PathApiError`: only a `404` (a path that
+ * escapes the root) and other non-2xx statuses throw.
+ */
+export type AcquireLockResult =
+  | { status: "granted"; lease: WorkflowLease }
+  | { status: "held-by-other"; expiresAt: string | null };
+
+/**
+ * The outcome of a heartbeat. `renewed` carries the extended lease; `lost` is the `409` a marker that
+ * was reclaimed (expired) or taken over returns — the client stops beating and offers re-acquire.
+ */
+export type HeartbeatResult = { status: "renewed"; lease: WorkflowLease } | { status: "lost" };
+
+/**
+ * The camelCase input to `PUT /v0/workflows` (ADR 0016). `workflow` is the whole workflow object as
+ * authored (snake_case wire, key order preserved by the server). `ifMatch` carries the ETag from the
+ * opened bytes: present, the write is overwrite-only and a changed file is a `412`; absent, the write is
+ * create-only (a `412` if the file already exists — there is no blind last-writer-wins).
+ */
+export interface PutWorkflowInput {
+  workflowPath: string;
+  workflow: JsonValue;
+  ifMatch?: string;
+}
+
+/** The `PUT /v0/workflows` success reply (server-api-v0.md §7): the written path, its `id`, and the new ETag. */
+export interface PutWorkflowResult {
+  relativePath: string;
+  id: string;
+  etag: string;
 }
 
 /**
@@ -109,6 +180,7 @@ export class PathApiClient {
     const params = new URLSearchParams();
     if (query.limit !== undefined) params.set("limit", String(query.limit));
     if (query.status !== undefined) params.set("status", query.status);
+    if (query.workflowId !== undefined) params.set("workflow_id", query.workflowId);
     const qs = params.toString();
     return this.getJson<ListRunsResponse>(`/v0/runs${qs ? `?${qs}` : ""}`);
   }
@@ -227,6 +299,87 @@ export class PathApiClient {
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);
     return { text, etag: res.headers.get("ETag") };
+  }
+
+  /**
+   * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the workflow write door. Sends the path in the
+   * body (no `%2F` URL encoding) and the workflow object as authored. When `ifMatch` is given it rides
+   * as the `If-Match` header, the overwrite precondition: a `412` (`PathApiError`) says the file changed
+   * or vanished since it was read — the caller's stale-write conflict to resolve. A `201`/`200` reply
+   * carries the written `relative_path`, the workflow `id`, and the new `etag` for the next save. A `400`
+   * (validation or a duplicate id) and a `404` (path escapes the root) also arrive as `PathApiError`s.
+   */
+  async putWorkflow(input: PutWorkflowInput): Promise<PutWorkflowResult> {
+    const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
+    if (input.ifMatch !== undefined) headers["If-Match"] = input.ifMatch;
+    const res = await this.fetch(this.url("/v0/workflows"), {
+      method: "PUT",
+      headers,
+      body: JSON.stringify({ workflow_path: input.workflowPath, workflow: input.workflow }),
+    });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
+    const parsed = JSON.parse(text) as { relative_path: string; id: string; etag: string };
+    return { relativePath: parsed.relative_path, id: parsed.id, etag: parsed.etag };
+  }
+
+  /**
+   * `POST /v0/workflows/lock` (ADR 0017): acquire or take over the edit lease for one file. A `409` held
+   * by another live session is a normal `held-by-other` result carrying the holder's `expires_at`, not a
+   * throw — the UI counts it down and offers a confirmation-gated `takeover: true`. Only a `404` (a path
+   * that escapes the project root) and other non-2xx statuses raise `PathApiError`.
+   */
+  async acquireLock(input: AcquireLockInput): Promise<AcquireLockResult> {
+    const body: Record<string, unknown> = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    if (input.takeover !== undefined) body.takeover = input.takeover;
+    const { status, text } = await this.postForResult("/v0/workflows/lock", body);
+    if (status === 200) return { status: "granted", lease: JSON.parse(text) as WorkflowLease };
+    if (status === 409) {
+      const parsed = JSON.parse(text) as { expires_at?: string };
+      return { status: "held-by-other", expiresAt: parsed.expires_at ?? null };
+    }
+    throw toApiError(status, text);
+  }
+
+  /**
+   * `POST /v0/workflows/lock/heartbeat` (ADR 0017): renew the lease. A `409` (the marker was reclaimed
+   * after expiry, or taken over by another session) is a normal `lost` result, not a throw: the caller
+   * stops beating and warns "editing lease lost" with a re-acquire affordance. Other non-2xx throw.
+   */
+  async heartbeatLock(input: LeaseOpInput): Promise<HeartbeatResult> {
+    const body = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const { status, text } = await this.postForResult("/v0/workflows/lock/heartbeat", body);
+    if (status === 200) return { status: "renewed", lease: JSON.parse(text) as WorkflowLease };
+    if (status === 409) return { status: "lost" };
+    throw toApiError(status, text);
+  }
+
+  /**
+   * `POST /v0/workflows/lock/release` (ADR 0017): free the lease. Idempotent (`200` even when the marker
+   * is already gone); the server deletes it only when `session_id` matches, so a stale beacon can never
+   * free another session's lease. This is the `fetch`-driven release for an in-app close; a tab unload
+   * uses `navigator.sendBeacon` against `url("/v0/workflows/lock/release")` instead, which is POST-only.
+   */
+  async releaseLock(input: LeaseOpInput): Promise<void> {
+    const body = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const { status, text } = await this.postForResult("/v0/workflows/lock/release", body);
+    if (status < 200 || status >= 300) throw toApiError(status, text);
+  }
+
+  /**
+   * A JSON POST whose non-2xx is *not* automatically a throw — the caller decides which statuses are
+   * normal outcomes (a lock `409`) and which are errors. Returns the raw status and body text; the lock
+   * methods branch on it, and every unexpected status still routes through `toApiError`. All three lock
+   * routes are POST (ADR 0017), so the verb is fixed rather than a flag — the same "reading the helper
+   * tells you the request shape" stance `post`/`postJson` take.
+   */
+  private async postForResult(path: string, body: unknown): Promise<{ status: number; text: string }> {
+    const res = await this.fetch(this.url(path), {
+      method: "POST",
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    return { status: res.status, text: await res.text() };
   }
 
   private async getJson<T>(path: string): Promise<T> {

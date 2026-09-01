@@ -4,6 +4,8 @@ import { summarizeCondition } from "./condition-summary.js";
 import { ConflictMarker } from "./conflict-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
+import { RUN_STATUS_GLYPH } from "./run/run-status.js";
+import { useNodeRunStatus } from "./run/run-projection.js";
 import { useSelection } from "./selection-context.js";
 
 /**
@@ -153,6 +155,25 @@ function useSelectable(node: WorkflowNode): { "data-selected"?: "true"; onClick?
   };
 }
 
+/**
+ * The canvas run projection for one node (#372, surface 6): a status glyph+label badge when the watched
+ * run touched this node. One node produces many runs, so the fold is `run-projection.ts`'s; this only
+ * draws the folded status. Absent when no run is watched or the node has not run — the block then reads
+ * exactly as it did before a run was selected. `data-run-status` tints the badge from the stylesheet.
+ */
+function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
+  const status = useNodeRunStatus(id);
+  if (status === null) return null;
+  return (
+    <span className="node-run-badge" data-run-status={status} data-testid={`node-run-badge-${id}`}>
+      <span className="node-run-badge-glyph" aria-hidden="true">
+        {RUN_STATUS_GLYPH[status]}
+      </span>
+      {status}
+    </span>
+  );
+}
+
 function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
   switch (node.type) {
     case "workflow":
@@ -185,6 +206,7 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
     >
       <span className="chip">{leafChip(node.type)}</span>
       <span className="node-name">{node.name}</span>
+      <NodeRunBadge id={node.id} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -208,6 +230,7 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
       <span className="chip">WORKFLOW</span>
       <span className="node-name">{node.name}</span>
       <span className="ref-path">{node.ref}</span>
+      <NodeRunBadge id={node.id} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -228,6 +251,7 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
       <span className="chip">CHECKPOINT</span>
       <span className="node-name">{node.name}</span>
       <span className="summary">assert {summarizeCondition(node.condition)}</span>
+      <NodeRunBadge id={node.id} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -247,6 +271,7 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
     >
       <div className="c-head">
         {head}
+        <NodeRunBadge id={node.id} />
         <ConflictMarker id={node.id} />
         <NodeControls node={node} editor={editor} />
       </div>
