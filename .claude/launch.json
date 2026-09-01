@@ -6,6 +6,12 @@
       "runtimeExecutable": "pnpm",
       "runtimeArgs": ["--filter", "@path/viewer", "dev", "--port", "5173"],
       "port": 5173
+    },
+    {
+      "name": "designer",
+      "runtimeExecutable": "pnpm",
+      "runtimeArgs": ["--filter", "@path/designer", "dev", "--port", "5174"],
+      "port": 5174
     }
   ]
 }
