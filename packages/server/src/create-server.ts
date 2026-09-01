@@ -17,6 +17,11 @@ import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
 import { handlePutWorkflow } from "./routes/put-workflow.js";
+import {
+  handleWorkflowLock,
+  handleWorkflowLockHeartbeat,
+  handleWorkflowLockRelease,
+} from "./routes/workflow-lock.js";
 import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
@@ -98,6 +103,24 @@ async function handleRequest(
 
     if (req.method === "GET" && pathname === "/v0/workflows/file") {
       handleGetWorkflowFile(res, ctx, url.searchParams.get("path"));
+      return;
+    }
+
+    // The Designer edit-lock lease (#364, ADR 0017): three POST routes so `navigator.sendBeacon` can
+    // drive release from `beforeunload`. Each carries the `/`-bearing path in the body and reuses the
+    // write door's confine/symlink stance; each is already origin-gated centrally above.
+    if (req.method === "POST" && pathname === "/v0/workflows/lock") {
+      await handleWorkflowLock(req, res, ctx);
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/v0/workflows/lock/heartbeat") {
+      await handleWorkflowLockHeartbeat(req, res, ctx);
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/v0/workflows/lock/release") {
+      await handleWorkflowLockRelease(req, res, ctx);
       return;
     }
 
