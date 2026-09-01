@@ -15,6 +15,7 @@ import { handleGetWorkflowFile } from "./routes/get-workflow-file.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
+import { handlePutWorkflow } from "./routes/put-workflow.js";
 import { serveStatic } from "./serve-static.js";
 
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
@@ -86,6 +87,11 @@ async function handleRequest(
 
     if (req.method === "GET" && pathname === "/v0/workflows") {
       await handleGetWorkflows(res, ctx);
+      return;
+    }
+
+    if (req.method === "PUT" && pathname === "/v0/workflows") {
+      await handlePutWorkflow(req, res, ctx);
       return;
     }
 

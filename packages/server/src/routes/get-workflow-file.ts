@@ -1,41 +1,10 @@
-import { createHash } from "node:crypto";
-import { lstatSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
-import { isAbsolute, join, relative, resolve, sep } from "node:path";
+import { resolve } from "node:path";
+import { confineToProjectRoot } from "../confine.js";
+import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
 import type { RunsRouteContext } from "./post-runs.js";
-
-/**
- * Resolve `relPath` to an absolute path *inside* `projectDir`, or `undefined` when it must not be
- * read. This is the read/write door's confinement (server-api-v0.md §7, §7.1), stricter than
- * discovery's list-time skip:
- *
- * - Lexical `resolve` against the fixed root, then a `relative` check — a path that escapes the root
- *   (`..`, or an absolute path) yields `undefined`, the same stance `prepareWorkflow` takes.
- * - A per-**component** `lstat`: if any segment of the confined path is a symlink, `undefined`. A
- *   symlinked parent directory could otherwise redirect the read outside the root even when the
- *   lexical path stays inside, so the refusal is to *traverse* a symlink, not merely to list one.
- *
- * A missing component (`lstat` throws) also yields `undefined`: there is nothing to read, and the
- * caller folds it into the same 404 as an escape. `relFromRoot === ""` (the root itself) is refused
- * — it is a directory, not a file.
- */
-export function confineToProjectRoot(projectDir: string, relPath: string): string | undefined {
-  const absPath = resolve(projectDir, relPath);
-  const relFromRoot = relative(projectDir, absPath);
-  if (relFromRoot === "" || relFromRoot.startsWith("..") || isAbsolute(relFromRoot)) return undefined;
-
-  let current = projectDir;
-  for (const segment of relFromRoot.split(sep)) {
-    current = join(current, segment);
-    try {
-      if (lstatSync(current).isSymbolicLink()) return undefined;
-    } catch {
-      return undefined;
-    }
-  }
-  return absPath;
-}
 
 /**
  * `GET /v0/workflows/file?path=<relative_path>` (server-api-v0.md §7.1): the raw read half of the
@@ -74,7 +43,6 @@ export function handleGetWorkflowFile(res: ServerResponse, ctx: RunsRouteContext
     return;
   }
 
-  const etag = `"${createHash("sha256").update(bytes).digest("hex")}"`;
-  res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
+  res.writeHead(200, { "Content-Type": "application/json", ETag: strongEtag(bytes) });
   res.end(bytes);
 }

@@ -1,4 +1,5 @@
 export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-workflow-tree.js";
+export { validateWorkflowFile, type ValidateWorkflowFileResult } from "./validate-workflow-file.js";
 export { type LoadedStepPluginRegistry } from "./plugin/scan.js";
 export { runWorkflow, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
 export { openProject, type OpenProjectResult, type Project, type ProjectRunOptions, type ResumeResult } from "./project.js";

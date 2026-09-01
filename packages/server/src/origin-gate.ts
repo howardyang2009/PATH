@@ -19,8 +19,8 @@ import { sendError } from "./http-json.js";
  * (server-api-v0.md §0).
  */
 
-/** Duplicate request headers arrive as an array; the gate reads the first value. */
-function firstHeader(value: string | string[] | undefined): string | undefined {
+/** Duplicate request headers arrive as an array; read the first value. Shared with the write door. */
+export function firstHeader(value: string | string[] | undefined): string | undefined {
   return Array.isArray(value) ? value[0] : value;
 }
 
