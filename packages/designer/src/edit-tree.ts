@@ -114,6 +114,21 @@ function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
   return { ...file, body };
 }
 
+// ── Replace a node's content in place ───────────────────────────────────────────────────────────
+
+/**
+ * Replace the node `id` (anywhere in the tree) by `next`, keeping its position and its container's
+ * shape. This is the properties pane's commit primitive (#369): the pane hands back a whole new node
+ * object with the edited content, and the spine down to it is rebuilt while every sibling keeps its
+ * reference. Unlike the structure ops, this one **may change the node's own `id`** — the pane's
+ * confirmation-gated re-key (ADR 0015) passes a `next` carrying a fresh id — so the match is on the
+ * *old* `id` and the replacement is whatever `next` carries. A missing `id` is a no-op.
+ */
+export function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
+  if (!locate(file, id)) return file;
+  return withBody(file, updateNode(file.body, id, () => next));
+}
+
 // ── Add into a list socket ────────────────────────────────────────────────────────────────────────
 
 /**

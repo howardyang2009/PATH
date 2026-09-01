@@ -140,7 +140,7 @@ function unregisteredTypesMessage(absent: AbsentStepType[]): string {
  * possible nor needed here; the `.strict()` member still rejects an unknown field key and an unknown
  * worker name. `config` is left empty (passthrough via the member factory).
  */
-function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
+export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   const registry: StepPluginRegistry = {};
   for (const plugin of plugins) {
     const fields: Record<string, z.ZodTypeAny> = {};

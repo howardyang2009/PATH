@@ -10,6 +10,7 @@ import {
   locate,
   moveNode,
   removeElse,
+  replaceNode,
   swapSingleSlot,
 } from "../src/edit-tree.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "../src/node-factory.js";
@@ -197,5 +198,29 @@ describe("edit-tree — arm and duplicate (#368)", () => {
     expect(g.body[2]!.id).toBe(clone.id);
     expect(new Set(ids(g)).size).toBe(ids(g).length); // all ids still distinct
     expect(new Set(names(g)).size).toBe(names(g).length); // all names still distinct
+  });
+});
+
+describe("edit-tree — replaceNode (#369: the pane's content commit)", () => {
+  it("replaces a deep node's content, preserving its siblings and their ids", () => {
+    const f = fixture();
+    const armOccupant = leaf(50, "arm1-renamed");
+    const g = replaceNode(f, uuid(10), armOccupant);
+    const branch = g.body[3] as { arms: { node: WorkflowNode }[] };
+    expect(branch.arms[0]!.node.name).toBe("arm1-renamed");
+    expect(branch.arms[1]!.node.id).toBe(uuid(11)); // sibling untouched
+    expect(g.body[0]!.id).toBe(uuid(2)); // top-level sibling untouched
+  });
+
+  it("re-keys a node — the match is on the old id, the replacement carries the new one", () => {
+    const f = fixture();
+    const g = replaceNode(f, uuid(2), { ...(f.body[0] as WorkflowNode), id: uuid(99) });
+    expect(g.body[0]!.id).toBe(uuid(99));
+    expect(locate(g, uuid(2))).toBeNull();
+  });
+
+  it("is a no-op for an absent id (returns the same file reference)", () => {
+    const f = fixture();
+    expect(replaceNode(f, uuid(999), leaf(60, "x"))).toBe(f);
   });
 });

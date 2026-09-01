@@ -1,9 +1,11 @@
+import type { MouseEvent } from "react";
 import type { WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
+import { useSelection } from "./selection-context.js";
 import type { Frame, OpenSession } from "./use-open-file.js";
 
 /**
@@ -45,9 +47,30 @@ export function Canvas({
   return (
     <div className="canvas" role="region" aria-label="Workflow canvas">
       <Breadcrumb frames={frames} onCrumb={goTo} />
-      <div className="canvas-body">
+      <CanvasBody>
         <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} />
-      </div>
+      </CanvasBody>
+    </div>
+  );
+}
+
+/**
+ * The scrolling canvas body. A click that reaches it — i.e. the background, not a block, which stops
+ * the click's propagation — deselects, so the properties pane falls back to the file's own properties
+ * (#369, § Pane layout: an empty-canvas click shows the file's own properties).
+ */
+function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
+  const selection = useSelection();
+  // Deselect only on a true background click. A block stops its own click's propagation, so what
+  // reaches here is either the bare background or a bubbled control/socket button press — and a
+  // structure edit (reorder, delete, add) must not also drop the selection, so ignore button clicks.
+  const onClick = (event: MouseEvent): void => {
+    if ((event.target as HTMLElement).closest("button")) return;
+    selection?.onSelect(null);
+  };
+  return (
+    <div className="canvas-body" onClick={selection ? onClick : undefined}>
+      {children}
     </div>
   );
 }
