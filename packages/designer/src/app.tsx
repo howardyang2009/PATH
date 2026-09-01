@@ -1,11 +1,13 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
+import { EditingToolbar } from "./editing-toolbar.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { SelectionProvider } from "./selection-context.js";
-import { useOpenFile } from "./use-open-file.js";
+import { useEditLeases } from "./use-edit-leases.js";
+import { openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -42,11 +44,34 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     prevFrame.current = { path: activePath, depth };
   }, [activePath, depth]);
 
-  const openedFile =
-    active?.state.phase === "open" && active.state.result.status === "opened" ? active.state.result.file : null;
+  const openedResult = openedResultOf(active);
+  const openedFile = openedResult?.file ?? null;
+
+  // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
+  // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
+  // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
+  const leasedPaths = useMemo(
+    () => session.frames.filter((frame) => openedResultOf(frame) !== null).map((frame) => frame.path),
+    [session.frames],
+  );
+  const { leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
+  const dirty = openedResult ? Boolean(openedResult.edited || openedResult.dirty) : false;
 
   return (
     <AppShell
+      toolbar={
+        openedResult && activePath ? (
+          <EditingToolbar
+            saveState={session.saveState}
+            dirty={dirty}
+            onSave={session.save}
+            onReload={session.reloadActive}
+            lease={leases.get(activePath)}
+            onTakeover={() => takeover(activePath)}
+            onReacquire={() => reacquire(activePath)}
+          />
+        ) : undefined
+      }
       palette={<Palette plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />}
       canvas={
         <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>

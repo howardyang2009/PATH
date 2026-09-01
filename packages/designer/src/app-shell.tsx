@@ -7,6 +7,8 @@ export interface AppShellProps {
   canvas: ReactNode;
   /** The right rail: the properties pane that edits the selected node (or the file) (#369). */
   pane: ReactNode;
+  /** The top-bar actions: save, and the edit-lease status/banners (#371). Absent with no file open. */
+  toolbar?: ReactNode;
 }
 
 /**
@@ -18,12 +20,13 @@ export interface AppShellProps {
  * The brand strip says `designer · authoring`, the counterpart to the Viewer's `viewer · read-only`,
  * so the two peer surfaces are told apart at a glance.
  */
-export function AppShell({ palette, canvas, pane }: AppShellProps) {
+export function AppShell({ palette, canvas, pane, toolbar }: AppShellProps) {
   return (
     <div className="shell">
       <header className="topbar">
         <span className="brand">PATH</span>
         <span className="brand-sub">designer · authoring</span>
+        {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>
       <div className="panes">
         <section className="rail" aria-label="Palette">

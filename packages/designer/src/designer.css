@@ -733,3 +733,103 @@ body {
   margin: 0;
   font-size: var(--fs-sm);
 }
+
+/* ── Edit-lock lease + save toolbar (#371) ──────────────────────────────────────────────────────── */
+
+/* The toolbar rides at the right end of the top bar. */
+.topbar .toolbar {
+  margin-left: auto;
+}
+
+.editing-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
+.save-btn {
+  padding: 5px 14px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.save-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.save-status {
+  font-size: var(--fs-sm);
+  color: var(--status-succeeded-fg);
+}
+
+/* Save conflict/error and a lost lease read as a failure; a held-by-other reads as a caution. */
+.save-conflict,
+.save-error,
+.lease-lost,
+.lease-error {
+  max-width: 420px;
+  padding: 6px 10px;
+  font-size: var(--fs-sm);
+  color: var(--status-failed-fg);
+  background: var(--status-failed-bg);
+  border: 1px solid var(--status-failed-fg);
+  border-radius: 6px;
+}
+
+.save-conflict {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.save-conflict button {
+  padding: 3px 10px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.lease-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 6px 10px;
+  font-size: var(--fs-sm);
+  border-radius: 6px;
+}
+
+.lease-held-by-other {
+  color: var(--status-running-fg);
+  background: var(--status-running-bg);
+  border: 1px solid var(--status-running-fg);
+}
+
+.lease-banner button {
+  padding: 3px 10px;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.lease-countdown {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}

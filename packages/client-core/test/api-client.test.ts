@@ -275,6 +275,133 @@ describe("PathApiClient", () => {
     });
   });
 
+  it("PUT /v0/workflows sends the path + object in the body and the ETag as If-Match, returning the reply", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(JSON.stringify({ relative_path: "flows/main.workflow.json", id: "w1", etag: '"new"' }), {
+        status: 200,
+        headers: { "Content-Type": "application/json", ETag: '"new"' },
+      });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.putWorkflow({
+      workflowPath: "flows/main.workflow.json",
+      workflow: { format: "path/workflow@3", id: "w1", name: "main", body: [] },
+      ifMatch: '"old"',
+    });
+
+    expect(res).toEqual({ relativePath: "flows/main.workflow.json", id: "w1", etag: '"new"' });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
+    expect(inits[0]?.method).toBe("PUT");
+    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"old"');
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      workflow_path: "flows/main.workflow.json",
+      workflow: { format: "path/workflow@3", id: "w1", name: "main", body: [] },
+    });
+  });
+
+  it("putWorkflow omits If-Match when no ETag is given (create-only)", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ relative_path: "new.workflow.json", id: "w2", etag: '"e"' }, 201);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.putWorkflow({ workflowPath: "new.workflow.json", workflow: { body: [] } });
+    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBeUndefined();
+  });
+
+  it("putWorkflow surfaces a 412 stale-write conflict as a PathApiError carrying the status", async () => {
+    const stub = stubFetch(() => json({ error: { message: "precondition failed: the file changed since it was read" } }, 412));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.putWorkflow({ workflowPath: "f.workflow.json", workflow: { body: [] }, ifMatch: '"old"' })).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 412,
+    });
+  });
+
+  it("POST /v0/workflows/lock grants a lease, sending path + session_id (and takeover only when set)", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const lease = { session_id: "s1", acquired_at: "t0", heartbeat_at: "t0", expires_at: "t30" };
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json(lease, 200);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.acquireLock({ workflowPath: "f.workflow.json", sessionId: "s1" });
+    expect(res).toEqual({ status: "granted", lease });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock");
+    expect(inits[0]?.method).toBe("POST");
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({ workflow_path: "f.workflow.json", session_id: "s1" });
+  });
+
+  it("acquireLock passes takeover:true when a takeover is requested", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ session_id: "s1", acquired_at: "t0", heartbeat_at: "t0", expires_at: "t30" }, 200);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await client.acquireLock({ workflowPath: "f.workflow.json", sessionId: "s1", takeover: true });
+    expect(JSON.parse(inits[0]?.body as string)).toMatchObject({ takeover: true });
+  });
+
+  it("acquireLock returns held-by-other with the holder's expiry on a 409, not a throw", async () => {
+    const stub = stubFetch(() =>
+      json({ error: { message: "workflow is being edited in another session" }, held_by_other: true, expires_at: "t99" }, 409),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.acquireLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({
+      status: "held-by-other",
+      expiresAt: "t99",
+    });
+  });
+
+  it("acquireLock throws a PathApiError on a 404 (path escapes the root)", async () => {
+    const stub = stubFetch(() => json({ error: { message: "not found" } }, 404));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.acquireLock({ workflowPath: "../escape.workflow.json", sessionId: "s1" })).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 404,
+    });
+  });
+
+  it("heartbeatLock renews on a 200 and reports lost on a 409", async () => {
+    const renewed = { session_id: "s1", acquired_at: "t0", heartbeat_at: "t10", expires_at: "t40" };
+    const okStub = stubFetch(() => json(renewed, 200));
+    const okClient = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: okStub.fetch });
+    await expect(okClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({
+      status: "renewed",
+      lease: renewed,
+    });
+    expect(okStub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock/heartbeat");
+
+    const lostStub = stubFetch(() => json({ error: { message: "editing lease not held by this session" } }, 409));
+    const lostClient = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: lostStub.fetch });
+    await expect(lostClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({ status: "lost" });
+  });
+
+  it("releaseLock resolves on the idempotent 200 and posts the session_id", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ released: true }, 200);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.releaseLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock/release");
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({ workflow_path: "f.workflow.json", session_id: "s1" });
+  });
+
   it("raises PathApiError carrying the server's error envelope on non-2xx", async () => {
     const stub = stubFetch(() => json({ error: { message: "no run found", details: { id: "nope" } } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
