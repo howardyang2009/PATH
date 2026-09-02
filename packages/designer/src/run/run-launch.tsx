@@ -9,6 +9,12 @@ export interface RunLaunchProps {
   workflowPath: string | null;
   /** The active buffer's dirty flag: a launch runs the bytes on disk, so a dirty buffer gates it (ADR 0025). */
   dirty: boolean;
+  /**
+   * The open file's soft cross-node warning count (#388). Launch is **badged, not blocked**: a
+   * saved-with-warnings file is clean, so launch is enabled; the count only tells the author the run
+   * may surface the truth at run-start (an unresolved interpolation, an unset `$env`).
+   */
+  warningCount: number;
   /** Called with the new run's `root_run_id` once a launch is accepted (202) — the app watches it. */
   onLaunched: (rootRunId: string) => void;
 }
@@ -30,7 +36,7 @@ type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; messa
  * is still the validator: its `400` (schema failure, a rejected `$env` override — ADR 0012) lands back
  * here as an alert **without collapsing the form**, so the author can fix the body and retry.
  */
-export function RunLaunch({ client, workflowPath, dirty, onLaunched }: RunLaunchProps): JSX.Element {
+export function RunLaunch({ client, workflowPath, dirty, warningCount, onLaunched }: RunLaunchProps): JSX.Element {
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
   const [showConfig, setShowConfig] = useState(false);
@@ -109,8 +115,19 @@ export function RunLaunch({ client, workflowPath, dirty, onLaunched }: RunLaunch
           onClick={launch}
         >
           {submit.phase === "sending" ? "Launching…" : "Run workflow"}
+          {warningCount > 0 && (
+            <span className="run-warning-badge" data-testid="run-launch-warning-badge">
+              ⚠ {warningCount}
+            </span>
+          )}
         </button>
       </div>
+
+      {warningCount > 0 && gate === null && (
+        <p className="run-warning" data-testid="run-launch-warning" role="note">
+          {warningCount} unresolved {warningCount === 1 ? "warning" : "warnings"} — the run may fail at start.
+        </p>
+      )}
 
       {gate !== null && (
         <p className="run-note run-gate" data-testid="run-launch-gate">

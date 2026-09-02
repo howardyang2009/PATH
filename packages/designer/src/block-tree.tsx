@@ -126,9 +126,9 @@ function NodeControls({ node, editor }: { node: WorkflowNode; editor?: EditorApi
 function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
   return (event: KeyboardEvent): void => {
     if (!editor) return;
-    // Only the Delete key (§ Delete). Not Backspace: a destructive subtree delete has no undo yet
-    // (the dirty/undo model is a later #254 ticket), so a stray Backspace must not wipe a block.
-    if (event.key !== "Delete") return;
+    // Delete or Backspace (#389): the undo stack now backs a destructive subtree delete, so Backspace —
+    // withheld before for want of an undo — is unlocked and is itself undoable (via `editor.remove`).
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (event.target !== event.currentTarget) return; // ignore keys bubbling from a nested control
     if (!editor.canRemove(node.id)) return;
     event.preventDefault();
@@ -142,10 +142,13 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
  * their action and must not also select. A selected block carries `data-selected` for the highlight. On
  * a read-only render (no selection context, e.g. #367) it returns nothing, so the block stays inert.
  */
-function useSelectable(node: WorkflowNode): { "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
+function useSelectable(node: WorkflowNode): { "data-node-id": string; "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
   const selection = useSelection();
-  if (!selection) return {};
+  // `data-node-id` rides on every block regardless of edit mode, so the problems panel's jump-to-node
+  // (#388) can scroll the offending block into view whether or not it is the selected one.
+  if (!selection) return { "data-node-id": node.id };
   return {
+    "data-node-id": node.id,
     "data-selected": selection.selectedId === node.id ? "true" : undefined,
     onClick: (event: MouseEvent): void => {
       if ((event.target as HTMLElement).closest("button")) return;

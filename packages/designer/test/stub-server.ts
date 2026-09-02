@@ -88,6 +88,8 @@ export interface DesignerStubOptions {
   blobs?: Record<string, unknown>;
   /** Override `POST /v0/runs` per call (the launch). Default: 202 with a fresh `root_run_id`. */
   onStartRun?: (body: { workflow_path: string; input?: unknown; config?: unknown }) => Response;
+  /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390). Default: empty. */
+  workflows?: unknown;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
@@ -173,6 +175,9 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     if (input === "/v0/workflows/lock/release") {
       calls?.release.push(body as { workflow_path: string; session_id: string });
       return json({ released: true }, 200);
+    }
+    if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
+      return json(options.workflows ?? { workflows: [] }, 200);
     }
     if (input === "/v0/workflows" && init?.method === "PUT") {
       const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;

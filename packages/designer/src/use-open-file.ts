@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
+import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
 import { resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -24,7 +24,13 @@ export type RegistryLoad =
 
 /** One file on the navigation stack: its path, where its fetch-and-open got to, and its save-point. */
 export interface Frame {
-  path: string;
+  /**
+   * The file's project-relative path, or **`null`** for a from-scratch buffer that holds no path until
+   * its first save (#390, designer-spec § New-file placement and naming). A `null`-path frame takes no
+   * lease and cannot launch; `saveNewFile` chooses the path at first save, after which it is a saved
+   * frame like any other. Every other frame — an opened file, a `workflow`-ref descent — carries a path.
+   */
+  path: string | null;
   state: FrameState;
   /**
    * The `If-Match` ETag for the next save — the strong ETag of the bytes this frame opened, or of the
@@ -48,6 +54,8 @@ export interface Frame {
    * non-canonical file (baseline is the raw disk bytes, this is their canonical form); a save aligns them.
    */
   openedBytes: string;
+  /** This frame's own undo/redo stack (#389). Independent per open file; survives this frame's saves. */
+  history: History;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -55,6 +63,34 @@ export type FrameState =
   | { phase: "loading" }
   | { phase: "fetch-error"; message: string }
   | { phase: "open"; result: OpenResult };
+
+/**
+ * The undo/redo history of one frame (#389, designer-spec § Dirty-state, undo, and the save-point). The
+ * **present** is the frame's open buffer (`state.result.file`), not held here; `past` and `future` are the
+ * snapshots either side of it. One entry per structural edit (add/delete/reorder/replace) or per
+ * **coalesced** field edit — a run of keystrokes in one field folds to the single entry that opened the
+ * run. It is **per-frame**, so the parent and every descended ref child keep an independent stack, and it
+ * **survives a save**: the save advances the baseline, not the history, so undoing past the save-point
+ * re-dirties the buffer (clean is content-equality, ADR 0030, re-derived after every undo/redo — nothing
+ * special here re-evaluates it). Redo is cleared by any new edit.
+ */
+export interface History {
+  /** Buffers before the present, oldest first; the last is the next undo target. */
+  past: WorkflowFile[];
+  /** Buffers ahead of the present (redo), next-redo first; cleared by any new edit. */
+  future: WorkflowFile[];
+  /**
+   * The coalesce key of the in-progress field run, or `undefined` when the last commit closed a run (a
+   * structural edit, an undo, or a redo). A field edit whose key equals this folds into the current
+   * entry; any other key, or a structural edit (no key), opens a new entry.
+   */
+  coalesceKey: string | undefined;
+}
+
+/** A fresh, empty history — the state every frame opens (and re-opens, on a reload) with. */
+function freshHistory(): History {
+  return { past: [], future: [], coalesceKey: undefined };
+}
 
 /**
  * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
@@ -69,24 +105,60 @@ export type SaveState =
   | { phase: "conflict"; message: string }
   | { phase: "error"; message: string };
 
+/**
+ * The outcome of a from-scratch buffer's first save (#390, designer-spec § New-file placement and
+ * naming). A new-file save is an **exclusive create** (no `If-Match`, ADR 0016): the server refuses an
+ * existing path with a `412`, which reads here as `exists` — the dialog's "choose another name", never a
+ * silent overwrite. `created` reports the path the server echoed; the frame is now saved (path, ETag, and
+ * baseline advanced, and the lease acquired by the App's per-path effect). `error` is any other failure
+ * (a `404` for a path escaping the project root, or a `400` validation refusal).
+ */
+export type SaveNewFileResult =
+  | { status: "created"; path: string }
+  | { status: "exists" }
+  | { status: "error"; message: string };
+
 export interface OpenSession {
   registry: RegistryLoad;
   /** The navigation stack, root file first; the last frame is the one on the canvas. */
   frames: Frame[];
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
+  /**
+   * Start a **from-scratch** buffer as a fresh root, discarding any current stack (#390). The frame holds
+   * **no path and no lease** (§ Session lifecycle): an empty, editable workflow whose placement is decided
+   * at its first `saveNewFile`. Reads dirty from open (nothing on disk to match), so Save is live at once.
+   */
+  newFile: () => void;
   /** Descend across the active file's `workflow`-ref (a relative path), pushing a frame. */
   descend: (ref: string) => void;
   /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
   goTo: (index: number) => void;
-  /** Commit a structure edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030). */
-  applyEdit: (next: WorkflowFile) => void;
+  /**
+   * Commit an edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
+   * undo entry is recorded (#389). A structural edit passes no `coalesce` key (one entry each); a field
+   * edit passes a stable key so a run of keystrokes in that one field folds to a single entry. Any edit
+   * clears the frame's redo stack.
+   */
+  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  /** Undo the active frame's last edit, re-deriving clean (#389). A no-op when its past stack is empty. */
+  undo: () => void;
+  /** Redo the active frame's last undo, re-deriving clean (#389). A no-op when its future stack is empty. */
+  redo: () => void;
   /**
    * Save the active frame's opened buffer through `PUT /v0/workflows` under its `If-Match` ETag
    * (#371, ADR 0016). On success the buffer becomes clean (a new save-point) and the frame's ETag
    * advances; a `412` becomes a `conflict` the author resolves. A no-op when nothing is open.
    */
   save: () => void;
+  /**
+   * First-save a from-scratch buffer to `targetPath` as an **exclusive create** (#390, ADR 0016): a
+   * `PUT` with no `If-Match`, so the server refuses an existing path (`412` → `exists`) rather than
+   * overwrite it. On `created` the active frame's path, ETag, and baseline advance to the written file, so
+   * it becomes a saved frame (the App then acquires its lease and launch enables). A no-op — `error` — when
+   * the active frame is not a `null`-path buffer.
+   */
+  saveNewFile: (targetPath: string) => Promise<SaveNewFileResult>;
   /**
    * Re-fetch the active frame from disk, discarding its unsaved buffer for the on-disk bytes and a fresh
    * ETag. The stale-write recovery (#371): after a `412` an author reloads to the latest, then re-edits
@@ -122,13 +194,49 @@ export function frameDirty(frame: Frame | undefined): boolean {
   return canonicalSerialize(opened.file) !== frame.baseline;
 }
 
+/** Has the active frame an edit to undo (#389)? Drives the toolbar's Undo button and its keyboard peer. */
+export function frameCanUndo(frame: Frame | undefined): boolean {
+  return frame !== undefined && frame.history.past.length > 0;
+}
+
+/** Has the active frame an undo to redo (#389)? Drives the toolbar's Redo button and its keyboard peer. */
+export function frameCanRedo(frame: Frame | undefined): boolean {
+  return frame !== undefined && frame.history.future.length > 0;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A fresh loading frame for `path`: no ETag and an empty save-point until its fetch-and-open lands. */
+/** A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens. */
 function loadingFrame(path: string): Frame {
-  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "" };
+  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
+}
+
+/**
+ * The default `name` a from-scratch buffer opens with (#390). It slugs cleanly to a filename
+ * (`^[a-z][a-z0-9-]*$`, CONTEXT.md § Identity), so the first-save dialog can prefill
+ * `untitled.workflow.json`; the author renames it in the pane before saving.
+ */
+const NEW_FILE_DEFAULT_NAME = "untitled";
+
+/**
+ * A from-scratch buffer's frame (#390): an empty, id-bearing workflow, held at **`path: null`** with no
+ * ETag and no lease until its first save. Its `baseline` is the empty string — no on-disk bytes exist for
+ * it to equal — so the buffer reads dirty from open through the one dirty relation (`frameDirty`), which
+ * keeps Save live and lets the author reach the first-save dialog with or without a body built.
+ */
+function scratchFrame(): Frame {
+  const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name: NEW_FILE_DEFAULT_NAME, body: [] };
+  const openedBytes = canonicalSerialize(file);
+  return {
+    path: null,
+    state: { phase: "open", result: { status: "opened", file, idsStamped: false } },
+    etag: null,
+    baseline: "",
+    openedBytes,
+    history: freshHistory(),
+  };
 }
 
 /** Fetch one file's raw bytes and run the open pipeline; a fetch failure (404, …) becomes a frame error. */
@@ -193,7 +301,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         setFrames((prev) => {
           if (depth >= prev.length || prev[depth]?.path !== path) return prev;
           const next = prev.slice();
-          next[depth] = { path, state, etag, baseline, openedBytes };
+          // A fresh open (or reload) resets the frame's history: the buffer that just landed is the new
+          // save-point, with nothing to undo back past.
+          next[depth] = { path, state, etag, baseline, openedBytes, history: freshHistory() };
           return next;
         });
       });
@@ -212,11 +322,22 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [runLoad],
   );
 
+  const newFile = useCallback((): void => {
+    // A from-scratch buffer needs no registry fetch to open — it starts empty — but the palette still
+    // reads the registry to arm kinds, so this is available the moment the app mounts. Bump the load
+    // token so any in-flight fetch cannot patch the discarded stack.
+    loadToken.current++;
+    setSaveState({ phase: "idle" });
+    setFrames([scratchFrame()]);
+  }, []);
+
   const descend = useCallback(
     (ref: string): void => {
       const plugins = pluginsRef.current;
       const current = framesRef.current[framesRef.current.length - 1];
-      if (!plugins || !current) return;
+      // A descent crosses a `workflow`-ref of the active file, so the active frame must be a saved file
+      // with a path; a from-scratch buffer (no path) has no ref to descend.
+      if (!plugins || !current || current.path === null) return;
       const path = resolveRefPath(current.path, ref);
       const depth = framesRef.current.length;
       setSaveState({ phase: "idle" });
@@ -233,7 +354,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setFrames((prev) => (index < 0 || index >= prev.length ? prev : prev.slice(0, index + 1)));
   }, []);
 
-  const applyEdit = useCallback((next: WorkflowFile): void => {
+  const applyEdit = useCallback((next: WorkflowFile, coalesce?: string): void => {
     // An edit moves the buffer off its last save-point, so a stale "saved"/"conflict"/"error" no longer
     // describes it: fall back to idle. Dirtiness is not a flag set here — it is re-derived from the new
     // buffer's canonical serialization against `baseline` (ADR 0030), so a round-trip edit reads clean.
@@ -241,9 +362,65 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setFrames((prev) => {
       const depth = prev.length - 1;
       const frame = prev[depth];
-      if (!frame || frame.state.phase !== "open" || frame.state.result.status !== "opened") return prev;
+      const opened = openedResultOf(frame);
+      if (!frame || !opened) return prev;
+      // Record an undo entry (#389). A field edit whose key matches the run in progress **folds** — the
+      // present buffer is the run's intermediate, dropped so undo jumps to where the run began; the entry
+      // already on `past` is the run-start snapshot. Any other key, or a structural edit (no key), pushes
+      // the present as a new entry. Either way this is a new edit, so redo is cleared.
+      const fold = coalesce !== undefined && coalesce === frame.history.coalesceKey;
+      const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       const patched = prev.slice();
-      patched[depth] = { ...frame, state: { phase: "open", result: { ...frame.state.result, file: next } } };
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: next } },
+        history: { past, future: [], coalesceKey: coalesce },
+      };
+      return patched;
+    });
+  }, []);
+
+  const undo = useCallback((): void => {
+    // Guard on the current stack before touching state, so a no-op undo (empty past) does not clear a
+    // standing "Saved."/conflict status or spin a redundant re-render.
+    if (!frameCanUndo(framesRef.current[framesRef.current.length - 1])) return;
+    setSaveState({ phase: "idle" });
+    setFrames((prev) => {
+      const depth = prev.length - 1;
+      const frame = prev[depth];
+      const opened = openedResultOf(frame);
+      if (!frame || !opened || frame.history.past.length === 0) return prev;
+      const past = frame.history.past.slice();
+      const restored = past.pop()!;
+      // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
+      // baseline, so an undo past the save-point re-dirties the buffer for free (ADR 0030). Close any
+      // coalesce run so a following field edit opens a fresh entry rather than folding into the undone one.
+      const patched = prev.slice();
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: restored } },
+        history: { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined },
+      };
+      return patched;
+    });
+  }, []);
+
+  const redo = useCallback((): void => {
+    if (!frameCanRedo(framesRef.current[framesRef.current.length - 1])) return;
+    setSaveState({ phase: "idle" });
+    setFrames((prev) => {
+      const depth = prev.length - 1;
+      const frame = prev[depth];
+      const opened = openedResultOf(frame);
+      if (!frame || !opened || frame.history.future.length === 0) return prev;
+      const future = frame.history.future.slice();
+      const restored = future.shift()!;
+      const patched = prev.slice();
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: restored } },
+        history: { past: [...frame.history.past, opened.file], future, coalesceKey: undefined },
+      };
       return patched;
     });
   }, []);
@@ -252,21 +429,24 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     const plugins = pluginsRef.current;
     const depth = framesRef.current.length - 1;
     const active = framesRef.current[depth];
-    if (!plugins || !active) return;
+    // A from-scratch buffer (no path) has no on-disk bytes to re-fetch — reload is a no-op for it.
+    if (!plugins || !active || active.path === null) return;
+    const { path } = active;
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
       const next = prev.slice();
-      next[depth] = loadingFrame(active.path);
+      next[depth] = loadingFrame(path);
       return next;
     });
-    runLoad(active.path, depth, plugins);
+    runLoad(path, depth, plugins);
   }, [runLoad]);
 
   const save = useCallback((): void => {
     const depth = framesRef.current.length - 1;
     const active = framesRef.current[depth];
     const opened = openedResultOf(active);
-    if (!active || !opened) return;
+    // A from-scratch buffer (no path) takes the `saveNewFile` create door, not this overwrite path.
+    if (!active || !opened || active.path === null) return;
     const { path } = active;
     const file = opened.file;
     setSaveState({ phase: "saving" });
@@ -307,6 +487,54 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       });
   }, [client]);
 
+  const saveNewFile = useCallback(
+    (targetPath: string): Promise<SaveNewFileResult> => {
+      const depth = framesRef.current.length - 1;
+      const active = framesRef.current[depth];
+      const opened = openedResultOf(active);
+      // Only a from-scratch buffer (an opened frame with no path) is placed here; a saved frame goes
+      // through `save` (overwrite under `If-Match`).
+      if (!active || !opened || active.path !== null) {
+        return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
+      }
+      const file = opened.file;
+      setSaveState({ phase: "saving" });
+      // Exclusive create (ADR 0016): no `If-Match`, so the server refuses an existing path with a `412`
+      // rather than overwriting another workflow. The server echoes the resolved `relative_path`, which
+      // the frame adopts as its path — placement decided at this first save.
+      return client
+        .putWorkflow({ workflowPath: targetPath, workflow: file as unknown as JsonValue })
+        .then((result): SaveNewFileResult => {
+          const savedBytes = canonicalSerialize(file);
+          setSaveState({ phase: "saved" });
+          setFrames((prev) => {
+            const top = prev[depth];
+            const topResult = openedResultOf(top);
+            // Guard the still-a-scratch-buffer at this depth (an author who navigated mid-save must not
+            // have a stale frame re-based) — the same top-frame re-check `save` makes.
+            if (!top || top.path !== null || !topResult) return prev;
+            const patched = prev.slice();
+            patched[depth] = { ...top, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
+            return patched;
+          });
+          return { status: "created", path: result.relativePath };
+        })
+        .catch((error: unknown): SaveNewFileResult => {
+          // A `412` on a no-precondition create means the path already exists — the dialog's "choose
+          // another name", not the stale-write conflict `save` shows. Drop the transient saving phase back
+          // to idle: the collision is the dialog's to surface, not the toolbar's.
+          if (error instanceof PathApiError && error.status === 412) {
+            setSaveState({ phase: "idle" });
+            return { status: "exists" };
+          }
+          const message = errorMessage(error);
+          setSaveState({ phase: "error", message });
+          return { status: "error", message };
+        });
+    },
+    [client],
+  );
+
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every
   // registry re-render.
   const openedInitial = useRef(false);
@@ -317,5 +545,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, open, descend, goTo, applyEdit, save, reloadActive, saveState };
+  return { registry, frames, open, newFile, descend, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
 }

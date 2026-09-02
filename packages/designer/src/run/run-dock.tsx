@@ -13,6 +13,8 @@ export interface RunDockProps {
   workflowId: string | null;
   /** The active buffer's dirty flag — gates save-first launch. */
   dirty: boolean;
+  /** The open file's soft cross-node warning count (#388) — badges launch, never blocks it. */
+  warningCount: number;
   /** The live snapshot of the watched run (from the app's single connection). */
   load: RunViewLoad;
   rootRunId: string | null;
@@ -55,7 +57,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
         <div className="run-dock-body">
           <div className="run-dock-col run-dock-launch">
             <h3 className="run-dock-heading">Run this workflow</h3>
-            <RunLaunch client={props.client} workflowPath={props.workflowPath} dirty={props.dirty} onLaunched={props.onLaunched} />
+            <RunLaunch
+              client={props.client}
+              workflowPath={props.workflowPath}
+              dirty={props.dirty}
+              warningCount={props.warningCount}
+              onLaunched={props.onLaunched}
+            />
           </div>
           <div className="run-dock-col run-dock-history">
             <h3 className="run-dock-heading">History</h3>

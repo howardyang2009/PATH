@@ -3,14 +3,16 @@ import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
+import { NewFileDialog } from "./new-file-dialog.js";
 import { Palette } from "./palette.js";
+import { fileProblems } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
-import { frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -27,10 +29,16 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const session = useOpenFile(client, initialPath);
   const [armedKind, setArmedKind] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The first-save dialog for a from-scratch buffer (#390). Opened by the toolbar's Save when the active
+  // frame holds no path yet; the dialog decides the path, then closes on a successful create.
+  const [newFileOpen, setNewFileOpen] = useState(false);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.frames.length - 1];
-  const activePath = active?.path;
+  // A from-scratch buffer carries `path: null`; fold it to `undefined` so the one "no path yet" state
+  // (no frame, or a never-saved buffer) reads uniformly here — the toolbar, lease, launch, and the
+  // first-save dialog all branch on the single `activePath === undefined`.
+  const activePath = active?.path ?? undefined;
   const depth = session.frames.length;
   // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
   // node ids mean nothing here. The *first* population (no file → the initial file) is not a switch:
@@ -49,6 +57,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
 
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
+  // The soft cross-node warning count for the open file (#388). Launch is **badged, not blocked**: the
+  // count rides the launch button so the author runs knowingly (a saved-with-warnings file is clean).
+  const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile).length : 0), [openedFile]);
 
   // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
   // inspector — the two are views of one live snapshot, and a second connection would tell the same
@@ -77,26 +88,63 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
   // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
   const leasedPaths = useMemo(
-    () => session.frames.filter((frame) => openedResultOf(frame) !== null).map((frame) => frame.path),
+    () =>
+      session.frames
+        .filter((frame) => openedResultOf(frame) !== null && frame.path !== null)
+        .map((frame) => frame.path as string),
     [session.frames],
   );
   const { leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
   // Dirty is content-equality against the active frame's baseline (ADR 0030), the same fact launch and
   // Save gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
+  // The undo/redo affordances read the active frame's own stack (#389, per-file). `undo`/`redo` are
+  // stable session callbacks, so the keyboard peer below re-subscribes only when the enablement flips.
+  const canUndo = frameCanUndo(active);
+  const canRedo = frameCanRedo(active);
+  const { undo, redo } = session;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      // Editing-key parity with the toolbar buttons: ⌘/Ctrl+Z undoes, ⌘/Ctrl+Shift+Z or Ctrl+Y redoes.
+      // Leave a text field's own native undo alone — a keystroke run is a field concern until it blurs.
+      const key = event.key.toLowerCase();
+      if (!(event.metaKey || event.ctrlKey) || (key !== "z" && key !== "y")) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
+      if (wantsRedo) {
+        if (canRedo) {
+          event.preventDefault();
+          redo();
+        }
+      } else if (canUndo) {
+        event.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canUndo, canRedo, undo, redo]);
 
   return (
+    <>
     <AppShell
       toolbar={
-        openedResult && activePath ? (
+        openedResult ? (
           <EditingToolbar
             saveState={session.saveState}
             dirty={dirty}
-            onSave={session.save}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
+            // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
+            // instead of overwriting. A saved frame saves in place through the write route.
+            onSave={activePath ? session.save : () => setNewFileOpen(true)}
             onReload={session.reloadActive}
-            lease={leases.get(activePath)}
-            onTakeover={() => takeover(activePath)}
-            onReacquire={() => reacquire(activePath)}
+            lease={activePath ? leases.get(activePath) : undefined}
+            onTakeover={() => activePath && takeover(activePath)}
+            onReacquire={() => activePath && reacquire(activePath)}
           />
         ) : undefined
       }
@@ -129,6 +177,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           workflowPath={activePath ?? null}
           workflowId={openedFile?.id ?? null}
           dirty={dirty}
+          warningCount={warningCount}
           load={runLoad}
           rootRunId={selectedRootRunId}
           selectedRunId={selectedRunId}
@@ -140,5 +189,17 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         />
       }
     />
+    {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no path) whose
+        author asked to save. It decides the path; a successful create closes it and the frame is saved. */}
+    {newFileOpen && openedFile && activePath === undefined ? (
+      <NewFileDialog
+        client={client}
+        workflowName={openedFile.name}
+        create={session.saveNewFile}
+        onCreated={() => setNewFileOpen(false)}
+        onCancel={() => setNewFileOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }

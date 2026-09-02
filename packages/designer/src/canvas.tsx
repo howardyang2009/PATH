@@ -4,7 +4,8 @@ import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
-import { publishConflicts } from "./publish-conflicts.js";
+import { fileProblems, problemMarks } from "./problems.js";
+import { ProblemsPanel } from "./problems-panel.js";
 import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
@@ -41,7 +42,12 @@ export function Canvas({
     return (
       <CanvasNote
         title="Empty canvas"
-        hint="No workflow open. Open one with ?path=<relative/path.workflow.json>."
+        hint="No workflow open. Open one with ?path=<relative/path.workflow.json>, or start a new one."
+        action={
+          <button type="button" className="new-file-start" onClick={session.newFile}>
+            New workflow
+          </button>
+        }
       />
     );
   }
@@ -89,11 +95,11 @@ function Breadcrumb({ frames, onCrumb }: { frames: Frame[]; onCrumb: (index: num
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
             {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
             {last ? (
-              <span className="crumb crumb-current" aria-current="page" title={frame.path}>
+              <span className="crumb crumb-current" aria-current="page" title={frame.path ?? undefined}>
                 {label}
               </span>
             ) : (
-              <button type="button" className="crumb" title={frame.path} onClick={() => onCrumb(index)}>
+              <button type="button" className="crumb" title={frame.path ?? undefined} onClick={() => onCrumb(index)}>
                 {label}
               </button>
             )}
@@ -109,7 +115,9 @@ function frameLabel(frame: Frame): string {
   if (frame.state.phase === "open" && frame.state.result.status === "opened") {
     return frame.state.result.file.name;
   }
-  return basename(frame.path);
+  // A frame without an opened file always has a path (loading / fetch-error); the from-scratch buffer is
+  // always opened, so it takes the `name` branch above and never reaches here.
+  return basename(frame.path ?? "");
 }
 
 /** Render one frame: loading, a fetch error, a refusal, or the opened (editable) block tree. */
@@ -147,6 +155,9 @@ function FrameView({
       const dirty = frameDirty(frame);
       const pristine = canonicalSerialize(result.file) === frame.openedBytes;
       const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
+      // The cross-node pass runs once per render (#388): its marker map feeds the per-node ⚠ and its
+      // flat list feeds the problems panel — two coupled surfaces onto one derivation of the file.
+      const problems = fileProblems(result.file);
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
           {badge ? (
@@ -154,13 +165,14 @@ function FrameView({
               {badge}
             </p>
           ) : null}
-          <ConflictProvider value={publishConflicts(result.file)}>
+          <ConflictProvider value={problemMarks(problems)}>
             {result.file.body.length === 0 ? (
               <StartBody editor={editor} />
             ) : (
               <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
             )}
           </ConflictProvider>
+          <ProblemsPanel problems={problems} />
         </div>
       );
     }
@@ -207,12 +219,13 @@ function Refusal({ heading, message }: { heading: string; message: string }): JS
  * `region`/`Workflow canvas` label — that landmark belongs to the *open* canvas, so a test (and a
  * screen reader) can wait for the real surface rather than matching this placeholder first.
  */
-function CanvasNote({ title, hint }: { title: string; hint: string }): JSX.Element {
+function CanvasNote({ title, hint, action }: { title: string; hint: string; action?: JSX.Element }): JSX.Element {
   return (
     <div className="canvas">
       <div className="canvas-empty">
         <p className="canvas-empty-title">{title}</p>
         <p className="canvas-empty-hint">{hint}</p>
+        {action ?? null}
       </div>
     </div>
   );
