@@ -18,7 +18,9 @@ function editableFile(): Record<string, unknown> {
     id: uuid(1),
     name: "flow",
     body: [
-      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a" },
+      // alpha publishes the context keys the branch/while conditions below read, so the fixture carries
+      // no #388 dangling-context warning — these #368 structure-edit tests assert only on structure.
+      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" } },
       { type: "prompt", id: uuid(3), name: "beta", prompt: "b" },
       {
         type: "parallel",

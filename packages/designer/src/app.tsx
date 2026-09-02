@@ -4,6 +4,7 @@ import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
 import { Palette } from "./palette.js";
+import { fileProblems } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
@@ -49,6 +50,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
 
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
+  // The soft cross-node warning count for the open file (#388). Launch is **badged, not blocked**: the
+  // count rides the launch button so the author runs knowingly (a saved-with-warnings file is clean).
+  const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile).length : 0), [openedFile]);
 
   // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
   // inspector — the two are views of one live snapshot, and a second connection would tell the same
@@ -129,6 +133,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           workflowPath={activePath ?? null}
           workflowId={openedFile?.id ?? null}
           dirty={dirty}
+          warningCount={warningCount}
           load={runLoad}
           rootRunId={selectedRootRunId}
           selectedRunId={selectedRunId}

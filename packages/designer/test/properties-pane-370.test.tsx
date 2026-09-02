@@ -19,7 +19,9 @@ function paneFile(): Record<string, unknown> {
     name: "flow",
     config: { region: "eu", timeout: 30 },
     body: [
-      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", config: { region: "us" } },
+      // alpha publishes the context keys the conditions below read, so the file carries no #388
+      // dangling-context warning of its own — these #370 tests assert only on their own surfaces.
+      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", config: { region: "us" }, publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" } },
       { type: "checkpoint", id: uuid(3), name: "gate", condition: { type: "exists", path: "context.x" } },
       {
         type: "while-do",

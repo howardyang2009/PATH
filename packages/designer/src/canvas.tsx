@@ -4,7 +4,8 @@ import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
-import { publishConflicts } from "./publish-conflicts.js";
+import { fileProblems, problemMarks } from "./problems.js";
+import { ProblemsPanel } from "./problems-panel.js";
 import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
@@ -147,6 +148,9 @@ function FrameView({
       const dirty = frameDirty(frame);
       const pristine = canonicalSerialize(result.file) === frame.openedBytes;
       const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
+      // The cross-node pass runs once per render (#388): its marker map feeds the per-node ⚠ and its
+      // flat list feeds the problems panel — two coupled surfaces onto one derivation of the file.
+      const problems = fileProblems(result.file);
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
           {badge ? (
@@ -154,13 +158,14 @@ function FrameView({
               {badge}
             </p>
           ) : null}
-          <ConflictProvider value={publishConflicts(result.file)}>
+          <ConflictProvider value={problemMarks(problems)}>
             {result.file.body.length === 0 ? (
               <StartBody editor={editor} />
             ) : (
               <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
             )}
           </ConflictProvider>
+          <ProblemsPanel problems={problems} />
         </div>
       );
     }

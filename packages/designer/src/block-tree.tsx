@@ -142,10 +142,13 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
  * their action and must not also select. A selected block carries `data-selected` for the highlight. On
  * a read-only render (no selection context, e.g. #367) it returns nothing, so the block stays inert.
  */
-function useSelectable(node: WorkflowNode): { "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
+function useSelectable(node: WorkflowNode): { "data-node-id": string; "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
   const selection = useSelection();
-  if (!selection) return {};
+  // `data-node-id` rides on every block regardless of edit mode, so the problems panel's jump-to-node
+  // (#388) can scroll the offending block into view whether or not it is the selected one.
+  if (!selection) return { "data-node-id": node.id };
   return {
+    "data-node-id": node.id,
     "data-selected": selection.selectedId === node.id ? "true" : undefined,
     onClick: (event: MouseEvent): void => {
       if ((event.target as HTMLElement).closest("button")) return;

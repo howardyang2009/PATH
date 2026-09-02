@@ -742,12 +742,108 @@ body {
   align-self: flex-start;
 }
 
-/* The node validation marker for a publish conflict (§ Context reads and writes). */
+/* The per-node validation marker: a cross-node error the canvas cannot catch node-by-node
+ * (§ Canvas validation-error UX — publish conflict, dangling context read, dangling condition path). */
 .node-marker {
   flex: none;
   color: var(--k-workflow);
   font-size: var(--fs-sm);
   cursor: help;
+  white-space: pre-line;
+}
+
+/* ── The aggregate problems panel (#388, § Canvas validation-error UX) ───────────────────────────── */
+.problems-panel {
+  margin: 16px 0 4px;
+  border: 1px solid var(--k-checkpoint);
+  background: var(--k-checkpoint-bg);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.problems-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--k-checkpoint);
+}
+
+.problems-title {
+  font-weight: 700;
+  color: var(--k-checkpoint);
+}
+
+.problems-note {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+.problems-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.problems-jump {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  font: inherit;
+  padding: 6px 12px;
+  border: 0;
+  border-top: 1px solid color-mix(in srgb, var(--k-checkpoint) 30%, transparent);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.problems-row:first-child .problems-jump {
+  border-top: 0;
+}
+
+.problems-jump:hover,
+.problems-jump:focus-visible {
+  background: color-mix(in srgb, var(--k-checkpoint) 12%, transparent);
+}
+
+.problems-jump:disabled {
+  cursor: default;
+}
+
+.problems-kind {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  border-radius: 999px;
+  padding: 1px 8px;
+  color: var(--k-checkpoint);
+  border: 1px solid var(--k-checkpoint);
+}
+
+.problems-kind[data-kind="publish-conflict"] {
+  color: var(--k-workflow);
+  border-color: var(--k-workflow);
+}
+
+.problems-node {
+  font-weight: 600;
+}
+
+.problems-message {
+  color: var(--text-muted);
+  font-size: var(--fs-sm);
+}
+
+/* The launch button's warning count — launch is badged, not blocked. */
+.run-warning-badge {
+  margin-left: 8px;
+  font-size: var(--fs-xs);
+  font-weight: 700;
 }
 
 /* The empty-body start affordance (§ Adding … and the empty canvas). */
