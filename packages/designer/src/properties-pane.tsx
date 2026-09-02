@@ -5,11 +5,14 @@ import {
   PUBLISH_ROOTS,
   STEP_ROOTS,
   checkInterpolationSyntax,
+  isEnvWrapper,
+  isSecretWrapper,
   safeParseWorkflowFile,
   walkNodes,
   type Condition,
   type ConfigObject,
   type ConfigValue,
+  type EnvWrapper,
   type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
@@ -542,23 +545,161 @@ function ConfigRowField({
   );
 }
 
-/** A typed control for a scalar config value; a wrapper or nested value falls back to read-only JSON (authoring deferred). */
-function ConfigValueControl({ value, onChange, label }: { value: ConfigValue; onChange: (v: ConfigValue) => void; label: string }): JSX.Element {
+/** The three authoring modes a config value takes in the pane (§ `$env` / `$secret` authoring, map decision 9). */
+type ConfigMode = "literal" | "env" | "secret";
+
+/** Which mode a config value is in, read off its shape: a `$secret` wrapper, an `$env` wrapper, or a plain literal. */
+function configModeOf(value: ConfigValue): ConfigMode {
+  if (isSecretWrapper(value)) return "secret";
+  if (isEnvWrapper(value)) return "env";
+  return "literal";
+}
+
+/** The `$env` variable name carried anywhere in a value (bare `$env`, or an env-sourced `$secret`), for mode-switch reuse. */
+function envNameOf(value: ConfigValue): string {
+  if (isEnvWrapper(value)) return value.$env;
+  if (isSecretWrapper(value) && isEnvWrapper(value.$secret)) return value.$secret.$env;
+  return "";
+}
+
+/**
+ * The reference-only label of a wrapper — never a resolved value (§ Display is reference-only). An `$env`
+ * shows its variable name; a `$secret` shows a masked, named token (the env name when sourced from `$env`,
+ * masked bullets for a literal secret). A plain scalar or nested value returns `null` (it is not a reference).
+ */
+function referenceLabel(value: ConfigValue): string | null {
+  if (isSecretWrapper(value)) {
+    return isEnvWrapper(value.$secret) ? `$secret · $env · ${value.$secret.$env}` : "$secret · ••••••";
+  }
+  if (isEnvWrapper(value)) return `$env · ${value.$env}`;
+  return null;
+}
+
+/** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */
+interface ConfigControlProps {
+  value: ConfigValue;
+  onChange: (v: ConfigValue) => void;
+  label: string;
+}
+
+/**
+ * A typed control for a config value with its `Literal` / `$env` / `$secret` mode selector (map decision 9).
+ * The composed `{"$secret": {"$env": …}}` is expressible through the `$secret` source sub-selector. A nested
+ * array/object that is not a wrapper stays read-only — that authoring is out of this affordance's scope.
+ */
+function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  if (!isEditableScalar(value) && referenceLabel(value) === null) {
+    return <code className="pane-config-value">{renderConfigValue(value)}</code>;
+  }
+  const mode = configModeOf(value);
+  const setMode = (next: ConfigMode): void => {
+    if (next === mode) return;
+    if (next === "literal") onChange("");
+    else if (next === "env") onChange({ $env: envNameOf(value) });
+    else onChange({ $secret: envNameOf(value) === "" ? "" : { $env: envNameOf(value) } });
+  };
+  return (
+    <div className="pane-config-control">
+      <select
+        className="pane-input pane-config-mode"
+        aria-label={`${label} mode`}
+        value={mode}
+        onChange={(e) => setMode(e.target.value as ConfigMode)}
+      >
+        <option value="literal">Literal</option>
+        <option value="env">$env</option>
+        <option value="secret">$secret</option>
+      </select>
+      {mode === "literal" ? <LiteralControl value={value} onChange={onChange} label={label} /> : null}
+      {mode === "env" ? <EnvControl value={value} onChange={onChange} label={label} /> : null}
+      {mode === "secret" ? <SecretControl value={value} onChange={onChange} label={label} /> : null}
+    </div>
+  );
+}
+
+/** The literal-mode control: a typed input matching the scalar's own type (boolean / number / string). */
+function LiteralControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   if (typeof value === "boolean") {
     return <input type="checkbox" aria-label={label} checked={value} onChange={(e) => onChange(e.target.checked)} />;
   }
   if (typeof value === "number") {
     return <input className="pane-input" type="number" aria-label={label} value={value} onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />;
   }
-  if (typeof value === "string") {
-    return <input className="pane-input" type="text" aria-label={label} value={value} onChange={(e) => onChange(e.target.value)} />;
-  }
-  // A `$env` / `$secret` wrapper or a nested value: shown read-only — its authoring affordance is a later #254 ticket.
-  return <code className="pane-config-value">{renderConfigValue(value)}</code>;
+  return <input className="pane-input" type="text" aria-label={label} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
 }
 
-/** A config value for read-only display: a scalar as itself, a wrapper or nested value as compact JSON. */
+/** The `$env`-mode control: an env-var-name input plus the reference-only chip (`$env · NAME`). */
+function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  const name = isEnvWrapper(value) ? value.$env : "";
+  return (
+    <div className="pane-ref-control">
+      <input
+        className="pane-input"
+        type="text"
+        aria-label={`${label} $env variable`}
+        placeholder="ENV_VAR_NAME"
+        value={name}
+        onChange={(e) => onChange({ $env: e.target.value })}
+      />
+      <code className="pane-ref-token" data-ref="env">
+        {referenceLabel({ $env: name })}
+      </code>
+    </div>
+  );
+}
+
+/**
+ * The `$secret`-mode control: a source sub-selector (a literal secret, or one sourced from `$env`) and the
+ * matching input, plus the masked, named token. A literal secret edits through a password field so the
+ * pane never renders the value; the composed `{"$secret": {"$env": …}}` is the env-sourced source.
+ */
+function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
+  const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";
+  const setSource = (source: "literal" | "env"): void => {
+    if (source === "env") onChange({ $secret: { $env: isEnvWrapper(inner) ? inner.$env : "" } });
+    else onChange({ $secret: "" });
+  };
+  return (
+    <div className="pane-ref-control">
+      <select
+        className="pane-input pane-secret-source"
+        aria-label={`${label} $secret source`}
+        value={isEnvWrapper(inner) ? "env" : "literal"}
+        onChange={(e) => setSource(e.target.value as "literal" | "env")}
+      >
+        <option value="literal">Literal secret</option>
+        <option value="env">From $env</option>
+      </select>
+      {isEnvWrapper(inner) ? (
+        <input
+          className="pane-input"
+          type="text"
+          aria-label={`${label} $secret $env variable`}
+          placeholder="ENV_VAR_NAME"
+          value={inner.$env}
+          onChange={(e) => onChange({ $secret: { $env: e.target.value } })}
+        />
+      ) : (
+        <input
+          className="pane-input"
+          type="password"
+          aria-label={`${label} $secret value`}
+          placeholder="secret"
+          value={inner}
+          onChange={(e) => onChange({ $secret: e.target.value })}
+        />
+      )}
+      <code className="pane-ref-token" data-ref="secret">
+        {referenceLabel({ $secret: inner })}
+      </code>
+    </div>
+  );
+}
+
+/** A config value for read-only display (an inherited ghost): a wrapper as its reference-only label, a scalar as itself, else compact JSON. */
 function renderConfigValue(value: ConfigValue): string {
+  const reference = referenceLabel(value);
+  if (reference !== null) return reference;
   if (isEditableScalar(value)) return String(value);
   return JSON.stringify(value);
 }
