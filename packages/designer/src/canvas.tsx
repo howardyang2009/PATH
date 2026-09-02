@@ -42,7 +42,12 @@ export function Canvas({
     return (
       <CanvasNote
         title="Empty canvas"
-        hint="No workflow open. Open one with ?path=<relative/path.workflow.json>."
+        hint="No workflow open. Open one with ?path=<relative/path.workflow.json>, or start a new one."
+        action={
+          <button type="button" className="new-file-start" onClick={session.newFile}>
+            New workflow
+          </button>
+        }
       />
     );
   }
@@ -90,11 +95,11 @@ function Breadcrumb({ frames, onCrumb }: { frames: Frame[]; onCrumb: (index: num
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
             {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
             {last ? (
-              <span className="crumb crumb-current" aria-current="page" title={frame.path}>
+              <span className="crumb crumb-current" aria-current="page" title={frame.path ?? undefined}>
                 {label}
               </span>
             ) : (
-              <button type="button" className="crumb" title={frame.path} onClick={() => onCrumb(index)}>
+              <button type="button" className="crumb" title={frame.path ?? undefined} onClick={() => onCrumb(index)}>
                 {label}
               </button>
             )}
@@ -110,7 +115,9 @@ function frameLabel(frame: Frame): string {
   if (frame.state.phase === "open" && frame.state.result.status === "opened") {
     return frame.state.result.file.name;
   }
-  return basename(frame.path);
+  // A frame without an opened file always has a path (loading / fetch-error); the from-scratch buffer is
+  // always opened, so it takes the `name` branch above and never reaches here.
+  return basename(frame.path ?? "");
 }
 
 /** Render one frame: loading, a fetch error, a refusal, or the opened (editable) block tree. */
@@ -212,12 +219,13 @@ function Refusal({ heading, message }: { heading: string; message: string }): JS
  * `region`/`Workflow canvas` label — that landmark belongs to the *open* canvas, so a test (and a
  * screen reader) can wait for the real surface rather than matching this placeholder first.
  */
-function CanvasNote({ title, hint }: { title: string; hint: string }): JSX.Element {
+function CanvasNote({ title, hint, action }: { title: string; hint: string; action?: JSX.Element }): JSX.Element {
   return (
     <div className="canvas">
       <div className="canvas-empty">
         <p className="canvas-empty-title">{title}</p>
         <p className="canvas-empty-hint">{hint}</p>
+        {action ?? null}
       </div>
     </div>
   );

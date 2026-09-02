@@ -3,6 +3,7 @@ import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
+import { NewFileDialog } from "./new-file-dialog.js";
 import { Palette } from "./palette.js";
 import { fileProblems } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
@@ -28,10 +29,16 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const session = useOpenFile(client, initialPath);
   const [armedKind, setArmedKind] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  // The first-save dialog for a from-scratch buffer (#390). Opened by the toolbar's Save when the active
+  // frame holds no path yet; the dialog decides the path, then closes on a successful create.
+  const [newFileOpen, setNewFileOpen] = useState(false);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.frames.length - 1];
-  const activePath = active?.path;
+  // A from-scratch buffer carries `path: null`; fold it to `undefined` so the one "no path yet" state
+  // (no frame, or a never-saved buffer) reads uniformly here — the toolbar, lease, launch, and the
+  // first-save dialog all branch on the single `activePath === undefined`.
+  const activePath = active?.path ?? undefined;
   const depth = session.frames.length;
   // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
   // node ids mean nothing here. The *first* population (no file → the initial file) is not a switch:
@@ -81,7 +88,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
   // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
   const leasedPaths = useMemo(
-    () => session.frames.filter((frame) => openedResultOf(frame) !== null).map((frame) => frame.path),
+    () =>
+      session.frames
+        .filter((frame) => openedResultOf(frame) !== null && frame.path !== null)
+        .map((frame) => frame.path as string),
     [session.frames],
   );
   const { leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
@@ -117,9 +127,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   }, [canUndo, canRedo, undo, redo]);
 
   return (
+    <>
     <AppShell
       toolbar={
-        openedResult && activePath ? (
+        openedResult ? (
           <EditingToolbar
             saveState={session.saveState}
             dirty={dirty}
@@ -127,11 +138,13 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             canRedo={canRedo}
             onUndo={undo}
             onRedo={redo}
-            onSave={session.save}
+            // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
+            // instead of overwriting. A saved frame saves in place through the write route.
+            onSave={activePath ? session.save : () => setNewFileOpen(true)}
             onReload={session.reloadActive}
-            lease={leases.get(activePath)}
-            onTakeover={() => takeover(activePath)}
-            onReacquire={() => reacquire(activePath)}
+            lease={activePath ? leases.get(activePath) : undefined}
+            onTakeover={() => activePath && takeover(activePath)}
+            onReacquire={() => activePath && reacquire(activePath)}
           />
         ) : undefined
       }
@@ -176,5 +189,17 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         />
       }
     />
+    {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no path) whose
+        author asked to save. It decides the path; a successful create closes it and the frame is saved. */}
+    {newFileOpen && openedFile && activePath === undefined ? (
+      <NewFileDialog
+        client={client}
+        workflowName={openedFile.name}
+        create={session.saveNewFile}
+        onCreated={() => setNewFileOpen(false)}
+        onCancel={() => setNewFileOpen(false)}
+      />
+    ) : null}
+    </>
   );
 }

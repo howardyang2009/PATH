@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
+import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
 import { resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -24,7 +24,13 @@ export type RegistryLoad =
 
 /** One file on the navigation stack: its path, where its fetch-and-open got to, and its save-point. */
 export interface Frame {
-  path: string;
+  /**
+   * The file's project-relative path, or **`null`** for a from-scratch buffer that holds no path until
+   * its first save (#390, designer-spec § New-file placement and naming). A `null`-path frame takes no
+   * lease and cannot launch; `saveNewFile` chooses the path at first save, after which it is a saved
+   * frame like any other. Every other frame — an opened file, a `workflow`-ref descent — carries a path.
+   */
+  path: string | null;
   state: FrameState;
   /**
    * The `If-Match` ETag for the next save — the strong ETag of the bytes this frame opened, or of the
@@ -99,12 +105,31 @@ export type SaveState =
   | { phase: "conflict"; message: string }
   | { phase: "error"; message: string };
 
+/**
+ * The outcome of a from-scratch buffer's first save (#390, designer-spec § New-file placement and
+ * naming). A new-file save is an **exclusive create** (no `If-Match`, ADR 0016): the server refuses an
+ * existing path with a `412`, which reads here as `exists` — the dialog's "choose another name", never a
+ * silent overwrite. `created` reports the path the server echoed; the frame is now saved (path, ETag, and
+ * baseline advanced, and the lease acquired by the App's per-path effect). `error` is any other failure
+ * (a `404` for a path escaping the project root, or a `400` validation refusal).
+ */
+export type SaveNewFileResult =
+  | { status: "created"; path: string }
+  | { status: "exists" }
+  | { status: "error"; message: string };
+
 export interface OpenSession {
   registry: RegistryLoad;
   /** The navigation stack, root file first; the last frame is the one on the canvas. */
   frames: Frame[];
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
+  /**
+   * Start a **from-scratch** buffer as a fresh root, discarding any current stack (#390). The frame holds
+   * **no path and no lease** (§ Session lifecycle): an empty, editable workflow whose placement is decided
+   * at its first `saveNewFile`. Reads dirty from open (nothing on disk to match), so Save is live at once.
+   */
+  newFile: () => void;
   /** Descend across the active file's `workflow`-ref (a relative path), pushing a frame. */
   descend: (ref: string) => void;
   /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
@@ -126,6 +151,14 @@ export interface OpenSession {
    * advances; a `412` becomes a `conflict` the author resolves. A no-op when nothing is open.
    */
   save: () => void;
+  /**
+   * First-save a from-scratch buffer to `targetPath` as an **exclusive create** (#390, ADR 0016): a
+   * `PUT` with no `If-Match`, so the server refuses an existing path (`412` → `exists`) rather than
+   * overwrite it. On `created` the active frame's path, ETag, and baseline advance to the written file, so
+   * it becomes a saved frame (the App then acquires its lease and launch enables). A no-op — `error` — when
+   * the active frame is not a `null`-path buffer.
+   */
+  saveNewFile: (targetPath: string) => Promise<SaveNewFileResult>;
   /**
    * Re-fetch the active frame from disk, discarding its unsaved buffer for the on-disk bytes and a fresh
    * ETag. The stale-write recovery (#371): after a `412` an author reloads to the latest, then re-edits
@@ -178,6 +211,32 @@ function errorMessage(error: unknown): string {
 /** A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens. */
 function loadingFrame(path: string): Frame {
   return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
+}
+
+/**
+ * The default `name` a from-scratch buffer opens with (#390). It slugs cleanly to a filename
+ * (`^[a-z][a-z0-9-]*$`, CONTEXT.md § Identity), so the first-save dialog can prefill
+ * `untitled.workflow.json`; the author renames it in the pane before saving.
+ */
+const NEW_FILE_DEFAULT_NAME = "untitled";
+
+/**
+ * A from-scratch buffer's frame (#390): an empty, id-bearing workflow, held at **`path: null`** with no
+ * ETag and no lease until its first save. Its `baseline` is the empty string — no on-disk bytes exist for
+ * it to equal — so the buffer reads dirty from open through the one dirty relation (`frameDirty`), which
+ * keeps Save live and lets the author reach the first-save dialog with or without a body built.
+ */
+function scratchFrame(): Frame {
+  const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name: NEW_FILE_DEFAULT_NAME, body: [] };
+  const openedBytes = canonicalSerialize(file);
+  return {
+    path: null,
+    state: { phase: "open", result: { status: "opened", file, idsStamped: false } },
+    etag: null,
+    baseline: "",
+    openedBytes,
+    history: freshHistory(),
+  };
 }
 
 /** Fetch one file's raw bytes and run the open pipeline; a fetch failure (404, …) becomes a frame error. */
@@ -263,11 +322,22 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [runLoad],
   );
 
+  const newFile = useCallback((): void => {
+    // A from-scratch buffer needs no registry fetch to open — it starts empty — but the palette still
+    // reads the registry to arm kinds, so this is available the moment the app mounts. Bump the load
+    // token so any in-flight fetch cannot patch the discarded stack.
+    loadToken.current++;
+    setSaveState({ phase: "idle" });
+    setFrames([scratchFrame()]);
+  }, []);
+
   const descend = useCallback(
     (ref: string): void => {
       const plugins = pluginsRef.current;
       const current = framesRef.current[framesRef.current.length - 1];
-      if (!plugins || !current) return;
+      // A descent crosses a `workflow`-ref of the active file, so the active frame must be a saved file
+      // with a path; a from-scratch buffer (no path) has no ref to descend.
+      if (!plugins || !current || current.path === null) return;
       const path = resolveRefPath(current.path, ref);
       const depth = framesRef.current.length;
       setSaveState({ phase: "idle" });
@@ -359,21 +429,24 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     const plugins = pluginsRef.current;
     const depth = framesRef.current.length - 1;
     const active = framesRef.current[depth];
-    if (!plugins || !active) return;
+    // A from-scratch buffer (no path) has no on-disk bytes to re-fetch — reload is a no-op for it.
+    if (!plugins || !active || active.path === null) return;
+    const { path } = active;
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
       const next = prev.slice();
-      next[depth] = loadingFrame(active.path);
+      next[depth] = loadingFrame(path);
       return next;
     });
-    runLoad(active.path, depth, plugins);
+    runLoad(path, depth, plugins);
   }, [runLoad]);
 
   const save = useCallback((): void => {
     const depth = framesRef.current.length - 1;
     const active = framesRef.current[depth];
     const opened = openedResultOf(active);
-    if (!active || !opened) return;
+    // A from-scratch buffer (no path) takes the `saveNewFile` create door, not this overwrite path.
+    if (!active || !opened || active.path === null) return;
     const { path } = active;
     const file = opened.file;
     setSaveState({ phase: "saving" });
@@ -414,6 +487,54 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       });
   }, [client]);
 
+  const saveNewFile = useCallback(
+    (targetPath: string): Promise<SaveNewFileResult> => {
+      const depth = framesRef.current.length - 1;
+      const active = framesRef.current[depth];
+      const opened = openedResultOf(active);
+      // Only a from-scratch buffer (an opened frame with no path) is placed here; a saved frame goes
+      // through `save` (overwrite under `If-Match`).
+      if (!active || !opened || active.path !== null) {
+        return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
+      }
+      const file = opened.file;
+      setSaveState({ phase: "saving" });
+      // Exclusive create (ADR 0016): no `If-Match`, so the server refuses an existing path with a `412`
+      // rather than overwriting another workflow. The server echoes the resolved `relative_path`, which
+      // the frame adopts as its path — placement decided at this first save.
+      return client
+        .putWorkflow({ workflowPath: targetPath, workflow: file as unknown as JsonValue })
+        .then((result): SaveNewFileResult => {
+          const savedBytes = canonicalSerialize(file);
+          setSaveState({ phase: "saved" });
+          setFrames((prev) => {
+            const top = prev[depth];
+            const topResult = openedResultOf(top);
+            // Guard the still-a-scratch-buffer at this depth (an author who navigated mid-save must not
+            // have a stale frame re-based) — the same top-frame re-check `save` makes.
+            if (!top || top.path !== null || !topResult) return prev;
+            const patched = prev.slice();
+            patched[depth] = { ...top, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
+            return patched;
+          });
+          return { status: "created", path: result.relativePath };
+        })
+        .catch((error: unknown): SaveNewFileResult => {
+          // A `412` on a no-precondition create means the path already exists — the dialog's "choose
+          // another name", not the stale-write conflict `save` shows. Drop the transient saving phase back
+          // to idle: the collision is the dialog's to surface, not the toolbar's.
+          if (error instanceof PathApiError && error.status === 412) {
+            setSaveState({ phase: "idle" });
+            return { status: "exists" };
+          }
+          const message = errorMessage(error);
+          setSaveState({ phase: "error", message });
+          return { status: "error", message };
+        });
+    },
+    [client],
+  );
+
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every
   // registry re-render.
   const openedInitial = useRef(false);
@@ -424,5 +545,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, open, descend, goTo, applyEdit, undo, redo, save, reloadActive, saveState };
+  return { registry, frames, open, newFile, descend, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
 }

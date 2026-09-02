@@ -1468,3 +1468,155 @@ body {
   color: var(--run-pending);
   background: var(--run-pending-bg);
 }
+
+/* ── New-file placement dialog (#390) ─────────────────────────────────────────────────────────────
+ * The from-scratch buffer's first-save dialog: a directory picker confined to the project root plus a
+ * suffix-enforced filename. Rides above the shell on a scrim. */
+.new-file-start {
+  margin-top: 14px;
+  padding: 6px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dialog-scrim {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: color-mix(in srgb, var(--ground) 70%, transparent);
+  z-index: 50;
+}
+
+.dialog {
+  width: min(460px, 100%);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 22px 24px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
+}
+
+.dialog-title {
+  margin: 0 0 4px;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.dialog-hint {
+  margin: 0 0 16px;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.dialog-field {
+  display: block;
+  margin-bottom: 14px;
+}
+
+.dialog-label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--text);
+}
+
+.new-file-directory {
+  width: 100%;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+
+.new-file-name {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  background: var(--ground);
+}
+
+.new-file-stem {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: none;
+}
+
+.new-file-stem:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+/* The `.workflow.json` suffix is a fixed, non-editable adornment — enforced, not typed. */
+.new-file-suffix {
+  display: flex;
+  align-items: center;
+  padding: 0 10px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--border) 30%, transparent);
+  border-left: 1px solid var(--border);
+}
+
+.new-file-target {
+  margin: 4px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+.new-file-target code {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+.new-file-error {
+  margin: 12px 0 0;
+  font-size: var(--fs-sm);
+  color: var(--run-failed);
+}
+
+.dialog-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 20px;
+}
+
+.dialog-actions button {
+  padding: 6px 16px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.dialog-actions .new-file-create {
+  font-weight: 600;
+  color: var(--surface);
+  background: var(--accent);
+  border-color: var(--accent);
+}
+
+.dialog-actions button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
