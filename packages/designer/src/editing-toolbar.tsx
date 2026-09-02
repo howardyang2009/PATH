@@ -13,6 +13,10 @@ import type { SaveState } from "./use-open-file.js";
 export function EditingToolbar({
   saveState,
   dirty,
+  canUndo,
+  canRedo,
+  onUndo,
+  onRedo,
   onSave,
   onReload,
   lease,
@@ -22,6 +26,12 @@ export function EditingToolbar({
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
   dirty: boolean;
+  /** Has the active frame an edit to undo (#389)? Gates the Undo button. */
+  canUndo: boolean;
+  /** Has the active frame an undo to redo (#389)? Gates the Redo button. */
+  canRedo: boolean;
+  onUndo: () => void;
+  onRedo: () => void;
   onSave: () => void;
   /** Re-fetch the active file from disk — the stale-write conflict recovery. */
   onReload: () => void;
@@ -34,6 +44,14 @@ export function EditingToolbar({
   const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
+      {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
+          moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
+      <button type="button" className="undo-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
+        ↶ Undo
+      </button>
+      <button type="button" className="redo-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
+        ↷ Redo
+      </button>
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>

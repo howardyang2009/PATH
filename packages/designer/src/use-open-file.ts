@@ -48,6 +48,8 @@ export interface Frame {
    * non-canonical file (baseline is the raw disk bytes, this is their canonical form); a save aligns them.
    */
   openedBytes: string;
+  /** This frame's own undo/redo stack (#389). Independent per open file; survives this frame's saves. */
+  history: History;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -55,6 +57,34 @@ export type FrameState =
   | { phase: "loading" }
   | { phase: "fetch-error"; message: string }
   | { phase: "open"; result: OpenResult };
+
+/**
+ * The undo/redo history of one frame (#389, designer-spec § Dirty-state, undo, and the save-point). The
+ * **present** is the frame's open buffer (`state.result.file`), not held here; `past` and `future` are the
+ * snapshots either side of it. One entry per structural edit (add/delete/reorder/replace) or per
+ * **coalesced** field edit — a run of keystrokes in one field folds to the single entry that opened the
+ * run. It is **per-frame**, so the parent and every descended ref child keep an independent stack, and it
+ * **survives a save**: the save advances the baseline, not the history, so undoing past the save-point
+ * re-dirties the buffer (clean is content-equality, ADR 0030, re-derived after every undo/redo — nothing
+ * special here re-evaluates it). Redo is cleared by any new edit.
+ */
+export interface History {
+  /** Buffers before the present, oldest first; the last is the next undo target. */
+  past: WorkflowFile[];
+  /** Buffers ahead of the present (redo), next-redo first; cleared by any new edit. */
+  future: WorkflowFile[];
+  /**
+   * The coalesce key of the in-progress field run, or `undefined` when the last commit closed a run (a
+   * structural edit, an undo, or a redo). A field edit whose key equals this folds into the current
+   * entry; any other key, or a structural edit (no key), opens a new entry.
+   */
+  coalesceKey: string | undefined;
+}
+
+/** A fresh, empty history — the state every frame opens (and re-opens, on a reload) with. */
+function freshHistory(): History {
+  return { past: [], future: [], coalesceKey: undefined };
+}
 
 /**
  * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
@@ -79,8 +109,17 @@ export interface OpenSession {
   descend: (ref: string) => void;
   /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
   goTo: (index: number) => void;
-  /** Commit a structure edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030). */
-  applyEdit: (next: WorkflowFile) => void;
+  /**
+   * Commit an edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
+   * undo entry is recorded (#389). A structural edit passes no `coalesce` key (one entry each); a field
+   * edit passes a stable key so a run of keystrokes in that one field folds to a single entry. Any edit
+   * clears the frame's redo stack.
+   */
+  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  /** Undo the active frame's last edit, re-deriving clean (#389). A no-op when its past stack is empty. */
+  undo: () => void;
+  /** Redo the active frame's last undo, re-deriving clean (#389). A no-op when its future stack is empty. */
+  redo: () => void;
   /**
    * Save the active frame's opened buffer through `PUT /v0/workflows` under its `If-Match` ETag
    * (#371, ADR 0016). On success the buffer becomes clean (a new save-point) and the frame's ETag
@@ -122,13 +161,23 @@ export function frameDirty(frame: Frame | undefined): boolean {
   return canonicalSerialize(opened.file) !== frame.baseline;
 }
 
+/** Has the active frame an edit to undo (#389)? Drives the toolbar's Undo button and its keyboard peer. */
+export function frameCanUndo(frame: Frame | undefined): boolean {
+  return frame !== undefined && frame.history.past.length > 0;
+}
+
+/** Has the active frame an undo to redo (#389)? Drives the toolbar's Redo button and its keyboard peer. */
+export function frameCanRedo(frame: Frame | undefined): boolean {
+  return frame !== undefined && frame.history.future.length > 0;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-/** A fresh loading frame for `path`: no ETag and an empty save-point until its fetch-and-open lands. */
+/** A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens. */
 function loadingFrame(path: string): Frame {
-  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "" };
+  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
 }
 
 /** Fetch one file's raw bytes and run the open pipeline; a fetch failure (404, …) becomes a frame error. */
@@ -193,7 +242,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         setFrames((prev) => {
           if (depth >= prev.length || prev[depth]?.path !== path) return prev;
           const next = prev.slice();
-          next[depth] = { path, state, etag, baseline, openedBytes };
+          // A fresh open (or reload) resets the frame's history: the buffer that just landed is the new
+          // save-point, with nothing to undo back past.
+          next[depth] = { path, state, etag, baseline, openedBytes, history: freshHistory() };
           return next;
         });
       });
@@ -233,7 +284,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setFrames((prev) => (index < 0 || index >= prev.length ? prev : prev.slice(0, index + 1)));
   }, []);
 
-  const applyEdit = useCallback((next: WorkflowFile): void => {
+  const applyEdit = useCallback((next: WorkflowFile, coalesce?: string): void => {
     // An edit moves the buffer off its last save-point, so a stale "saved"/"conflict"/"error" no longer
     // describes it: fall back to idle. Dirtiness is not a flag set here — it is re-derived from the new
     // buffer's canonical serialization against `baseline` (ADR 0030), so a round-trip edit reads clean.
@@ -241,9 +292,65 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setFrames((prev) => {
       const depth = prev.length - 1;
       const frame = prev[depth];
-      if (!frame || frame.state.phase !== "open" || frame.state.result.status !== "opened") return prev;
+      const opened = openedResultOf(frame);
+      if (!frame || !opened) return prev;
+      // Record an undo entry (#389). A field edit whose key matches the run in progress **folds** — the
+      // present buffer is the run's intermediate, dropped so undo jumps to where the run began; the entry
+      // already on `past` is the run-start snapshot. Any other key, or a structural edit (no key), pushes
+      // the present as a new entry. Either way this is a new edit, so redo is cleared.
+      const fold = coalesce !== undefined && coalesce === frame.history.coalesceKey;
+      const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       const patched = prev.slice();
-      patched[depth] = { ...frame, state: { phase: "open", result: { ...frame.state.result, file: next } } };
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: next } },
+        history: { past, future: [], coalesceKey: coalesce },
+      };
+      return patched;
+    });
+  }, []);
+
+  const undo = useCallback((): void => {
+    // Guard on the current stack before touching state, so a no-op undo (empty past) does not clear a
+    // standing "Saved."/conflict status or spin a redundant re-render.
+    if (!frameCanUndo(framesRef.current[framesRef.current.length - 1])) return;
+    setSaveState({ phase: "idle" });
+    setFrames((prev) => {
+      const depth = prev.length - 1;
+      const frame = prev[depth];
+      const opened = openedResultOf(frame);
+      if (!frame || !opened || frame.history.past.length === 0) return prev;
+      const past = frame.history.past.slice();
+      const restored = past.pop()!;
+      // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
+      // baseline, so an undo past the save-point re-dirties the buffer for free (ADR 0030). Close any
+      // coalesce run so a following field edit opens a fresh entry rather than folding into the undone one.
+      const patched = prev.slice();
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: restored } },
+        history: { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined },
+      };
+      return patched;
+    });
+  }, []);
+
+  const redo = useCallback((): void => {
+    if (!frameCanRedo(framesRef.current[framesRef.current.length - 1])) return;
+    setSaveState({ phase: "idle" });
+    setFrames((prev) => {
+      const depth = prev.length - 1;
+      const frame = prev[depth];
+      const opened = openedResultOf(frame);
+      if (!frame || !opened || frame.history.future.length === 0) return prev;
+      const future = frame.history.future.slice();
+      const restored = future.shift()!;
+      const patched = prev.slice();
+      patched[depth] = {
+        ...frame,
+        state: { phase: "open", result: { ...opened, file: restored } },
+        history: { past: [...frame.history.past, opened.file], future, coalesceKey: undefined },
+      };
       return patched;
     });
   }, []);
@@ -317,5 +424,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, open, descend, goTo, applyEdit, save, reloadActive, saveState };
+  return { registry, frames, open, descend, goTo, applyEdit, undo, redo, save, reloadActive, saveState };
 }

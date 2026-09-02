@@ -894,6 +894,24 @@ body {
   cursor: default;
 }
 
+/* Undo/redo (#389): secondary buttons, left of Save; the glyph carries the affordance when narrow. */
+.undo-btn,
+.redo-btn {
+  padding: 5px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.undo-btn:disabled,
+.redo-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .save-status {
   font-size: var(--fs-sm);
   color: var(--status-succeeded-fg);

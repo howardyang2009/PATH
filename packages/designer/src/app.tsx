@@ -11,7 +11,7 @@ import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
-import { frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -88,6 +88,33 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // Dirty is content-equality against the active frame's baseline (ADR 0030), the same fact launch and
   // Save gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
+  // The undo/redo affordances read the active frame's own stack (#389, per-file). `undo`/`redo` are
+  // stable session callbacks, so the keyboard peer below re-subscribes only when the enablement flips.
+  const canUndo = frameCanUndo(active);
+  const canRedo = frameCanRedo(active);
+  const { undo, redo } = session;
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent): void => {
+      // Editing-key parity with the toolbar buttons: ⌘/Ctrl+Z undoes, ⌘/Ctrl+Shift+Z or Ctrl+Y redoes.
+      // Leave a text field's own native undo alone — a keystroke run is a field concern until it blurs.
+      const key = event.key.toLowerCase();
+      if (!(event.metaKey || event.ctrlKey) || (key !== "z" && key !== "y")) return;
+      const target = event.target as HTMLElement | null;
+      if (target && (target.tagName === "INPUT" || target.tagName === "TEXTAREA" || target.isContentEditable)) return;
+      const wantsRedo = key === "y" || (key === "z" && event.shiftKey);
+      if (wantsRedo) {
+        if (canRedo) {
+          event.preventDefault();
+          redo();
+        }
+      } else if (canUndo) {
+        event.preventDefault();
+        undo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [canUndo, canRedo, undo, redo]);
 
   return (
     <AppShell
@@ -96,6 +123,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           <EditingToolbar
             saveState={session.saveState}
             dirty={dirty}
+            canUndo={canUndo}
+            canRedo={canRedo}
+            onUndo={undo}
+            onRedo={redo}
             onSave={session.save}
             onReload={session.reloadActive}
             lease={leases.get(activePath)}

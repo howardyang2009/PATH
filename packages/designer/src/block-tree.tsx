@@ -126,9 +126,9 @@ function NodeControls({ node, editor }: { node: WorkflowNode; editor?: EditorApi
 function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
   return (event: KeyboardEvent): void => {
     if (!editor) return;
-    // Only the Delete key (§ Delete). Not Backspace: a destructive subtree delete has no undo yet
-    // (the dirty/undo model is a later #254 ticket), so a stray Backspace must not wipe a block.
-    if (event.key !== "Delete") return;
+    // Delete or Backspace (#389): the undo stack now backs a destructive subtree delete, so Backspace —
+    // withheld before for want of an undo — is unlocked and is itself undoable (via `editor.remove`).
+    if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (event.target !== event.currentTarget) return; // ignore keys bubbling from a nested control
     if (!editor.canRemove(node.id)) return;
     event.preventDefault();
