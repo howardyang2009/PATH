@@ -3,6 +3,7 @@ import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin }
 import type { WorkflowFile } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
 import { resolveRefPath } from "./resolve-ref.js";
+import { canonicalSerialize } from "./serialize.js";
 
 /**
  * The Designer's open-and-navigate session (#367): fetch the step-plugin registry once, open a file
@@ -21,7 +22,7 @@ export type RegistryLoad =
   | { phase: "error"; message: string }
   | { phase: "ready"; plugins: WireStepPlugin[] };
 
-/** One file on the navigation stack: its path, where its fetch-and-open got to, and its save baseline. */
+/** One file on the navigation stack: its path, where its fetch-and-open got to, and its save-point. */
 export interface Frame {
   path: string;
   state: FrameState;
@@ -32,6 +33,21 @@ export interface Frame {
    * to the write route's returned ETag on every successful save, so the next save's baseline is current.
    */
   etag: string | null;
+  /**
+   * The **baseline**: the on-disk bytes the frame last synced (ADR 0030) — the raw text this frame
+   * opened, or `canonicalSerialize(buffer)` of the bytes the last `200` save wrote. The buffer is
+   * **clean** when `canonicalSerialize(buffer) === baseline`, **dirty** otherwise: a content comparison,
+   * not a mutation flag. It pairs with `etag` (same save-point, ADR 0025), and advances only on a `200`
+   * save. Empty until the frame's fetch-and-open lands.
+   */
+  baseline: string;
+  /**
+   * `canonicalSerialize(buffer)` at the last save-point — the buffer's bytes at open, then at each `200`
+   * save. It only steers the badge's wording (an id-stamp-only dirty vs an authored edit); dirtiness is the
+   * `baseline` comparison above. Empty until the frame opens. It differs from `baseline` only at open of a
+   * non-canonical file (baseline is the raw disk bytes, this is their canonical form); a save aligns them.
+   */
+  openedBytes: string;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -41,9 +57,10 @@ export type FrameState =
   | { phase: "open"; result: OpenResult };
 
 /**
- * The state of the active frame's save (#371, ADR 0016). `saved` is the clean save-point the dirty flag
- * clears against; `conflict` is the `412` stale-write the author must resolve (someone else wrote the
- * file since it opened); `error` is any other write failure.
+ * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
+ * `saved` shows the "Saved." confirmation after a `200` advanced the baseline (ADR 0030 keeps the content
+ * relation, not this phase, as the definition of clean); `conflict` is the `412` stale-write the author
+ * must resolve (someone else wrote the file since it opened); `error` is any other write failure.
  */
 export type SaveState =
   | { phase: "idle" }
@@ -62,7 +79,7 @@ export interface OpenSession {
   descend: (ref: string) => void;
   /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
   goTo: (index: number) => void;
-  /** Commit a structure edit to the active (last) frame's opened file, marking the buffer edited (#368). */
+  /** Commit a structure edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030). */
   applyEdit: (next: WorkflowFile) => void;
   /**
    * Save the active frame's opened buffer through `PUT /v0/workflows` under its `If-Match` ETag
@@ -93,8 +110,25 @@ export function openedResultOf(frame: Frame | undefined): OpenedResult | null {
   return null;
 }
 
+/**
+ * The one definition of **dirty** (ADR 0030): an opened frame's buffer is dirty when its canonical
+ * serialization no longer equals the frame's `baseline`, clean when it does — the single content relation
+ * that launch (save-first, ADR 0025), the Save button, and the dirty badge all read, so the three cannot
+ * drift. A frame that is loading, failed, or is a refusal is clean (there is no buffer to save).
+ */
+export function frameDirty(frame: Frame | undefined): boolean {
+  const opened = openedResultOf(frame);
+  if (!frame || !opened) return false;
+  return canonicalSerialize(opened.file) !== frame.baseline;
+}
+
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+/** A fresh loading frame for `path`: no ETag and an empty save-point until its fetch-and-open lands. */
+function loadingFrame(path: string): Frame {
+  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "" };
 }
 
 /** Fetch one file's raw bytes and run the open pipeline; a fetch failure (404, …) becomes a frame error. */
@@ -102,12 +136,18 @@ async function loadFrame(
   client: PathApiClient,
   path: string,
   plugins: WireStepPlugin[],
-): Promise<{ state: FrameState; etag: string | null }> {
+): Promise<{ state: FrameState; etag: string | null; baseline: string; openedBytes: string }> {
   try {
     const raw = await client.getWorkflowFile(path);
-    return { state: { phase: "open", result: openWorkflowFile(raw.text, plugins) }, etag: raw.etag };
+    const result = openWorkflowFile(raw.text, plugins);
+    // The baseline is the raw on-disk bytes (ADR 0030): a buffer whose canonical serialization differs
+    // from them — an id-stamp repair, or a non-canonical hand-authored file — opens dirty, because a
+    // save would write different bytes. `openedBytes` is the buffer's own canonical form at open, for the
+    // badge's stamp-vs-edit wording.
+    const openedBytes = result.status === "opened" ? canonicalSerialize(result.file) : "";
+    return { state: { phase: "open", result }, etag: raw.etag, baseline: raw.text, openedBytes };
   } catch (error) {
-    return { state: { phase: "fetch-error", message: errorMessage(error) }, etag: null };
+    return { state: { phase: "fetch-error", message: errorMessage(error) }, etag: null, baseline: "", openedBytes: "" };
   }
 }
 
@@ -148,12 +188,12 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   const runLoad = useCallback(
     (path: string, depth: number, plugins: WireStepPlugin[]): void => {
       const token = ++loadToken.current;
-      void loadFrame(client, path, plugins).then(({ state, etag }) => {
+      void loadFrame(client, path, plugins).then(({ state, etag, baseline, openedBytes }) => {
         if (token !== loadToken.current) return;
         setFrames((prev) => {
           if (depth >= prev.length || prev[depth]?.path !== path) return prev;
           const next = prev.slice();
-          next[depth] = { path, state, etag };
+          next[depth] = { path, state, etag, baseline, openedBytes };
           return next;
         });
       });
@@ -166,7 +206,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       const plugins = pluginsRef.current;
       if (!plugins) return;
       setSaveState({ phase: "idle" });
-      setFrames([{ path, state: { phase: "loading" }, etag: null }]);
+      setFrames([loadingFrame(path)]);
       runLoad(path, 0, plugins);
     },
     [runLoad],
@@ -180,7 +220,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       const path = resolveRefPath(current.path, ref);
       const depth = framesRef.current.length;
       setSaveState({ phase: "idle" });
-      setFrames((prev) => [...prev, { path, state: { phase: "loading" }, etag: null }]);
+      setFrames((prev) => [...prev, loadingFrame(path)]);
       runLoad(path, depth, plugins);
     },
     [runLoad],
@@ -195,14 +235,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const applyEdit = useCallback((next: WorkflowFile): void => {
     // An edit moves the buffer off its last save-point, so a stale "saved"/"conflict"/"error" no longer
-    // describes it: fall back to idle. The buffer is now dirty again (`edited: true`).
+    // describes it: fall back to idle. Dirtiness is not a flag set here — it is re-derived from the new
+    // buffer's canonical serialization against `baseline` (ADR 0030), so a round-trip edit reads clean.
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
       const depth = prev.length - 1;
       const frame = prev[depth];
       if (!frame || frame.state.phase !== "open" || frame.state.result.status !== "opened") return prev;
       const patched = prev.slice();
-      patched[depth] = { ...frame, state: { phase: "open", result: { ...frame.state.result, file: next, edited: true } } };
+      patched[depth] = { ...frame, state: { phase: "open", result: { ...frame.state.result, file: next } } };
       return patched;
     });
   }, []);
@@ -215,7 +256,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
       const next = prev.slice();
-      next[depth] = { path: active.path, state: { phase: "loading" }, etag: null };
+      next[depth] = loadingFrame(active.path);
       return next;
     });
     runLoad(active.path, depth, plugins);
@@ -238,19 +279,22 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       })
       .then((result) => {
         setSaveState({ phase: "saved" });
-        // Advance the frame to the new clean save-point: the write route's fresh ETag becomes the next
-        // `If-Match`, and the buffer is clean (edited/dirty cleared). Re-check the top frame is still the
-        // same file — an author who navigated away mid-save must not have that frame re-marked clean.
+        // Advance the save-point to the bytes just written (ADR 0030): `baseline` becomes the canonical
+        // serialization of the **saved** buffer (`file`, captured above — the exact bytes the server
+        // wrote and hashed) and `etag` becomes the write route's fresh ETag for the next `If-Match`. The
+        // buffer is now clean iff it still equals `file`; an author who edited *during* the in-flight save
+        // stays dirty against the new baseline, which is correct. Re-check the top frame is still the same
+        // file — an author who navigated away mid-save must not have that frame re-based.
+        const savedBytes = canonicalSerialize(file);
         setFrames((prev) => {
           const top = prev[depth];
           const topResult = openedResultOf(top);
           if (!top || top.path !== path || !topResult) return prev;
           const patched = prev.slice();
-          patched[depth] = {
-            ...top,
-            etag: result.etag,
-            state: { phase: "open", result: { ...topResult, edited: false, dirty: false } },
-          };
+          // `openedBytes` moves to the new save-point too, so the badge's stamp-vs-edit wording measures
+          // "changed since the last save", not since first open: a saved id-stamp is persisted, no longer
+          // the "stamped on import" reason.
+          patched[depth] = { ...top, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
           return patched;
         });
       })

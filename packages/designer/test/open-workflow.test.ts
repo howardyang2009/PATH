@@ -52,11 +52,11 @@ function validFile(): Record<string, unknown> {
 }
 
 describe("openWorkflowFile", () => {
-  it("opens a valid @3 file, clean (not dirty), into the typed model", () => {
+  it("opens a valid @3 file with no id stamp (its dirtiness is content-equality, ADR 0030), into the typed model", () => {
     const result = openWorkflowFile(JSON.stringify(validFile()), DEFAULT_PLUGINS);
     expect(result.status).toBe("opened");
     if (result.status !== "opened") return;
-    expect(result.dirty).toBe(false);
+    expect(result.idsStamped).toBe(false);
     expect(result.file.name).toBe("root-flow");
     expect(result.file.body).toHaveLength(5);
   });
@@ -89,7 +89,7 @@ describe("openWorkflowFile", () => {
     expect(result.absent.map((a) => a.type)).toContain("api-call");
   });
 
-  it("stamps absent ids into a dirty buffer and opens (ADR 0015)", () => {
+  it("stamps absent ids and flags idsStamped, opening the buffer (ADR 0015)", () => {
     const file = validFile();
     delete (file.body as Record<string, unknown>[])[0]!.id;
     delete file.id;
@@ -97,7 +97,7 @@ describe("openWorkflowFile", () => {
 
     expect(result.status).toBe("opened");
     if (result.status !== "opened") return;
-    expect(result.dirty).toBe(true);
+    expect(result.idsStamped).toBe(true);
     // The stamped ids are valid UUIDv4s in the parsed model.
     expect(result.file.id).toMatch(/^[0-9a-f-]{36}$/i);
     expect(result.file.body[0]!.id).toMatch(/^[0-9a-f-]{36}$/i);

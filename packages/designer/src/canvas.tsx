@@ -5,10 +5,11 @@ import { BlockTree } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { publishConflicts } from "./publish-conflicts.js";
+import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
 import { useSelection } from "./selection-context.js";
-import type { Frame, OpenSession } from "./use-open-file.js";
+import { frameDirty, type Frame, type OpenSession } from "./use-open-file.js";
 
 /**
  * The canvas region: the centre surface a `path/workflow` body renders on. Read-only in #367;
@@ -139,9 +140,15 @@ function FrameView({
   switch (result.status) {
     case "opened": {
       const editor = createEditor(result.file, applyEdit, armedKind, () => onArm(null), defaultLeafKind(plugins));
-      const badge = result.edited ? "Unsaved edits." : result.dirty ? "Ids stamped on import — unsaved (ADR 0015)." : null;
+      // Dirty is content-equality against the baseline (ADR 0030), read through the one shared relation so
+      // the badge cannot drift from launch/Save. `pristine` (the buffer still equals its bytes at the last
+      // save-point) separates an id-stamp-only dirty from an authored edit, so the badge names the reason a
+      // never-edited file is already dirty.
+      const dirty = frameDirty(frame);
+      const pristine = canonicalSerialize(result.file) === frame.openedBytes;
+      const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
       return (
-        <div className="opened" data-dirty={result.dirty || result.edited ? "true" : "false"}>
+        <div className="opened" data-dirty={dirty ? "true" : "false"}>
           {badge ? (
             <p className="dirty-badge" role="status">
               {badge}

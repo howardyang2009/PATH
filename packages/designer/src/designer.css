@@ -623,6 +623,34 @@ body {
   margin-top: 2px;
 }
 
+/* The `$env` / `$secret` authoring control: a mode selector over the matching input(s) (§ authoring, map decision 9). */
+.pane-config-control {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pane-config-mode,
+.pane-secret-source {
+  flex: none;
+  align-self: flex-start;
+}
+
+.pane-ref-control {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The reference-only token — never a resolved value (§ Display is reference-only). */
+.pane-ref-token {
+  font-family: var(--font-mono);
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
 .pane-publish-eq {
   color: var(--text-muted);
 }

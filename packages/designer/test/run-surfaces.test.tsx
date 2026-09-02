@@ -2,7 +2,20 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { makeCalls, stubClient, type StubCalls } from "./stub-server.js";
+import { openWorkflowFile } from "../src/open-workflow.js";
+import { canonicalSerialize } from "../src/serialize.js";
+import { DEFAULT_PLUGINS, makeCalls, stubClient, type StubCalls } from "./stub-server.js";
+
+/**
+ * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed point
+ * and reads **clean** (ADR 0030). A raw `JSON.stringify` of a fixture is *not* canonical (whitespace and
+ * parse-time key order differ), so it would open dirty — this models what production files look like.
+ */
+function canonicalBytes(file: Record<string, unknown>): string {
+  const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
+  if (result.status !== "opened") throw new Error(`fixture did not open: ${result.status}`);
+  return canonicalSerialize(result.file);
+}
 
 /** A distinct valid UUIDv4 per seed, so fixtures read as ids without a random source. */
 function uuid(n: number): string {
@@ -59,7 +72,7 @@ function openDock(): void {
 
 /** Render the App on the clean file and wait for the canvas to open. */
 async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?: StubCalls) {
-  const client = stubClient({ files: { [ROOT_PATH]: JSON.stringify(cleanFile()) }, calls, ...extra });
+  const client = stubClient({ files: { [ROOT_PATH]: canonicalBytes(cleanFile()) }, calls, ...extra });
   render(<App client={client} initialPath={ROOT_PATH} />);
   await screen.findByRole("region", { name: "Workflow canvas" });
   return client;

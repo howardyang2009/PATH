@@ -19,8 +19,10 @@ import {
  * the received registry does not describe cannot be rendered at all, so it refuses before anything else,
  * naming **every** absent type and the folder that would resolve each. Then identity (ADR 0015): a
  * duplicate or invalid-format `id` refuses (a silent repair would either destroy resume history or
- * clobber an author's deliberate string), while a merely **absent** `id` is stamped fresh and opens into
- * a **dirty** buffer. Only then does the strict registry-relative schema parse produce the typed model.
+ * clobber an author's deliberate string), while a merely **absent** `id` is stamped fresh (`idsStamped`).
+ * Only then does the strict registry-relative schema parse produce the typed model. The stamp itself does
+ * not set a dirty flag: dirtiness is content-equality against the baseline (ADR 0030), and a stamp reads
+ * dirty only because it changed bytes.
  *
  * Why not one strict `makeWorkflowFileSchema` pass end to end (ADR 0026's "one door"): the wire registry
  * carries field *descriptors*, not the plugin zod schemas, so the browser cannot rebuild the server's
@@ -39,7 +41,7 @@ export interface AbsentStepType {
 
 /** The outcome of opening a file: a rendered model, or one of the legible refusals. */
 export type OpenResult =
-  | { status: "opened"; file: WorkflowFile; dirty: boolean; edited?: boolean }
+  | { status: "opened"; file: WorkflowFile; idsStamped: boolean }
   | { status: "unregistered-types"; absent: AbsentStepType[]; message: string }
   | { status: "duplicate-ids"; message: string }
   | { status: "invalid-ids"; message: string }
@@ -267,16 +269,19 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
     return { status: "unregistered-types", absent, message: unregisteredTypesMessage(absent) };
   }
 
-  let dirty = false;
+  let idsStamped = false;
   if (root) {
     const identity = resolveIdentity(root, nodes);
     if ("status" in identity) return identity;
-    dirty = identity.dirty;
+    idsStamped = identity.dirty;
   }
 
   const parsed = safeParseWorkflowFile(json, wireToRegistry(plugins));
   if (!parsed.success) {
     return { status: "invalid", message: `Cannot open: the file does not validate.\n${parsed.errors.join("\n")}` };
   }
-  return { status: "opened", file: parsed.data, dirty };
+  // `idsStamped` records only that the identity gate minted an absent `id`; it drives the open badge's
+  // wording, not the buffer's dirtiness. Dirtiness is content-equality against the baseline (ADR 0030):
+  // a stamp reads dirty because it changed bytes, computed by the session, not asserted here.
+  return { status: "opened", file: parsed.data, idsStamped };
 }
