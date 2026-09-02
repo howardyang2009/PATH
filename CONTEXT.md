@@ -373,3 +373,15 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   through the server's write route; the Designer also carries its own run surfaces, shaped to the
   authoring loop, so a run never leaves it (ADR 0025). Its normative contract is
   [docs/spec/designer-spec.md](docs/spec/designer-spec.md).
+- **Buffer** — the Designer's in-memory node tree for one open workflow file. One open file has one
+  buffer; a descended nested-`workflow`-ref child is a separate open file with its own buffer, its own
+  edit lease (ADR 0017), and its own undo stack. A buffer is what the canvas edits; a save serializes it
+  through the write route.
+- **Baseline** — the on-disk bytes (and their ETag) a **Buffer** last synced with: its last successful
+  open or save. It is what the write route's `If-Match` precondition carries (ADR 0016) and the value a
+  buffer is compared against to decide clean-versus-dirty. A `200` save advances it; nothing else moves it.
+- **Save-point** — the moment a save advances the **Baseline**. A buffer is **clean** when its canonical
+  serialization is byte-identical to the baseline (a content relation, not a mutation flag), and **dirty**
+  otherwise. One save-point serves three consumers the same way — launch gates on clean, the `If-Match`
+  precondition sends the baseline ETag, and the lease heartbeat beats unconditionally beside them
+  (ADR 0025, ADR 0030).

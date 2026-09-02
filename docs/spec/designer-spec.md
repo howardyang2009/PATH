@@ -6,10 +6,11 @@ authoring console: the surface where a workflow is *authored*, as against `@path
 *watched*. Every decision the map charted is settled and recorded here. This document is **normative**:
 a build map is chartable from it without re-opening any decision below.
 
-What is **not** in this document is deferred by name to the build (execution) map, not left open: canvas
-validation-error UX, the undo/redo and dirty-state model, new-file placement and naming, whether the
-canvas drills into a nested `workflow`-ref file, the `$secret`/`$env` authoring affordance, and the
-Designer test strategy. Each is a named implementation concern, flagged in the section it touches, not a
+Five concerns this document originally deferred by name — canvas validation-error UX, the undo/redo and
+dirty-state model, new-file placement and naming, nested-`workflow`-ref creation, and the `$secret`/`$env`
+authoring affordance — are **now settled** in § Deferred authoring UX (resolves #384); the "Still open"
+flags below point there. What remains deferred to the build (execution) map is the **Designer test
+strategy** alone. Each concern is a named implementation concern, flagged in the section it touches, not a
 decision this spec ducks.
 
 **How to read this document.** § 0 lists the map's locked constraints — the frame every section below
@@ -200,13 +201,15 @@ All four are **canvas** actions (structure), never pane controls:
 An **empty canvas** offers the palette plus a start-a-body affordance. A brand-new unsaved workflow
 holds no lease until its first save (§ Session lifecycle).
 
-### Still open (deferred to named #254 tickets)
+### Settled below (was: still open)
 
-These interact with this model but are **not** settled here: whether a `sequence` renders as its own
-inline level or is collapsed; canvas validation-error UX (per-node markers vs a problems panel,
-save-blocking vs save-with-warnings); undo/redo and the dirty-state model; new-file placement and
-naming; and the `$env` / `$secret` authoring affordance. Each is an open ticket on
-[#254](https://github.com/howardyang2009/PATH/issues/254).
+These interact with this model and are now settled in **§ Deferred authoring UX (resolves #384)**:
+canvas validation-error UX (per-node markers **and** a problems panel; save-with-warnings; launch badged,
+not blocked); the undo/redo and dirty-state model (clean = content-equality to the baseline,
+[ADR 0030](../adr/0030-clean-is-content-equality-to-the-save-point-baseline.md)); new-file placement and
+naming; nested-`workflow`-ref creation; and the `$env` / `$secret` authoring affordance. The `sequence` is
+an explicit palette block rendering as its own inline stack (§ What is authorable), which resolves the
+sequence-visibility question.
 
 ---
 
@@ -337,14 +340,13 @@ refuse-on-structural-defect precedent (a duplicate or malformed `id` refuses the
 own `valid: false` verdict. The rationale — why not read-only, and why not an opaque round-trip node —
 is [ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md).
 
-### Still open (deferred to named #254 tickets)
+### Settled below (was: still open)
 
-Not settled here: the generic editor's per-field control mapping (which `fields` fragment shapes render
-as which inputs) is an implementation concern for the execution map, not a spec decision; the canvas
-validation-error UX that the publish-conflict marker above plugs into (per-node markers vs a problems
-panel, save-blocking vs save-with-warnings) remains the open #254 ticket named in § Canvas interaction
-model; and the `$env` / `$secret` authoring affordance for a config value (map decision 9) is its own
-open ticket.
+The canvas validation-error UX that the publish-conflict marker plugs into (per-node markers **and** a
+problems panel; save-with-warnings; launch badged) and the `$env` / `$secret` authoring affordance for a
+config value (map decision 9) are settled in **§ Deferred authoring UX (resolves #384)**. What stays an
+execution-map implementation concern, not a spec decision, is the generic editor's per-field control
+mapping — which `fields` fragment shapes render as which inputs.
 
 ---
 
@@ -464,8 +466,10 @@ write with a `412`. Thus the lease layer carries no cross-session signalling.
   client acquires only after the first save's write succeeds and a path exists.
 - **Across a `workflow`-ref boundary:** to drill in and edit a ref'd file (map decision 6) acquires a
   **second** lease under the same `session_id`. It beats independently. Its `409`s are independent of
-  the parent's. What a session does with a still-dirty child lease on ascend is the dirty-state model's
-  call (a separate #254 ticket), out of scope here.
+  the parent's. On **ascend with a still-dirty child**, the Designer does **not** force-save: the child
+  keeps its dirty buffer and its still-beating lease, and the breadcrumb returns to it (§ Nested
+  `workflow`-ref creation). Each file carries its own buffer, baseline, lease, and undo stack
+  ([ADR 0030](../adr/0030-clean-is-content-equality-to-the-save-point-baseline.md)).
 
 ---
 
@@ -505,7 +509,9 @@ client's in-memory buffer. Therefore:
   ([ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md), §
   Edit-lock lease protocol). Launch enables once the buffer is clean.
 - **"Clean" is the one save-point** the lease heartbeat and the `If-Match` precondition already use.
-  The dirty-state/undo model (a separate #254 ticket) defines it once for all three consumers.
+  The dirty-state/undo model defines it once for all three consumers: clean = the buffer's canonical
+  serialization byte-equals the baseline the `If-Match` precondition carries (§ Dirty-state, undo, and the
+  save-point; [ADR 0030](../adr/0030-clean-is-content-equality-to-the-save-point-baseline.md)).
 - A **brand-new, unsaved** workflow cannot be launched: with no path there is nothing for
   `prepareWorkflow` to load. Its first save creates the path (§ Session lifecycle), after which launch
   behaves as above.
@@ -599,6 +605,121 @@ component (panes, forms, buttons, tree renderer); the status glyph and pill styl
 (`status-glyph.ts`, the ordering included); the `Load<T>` phase union and hook wiring
 (`load-state.ts`, `use-run-view.ts`) — the React binding of the already-shared `connectRunViewModel`,
 not logic; and timestamp formatting.
+
+## Deferred authoring UX (resolves #384)
+
+The five concerns this document originally deferred by name — the dirty-state/undo model, new-file
+placement and naming, nested-`workflow`-ref creation, the `$env`/`$secret` authoring affordance, and the
+canvas validation-error UX — are settled here. They graduated from map #254 to
+[#384](https://github.com/howardyang2009/PATH/issues/384) and were charted (grilling) before build. Each
+was flagged "Still open" in the section it touches; this section is now normative for all five, and those
+flags point here. The dirty-state model's rationale is in
+[ADR 0030](../adr/0030-clean-is-content-equality-to-the-save-point-baseline.md); the other four carry
+their rationale inline.
+
+### Dirty-state, undo, and the save-point
+
+Rationale: [ADR 0030](../adr/0030-clean-is-content-equality-to-the-save-point-baseline.md).
+
+- **A buffer is *clean* when its canonical serialization is byte-identical to its *baseline*** — the
+  on-disk bytes the client last synced, whose ETag the write route's `If-Match` precondition carries
+  ([ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md)). "Clean" is
+  a **content comparison**, not a mutation flag. A save that returns `200` advances the baseline to the
+  returned bytes/ETag; nothing else moves it. The serializer is canonical — stable key order, every `id`
+  preserved ([ADR 0015](../adr/0015-designer-node-identity-client-mints-preserve-on-save.md)) — and is the
+  same one the ETag hashes, so "clean" and "`If-Match` matches" never disagree.
+- **One save-point, three consumers.** Launch enables only when the open file is clean (§ Launch is
+  save-first); the `If-Match` precondition sends the baseline ETag; the **lease heartbeat is unconditional**
+  — it beats every 10s regardless of dirtiness (§ Edit-lock lease protocol), because the lease guards
+  authorship, not bytes. All three key off the **same baseline object**.
+- **Undo/redo** is one entry per structural edit (add, delete, reorder, replace) or per **coalesced** field
+  edit; scoped to the whole open file's tree. The stack **survives a save**: undoing past the save-point
+  re-dirties the buffer, redoing back re-cleans it — a free consequence of content-equality, re-evaluated
+  after every undo/redo. **Each open file — the parent and every descended ref child — has its own
+  independent stack**, baseline, and lease; descent never merges stacks (a ref'd file has several parents;
+  the breadcrumb is a navigation stack, not a tree parent). Redo is cleared by any new edit. This unlocks
+  **Backspace-delete**, which `block-tree.tsx` withholds today for want of an undo.
+
+### New-file placement and naming
+
+A from-scratch workflow holds **no path and no lease** until its first save (§ Session lifecycle), so
+placement is decided **at first save**, never at create.
+
+- **Where.** The first save opens a dialog with a **directory picker confined to the project root** (the
+  write route's resolve/confine/symlink stance,
+  [ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md); a path that
+  escapes the root is a `404`). The default directory is the project root.
+- **Name.** The filename is prefilled `<workflow.name>.workflow.json` — the workflow's `name`
+  (`^[a-z][a-z0-9-]*$`, CONTEXT.md § Identity) slugs cleanly — and is author-editable, but the
+  **`.workflow.json` suffix is enforced**, because discovery lists only that suffix (§ Edit-lock lease
+  protocol, `GET /v0/workflows`).
+- **Collision.** A new-file save is an **exclusive create**: an existing path is refused ("choose another
+  name"), never a silent overwrite of another workflow. On success the path exists, the client acquires the
+  lease, and launch behaves as for any saved file.
+
+### Nested `workflow`-ref creation
+
+The drill-down and the per-ref lease are built (§ Canvas interaction model, § Edit-lock lease protocol);
+what was open is how a **new** ref target is created. Because a `workflow`-ref stores a **path**, adding a
+ref offers **reference-existing** (a picker over discovered workflows) **or create-new**:
+
+- **Create-new** runs the new-file dialog above to **choose the child's path** (directory picker + name +
+  exclusive-create check), sets the parent ref to that path, then **descends into a fresh child buffer bound
+  to that path but not yet written** — the from-scratch rule unchanged (no lease, no launch, until the
+  child's first save), only the intended path pre-assigned. No stub file is written; the child is saved
+  later with author-built content.
+- The parent ref is **dangling** (its target file is absent) until the child's first save; that transient
+  state surfaces as a validation marker (below), not a hard error.
+- **Ascend with a dirty child does not force-save.** The child keeps its dirty buffer and its still-beating
+  lease; the breadcrumb returns to it. The parent cannot *launch* until the child is saved (the server's
+  `prepareWorkflow` cannot load a missing ref), which is correct behaviour, not a block the Designer adds.
+
+### `$env` / `$secret` authoring (map decision 9)
+
+The affordance lives **only where a wrapper is representable**: on **config** values (a **Type field** holds
+no `$env`/`$secret` wrapper, [ADR 0022](../adr/0022-config-vs-field-vs-input-line-for-a-step-type.md) §6;
+CONTEXT.md § Data) and on `while-do`'s `max_iterations` string form (§ The block shapes).
+
+- **Entry.** A per-config-value **mode selector** — `Literal` / `$env` / `$secret`. `$env` reveals an
+  env-var-name input; `$secret` reveals the secret-ref form (composing as `{"$secret": {"$env": …}}` is
+  allowed, CONTEXT.md § Audit). It edits in the **config region** of the pane (§ Config inheritance
+  display), not the type-field region.
+- **Display is reference-only, never resolved.** An `$env` value shows the variable name as a chip
+  (`$env · OPENAI_KEY`); a `$secret` shows a masked, named token. The Designer **never resolves** a wrapper
+  — resolution is the engine's, at run-start (CONTEXT.md § Audit,
+  [ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)). A `$env` authored inside the file is
+  permitted (§ 0 Constraints); this is the surface that authors it.
+- **Validation is wrapper-shape only.** Config is validated *after* resolution against the resolved type
+  ([ADR 0022](../adr/0022-config-vs-field-vs-input-line-for-a-step-type.md) §3–4), so the Designer cannot
+  type-check the resolved value; a resolved-type mismatch (or an unset variable) surfaces at **run-start**,
+  as the run's own error, not in the pane.
+
+### Canvas validation-error UX
+
+The canvas already makes illegal structure **unsnappable** (§ Canvas interaction model) and the pane
+**refuses to commit** a schema-invalid node edit (`safeParseWorkflowFile` in the pane), so the errors that
+survive to a whole-file view are dominantly **cross-node**: a dangling `${context.…}` / `${output.…}`
+interpolation target, a dangling condition path, a dangling `workflow`-ref (above), and the publish
+conflicts already surfaced today (§ Context reads and writes).
+
+- **Two coupled surfaces.** A per-node **⚠ marker** on each offending node (the existing publish-conflict
+  marker, extended to every cross-node error), **and** an aggregate **problems panel** listing each error
+  with jump-to-node — because a marker on a collapsed or off-screen node is invisible, and a panel alone
+  makes the author hunt. This mirrors the aggregate load error of
+  [ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md) §5 and the aggregate refuse-message
+  of [ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md).
+- **Save-with-warnings.** A **hard** (schema-invalid) file is already blocked by the write route's
+  server-side re-validation (a `400`, surfaced in the panel) and is largely unsnappable to begin with. The
+  remaining **soft** cross-node errors **do not block save** — an author routinely writes a consumer before
+  its producer, and nested-ref create-new *requires* it (a freshly created child ref is dangling until the
+  child is saved; a save-block would deadlock the parent-then-child order).
+- **Launch is badged, not blocked.** A saved-with-warnings file is *clean*, so launch is enabled; the launch
+  button carries a **warning count** so the author launches knowingly, and the run surfaces the truth at
+  run-start (an unresolved interpolation, an unset `$env`). This matches
+  [ADR 0022](../adr/0022-config-vs-field-vs-input-line-for-a-step-type.md) (config/interpolation failures
+  are run-start errors by design) and ADR 0025's stance that the author judges when a run is meaningful.
+
+---
 
 ## Serving mounts and navigation
 
