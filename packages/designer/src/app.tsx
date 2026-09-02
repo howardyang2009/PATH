@@ -10,7 +10,7 @@ import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
-import { openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -81,7 +81,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     [session.frames],
   );
   const { leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
-  const dirty = openedResult ? Boolean(openedResult.edited || openedResult.dirty) : false;
+  // Dirty is content-equality against the active frame's baseline (ADR 0030), the same fact launch and
+  // Save gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
+  const dirty = frameDirty(active);
 
   return (
     <AppShell
