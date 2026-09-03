@@ -845,6 +845,34 @@ body {
   gap: 3px;
 }
 
+/* A leaf predicate on one control row: `path <operator> operand`, each control under its label. The row is
+   bottom-aligned so the operator select (which carries no label) lines up with the operand inputs; it wraps
+   only when the pane is too narrow to hold all three side by side (§ ADR 0022, condition row). */
+.cond-leaf {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* Each operand cell shares the remaining width and shrinks rather than overflow; its input fills the cell. */
+.cond-leaf > .cond-operand {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.cond-leaf > .cond-operand .pane-input {
+  min-width: 0;
+}
+
+/* The infix operator select sits on the control line, only as wide as its content (no label above it). */
+.cond-leaf > .cond-op {
+  align-self: flex-end;
+  flex: none;
+  width: auto;
+  min-width: 0;
+}
+
 .cond-range,
 .cond-scalar-controls {
   display: flex;

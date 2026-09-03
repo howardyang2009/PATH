@@ -10,6 +10,8 @@ import {
   type ScalarKind,
 } from "./condition-edit.js";
 
+import type { ReactNode } from "react";
+
 /**
  * The typed `Condition` builder (#370, designer-spec § Canvas interaction model, ADR 0022). It edits the
  * structured AST — an operator picked from a menu, its operands in typed controls — never free text, so
@@ -63,21 +65,34 @@ function ConditionNode({
   suggestions: string[];
   onChange: (next: Condition) => void;
 }): JSX.Element {
+  const operator = (
+    <select
+      className="pane-input cond-op"
+      aria-label="Operator"
+      value={value.type}
+      onChange={(e) => onChange(changeConditionType(value, e.target.value as Condition["type"]))}
+    >
+      {CONDITION_TYPES.map((type) => (
+        <option key={type} value={type}>
+          {type}
+        </option>
+      ))}
+    </select>
+  );
+  // A leaf predicate reads infix — `path <operator> operand` — on one control row, each control under its
+  // label (§ ADR 0022, condition row). A combinator (`all`/`any`/`not`) keeps the operator as a prefix
+  // above its indented children, so the tree structure still reads top-down.
+  if (isLeafConditionType(value.type)) {
+    return (
+      <div className="cond-node cond-leaf">
+        <ConditionOperands value={value} suggestions={suggestions} onChange={onChange} operator={operator} />
+      </div>
+    );
+  }
   return (
     <div className="cond-node">
-      <select
-        className="pane-input cond-op"
-        aria-label="Operator"
-        value={value.type}
-        onChange={(e) => onChange(changeConditionType(value, e.target.value as Condition["type"]))}
-      >
-        {CONDITION_TYPES.map((type) => (
-          <option key={type} value={type}>
-            {type}
-          </option>
-        ))}
-      </select>
-      <ConditionOperands value={value} suggestions={suggestions} onChange={onChange} />
+      {operator}
+      <ConditionOperands value={value} suggestions={suggestions} onChange={onChange} operator={null} />
     </div>
   );
 }
@@ -87,19 +102,28 @@ function ConditionOperands({
   value,
   suggestions,
   onChange,
+  operator,
 }: {
   value: Condition;
   suggestions: string[];
   onChange: (next: Condition) => void;
+  /** The operator select, rendered infix right after the path for a leaf predicate; `null` for a combinator. */
+  operator: ReactNode;
 }): JSX.Element {
   switch (value.type) {
     case "exists":
     case "valid-json":
-      return <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />;
+      return (
+        <>
+          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          {operator}
+        </>
+      );
     case "equals":
       return (
         <>
           <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          {operator}
           <ScalarField value={value.value} onChange={(scalar) => onChange({ ...value, value: scalar })} />
         </>
       );
@@ -107,6 +131,7 @@ function ConditionOperands({
       return (
         <>
           <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          {operator}
           <label className="cond-operand">
             <span className="pane-label">pattern</span>
             <input
@@ -122,6 +147,7 @@ function ConditionOperands({
       return (
         <>
           <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          {operator}
           <div className="cond-range">
             <OptionalNumber label="min" value={value.min} onChange={(n) => onChange(withBound(value, "min", n))} />
             <OptionalNumber label="max" value={value.max} onChange={(n) => onChange(withBound(value, "max", n))} />
@@ -132,6 +158,7 @@ function ConditionOperands({
       return (
         <>
           <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          {operator}
           <ScalarListField values={value.values} onChange={(values) => onChange({ ...value, values })} />
         </>
       );
