@@ -41,26 +41,32 @@
   min-height: 0;
 }
 
-/* The divider between panes. Doubles as its own border: a hairline sits centred in the 6px track,
-   thickening on hover/focus/drag so the grab target reads without stealing layout width. */
+/* The divider between panes: a 1px hairline centred in the 6px track, thickening to a 3px accent bar
+   on hover/focus/drag so the grab target reads without stealing layout width. Same thin separator the
+   Designer uses between its run-dock panes and shell rails (`.run-dock-vresizer` / `.rail-vresizer`). */
 .pane-resizer {
   position: relative;
   cursor: col-resize;
-  background: var(--border);
+  background: none;
   touch-action: none;
 }
 
 .pane-resizer::before {
   content: "";
   position: absolute;
-  inset: 0;
-  background: transparent;
-  transition: background 0.12s ease;
+  top: 0;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 1px;
+  background: var(--border);
+  transition: width 0.12s ease, background 0.12s ease;
 }
 
 .pane-resizer:hover::before,
 .pane-resizer:focus-visible::before,
 .pane-resizer:active::before {
+  width: 3px;
   background: var(--accent);
 }
 
