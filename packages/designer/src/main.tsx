@@ -2,6 +2,9 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import { apiClient } from "./api.js";
 import { App } from "./app.js";
+// The reused run panels (`@path/viewer`) carry their own styles. Import them first so the Designer's
+// own stylesheet, loaded last, still wins for the few class names the two share (the app frame).
+import "@path/viewer/viewer.css";
 import "./tokens.css";
 import "./designer.css";
 

@@ -1,6 +1,6 @@
 /*
- * @path/designer design tokens. The Designer is a peer of `@path/viewer`, never an importer of it
- * (ADR 0028), so it carries its **own** copy of the shared palette — the same neutrals and type scale,
+ * @path/designer design tokens. The Designer reuses the Viewer's run panels (ADR 0031) but keeps its
+ * **own** copy of the shared palette here — the same neutrals and type scale,
  * plus the per-kind block hues the canvas prototype pinned (`canvas.prototype.html`, #255). Themed at
  * the token level: defaults are light; dark is redefined under `@media (prefers-color-scheme: dark)`
  * AND `:root[data-theme="dark"]` so a future theme toggle wins over the OS preference.

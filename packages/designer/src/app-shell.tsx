@@ -14,7 +14,8 @@ export interface AppShellProps {
 }
 
 /**
- * The Designer app frame, a peer of the Viewer's shell but never an import of it (ADR 0028). The
+ * The Designer app frame — its own shell, not the Viewer's, though the run dock inside it reuses the
+ * Viewer's run read panels (ADR 0031). The
  * layout is three landmark regions: the **palette** rail on the left, the **canvas** at the centre, and
  * (from #369) the **properties** pane on the right. Save and run still graduate in later tickets. The
  * frame exists so the empty canvas, the palette, and the pane load at `/designer/`.

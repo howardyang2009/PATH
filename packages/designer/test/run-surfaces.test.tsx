@@ -140,7 +140,7 @@ describe("Designer run surfaces (#372)", () => {
     openDock();
 
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
-    const cancel = await screen.findByTestId("run-cancel");
+    const cancel = await screen.findByTestId("cancel-button");
     expect(cancel).toHaveTextContent("Cancel run");
 
     fireEvent.click(cancel); // arm
@@ -151,7 +151,7 @@ describe("Designer run surfaces (#372)", () => {
     await waitFor(() => expect(calls.cancel).toEqual(["root-1"]));
   });
 
-  it("resume offers the config-override form and shows the plan-reuse caveat", async () => {
+  it("resume offers the config-override form", async () => {
     await renderClean({
       runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "failed", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
       tree: { root_run_id: "root-1", status: "failed", output: null, runs: [wireRun({ run_id: "root-1", status: "failed" })] },
@@ -159,11 +159,10 @@ describe("Designer run surfaces (#372)", () => {
     openDock();
 
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
-    expect(await screen.findByTestId("run-resume-caveat")).toHaveTextContent(/previous/i);
-    expect(screen.getByTestId("run-resume-submit")).toBeInTheDocument();
+    expect(await screen.findByTestId("resume-button")).toBeInTheDocument();
     // The config override is behind a disclosure (empty by default) — open it to reveal the field.
-    fireEvent.click(screen.getByTestId("run-resume-config-toggle"));
-    expect(screen.getByTestId("run-resume-config")).toBeInTheDocument();
+    fireEvent.click(screen.getByTestId("resume-config-toggle"));
+    expect(screen.getByTestId("resume-config")).toBeInTheDocument();
   });
 
   it("projects run status onto the matching canvas node", async () => {
@@ -197,13 +196,13 @@ describe("Designer run surfaces (#372)", () => {
     openDock();
 
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
-    fireEvent.click(await screen.findByTestId("run-tree-row-r-step"));
+    fireEvent.click(await screen.findByTestId("tree-row-r-step"));
 
     // Input present → rendered; output absent on a terminal run → the "no output recorded" note (the
     // read-anyway-and-trust-the-404 branch of the shared absence rule, #51).
-    const io = await screen.findByTestId("run-node-io");
-    await waitFor(() => expect(within(screen.getByTestId("run-node-io-input")).queryByText(/seed/)).toBeInTheDocument());
-    await waitFor(() => expect(within(screen.getByTestId("run-node-io-output")).getByText(/No output object recorded/i)).toBeInTheDocument());
+    const io = await screen.findByTestId("node-io-head");
+    await waitFor(() => expect(within(screen.getByTestId("node-io-input")).queryByText(/seed/)).toBeInTheDocument());
+    await waitFor(() => expect(within(screen.getByTestId("node-io-output")).getByText(/No output object recorded/i)).toBeInTheDocument());
     expect(io).toBeInTheDocument();
   });
 });

@@ -1,6 +1,7 @@
 /*
  * @path/designer chrome. Palette rail + canvas stage, on the shared tokens (`tokens.css`). The
- * Designer owns its own stylesheet — it never pulls the Viewer's (ADR 0028).
+ * Designer owns this stylesheet for its authoring frame; it also imports the Viewer's `viewer.css`
+ * for the reused run panels (ADR 0031), loaded before this file so the frame classes here still win.
  */
 
 * {
@@ -982,8 +983,11 @@ body {
 }
 
 /* ============================================================================
- * Run surfaces (#372): the bottom-docked launch / history / inspector, plus the
- * canvas run projection. The Designer's own look — never the Viewer's (ADR 0028).
+ * Run surfaces (#372): the bottom-docked run dock (its own layout chrome) plus the
+ * canvas run projection. The three panels inside the dock are the Viewer's, reused
+ * (ADR 0031) and styled by `viewer.css`; only the dock frame and the projection are
+ * styled here. Rules below for the old `.run-list`/`.run-inspector`/`.run-node-io`
+ * fork classes are dead since the fork was removed — safe to prune in a follow-up.
  * ========================================================================== */
 
 .run-dock {
