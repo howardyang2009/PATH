@@ -510,6 +510,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* The shared label column for single-line property rows (`.pane-field-row`), so every such row's
+     value starts in the same place down the pane. */
+  --pane-label-w: 92px;
 }
 
 .pane-idle,
@@ -550,6 +553,31 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+
+/* A single-line property (Name, Id, Command, Join, …) lays its label and its one control on one row:
+   the label sits in a fixed-width first column so every such row's value column lines up down the
+   pane, the control fills the rest. A trailing block child (a re-key warning, a validation error)
+   drops to its own full-width row beneath them. */
+.pane-field-row {
+  display: grid;
+  grid-template-columns: var(--pane-label-w) 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.pane-field-row > .pane-label {
+  overflow-wrap: anywhere;
+}
+
+/* The value control yields rather than overflowing its track when its content is long. */
+.pane-field-row > :nth-child(2) {
+  min-width: 0;
+}
+
+.pane-field-row > :nth-child(n + 3) {
+  grid-column: 1 / -1;
 }
 
 .pane-label {

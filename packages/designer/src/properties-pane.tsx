@@ -965,7 +965,7 @@ function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChang
 function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: string }): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="pane-field">
+    <div className="pane-field pane-field-row">
       <span className="pane-label">Id</span>
       <div className="pane-id-row">
         <code className="pane-id">{id}</code>
@@ -1004,7 +1004,7 @@ function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: s
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <input className="pane-input" type="text" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
@@ -1022,7 +1022,7 @@ function TextAreaField({ label, value, onChange }: { label: string; value: strin
 
 function NumberField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <input
         className="pane-input"
@@ -1071,7 +1071,7 @@ function SelectField({
   onChange: (v: string) => void;
 }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <select className="pane-input" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((option) => (
@@ -1086,7 +1086,7 @@ function SelectField({
 
 function ReadOnlyRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    <div className="pane-field">
+    <div className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <code className="pane-id">{value}</code>
     </div>
