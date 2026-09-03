@@ -172,6 +172,24 @@ describe("#369 the three editor tiers", () => {
     expect((within(pane).getByLabelText("Referenced file") as HTMLInputElement).value).toBe("other.workflow.json");
   });
 
+  it("authors workflow-level config on the file, and steps inherit it", async () => {
+    const { canvas, pane } = await openPane();
+    // Empty-canvas click → the file's own properties, which now carry a Config region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("flow");
+    expect(within(pane).getByText(/Add a key to set a workflow default/)).toBeInTheDocument();
+
+    // Add a workflow-level key and give it a value.
+    fireEvent.change(within(pane).getByLabelText("New config key"), { target: { value: "region" } });
+    fireEvent.click(within(pane).getByRole("button", { name: "+ add config key" }));
+    fireEvent.change(within(pane).getByLabelText("region"), { target: { value: "eu" } });
+
+    // A step now shows that key as inherited from the file.
+    selectNode(canvas, "alpha");
+    expect(within(pane).getByText("region")).toBeInTheDocument();
+    expect(within(pane).getByText("inherited from flow")).toBeInTheDocument();
+  });
+
   it("generates a form for a layoutable registry type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "call");
