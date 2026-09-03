@@ -3,7 +3,7 @@
 PATH is a workflow management system. You write a workflow as JSON. A workflow has steps, workers,
 and blocks (parallel, branch, while-do). A parallel block uses a `wait-one` or `do-not-wait` join. A
 workflow can also have checkpoints. You run a workflow on your machine or over HTTP. You watch,
-launch, and resume runs in a web viewer.
+launch, and resume runs in a web viewer. You author workflow files on a visual canvas in the designer.
 
 Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, logicer, checkpoint,
 and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the specs.
@@ -17,8 +17,11 @@ and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the s
 | `@path/server` | An HTTP and SSE API over the engine. Provides the `path-server` CLI. |
 | `@path/client-core` | A pure-TypeScript API client. It has an SSE client, a run view-model, and a run/workflow write surface. It needs no framework and no Node. |
 | `@path/viewer` | A React web console over `client-core`. It monitors runs live. It launches and resumes runs. |
+| `@path/designer` | A React authoring console over `client-core`. It opens, edits, and saves workflow files on a live canvas. `path-server` serves it at `/designer/`. It is a peer of the viewer and never imports it. |
 
 ## Getting started
+
+Node 24 or later is required (`engines.node` is `>=24`).
 
 ```bash
 pnpm install
@@ -47,9 +50,14 @@ Or serve it over HTTP and watch it in the viewer:
 
 ```bash
 pnpm --filter @path/viewer run build               # path-server serves dist/, so build it first
-npx tsx packages/server/bin/path-server.ts . --port 8080   # v0 API + the built viewer
+pnpm --filter @path/designer run build             # path-server also serves the designer bundle
+npx tsx packages/server/bin/path-server.ts . --port 8080   # v0 API + the built viewer + /designer/
 pnpm --filter @path/viewer run dev                 # or: viewer dev server, proxies API calls
+pnpm --filter @path/designer run dev               # or: designer dev server, proxies API calls
 ```
+
+`path-server` mounts the viewer at `/` and the designer at `/designer/`. An unbuilt bundle serves
+nothing (its routes 404), so build each bundle you want to serve first.
 
 The bins are TypeScript entry points. `tsx` runs them. There is no build step. There is no linked
 `path` or `path-server` on your `PATH`. Thus `pnpm exec path-server` cannot find them.
@@ -58,11 +66,12 @@ The first argument to `path-server` is the project directory. The server reads a
 there. This argument defaults to the current directory. The engine CLI is different: it finds its
 project directory from the workflow file location.
 
-## Status (2026-08-30)
+## Status (2026-09-03)
 
-The latest release is **v0.5.4** (2026-08-30). See `CHANGELOG.md` for the full history. The `main`
-branch is green. `pnpm -r run typecheck` is clean. 1253 tests pass: schema 271, engine 624, viewer
-138, server 140, client-core 56, scripts 24.
+The latest release is **v0.5.4** (2026-08-30). See `CHANGELOG.md` for the full history. Since that
+release, the `main` branch carries an unreleased **Designer** track (map #254, see *What's next*). The
+`main` branch is green. `pnpm -r run typecheck` is clean across all packages. 1536 tests pass: schema
+280, engine 624, server 199, designer 189, viewer 121, client-core 99, scripts 24.
 
 The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
 release-notes pipeline passes its acceptance run (mvp spec §11).
@@ -126,8 +135,15 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   resume (v0.4.4) have shipped. The step-plugin seam (v0.5.4) is now the vehicle for the deferred step
   types: an API-endpoint step type can ship as a plugin folder rather than a core union member.
   Automatic in-run retry is still deferred.
-- A **Designer** — the visual canvas over the workflow format. The map is laid (ADR 0015–0017, the
-  `packages/designer` prototype), but no Designer ships yet.
+- A **Designer** — the visual authoring canvas over the workflow format (map #254, ADR 0015–0017,
+  0027–0028). It is now `@path/designer`, a buildable bundle `path-server` serves at `/designer/`
+  (#366). It opens and renders a workflow read-only (#367), edits the tree on the canvas (#368),
+  authors identity and the three-tier step editors, conditions, config inheritance, and I/O wiring
+  through a properties pane (#369, #370), leases an edit lock and saves through the write route (#371),
+  drives the seven run surfaces over `client-core` (#372), tracks a per-file dirty state against a
+  content-equality baseline with undo/redo (#386, #389), authors `$env` / `$secret` config values
+  (#387), flags cross-node and dangling-reference problems (#388, #392), and creates from-scratch and
+  nested workflow-ref files (#390, #391). It is not yet cut into a release.
 
 ## Maintenance notes
 
