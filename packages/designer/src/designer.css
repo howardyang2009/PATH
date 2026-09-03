@@ -99,6 +99,21 @@ body {
   flex: none;
   align-self: stretch;
   touch-action: none;
+  /* Anchor the wider grab overlay below. The 6px box carries the layout width (the resize math reserves
+   * exactly this), while the pointer target is widened past it so the hairline is easy to grab. */
+  position: relative;
+}
+
+/* Widen the pointer hit area to ~16px without changing the 6px layout width: a 1px hairline is precise to
+ * point at, and a mouse that lands a few px into the neighbouring rail still grabs the separator. */
+.run-dock-vresizer::after,
+.rail-vresizer::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -5px;
+  right: -5px;
 }
 
 .run-dock-vresizer::before,
