@@ -997,8 +997,37 @@ body {
   min-height: 0;
 }
 
-.run-dock[data-open="true"] {
-  max-height: 42vh;
+/* The drag handle on the dock's top edge — grab it to set the drawer's height. Mirrors the Viewer's
+ * row resizers: a hairline that thickens on hover/focus, and a keyboard-reachable separator. */
+.run-dock-resizer {
+  height: 6px;
+  margin-top: -1px;
+  cursor: row-resize;
+  background: none;
+  flex: none;
+}
+
+.run-dock-resizer::before {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--border);
+}
+
+.run-dock-resizer:hover::before,
+.run-dock-resizer:focus-visible::before,
+.run-dock-resizer:active::before {
+  height: 3px;
+  background: var(--accent);
+}
+
+.run-dock-resizer:focus-visible {
+  outline: none;
+}
+
+.run-dock[data-open="true"] .run-dock-body {
+  flex: 1;
+  min-height: 0;
 }
 
 .run-dock-bar {
@@ -1018,10 +1047,7 @@ body {
 }
 
 .run-dock-body {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(280px, 1.4fr);
-  gap: 1px;
-  background: var(--border);
+  display: flex;
   overflow: hidden;
   min-height: 0;
 }
@@ -1031,6 +1057,47 @@ body {
   padding: 10px 12px;
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
+}
+
+/* Left and middle panes carry a drag-set width (inline style); the right pane takes the rest. */
+.run-dock-runs,
+.run-dock-detail {
+  flex: none;
+}
+
+.run-dock-io {
+  flex: 1 1 0;
+}
+
+/* Vertical drag handles between the three panes — the width twin of `.run-dock-resizer`: a hairline
+ * that thickens on hover/focus, and a keyboard-reachable separator (ArrowLeft/ArrowRight). */
+.run-dock-vresizer {
+  width: 6px;
+  cursor: col-resize;
+  background: none;
+  flex: none;
+  align-self: stretch;
+}
+
+.run-dock-vresizer::before {
+  content: "";
+  display: block;
+  width: 1px;
+  height: 100%;
+  margin: 0 auto;
+  background: var(--border);
+}
+
+.run-dock-vresizer:hover::before,
+.run-dock-vresizer:focus-visible::before,
+.run-dock-vresizer:active::before {
+  width: 3px;
+  background: var(--accent);
+}
+
+.run-dock-vresizer:focus-visible {
+  outline: none;
 }
 
 .run-dock-heading {
