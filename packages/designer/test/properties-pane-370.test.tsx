@@ -102,17 +102,20 @@ describe("#370 the typed condition builder", () => {
 });
 
 describe("#370 config inheritance display", () => {
-  it("shows inherited (ghosted + origin) and overridden (revert), and Override makes a key local", async () => {
+  it("shows inherited (ghosted value + Override) and overridden (revert), and Override makes a key local", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    // `timeout` is inherited from the file; `region` is overridden by the step; `model` is a first-class field, not here.
-    expect(within(pane).getByText("inherited from flow")).toBeInTheDocument();
+    // `timeout` is inherited from the file (ghosted value + Override); `region` is overridden by the step
+    // (Revert); `model` is a first-class field, not here. The inheritance shows as the ghost + Override
+    // affordance, not a caption.
+    const timeoutRow = within(pane).getByText("timeout").closest(".pane-config-row") as HTMLElement;
+    expect(within(timeoutRow).getByText("30")).toHaveClass("pane-ghost");
     expect(within(pane).getByRole("button", { name: "Override" })).toBeInTheDocument();
     expect(within(pane).getByRole("button", { name: "Revert" })).toBeInTheDocument();
 
     fireEvent.click(within(pane).getByRole("button", { name: "Override" }));
-    // Overriding the last inherited key removes the inherited caption.
-    expect(within(pane).queryByText("inherited from flow")).not.toBeInTheDocument();
+    // Overriding the last inherited key removes the Override affordance — the key is now local.
+    expect(within(pane).queryByRole("button", { name: "Override" })).not.toBeInTheDocument();
   });
 });
 

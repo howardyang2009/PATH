@@ -120,6 +120,16 @@ describe("#369 selection populates the pane", () => {
     expect(within(pane).getByText(FORMAT_VERSION)).toBeInTheDocument();
   });
 
+  it("clicking the workflow-name crumb goes back to the file's own properties", async () => {
+    const { canvas, pane } = await openPane();
+    selectNode(canvas, "alpha");
+    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("alpha");
+    // Click the current breadcrumb crumb (the open workflow's name) → deselect → file properties.
+    fireEvent.click(within(canvas).getByRole("button", { name: "flow", current: "page" }));
+    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("flow");
+    expect(within(pane).getByText(FORMAT_VERSION)).toBeInTheDocument();
+  });
+
   it("keeps the selection through a structure-control click (not a background click)", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -184,10 +194,11 @@ describe("#369 the three editor tiers", () => {
     fireEvent.click(within(pane).getByRole("button", { name: "+ add config key" }));
     fireEvent.change(within(pane).getByLabelText("region"), { target: { value: "eu" } });
 
-    // A step now shows that key as inherited from the file.
+    // A step now shows that key as inherited from the file: a ghosted value with an Override button.
     selectNode(canvas, "alpha");
-    expect(within(pane).getByText("region")).toBeInTheDocument();
-    expect(within(pane).getByText("inherited from flow")).toBeInTheDocument();
+    const regionRow = within(pane).getByText("region").closest(".pane-config-row") as HTMLElement;
+    expect(within(regionRow).getByText("eu")).toHaveClass("pane-ghost");
+    expect(within(regionRow).getByRole("button", { name: "Override" })).toBeInTheDocument();
   });
 
   it("generates a form for a layoutable registry type", async () => {

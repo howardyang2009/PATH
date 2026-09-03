@@ -297,7 +297,7 @@ body {
 .crumb-current {
   color: var(--text);
   font-weight: 600;
-  cursor: default;
+  cursor: pointer;
 }
 
 /* Block grammar. Every node is a block; block kind is hue + label, never hue alone. */
@@ -510,6 +510,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  /* The shared label column for property rows (`.pane-field-row`), so every row's value starts in the
+     same place down the pane. Sized to the widest label the pane shows (`Args (one per line)`). */
+  --pane-label-w: 106px;
 }
 
 .pane-idle,
@@ -550,6 +553,37 @@ body {
   flex-direction: row;
   align-items: center;
   gap: 6px;
+}
+
+/* A single-line property (Name, Id, Command, Join, …) lays its label and its one control on one row:
+   the label sits in a fixed-width first column so every such row's value column lines up down the
+   pane, the control fills the rest. A trailing block child (a re-key warning, a validation error)
+   drops to its own full-width row beneath them. */
+.pane-field-row {
+  display: grid;
+  grid-template-columns: var(--pane-label-w) 1fr;
+  align-items: center;
+  column-gap: 8px;
+  row-gap: 4px;
+}
+
+.pane-field-row > .pane-label {
+  overflow-wrap: anywhere;
+}
+
+/* A multi-line value (Prompt, Args) keeps the same label column, but the label sits at the top of the
+   textarea rather than centered against it. */
+.pane-field-multiline {
+  align-items: start;
+}
+
+/* The value control yields rather than overflowing its track when its content is long. */
+.pane-field-row > :nth-child(2) {
+  min-width: 0;
+}
+
+.pane-field-row > :nth-child(n + 3) {
+  grid-column: 1 / -1;
 }
 
 .pane-label {
@@ -648,16 +682,48 @@ body {
   color: var(--text);
 }
 
-.pane-config-row {
-  gap: 3px;
+/* One config datum on one line: `key = [mode ▾] [value] ×` (§ Config, thin single-row layout). Every
+   row shares one grid, so the `=` column lines up down the whole list: `max-content` sizes the label
+   track to the widest key, the `=` sits in its own track, and the value control takes the rest. */
+.pane-config-grid {
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 6px;
+}
+
+/* Each row is transparent to the grid — its three children (label, `=`, value cell) are the grid items. */
+.pane-config-grid .pane-config-row {
+  display: contents;
+}
+
+.pane-config-eq {
+  color: var(--text-muted);
+}
+
+/* The label hugs its key (the shared track handles alignment), so the value control takes the rest. */
+.pane-config-row .pane-label {
+  white-space: nowrap;
 }
 
 .pane-config-inherited,
-.pane-config-local,
-.pane-publish-controls {
+.pane-config-local {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* The value control (mode select + its input) fills the row's remaining width and stays on the line. */
+.pane-config-inherited,
+.pane-config-local {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-config-local .pane-input {
+  min-width: 0;
 }
 
 .pane-config-value {
@@ -674,28 +740,49 @@ body {
   font-style: italic;
 }
 
-.pane-config-origin {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-style: italic;
-}
-
 .pane-config-add {
   margin-top: 2px;
 }
 
-/* The `$env` / `$secret` authoring control: a mode selector over the matching input(s) (§ authoring, map decision 9). */
+/* Keep `+ add config key` on one line: the button never wraps or shrinks, and the new-key input yields
+   the remaining width instead of crowding it. */
+.pane-config-add .pane-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.pane-config-add .pane-input {
+  min-width: 0;
+}
+
+/* The `$env` / `$secret` authoring control: a mode selector inline before the matching input(s)
+   (§ authoring, map decision 9). Row-first so `Literal 3` reads on one line; it wraps only when the
+   secret's two sub-inputs cannot fit beside the selector. */
 .pane-config-control {
   display: flex;
   flex: 1;
-  flex-direction: column;
+  min-width: 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
 }
 
+/* The mode / source selectors carry `.pane-input` (width:100%), which would fill the whole control cell.
+   Pin them to their content width so the dropdown is only as wide as its longest option. */
 .pane-config-mode,
 .pane-secret-source {
   flex: none;
-  align-self: flex-start;
+  width: auto;
+  min-width: 0;
+  padding-right: 4px;
+}
+
+/* The value input(s) take the width left beside the mode selector and shrink rather than overflow.
+   Scoped to `input` so it never matches the mode `select`, which stays pinned to its content width. */
+.pane-config-control input.pane-input {
+  flex: 1 1 60px;
+  min-width: 0;
 }
 
 .pane-ref-control {
@@ -712,8 +799,41 @@ body {
   white-space: nowrap;
 }
 
+/* One publish datum on one line: `key = value ×` (§ Context writes, mirroring the Config single-row grid).
+   One shared grid lines the `=` up down the list: the key input and the value cell share equal tracks so
+   the `=` column stays fixed; the value cell holds the value input plus its × delete button. */
+.pane-publish-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 2fr);
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 6px;
+}
+
+/* Each row is transparent to the grid — its three children (key, `=`, value cell) are the grid items. */
+.pane-publish-grid .pane-publish-row {
+  display: contents;
+}
+
 .pane-publish-eq {
   color: var(--text-muted);
+}
+
+/* The value input takes the cell's width and shrinks rather than overflow; the × sits beside it. */
+.pane-publish-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pane-publish-value .pane-input {
+  min-width: 0;
+}
+
+/* A row's interpolation error spans the full width, under the controls it belongs to. */
+.pane-publish-row .pane-error {
+  grid-column: 1 / -1;
 }
 
 .pane-suggest {
@@ -759,6 +879,34 @@ body {
   gap: 3px;
 }
 
+/* A leaf predicate on one control row: `path <operator> operand`, each control under its label. The row is
+   bottom-aligned so the operator select (which carries no label) lines up with the operand inputs; it wraps
+   only when the pane is too narrow to hold all three side by side (§ ADR 0022, condition row). */
+.cond-leaf {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px;
+}
+
+/* Each operand cell shares the remaining width and shrinks rather than overflow; its input fills the cell. */
+.cond-leaf > .cond-operand {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.cond-leaf > .cond-operand .pane-input {
+  min-width: 0;
+}
+
+/* The infix operator select sits on the control line, only as wide as its content (no label above it). */
+.cond-leaf > .cond-op {
+  align-self: flex-end;
+  flex: none;
+  width: auto;
+  min-width: 0;
+}
+
 .cond-range,
 .cond-scalar-controls {
   display: flex;
@@ -801,6 +949,15 @@ body {
 .cond-add,
 .cond-remove {
   align-self: flex-start;
+}
+
+/* A child condition's × sits on its control row (the leaf's second line, under the labels), not up beside
+   the labels — so it reads level with the inputs it removes. Bottom-aligned to that row and padded to the
+   same height as `.pane-input` (5px block vs the button's 3px), so its middle lines up with the input's. */
+.cond-child > .cond-remove {
+  align-self: flex-end;
+  padding-top: 5px;
+  padding-bottom: 5px;
 }
 
 /* The per-node validation marker: a cross-node error the canvas cannot catch node-by-node

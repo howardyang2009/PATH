@@ -511,7 +511,6 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
     <ConfigEditor
       parentConfig={file.config}
       config={config}
-      originName={file.name}
       hide={firstClassConfigKeys(node.type)}
       scopeId={node.id}
       write={write}
@@ -530,7 +529,6 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
 function ConfigEditor({
   parentConfig,
   config,
-  originName,
   hide,
   scopeId,
   write,
@@ -538,7 +536,6 @@ function ConfigEditor({
 }: {
   parentConfig: ConfigObject | undefined;
   config: ConfigObject | undefined;
-  originName: string;
   hide?: ReadonlySet<string>;
   scopeId: string;
   write: (next: ConfigObject | undefined, coalesce?: string) => void;
@@ -556,9 +553,14 @@ function ConfigEditor({
     <div className="pane-section">
       <span className="pane-section-title">Config</span>
       {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
-      {rows.map((row) => (
-        <ConfigRowField key={row.key} row={row} originName={originName} config={config} nodeId={scopeId} write={write} />
-      ))}
+      {rows.length > 0 ? (
+        // One shared grid so every row's `=` sits in the same column, aligned down the list.
+        <div className="pane-config-grid">
+          {rows.map((row) => (
+            <ConfigRowField key={row.key} row={row} config={config} nodeId={scopeId} write={write} />
+          ))}
+        </div>
+      ) : null}
       <div className="pane-field pane-field-inline pane-config-add">
         <input
           className="pane-input"
@@ -595,7 +597,6 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
     <ConfigEditor
       parentConfig={undefined}
       config={file.config}
-      originName={file.name}
       scopeId="file"
       write={write}
       emptyHint="No config. Add a key to set a workflow default that every step inherits."
@@ -606,13 +607,11 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
 /** One config row, rendered by origin: inherited (ghosted + Override), overridden (revert), or local. */
 function ConfigRowField({
   row,
-  originName,
   config,
   nodeId,
   write,
 }: {
   row: ConfigRow;
-  originName: string;
   config: ConfigObject | undefined;
   /** The owning node's id — scopes the value's coalesce key so two nodes' same-named keys never fold (#389). */
   nodeId: string;
@@ -622,19 +621,20 @@ function ConfigRowField({
     return (
       <div className="pane-field pane-config-row" data-origin="inherited">
         <span className="pane-label">{row.key}</span>
+        <span className="pane-config-eq" aria-hidden="true">=</span>
         <div className="pane-config-inherited">
           <code className="pane-config-value pane-ghost">{renderConfigValue(row.value)}</code>
           <button type="button" className="pane-btn" onClick={() => write(setConfigKey(config, row.key, row.value))}>
             Override
           </button>
         </div>
-        <span className="pane-config-origin">inherited from {originName}</span>
       </div>
     );
   }
   return (
     <div className="pane-field pane-config-row" data-origin={row.origin}>
       <span className="pane-label">{row.key}</span>
+      <span className="pane-config-eq" aria-hidden="true">=</span>
       <div className="pane-config-local">
         <ConfigValueControl value={row.value} onChange={(v) => write(setConfigKey(config, row.key, v), `config:${row.key}:${nodeId}`)} label={row.key} />
         {row.origin === "overridden" ? (
@@ -910,9 +910,14 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   return (
     <div className="pane-section">
       <span className="pane-section-title">Context writes</span>
-      {rows.map((row, index) => (
-        <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
-      ))}
+      {rows.length > 0 ? (
+        // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
+        <div className="pane-publish-grid">
+          {rows.map((row, index) => (
+            <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+          ))}
+        </div>
+      ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
         + add publish
       </button>
@@ -929,11 +934,13 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
 /** One publish row: a context key and its interpolable value, the value live-checked against the publish roots. */
 function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChange: (row: PublishRow) => void; onRemove: () => void }): JSX.Element {
   const check = checkInterpolationSyntax(row.value, PUBLISH_ROOTS);
+  // One publish datum on one line: `key = value ×`. The row is transparent to the grid (`display: contents`)
+  // so its key, `=`, and value cell share the section grid and the `=` lines up down the list (§ Config).
   return (
-    <div className="pane-field pane-publish-row">
-      <div className="pane-publish-controls">
-        <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
-        <span className="pane-publish-eq">=</span>
+    <div className="pane-publish-row">
+      <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <span className="pane-publish-eq" aria-hidden="true">=</span>
+      <div className="pane-publish-value">
         <input className="pane-input" type="text" aria-label="Publish value" placeholder="${output.x}" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
         <button type="button" className="pane-btn" aria-label="Remove publish" onClick={onRemove}>
           ×
@@ -958,7 +965,7 @@ function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChang
 function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: string }): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   return (
-    <div className="pane-field">
+    <div className="pane-field pane-field-row">
       <span className="pane-label">Id</span>
       <div className="pane-id-row">
         <code className="pane-id">{id}</code>
@@ -997,7 +1004,7 @@ function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: s
 
 function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <input className="pane-input" type="text" value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
@@ -1006,7 +1013,7 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
 
 function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">{label}</span>
       <textarea className="pane-input" rows={5} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
@@ -1015,7 +1022,7 @@ function TextAreaField({ label, value, onChange }: { label: string; value: strin
 
 function NumberField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <input
         className="pane-input"
@@ -1038,7 +1045,7 @@ function CheckboxField({ label, value, onChange }: { label: string; value: boole
 
 function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">{label} (one per line)</span>
       <textarea
         className="pane-input"
@@ -1064,7 +1071,7 @@ function SelectField({
   onChange: (v: string) => void;
 }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <select className="pane-input" value={value} onChange={(e) => onChange(e.target.value)}>
         {options.map((option) => (
@@ -1079,7 +1086,7 @@ function SelectField({
 
 function ReadOnlyRow({ label, value }: { label: string; value: string }): JSX.Element {
   return (
-    <div className="pane-field">
+    <div className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
       <code className="pane-id">{value}</code>
     </div>

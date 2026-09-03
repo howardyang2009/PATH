@@ -8,8 +8,8 @@ import type { ConfigObject, ConfigValue } from "@path/schema";
  * and the node's own `config` — so the pane never needs the registry's config fragment (which the wire
  * registry does not carry) to render inherited-vs-overridden.
  *
- * - **inherited** — a key the file declares that the node does not: read-only, ghosted, captioned with
- *   its origin (`inherited from <workflow name>`).
+ * - **inherited** — a key the file declares that the node does not: read-only, ghosted, with an Override
+ *   button that makes it local (the ghost + Override is the inheritance cue; no origin caption).
  * - **overridden** — a key the node declares that the file also declares: solid, with a revert control
  *   that drops the local value and restores the inherited one.
  * - **local** — a key the node declares that the file does not: solid, with nothing to revert to.
