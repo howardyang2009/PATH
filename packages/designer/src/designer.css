@@ -917,6 +917,15 @@ body {
   align-self: flex-start;
 }
 
+/* A child condition's × sits on its control row (the leaf's second line, under the labels), not up beside
+   the labels — so it reads level with the inputs it removes. Bottom-aligned to that row and padded to the
+   same height as `.pane-input` (5px block vs the button's 3px), so its middle lines up with the input's. */
+.cond-child > .cond-remove {
+  align-self: flex-end;
+  padding-top: 5px;
+  padding-bottom: 5px;
+}
+
 /* The per-node validation marker: a cross-node error the canvas cannot catch node-by-node
  * (§ Canvas validation-error UX — publish conflict, dangling context read, dangling condition path). */
 .node-marker {
