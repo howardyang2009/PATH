@@ -142,8 +142,17 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
       onPointerDown: (e) => {
         e.preventDefault();
         const el = e.currentTarget;
-        // Route every later pointer event to the handle, past the canvas's own handlers.
-        el.setPointerCapture(e.pointerId);
+        // `preventDefault` above can suppress the click's own focus, so focus the handle explicitly — a
+        // plain click then leaves it focused, and the arrow keys below nudge it without a further Tab.
+        el.focus();
+        // Route every later pointer event to the handle, past the canvas's own handlers. Guarded: a
+        // `setPointerCapture` throw (a stale pointer id on some browsers) must not abort the rest of the
+        // drag setup — the `window` listeners are the transport, so the drag still starts without capture.
+        try {
+          el.setPointerCapture(e.pointerId);
+        } catch {
+          /* capture unavailable — the window listeners below still drive the drag */
+        }
         dragRef.current = { index, startX: e.clientX, startWidth: widths[index], el, pointerId: e.pointerId };
         document.body.style.cursor = "col-resize";
         document.body.style.userSelect = "none";
