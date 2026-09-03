@@ -674,8 +674,7 @@ body {
 }
 
 .pane-config-inherited,
-.pane-config-local,
-.pane-publish-controls {
+.pane-config-local {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
@@ -766,8 +765,41 @@ body {
   white-space: nowrap;
 }
 
+/* One publish datum on one line: `key = value ×` (§ Context writes, mirroring the Config single-row grid).
+   One shared grid lines the `=` up down the list: the key input and the value cell share equal tracks so
+   the `=` column stays fixed; the value cell holds the value input plus its × delete button. */
+.pane-publish-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content minmax(0, 2fr);
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 6px;
+}
+
+/* Each row is transparent to the grid — its three children (key, `=`, value cell) are the grid items. */
+.pane-publish-grid .pane-publish-row {
+  display: contents;
+}
+
 .pane-publish-eq {
   color: var(--text-muted);
+}
+
+/* The value input takes the cell's width and shrinks rather than overflow; the × sits beside it. */
+.pane-publish-value {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pane-publish-value .pane-input {
+  min-width: 0;
+}
+
+/* A row's interpolation error spans the full width, under the controls it belongs to. */
+.pane-publish-row .pane-error {
+  grid-column: 1 / -1;
 }
 
 .pane-suggest {

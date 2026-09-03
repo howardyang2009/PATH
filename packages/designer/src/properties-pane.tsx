@@ -910,9 +910,14 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   return (
     <div className="pane-section">
       <span className="pane-section-title">Context writes</span>
-      {rows.map((row, index) => (
-        <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
-      ))}
+      {rows.length > 0 ? (
+        // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
+        <div className="pane-publish-grid">
+          {rows.map((row, index) => (
+            <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+          ))}
+        </div>
+      ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
         + add publish
       </button>
@@ -929,11 +934,13 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
 /** One publish row: a context key and its interpolable value, the value live-checked against the publish roots. */
 function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChange: (row: PublishRow) => void; onRemove: () => void }): JSX.Element {
   const check = checkInterpolationSyntax(row.value, PUBLISH_ROOTS);
+  // One publish datum on one line: `key = value ×`. The row is transparent to the grid (`display: contents`)
+  // so its key, `=`, and value cell share the section grid and the `=` lines up down the list (§ Config).
   return (
-    <div className="pane-field pane-publish-row">
-      <div className="pane-publish-controls">
-        <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
-        <span className="pane-publish-eq">=</span>
+    <div className="pane-publish-row">
+      <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <span className="pane-publish-eq" aria-hidden="true">=</span>
+      <div className="pane-publish-value">
         <input className="pane-input" type="text" aria-label="Publish value" placeholder="${output.x}" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
         <button type="button" className="pane-btn" aria-label="Remove publish" onClick={onRemove}>
           ×
