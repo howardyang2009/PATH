@@ -1104,6 +1104,22 @@ button.workflow-row:focus-visible {
   color: var(--text);
 }
 
+/* The E block's failure text: a run's own error message, wrapped rather than scrolled (prose, not a
+   structured blob) and tinted with the failed status token so it reads as the fault it reports. */
+.node-io-error-message {
+  margin: 0;
+  padding: 8px 10px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: color-mix(in srgb, var(--status-failed-fg) 8%, var(--ground));
+  border: 1px solid color-mix(in srgb, var(--status-failed-fg) 40%, var(--border));
+  border-radius: 5px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--status-failed-fg);
+}
+
 /* Data colours reuse the pinned status tokens rather than introducing a syntax palette — the token
    mapping the #44 prototype settled (key / string / number / literal). Structure — braces, commas,
    indentation — stays plain body text so the values are what stands out. */

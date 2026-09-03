@@ -37,7 +37,7 @@ describe("App", () => {
     expect(screen.getByRole("region", { name: "Workflows" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Runs" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Run detail" })).toBeInTheDocument();
-    expect(screen.getByRole("region", { name: "Node I/O/C" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Node I/O/C/E" })).toBeInTheDocument();
     expect(await screen.findByText("No runs yet.")).toBeInTheDocument();
   });
 
@@ -57,7 +57,7 @@ describe("App", () => {
     fireEvent.click(await screen.findByTestId(`run-row-${RUN}`));
     fireEvent.click(await screen.findByTestId(`tree-row-${RUN}`));
 
-    expect(screen.getByRole("region", { name: "Node I/O/C" })).toHaveTextContent(RUN);
+    expect(screen.getByRole("region", { name: "Node I/O/C/E" })).toHaveTextContent(RUN);
   });
 
   it("opens a run, selects a node in its tree and shows that run's blobs — the four read verbs", async () => {
@@ -92,6 +92,6 @@ describe("App", () => {
     fireEvent.click(screen.getByTestId(`run-row-${other}`));
 
     expect(screen.queryByTestId("node-io-head")).toBeNull();
-    expect(screen.getByRole("region", { name: "Node I/O/C" })).toHaveTextContent("Select a run in the tree.");
+    expect(screen.getByRole("region", { name: "Node I/O/C/E" })).toHaveTextContent("Select a run in the tree.");
   });
 });
