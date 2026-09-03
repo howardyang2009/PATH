@@ -648,8 +648,29 @@ body {
   color: var(--text);
 }
 
-.pane-config-row {
-  gap: 3px;
+/* One config datum on one line: `key = [mode ▾] [value] ×` (§ Config, thin single-row layout). Every
+   row shares one grid, so the `=` column lines up down the whole list: `max-content` sizes the label
+   track to the widest key, the `=` sits in its own track, and the value control takes the rest. */
+.pane-config-grid {
+  display: grid;
+  grid-template-columns: max-content max-content 1fr;
+  align-items: center;
+  column-gap: 6px;
+  row-gap: 6px;
+}
+
+/* Each row is transparent to the grid — its three children (label, `=`, value cell) are the grid items. */
+.pane-config-grid .pane-config-row {
+  display: contents;
+}
+
+.pane-config-eq {
+  color: var(--text-muted);
+}
+
+/* The label hugs its key (the shared track handles alignment), so the value control takes the rest. */
+.pane-config-row .pane-label {
+  white-space: nowrap;
 }
 
 .pane-config-inherited,
@@ -657,7 +678,19 @@ body {
 .pane-publish-controls {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
+}
+
+/* The value control (mode select + its input) fills the row's remaining width and stays on the line. */
+.pane-config-inherited,
+.pane-config-local {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-config-local .pane-input {
+  min-width: 0;
 }
 
 .pane-config-value {
@@ -684,18 +717,28 @@ body {
   margin-top: 2px;
 }
 
-/* The `$env` / `$secret` authoring control: a mode selector over the matching input(s) (§ authoring, map decision 9). */
+/* The `$env` / `$secret` authoring control: a mode selector inline before the matching input(s)
+   (§ authoring, map decision 9). Row-first so `Literal 3` reads on one line; it wraps only when the
+   secret's two sub-inputs cannot fit beside the selector. */
 .pane-config-control {
   display: flex;
   flex: 1;
-  flex-direction: column;
+  min-width: 0;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
 }
 
 .pane-config-mode,
 .pane-secret-source {
   flex: none;
-  align-self: flex-start;
+}
+
+/* The value input(s) take the width left beside the mode selector and shrink rather than overflow. */
+.pane-config-control .pane-input {
+  flex: 1 1 60px;
+  min-width: 0;
 }
 
 .pane-ref-control {

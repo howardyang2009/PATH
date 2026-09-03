@@ -556,9 +556,14 @@ function ConfigEditor({
     <div className="pane-section">
       <span className="pane-section-title">Config</span>
       {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
-      {rows.map((row) => (
-        <ConfigRowField key={row.key} row={row} originName={originName} config={config} nodeId={scopeId} write={write} />
-      ))}
+      {rows.length > 0 ? (
+        // One shared grid so every row's `=` sits in the same column, aligned down the list.
+        <div className="pane-config-grid">
+          {rows.map((row) => (
+            <ConfigRowField key={row.key} row={row} originName={originName} config={config} nodeId={scopeId} write={write} />
+          ))}
+        </div>
+      ) : null}
       <div className="pane-field pane-field-inline pane-config-add">
         <input
           className="pane-input"
@@ -622,19 +627,21 @@ function ConfigRowField({
     return (
       <div className="pane-field pane-config-row" data-origin="inherited">
         <span className="pane-label">{row.key}</span>
+        <span className="pane-config-eq" aria-hidden="true">=</span>
         <div className="pane-config-inherited">
           <code className="pane-config-value pane-ghost">{renderConfigValue(row.value)}</code>
           <button type="button" className="pane-btn" onClick={() => write(setConfigKey(config, row.key, row.value))}>
             Override
           </button>
+          <span className="pane-config-origin">inherited from {originName}</span>
         </div>
-        <span className="pane-config-origin">inherited from {originName}</span>
       </div>
     );
   }
   return (
     <div className="pane-field pane-config-row" data-origin={row.origin}>
       <span className="pane-label">{row.key}</span>
+      <span className="pane-config-eq" aria-hidden="true">=</span>
       <div className="pane-config-local">
         <ConfigValueControl value={row.value} onChange={(v) => write(setConfigKey(config, row.key, v), `config:${row.key}:${nodeId}`)} label={row.key} />
         {row.origin === "overridden" ? (
