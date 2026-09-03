@@ -707,14 +707,19 @@ body {
   font-style: italic;
 }
 
-.pane-config-origin {
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-style: italic;
-}
-
 .pane-config-add {
   margin-top: 2px;
+}
+
+/* Keep `+ add config key` on one line: the button never wraps or shrinks, and the new-key input yields
+   the remaining width instead of crowding it. */
+.pane-config-add .pane-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
+.pane-config-add .pane-input {
+  min-width: 0;
 }
 
 /* The `$env` / `$secret` authoring control: a mode selector inline before the matching input(s)
@@ -730,13 +735,19 @@ body {
   gap: 4px;
 }
 
+/* The mode / source selectors carry `.pane-input` (width:100%), which would fill the whole control cell.
+   Pin them to their content width so the dropdown is only as wide as its longest option. */
 .pane-config-mode,
 .pane-secret-source {
   flex: none;
+  width: auto;
+  min-width: 0;
+  padding-right: 4px;
 }
 
-/* The value input(s) take the width left beside the mode selector and shrink rather than overflow. */
-.pane-config-control .pane-input {
+/* The value input(s) take the width left beside the mode selector and shrink rather than overflow.
+   Scoped to `input` so it never matches the mode `select`, which stays pinned to its content width. */
+.pane-config-control input.pane-input {
   flex: 1 1 60px;
   min-width: 0;
 }

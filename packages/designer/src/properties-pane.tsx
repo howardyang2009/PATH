@@ -511,7 +511,6 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
     <ConfigEditor
       parentConfig={file.config}
       config={config}
-      originName={file.name}
       hide={firstClassConfigKeys(node.type)}
       scopeId={node.id}
       write={write}
@@ -530,7 +529,6 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
 function ConfigEditor({
   parentConfig,
   config,
-  originName,
   hide,
   scopeId,
   write,
@@ -538,7 +536,6 @@ function ConfigEditor({
 }: {
   parentConfig: ConfigObject | undefined;
   config: ConfigObject | undefined;
-  originName: string;
   hide?: ReadonlySet<string>;
   scopeId: string;
   write: (next: ConfigObject | undefined, coalesce?: string) => void;
@@ -560,7 +557,7 @@ function ConfigEditor({
         // One shared grid so every row's `=` sits in the same column, aligned down the list.
         <div className="pane-config-grid">
           {rows.map((row) => (
-            <ConfigRowField key={row.key} row={row} originName={originName} config={config} nodeId={scopeId} write={write} />
+            <ConfigRowField key={row.key} row={row} config={config} nodeId={scopeId} write={write} />
           ))}
         </div>
       ) : null}
@@ -600,7 +597,6 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
     <ConfigEditor
       parentConfig={undefined}
       config={file.config}
-      originName={file.name}
       scopeId="file"
       write={write}
       emptyHint="No config. Add a key to set a workflow default that every step inherits."
@@ -611,13 +607,11 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
 /** One config row, rendered by origin: inherited (ghosted + Override), overridden (revert), or local. */
 function ConfigRowField({
   row,
-  originName,
   config,
   nodeId,
   write,
 }: {
   row: ConfigRow;
-  originName: string;
   config: ConfigObject | undefined;
   /** The owning node's id — scopes the value's coalesce key so two nodes' same-named keys never fold (#389). */
   nodeId: string;
@@ -633,7 +627,6 @@ function ConfigRowField({
           <button type="button" className="pane-btn" onClick={() => write(setConfigKey(config, row.key, row.value))}>
             Override
           </button>
-          <span className="pane-config-origin">inherited from {originName}</span>
         </div>
       </div>
     );

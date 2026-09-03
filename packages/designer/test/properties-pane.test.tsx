@@ -194,10 +194,11 @@ describe("#369 the three editor tiers", () => {
     fireEvent.click(within(pane).getByRole("button", { name: "+ add config key" }));
     fireEvent.change(within(pane).getByLabelText("region"), { target: { value: "eu" } });
 
-    // A step now shows that key as inherited from the file.
+    // A step now shows that key as inherited from the file: a ghosted value with an Override button.
     selectNode(canvas, "alpha");
-    expect(within(pane).getByText("region")).toBeInTheDocument();
-    expect(within(pane).getByText("inherited from flow")).toBeInTheDocument();
+    const regionRow = within(pane).getByText("region").closest(".pane-config-row") as HTMLElement;
+    expect(within(regionRow).getByText("eu")).toHaveClass("pane-ghost");
+    expect(within(regionRow).getByRole("button", { name: "Override" })).toBeInTheDocument();
   });
 
   it("generates a form for a layoutable registry type", async () => {
