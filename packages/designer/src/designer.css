@@ -1620,3 +1620,80 @@ body {
   opacity: 0.5;
   cursor: default;
 }
+
+/* ── Nested workflow-ref creation (#391) ─────────────────────────────────────────────────────────── */
+
+/* The two-way choice: reference an existing workflow, or create a new one to author now. */
+.ref-target-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.ref-target-choices button {
+  padding: 12px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.ref-target-choices button:hover {
+  border-color: var(--accent);
+}
+
+/* The reference-existing picker: a scrollable list of discovered workflow paths. */
+.ref-existing-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.ref-existing-list li + li {
+  border-top: 1px solid var(--border);
+}
+
+.ref-existing-item {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  text-align: left;
+  color: var(--text);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+
+.ref-existing-item:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.ref-existing-empty {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
+}
+
+/* The empty-ref affordance in the properties pane — the entry point to the chooser. */
+.ref-target-field .pane-hint {
+  margin: 0 0 8px;
+}
+
+.ref-choose-target {
+  padding: 8px 12px;
+  font: inherit;
+  color: var(--surface);
+  background: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}

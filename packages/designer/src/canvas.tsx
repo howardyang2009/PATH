@@ -30,7 +30,7 @@ export function Canvas({
   armedKind: string | null;
   onArm: (kind: string | null) => void;
 }): JSX.Element {
-  const { registry, frames, descend, goTo, applyEdit } = session;
+  const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
 
   if (registry.phase === "loading") {
     return <CanvasNote title="Loading…" hint="Fetching the step-plugin registry." />;
@@ -52,10 +52,10 @@ export function Canvas({
     );
   }
 
-  const active = frames[frames.length - 1]!;
+  const active = frames[activeIndex]!;
   return (
     <div className="canvas" role="region" aria-label="Workflow canvas">
-      <Breadcrumb frames={frames} onCrumb={goTo} />
+      <Breadcrumb frames={frames} activeIndex={activeIndex} onCrumb={goTo} />
       <CanvasBody>
         <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} />
       </CanvasBody>
@@ -84,17 +84,21 @@ function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
   );
 }
 
-/** The file breadcrumb: one crumb per navigation-stack frame, the last (current) one inert. */
-function Breadcrumb({ frames, onCrumb }: { frames: Frame[]; onCrumb: (index: number) => void }): JSX.Element {
+/**
+ * The file breadcrumb: one crumb per trail frame, the **active** one (`activeIndex`) inert and marked
+ * current. Frames on either side are buttons — ancestors ascend, and a frame ahead of the active one (kept
+ * alive because an ascend no longer discards it, #391) is a forward re-entry back down the same trail.
+ */
+function Breadcrumb({ frames, activeIndex, onCrumb }: { frames: Frame[]; activeIndex: number; onCrumb: (index: number) => void }): JSX.Element {
   return (
     <nav className="breadcrumb" aria-label="File breadcrumb">
       {frames.map((frame, index) => {
-        const last = index === frames.length - 1;
+        const current = index === activeIndex;
         const label = frameLabel(frame);
         return (
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
             {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
-            {last ? (
+            {current ? (
               <span className="crumb crumb-current" aria-current="page" title={frame.path ?? undefined}>
                 {label}
               </span>
