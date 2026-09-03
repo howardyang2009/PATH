@@ -510,9 +510,9 @@ body {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  /* The shared label column for single-line property rows (`.pane-field-row`), so every such row's
-     value starts in the same place down the pane. */
-  --pane-label-w: 92px;
+  /* The shared label column for property rows (`.pane-field-row`), so every row's value starts in the
+     same place down the pane. Sized to the widest label the pane shows (`Args (one per line)`). */
+  --pane-label-w: 106px;
 }
 
 .pane-idle,
@@ -569,6 +569,12 @@ body {
 
 .pane-field-row > .pane-label {
   overflow-wrap: anywhere;
+}
+
+/* A multi-line value (Prompt, Args) keeps the same label column, but the label sits at the top of the
+   textarea rather than centered against it. */
+.pane-field-multiline {
+  align-items: start;
 }
 
 /* The value control yields rather than overflowing its track when its content is long. */

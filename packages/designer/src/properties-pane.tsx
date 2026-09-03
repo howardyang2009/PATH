@@ -1013,7 +1013,7 @@ function TextField({ label, value, onChange }: { label: string; value: string; o
 
 function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">{label}</span>
       <textarea className="pane-input" rows={5} value={value} onChange={(e) => onChange(e.target.value)} />
     </label>
@@ -1045,7 +1045,7 @@ function CheckboxField({ label, value, onChange }: { label: string; value: boole
 
 function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
   return (
-    <label className="pane-field">
+    <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">{label} (one per line)</span>
       <textarea
         className="pane-input"
