@@ -24,6 +24,13 @@ body {
 
 .shell {
   display: grid;
+  /* One explicit column capped at the viewport (`minmax(0, 1fr)`, not the implicit `auto` column, which
+   * sizes to content). A run panel can render a very long unwrapped value — a git-log output blob, a
+   * `runs/…/…` ref line — whose intrinsic width would otherwise stretch this single column to tens of
+   * thousands of px, shoving the properties rail and the toolbar off-screen to the right (the "the
+   * properties pane disappeared after selecting a step run" bug). Capping the column keeps that width
+   * inside the region that owns it, which scrolls it itself. */
+  grid-template-columns: minmax(0, 1fr);
   grid-template-rows: auto 1fr;
   height: 100%;
 }
@@ -1093,7 +1100,10 @@ body {
 .run-dock-col {
   background: var(--surface);
   padding: 10px 12px;
-  overflow-y: auto;
+  /* Scroll a pane's own overflow on both axes: the Node I/O pane can hold a long unwrapped value, and
+   * with the shell column now capped that width must scroll here rather than be clipped by the body's
+   * `overflow: hidden`. */
+  overflow: auto;
   min-height: 0;
   min-width: 0;
 }
