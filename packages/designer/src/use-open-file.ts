@@ -2,7 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
 import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
-import { resolveRefPath } from "./resolve-ref.js";
+import { basename, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
 /**
@@ -31,6 +31,15 @@ export interface Frame {
    * frame like any other. Every other frame — an opened file, a `workflow`-ref descent — carries a path.
    */
   path: string | null;
+  /**
+   * Has this buffer been **persisted to disk**? A saved file — opened, reloaded, or after a successful
+   * save — is `true`; a from-scratch buffer (#390) and a create-new nested child (#391) are `false` until
+   * their first save, even though the child already carries its pre-assigned `path`. It is the discriminator
+   * the from-scratch rule reads: an **unwritten** frame takes no lease and cannot launch, and its first
+   * save is an **exclusive create** (no `If-Match`, ADR 0016), not an overwrite. `path === null` no longer
+   * carries this fact alone, because a create-new child is unwritten *with* a path.
+   */
+  written: boolean;
   state: FrameState;
   /**
    * The `If-Match` ETag for the next save — the strong ETag of the bytes this frame opened, or of the
@@ -120,8 +129,15 @@ export type SaveNewFileResult =
 
 export interface OpenSession {
   registry: RegistryLoad;
-  /** The navigation stack, root file first; the last frame is the one on the canvas. */
+  /**
+   * The navigation **trail**, root file first (#367). The frame the canvas, the pane, and the toolbar all
+   * act on is `frames[activeIndex]`, **not** the tip: ascending the breadcrumb (`goTo`) moves the active
+   * index without discarding the deeper frames, so a descended child keeps its dirty buffer and its
+   * beating lease while the parent is on screen (#391, designer-spec § Nested `workflow`-ref creation).
+   */
   frames: Frame[];
+  /** The index of the active frame in `frames` — what the canvas renders and every edit/save op targets. */
+  activeIndex: number;
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
   /**
@@ -130,9 +146,21 @@ export interface OpenSession {
    * at its first `saveNewFile`. Reads dirty from open (nothing on disk to match), so Save is live at once.
    */
   newFile: () => void;
-  /** Descend across the active file's `workflow`-ref (a relative path), pushing a frame. */
+  /**
+   * Descend across the active file's `workflow`-ref (a relative path), making a child frame active. If the
+   * frame just ahead of the active one already holds that resolved target (a re-entry down the same trail),
+   * it is **reused** — the author returns to its live, possibly-dirty buffer; otherwise the forward trail is
+   * truncated and the target is loaded fresh.
+   */
   descend: (ref: string) => void;
-  /** Pop the stack back to the breadcrumb entry at `index` (the frames past it are already loaded). */
+  /**
+   * Descend into a **fresh, unwritten** child buffer bound to `childPath` (#391): a create-new nested ref.
+   * The child is path-assigned but **not written** (no lease, no launch, first save is an exclusive
+   * create), and the from-scratch rule is otherwise unchanged. The forward trail is truncated and the new
+   * child becomes active. The caller sets the parent ref to reach `childPath` **before** calling this.
+   */
+  descendNew: (childPath: string) => void;
+  /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   goTo: (index: number) => void;
   /**
    * Commit an edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
@@ -210,7 +238,9 @@ function errorMessage(error: unknown): string {
 
 /** A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens. */
 function loadingFrame(path: string): Frame {
-  return { path, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
+  // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
+  // a still-loading frame is not yet leased regardless.
+  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
 }
 
 /**
@@ -221,22 +251,38 @@ function loadingFrame(path: string): Frame {
 const NEW_FILE_DEFAULT_NAME = "untitled";
 
 /**
- * A from-scratch buffer's frame (#390): an empty, id-bearing workflow, held at **`path: null`** with no
- * ETag and no lease until its first save. Its `baseline` is the empty string — no on-disk bytes exist for
- * it to equal — so the buffer reads dirty from open through the one dirty relation (`frameDirty`), which
- * keeps Save live and lets the author reach the first-save dialog with or without a body built.
+ * A from-scratch buffer's frame: an empty, id-bearing **unwritten** workflow, with no ETag and no lease
+ * until its first save. Its `baseline` is the empty string — no on-disk bytes exist for it to equal — so
+ * the buffer reads dirty from open through the one dirty relation (`frameDirty`), which keeps Save live.
+ *
+ * `path` is `null` for a new **root** (#390 — placement is decided at the first-save dialog), or the
+ * pre-assigned child path for a create-new nested ref (#391 — placement is already decided, so the child's
+ * first save is an exclusive create straight to that path). Either way the frame is `written: false`. The
+ * child's `name` is seeded from its filename stem so its breadcrumb and pane read sensibly before a save.
  */
-function scratchFrame(): Frame {
-  const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name: NEW_FILE_DEFAULT_NAME, body: [] };
+function scratchFrame(path: string | null = null): Frame {
+  const name = path === null ? NEW_FILE_DEFAULT_NAME : stemName(path);
+  const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name, body: [] };
   const openedBytes = canonicalSerialize(file);
   return {
-    path: null,
+    path,
+    written: false,
     state: { phase: "open", result: { status: "opened", file, idsStamped: false } },
     etag: null,
     baseline: "",
     openedBytes,
     history: freshHistory(),
   };
+}
+
+/**
+ * The default workflow `name` for a create-new child, taken from its filename stem (the `.workflow.json`
+ * suffix and the directory dropped). It falls back to the from-scratch default when a stem does not slug
+ * to a legal name (`^[a-z][a-z0-9-]*$`), so the buffer always opens with a name the author can save.
+ */
+function stemName(path: string): string {
+  const stem = basename(path).replace(/\.workflow\.json$/i, "");
+  return /^[a-z][a-z0-9-]*$/.test(stem) ? stem : NEW_FILE_DEFAULT_NAME;
 }
 
 /** Fetch one file's raw bytes and run the open pipeline; a fetch failure (404, …) becomes a frame error. */
@@ -262,14 +308,21 @@ async function loadFrame(
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [frames, setFrames] = useState<Frame[]>([]);
+  // Which frame the canvas/pane/toolbar act on. Decoupled from the trail's tip so an ascend (`goTo`) keeps
+  // the deeper frames alive (a dirty descended child survives, #391). Reset to the root on every new open.
+  const [activeIndex, setActiveIndex] = useState(0);
   const [saveState, setSaveState] = useState<SaveState>({ phase: "idle" });
 
-  // A ref mirror of `frames`, so `descend` reads the current stack without re-subscribing; and the
-  // registry plugins, so an open callback reads them without waiting on a state read.
+  // Ref mirrors of `frames` and `activeIndex`, so the callbacks read the current trail without
+  // re-subscribing; and the registry plugins, so an open callback reads them without waiting on a state read.
   const framesRef = useRef<Frame[]>([]);
   useEffect(() => {
     framesRef.current = frames;
   }, [frames]);
+  const activeIndexRef = useRef(0);
+  useEffect(() => {
+    activeIndexRef.current = activeIndex;
+  }, [activeIndex]);
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
   // A monotonic token: only the newest in-flight load may patch state. Bumped on every open, descend,
@@ -302,8 +355,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           if (depth >= prev.length || prev[depth]?.path !== path) return prev;
           const next = prev.slice();
           // A fresh open (or reload) resets the frame's history: the buffer that just landed is the new
-          // save-point, with nothing to undo back past.
-          next[depth] = { path, state, etag, baseline, openedBytes, history: freshHistory() };
+          // save-point, with nothing to undo back past. A loaded frame is on disk, so it is `written`.
+          next[depth] = { path, written: true, state, etag, baseline, openedBytes, history: freshHistory() };
           return next;
         });
       });
@@ -317,6 +370,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!plugins) return;
       setSaveState({ phase: "idle" });
       setFrames([loadingFrame(path)]);
+      setActiveIndex(0);
       runLoad(path, 0, plugins);
     },
     [runLoad],
@@ -329,29 +383,55 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     loadToken.current++;
     setSaveState({ phase: "idle" });
     setFrames([scratchFrame()]);
+    setActiveIndex(0);
   }, []);
 
   const descend = useCallback(
     (ref: string): void => {
       const plugins = pluginsRef.current;
-      const current = framesRef.current[framesRef.current.length - 1];
-      // A descent crosses a `workflow`-ref of the active file, so the active frame must be a saved file
-      // with a path; a from-scratch buffer (no path) has no ref to descend.
+      const depth = activeIndexRef.current;
+      const current = framesRef.current[depth];
+      // A descent crosses a `workflow`-ref of the active file, so the active frame must carry a path to
+      // resolve the ref against; a from-scratch root buffer (no path) has no ref to descend.
       if (!plugins || !current || current.path === null) return;
       const path = resolveRefPath(current.path, ref);
-      const depth = framesRef.current.length;
+      // Re-entry down the same trail: if the frame just ahead already holds this target, reuse it — the
+      // author returns to its live buffer (a dirty descended child is not reloaded out from under them).
+      const ahead = framesRef.current[depth + 1];
+      if (ahead && ahead.path === path) {
+        setSaveState({ phase: "idle" });
+        setActiveIndex(depth + 1);
+        return;
+      }
+      // Otherwise truncate the forward trail and load the target fresh below the active frame.
+      const childDepth = depth + 1;
       setSaveState({ phase: "idle" });
-      setFrames((prev) => [...prev, loadingFrame(path)]);
-      runLoad(path, depth, plugins);
+      setFrames((prev) => [...prev.slice(0, childDepth), loadingFrame(path)]);
+      setActiveIndex(childDepth);
+      runLoad(path, childDepth, plugins);
     },
     [runLoad],
   );
 
-  const goTo = useCallback((index: number): void => {
-    // Any deeper in-flight load is now stale; bump the token so it cannot patch the truncated stack.
+  const descendNew = useCallback((childPath: string): void => {
+    const depth = activeIndexRef.current;
+    const current = framesRef.current[depth];
+    if (!current) return;
+    // A create-new child is always a fresh, unwritten buffer: truncate any forward trail and push it below
+    // the active frame. Bump the load token so no in-flight load patches the truncated trail.
     loadToken.current++;
+    const childDepth = depth + 1;
     setSaveState({ phase: "idle" });
-    setFrames((prev) => (index < 0 || index >= prev.length ? prev : prev.slice(0, index + 1)));
+    setFrames((prev) => [...prev.slice(0, childDepth), scratchFrame(childPath)]);
+    setActiveIndex(childDepth);
+  }, []);
+
+  const goTo = useCallback((index: number): void => {
+    // An ascend (or forward re-entry) only moves the active frame — no frame is discarded, so a dirty
+    // descended child keeps its buffer and its beating lease. A pending load stays valid (its frame is
+    // still on the trail at the same depth), so the load token is left untouched.
+    setSaveState({ phase: "idle" });
+    setActiveIndex((prev) => (index < 0 || index >= framesRef.current.length ? prev : index));
   }, []);
 
   const applyEdit = useCallback((next: WorkflowFile, coalesce?: string): void => {
@@ -360,7 +440,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     // buffer's canonical serialization against `baseline` (ADR 0030), so a round-trip edit reads clean.
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
-      const depth = prev.length - 1;
+      const depth = activeIndexRef.current;
       const frame = prev[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened) return prev;
@@ -383,10 +463,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   const undo = useCallback((): void => {
     // Guard on the current stack before touching state, so a no-op undo (empty past) does not clear a
     // standing "Saved."/conflict status or spin a redundant re-render.
-    if (!frameCanUndo(framesRef.current[framesRef.current.length - 1])) return;
+    if (!frameCanUndo(framesRef.current[activeIndexRef.current])) return;
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
-      const depth = prev.length - 1;
+      const depth = activeIndexRef.current;
       const frame = prev[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened || frame.history.past.length === 0) return prev;
@@ -406,10 +486,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   }, []);
 
   const redo = useCallback((): void => {
-    if (!frameCanRedo(framesRef.current[framesRef.current.length - 1])) return;
+    if (!frameCanRedo(framesRef.current[activeIndexRef.current])) return;
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
-      const depth = prev.length - 1;
+      const depth = activeIndexRef.current;
       const frame = prev[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened || frame.history.future.length === 0) return prev;
@@ -427,10 +507,11 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const reloadActive = useCallback((): void => {
     const plugins = pluginsRef.current;
-    const depth = framesRef.current.length - 1;
+    const depth = activeIndexRef.current;
     const active = framesRef.current[depth];
-    // A from-scratch buffer (no path) has no on-disk bytes to re-fetch — reload is a no-op for it.
-    if (!plugins || !active || active.path === null) return;
+    // An unwritten buffer (a from-scratch root, or a create-new child) has no on-disk bytes to re-fetch —
+    // reload is a no-op for it, and would discard the authored buffer for a 404.
+    if (!plugins || !active || !active.written || active.path === null) return;
     const { path } = active;
     setSaveState({ phase: "idle" });
     setFrames((prev) => {
@@ -442,12 +523,14 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   }, [runLoad]);
 
   const save = useCallback((): void => {
-    const depth = framesRef.current.length - 1;
+    const depth = activeIndexRef.current;
     const active = framesRef.current[depth];
     const opened = openedResultOf(active);
-    // A from-scratch buffer (no path) takes the `saveNewFile` create door, not this overwrite path.
+    // A from-scratch **root** (no path) picks its path in the first-save dialog, which calls `saveNewFile`;
+    // it never reaches this door. Every other active frame saves here — an overwrite for a written file, an
+    // exclusive create at the pre-assigned path for an unwritten create-new child (#391).
     if (!active || !opened || active.path === null) return;
-    const { path } = active;
+    const { path, written } = active;
     const file = opened.file;
     setSaveState({ phase: "saving" });
     void client
@@ -455,7 +538,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         workflowPath: path,
         // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
         workflow: file as unknown as JsonValue,
-        ifMatch: active.etag ?? undefined,
+        // A written file overwrites under its `If-Match` ETag; an unwritten child creates exclusively
+        // (no precondition, ADR 0016), so the server refuses an existing path rather than clobbering it.
+        ifMatch: written ? (active.etag ?? undefined) : undefined,
       })
       .then((result) => {
         setSaveState({ phase: "saved" });
@@ -473,14 +558,22 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           const patched = prev.slice();
           // `openedBytes` moves to the new save-point too, so the badge's stamp-vs-edit wording measures
           // "changed since the last save", not since first open: a saved id-stamp is persisted, no longer
-          // the "stamped on import" reason.
-          patched[depth] = { ...top, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
+          // the "stamped on import" reason. The child's first save also flips `written`, so its lease is
+          // now acquired and launch enables — the from-scratch rule lifts at the first save.
+          patched[depth] = { ...top, written: true, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
           return patched;
         });
       })
       .catch((error: unknown) => {
         if (error instanceof PathApiError && error.status === 412) {
-          setSaveState({ phase: "conflict", message: error.message });
+          // A `412` on a written file's overwrite is the stale-write conflict (someone else wrote it). On
+          // an unwritten child's exclusive create it means the path already exists — a create collision,
+          // not a stale write, so it is an error the author resolves by retargeting, not by reloading.
+          setSaveState(
+            written
+              ? { phase: "conflict", message: error.message }
+              : { phase: "error", message: `A workflow already exists at ${path}. Choose a different target for the reference.` },
+          );
         } else {
           setSaveState({ phase: "error", message: errorMessage(error) });
         }
@@ -489,12 +582,12 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const saveNewFile = useCallback(
     (targetPath: string): Promise<SaveNewFileResult> => {
-      const depth = framesRef.current.length - 1;
+      const depth = activeIndexRef.current;
       const active = framesRef.current[depth];
       const opened = openedResultOf(active);
-      // Only a from-scratch buffer (an opened frame with no path) is placed here; a saved frame goes
-      // through `save` (overwrite under `If-Match`).
-      if (!active || !opened || active.path !== null) {
+      // Only a from-scratch **root** buffer (unwritten, no path) picks its path here; a create-new child
+      // (unwritten, path pre-assigned) and a saved frame both go through `save`.
+      if (!active || !opened || active.written || active.path !== null) {
         return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
       }
       const file = opened.file;
@@ -512,9 +605,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
             const topResult = openedResultOf(top);
             // Guard the still-a-scratch-buffer at this depth (an author who navigated mid-save must not
             // have a stale frame re-based) — the same top-frame re-check `save` makes.
-            if (!top || top.path !== null || !topResult) return prev;
+            if (!top || top.written || top.path !== null || !topResult) return prev;
             const patched = prev.slice();
-            patched[depth] = { ...top, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
+            patched[depth] = { ...top, written: true, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
             return patched;
           });
           return { status: "created", path: result.relativePath };
@@ -545,5 +638,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, open, newFile, descend, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
+  return { registry, frames, activeIndex, open, newFile, descend, descendNew, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
 }

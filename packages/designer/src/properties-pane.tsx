@@ -51,14 +51,20 @@ export interface PropertiesPaneProps {
   applyEdit: (next: WorkflowFile, coalesce?: string) => void;
   /** Re-point the selection after a re-key changes a node's id (ADR 0015). */
   onReselect: (id: string) => void;
+  /**
+   * Open the ref-target chooser for an empty `workflow` node (#391). Provided only when the active file
+   * has a path (a ref is stored relative to the referring file, so it needs one); absent, the ref editor
+   * falls back to its plain path field.
+   */
+  onAddRefTarget?: (nodeId: string) => void;
 }
 
-export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselect }: PropertiesPaneProps): JSX.Element {
+export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselect, onAddRefTarget }: PropertiesPaneProps): JSX.Element {
   const node = selectedId === null ? null : [...walkNodes(file.body)].find((n) => n.id === selectedId) ?? null;
   if (node === null) {
     return <FileProperties file={file} applyEdit={applyEdit} />;
   }
-  return <NodeProperties file={file} node={node} plugins={plugins} applyEdit={applyEdit} onReselect={onReselect} />;
+  return <NodeProperties file={file} node={node} plugins={plugins} applyEdit={applyEdit} onReselect={onReselect} onAddRefTarget={onAddRefTarget} />;
 }
 
 // ── The file's own properties ──────────────────────────────────────────────────────────────────────
@@ -84,12 +90,14 @@ function NodeProperties({
   plugins,
   applyEdit,
   onReselect,
+  onAddRefTarget,
 }: {
   file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   applyEdit: (next: WorkflowFile, coalesce?: string) => void;
   onReselect: (id: string) => void;
+  onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   // A field edit passes a stable per-field `coalesce` key so a run of keystrokes folds to one undo entry
   // (#389); a discrete change (a select, a re-key) passes none, so it is its own entry.
@@ -123,7 +131,7 @@ function NodeProperties({
           onChange={(when) => applyEdit(setArmWhen(file, site.ownerId, site.armIndex, when))}
         />
       ) : null}
-      <KindFields node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} />
+      <KindFields node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
       {carriesEnvelope(node.type) ? <StepEnvelopeFields file={file} node={node} commit={commit} /> : null}
     </div>
   );
@@ -193,11 +201,13 @@ function KindFields({
   plugins,
   commit,
   condSuggest,
+  onAddRefTarget,
 }: {
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
   condSuggest: string[];
+  onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   switch (node.type) {
     case "prompt":
@@ -205,7 +215,7 @@ function KindFields({
     case "binary":
       return <BinaryEditor node={node} plugins={plugins} commit={commit} />;
     case "workflow":
-      return <WorkflowRefEditor node={node} commit={commit} />;
+      return <WorkflowRefEditor node={node} commit={commit} onAddRefTarget={onAddRefTarget} />;
     case "parallel":
       return (
         <SelectField
@@ -280,8 +290,30 @@ function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
 }
 
 /** `workflow`-ref — the first-class editor: the referenced file path. A workflow step carries no worker. */
-function WorkflowRefEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function WorkflowRefEditor({
+  node,
+  commit,
+  onAddRefTarget,
+}: {
+  node: WorkflowNode;
+  commit: (next: WorkflowNode, coalesce?: string) => void;
+  onAddRefTarget?: (nodeId: string) => void;
+}): JSX.Element {
   const ref = typeof (rec(node)).ref === "string" ? ((rec(node)).ref as string) : "";
+  // An empty ref on a file with a path offers the target chooser (#391): reference an existing workflow,
+  // or create a new one and descend into it. Without a path (a from-scratch root) or once a ref is set,
+  // the plain path field is the editor — a set ref stays retargetable by hand.
+  if (ref === "" && onAddRefTarget) {
+    return (
+      <div className="pane-field ref-target-field">
+        <span className="pane-label">Referenced file</span>
+        <p className="pane-hint">This reference has no target yet.</p>
+        <button type="button" className="ref-choose-target" onClick={() => onAddRefTarget(node.id)}>
+          Choose a reference target…
+        </button>
+      </div>
+    );
+  }
   return <TextField label="Referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
 }
 

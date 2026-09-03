@@ -1,18 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import { walkNodes, type WorkflowNode } from "@path/schema";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
+import { replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { Palette } from "./palette.js";
 import { fileProblems } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
+import { RefTargetDialog } from "./ref-target-dialog.js";
+import { relativeRefPath } from "./resolve-ref.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
-import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile, type SaveNewFileResult } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -32,14 +36,18 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The first-save dialog for a from-scratch buffer (#390). Opened by the toolbar's Save when the active
   // frame holds no path yet; the dialog decides the path, then closes on a successful create.
   const [newFileOpen, setNewFileOpen] = useState(false);
+  // The ref-target chooser (#391): the id of the empty `workflow` node whose target is being chosen, or
+  // `null`. Opened from the pane's ref editor; a choice sets the parent ref (and, for create-new, descends
+  // into a fresh child), then closes it.
+  const [refTargetNode, setRefTargetNode] = useState<string | null>(null);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
-  const active = session.frames[session.frames.length - 1];
+  const active = session.frames[session.activeIndex];
   // A from-scratch buffer carries `path: null`; fold it to `undefined` so the one "no path yet" state
   // (no frame, or a never-saved buffer) reads uniformly here — the toolbar, lease, launch, and the
   // first-save dialog all branch on the single `activePath === undefined`.
   const activePath = active?.path ?? undefined;
-  const depth = session.frames.length;
+  const depth = session.activeIndex;
   // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
   // node ids mean nothing here. The *first* population (no file → the initial file) is not a switch:
   // nothing was selected yet, so resetting then is a no-op that only races an interaction landing right
@@ -60,6 +68,46 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The soft cross-node warning count for the open file (#388). Launch is **badged, not blocked**: the
   // count rides the launch button so the author runs knowingly (a saved-with-warnings file is clean).
   const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile).length : 0), [openedFile]);
+
+  // ── Nested `workflow`-ref creation (#391) ────────────────────────────────────────────────────────
+  // Set the empty `workflow` node's `ref` to reach `targetPath`. The stored ref is relative to the
+  // referring file's directory (`relativeRefPath`), so this needs the parent's path — the chooser is
+  // only offered when the active file has one.
+  const fileWithNodeRef = (nodeId: string, targetPath: string) => {
+    if (!openedFile || activePath === undefined) return null;
+    const node = [...walkNodes(openedFile.body)].find((n) => n.id === nodeId);
+    if (!node || node.type !== "workflow") return null;
+    const ref = relativeRefPath(activePath, targetPath);
+    return replaceNode(openedFile, nodeId, { ...node, ref } as WorkflowNode);
+  };
+  // Reference-existing: point the ref at a discovered workflow and close.
+  const pickExistingRef = (nodeId: string, targetPath: string): void => {
+    const next = fileWithNodeRef(nodeId, targetPath);
+    if (next) session.applyEdit(next);
+    setRefTargetNode(null);
+  };
+  // Create-new: set the parent ref, then descend into a fresh, unwritten child bound to that path. The
+  // parent edit runs first so the descent leaves the parent frame with its ref already set.
+  const createNewRef = (nodeId: string, childPath: string): void => {
+    const next = fileWithNodeRef(nodeId, childPath);
+    if (next) {
+      session.applyEdit(next);
+      session.descendNew(childPath);
+    }
+    setRefTargetNode(null);
+  };
+  // The non-writing exclusive-create check for the reused new-file dialog: a discovered collision is
+  // `exists`; a free path is `created` with **no bytes written** (the child's own first save is the
+  // authoritative exclusive create). A discovery failure lets that first save be the only check.
+  const checkChildPathFree = async (targetPath: string): Promise<SaveNewFileResult> => {
+    try {
+      const discovered = await client.listWorkflows();
+      if (discovered.workflows.some((wf) => wf.relative_path === targetPath)) return { status: "exists" };
+    } catch {
+      // Discovery is best-effort; the child's exclusive-create save still refuses an existing path.
+    }
+    return { status: "created", path: targetPath };
+  };
 
   // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
   // inspector — the two are views of one live snapshot, and a second connection would tell the same
@@ -90,7 +138,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const leasedPaths = useMemo(
     () =>
       session.frames
-        .filter((frame) => openedResultOf(frame) !== null && frame.path !== null)
+        // An unwritten frame (a from-scratch root, or a create-new child before its first save, #391) takes
+        // no lease — the from-scratch rule — so a lease is held only for an opened, written, path-bearing frame.
+        .filter((frame) => openedResultOf(frame) !== null && frame.written && frame.path !== null)
         .map((frame) => frame.path as string),
     [session.frames],
   );
@@ -164,6 +214,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             plugins={plugins}
             applyEdit={session.applyEdit}
             onReselect={setSelectedId}
+            // The ref-target chooser needs the parent's path to store a relative ref, so offer it only for
+            // a file that has one (#391); a from-scratch root falls back to the plain path field.
+            onAddRefTarget={activePath !== undefined ? setRefTargetNode : undefined}
           />
         ) : (
           <div className="pane pane-idle">
@@ -174,7 +227,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       runDock={
         <RunDock
           client={client}
-          workflowPath={activePath ?? null}
+          // An unwritten buffer has no file on disk for the server to load, so it cannot launch (#391 AC:
+          // "no launch until its first save"). A create-new child carries a pre-assigned path, so gate the
+          // launch handle on `written`, not on the path — an unwritten child reads as unsaved, like a
+          // from-scratch root, rather than relying on its (always-dirty) buffer to block launch.
+          workflowPath={active?.written ? activePath ?? null : null}
           workflowId={openedFile?.id ?? null}
           dirty={dirty}
           warningCount={warningCount}
@@ -198,6 +255,18 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         create={session.saveNewFile}
         onCreated={() => setNewFileOpen(false)}
         onCancel={() => setNewFileOpen(false)}
+      />
+    ) : null}
+    {/* The ref-target chooser (#391): reference an existing workflow, or create a new one and descend into
+        its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
+    {refTargetNode !== null && activePath !== undefined ? (
+      <RefTargetDialog
+        client={client}
+        excludePath={activePath}
+        onPickExisting={(targetPath) => pickExistingRef(refTargetNode, targetPath)}
+        onCreateNew={(childPath) => createNewRef(refTargetNode, childPath)}
+        checkPathFree={checkChildPathFree}
+        onCancel={() => setRefTargetNode(null)}
       />
     ) : null}
     </>
