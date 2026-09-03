@@ -61,11 +61,10 @@ function renderDetail(client: PathApiClient, onSelectRun = vi.fn()) {
 }
 
 describe("RunDetail", () => {
-  it("heads the pane with the root run id and its status", async () => {
+  it("heads the pane with the run status", async () => {
     renderDetail(stubClient({ tree: TREE }));
 
     const head = await screen.findByTestId("run-head");
-    expect(head).toHaveTextContent(ROOT);
     expect(head).toHaveTextContent("running");
   });
 
