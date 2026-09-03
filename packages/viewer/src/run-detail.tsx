@@ -1,7 +1,6 @@
 import { isTerminal, type PathApiClient } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
-import { formatTimestamp } from "./format-time.js";
 import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { RunTree } from "./run-tree.js";
@@ -118,14 +117,10 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
         <StatusPill status={state.status} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <dl className="run-meta-grid">
-          <dt>root run id</dt>
-          <dd className="run-id">{state.rootRunId}</dd>
           <dt>workflow id</dt>
           <dd className="run-workflow-id">{root?.workflowId ?? "—"}</dd>
           <dt>workflow file</dt>
           <dd className="run-workflow-path">{root?.workflowPath ?? "—"}</dd>
-          <dt>start at</dt>
-          <dd>{formatTimestamp(root?.startedAt ?? null)}</dd>
         </dl>
       </header>
 

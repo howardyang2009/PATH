@@ -1,4 +1,4 @@
-import type { RunNodeState } from "@path/client-core";
+import type { LogEvent, RunNodeState } from "@path/client-core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -251,5 +251,33 @@ describe("NodeIo", () => {
 
     await screen.findByTestId("node-io-input");
     expect(screen.queryByTestId("node-io-reused")).toBeNull();
+  });
+
+  it("surfaces a failed run's error message in the E block", async () => {
+    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
+    const narrative: LogEvent[] = [
+      {
+        type: "step-finished",
+        seq: 7,
+        ts: "2026-07-25T10:00:02.000Z",
+        run_id: RUN,
+        node_id: "draft-notes",
+        node_name: "draft-notes",
+        status: "failed",
+        error: "worker exited with code 1: boom",
+      },
+    ];
+    render(<NodeIo client={client} run={runState({ status: "failed" })} narrative={narrative} />);
+
+    const error = await screen.findByTestId("node-io-error");
+    expect(error).toHaveTextContent("worker exited with code 1: boom");
+  });
+
+  it("shows no E block for a run that did not fail", async () => {
+    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
+    render(<NodeIo client={client} run={runState()} />);
+
+    await screen.findByTestId("node-io-input");
+    expect(screen.queryByTestId("node-io-error")).toBeNull();
   });
 });

@@ -1,4 +1,4 @@
-import { isReuseRow, isTerminal, nodeLabel, type PathApiClient, type RunNodeState } from "@path/client-core";
+import { isReuseRow, isTerminal, nodeLabel, type LogEvent, type PathApiClient, type RunNodeState } from "@path/client-core";
 import { useState } from "react";
 import { JsonView } from "./json-view.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
@@ -9,6 +9,27 @@ export interface NodeIoProps {
   client: PathApiClient;
   /** The run selected in the tree, as the live snapshot holds it — one step's run. */
   run: RunNodeState;
+  /**
+   * The root run's narrative, so the pane can surface this run's own failure message (the E block).
+   * Optional and empty-by-default: before any event is known the pane simply has no error to show.
+   */
+  narrative?: readonly LogEvent[];
+}
+
+/**
+ * The failure message this run reached, or null. The error text rides the `step-finished` event, not
+ * the run record (mvp spec §8.1) — a leaf step's carries its exit code and a stderr tail, a
+ * workflow-run's carries the control-node failure that bubbled up. The narrative is `seq`-ordered, so
+ * the last such event for the run is its final word; a `cancelled` finish carries no `error`.
+ */
+function runErrorMessage(runId: string, narrative: readonly LogEvent[]): string | null {
+  let message: string | null = null;
+  for (const event of narrative) {
+    if (event.type === "step-finished" && event.run_id === runId && event.error !== undefined) {
+      message = event.error;
+    }
+  }
+  return message;
 }
 
 /**
@@ -27,9 +48,10 @@ export interface NodeIoProps {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run }: NodeIoProps) {
+export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
+  const errorMessage = runErrorMessage(run.runId, narrative);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
@@ -100,7 +122,26 @@ export function NodeIo({ client, run }: NodeIoProps) {
         // reached a verdict — not a failure of the pane.
         absentNote="No context recorded for this run."
       />
+      {errorMessage !== null && <ErrorBlock message={errorMessage} />}
     </div>
+  );
+}
+
+/**
+ * The E block: the run's own failure message. Rendered only when the run actually failed — unlike the
+ * I/O/C blocks, which are slots every run legitimately has (so an absent-note there is informative),
+ * an error is the exception, not a slot. A success, a still-running or a cancelled run has no error,
+ * so the block stays absent rather than announcing "no error" on every healthy run. It reads a plain
+ * string off the narrative, so it renders the text verbatim rather than as JSON.
+ */
+function ErrorBlock({ message }: { message: string }) {
+  return (
+    <section className="io-block" data-testid="node-io-error" aria-labelledby="node-io-error-title">
+      <h3 className="io-title" id="node-io-error-title">
+        Error
+      </h3>
+      <pre className="node-io-error-message">{message}</pre>
+    </section>
   );
 }
 

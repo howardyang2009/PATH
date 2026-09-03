@@ -87,7 +87,11 @@ export function App({ client }: { client: PathApiClient }) {
         selectedRun === undefined ? (
           <p className="pane-note">Select a run in the tree.</p>
         ) : (
-          <NodeIo client={client} run={selectedRun} />
+          <NodeIo
+            client={client}
+            run={selectedRun}
+            narrative={load.phase === "ready" ? load.value.narrative : []}
+          />
         )
       }
     />
