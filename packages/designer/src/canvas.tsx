@@ -38,6 +38,7 @@ export function Canvas({
   onOpenExisting: () => void;
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
+  const selection = useSelection();
 
   if (registry.phase === "loading") {
     return <CanvasNote title="Loading…" hint="Fetching the step-plugin registry." />;
@@ -67,7 +68,7 @@ export function Canvas({
   const active = frames[activeIndex]!;
   return (
     <div className="canvas" role="region" aria-label="Workflow canvas">
-      <Breadcrumb frames={frames} activeIndex={activeIndex} onCrumb={goTo} />
+      <Breadcrumb frames={frames} activeIndex={activeIndex} onCrumb={goTo} onSelectFile={selection?.onSelect} />
       <CanvasBody>
         <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
       </CanvasBody>
@@ -97,11 +98,24 @@ function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
 }
 
 /**
- * The file breadcrumb: one crumb per trail frame, the **active** one (`activeIndex`) inert and marked
- * current. Frames on either side are buttons — ancestors ascend, and a frame ahead of the active one (kept
- * alive because an ascend no longer discards it, #391) is a forward re-entry back down the same trail.
+ * The file breadcrumb: one crumb per trail frame. The **active** one (`activeIndex`) is marked current;
+ * clicking it deselects, so the properties pane falls back to the workflow's own properties (a click on
+ * the open file's name goes back to its property panel). Frames on either side are buttons — ancestors
+ * ascend, and a frame ahead of the active one (kept alive because an ascend no longer discards it, #391)
+ * is a forward re-entry back down the same trail.
  */
-function Breadcrumb({ frames, activeIndex, onCrumb }: { frames: Frame[]; activeIndex: number; onCrumb: (index: number) => void }): JSX.Element {
+function Breadcrumb({
+  frames,
+  activeIndex,
+  onCrumb,
+  onSelectFile,
+}: {
+  frames: Frame[];
+  activeIndex: number;
+  onCrumb: (index: number) => void;
+  /** Deselect to the file's own properties, or `undefined` when the tree renders read-only (no selection wired). */
+  onSelectFile?: (id: string | null) => void;
+}): JSX.Element {
   return (
     <nav className="breadcrumb" aria-label="File breadcrumb">
       {frames.map((frame, index) => {
@@ -111,9 +125,17 @@ function Breadcrumb({ frames, activeIndex, onCrumb }: { frames: Frame[]; activeI
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
             {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
             {current ? (
-              <span className="crumb crumb-current" aria-current="page" title={frame.path ?? undefined}>
+              // The current crumb is the open file's name. Clicking it shows the workflow's own properties
+              // (deselect), which is a no-op when nothing is wired to select. It stays marked current.
+              <button
+                type="button"
+                className="crumb crumb-current"
+                aria-current="page"
+                title={frame.path ?? undefined}
+                onClick={onSelectFile ? () => onSelectFile(null) : undefined}
+              >
                 {label}
-              </span>
+              </button>
             ) : (
               <button type="button" className="crumb" title={frame.path ?? undefined} onClick={() => onCrumb(index)}>
                 {label}

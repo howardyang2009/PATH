@@ -297,7 +297,7 @@ body {
 .crumb-current {
   color: var(--text);
   font-weight: 600;
-  cursor: default;
+  cursor: pointer;
 }
 
 /* Block grammar. Every node is a block; block kind is hue + label, never hue alone. */
