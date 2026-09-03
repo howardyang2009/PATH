@@ -13,6 +13,7 @@
   "dependencies": {
     "@path/client-core": "workspace:*",
     "@path/schema": "workspace:*",
+    "@path/viewer": "workspace:*",
     "react": "^18.3.1",
     "react-dom": "^18.3.1"
   },

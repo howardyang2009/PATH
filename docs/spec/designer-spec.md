@@ -29,13 +29,15 @@ below rests on them. They are recorded, not re-argued; each names its ADR where 
 
 - **Destination is a spec + ADRs**, not the built Designer. #254 is a planning map; construction is a
   separate execution map, seeded by this document.
-- **`@path/designer` is a separate package**, peer of `@path/viewer`, not a viewer route and not folded
-  into it; no `@path/ui` React package is extracted up front
-  ([ADR 0028](../adr/0028-designer-is-a-separate-package-not-a-viewer-route.md)). The Designer owns its
-  **own** run/cancel/resume/detail surfaces, shaped unlike the Viewer's, and it never embeds or imports
-  `@path/viewer` ([ADR 0025](../adr/0025-designer-carries-all-seven-run-surfaces-reshaped-run-meaning-moves-into-client-core.md)).
-  This reverses map [#40](https://github.com/howardyang2009/PATH/issues/40)'s "reuses this viewer as a
-  component" assumption.
+- **`@path/designer` is a separate package**, peer of `@path/viewer`, with its own bundle and mount and
+  not folded into it
+  ([ADR 0028](../adr/0028-designer-is-a-separate-package-not-a-viewer-route.md)). It **depends on
+  `@path/viewer` and reuses the Viewer's three run read panels** — the run list, the run detail, and the
+  node I/O — parametrised for the Designer's scope
+  ([ADR 0031](../adr/0031-designer-reuses-the-viewers-run-panels.md)). It keeps only its own run
+  *authoring* chrome — the save-first launch form and the canvas projection. This partly restores map
+  [#40](https://github.com/howardyang2009/PATH/issues/40)'s "reuses this viewer as a component" for the
+  run read surfaces, while the authoring canvas stays Designer-only.
 - **The authoring model is a constrained node canvas**, not a form tree and not a JSON editor. The author
   can never express a structure the block grammar cannot; a workflow body is an ordered tree of
   [`path/workflow@2`](../../CONTEXT.md) nodes, never an arbitrary DAG. Extending the format to a real DAG

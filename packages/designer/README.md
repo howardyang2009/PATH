@@ -9,8 +9,9 @@ counterpart to the read-only [`@path/viewer`](../viewer) where runs are *watched
 **Tracer bullet.** The buildable, servable bundle now exists ([#366](https://github.com/howardyang2009/PATH/issues/366)):
 a Vite + React app that builds to `dist` with `base: "/designer/"` and loads at `/designer/` on
 `path-server` (the mount from [#360](https://github.com/howardyang2009/PATH/issues/360), ADR 0027). It
-is a peer of [`@path/viewer`](../viewer) over the same [`@path/client-core`](../client-core) — it never
-imports the Viewer (ADR 0028). The page is an **empty canvas** plus a **static palette shell** (Steps +
+is a peer of [`@path/viewer`](../viewer) over the same [`@path/client-core`](../client-core); it depends
+on the Viewer and reuses its three run read panels (ADR 0031), while keeping its own authoring shell. The
+page is an **empty canvas** plus a **static palette shell** (Steps +
 Blocks); the Steps list is a placeholder for the registry-driven list a later ticket wires from
 `GET /v0/step-plugins`. No open, save, or run yet.
 

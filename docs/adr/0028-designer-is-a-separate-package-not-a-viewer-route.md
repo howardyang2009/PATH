@@ -1,6 +1,10 @@
 # `@path/designer` is a separate package, not a viewer route
 
-**Status:** accepted; resolves the package-boundary question of Wayfinder map
+**Status:** partly superseded by
+[ADR 0031](0031-designer-reuses-the-viewers-run-panels.md) — decision **2** (the Designer "does not
+embed or import the Viewer") is reversed: the Designer now depends on `@path/viewer` and reuses its
+three run read panels. Decision **5** still holds: `@path/designer` stays a separate package with its
+own bundle and mount. Originally: accepted; resolves the package-boundary question of Wayfinder map
 [#254](https://github.com/howardyang2009/PATH/issues/254) (assembled at
 [#263](https://github.com/howardyang2009/PATH/issues/263)). Applies map **decision 5** (a new
 `@path/designer` package, peer of `@path/viewer`, with no `@path/ui` React package extracted up front)

@@ -13,9 +13,9 @@ import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { relativeRefPath } from "./resolve-ref.js";
 import { SelectionProvider } from "./selection-context.js";
+import { useRunView } from "@path/viewer";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
-import { useRunView } from "./run/use-run-view.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile, type SaveNewFileResult } from "./use-open-file.js";
 
@@ -24,7 +24,8 @@ import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile, ty
  * and (from #369) the properties pane at the right. The palette arms a kind, the canvas opens only the
  * grammar-legal sockets and commits structure edits, a single-click on a node selects it, and the pane
  * edits the selected node's content (name, id, kind fields, worker) or — on an empty-canvas click — the
- * file's own properties. Save and run stay later tickets. It never imports the Viewer (ADR 0028).
+ * file's own properties. The run dock reuses the Viewer's run read panels (ADR 0031); the authoring
+ * shell stays Designer-only.
  *
  * `initialPath` is the file to open on load — the deep-link `?path=`. Omitted, the canvas shows its
  * empty affordance. The **armed kind** (the palette selection) and the **selected id** (what the pane
@@ -170,6 +171,16 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     setRunsReloadNonce((nonce) => nonce + 1);
   };
 
+  // A delete drops the watched run if it was the one removed (its tree is gone), then re-reads the
+  // list so the row disappears now rather than at the next periodic tick — the mirror of a launch.
+  const handleDeleted = (rootRunId: string): void => {
+    if (rootRunId === selectedRootRunId) {
+      setSelectedRootRunId(null);
+      setSelectedRunId(null);
+    }
+    setRunsReloadNonce((nonce) => nonce + 1);
+  };
+
   // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
   // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
@@ -288,6 +299,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           onSelectRun={setSelectedRunId}
           onLaunched={watchNewRun}
           onResumed={watchNewRun}
+          onDeleted={handleDeleted}
           reloadNonce={runsReloadNonce}
         />
       }

@@ -30,6 +30,13 @@ type StatusFilter = RunStatus | "all";
 
 export interface RunsListProps {
   client: PathApiClient;
+  /**
+   * Optional `workflow_id` scope (server-api-v0.md §3). `undefined` is the Viewer's cross-workflow
+   * rail — every root run. A string scopes the list to one workflow's history (the Designer, watching
+   * the run history of the file it has open). `null` means a scoped surface with nothing open yet: the
+   * list shows an idle note and reads nothing.
+   */
+  workflowId?: string | null;
   /** The run the app currently has selected — owned above, so the detail pane sees the same id. */
   selectedRootRunId: string | null;
   onSelectRootRun: (rootRunId: string) => void;
@@ -59,12 +66,17 @@ export interface RunsListProps {
  */
 export function RunsList({
   client,
+  workflowId,
   selectedRootRunId,
   onSelectRootRun,
   onResumed,
   onDeleted,
   reloadNonce,
 }: RunsListProps) {
+  // The scope sent to the wire: a string scopes to one workflow, `undefined` leaves the list
+  // cross-workflow. `null` (a scoped surface with nothing open) never reaches a query — the effects
+  // below short-circuit on it and the render shows an idle note.
+  const scope = typeof workflowId === "string" ? workflowId : undefined;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
   // Which row's action panel is expanded, or none — a single-open toggle exactly like the launch
@@ -79,6 +91,8 @@ export function RunsList({
   statusFilterRef.current = statusFilter;
 
   useEffect(() => {
+    // A scoped surface with nothing open reads nothing — the idle note stands until a workflow opens.
+    if (workflowId === null) return;
     let cancelled = false;
 
     // A refresh replaces the rows in place: no `loading` phase, so an already-rendered list never
@@ -87,7 +101,7 @@ export function RunsList({
     const read = (initial: boolean): void => {
       if (initial) setState({ phase: "loading" });
       client
-        .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter })
+        .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter, workflowId: scope })
         .then((res) => {
           if (!cancelled) setState({ phase: "ready", value: res.runs });
         })
@@ -104,7 +118,7 @@ export function RunsList({
       cancelled = true;
       clearInterval(timer);
     };
-  }, [client, statusFilter]);
+  }, [client, statusFilter, workflowId, scope]);
 
   // A launch (#233) bumps `reloadNonce`; re-read once, in place — no loading flash, because the rail
   // is already populated and only one row is being added. The first run (mount) is skipped so this
@@ -112,6 +126,7 @@ export function RunsList({
   const nonceStarted = useRef(false);
   useEffect(() => {
     if (reloadNonce === undefined) return;
+    if (workflowId === null) return;
     if (!nonceStarted.current) {
       nonceStarted.current = true;
       return;
@@ -119,7 +134,7 @@ export function RunsList({
     let cancelled = false;
     const status = statusFilterRef.current === "all" ? undefined : statusFilterRef.current;
     client
-      .listRuns({ limit: RUNS_LIMIT, status })
+      .listRuns({ limit: RUNS_LIMIT, status, workflowId: scope })
       .then((res) => {
         if (!cancelled) setState({ phase: "ready", value: res.runs });
       })
@@ -129,7 +144,16 @@ export function RunsList({
     return () => {
       cancelled = true;
     };
-  }, [client, reloadNonce]);
+  }, [client, reloadNonce, workflowId, scope]);
+
+  // A scoped surface with nothing open: an idle note, no toolbar, no reads.
+  if (workflowId === null) {
+    return (
+      <div className="runs-list">
+        <p className="pane-note">Open a workflow to see its runs.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="runs-list">
