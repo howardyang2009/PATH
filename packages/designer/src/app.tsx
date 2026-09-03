@@ -7,7 +7,7 @@ import { EditingToolbar } from "./editing-toolbar.js";
 import { replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { Palette } from "./palette.js";
-import { fileProblems } from "./problems.js";
+import { fileProblems, refLookupFor } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { relativeRefPath } from "./resolve-ref.js";
@@ -65,9 +65,36 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
 
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
-  // The soft cross-node warning count for the open file (#388). Launch is **badged, not blocked**: the
+
+  // The discovered-workflow path set (#392), the origin the dangling-`workflow`-ref check resolves against
+  // (§ Nested `workflow`-ref creation). `null` until the first scan lands — an empty set reads as "no files
+  // exist" and would flag every saved ref dangling for one frame, so the check is suppressed until then. A
+  // fresh scan on mount and after every save transition: a create-new child's first save writes its file,
+  // so re-reading discovery on the next `saved` clears the parent's dangling marker. Discovery is
+  // best-effort — a failed scan leaves the last set, so a ref is not flagged dangling on a read blip.
+  const [knownPaths, setKnownPaths] = useState<ReadonlySet<string> | null>(null);
+  const savePhase = session.saveState.phase;
+  useEffect(() => {
+    let cancelled = false;
+    client
+      .listWorkflows()
+      .then((discovered) => {
+        if (!cancelled) setKnownPaths(new Set(discovered.workflows.map((wf) => wf.relative_path)));
+      })
+      .catch(() => {
+        // Best-effort; keep the last known set rather than flag every ref dangling on a read blip.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, savePhase]);
+
+  // The ref lookup for the active file (its own path resolves a relative ref; the discovered set says which
+  // targets exist). `undefined` for a from-scratch root or before discovery loads, which skips the check.
+  const refLookup = useMemo(() => refLookupFor(activePath, knownPaths), [activePath, knownPaths]);
+  // The soft cross-node warning count for the open file (#388, #392). Launch is **badged, not blocked**: the
   // count rides the launch button so the author runs knowingly (a saved-with-warnings file is clean).
-  const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile).length : 0), [openedFile]);
+  const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile, refLookup).length : 0), [openedFile, refLookup]);
 
   // ── Nested `workflow`-ref creation (#391) ────────────────────────────────────────────────────────
   // Set the empty `workflow` node's `ref` to reach `targetPath`. The stored ref is relative to the
@@ -202,7 +229,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       canvas={
         <RunProjectionProvider runs={runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
-            <Canvas session={session} plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />
+            <Canvas session={session} plugins={plugins} armedKind={armedKind} onArm={setArmedKind} knownPaths={knownPaths} />
           </SelectionProvider>
         </RunProjectionProvider>
       }

@@ -1,6 +1,6 @@
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { fileProblems, problemMarks } from "../src/problems.js";
+import { fileProblems, problemMarks, refLookupFor } from "../src/problems.js";
 
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -12,6 +12,10 @@ function step(id: number, name: string, extra: Record<string, unknown>): Workflo
 
 function wrap(body: WorkflowNode[]): WorkflowFile {
   return { format: FORMAT_VERSION, id: uuid(1), name: "flow", body };
+}
+
+function refNode(id: number, name: string, ref: string): WorkflowNode {
+  return { type: "workflow", id: uuid(id), name, ref } as never;
 }
 
 describe("#388 cross-node problems", () => {
@@ -110,6 +114,50 @@ describe("#388 cross-node problems", () => {
     // both the dangling condition path and the dangling max_iterations read land on the one node
     expect(marks.get(uuid(2))).toContain("c1");
     expect(marks.get(uuid(2))).toContain("c2");
+  });
+
+  it("flags a `workflow`-ref whose target has no saved file yet (create-new, not saved)", () => {
+    const file = wrap([refNode(2, "child", "flows/child.workflow.json")]);
+    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() });
+    expect(problems).toHaveLength(1);
+    expect(problems[0]).toMatchObject({ nodeId: uuid(2), nodeName: "child", kind: "dangling-ref" });
+    expect(problems[0]!.message).toContain("child.workflow.json");
+  });
+
+  it("does not flag a `workflow`-ref whose target is a saved (discovered) file", () => {
+    // Ref stored relative to the parent's directory; resolved against the known set clears the marker.
+    const file = wrap([refNode(2, "child", "child.workflow.json")]);
+    const known = new Set(["flows/child.workflow.json"]);
+    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: known });
+    expect(problems).toHaveLength(0);
+  });
+
+  it("does not check refs at all without a ref context (from-scratch root, discovery absent)", () => {
+    const file = wrap([refNode(2, "child", "flows/child.workflow.json")]);
+    expect(fileProblems(file)).toHaveLength(0);
+  });
+
+  it("does not flag an empty ref (target not yet chosen)", () => {
+    const file = wrap([refNode(2, "child", "")]);
+    expect(fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() })).toHaveLength(0);
+  });
+
+  it("marks the node so the canvas ⚠ and the panel both name the dangling ref", () => {
+    const file = wrap([refNode(2, "child", "child.workflow.json")]);
+    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() });
+    const marks = problemMarks(problems);
+    expect(marks.get(uuid(2))).toContain("child.workflow.json");
+  });
+
+  it("suppresses the ref check before discovery loads (null known set) and for a pathless file", () => {
+    // An empty set reads as "no files exist"; only a `null` set means "not loaded yet" and skips the check.
+    expect(refLookupFor("flows/parent.workflow.json", null)).toBeUndefined();
+    expect(refLookupFor(undefined, new Set())).toBeUndefined();
+    expect(refLookupFor(null, new Set())).toBeUndefined();
+    expect(refLookupFor("flows/parent.workflow.json", new Set())).toEqual({
+      filePath: "flows/parent.workflow.json",
+      knownPaths: new Set(),
+    });
   });
 
   it("marks nothing for a clean file", () => {
