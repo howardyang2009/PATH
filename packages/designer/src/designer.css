@@ -53,32 +53,70 @@ body {
   font-size: var(--fs-sm);
 }
 
-/* Palette rail (left) │ canvas stage (centre) │ properties pane (right). Fixed rails, fluid stage. */
+/* Palette rail (left) │ canvas stage (centre) │ properties pane (right). The rails carry a drag-set
+ * width (inline style, resized via the `.rail-vresizer` handles); the stage takes the remainder. */
 .panes {
-  display: grid;
-  grid-template-columns: 280px 1fr 320px;
+  display: flex;
   min-height: 0;
 }
 
 .pane-rail {
-  border-left: 1px solid var(--border);
+  flex: none;
   background: var(--surface);
   overflow-y: auto;
   min-height: 0;
 }
 
 .rail {
-  border-right: 1px solid var(--border);
+  flex: none;
   background: var(--surface);
   overflow-y: auto;
   min-height: 0;
 }
 
 .stage {
+  flex: 1 1 0;
   min-width: 0;
   min-height: 0;
   overflow: auto;
   display: flex;
+}
+
+/* Vertical drag handles flanking the canvas stage — the same hairline-that-thickens separator the run
+ * dock uses between its panes (`.run-dock-vresizer`), so both surfaces resize with one look and feel. */
+.run-dock-vresizer,
+.rail-vresizer {
+  width: 6px;
+  cursor: col-resize;
+  background: none;
+  flex: none;
+  align-self: stretch;
+  touch-action: none;
+}
+
+.run-dock-vresizer::before,
+.rail-vresizer::before {
+  content: "";
+  display: block;
+  width: 1px;
+  height: 100%;
+  margin: 0 auto;
+  background: var(--border);
+}
+
+.run-dock-vresizer:hover::before,
+.run-dock-vresizer:focus-visible::before,
+.run-dock-vresizer:active::before,
+.rail-vresizer:hover::before,
+.rail-vresizer:focus-visible::before,
+.rail-vresizer:active::before {
+  width: 3px;
+  background: var(--accent);
+}
+
+.run-dock-vresizer:focus-visible,
+.rail-vresizer:focus-visible {
+  outline: none;
 }
 
 /* Palette. */
@@ -997,8 +1035,37 @@ body {
   min-height: 0;
 }
 
-.run-dock[data-open="true"] {
-  max-height: 42vh;
+/* The drag handle on the dock's top edge — grab it to set the drawer's height. Mirrors the Viewer's
+ * row resizers: a hairline that thickens on hover/focus, and a keyboard-reachable separator. */
+.run-dock-resizer {
+  height: 6px;
+  margin-top: -1px;
+  cursor: row-resize;
+  background: none;
+  flex: none;
+}
+
+.run-dock-resizer::before {
+  content: "";
+  display: block;
+  height: 1px;
+  background: var(--border);
+}
+
+.run-dock-resizer:hover::before,
+.run-dock-resizer:focus-visible::before,
+.run-dock-resizer:active::before {
+  height: 3px;
+  background: var(--accent);
+}
+
+.run-dock-resizer:focus-visible {
+  outline: none;
+}
+
+.run-dock[data-open="true"] .run-dock-body {
+  flex: 1;
+  min-height: 0;
 }
 
 .run-dock-bar {
@@ -1018,10 +1085,7 @@ body {
 }
 
 .run-dock-body {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(220px, 1fr) minmax(280px, 1.4fr);
-  gap: 1px;
-  background: var(--border);
+  display: flex;
   overflow: hidden;
   min-height: 0;
 }
@@ -1031,7 +1095,21 @@ body {
   padding: 10px 12px;
   overflow-y: auto;
   min-height: 0;
+  min-width: 0;
 }
+
+/* Left and middle panes carry a drag-set width (inline style); the right pane takes the rest. */
+.run-dock-runs,
+.run-dock-detail {
+  flex: none;
+}
+
+.run-dock-io {
+  flex: 1 1 0;
+}
+
+/* The between-pane drag handles (`.run-dock-vresizer`) are styled with the shell's `.rail-vresizer`
+ * up in the `.panes` block, so both surfaces share one look. */
 
 .run-dock-heading {
   margin: 0 0 8px;
