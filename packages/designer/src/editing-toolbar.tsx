@@ -18,6 +18,7 @@ export function EditingToolbar({
   onUndo,
   onRedo,
   onSave,
+  onOpenExisting,
   onReload,
   lease,
   onTakeover,
@@ -33,6 +34,8 @@ export function EditingToolbar({
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
+  /** Open the pick-an-existing-workflow dialog (#254) — switch to another workflow without leaving the app. */
+  onOpenExisting: () => void;
   /** Re-fetch the active file from disk — the stale-write conflict recovery. */
   onReload: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
@@ -44,6 +47,11 @@ export function EditingToolbar({
   const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
+      {/* Open another workflow without leaving the app (#254). It discards the current stack, so it sits
+          apart from the edit controls; a dirty buffer is the author's to Save first. */}
+      <button type="button" className="open-btn" onClick={onOpenExisting}>
+        Open…
+      </button>
       {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
       <button type="button" className="undo-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>

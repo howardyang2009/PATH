@@ -8,8 +8,9 @@ import "./designer.css";
 const rootEl = document.getElementById("root");
 if (!rootEl) throw new Error("missing #root element");
 
-// The file to open is a deep-link query param — `/designer/?path=<relative/path.workflow.json>` — until a
-// file-picker surface lands in a later #254 ticket. Omitted, the canvas shows its empty affordance.
+// The file to open is a deep-link query param — `/designer/?path=<relative/path.workflow.json>`. Omitted,
+// the canvas shows its empty affordance, whose "Open workflow" picker (#254) opens any discovered file; the
+// toolbar's "Open…" does the same once a file is open. The deep-link stays the shareable entry point.
 const initialPath = new URLSearchParams(window.location.search).get("path") ?? undefined;
 
 createRoot(rootEl).render(

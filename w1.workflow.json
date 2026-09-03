@@ -2,31 +2,38 @@
   "format": "path/workflow@3",
   "id": "7eae7dae-ee36-4d05-80b0-8fc895783d69",
   "name": "w1",
+  "config": {
+    "repo_path": ".",
+    "commit_range": "HEAD~15..HEAD",
+    "max_revisions": "3",
+    "output_file": "RELEASE_NOTES.md",
+    "model": "claude-sonnet-5"
+  },
   "body": [
     {
       "id": "a728c16b-baef-40f2-9f11-2b88ac95e63e",
       "name": "gather-changes",
-      "type": "binary",
+      "publish": {
+        "raw_changes": "${output}"
+      },
       "command": "git",
       "args": [
-        "log,",
+        "log",
         "--stat",
         "--no-color",
         "${config.commit_range}"
       ],
       "cwd": "${config.repo_path}",
-      "publish": {
-        "raw_changes": "${output}"
-      }
+      "type": "binary"
     },
     {
+      "type": "checkpoint",
       "id": "4bef80da-5092-4c9d-a84d-dbf04d84053e",
       "name": "have-changes",
-      "type": "checkpoint",
       "condition": {
         "type": "matches",
         "path": "context.raw_changes",
-        "pattern": "\\\\S"
+        "pattern": "\\S"
       }
     }
   ]

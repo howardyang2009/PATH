@@ -25,6 +25,7 @@ export function Canvas({
   armedKind,
   onArm,
   knownPaths,
+  onOpenExisting,
 }: {
   session: OpenSession;
   plugins: WireStepPlugin[];
@@ -33,6 +34,8 @@ export function Canvas({
   /** Discovered workflow paths (#392), so the render can flag a `workflow`-ref whose target is unsaved;
    *  `null` before the first discovery scan lands, which suppresses the check. */
   knownPaths: ReadonlySet<string> | null;
+  /** Open the pick-an-existing-workflow dialog (#254) — the empty canvas's second entry point beside "New". */
+  onOpenExisting: () => void;
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
 
@@ -46,11 +49,16 @@ export function Canvas({
     return (
       <CanvasNote
         title="Empty canvas"
-        hint="No workflow open. Open one with ?path=<relative/path.workflow.json>, or start a new one."
+        hint="No workflow open. Start a new one, or open an existing workflow to edit it."
         action={
-          <button type="button" className="new-file-start" onClick={session.newFile}>
-            New workflow
-          </button>
+          <div className="canvas-empty-actions">
+            <button type="button" className="new-file-start" onClick={session.newFile}>
+              New workflow
+            </button>
+            <button type="button" className="open-file-start" onClick={onOpenExisting}>
+              Open workflow
+            </button>
+          </div>
         }
       />
     );

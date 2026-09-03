@@ -6,6 +6,7 @@ import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
 import { replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
+import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
 import { fileProblems, refLookupFor } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
@@ -36,6 +37,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The first-save dialog for a from-scratch buffer (#390). Opened by the toolbar's Save when the active
   // frame holds no path yet; the dialog decides the path, then closes on a successful create.
   const [newFileOpen, setNewFileOpen] = useState(false);
+  // The open-existing picker (#254). Opened from the empty-canvas affordance or the toolbar; a choice
+  // opens that discovered workflow as a fresh root through `session.open`, then closes the dialog.
+  const [openExistingOpen, setOpenExistingOpen] = useState(false);
   // The ref-target chooser (#391): the id of the empty `workflow` node whose target is being chosen, or
   // `null`. Opened from the pane's ref editor; a choice sets the parent ref (and, for create-new, descends
   // into a fresh child), then closes it.
@@ -136,6 +140,13 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     return { status: "created", path: targetPath };
   };
 
+  // Open a discovered workflow as a fresh root (#254). `session.open` discards the current stack and its
+  // per-file leases, so the selection resets through the active-frame effect above. Close the picker.
+  const openExisting = (path: string): void => {
+    session.open(path);
+    setOpenExistingOpen(false);
+  };
+
   // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
   // inspector — the two are views of one live snapshot, and a second connection would tell the same
   // story a beat apart. Selection (the watched root run, and the run inside its tree) lives here too.
@@ -218,6 +229,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
             // instead of overwriting. A saved frame saves in place through the write route.
             onSave={activePath ? session.save : () => setNewFileOpen(true)}
+            onOpenExisting={() => setOpenExistingOpen(true)}
             onReload={session.reloadActive}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
@@ -229,7 +241,14 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       canvas={
         <RunProjectionProvider runs={runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
-            <Canvas session={session} plugins={plugins} armedKind={armedKind} onArm={setArmedKind} knownPaths={knownPaths} />
+            <Canvas
+              session={session}
+              plugins={plugins}
+              armedKind={armedKind}
+              onArm={setArmedKind}
+              knownPaths={knownPaths}
+              onOpenExisting={() => setOpenExistingOpen(true)}
+            />
           </SelectionProvider>
         </RunProjectionProvider>
       }
@@ -283,6 +302,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         onCreated={() => setNewFileOpen(false)}
         onCancel={() => setNewFileOpen(false)}
       />
+    ) : null}
+    {/* The open-existing picker (#254): choose a discovered workflow and open it as a fresh root. Shown
+        above the shell from either the empty-canvas affordance or the toolbar's Open button. */}
+    {openExistingOpen ? (
+      <OpenWorkflowDialog client={client} onOpen={openExisting} onCancel={() => setOpenExistingOpen(false)} />
     ) : null}
     {/* The ref-target chooser (#391): reference an existing workflow, or create a new one and descend into
         its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
