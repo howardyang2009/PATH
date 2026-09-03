@@ -78,6 +78,8 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
       <TextField label="Name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
       <IdRow id={file.id} onReKey={() => applyEdit({ ...file, id: crypto.randomUUID() })} what="the workflow" />
       <ReadOnlyRow label="Format" value={file.format} />
+      <hr className="pane-divider" />
+      <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
     </div>
   );
 }
@@ -501,12 +503,49 @@ function applyNodeConfig(node: WorkflowNode, config: ConfigObject | undefined): 
  * solid. The `type` field never appears here — it edits in the kind-fields region and does not inherit.
  */
 function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const [newKey, setNewKey] = useState("");
   const config = nodeConfigOf(node);
-  const rows = configRows(file.config, config, firstClassConfigKeys(node.type));
   // A value edit passes a per-key `coalesce` so a keystroke run in one config value folds to one undo
   // entry (#389); a discrete write (Override/Revert/×/add-key) passes none, so it is its own entry.
   const write = (next: ConfigObject | undefined, coalesce?: string): void => commit(applyNodeConfig(node, next), coalesce);
+  return (
+    <ConfigEditor
+      parentConfig={file.config}
+      config={config}
+      originName={file.name}
+      hide={firstClassConfigKeys(node.type)}
+      scopeId={node.id}
+      write={write}
+      emptyHint="No config. Add a key, or inherit one from the workflow."
+    />
+  );
+}
+
+/**
+ * The shared config editor behind both the step region (`ConfigRegion`, inheritance-aware) and the
+ * file's own config (`FileConfigRegion`, no parent so every key is local). `parentConfig` is the
+ * inheritance source — the enclosing workflow's config for a step, `undefined` for the file itself,
+ * whose config *is* the root every step inherits from. `scopeId` scopes each value's `coalesce` key so
+ * two owners' same-named keys never fold their undo runs together (#389).
+ */
+function ConfigEditor({
+  parentConfig,
+  config,
+  originName,
+  hide,
+  scopeId,
+  write,
+  emptyHint,
+}: {
+  parentConfig: ConfigObject | undefined;
+  config: ConfigObject | undefined;
+  originName: string;
+  hide?: ReadonlySet<string>;
+  scopeId: string;
+  write: (next: ConfigObject | undefined, coalesce?: string) => void;
+  emptyHint: string;
+}): JSX.Element {
+  const [newKey, setNewKey] = useState("");
+  const rows = configRows(parentConfig, config, hide);
   const addKey = (): void => {
     const key = newKey.trim();
     if (key === "") return;
@@ -516,9 +555,9 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
   return (
     <div className="pane-section">
       <span className="pane-section-title">Config</span>
-      {rows.length === 0 ? <p className="pane-hint">No config. Add a key, or inherit one from the workflow.</p> : null}
+      {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
       {rows.map((row) => (
-        <ConfigRowField key={row.key} row={row} originName={file.name} config={config} nodeId={node.id} write={write} />
+        <ConfigRowField key={row.key} row={row} originName={originName} config={config} nodeId={scopeId} write={write} />
       ))}
       <div className="pane-field pane-field-inline pane-config-add">
         <input
@@ -534,6 +573,33 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
         </button>
       </div>
     </div>
+  );
+}
+
+/**
+ * The file's own **config** (§ Config inheritance display): the workflow-level defaults every step
+ * inherits. Unlike a step's region there is no parent to inherit from — the file's config *is* the root
+ * — so every key renders local (add / edit as literal · `$env` · `$secret` / remove). A cleared config
+ * drops the whole `config` field, so an empty `config: {}` never lands in the file.
+ */
+function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
+  const write = (next: ConfigObject | undefined, coalesce?: string): void => {
+    if (next === undefined) {
+      const { config: _dropped, ...rest } = file;
+      applyEdit(rest as WorkflowFile, coalesce);
+    } else {
+      applyEdit({ ...file, config: next }, coalesce);
+    }
+  };
+  return (
+    <ConfigEditor
+      parentConfig={undefined}
+      config={file.config}
+      originName={file.name}
+      scopeId="file"
+      write={write}
+      emptyHint="No config. Add a key to set a workflow default that every step inherits."
+    />
   );
 }
 
