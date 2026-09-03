@@ -983,11 +983,10 @@ body {
 }
 
 /* ============================================================================
- * Run surfaces (#372): the bottom-docked run dock (its own layout chrome) plus the
- * canvas run projection. The three panels inside the dock are the Viewer's, reused
- * (ADR 0031) and styled by `viewer.css`; only the dock frame and the projection are
- * styled here. Rules below for the old `.run-list`/`.run-inspector`/`.run-node-io`
- * fork classes are dead since the fork was removed — safe to prune in a follow-up.
+ * Run surfaces (#372): the bottom-docked run dock (its own layout chrome), the launch form, and the
+ * canvas run projection. The three panels inside the dock are the Viewer's, reused (ADR 0031) and
+ * styled by `viewer.css` against the Viewer's own tokens (imported in `main.tsx`); the Designer styles
+ * only the dock frame, the launch form, the status pill (projection), and the projection badge.
  * ========================================================================== */
 
 .run-dock {
@@ -1041,6 +1040,13 @@ body {
   text-transform: uppercase;
   letter-spacing: 0.06em;
   color: var(--text-muted);
+}
+
+/* Divider between the launch form and the runs list in the left column (RUNS). */
+.run-dock-sep {
+  margin: 12px 0;
+  border: none;
+  border-top: 1px solid var(--border);
 }
 
 /* Notes, gates, errors, warnings shared by the run surfaces. */
@@ -1122,18 +1128,10 @@ body {
   color: var(--accent);
 }
 
-.run-actions {
+/* The launch form's action row. Renamed off `.run-actions` so it does not collide with the reused
+ * Viewer run list's own `.run-actions` expand panel (ADR 0031). */
+.run-launch-actions {
   margin-top: 8px;
-}
-
-.run-select {
-  font: inherit;
-  font-size: var(--fs-sm);
-  padding: 3px 6px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--ground);
-  color: var(--text);
 }
 
 .run-submit {
@@ -1150,30 +1148,6 @@ body {
 .run-submit:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-}
-
-/* Cancel — arm-then-confirm. */
-.run-cancel-slot {
-  display: inline-flex;
-  flex-direction: column;
-}
-
-.run-cancel {
-  font: inherit;
-  font-size: var(--fs-sm);
-  padding: 4px 10px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.run-cancel[data-armed="true"] {
-  border-color: var(--run-failed);
-  background: var(--run-failed-bg);
-  color: var(--run-failed);
-  font-weight: 600;
 }
 
 /* Status pill — colour + glyph + label. */
@@ -1210,234 +1184,10 @@ body {
   background: var(--run-pending-bg);
 }
 
-/* Run list. */
-.run-list-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 8px;
-}
-
-.run-list-count {
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  font-variant-numeric: tabular-nums;
-}
-
-.run-rows {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-}
-
-.run-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  width: 100%;
-  text-align: left;
-  font: inherit;
-  padding: 5px 7px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.run-row:hover {
-  background: var(--ground);
-}
-
-.run-row[aria-current="true"] {
-  border-color: var(--accent);
-  background: var(--k-step-bg);
-}
-
-.run-row-id {
-  font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.run-row-started {
-  margin-left: auto;
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* Inspector. */
-.run-inspector-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-bottom: 8px;
-}
-
-.run-inspector-title {
-  font-weight: 600;
-}
-
-.run-inspector-id {
-  flex-basis: 100%;
-}
-
-.run-inspector-tree {
-  margin: 8px 0;
-  border-top: 1px solid var(--border);
-  padding-top: 8px;
-}
-
-/* Run tree. */
-.run-tree {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 12px;
-}
-
-.run-inspector-tree > .run-tree {
-  padding-left: 0;
-}
-
-.run-tree-line {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-}
-
-.run-tree-toggle,
-.run-tree-toggle-spacer {
-  width: 16px;
-  height: 16px;
-  flex: none;
-}
-
-.run-tree-toggle {
-  font: inherit;
-  font-size: var(--fs-xs);
-  background: none;
-  border: none;
-  cursor: pointer;
-  color: var(--text-muted);
-  padding: 0;
-}
-
-.run-tree-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex: 1;
-  min-width: 0;
-  text-align: left;
-  font: inherit;
-  padding: 3px 6px;
-  border: 1px solid transparent;
-  border-radius: 6px;
-  background: none;
-  color: var(--text);
-  cursor: pointer;
-}
-
-.run-tree-row:hover {
-  background: var(--ground);
-}
-
-.run-tree-row[aria-current="true"] {
-  border-color: var(--accent);
-  background: var(--k-step-bg);
-}
-
-.run-tree-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-/* Node I/O blocks. */
-.run-node-io-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.run-node-io-name {
-  font-weight: 600;
-}
-
-.run-node-io-refresh {
-  margin-left: auto;
-  font: inherit;
-  font-size: var(--fs-xs);
-  padding: 2px 8px;
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  background: var(--surface);
-  color: var(--text);
-  cursor: pointer;
-}
-
-.run-node-io-run {
-  margin: 0 0 8px;
-}
-
-.run-node-io-reused {
-  margin: 0 0 8px;
-  padding: 6px 8px;
-  font-size: var(--fs-sm);
-  background: var(--run-cancelled-bg);
-  border-radius: 6px;
-  color: var(--text);
-}
-
-.run-io-block {
-  margin-bottom: 10px;
-}
-
-.run-io-title {
-  margin: 0 0 4px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
-}
-
-.run-json {
-  margin: 0;
-  padding: 8px;
-  overflow-x: auto;
-  font-family: var(--font-mono);
-  font-size: var(--fs-sm);
-  line-height: 1.5;
-  background: var(--ground);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  color: var(--text);
-}
-
-.run-json-key {
-  color: var(--json-key);
-}
-.run-json-string {
-  color: var(--json-string);
-}
-.run-json-number {
-  color: var(--json-number);
-}
-.run-json-boolean,
-.run-json-null {
-  color: var(--json-atom);
-}
+/* The run list, run tree, node I/O and JSON view are the reused Viewer panels (ADR 0031); their
+ * styling lives in `viewer.css`. The Designer's old fork rules for those surfaces were removed so the
+ * panels read identically to the Viewer — only the dock frame, the launch form, the status pill (for
+ * the canvas projection) and the projection badge below are the Designer's to style. */
 
 /* Canvas run projection — a status badge on a node the watched run touched. */
 .node-run-badge {

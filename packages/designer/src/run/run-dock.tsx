@@ -65,7 +65,6 @@ export function RunDock(props: RunDockProps): JSX.Element {
       {open && (
         <div className="run-dock-body">
           <div className="run-dock-col run-dock-runs">
-            <h3 className="run-dock-heading">Runs</h3>
             <div className="run-dock-launch">
               <RunLaunch
                 client={props.client}
@@ -75,6 +74,8 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 onLaunched={props.onLaunched}
               />
             </div>
+            <hr className="run-dock-sep" />
+            <h3 className="run-dock-heading">Runs</h3>
             <RunsList
               client={props.client}
               workflowId={props.workflowId}

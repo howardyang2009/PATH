@@ -106,7 +106,7 @@ export function RunLaunch({ client, workflowPath, dirty, warningCount, onLaunche
         />
       )}
 
-      <div className="run-actions">
+      <div className="run-launch-actions">
         <button
           type="button"
           className="run-submit"
