@@ -1484,6 +1484,41 @@ body {
   cursor: pointer;
 }
 
+/* The empty canvas's two entry points (#254): start a new workflow, or open an existing one. */
+.canvas-empty-actions {
+  margin-top: 14px;
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.canvas-empty-actions .new-file-start {
+  margin-top: 0;
+}
+
+/* Open-existing is the secondary action beside the accent "New": an outlined button in the accent hue. */
+.open-file-start {
+  padding: 6px 16px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent);
+  background: transparent;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+/* The toolbar's Open… — a quiet button, since it sits beside the edit controls, not the primary action. */
+.open-btn {
+  padding: 4px 12px;
+  font: inherit;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 .dialog-scrim {
   position: fixed;
   inset: 0;
