@@ -4,7 +4,7 @@ import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
-import { fileProblems, problemMarks } from "./problems.js";
+import { fileProblems, problemMarks, refLookupFor } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
 import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
@@ -24,11 +24,15 @@ export function Canvas({
   plugins,
   armedKind,
   onArm,
+  knownPaths,
 }: {
   session: OpenSession;
   plugins: WireStepPlugin[];
   armedKind: string | null;
   onArm: (kind: string | null) => void;
+  /** Discovered workflow paths (#392), so the render can flag a `workflow`-ref whose target is unsaved;
+   *  `null` before the first discovery scan lands, which suppresses the check. */
+  knownPaths: ReadonlySet<string> | null;
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
 
@@ -57,7 +61,7 @@ export function Canvas({
     <div className="canvas" role="region" aria-label="Workflow canvas">
       <Breadcrumb frames={frames} activeIndex={activeIndex} onCrumb={goTo} />
       <CanvasBody>
-        <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} />
+        <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
       </CanvasBody>
     </div>
   );
@@ -132,6 +136,7 @@ function FrameView({
   plugins,
   armedKind,
   onArm,
+  knownPaths,
 }: {
   frame: Frame;
   onDescend: (ref: string) => void;
@@ -139,6 +144,7 @@ function FrameView({
   plugins: WireStepPlugin[];
   armedKind: string | null;
   onArm: (kind: string | null) => void;
+  knownPaths: ReadonlySet<string> | null;
 }): JSX.Element {
   const { state } = frame;
   if (state.phase === "loading") {
@@ -160,8 +166,12 @@ function FrameView({
       const pristine = canonicalSerialize(result.file) === frame.openedBytes;
       const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
       // The cross-node pass runs once per render (#388): its marker map feeds the per-node ⚠ and its
-      // flat list feeds the problems panel — two coupled surfaces onto one derivation of the file.
-      const problems = fileProblems(result.file);
+      // flat list feeds the problems panel — two coupled surfaces onto one derivation of the file. A
+      // path-bearing frame also carries a ref lookup (#392) so a dangling `workflow`-ref is flagged; a
+      // pathless frame (a from-scratch root, or a create-new child before its first save) has no directory
+      // to resolve a relative ref from, and a not-yet-loaded discovery (`null`) suppresses it — the shared
+      // `refLookupFor` folds both into `undefined`.
+      const problems = fileProblems(result.file, refLookupFor(frame.path, knownPaths));
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
           {badge ? (

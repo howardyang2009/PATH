@@ -16,6 +16,7 @@ const KIND_LABEL: Record<ProblemKind, string> = {
   "publish-conflict": "publish",
   "dangling-interpolation": "context read",
   "dangling-condition": "condition",
+  "dangling-ref": "ref",
 };
 
 /** Select the node and scroll its block into view — the panel's jump-to-node. */
