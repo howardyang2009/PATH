@@ -71,8 +71,8 @@ project directory from the workflow file location.
 The latest release is **v0.6.1** (2026-09-04). `CHANGELOG.md` covers the history through v0.5.4; from
 v0.6.0 on, each release's notes live on the GitHub releases page. The **Designer** has shipped: v0.6.0
 cut the authoring canvas into a release, and v0.6.1 polished it. The `main` branch is green.
-`pnpm -r run typecheck` is clean across all packages. 1606 tests pass: schema 280, engine 624, server
-199, designer 250, viewer 124, client-core 105, scripts 24.
+`pnpm -r run typecheck` is clean across all packages. 1607 tests pass: schema 280, engine 624, server
+199, designer 251, viewer 124, client-core 105, scripts 24.
 
 The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
 release-notes pipeline passes its acceptance run (mvp spec §11).
