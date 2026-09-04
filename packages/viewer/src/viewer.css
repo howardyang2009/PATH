@@ -198,7 +198,7 @@ button.workflow-folder-row:focus-visible {
 }
 
 .workflow-folder-chevron {
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   line-height: 1;
   color: var(--text-muted);
   width: 1em;
