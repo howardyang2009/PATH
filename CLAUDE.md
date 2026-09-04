@@ -2,7 +2,7 @@
 
 ### Issue tracker
 
-Issues tracked as GitHub issues in `howardyang2009/PATH` via the `gh` CLI. See `docs/agents/issue-tracker.md`.
+PATH tracks issues as GitHub issues in `howardyang2009/PATH` through the `gh` CLI. See `docs/agents/issue-tracker.md`.
 
 ### Domain docs
 
