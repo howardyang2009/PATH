@@ -7,23 +7,49 @@ import {
   checkInterpolationSyntax,
   isEnvWrapper,
   isSecretWrapper,
-  safeParseWorkflowFile,
-  walkNodes,
   type Condition,
   type ConfigObject,
   type ConfigValue,
   type EnvWrapper,
   type InterpolationRoot,
-  type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
 import { ConditionField } from "./condition-builder.js";
-import { configRows, dropConfigKey, isEditableScalar, setConfigKey, type ConfigRow } from "./config-inheritance.js";
-import { locate, replaceNode, setArmWhen } from "./edit-tree.js";
+import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./config-inheritance.js";
+import {
+  configModeOf,
+  isEditableScalar,
+  referenceLabel,
+  renderConfigValue,
+  setConfigMode,
+  setSecretSource,
+  type ConfigMode,
+} from "./config-value.js";
+import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
+import {
+  applyNodeConfig,
+  configString,
+  configStringOf,
+  dropNodeKey,
+  nodeConfigOf,
+  nodePayload,
+  rec,
+  setNodeField,
+  withConfig,
+  withOptionalArray,
+  withOptionalString,
+} from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
-import { parseInputDraft, referenceablePaths } from "./interp-suggest.js";
-import { wireToRegistry } from "./open-workflow.js";
+import { carriesEnvelope } from "./grammar.js";
+import { referenceablePaths } from "./interp-suggest.js";
+import {
+  useValidatedDraft,
+  validRowsToMap,
+  validateInputDraft,
+  validateJsonPayload,
+  validateMaxIterations,
+} from "./validated-draft.js";
 
 /**
  * The properties pane (#369, designer-spec § Per-kind rendering and edit affordances, § Editors). A
@@ -40,9 +66,6 @@ import { wireToRegistry } from "./open-workflow.js";
  * only when the type ships more than one worker (§ Worker selection); a single-worker type writes no
  * `worker` field.
  */
-
-/** The envelope keys the raw-JSON floor never surfaces — identity, control, and the interpolation lines. */
-const ENVELOPE_KEYS = new Set(["id", "name", "type", "worker", "config", "input", "parse", "publish"]);
 
 /**
  * Tab in a pane field that shows a placeholder fills the placeholder in, instead of moving focus. A
@@ -82,7 +105,7 @@ export interface PropertiesPaneProps {
 }
 
 export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselect, onAddRefTarget }: PropertiesPaneProps): JSX.Element {
-  const node = selectedId === null ? null : [...walkNodes(file.body)].find((n) => n.id === selectedId) ?? null;
+  const node = selectedId === null ? null : findById(file.body, selectedId);
   if (node === null) {
     return <FileProperties file={file} applyEdit={applyEdit} />;
   }
@@ -140,15 +163,13 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
   // (#389); add/remove pass none, so each is its own entry.
   const writeRows = (next: OutputRow[], coalesce?: string): void => {
     setRows(next);
-    const named = next.filter((row) => row.key !== "");
-    if (named.some((row) => !checkInterpolationSyntax(row.value, STEP_ROOTS).ok)) return;
-    const map: Record<string, string> = {};
-    for (const row of named) map[row.key] = row.value;
-    if (Object.keys(map).length === 0) {
+    const built = validRowsToMap(next, STEP_ROOTS);
+    if (!built.ok) return;
+    if (Object.keys(built.map).length === 0) {
       const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
       applyEdit(rest as WorkflowFile, coalesce);
     } else {
-      applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+      applyEdit({ ...file, output: built.map } as WorkflowFile, coalesce);
     }
   };
   const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
@@ -289,17 +310,9 @@ function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: Work
   );
 }
 
-/** The six control-construct types (they carry no `config`/`input`/`parse`/`publish` envelope). */
-const CONTROL_TYPES = new Set(["parallel", "branch", "while-do", "sequence", "checkpoint"]);
-
-/** Does this node type carry the step envelope (`config` / `input` / `parse` / `publish`)? `workflow` does; the control blocks do not. */
-function carriesEnvelope(type: string): boolean {
-  return !CONTROL_TYPES.has(type);
-}
-
 /** The `when` condition of a branch arm, read back off the parent branch for the pane's builder. */
 function armWhen(file: WorkflowFile, branchId: string, armIndex: number): Condition {
-  const owner = [...walkNodes(file.body)].find((n) => n.id === branchId);
+  const owner = findById(file.body, branchId);
   const when = owner?.type === "branch" ? owner.arms[armIndex]?.when : undefined;
   return when ?? { type: "exists", path: "context.value" };
 }
@@ -315,7 +328,7 @@ function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): stri
   if (site.where === "else") return "branch else fallback";
   if (site.where === "list" && site.listKind === "branches") return "parallel branch";
   if (site.where === "arm") {
-    const owner = [...walkNodes(file.body)].find((n) => n.id === site.ownerId);
+    const owner = findById(file.body, site.ownerId);
     const total = owner?.type === "branch" ? owner.arms.length : 0;
     return `branch arm (${site.armIndex + 1} of ${total})`;
   }
@@ -548,7 +561,7 @@ function GenericForm({
   return (
     <>
       {Object.entries(fields).map(([name, spec]) => (
-        <GenericField key={name} name={name} spec={spec} value={record[name]} onChange={(v) => commit(setField(node, name, v), `field:${name}:${node.id}`)} />
+        <GenericField key={name} name={name} spec={spec} value={record[name]} onChange={(v) => commit(setNodeField(node, name, v), `field:${name}:${node.id}`)} />
       ))}
     </>
   );
@@ -588,31 +601,11 @@ function GenericField({
  * the canvas stays strict-valid and only the editor's fidelity degrades.
  */
 function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const [draft, setDraft] = useState(() => JSON.stringify(payloadOf(node), null, 2));
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      setError(`Not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
-      return;
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      setError("The payload must be a JSON object.");
-      return;
-    }
-    const next = mergePayload(node, parsed as Record<string, unknown>);
-    const validated = validateNode(next, plugins);
-    if (validated) {
-      setError(validated);
-      return;
-    }
-    setError(null);
-    commit(next, `payload:${node.id}`);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => JSON.stringify(nodePayload(node), null, 2),
+    (text) => validateJsonPayload(node, text, plugins),
+    (next) => commit(next, `payload:${node.id}`),
+  );
 
   return (
     <div className="pane-field">
@@ -644,8 +637,8 @@ function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element |
   const onChange = (worker: string): void => {
     // The default is the omitted case (a step naming no worker takes the type's default), so selecting
     // it drops the field rather than pinning it (§ Worker selection).
-    if (worker === plugin.default_worker) commit(dropKey(node, "worker"));
-    else commit(setField(node, "worker", worker));
+    if (worker === plugin.default_worker) commit(dropNodeKey(node, "worker"));
+    else commit(setNodeField(node, "worker", worker));
   };
   return (
     <SelectField
@@ -680,17 +673,6 @@ function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: 
       <PublishParseFields key={`publish-${node.id}`} node={node} commit={commit} />
     </>
   );
-}
-
-/** The node's own `config` object, or `undefined` when it carries none. */
-function nodeConfigOf(node: WorkflowNode): ConfigObject | undefined {
-  const config = rec(node).config;
-  return config !== null && typeof config === "object" && !Array.isArray(config) ? (config as ConfigObject) : undefined;
-}
-
-/** Write (or drop) a node's `config`, keeping the node otherwise intact. */
-function applyNodeConfig(node: WorkflowNode, config: ConfigObject | undefined): WorkflowNode {
-  return config === undefined ? dropKey(node, "config") : ({ ...node, config } as WorkflowNode);
 }
 
 /**
@@ -847,36 +829,6 @@ function ConfigRowField({
   );
 }
 
-/** The three authoring modes a config value takes in the pane (§ `$env` / `$secret` authoring, map decision 9). */
-type ConfigMode = "literal" | "env" | "secret";
-
-/** Which mode a config value is in, read off its shape: a `$secret` wrapper, an `$env` wrapper, or a plain literal. */
-function configModeOf(value: ConfigValue): ConfigMode {
-  if (isSecretWrapper(value)) return "secret";
-  if (isEnvWrapper(value)) return "env";
-  return "literal";
-}
-
-/** The `$env` variable name carried anywhere in a value (bare `$env`, or an env-sourced `$secret`), for mode-switch reuse. */
-function envNameOf(value: ConfigValue): string {
-  if (isEnvWrapper(value)) return value.$env;
-  if (isSecretWrapper(value) && isEnvWrapper(value.$secret)) return value.$secret.$env;
-  return "";
-}
-
-/**
- * The reference-only label of a wrapper — never a resolved value (§ Display is reference-only). An `$env`
- * shows its variable name; a `$secret` shows a masked, named token (the env name when sourced from `$env`,
- * masked bullets for a literal secret). A plain scalar or nested value returns `null` (it is not a reference).
- */
-function referenceLabel(value: ConfigValue): string | null {
-  if (isSecretWrapper(value)) {
-    return isEnvWrapper(value.$secret) ? `$secret · $env · ${value.$secret.$env}` : "$secret · ••••••";
-  }
-  if (isEnvWrapper(value)) return `$env · ${value.$env}`;
-  return null;
-}
-
 /** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */
 interface ConfigControlProps {
   value: ConfigValue;
@@ -896,9 +848,7 @@ function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX
   const mode = configModeOf(value);
   const setMode = (next: ConfigMode): void => {
     if (next === mode) return;
-    if (next === "literal") onChange("");
-    else if (next === "env") onChange({ $env: envNameOf(value) });
-    else onChange({ $secret: envNameOf(value) === "" ? "" : { $env: envNameOf(value) } });
+    onChange(setConfigMode(value, next));
   };
   return (
     <div className="pane-config-control">
@@ -957,10 +907,7 @@ function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element
  */
 function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";
-  const setSource = (source: "literal" | "env"): void => {
-    if (source === "env") onChange({ $secret: { $env: isEnvWrapper(inner) ? inner.$env : "" } });
-    else onChange({ $secret: "" });
-  };
+  const setSource = (source: "literal" | "env"): void => onChange(setSecretSource(value, source));
   return (
     <div className="pane-ref-control">
       <select
@@ -998,14 +945,6 @@ function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Elem
   );
 }
 
-/** A config value for read-only display (an inherited ghost): a wrapper as its reference-only label, a scalar as itself, else compact JSON. */
-function renderConfigValue(value: ConfigValue): string {
-  const reference = referenceLabel(value);
-  if (reference !== null) return reference;
-  if (isEditableScalar(value)) return String(value);
-  return JSON.stringify(value);
-}
-
 /**
  * The interpolable **input** object (§ Input/output wiring): one live-validated JSON textarea whose
  * `${…}` placeholders reference `config.` / `context.` dot-paths — the roots the schema allows a step to
@@ -1014,29 +953,14 @@ function renderConfigValue(value: ConfigValue): string {
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
 function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const initial = (): string => {
-    const input = rec(node).input;
-    return input === undefined ? "{}" : JSON.stringify(input, null, 2);
-  };
-  const [draft, setDraft] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    const parsed = parseInputDraft(text, STEP_ROOTS);
-    if (!parsed.ok) {
-      setError(parsed.error);
-      return;
-    }
-    setError(null);
-    // An empty draft or an empty object `{}` means "no input", so drop the key. Every other value — a
-    // bare `${context.x}` whole-string, a literal, an array, a populated object (§6.1) — is a real input
-    // and is kept.
-    const isEmptyObject =
-      parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
-    const isEmpty = text.trim() === "" || isEmptyObject;
-    commit(isEmpty ? dropKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => {
+      const input = rec(node).input;
+      return input === undefined ? "{}" : JSON.stringify(input, null, 2);
+    },
+    (text) => validateInputDraft(node, text),
+    (next) => commit(next, `input:${node.id}`),
+  );
 
   return (
     <div className="pane-section">
@@ -1095,11 +1019,9 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   // entry (#389); add/remove pass none, so each is its own entry.
   const writeRows = (next: PublishRow[], coalesce?: string): void => {
     setRows(next);
-    const named = next.filter((row) => row.key !== "");
-    if (named.some((row) => !checkInterpolationSyntax(row.value, PUBLISH_ROOTS).ok)) return;
-    const map: Record<string, string> = {};
-    for (const row of named) map[row.key] = row.value;
-    commit(Object.keys(map).length === 0 ? dropKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), coalesce);
+    const built = validRowsToMap(next, PUBLISH_ROOTS);
+    if (!built.ok) return;
+    commit(Object.keys(built.map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: built.map } as WorkflowNode), coalesce);
   };
   const setRow = (index: number, row: PublishRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `publish:${index}:${node.id}`);
   const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
@@ -1123,7 +1045,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
         label="parse"
         value={parse === "" ? "(none)" : parse}
         options={["(none)", "text", "json"]}
-        onChange={(v) => commit(v === "(none)" ? dropKey(node, "parse") : (setField(node, "parse", v)))}
+        onChange={(v) => commit(v === "(none)" ? dropNodeKey(node, "parse") : (setNodeField(node, "parse", v)))}
       />
     </div>
   );
@@ -1248,36 +1170,7 @@ function MaxIterationsField({
   onChange: (v: number | string) => void;
 }): JSX.Element {
   const id = useId();
-  const [draft, setDraft] = useState(() => String(value));
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    const trimmed = text.trim();
-    if (trimmed === "") {
-      setError("Required — a positive whole number, or a ${config.…} / ${context.…} reference.");
-      return;
-    }
-    // A run of digits is a literal count; anything else is checked as an interpolation over the step
-    // roots (`config` / `context`), the same roots a step may read before it runs.
-    if (/^\d+$/.test(trimmed)) {
-      const n = Number(trimmed);
-      if (n < 1) {
-        setError("Must be a positive whole number.");
-        return;
-      }
-      setError(null);
-      onChange(n);
-      return;
-    }
-    const check = checkInterpolationSyntax(text, STEP_ROOTS);
-    if (!check.ok) {
-      setError(check.error ?? "Invalid interpolation.");
-      return;
-    }
-    setError(null);
-    onChange(text);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(() => String(value), validateMaxIterations, onChange);
 
   return (
     <div className="pane-field pane-field-row">
@@ -1370,85 +1263,5 @@ interface LeafEditorProps {
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
-}
-
-/** A node as an open record — the discriminated union carries no index signature, so payload reads go through here. */
-function rec(node: WorkflowNode): Record<string, unknown> {
-  return node as unknown as Record<string, unknown>;
-}
-
-/** The node's payload — every key outside the identity/control envelope (what the raw-JSON floor edits). */
-function payloadOf(node: WorkflowNode): Record<string, unknown> {
-  const out: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (!ENVELOPE_KEYS.has(key)) out[key] = value;
-  }
-  return out;
-}
-
-/** Rebuild a node from its envelope plus a fresh payload (envelope keys in the payload are ignored). */
-function mergePayload(node: WorkflowNode, payload: Record<string, unknown>): WorkflowNode {
-  const envelope: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(node)) {
-    if (ENVELOPE_KEYS.has(key)) envelope[key] = value;
-  }
-  const cleaned: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(payload)) {
-    if (!ENVELOPE_KEYS.has(key)) cleaned[key] = value;
-  }
-  return { ...envelope, ...cleaned } as unknown as WorkflowNode;
-}
-
-/** Set a payload/envelope key on a node (an `undefined` value drops the key), returning a new node. */
-function setField(node: WorkflowNode, key: string, value: unknown): WorkflowNode {
-  if (value === undefined) return dropKey(node, key);
-  return { ...node, [key]: value } as WorkflowNode;
-}
-
-/** Drop a key from a node, returning a new node without it. */
-function dropKey(node: WorkflowNode, key: string): WorkflowNode {
-  const { [key]: _dropped, ...rest } = rec(node);
-  return rest as unknown as WorkflowNode;
-}
-
-/** An optional string field: set it when non-empty, drop it when empty. */
-function withOptionalString(node: WorkflowNode, key: string, value: string): WorkflowNode {
-  return value === "" ? dropKey(node, key) : setField(node, key, value);
-}
-
-/** An optional array field: set it when non-empty, drop it when empty. */
-function withOptionalArray(node: WorkflowNode, key: string, value: string[]): WorkflowNode {
-  return value.length === 0 ? dropKey(node, key) : setField(node, key, value);
-}
-
-/** Read a string config datum off a node (e.g. `prompt`'s `model`), or `""` when absent. */
-function configString(node: WorkflowNode, key: string): string {
-  return configStringOf(rec(node).config as Record<string, unknown> | undefined, key);
-}
-
-/** Read a string value off a config object (a node's or the file's), or `""` when absent or non-string. */
-function configStringOf(config: Record<string, unknown> | undefined, key: string): string {
-  const value = config?.[key];
-  return typeof value === "string" ? value : "";
-}
-
-/**
- * Write a string config datum on a node, dropping the key (and an emptied `config`) when cleared. This
- * is the one config touch #369 owns — the `model` line named in the spec's prompt editor. The full
- * inherited-vs-overridden config editor (§ Config inheritance display) is a later #254 ticket.
- */
-function withConfig(node: WorkflowNode, key: string, value: string): WorkflowNode {
-  const config: Record<string, unknown> = { ...((rec(node).config as Record<string, unknown> | undefined) ?? {}) };
-  if (value === "") delete config[key];
-  else config[key] = value;
-  if (Object.keys(config).length === 0) return dropKey(node, "config");
-  return { ...node, config } as WorkflowNode;
-}
-
-/** Validate a prospective node inside a one-node file against the registry; returns an error, or `null` if valid. */
-function validateNode(node: WorkflowNode, plugins: WireStepPlugin[]): string | null {
-  const trial: WorkflowFile = { format: "path/workflow@3", id: crypto.randomUUID(), name: "trial", body: [node] };
-  const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
-  return result.success ? null : result.errors.join("\n");
 }
 

@@ -66,8 +66,3 @@ export function dropConfigKey(config: ConfigObject | undefined, key: string): Co
   const { [key]: _dropped, ...rest } = config ?? {};
   return Object.keys(rest).length === 0 ? undefined : rest;
 }
-
-/** True when a config value is a plain scalar the pane can edit with a typed control (not a wrapper/nested). */
-export function isEditableScalar(value: ConfigValue): value is string | number | boolean {
-  return typeof value === "string" || typeof value === "number" || typeof value === "boolean";
-}

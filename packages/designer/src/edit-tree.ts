@@ -362,8 +362,12 @@ function removeAt<T>(list: T[], i: number): T[] {
   return list.filter((_, index) => index !== i);
 }
 
-/** Find a node by id anywhere in a body (for a container-min check before an edit). */
-function findById(body: WorkflowNode[], id: string): WorkflowNode | null {
+/**
+ * Find a node by id anywhere in a body, or `null` if it is not present. The one node-by-id lookup —
+ * the sibling of `locate` (which returns the *site*), for callers that want the *node* — so no reader
+ * re-spells `[...walkNodes(body)].find(n => n.id === id)`.
+ */
+export function findById(body: WorkflowNode[], id: string): WorkflowNode | null {
   for (const node of body) {
     if (node.id === id) return node;
     const deep = mapFind(node, id);
