@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useId, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
 import {
   CONDITION_ROOTS,
@@ -13,6 +13,7 @@ import {
   type ConfigObject,
   type ConfigValue,
   type EnvWrapper,
+  type InterpolationRoot,
   type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
@@ -156,7 +157,43 @@ function NodeProperties({
       ) : null}
       <KindFields file={file} node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
       {carriesEnvelope(node.type) ? <StepEnvelopeFields file={file} node={node} commit={commit} /> : null}
+      <ReferenceSection file={file} node={node} site={site} />
     </div>
+  );
+}
+
+/**
+ * The one **Reference** list, rendered at the very end of the pane (§ Input/output wiring). It gathers
+ * the dot-paths this node's interpolable fields may read — so an author sees the referenceable paths in
+ * one place, not repeated under each field. The roots are the union of what the node's own fields allow:
+ * a leaf step reads the input/publish roots, a `while-do` its condition and count roots, a `checkpoint`
+ * its condition roots, and any arm occupant adds its `when` roots. A node with no interpolable field
+ * (`parallel`, `sequence`, a bare `branch`) contributes no roots, so the section does not render. Each
+ * field still validates against its own roots and keeps its own path autocomplete; this list is the
+ * shared, always-visible reminder.
+ */
+function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: WorkflowNode; site: ReturnType<typeof locate> }): JSX.Element | null {
+  const roots = new Set<InterpolationRoot>();
+  if (site?.where === "arm") for (const root of CONDITION_ROOTS) roots.add(root);
+  if (node.type === "while-do") {
+    for (const root of CONDITION_ROOTS) roots.add(root);
+    for (const root of STEP_ROOTS) roots.add(root);
+  } else if (node.type === "checkpoint") {
+    for (const root of CONDITION_ROOTS) roots.add(root);
+  } else if (carriesEnvelope(node.type)) {
+    for (const root of PUBLISH_ROOTS) roots.add(root);
+  }
+  if (roots.size === 0) return null;
+  const paths = referenceablePaths(file, [...roots]);
+  if (paths.length === 0) return null;
+  return (
+    <>
+      <hr className="pane-divider" />
+      <div className="pane-section pane-reference">
+        <span className="pane-section-title">reference</span>
+        <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
+      </div>
+    </>
   );
 }
 
@@ -260,10 +297,10 @@ function KindFields({
             suggestions={condSuggest}
             onChange={(condition) => commit({ ...node, condition })}
           />
-          <NumberField
-            label="max iterations"
-            value={typeof node.max_iterations === "number" ? node.max_iterations : null}
-            onChange={(n) => commit({ ...node, max_iterations: n ?? 1 }, `max_iterations:${node.id}`)}
+          <MaxIterationsField
+            key={`max-iterations-${node.id}`}
+            value={node.max_iterations}
+            onChange={(v) => commit({ ...node, max_iterations: v }, `max_iterations:${node.id}`)}
           />
         </>
       );
@@ -547,7 +584,7 @@ function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: 
     <>
       <hr className="pane-divider" />
       <ConfigRegion key={`config-${node.id}`} file={file} node={node} commit={commit} />
-      <InputEditor key={`input-${node.id}`} file={file} node={node} commit={commit} />
+      <InputEditor key={`input-${node.id}`} node={node} commit={commit} />
       <PublishParseFields key={`publish-${node.id}`} node={node} commit={commit} />
     </>
   );
@@ -884,14 +921,13 @@ function renderConfigValue(value: ConfigValue): string {
  * exactly those roots, so the pane accepts only what a load-time parse would; an unclosed or ill-typed
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
-function InputEditor({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
   const initial = (): string => {
     const input = rec(node).input;
     return input === undefined ? "{}" : JSON.stringify(input, null, 2);
   };
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<string | null>(null);
-  const suggestions = referenceablePaths(file, STEP_ROOTS);
 
   const onEdit = (text: string): void => {
     setDraft(text);
@@ -923,9 +959,6 @@ function InputEditor({ file, node, commit }: { file: WorkflowFile; node: Workflo
           <p className="pane-error" role="alert">
             {error}
           </p>
-        ) : null}
-        {suggestions.length > 0 ? (
-          <p className="pane-hint pane-suggest">Reference: {suggestions.join(" · ")}</p>
         ) : null}
       </div>
     </div>
@@ -1098,6 +1131,76 @@ function NumberField({ label, value, onChange }: { label: string; value: number 
         onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
       />
     </label>
+  );
+}
+
+/**
+ * `while-do`'s **max iterations**. The schema takes either a positive whole number or a `${config.…}` /
+ * `${context.…}` interpolation over the step roots (`MaxIterationsSchema`, `STEP_ROOTS`), so the pane
+ * cannot be a number-only input — a number-only field can never point the cap at a workflow config datum
+ * like `${config.max_revisions}`. It is a text field held as a draft: a run of digits commits as a
+ * number, an interpolation commits as a string once its `${…}` syntax checks out, and anything else is
+ * flagged and not committed — so the node on the canvas stays strict-valid.
+ */
+function MaxIterationsField({
+  value,
+  onChange,
+}: {
+  value: number | string;
+  onChange: (v: number | string) => void;
+}): JSX.Element {
+  const id = useId();
+  const [draft, setDraft] = useState(() => String(value));
+  const [error, setError] = useState<string | null>(null);
+
+  const onEdit = (text: string): void => {
+    setDraft(text);
+    const trimmed = text.trim();
+    if (trimmed === "") {
+      setError("Required — a positive whole number, or a ${config.…} / ${context.…} reference.");
+      return;
+    }
+    // A run of digits is a literal count; anything else is checked as an interpolation over the step
+    // roots (`config` / `context`), the same roots a step may read before it runs.
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (n < 1) {
+        setError("Must be a positive whole number.");
+        return;
+      }
+      setError(null);
+      onChange(n);
+      return;
+    }
+    const check = checkInterpolationSyntax(text, STEP_ROOTS);
+    if (!check.ok) {
+      setError(check.error ?? "Invalid interpolation.");
+      return;
+    }
+    setError(null);
+    onChange(text);
+  };
+
+  return (
+    <div className="pane-field pane-field-row">
+      <label className="pane-label" htmlFor={id}>
+        max iterations
+      </label>
+      <input
+        id={id}
+        className="pane-input"
+        type="text"
+        value={draft}
+        placeholder="10 or ${config.max_revisions}"
+        onChange={(e) => onEdit(e.target.value)}
+        aria-invalid={error !== null}
+      />
+      {error ? (
+        <p className="pane-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }
 
