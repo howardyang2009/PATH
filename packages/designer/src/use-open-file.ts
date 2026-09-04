@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
+import { FORMAT_VERSION, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
-import { basename, resolveRefPath } from "./resolve-ref.js";
+import { replaceNode } from "./edit-tree.js";
+import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
 /**
@@ -65,6 +66,14 @@ export interface Frame {
   openedBytes: string;
   /** This frame's own undo/redo stack (#389). Independent per open file; survives this frame's saves. */
   history: History;
+  /**
+   * A create-new nested-ref child's back-link to the `workflow` node that spawned it (#391): the parent
+   * frame's `depth` on the trail and that node's `id`. Set only on a fresh, unwritten child descended
+   * before its path was chosen; consumed at the child's **first save**, which back-fills the parent node's
+   * `ref` from the path the child was actually saved to (so the ref is filled by the save, not chosen up
+   * front). `undefined` for every other frame, and cleared once the child is bound.
+   */
+  refParent?: { depth: number; nodeId: string };
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -154,12 +163,14 @@ export interface OpenSession {
    */
   descend: (ref: string) => void;
   /**
-   * Descend into a **fresh, unwritten** child buffer bound to `childPath` (#391): a create-new nested ref.
-   * The child is path-assigned but **not written** (no lease, no launch, first save is an exclusive
-   * create), and the from-scratch rule is otherwise unchanged. The forward trail is truncated and the new
-   * child becomes active. The caller sets the parent ref to reach `childPath` **before** calling this.
+   * Descend into a **fresh, unwritten, path-less** child buffer for a create-new nested ref (#391), linked
+   * back to the `workflow` node `parentNodeId` in the active (parent) frame. The child follows the
+   * from-scratch rule exactly — no path, no lease, no launch, and its first save is the same path-choosing
+   * exclusive create a new **root** takes — except that first save also **back-fills the parent node's
+   * `ref`** from the path the child is saved to. So the ref is filled by the save, never chosen up front.
+   * The forward trail is truncated and the new child becomes active.
    */
-  descendNew: (childPath: string) => void;
+  descendNewUnbound: (parentNodeId: string) => void;
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   goTo: (index: number) => void;
   /**
@@ -260,7 +271,7 @@ const NEW_FILE_DEFAULT_NAME = "untitled";
  * first save is an exclusive create straight to that path). Either way the frame is `written: false`. The
  * child's `name` is seeded from its filename stem so its breadcrumb and pane read sensibly before a save.
  */
-function scratchFrame(path: string | null = null): Frame {
+function scratchFrame(path: string | null = null, refParent?: { depth: number; nodeId: string }): Frame {
   const name = path === null ? NEW_FILE_DEFAULT_NAME : stemName(path);
   const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name, body: [] };
   const openedBytes = canonicalSerialize(file);
@@ -272,6 +283,7 @@ function scratchFrame(path: string | null = null): Frame {
     baseline: "",
     openedBytes,
     history: freshHistory(),
+    refParent,
   };
 }
 
@@ -413,16 +425,17 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [runLoad],
   );
 
-  const descendNew = useCallback((childPath: string): void => {
+  const descendNewUnbound = useCallback((parentNodeId: string): void => {
     const depth = activeIndexRef.current;
     const current = framesRef.current[depth];
     if (!current) return;
-    // A create-new child is always a fresh, unwritten buffer: truncate any forward trail and push it below
-    // the active frame. Bump the load token so no in-flight load patches the truncated trail.
+    // A create-new child is a fresh, unwritten, path-less buffer, linked back to the parent node that
+    // spawned it so its first save can back-fill the ref. Truncate any forward trail and push it below the
+    // active frame. Bump the load token so no in-flight load patches the truncated trail.
     loadToken.current++;
     const childDepth = depth + 1;
     setSaveState({ phase: "idle" });
-    setFrames((prev) => [...prev.slice(0, childDepth), scratchFrame(childPath)]);
+    setFrames((prev) => [...prev.slice(0, childDepth), scratchFrame(null, { depth, nodeId: parentNodeId })]);
     setActiveIndex(childDepth);
   }, []);
 
@@ -607,7 +620,25 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
             // have a stale frame re-based) — the same top-frame re-check `save` makes.
             if (!top || top.written || top.path !== null || !topResult) return prev;
             const patched = prev.slice();
-            patched[depth] = { ...top, written: true, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
+            // The child is now a saved frame; drop its `refParent` link — it is bound, and a re-save goes
+            // through the written-file `save` door, never here.
+            patched[depth] = { ...top, written: true, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes, refParent: undefined };
+            // Back-fill the parent node's `ref` (#391) from the path the child was actually saved to, so a
+            // create-new ref is filled by the save rather than chosen up front. The parent buffer moves off
+            // its baseline (it gains the ref), so it reads dirty — the author saves it like any edit. Skip
+            // silently if the parent frame or its `workflow` node is gone (the author deleted it, or the
+            // parent lost its path), which leaves the freshly-saved child standing on its own.
+            const link = top.refParent;
+            const parent = link ? patched[link.depth] : undefined;
+            const parentResult = openedResultOf(parent);
+            if (link && parent && parentResult && parent.path !== null) {
+              const node = [...walkNodes(parentResult.file.body)].find((n) => n.id === link.nodeId);
+              if (node && node.type === "workflow") {
+                const ref = relativeRefPath(parent.path, result.relativePath);
+                const nextParent = replaceNode(parentResult.file, link.nodeId, { ...node, ref } as WorkflowNode);
+                patched[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
+              }
+            }
             return patched;
           });
           return { status: "created", path: result.relativePath };
@@ -638,5 +669,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, activeIndex, open, newFile, descend, descendNew, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
+  return { registry, frames, activeIndex, open, newFile, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
 }

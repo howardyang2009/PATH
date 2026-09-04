@@ -102,6 +102,98 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
       <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
+      <hr className="pane-divider" />
+      <FileOutputRegion key={`file-output-${file.id}`} file={file} applyEdit={applyEdit} />
+    </div>
+  );
+}
+
+/** A workflow-output entry the editor holds as a key and an interpolable-string value. */
+interface OutputRow {
+  key: string;
+  value: string;
+}
+
+/** The file's `output` map read back as editor rows (each value coerced to its string form). */
+function outputRowsOf(file: WorkflowFile): OutputRow[] {
+  const output = (file as { output?: unknown }).output;
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
+  return Object.entries(output as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    value: typeof value === "string" ? value : JSON.stringify(value),
+  }));
+}
+
+/**
+ * The workflow's own **output** object (workflow-format-v0.md §6.4): a `key → ${…}` map evaluated at
+ * success into the value a parent's `publish` reads back across a `workflow`-ref (§ Input/output wiring).
+ * Each value is an interpolable string over `config.`/`context.` (`STEP_ROOTS` — the output map cannot read
+ * `output`). Held as a draft and committed only when every value's interpolation is valid, so an ill-typed
+ * `${…}` never reaches the file; clearing the last row drops the whole `output` key. Structured (non-string)
+ * output values are shown JSON-stringified and re-saved as strings — a flat string contract is what this
+ * editor authors.
+ */
+function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
+  const [rows, setRows] = useState<OutputRow[]>(() => outputRowsOf(file));
+
+  // A row edit passes a per-row `coalesce` key so a keystroke run in one row folds to one undo entry
+  // (#389); add/remove pass none, so each is its own entry.
+  const writeRows = (next: OutputRow[], coalesce?: string): void => {
+    setRows(next);
+    const named = next.filter((row) => row.key !== "");
+    if (named.some((row) => !checkInterpolationSyntax(row.value, STEP_ROOTS).ok)) return;
+    const map: Record<string, string> = {};
+    for (const row of named) map[row.key] = row.value;
+    if (Object.keys(map).length === 0) {
+      const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
+      applyEdit(rest as WorkflowFile, coalesce);
+    } else {
+      applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+    }
+  };
+  const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
+  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
+  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+
+  return (
+    <div className="pane-section">
+      <span className="pane-section-title">output</span>
+      <p className="pane-hint">The workflow's output object, evaluated at success — what a parent's publish reads back from a workflow reference.</p>
+      {rows.length > 0 ? (
+        <div className="pane-publish-grid">
+          {rows.map((row, index) => (
+            <OutputRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+          ))}
+        </div>
+      ) : null}
+      <button type="button" className="pane-btn" onClick={addRow}>
+        + add output key
+      </button>
+    </div>
+  );
+}
+
+/** One output row: a key and its interpolable value, live-checked against the output roots (`config`/`context`). */
+function OutputRowField({ row, onChange, onRemove }: { row: OutputRow; onChange: (row: OutputRow) => void; onRemove: () => void }): JSX.Element {
+  const check = checkInterpolationSyntax(row.value, STEP_ROOTS);
+  // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most common output:
+  // land the step context value of the same name. It falls back to `${context.key}` before a key is typed.
+  const valuePlaceholder = `\${context.${row.key === "" ? "key" : row.key}}`;
+  return (
+    <div className="pane-publish-row">
+      <input className="pane-input" type="text" aria-label="Output key" placeholder="output key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <span className="pane-publish-eq" aria-hidden="true">=</span>
+      <div className="pane-publish-value">
+        <input className="pane-input" type="text" aria-label="Output value" placeholder={valuePlaceholder} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
+        <button type="button" className="pane-btn" aria-label="Remove output" onClick={onRemove}>
+          ×
+        </button>
+      </div>
+      {!check.ok ? (
+        <p className="pane-error" role="alert">
+          {check.error}
+        </p>
+      ) : null}
     </div>
   );
 }

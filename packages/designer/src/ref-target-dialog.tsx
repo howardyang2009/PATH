@@ -1,7 +1,5 @@
 import { useEffect, useState } from "react";
 import type { PathApiClient } from "@path/client-core";
-import { NewFileDialog } from "./new-file-dialog.js";
-import type { SaveNewFileResult } from "./use-open-file.js";
 
 /**
  * The target chooser for a new `workflow`-ref (#391, designer-spec § Nested `workflow`-ref creation).
@@ -9,9 +7,9 @@ import type { SaveNewFileResult } from "./use-open-file.js";
  *
  * - **Reference an existing workflow** — a picker over the project's discovered workflows; the choice is
  *   the target path.
- * - **Create a new workflow** — reuses the #390 new-file dialog to **choose the child's path** (directory
- *   picker + name + exclusive-create check). No stub file is written here; the parent ref is set to that
- *   path and the author descends into a fresh, unwritten child buffer, saved later with built content.
+ * - **Create a new workflow** — descend at once into a fresh, unwritten, path-less child buffer. No path is
+ *   chosen here: the child's first save picks it and back-fills the parent ref from it, so authoring comes
+ *   first and the ref follows the save.
  *
  * The dialog owns only its mode; the App wires what each choice does (set the ref, descend the new child),
  * because those touch the open file and the navigation trail.
@@ -21,7 +19,6 @@ export function RefTargetDialog({
   excludePath,
   onPickExisting,
   onCreateNew,
-  checkPathFree,
   onCancel,
 }: {
   client: PathApiClient;
@@ -29,25 +26,12 @@ export function RefTargetDialog({
   excludePath: string;
   /** Point the ref at an already-discovered workflow at this project-relative path. */
   onPickExisting: (targetPath: string) => void;
-  /** Point the ref at this new, project-relative child path and descend into its fresh buffer. */
-  onCreateNew: (childPath: string) => void;
-  /**
-   * The non-writing exclusive-create check the new-file dialog runs against a chosen child path: `exists`
-   * when a workflow already occupies it, `created` (no bytes written) when it is free. The authoritative
-   * create still happens at the child's own first save.
-   */
-  checkPathFree: (targetPath: string) => Promise<SaveNewFileResult>;
+  /** Descend into a fresh, unwritten child now; its first save picks the path and back-fills the ref. */
+  onCreateNew: () => void;
   /** Dismiss without setting the ref; the empty `workflow` node stays as it was. */
   onCancel: () => void;
 }): JSX.Element {
   const [mode, setMode] = useState<"choose" | "existing">("choose");
-
-  // The "create new" branch is the #390 dialog verbatim, only its `create` is the non-writing path check
-  // and its success descends the child rather than closing a saved file.
-  const [creating, setCreating] = useState(false);
-  if (creating) {
-    return <NewFileDialog client={client} workflowName="untitled" create={checkPathFree} onCreated={onCreateNew} onCancel={onCancel} />;
-  }
 
   if (mode === "existing") {
     return <ExistingPicker client={client} excludePath={excludePath} onPick={onPickExisting} onBack={() => setMode("choose")} onCancel={onCancel} />;
@@ -62,7 +46,7 @@ export function RefTargetDialog({
           <button type="button" className="ref-target-existing" onClick={() => setMode("existing")}>
             Reference an existing workflow
           </button>
-          <button type="button" className="ref-target-new" onClick={() => setCreating(true)}>
+          <button type="button" className="ref-target-new" onClick={onCreateNew}>
             Create a new workflow
           </button>
         </div>

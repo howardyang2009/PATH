@@ -1,8 +1,8 @@
 import { FORMAT_VERSION, type WireStepPlugin } from "@path/schema";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { stubClient } from "./stub-server.js";
+import { makeCalls, stubClient } from "./stub-server.js";
 
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
@@ -301,5 +301,50 @@ describe("#369 worker selection", () => {
     // Selecting the default again drops the field back to the default.
     fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "sdk" } });
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("sdk");
+  });
+});
+
+describe("the workflow-level output object (§6.4)", () => {
+  it("authors an output map on the file and writes it on save", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // Empty-canvas click → the file's own properties, which carry the output region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    fireEvent.click(within(pane).getByRole("button", { name: "+ add output key" }));
+
+    // Before a key is typed the value placeholder falls back to ${context.key}.
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.key}");
+
+    // The placeholder tracks the key: keying "notes" makes it ${context.notes}.
+    fireEvent.change(within(pane).getByLabelText("Output key"), { target: { value: "notes" } });
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.notes}");
+
+    // An ill-typed interpolation is flagged and does not reach the file.
+    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${output.x}" } });
+    expect(within(pane).getByLabelText("Output value")).toBeInvalid();
+
+    // A valid value over the output roots (config/context) commits.
+    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${context.draft}" } });
+    expect(within(pane).getByLabelText("Output value")).toBeValid();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(calls.put[0]!.body.workflow.output).toEqual({ notes: "${context.draft}" });
+  });
+
+  it("reads an existing output map back into rows", async () => {
+    const file = { ...paneFile(), output: { verdict: "${context.verdict}" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    expect((within(pane).getByLabelText("Output key") as HTMLInputElement).value).toBe("verdict");
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe("${context.verdict}");
   });
 });
