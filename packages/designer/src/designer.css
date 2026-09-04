@@ -1303,6 +1303,15 @@ body {
   border: none;
   cursor: pointer;
   padding: 4px 6px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The expand/collapse caret reads larger than the label text, so the affordance is easy to hit and see. */
+.run-dock-caret {
+  font-size: var(--fs-lg);
+  line-height: 1;
 }
 
 .run-dock-body {
