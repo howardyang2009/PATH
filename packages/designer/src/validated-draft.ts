@@ -138,3 +138,48 @@ export function validRowsToMap(
   for (const row of named) map[row.key] = row.value;
   return { ok: true, map };
 }
+
+/** The row-list editor a keyed-row field renders: the current rows, and the three edits over them. */
+export interface KeyedRowsEditor {
+  rows: KeyedRow[];
+  setRow: (index: number, row: KeyedRow) => void;
+  addRow: () => void;
+  removeRow: (index: number) => void;
+}
+
+/**
+ * The stateful **keyed-row editor** protocol behind the pane's `key → ${…}` map fields — the node's
+ * `publish` map and the file's `output` map (#369/#370). It holds the rows as a draft and, on every edit,
+ * rebuilds the map through `validRowsToMap`, committing **only** when every named row's value
+ * interpolates — so an ill-typed `${…}` never reaches the file and the node (or file) on the canvas stays
+ * strict-valid. Both fields used to re-spell this dance inline; here it has one home beside the pure guard
+ * it wraps.
+ *
+ * `commit` receives the built map (possibly empty — the caller decides whether an empty map drops the
+ * whole key, which differs for a node vs the file) and the row edit's coalesce key, so a keystroke run in
+ * one row folds to one undo entry (#389); add/remove pass no key, so each is its own entry.
+ * `coalesceKeyFor` names that per-row key, scoped by the caller so two owners' same-indexed rows never
+ * fold together.
+ */
+export function useKeyedRows(
+  initial: () => KeyedRow[],
+  roots: readonly InterpolationRoot[],
+  commit: (map: Record<string, string>, coalesce?: string) => void,
+  coalesceKeyFor: (index: number) => string,
+): KeyedRowsEditor {
+  const [rows, setRows] = useState<KeyedRow[]>(initial);
+
+  const writeRows = (next: KeyedRow[], coalesce?: string): void => {
+    setRows(next);
+    const built = validRowsToMap(next, roots);
+    if (!built.ok) return;
+    commit(built.map, coalesce);
+  };
+
+  return {
+    rows,
+    setRow: (index, row) => writeRows(rows.map((r, i) => (i === index ? row : r)), coalesceKeyFor(index)),
+    addRow: () => writeRows([...rows, { key: "", value: "" }]),
+    removeRow: (index) => writeRows(rows.filter((_, i) => i !== index)),
+  };
+}

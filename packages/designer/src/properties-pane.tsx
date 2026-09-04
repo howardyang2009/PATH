@@ -44,11 +44,12 @@ import { editorTier, pluginFor } from "./editor-tiers.js";
 import { carriesEnvelope } from "./grammar.js";
 import { referenceablePaths } from "./interp-suggest.js";
 import {
+  useKeyedRows,
   useValidatedDraft,
-  validRowsToMap,
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
+  type KeyedRow,
 } from "./validated-draft.js";
 
 /**
@@ -131,14 +132,8 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
   );
 }
 
-/** A workflow-output entry the editor holds as a key and an interpolable-string value. */
-interface OutputRow {
-  key: string;
-  value: string;
-}
-
 /** The file's `output` map read back as editor rows (each value coerced to its string form). */
-function outputRowsOf(file: WorkflowFile): OutputRow[] {
+function outputRowsOf(file: WorkflowFile): KeyedRow[] {
   const output = (file as { output?: unknown }).output;
   if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
   return Object.entries(output as Record<string, unknown>).map(([key, value]) => ({
@@ -157,24 +152,21 @@ function outputRowsOf(file: WorkflowFile): OutputRow[] {
  * editor authors.
  */
 function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
-  const [rows, setRows] = useState<OutputRow[]>(() => outputRowsOf(file));
-
-  // A row edit passes a per-row `coalesce` key so a keystroke run in one row folds to one undo entry
-  // (#389); add/remove pass none, so each is its own entry.
-  const writeRows = (next: OutputRow[], coalesce?: string): void => {
-    setRows(next);
-    const built = validRowsToMap(next, STEP_ROOTS);
-    if (!built.ok) return;
-    if (Object.keys(built.map).length === 0) {
-      const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
-      applyEdit(rest as WorkflowFile, coalesce);
-    } else {
-      applyEdit({ ...file, output: built.map } as WorkflowFile, coalesce);
-    }
-  };
-  const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
-  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
-  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+  // The file's `output` map is a keyed-row field (`useKeyedRows`): an empty map drops the whole `output`
+  // key, so an empty `output: {}` never lands. A row edit folds to one undo entry (#389, `file-output:…`).
+  const { rows, setRow, addRow, removeRow } = useKeyedRows(
+    () => outputRowsOf(file),
+    STEP_ROOTS,
+    (map, coalesce) => {
+      if (Object.keys(map).length === 0) {
+        const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
+        applyEdit(rest as WorkflowFile, coalesce);
+      } else {
+        applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+      }
+    },
+    (index) => `file-output:${index}`,
+  );
 
   return (
     <div className="pane-section">
@@ -183,38 +175,26 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
       {rows.length > 0 ? (
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
-            <OutputRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+            <KeyedRowField
+              key={index}
+              row={row}
+              roots={STEP_ROOTS}
+              keyLabel="Output key"
+              valueLabel="Output value"
+              removeLabel="Remove output"
+              keyPlaceholder="output key"
+              // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most
+              // common output: land the step context value of the same name. Falls back before a key is typed.
+              valuePlaceholder={(r) => `\${context.${r.key === "" ? "key" : r.key}}`}
+              onChange={(r) => setRow(index, r)}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
       ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
         + add output key
       </button>
-    </div>
-  );
-}
-
-/** One output row: a key and its interpolable value, live-checked against the output roots (`config`/`context`). */
-function OutputRowField({ row, onChange, onRemove }: { row: OutputRow; onChange: (row: OutputRow) => void; onRemove: () => void }): JSX.Element {
-  const check = checkInterpolationSyntax(row.value, STEP_ROOTS);
-  // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most common output:
-  // land the step context value of the same name. It falls back to `${context.key}` before a key is typed.
-  const valuePlaceholder = `\${context.${row.key === "" ? "key" : row.key}}`;
-  return (
-    <div className="pane-publish-row">
-      <input className="pane-input" type="text" aria-label="Output key" placeholder="output key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
-      <span className="pane-publish-eq" aria-hidden="true">=</span>
-      <div className="pane-publish-value">
-        <input className="pane-input" type="text" aria-label="Output value" placeholder={valuePlaceholder} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
-        <button type="button" className="pane-btn" aria-label="Remove output" onClick={onRemove}>
-          ×
-        </button>
-      </div>
-      {!check.ok ? (
-        <p className="pane-error" role="alert">
-          {check.error}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -987,14 +967,8 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: Work
   );
 }
 
-/** A publish entry the editor holds as a key and an interpolable-string value. */
-interface PublishRow {
-  key: string;
-  value: string;
-}
-
 /** The node's `publish` map read back as editor rows (each value coerced to its string form). */
-function publishRowsOf(node: WorkflowNode): PublishRow[] {
+function publishRowsOf(node: WorkflowNode): KeyedRow[] {
   const publish = rec(node).publish;
   if (publish === null || typeof publish !== "object" || Array.isArray(publish)) return [];
   return Object.entries(publish as Record<string, unknown>).map(([key, value]) => ({
@@ -1010,22 +984,19 @@ function publishRowsOf(node: WorkflowNode): PublishRow[] {
  * validation marker on the canvas (`publish-conflicts.ts`).
  */
 function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const [rows, setRows] = useState<PublishRow[]>(() => publishRowsOf(node));
   const parse = typeof rec(node).parse === "string" ? (rec(node).parse as string) : "";
 
-  // Hold the rows as a draft and commit only when every value's interpolation is valid, so an ill-typed
-  // `${…}` publish never reaches the file — the node stays strict-valid (§ Context reads and writes).
-  // A row edit passes a per-row `coalesce` key so a keystroke run in one publish row folds to one undo
-  // entry (#389); add/remove pass none, so each is its own entry.
-  const writeRows = (next: PublishRow[], coalesce?: string): void => {
-    setRows(next);
-    const built = validRowsToMap(next, PUBLISH_ROOTS);
-    if (!built.ok) return;
-    commit(Object.keys(built.map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: built.map } as WorkflowNode), coalesce);
-  };
-  const setRow = (index: number, row: PublishRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `publish:${index}:${node.id}`);
-  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
-  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+  // The node's `publish` map is a keyed-row field (`useKeyedRows`): it commits only when every value's
+  // interpolation is valid, so an ill-typed `${…}` publish never reaches the file and the node stays
+  // strict-valid (§ Context reads and writes). An empty map drops the `publish` key; a row edit folds to
+  // one undo entry (#389, `publish:…:node.id`, scoped by node so two nodes' rows never fold together).
+  const { rows, setRow, addRow, removeRow } = useKeyedRows(
+    () => publishRowsOf(node),
+    PUBLISH_ROOTS,
+    (map, coalesce) =>
+      commit(Object.keys(map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), coalesce),
+    (index) => `publish:${index}:${node.id}`,
+  );
 
   return (
     <div className="pane-section">
@@ -1034,7 +1005,18 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
-            <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+            <KeyedRowField
+              key={index}
+              row={row}
+              roots={PUBLISH_ROOTS}
+              keyLabel="Publish key"
+              valueLabel="Publish value"
+              removeLabel="Remove publish"
+              keyPlaceholder="context key"
+              valuePlaceholder={() => "${output.x}"}
+              onChange={(r) => setRow(index, r)}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
       ) : null}
@@ -1051,18 +1033,42 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   );
 }
 
-/** One publish row: a context key and its interpolable value, the value live-checked against the publish roots. */
-function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChange: (row: PublishRow) => void; onRemove: () => void }): JSX.Element {
-  const check = checkInterpolationSyntax(row.value, PUBLISH_ROOTS);
-  // One publish datum on one line: `key = value ×`. The row is transparent to the grid (`display: contents`)
-  // so its key, `=`, and value cell share the section grid and the `=` lines up down the list (§ Config).
+/**
+ * One keyed-row line — `key = value ×` — behind both the node's `publish` map and the file's `output`
+ * map. The value is live-checked against the field's own `roots`; the row is transparent to the grid
+ * (`display: contents`) so its key, `=`, and value cell share the section grid and the `=` lines up down
+ * the list (§ Config). Labels, the key placeholder, and the value placeholder come from the owner, since
+ * the two fields differ only there.
+ */
+function KeyedRowField({
+  row,
+  roots,
+  keyLabel,
+  valueLabel,
+  removeLabel,
+  keyPlaceholder,
+  valuePlaceholder,
+  onChange,
+  onRemove,
+}: {
+  row: KeyedRow;
+  roots: readonly InterpolationRoot[];
+  keyLabel: string;
+  valueLabel: string;
+  removeLabel: string;
+  keyPlaceholder: string;
+  valuePlaceholder: (row: KeyedRow) => string;
+  onChange: (row: KeyedRow) => void;
+  onRemove: () => void;
+}): JSX.Element {
+  const check = checkInterpolationSyntax(row.value, roots);
   return (
     <div className="pane-publish-row">
-      <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <input className="pane-input" type="text" aria-label={keyLabel} placeholder={keyPlaceholder} value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
       <span className="pane-publish-eq" aria-hidden="true">=</span>
       <div className="pane-publish-value">
-        <input className="pane-input" type="text" aria-label="Publish value" placeholder="${output.x}" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
-        <button type="button" className="pane-btn" aria-label="Remove publish" onClick={onRemove}>
+        <input className="pane-input" type="text" aria-label={valueLabel} placeholder={valuePlaceholder(row)} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
+        <button type="button" className="pane-btn" aria-label={removeLabel} onClick={onRemove}>
           ×
         </button>
       </div>
