@@ -14,8 +14,9 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 // slow test either: vitest rejects the test promise but does not kill the child, so a lingering
 // `runs prune` can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir`
 // block — which is how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case.
-// 30s gives real headroom over cold start; these are the slowest, most I/O-bound tests in the repo.
-vi.setConfig({ testTimeout: 30_000 });
+// These are the slowest, most I/O-bound tests in the repo; the `rm/prune` block still tripped 30s on
+// a loaded runner, so 90s gives real headroom over cold start rather than sitting just above it.
+vi.setConfig({ testTimeout: 90_000 });
 
 const execFileAsync = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
