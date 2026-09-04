@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
 import {
   CONDITION_ROOTS,
@@ -43,6 +43,27 @@ import { wireToRegistry } from "./open-workflow.js";
 /** The envelope keys the raw-JSON floor never surfaces — identity, control, and the interpolation lines. */
 const ENVELOPE_KEYS = new Set(["id", "name", "type", "worker", "config", "input", "parse", "publish"]);
 
+/**
+ * Tab in a pane field that shows a placeholder fills the placeholder in, instead of moving focus. A
+ * placeholder only shows while the field is empty — a `${output.x}` reference hint, an inherited default
+ * — so an author who wants exactly that value takes it with one key; a field that already holds text
+ * shows no placeholder, so Tab keeps its normal focus-move there. Delegated from the pane root so it
+ * covers every input and textarea without each control wiring its own handler. The value is written
+ * through the element's native setter plus an `input` event, so React's controlled `onChange` runs and
+ * the edit commits exactly as a keystroke would (a plain `.value =` would not notify React).
+ */
+function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
+  if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+  if (el.value !== "" || el.placeholder === "") return;
+  e.preventDefault();
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setValue = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setValue?.call(el, el.placeholder);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 export interface PropertiesPaneProps {
   file: WorkflowFile;
   /** The selected node's id, or `null` for the file's own properties. */
@@ -71,7 +92,7 @@ export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselec
 
 function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
   return (
-    <div className="pane">
+    <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       <p className="pane-explain">The workflow file — its identity and the body authored on the canvas.</p>
       <hr className="pane-divider" />
       {/* A keystroke run in one field folds to one undo entry (#389); a per-field key breaks the run. */}
@@ -114,7 +135,7 @@ function NodeProperties({
   const condSuggest = referenceablePaths(file, CONDITION_ROOTS);
 
   return (
-    <div className="pane">
+    <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       {role ? (
         <p className="pane-role" role="note">
           {role}

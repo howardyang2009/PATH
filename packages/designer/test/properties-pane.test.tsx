@@ -236,6 +236,28 @@ describe("#369 the three editor tiers", () => {
     expect(reverted).toHaveClass("pane-input-inherit");
   });
 
+  it("fills a field's placeholder on Tab, and leaves a filled field's Tab alone", async () => {
+    const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // An empty field ghosting the inherited model: Tab takes the placeholder as the value (an override).
+    selectNode(canvas, "alpha");
+    const model = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(model.value).toBe("");
+    fireEvent.keyDown(model, { key: "Tab" });
+    const filled = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(filled.value).toBe("claude-sonnet-5");
+    expect(filled).not.toHaveClass("pane-input-inherit");
+
+    // A field that already holds text shows no placeholder, so Tab is left to move focus (value stays).
+    fireEvent.change(filled, { target: { value: "claude-opus-4-8" } });
+    fireEvent.keyDown(filled, { key: "Tab" });
+    expect((within(pane).getByLabelText("model") as HTMLInputElement).value).toBe("claude-opus-4-8");
+  });
+
   it("generates a form for a layoutable registry type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "call");
