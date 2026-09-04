@@ -18,8 +18,13 @@ import { useSelection } from "./selection-context.js";
  * it graduates to the properties pane in a later ticket.
  */
 
-/** A `workflow`-ref descent request: the ref path to cross to, resolved by the caller against this file. */
-export type DescendHandler = (ref: string) => void;
+/**
+ * A double-click on a `workflow`-ref block. The caller decides by the node's `ref`: a **set** ref
+ * descends across the boundary (resolving the path against this file); an **empty** ref (a step just
+ * swapped in, not yet pointed anywhere) opens the ref-target chooser to author or pick its target
+ * instead — so a fresh `workflow` block is authorable by double-click, not a dead descent into `""`.
+ */
+export type DescendHandler = (node: Extract<WorkflowNode, { type: "workflow" }>) => void;
 
 /** A list socket the tree can grow: the file body (`ownerId` `null`) or a `sequence`/`parallel` owner. */
 interface ListSocket {
@@ -225,8 +230,8 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
       data-node-type="workflow"
       role="button"
       tabIndex={0}
-      title="Double-click to open the referenced file"
-      onDoubleClick={() => onDescend(node.ref)}
+      title={node.ref ? "Double-click to open the referenced file" : "Double-click to choose or create this reference's target"}
+      onDoubleClick={() => onDescend(node)}
       onKeyDown={deleteKeyHandler(node, editor)}
       {...useSelectable(node)}
     >

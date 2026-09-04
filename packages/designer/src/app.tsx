@@ -17,7 +17,7 @@ import { useRunView } from "@path/viewer";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useEditLeases } from "./use-edit-leases.js";
-import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile, type SaveNewFileResult } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -118,27 +118,12 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     if (next) session.applyEdit(next);
     setRefTargetNode(null);
   };
-  // Create-new: set the parent ref, then descend into a fresh, unwritten child bound to that path. The
-  // parent edit runs first so the descent leaves the parent frame with its ref already set.
-  const createNewRef = (nodeId: string, childPath: string): void => {
-    const next = fileWithNodeRef(nodeId, childPath);
-    if (next) {
-      session.applyEdit(next);
-      session.descendNew(childPath);
-    }
+  // Create-new: descend at once into a fresh, unwritten, path-less child linked back to this node. No path
+  // is chosen here and no ref is set yet — the child's first save picks the path and back-fills the parent
+  // ref from it (§ Nested `workflow`-ref creation), so authoring comes first and the ref follows the save.
+  const createNewRef = (nodeId: string): void => {
+    session.descendNewUnbound(nodeId);
     setRefTargetNode(null);
-  };
-  // The non-writing exclusive-create check for the reused new-file dialog: a discovered collision is
-  // `exists`; a free path is `created` with **no bytes written** (the child's own first save is the
-  // authoritative exclusive create). A discovery failure lets that first save be the only check.
-  const checkChildPathFree = async (targetPath: string): Promise<SaveNewFileResult> => {
-    try {
-      const discovered = await client.listWorkflows();
-      if (discovered.workflows.some((wf) => wf.relative_path === targetPath)) return { status: "exists" };
-    } catch {
-      // Discovery is best-effort; the child's exclusive-create save still refuses an existing path.
-    }
-    return { status: "created", path: targetPath };
   };
 
   // Open a discovered workflow as a fresh root (#254). `session.open` discards the current stack and its
@@ -263,6 +248,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               onArm={setArmedKind}
               knownPaths={knownPaths}
               onOpenExisting={() => setOpenExistingOpen(true)}
+              // Double-click an unset `workflow` block to author its target — the same chooser the pane's
+              // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.
+              onAuthorRef={activePath !== undefined ? setRefTargetNode : undefined}
               workflowRunStatus={workflowRunStatus}
             />
           </SelectionProvider>
@@ -332,8 +320,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         client={client}
         excludePath={activePath}
         onPickExisting={(targetPath) => pickExistingRef(refTargetNode, targetPath)}
-        onCreateNew={(childPath) => createNewRef(refTargetNode, childPath)}
-        checkPathFree={checkChildPathFree}
+        onCreateNew={() => createNewRef(refTargetNode)}
         onCancel={() => setRefTargetNode(null)}
       />
     ) : null}

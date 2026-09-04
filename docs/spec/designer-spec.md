@@ -313,6 +313,12 @@ authored with **path autocomplete** and validated live by `checkInterpolationSyn
 ill-typed placeholder is rejected in the pane — the structural analogue of the unsnappable socket and
 the typed condition builder. There is no node-to-node wire on the canvas.
 
+The **workflow's own output object** (`output`, workflow-format-v0.md §6.4) is authored on the **file's own
+properties** (the empty-canvas selection), below its config: a `key → ${…}` map whose values interpolate
+over `config.`/`context.` (`STEP_ROOTS` — the output map cannot read `output`), live-validated the same
+way. It is the explicit contract a parent's `publish` reads back across a `workflow`-ref, so a nested
+workflow that declares one exposes named results to its caller rather than a bare last-node output.
+
 ### Context reads and writes
 
 Context is a per-workflow-run blackboard written from inside the run (CONTEXT.md § Data). On the canvas
@@ -665,13 +671,17 @@ The drill-down and the per-ref lease are built (§ Canvas interaction model, § 
 what was open is how a **new** ref target is created. Because a `workflow`-ref stores a **path**, adding a
 ref offers **reference-existing** (a picker over discovered workflows) **or create-new**:
 
-- **Create-new** runs the new-file dialog above to **choose the child's path** (directory picker + name +
-  exclusive-create check), sets the parent ref to that path, then **descends into a fresh child buffer bound
-  to that path but not yet written** — the from-scratch rule unchanged (no lease, no launch, until the
-  child's first save), only the intended path pre-assigned. No stub file is written; the child is saved
-  later with author-built content.
-- The parent ref is **dangling** (its target file is absent) until the child's first save; that transient
-  state surfaces as a validation marker (below), not a hard error.
+- **Create-new** descends **at once** into a fresh, unwritten, **path-less** child buffer — no path is
+  chosen up front and no ref is set yet. The from-scratch rule is unchanged (no lease, no launch, no stub
+  written, until the child's first save). Also reachable by **double-clicking the unset `workflow` block**,
+  which opens this same chooser (a set ref descends; an empty ref authors).
+- The child's **first save** is the same path-choosing new-file dialog a root takes (directory picker +
+  name + exclusive-create check), and on success it **back-fills the parent node's `ref`** from the path
+  the child was actually saved to (`relativeRefPath`, relative to the parent's directory). So the ref is
+  filled **by the save**, never chosen before authoring; the parent buffer gains the ref as an edit and
+  reads dirty until the author saves it too.
+- The parent ref is **empty** (unset) while the child is authored, and would be **dangling** if pointed at
+  an absent file; either transient state surfaces as a validation marker (below), not a hard error.
 - **Ascend with a dirty child does not force-save.** The child keeps its dirty buffer and its still-beating
   lease; the breadcrumb returns to it. The parent cannot *launch* until the child is saved (the server's
   `prepareWorkflow` cannot load a missing ref), which is correct behaviour, not a block the Designer adds.

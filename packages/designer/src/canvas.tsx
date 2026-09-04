@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import type { RunStatus, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
-import { BlockTree } from "./block-tree.js";
+import { BlockTree, type DescendHandler } from "./block-tree.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
@@ -27,6 +27,7 @@ export function Canvas({
   onArm,
   knownPaths,
   onOpenExisting,
+  onAuthorRef,
   workflowRunStatus,
 }: {
   session: OpenSession;
@@ -38,6 +39,10 @@ export function Canvas({
   knownPaths: ReadonlySet<string> | null;
   /** Open the pick-an-existing-workflow dialog (#254) — the empty canvas's second entry point beside "New". */
   onOpenExisting: () => void;
+  /** Open the ref-target chooser for an unset `workflow` block, keyed by its node id (#391) — the
+   *  double-click entry that mirrors the pane's "Add a workflow reference". Absent for a from-scratch root
+   *  (no path to store a relative ref against), which leaves an empty-ref double-click inert. */
+  onAuthorRef?: (nodeId: string) => void;
   /** The watched run's workflow-level (root run) status — the implicit root run has no `nodeId`, so it
    *  projects onto no canvas node (surface 6); instead it badges the workflow-name line on the breadcrumb.
    *  `null` when no run is watched, which draws no badge. */
@@ -45,6 +50,15 @@ export function Canvas({
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
   const selection = useSelection();
+
+  // A double-click on a `workflow` block: a set ref descends across the boundary; an unset ref opens the
+  // ref-target chooser instead (#391), so a freshly swapped-in `workflow` block is authorable rather than
+  // a dead descent into `""`. The chooser is only offered when the active file has a path to store a
+  // relative ref against, so an empty ref with no `onAuthorRef` is inert.
+  const onDescend: DescendHandler = (node) => {
+    if (node.ref) descend(node.ref);
+    else onAuthorRef?.(node.id);
+  };
 
   if (registry.phase === "loading") {
     return <CanvasNote title="Loading…" hint="Fetching the step-plugin registry." />;
@@ -82,7 +96,7 @@ export function Canvas({
         workflowRunStatus={workflowRunStatus}
       />
       <CanvasBody>
-        <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
+        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
       </CanvasBody>
     </div>
   );
@@ -202,7 +216,7 @@ function FrameView({
   knownPaths,
 }: {
   frame: Frame;
-  onDescend: (ref: string) => void;
+  onDescend: DescendHandler;
   applyEdit: (next: WorkflowFile) => void;
   plugins: WireStepPlugin[];
   armedKind: string | null;

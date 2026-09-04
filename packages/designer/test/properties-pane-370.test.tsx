@@ -91,13 +91,48 @@ describe("#370 the typed condition builder", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "loop");
     expect(within(pane).getByRole("group", { name: "condition" })).toBeInTheDocument();
-    expect(within(pane).getByLabelText("Max iterations")).toHaveValue(3);
+    const maxIter = within(pane).getByLabelText("max iterations") as HTMLInputElement;
+    expect(maxIter).toHaveValue("3");
+    // The field takes a `${config.…}` interpolation, not only a literal count (#… while-do cap).
+    fireEvent.change(maxIter, { target: { value: "${config.max_revisions}" } });
+    expect(within(pane).queryByRole("alert")).not.toBeInTheDocument();
+    // A bad root is flagged and not committed.
+    fireEvent.change(maxIter, { target: { value: "${output.x}" } });
+    expect(within(pane).getByRole("alert")).toBeInTheDocument();
 
     selectNode(canvas, "arm1");
     expect(within(pane).getByRole("note")).toHaveTextContent("branch arm (1 of 1)");
     const when = within(pane).getByRole("group", { name: "when" });
     fireEvent.change(within(when).getByLabelText("Operator"), { target: { value: "valid-json" } });
     expect(within(canvas).getByText(/when valid-json context\.z/)).toBeInTheDocument();
+  });
+
+  it("gathers referenceable paths into one reference section at the end, none under the fields", async () => {
+    const { canvas, pane } = await openPane();
+    const referenceText = (): string => pane.querySelector(".pane-reference .pane-suggest")?.textContent ?? "";
+
+    // A checkpoint reads only the condition roots (context / output) — no config in its list.
+    selectNode(canvas, "gate");
+    expect(referenceText()).toMatch(/context\.x/);
+    expect(referenceText()).toMatch(/output\./);
+    expect(referenceText()).not.toMatch(/config\./);
+    // The condition builder no longer carries its own Reference line.
+    expect(within(within(pane).getByRole("group", { name: "condition" })).queryByText(/context\.x/)).not.toBeInTheDocument();
+
+    // A while-do adds max_iterations' step roots, so config joins the list.
+    selectNode(canvas, "loop");
+    expect(referenceText()).toMatch(/config\./);
+    expect(referenceText()).toMatch(/context\.y/);
+    expect(referenceText()).toMatch(/output\./);
+
+    // A branch arm's occupant: its `when` roots plus the step's own input/publish roots.
+    selectNode(canvas, "arm1");
+    expect(referenceText()).toMatch(/config\./);
+    expect(referenceText()).toMatch(/output\./);
+
+    // A parallel has no interpolable field, so no reference section renders.
+    selectNode(canvas, "fan");
+    expect(pane.querySelector(".pane-reference")).toBeNull();
   });
 });
 
@@ -123,12 +158,16 @@ describe("#370 input wiring", () => {
   it("live-checks the input object and rejects an unclosed placeholder", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    const input = within(pane).getByLabelText(/Input object/) as HTMLTextAreaElement;
+    const input = within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement;
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a" }' } });
     expect(within(pane).getByRole("alert")).toHaveTextContent(/unclosed placeholder/);
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a}" }' } });
+    expect(within(pane).queryByRole("alert")).not.toBeInTheDocument();
+
+    // Any JSON value is allowed, not just an object: a bare whole-string commits clean (§6.1).
+    fireEvent.change(input, { target: { value: '"${context.a}"' } });
     expect(within(pane).queryByRole("alert")).not.toBeInTheDocument();
   });
 });

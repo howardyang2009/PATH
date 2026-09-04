@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useId, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
 import {
   CONDITION_ROOTS,
@@ -13,6 +13,7 @@ import {
   type ConfigObject,
   type ConfigValue,
   type EnvWrapper,
+  type InterpolationRoot,
   type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
@@ -43,6 +44,27 @@ import { wireToRegistry } from "./open-workflow.js";
 /** The envelope keys the raw-JSON floor never surfaces — identity, control, and the interpolation lines. */
 const ENVELOPE_KEYS = new Set(["id", "name", "type", "worker", "config", "input", "parse", "publish"]);
 
+/**
+ * Tab in a pane field that shows a placeholder fills the placeholder in, instead of moving focus. A
+ * placeholder only shows while the field is empty — a `${output.x}` reference hint, an inherited default
+ * — so an author who wants exactly that value takes it with one key; a field that already holds text
+ * shows no placeholder, so Tab keeps its normal focus-move there. Delegated from the pane root so it
+ * covers every input and textarea without each control wiring its own handler. The value is written
+ * through the element's native setter plus an `input` event, so React's controlled `onChange` runs and
+ * the edit commits exactly as a keystroke would (a plain `.value =` would not notify React).
+ */
+function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
+  if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
+  const el = e.target;
+  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
+  if (el.value !== "" || el.placeholder === "") return;
+  e.preventDefault();
+  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const setValue = Object.getOwnPropertyDescriptor(proto, "value")?.set;
+  setValue?.call(el, el.placeholder);
+  el.dispatchEvent(new Event("input", { bubbles: true }));
+}
+
 export interface PropertiesPaneProps {
   file: WorkflowFile;
   /** The selected node's id, or `null` for the file's own properties. */
@@ -71,15 +93,107 @@ export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselec
 
 function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
   return (
-    <div className="pane">
+    <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       <p className="pane-explain">The workflow file — its identity and the body authored on the canvas.</p>
       <hr className="pane-divider" />
       {/* A keystroke run in one field folds to one undo entry (#389); a per-field key breaks the run. */}
-      <TextField label="Name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
+      <TextField label="name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
       <IdRow id={file.id} onReKey={() => applyEdit({ ...file, id: crypto.randomUUID() })} what="the workflow" />
-      <ReadOnlyRow label="Format" value={file.format} />
+      <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
+      <hr className="pane-divider" />
+      <FileOutputRegion key={`file-output-${file.id}`} file={file} applyEdit={applyEdit} />
+    </div>
+  );
+}
+
+/** A workflow-output entry the editor holds as a key and an interpolable-string value. */
+interface OutputRow {
+  key: string;
+  value: string;
+}
+
+/** The file's `output` map read back as editor rows (each value coerced to its string form). */
+function outputRowsOf(file: WorkflowFile): OutputRow[] {
+  const output = (file as { output?: unknown }).output;
+  if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
+  return Object.entries(output as Record<string, unknown>).map(([key, value]) => ({
+    key,
+    value: typeof value === "string" ? value : JSON.stringify(value),
+  }));
+}
+
+/**
+ * The workflow's own **output** object (workflow-format-v0.md §6.4): a `key → ${…}` map evaluated at
+ * success into the value a parent's `publish` reads back across a `workflow`-ref (§ Input/output wiring).
+ * Each value is an interpolable string over `config.`/`context.` (`STEP_ROOTS` — the output map cannot read
+ * `output`). Held as a draft and committed only when every value's interpolation is valid, so an ill-typed
+ * `${…}` never reaches the file; clearing the last row drops the whole `output` key. Structured (non-string)
+ * output values are shown JSON-stringified and re-saved as strings — a flat string contract is what this
+ * editor authors.
+ */
+function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
+  const [rows, setRows] = useState<OutputRow[]>(() => outputRowsOf(file));
+
+  // A row edit passes a per-row `coalesce` key so a keystroke run in one row folds to one undo entry
+  // (#389); add/remove pass none, so each is its own entry.
+  const writeRows = (next: OutputRow[], coalesce?: string): void => {
+    setRows(next);
+    const named = next.filter((row) => row.key !== "");
+    if (named.some((row) => !checkInterpolationSyntax(row.value, STEP_ROOTS).ok)) return;
+    const map: Record<string, string> = {};
+    for (const row of named) map[row.key] = row.value;
+    if (Object.keys(map).length === 0) {
+      const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
+      applyEdit(rest as WorkflowFile, coalesce);
+    } else {
+      applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+    }
+  };
+  const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
+  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
+  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+
+  return (
+    <div className="pane-section">
+      <span className="pane-section-title">output</span>
+      <p className="pane-hint">The workflow's output object, evaluated at success — what a parent's publish reads back from a workflow reference.</p>
+      {rows.length > 0 ? (
+        <div className="pane-publish-grid">
+          {rows.map((row, index) => (
+            <OutputRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+          ))}
+        </div>
+      ) : null}
+      <button type="button" className="pane-btn" onClick={addRow}>
+        + add output key
+      </button>
+    </div>
+  );
+}
+
+/** One output row: a key and its interpolable value, live-checked against the output roots (`config`/`context`). */
+function OutputRowField({ row, onChange, onRemove }: { row: OutputRow; onChange: (row: OutputRow) => void; onRemove: () => void }): JSX.Element {
+  const check = checkInterpolationSyntax(row.value, STEP_ROOTS);
+  // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most common output:
+  // land the step context value of the same name. It falls back to `${context.key}` before a key is typed.
+  const valuePlaceholder = `\${context.${row.key === "" ? "key" : row.key}}`;
+  return (
+    <div className="pane-publish-row">
+      <input className="pane-input" type="text" aria-label="Output key" placeholder="output key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <span className="pane-publish-eq" aria-hidden="true">=</span>
+      <div className="pane-publish-value">
+        <input className="pane-input" type="text" aria-label="Output value" placeholder={valuePlaceholder} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
+        <button type="button" className="pane-btn" aria-label="Remove output" onClick={onRemove}>
+          ×
+        </button>
+      </div>
+      {!check.ok ? (
+        <p className="pane-error" role="alert">
+          {check.error}
+        </p>
+      ) : null}
     </div>
   );
 }
@@ -114,7 +228,7 @@ function NodeProperties({
   const condSuggest = referenceablePaths(file, CONDITION_ROOTS);
 
   return (
-    <div className="pane">
+    <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       {role ? (
         <p className="pane-role" role="note">
           {role}
@@ -122,7 +236,7 @@ function NodeProperties({
       ) : null}
       <p className="pane-explain">{kindExplanation(node.type)}</p>
       <hr className="pane-divider" />
-      <TextField label="Name" value={node.name} onChange={(name) => commit({ ...node, name }, `name:${node.id}`)} />
+      <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, `name:${node.id}`)} />
       <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
       {site?.where === "arm" ? (
         <ConditionField
@@ -133,9 +247,45 @@ function NodeProperties({
           onChange={(when) => applyEdit(setArmWhen(file, site.ownerId, site.armIndex, when))}
         />
       ) : null}
-      <KindFields node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
+      <KindFields file={file} node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
       {carriesEnvelope(node.type) ? <StepEnvelopeFields file={file} node={node} commit={commit} /> : null}
+      <ReferenceSection file={file} node={node} site={site} />
     </div>
+  );
+}
+
+/**
+ * The one **Reference** list, rendered at the very end of the pane (§ Input/output wiring). It gathers
+ * the dot-paths this node's interpolable fields may read — so an author sees the referenceable paths in
+ * one place, not repeated under each field. The roots are the union of what the node's own fields allow:
+ * a leaf step reads the input/publish roots, a `while-do` its condition and count roots, a `checkpoint`
+ * its condition roots, and any arm occupant adds its `when` roots. A node with no interpolable field
+ * (`parallel`, `sequence`, a bare `branch`) contributes no roots, so the section does not render. Each
+ * field still validates against its own roots and keeps its own path autocomplete; this list is the
+ * shared, always-visible reminder.
+ */
+function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: WorkflowNode; site: ReturnType<typeof locate> }): JSX.Element | null {
+  const roots = new Set<InterpolationRoot>();
+  if (site?.where === "arm") for (const root of CONDITION_ROOTS) roots.add(root);
+  if (node.type === "while-do") {
+    for (const root of CONDITION_ROOTS) roots.add(root);
+    for (const root of STEP_ROOTS) roots.add(root);
+  } else if (node.type === "checkpoint") {
+    for (const root of CONDITION_ROOTS) roots.add(root);
+  } else if (carriesEnvelope(node.type)) {
+    for (const root of PUBLISH_ROOTS) roots.add(root);
+  }
+  if (roots.size === 0) return null;
+  const paths = referenceablePaths(file, [...roots]);
+  if (paths.length === 0) return null;
+  return (
+    <>
+      <hr className="pane-divider" />
+      <div className="pane-section pane-reference">
+        <span className="pane-section-title">reference</span>
+        <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
+      </div>
+    </>
   );
 }
 
@@ -199,12 +349,14 @@ function kindExplanation(type: string): string {
 // ── The kind-specific field region ───────────────────────────────────────────────────────────────
 
 function KindFields({
+  file,
   node,
   plugins,
   commit,
   condSuggest,
   onAddRefTarget,
 }: {
+  file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
@@ -213,7 +365,7 @@ function KindFields({
 }): JSX.Element {
   switch (node.type) {
     case "prompt":
-      return <PromptEditor node={node} plugins={plugins} commit={commit} />;
+      return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "binary":
       return <BinaryEditor node={node} plugins={plugins} commit={commit} />;
     case "workflow":
@@ -221,7 +373,7 @@ function KindFields({
     case "parallel":
       return (
         <SelectField
-          label="Join"
+          label="join"
           value={node.join}
           options={["collect", "wait-one", "do-not-wait"]}
           onChange={(join) => commit({ ...node, join: join as typeof node.join })}
@@ -237,10 +389,10 @@ function KindFields({
             suggestions={condSuggest}
             onChange={(condition) => commit({ ...node, condition })}
           />
-          <NumberField
-            label="Max iterations"
-            value={typeof node.max_iterations === "number" ? node.max_iterations : null}
-            onChange={(n) => commit({ ...node, max_iterations: n ?? 1 }, `max_iterations:${node.id}`)}
+          <MaxIterationsField
+            key={`max-iterations-${node.id}`}
+            value={node.max_iterations}
+            onChange={(v) => commit({ ...node, max_iterations: v }, `max_iterations:${node.id}`)}
           />
         </>
       );
@@ -264,14 +416,57 @@ function KindFields({
 }
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
-function PromptEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
+function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file: WorkflowFile }): JSX.Element {
   const prompt = typeof (rec(node)).prompt === "string" ? ((rec(node)).prompt as string) : "";
+  const inheritedModel = configStringOf(file.config, "model");
   return (
     <>
-      <TextField label="Model" value={configString(node, "model")} onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)} />
-      <TextAreaField label="Prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
+      <ModelField
+        value={configString(node, "model")}
+        inherited={inheritedModel}
+        onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)}
+      />
+      <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
       <WorkerSelect node={node} plugins={plugins} commit={commit} />
     </>
+  );
+}
+
+/**
+ * The prompt editor's `model` line (#369). Its `model` is a config datum, so it inherits from the
+ * workflow's `config.model` like any other key — but as a first-class field it edits as an input, not a
+ * ghosted config row. When the node holds no own `model`, the input stays empty and shows the inherited
+ * value as a ghosted placeholder: leaving it blank keeps inheriting, and typing overrides. With no own
+ * and no inherited value the placeholder is a plain prompt. When the node overrides an inherited value,
+ * a **Revert** drops the local `model` and restores the inherited one — the config-row Revert, but for
+ * this first-class field.
+ */
+function ModelField({ value, inherited, onChange }: { value: string; inherited: string; onChange: (v: string) => void }): JSX.Element {
+  const inheriting = value === "" && inherited !== "";
+  const overridden = value !== "" && inherited !== "";
+  // The input keeps a fixed position in the tree — its wrapper renders in every state, and only the
+  // Revert button toggles inside it — so appearing Revert never re-parents (and so re-mounts, dropping
+  // focus) the input the author is typing into. Input and Revert share one line: the input flexes, the
+  // button stays inline (no wrap).
+  return (
+    <label className="pane-field pane-field-row">
+      <span className="pane-label">model</span>
+      <div className="pane-model-value">
+        <input
+          className={inheriting ? "pane-input pane-input-inherit" : "pane-input"}
+          type="text"
+          value={value}
+          placeholder={inherited !== "" ? inherited : "model id"}
+          onChange={(e) => onChange(e.target.value)}
+          title={inheriting ? `Inherited from the workflow config: ${inherited}` : undefined}
+        />
+        {overridden ? (
+          <button type="button" className="pane-btn" onClick={() => onChange("")} title={`Revert to the inherited model: ${inherited}`}>
+            Revert
+          </button>
+        ) : null}
+      </div>
+    </label>
   );
 }
 
@@ -283,9 +478,9 @@ function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String) : [];
   return (
     <>
-      <TextField label="Command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
-      <StringListField label="Args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
-      <TextField label="Cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
+      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
+      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
+      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
       <WorkerSelect node={node} plugins={plugins} commit={commit} />
     </>
   );
@@ -308,7 +503,7 @@ function WorkflowRefEditor({
   if (ref === "" && onAddRefTarget) {
     return (
       <div className="pane-field ref-target-field">
-        <span className="pane-label">Referenced file</span>
+        <span className="pane-label">referenced file</span>
         <p className="pane-hint">This reference has no target yet.</p>
         <button type="button" className="ref-choose-target" onClick={() => onAddRefTarget(node.id)}>
           Choose a reference target…
@@ -316,7 +511,7 @@ function WorkflowRefEditor({
       </div>
     );
   }
-  return <TextField label="Referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
+  return <TextField label="referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
 }
 
 /**
@@ -370,7 +565,8 @@ function GenericField({
   value: unknown;
   onChange: (value: unknown) => void;
 }): JSX.Element {
-  const label = titleCase(name);
+  // The field label is the payload key verbatim (small first character, matching the JSON key).
+  const label = name;
   if (spec.type === "boolean") {
     return <CheckboxField label={label} value={value === true} onChange={onChange} />;
   }
@@ -421,7 +617,7 @@ function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   return (
     <div className="pane-field">
       <label className="pane-label" htmlFor="raw-json">
-        Payload (JSON)
+        payload (JSON)
       </label>
       <textarea
         id="raw-json"
@@ -453,7 +649,7 @@ function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element |
   };
   return (
     <SelectField
-      label="Worker"
+      label="worker"
       value={current}
       options={plugin.workers}
       optionLabel={(w) => (w === plugin.default_worker ? `${w} (default)` : w)}
@@ -480,7 +676,7 @@ function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: 
     <>
       <hr className="pane-divider" />
       <ConfigRegion key={`config-${node.id}`} file={file} node={node} commit={commit} />
-      <InputEditor key={`input-${node.id}`} file={file} node={node} commit={commit} />
+      <InputEditor key={`input-${node.id}`} node={node} commit={commit} />
       <PublishParseFields key={`publish-${node.id}`} node={node} commit={commit} />
     </>
   );
@@ -551,7 +747,7 @@ function ConfigEditor({
   };
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Config</span>
+      <span className="pane-section-title">config</span>
       {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list.
@@ -817,14 +1013,13 @@ function renderConfigValue(value: ConfigValue): string {
  * exactly those roots, so the pane accepts only what a load-time parse would; an unclosed or ill-typed
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
-function InputEditor({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
   const initial = (): string => {
     const input = rec(node).input;
     return input === undefined ? "{}" : JSON.stringify(input, null, 2);
   };
   const [draft, setDraft] = useState(initial);
   const [error, setError] = useState<string | null>(null);
-  const suggestions = referenceablePaths(file, STEP_ROOTS);
 
   const onEdit = (text: string): void => {
     setDraft(text);
@@ -834,15 +1029,21 @@ function InputEditor({ file, node, commit }: { file: WorkflowFile; node: Workflo
       return;
     }
     setError(null);
-    commit(Object.keys(parsed.value).length === 0 ? dropKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
+    // An empty draft or an empty object `{}` means "no input", so drop the key. Every other value — a
+    // bare `${context.x}` whole-string, a literal, an array, a populated object (§6.1) — is a real input
+    // and is kept.
+    const isEmptyObject =
+      parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
+    const isEmpty = text.trim() === "" || isEmptyObject;
+    commit(isEmpty ? dropKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
   };
 
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Input</span>
+      <span className="pane-section-title">input</span>
       <div className="pane-field">
         <label className="pane-label" htmlFor={`input-${node.id}`}>
-          Input object (JSON, ${"{…}"} interpolable)
+          input (any JSON value, ${"{…}"} interpolable)
         </label>
         <textarea
           id={`input-${node.id}`}
@@ -856,9 +1057,6 @@ function InputEditor({ file, node, commit }: { file: WorkflowFile; node: Workflo
           <p className="pane-error" role="alert">
             {error}
           </p>
-        ) : null}
-        {suggestions.length > 0 ? (
-          <p className="pane-hint pane-suggest">Reference: {suggestions.join(" · ")}</p>
         ) : null}
       </div>
     </div>
@@ -909,7 +1107,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
 
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Context writes</span>
+      <span className="pane-section-title">context writes</span>
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
         <div className="pane-publish-grid">
@@ -922,7 +1120,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
         + add publish
       </button>
       <SelectField
-        label="Parse"
+        label="parse"
         value={parse === "" ? "(none)" : parse}
         options={["(none)", "text", "json"]}
         onChange={(v) => commit(v === "(none)" ? dropKey(node, "parse") : (setField(node, "parse", v)))}
@@ -966,7 +1164,7 @@ function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: s
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="pane-field pane-field-row">
-      <span className="pane-label">Id</span>
+      <span className="pane-label">id</span>
       <div className="pane-id-row">
         <code className="pane-id">{id}</code>
         {confirming ? (
@@ -1034,6 +1232,76 @@ function NumberField({ label, value, onChange }: { label: string; value: number 
   );
 }
 
+/**
+ * `while-do`'s **max iterations**. The schema takes either a positive whole number or a `${config.…}` /
+ * `${context.…}` interpolation over the step roots (`MaxIterationsSchema`, `STEP_ROOTS`), so the pane
+ * cannot be a number-only input — a number-only field can never point the cap at a workflow config datum
+ * like `${config.max_revisions}`. It is a text field held as a draft: a run of digits commits as a
+ * number, an interpolation commits as a string once its `${…}` syntax checks out, and anything else is
+ * flagged and not committed — so the node on the canvas stays strict-valid.
+ */
+function MaxIterationsField({
+  value,
+  onChange,
+}: {
+  value: number | string;
+  onChange: (v: number | string) => void;
+}): JSX.Element {
+  const id = useId();
+  const [draft, setDraft] = useState(() => String(value));
+  const [error, setError] = useState<string | null>(null);
+
+  const onEdit = (text: string): void => {
+    setDraft(text);
+    const trimmed = text.trim();
+    if (trimmed === "") {
+      setError("Required — a positive whole number, or a ${config.…} / ${context.…} reference.");
+      return;
+    }
+    // A run of digits is a literal count; anything else is checked as an interpolation over the step
+    // roots (`config` / `context`), the same roots a step may read before it runs.
+    if (/^\d+$/.test(trimmed)) {
+      const n = Number(trimmed);
+      if (n < 1) {
+        setError("Must be a positive whole number.");
+        return;
+      }
+      setError(null);
+      onChange(n);
+      return;
+    }
+    const check = checkInterpolationSyntax(text, STEP_ROOTS);
+    if (!check.ok) {
+      setError(check.error ?? "Invalid interpolation.");
+      return;
+    }
+    setError(null);
+    onChange(text);
+  };
+
+  return (
+    <div className="pane-field pane-field-row">
+      <label className="pane-label" htmlFor={id}>
+        max iterations
+      </label>
+      <input
+        id={id}
+        className="pane-input"
+        type="text"
+        value={draft}
+        placeholder="10 or ${config.max_revisions}"
+        onChange={(e) => onEdit(e.target.value)}
+        aria-invalid={error !== null}
+      />
+      {error ? (
+        <p className="pane-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
 function CheckboxField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }): JSX.Element {
   return (
     <label className="pane-field pane-field-inline">
@@ -1046,7 +1314,10 @@ function CheckboxField({ label, value, onChange }: { label: string; value: boole
 function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
   return (
     <label className="pane-field pane-field-row pane-field-multiline">
-      <span className="pane-label">{label} (one per line)</span>
+      <span className="pane-label">
+        {label}
+        <span className="pane-label-note">(one per line)</span>
+      </span>
       <textarea
         className="pane-input"
         rows={3}
@@ -1152,7 +1423,11 @@ function withOptionalArray(node: WorkflowNode, key: string, value: string[]): Wo
 
 /** Read a string config datum off a node (e.g. `prompt`'s `model`), or `""` when absent. */
 function configString(node: WorkflowNode, key: string): string {
-  const config = rec(node).config as Record<string, unknown> | undefined;
+  return configStringOf(rec(node).config as Record<string, unknown> | undefined, key);
+}
+
+/** Read a string value off a config object (a node's or the file's), or `""` when absent or non-string. */
+function configStringOf(config: Record<string, unknown> | undefined, key: string): string {
   const value = config?.[key];
   return typeof value === "string" ? value : "";
 }
@@ -1177,7 +1452,3 @@ function validateNode(node: WorkflowNode, plugins: WireStepPlugin[]): string | n
   return result.success ? null : result.errors.join("\n");
 }
 
-/** Title-case a field name for its label: `endpoint` → `Endpoint`, `api-key` → `Api-key`. */
-function titleCase(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
-}

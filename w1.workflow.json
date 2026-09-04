@@ -35,6 +35,176 @@
         "path": "context.raw_changes",
         "pattern": "\\S"
       }
+    },
+    {
+      "type": "parallel",
+      "id": "1912e274-158c-48a8-81d0-bb8851fc2bcf",
+      "name": "summarize",
+      "join": "collect",
+      "branches": [
+        {
+          "id": "3397c7ea-abf4-4667-ac15-0d82b3bbaa9b",
+          "name": "summarize-features",
+          "input": {
+            "raw_changes": "${context.raw_changes}"
+          },
+          "publish": {
+            "features_summary": "${output}"
+          },
+          "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
+          "type": "prompt"
+        },
+        {
+          "id": "6568b007-948c-44c2-b3f2-12f862cf6119",
+          "name": "summrize-fixes",
+          "input": {
+            "raw_changes": "${context.raw_changes}"
+          },
+          "publish": {
+            "fixes_summary": "${output}"
+          },
+          "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
+          "type": "prompt"
+        }
+      ]
+    },
+    {
+      "id": "82b2b34b-9434-4d45-be6c-1ada397ed77a",
+      "name": "draft-notes",
+      "input": {
+        "features": "${context.features_summary}",
+        "fixes": "${context.fixes_summary}"
+      },
+      "publish": {
+        "draft": "${output}"
+      },
+      "prompt": "Write release notes in markdown from the feature and fix summaries in your input. Audience: users of the project.",
+      "type": "prompt"
+    },
+    {
+      "id": "e1502893-05db-4803-a953-c130386ffed4",
+      "name": "judge-draft",
+      "input": {
+        "draft": "${context.draft}",
+        "raw_changes": "${context.raw_changes}"
+      },
+      "parse": "json",
+      "publish": {
+        "verdict": "${output}"
+      },
+      "prompt": "Judge the release-notes draft in your input. Output STRICT JSON only: { \\\"pass\\\": boolean, \\\"feedback\\\": string, \\\"suggested_format\\\": \\\"short\\\" | \\\"long\\\" }. pass=true only if accurate, complete, and readable.",
+      "type": "prompt"
+    },
+    {
+      "type": "checkpoint",
+      "id": "ae631eea-7a80-420b-a6ff-c2ddfd56f2dc",
+      "name": "verdict-wellformed",
+      "condition": {
+        "type": "all",
+        "of": [
+          {
+            "type": "exists",
+            "path": "context.verdict.pass"
+          },
+          {
+            "type": "one-of",
+            "path": "context.verdict.suggested_format",
+            "values": [
+              "short",
+              "long"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "type": "while-do",
+      "id": "95e1263f-4b46-4ef6-b3cb-f4ce2e40b63b",
+      "name": "revise-loop",
+      "condition": {
+        "type": "equals",
+        "path": "context.verdict.pass",
+        "value": false
+      },
+      "max_iterations": "${config.max_revisions}",
+      "node": {
+        "type": "workflow",
+        "id": "3a852ff0-f822-4a18-8666-d8763f098248",
+        "name": "revise",
+        "input": {
+          "draft": "${context.draft}",
+          "feedback": "${context.verdict.feedback}",
+          "raw_changes": "${context.raw_changes}"
+        },
+        "publish": {
+          "draft": "${output.draft}",
+          "verdict": "${output.verdict}"
+        },
+        "ref": "w2.workflow.json"
+      }
+    },
+    {
+      "type": "branch",
+      "id": "f6a0ae5d-01ef-44a2-a800-f3ad6ee8d6db",
+      "name": "pick-format",
+      "arms": [
+        {
+          "when": {
+            "type": "equals",
+            "path": "context.verdict.suggested_format",
+            "value": "short"
+          },
+          "node": {
+            "id": "b7970a7a-331b-40f6-bbca-23984741b653",
+            "name": "format-short",
+            "input": {
+              "draft": "${context.draft}"
+            },
+            "publish": {
+              "final_notes": "${output}"
+            },
+            "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
+            "type": "prompt"
+          }
+        },
+        {
+          "when": {
+            "type": "equals",
+            "path": "context.verdict.suggested_format",
+            "value": "long"
+          },
+          "node": {
+            "id": "9810b925-2f76-4db7-adb7-6e7bab8ae297",
+            "name": "format-long",
+            "input": {
+              "draft": "${context.draft}"
+            },
+            "publish": {
+              "final_notes": "${output}"
+            },
+            "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
+            "type": "prompt"
+          }
+        }
+      ]
+    },
+    {
+      "id": "0923ebb7-c57e-44f4-be34-5e5fc62319f8",
+      "name": "write-file",
+      "publish": {
+        "file": "${config.output_file}"
+      },
+      "command": "sh",
+      "args": [
+        "-c",
+        "cat > \"${config.output_file}\""
+      ],
+      "cwd": "${config.repo_path}",
+      "type": "binary",
+      "input": "${context.final_notes}"
     }
-  ]
+  ],
+  "output": {
+    "file": "${context.file}"
+  }
 }

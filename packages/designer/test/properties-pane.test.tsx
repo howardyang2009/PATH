@@ -1,8 +1,8 @@
 import { FORMAT_VERSION, type WireStepPlugin } from "@path/schema";
-import { fireEvent, render, screen, within } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { stubClient } from "./stub-server.js";
+import { makeCalls, stubClient } from "./stub-server.js";
 
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
@@ -93,9 +93,9 @@ describe("#369 selection populates the pane", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
     expect(within(pane).getByText(/An LLM prompt/)).toBeInTheDocument();
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("alpha");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
     expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
-    expect(within(pane).getByLabelText("Prompt")).toBeInTheDocument();
+    expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
   });
 
   it("labels a branch arm, a branch else, and a parallel branch by role", async () => {
@@ -116,17 +116,17 @@ describe("#369 selection populates the pane", () => {
     expect(within(pane).queryByRole("note")).not.toBeInTheDocument();
     // Click the scrolling canvas background (not a block) → deselect → file properties.
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("flow");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("flow");
     expect(within(pane).getByText(FORMAT_VERSION)).toBeInTheDocument();
   });
 
   it("clicking the workflow-name crumb goes back to the file's own properties", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("alpha");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
     // Click the current breadcrumb crumb (the open workflow's name) → deselect → file properties.
     fireEvent.click(within(canvas).getByRole("button", { name: "flow", current: "page" }));
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("flow");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("flow");
     expect(within(pane).getByText(FORMAT_VERSION)).toBeInTheDocument();
   });
 
@@ -135,7 +135,7 @@ describe("#369 selection populates the pane", () => {
     selectNode(canvas, "alpha");
     // Reorder the selected node — a control-button click bubbles to the canvas but must not deselect.
     fireEvent.click(within(canvas).getByRole("button", { name: "Move alpha down" }));
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("alpha");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
   });
 });
 
@@ -153,7 +153,7 @@ describe("#369 the id re-key is confirmation-gated", () => {
     fireEvent.click(within(pane).getByRole("button", { name: "Confirm re-key" }));
     // The id changed to a fresh UUID and the pane still edits the same node (its name survives).
     expect(within(pane).queryByText(uuid(2))).not.toBeInTheDocument();
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("alpha");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
   });
 
   it("cancels the re-key, leaving the id untouched", async () => {
@@ -170,23 +170,23 @@ describe("#369 the three editor tiers", () => {
   it("uses the hand-built editors for prompt, binary, and workflow-ref", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    expect(within(pane).getByLabelText("Model")).toBeInTheDocument();
-    expect(within(pane).getByLabelText("Prompt")).toBeInTheDocument();
+    expect(within(pane).getByLabelText("model")).toBeInTheDocument();
+    expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
 
     selectNode(canvas, "runner");
-    expect((within(pane).getByLabelText("Command") as HTMLInputElement).value).toBe("ls");
-    expect(within(pane).getByLabelText(/Args/)).toBeInTheDocument();
-    expect((within(pane).getByLabelText("Cwd") as HTMLInputElement).value).toBe("/tmp");
+    expect((within(pane).getByLabelText("command") as HTMLInputElement).value).toBe("ls");
+    expect(within(pane).getByLabelText(/args/)).toBeInTheDocument();
+    expect((within(pane).getByLabelText("cwd") as HTMLInputElement).value).toBe("/tmp");
 
     selectNode(canvas, "sub");
-    expect((within(pane).getByLabelText("Referenced file") as HTMLInputElement).value).toBe("other.workflow.json");
+    expect((within(pane).getByLabelText("referenced file") as HTMLInputElement).value).toBe("other.workflow.json");
   });
 
   it("authors workflow-level config on the file, and steps inherit it", async () => {
     const { canvas, pane } = await openPane();
     // Empty-canvas click → the file's own properties, which now carry a Config region.
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
-    expect((within(pane).getByLabelText("Name") as HTMLInputElement).value).toBe("flow");
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("flow");
     expect(within(pane).getByText(/Add a key to set a workflow default/)).toBeInTheDocument();
 
     // Add a workflow-level key and give it a value.
@@ -201,19 +201,76 @@ describe("#369 the three editor tiers", () => {
     expect(within(regionRow).getByRole("button", { name: "Override" })).toBeInTheDocument();
   });
 
+  it("ghosts the workflow's inherited model in a prompt's own model field", async () => {
+    // A file whose config sets a workflow-default model; the prompt step declares none of its own.
+    const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    selectNode(canvas, "alpha");
+    const model = within(pane).getByLabelText("model") as HTMLInputElement;
+    // The field is empty (no own model) but ghosts the inherited value as a placeholder.
+    expect(model.value).toBe("");
+    expect(model.placeholder).toBe("claude-sonnet-5");
+    expect(model).toHaveClass("pane-input-inherit");
+
+    // Typing overrides: the field becomes solid (no inherit ghost) and holds the local value.
+    model.focus();
+    fireEvent.change(model, { target: { value: "claude-opus-4-8" } });
+    const overridden = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(overridden.value).toBe("claude-opus-4-8");
+    expect(overridden).not.toHaveClass("pane-input-inherit");
+    // The Revert appears without re-parenting the input, so it is the same node and keeps focus —
+    // the author types on without the field dropping their cursor after the first character.
+    expect(within(pane).getByRole("button", { name: "Revert" })).toBeInTheDocument();
+    expect(overridden).toBe(model);
+    expect(document.activeElement).toBe(model);
+
+    // Revert drops the local model and restores the inherited ghost.
+    fireEvent.click(within(pane).getByRole("button", { name: "Revert" }));
+    const reverted = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(reverted.value).toBe("");
+    expect(reverted.placeholder).toBe("claude-sonnet-5");
+    expect(reverted).toHaveClass("pane-input-inherit");
+  });
+
+  it("fills a field's placeholder on Tab, and leaves a filled field's Tab alone", async () => {
+    const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // An empty field ghosting the inherited model: Tab takes the placeholder as the value (an override).
+    selectNode(canvas, "alpha");
+    const model = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(model.value).toBe("");
+    fireEvent.keyDown(model, { key: "Tab" });
+    const filled = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(filled.value).toBe("claude-sonnet-5");
+    expect(filled).not.toHaveClass("pane-input-inherit");
+
+    // A field that already holds text shows no placeholder, so Tab is left to move focus (value stays).
+    fireEvent.change(filled, { target: { value: "claude-opus-4-8" } });
+    fireEvent.keyDown(filled, { key: "Tab" });
+    expect((within(pane).getByLabelText("model") as HTMLInputElement).value).toBe("claude-opus-4-8");
+  });
+
   it("generates a form for a layoutable registry type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "call");
-    expect((within(pane).getByLabelText("Endpoint") as HTMLInputElement).value).toBe("http://x");
-    expect((within(pane).getByLabelText("Retries") as HTMLInputElement).value).toBe("2");
+    expect((within(pane).getByLabelText("endpoint") as HTMLInputElement).value).toBe("http://x");
+    expect((within(pane).getByLabelText("retries") as HTMLInputElement).value).toBe("2");
     // The generated form is not the raw-JSON floor.
-    expect(within(pane).queryByLabelText("Payload (JSON)")).not.toBeInTheDocument();
+    expect(within(pane).queryByLabelText("payload (JSON)")).not.toBeInTheDocument();
   });
 
   it("falls to the raw-JSON floor for an unlayoutable type and stays strict-valid on a bad draft", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "wid");
-    const textarea = within(pane).getByLabelText("Payload (JSON)") as HTMLTextAreaElement;
+    const textarea = within(pane).getByLabelText("payload (JSON)") as HTMLTextAreaElement;
     expect(JSON.parse(textarea.value)).toEqual({ shape: { a: 1 } });
 
     // A malformed draft is flagged and not committed; the node on the canvas keeps its name.
@@ -231,18 +288,63 @@ describe("#369 worker selection", () => {
   it("shows no worker control for a single-worker type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "runner"); // binary ships one worker
-    expect(within(pane).queryByLabelText("Worker")).not.toBeInTheDocument();
+    expect(within(pane).queryByLabelText("worker")).not.toBeInTheDocument();
   });
 
   it("shows a default-preselected dropdown for a >1-worker type and writes the chosen worker", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha"); // prompt ships sdk + batch
-    const select = within(pane).getByLabelText("Worker") as HTMLSelectElement;
+    const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
     expect(select.value).toBe("sdk");
     fireEvent.change(select, { target: { value: "batch" } });
-    expect((within(pane).getByLabelText("Worker") as HTMLSelectElement).value).toBe("batch");
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
     // Selecting the default again drops the field back to the default.
-    fireEvent.change(within(pane).getByLabelText("Worker"), { target: { value: "sdk" } });
-    expect((within(pane).getByLabelText("Worker") as HTMLSelectElement).value).toBe("sdk");
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "sdk" } });
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("sdk");
+  });
+});
+
+describe("the workflow-level output object (§6.4)", () => {
+  it("authors an output map on the file and writes it on save", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // Empty-canvas click → the file's own properties, which carry the output region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    fireEvent.click(within(pane).getByRole("button", { name: "+ add output key" }));
+
+    // Before a key is typed the value placeholder falls back to ${context.key}.
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.key}");
+
+    // The placeholder tracks the key: keying "notes" makes it ${context.notes}.
+    fireEvent.change(within(pane).getByLabelText("Output key"), { target: { value: "notes" } });
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.notes}");
+
+    // An ill-typed interpolation is flagged and does not reach the file.
+    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${output.x}" } });
+    expect(within(pane).getByLabelText("Output value")).toBeInvalid();
+
+    // A valid value over the output roots (config/context) commits.
+    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${context.draft}" } });
+    expect(within(pane).getByLabelText("Output value")).toBeValid();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(calls.put[0]!.body.workflow.output).toEqual({ notes: "${context.draft}" });
+  });
+
+  it("reads an existing output map back into rows", async () => {
+    const file = { ...paneFile(), output: { verdict: "${context.verdict}" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    expect((within(pane).getByLabelText("Output key") as HTMLInputElement).value).toBe("verdict");
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe("${context.verdict}");
   });
 });

@@ -245,7 +245,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
           aria-expanded={open}
           onClick={() => setOpen((shown) => !shown)}
         >
-          {open ? "▾" : "▸"} Runs
+          <span className="run-dock-caret" aria-hidden="true">{open ? "▾" : "▸"}</span> Runs
         </button>
       </header>
       {open && (
