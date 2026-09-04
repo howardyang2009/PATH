@@ -4,13 +4,13 @@ Status: accepted
 
 [resume-door-verdict.md §3](../research/resume-door-verdict.md) found that root-level
 `path run <file>` has no documented way to seed a file's starting `context`. It can seed only its
-`config`, via `--config <file>` and `--set key=value`. This ticket
+`config`, through `--config <file>` and `--set key=value`. This ticket
 ([#162](https://github.com/howardyang2009/PATH/issues/162), chartered by map
 [#158](https://github.com/howardyang2009/PATH/issues/158)) closes that gap. It is **not** a `--resume`
 mechanism: [resume-restore-semantics.md §1](../research/resume-restore-semantics.md) already settles
 that a resumed run's context is restored **by load** from the original tree, automatic, no operator
 input. This flag serves fresh (non-`--resume`) runs, chiefly to test one workflow step in isolation by
-a seed of whatever prior context it expects to read via `${context.x}`.
+a seed of whatever prior context it expects to read through `${context.x}`.
 
 ## Considered Options
 
@@ -39,7 +39,7 @@ a seed of whatever prior context it expects to read via `${context.x}`.
   the seed).
 - `--set-context key=value`, repeatable — with the same `JSON.parse`-or-raw-string-fallback as `--set`.
 
-Both merge via the existing `mergeConfig` nearest-wins rule (the file loads first, `--set-context`
+Both merge through the existing `mergeConfig` nearest-wins rule (the file loads first, `--set-context`
 pairs override individual top-level keys), feeding `RunOptions.input`. One merge algorithm serves both
 flag pairs; no new one is introduced.
 

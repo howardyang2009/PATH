@@ -11,7 +11,7 @@ reverse that. Discovery lists **every** discovered `*.workflow.json`, each with 
 client-side filter over a complete list, not a server-side omission.
 
 Why: a nested-ref target is itself a complete, schema-valid workflow (workflow-as-step, CONTEXT.md), and
-it is independently launchable via `POST /v0/runs` with operator-supplied `input` and `config`. To drop
+it is independently launchable through `POST /v0/runs` with operator-supplied `input` and `config`. To drop
 it to save a dedupe would hide a legitimately launchable workflow, and the omission cannot be undone
 client-side; the information is simply gone. To list all and flag roots keeps both: an operator can
 launch any workflow, and a UI can still foreground roots by a filter on `is_root`.
