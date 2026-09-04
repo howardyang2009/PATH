@@ -140,6 +140,41 @@ describe("Designer open + render (#367)", () => {
     expect(await screen.findByText("draft")).toBeInTheDocument();
   });
 
+  it("keeps the root run's status badge on the root crumb after descending into a child", async () => {
+    // The workflow-level status belongs to the watched run's own file (w1), not to whichever crumb is
+    // active. Descending into a nested ref (w2) must read "w1 succeeded / w2", never "w1 / w2 succeeded".
+    const runRow = {
+      run_id: "root-1",
+      workflow_name: "root-flow",
+      workflow_id: uuid(1),
+      workflow_path: ROOT_PATH,
+      status: "succeeded",
+      started_at: "2026-01-01T00:00:00Z",
+      finished_at: "2026-01-01T00:01:00Z",
+    };
+    const client = stubClient({
+      files: filesWith(rootFile()),
+      runs: { runs: [runRow] },
+      tree: { root_run_id: "root-1", status: "succeeded", output: null, runs: [{ ...runRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null }] },
+    });
+    render(<App client={client} initialPath={ROOT_PATH} />);
+    await screen.findByText("draft");
+
+    // Watch the root run from the dock: its succeeded status badges the root file's workflow-name crumb.
+    fireEvent.click(screen.getByTestId("run-dock-toggle"));
+    fireEvent.click(await screen.findByTestId("run-row-root-1"));
+    const badge = await screen.findByTestId("workflow-run-badge");
+    expect(within(badge.closest(".crumb-wrap") as HTMLElement).getByText("root-flow")).toBeInTheDocument();
+
+    // Descend into the child. The badge stays glued to the root crumb — it must not follow the now-active
+    // child crumb.
+    fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
+    await screen.findByText("child-step");
+    const wrapAfter = (await screen.findByTestId("workflow-run-badge")).closest(".crumb-wrap") as HTMLElement;
+    expect(within(wrapAfter).getByText("root-flow")).toBeInTheDocument();
+    expect(within(wrapAfter).queryByText("child-flow")).not.toBeInTheDocument();
+  });
+
   it("refuses a file naming an unregistered step type, with the aggregate recoverable error", async () => {
     const file = rootFile();
     (file.body as unknown[]).push({ type: "api-call", id: uuid(50), name: "call-a", endpoint: "x" });

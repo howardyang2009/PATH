@@ -66,12 +66,13 @@ The first argument to `path-server` is the project directory. The server reads a
 there. This argument defaults to the current directory. The engine CLI is different: it finds its
 project directory from the workflow file location.
 
-## Status (2026-09-03)
+## Status (2026-09-04)
 
-The latest release is **v0.5.4** (2026-08-30). See `CHANGELOG.md` for the full history. Since that
-release, the `main` branch carries an unreleased **Designer** track (map #254, see *What's next*). The
-`main` branch is green. `pnpm -r run typecheck` is clean across all packages. 1536 tests pass: schema
-280, engine 624, server 199, designer 189, viewer 121, client-core 99, scripts 24.
+The latest release is **v0.6.1** (2026-09-04). `CHANGELOG.md` covers the history through v0.5.4; from
+v0.6.0 on, each release's notes live on the GitHub releases page. The **Designer** has shipped: v0.6.0
+cut the authoring canvas into a release, and v0.6.1 polished it. The `main` branch is green.
+`pnpm -r run typecheck` is clean across all packages. 1607 tests pass: schema 280, engine 624, server
+199, designer 251, viewer 124, client-core 105, scripts 24.
 
 The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
 release-notes pipeline passes its acceptance run (mvp spec §11).
@@ -125,6 +126,25 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   concurrency cap is renamed from `llm` to `processor` (#331). A `prompt` step now fails on an Agent SDK
   `is_error` result instead of passing the error text downstream as output (#349). This release breaks
   both the format (`@2` to `@3`) and the DB (`SCHEMA_VERSION` 7, clean-slate).
+- **v0.6.0** — the Designer arrives (map #254, ADR 0027–0031). A new `@path/designer` bundle, served at
+  `/designer/` beside the viewer's `/viewer/`, authors a workflow file on a node canvas: open and render
+  read-only (#367), edit the tree (#368), edit the selected node or the file through a properties pane
+  (#369, #399), author `$env` / `$secret` config values (#387), undo/redo with a clean/dirty baseline
+  (#389), and mark cross-node and dangling-ref problems (#388, #391). Its run dock mounts the viewer's
+  own `RunsList │ RunDetail │ NodeIo` panels over a shared run-logic seam moved into `@path/client-core`
+  (#359, #372), so a run reads identically on both surfaces. Both surfaces drag-resize their panels. The
+  server serves the two bundles from named mounts and adds the authoring routes: raw file read, the
+  `PUT /v0/workflows` write, the `GET /v0/step-plugins` registry, edit-lock leases, and `workflow_id`-
+  filtered runs (#360–#365). The toolchain moves to **Node 24** to match CI. No format or DB break.
+- **v0.6.1** — the authoring surface gets its polish pass. The properties pane lines each datum up on one
+  aligned row against a shared label column, with infix leaf conditions and lowercase labels (#405,
+  #407). New authoring affordances land: a bare whole-string input, nested workflow-refs by double-click,
+  an interpolable while-do max-iterations, Tab to fill a placeholder in, and a prompt's inherited model
+  shown as a ghost with override and revert (#407). The viewer's workflows list becomes a navigable
+  folder tree that the Designer's open picker reuses, and the node I/O panel shows provenance lines for
+  the Context and Error blocks (#406). Rail resize gets robustness fixes (#404), and the properties pane
+  is refactored behind one draft-validate-commit seam and one keyed-row-editor seam (#409, #410). No
+  format or DB break.
 
 ### What's next
 
@@ -135,15 +155,10 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   resume (v0.4.4) have shipped. The step-plugin seam (v0.5.4) is now the vehicle for the deferred step
   types: an API-endpoint step type can ship as a plugin folder rather than a core union member.
   Automatic in-run retry is still deferred.
-- A **Designer** — the visual authoring canvas over the workflow format (map #254, ADR 0015–0017,
-  0027–0028). It is now `@path/designer`, a buildable bundle `path-server` serves at `/designer/`
-  (#366). It opens and renders a workflow read-only (#367), edits the tree on the canvas (#368),
-  authors identity and the three-tier step editors, conditions, config inheritance, and I/O wiring
-  through a properties pane (#369, #370), leases an edit lock and saves through the write route (#371),
-  drives the seven run surfaces over `client-core` (#372), tracks a per-file dirty state against a
-  content-equality baseline with undo/redo (#386, #389), authors `$env` / `$secret` config values
-  (#387), flags cross-node and dangling-reference problems (#388, #392), and creates from-scratch and
-  nested workflow-ref files (#390, #391). It is not yet cut into a release.
+- The **Designer** has shipped (map #254, ADR 0015–0017, 0027–0031). It cut into a release as v0.6.0 and
+  got its polish pass in v0.6.1 (see the release timeline above). `@path/designer` is a buildable bundle
+  `path-server` serves at `/designer/`. Map #254 is now the vehicle for further authoring work rather
+  than an unreleased track.
 
 ## Maintenance notes
 
