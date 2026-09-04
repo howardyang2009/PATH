@@ -14,7 +14,7 @@ Surfaces land pane by pane:
   most-recent-first, status as color + glyph pill, click to select. Filter by status; the pane shows
   the latest 50 root runs (a monitor's window, not paginated history).
 - **Run detail** (centre) — landed: root-run status and the **indented collapsible run tree**
-  (parent run → child runs), live. The watched run is connected once, by `App`, through
+  (parent run to child runs), live. The watched run is connected once, by `App`, through
   `connectRunViewModel`: tree hydrate, SSE subscribe, replay and the re-read that places a run the
   stream discovered all happen in client-core, so both live panes are views over one snapshot and
   hold no fetch logic of their own. Clicking a run in the tree selects it for the node-I/O pane.
@@ -51,5 +51,5 @@ One origin, no CORS (matches the localhost single-trust-boundary stance):
 
 `pnpm --filter @path/viewer test` — Vitest + React Testing Library (jsdom). Surfaces are rendered
 against a `PathApiClient` over a stub `fetch`, so the tests cover the real client-core decode path
-without a server. (Playwright was considered and deferred: read-only panes have no cross-page flow
-to warrant a browser driver yet.)
+without a server. (The tests defer Playwright: read-only panes have no cross-page flow that needs a
+browser driver yet.)
