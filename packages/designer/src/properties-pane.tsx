@@ -7,13 +7,11 @@ import {
   checkInterpolationSyntax,
   isEnvWrapper,
   isSecretWrapper,
-  safeParseWorkflowFile,
   type Condition,
   type ConfigObject,
   type ConfigValue,
   type EnvWrapper,
   type InterpolationRoot,
-  type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
@@ -34,7 +32,6 @@ import {
   configString,
   configStringOf,
   dropNodeKey,
-  mergeNodePayload,
   nodeConfigOf,
   nodePayload,
   rec,
@@ -45,8 +42,14 @@ import {
 } from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
 import { carriesEnvelope } from "./grammar.js";
-import { parseInputDraft, referenceablePaths } from "./interp-suggest.js";
-import { wireToRegistry } from "./open-workflow.js";
+import { referenceablePaths } from "./interp-suggest.js";
+import {
+  useValidatedDraft,
+  validRowsToMap,
+  validateInputDraft,
+  validateJsonPayload,
+  validateMaxIterations,
+} from "./validated-draft.js";
 
 /**
  * The properties pane (#369, designer-spec § Per-kind rendering and edit affordances, § Editors). A
@@ -160,15 +163,13 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
   // (#389); add/remove pass none, so each is its own entry.
   const writeRows = (next: OutputRow[], coalesce?: string): void => {
     setRows(next);
-    const named = next.filter((row) => row.key !== "");
-    if (named.some((row) => !checkInterpolationSyntax(row.value, STEP_ROOTS).ok)) return;
-    const map: Record<string, string> = {};
-    for (const row of named) map[row.key] = row.value;
-    if (Object.keys(map).length === 0) {
+    const built = validRowsToMap(next, STEP_ROOTS);
+    if (!built.ok) return;
+    if (Object.keys(built.map).length === 0) {
       const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
       applyEdit(rest as WorkflowFile, coalesce);
     } else {
-      applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+      applyEdit({ ...file, output: built.map } as WorkflowFile, coalesce);
     }
   };
   const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
@@ -600,31 +601,11 @@ function GenericField({
  * the canvas stays strict-valid and only the editor's fidelity degrades.
  */
 function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const [draft, setDraft] = useState(() => JSON.stringify(nodePayload(node), null, 2));
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(text);
-    } catch (e) {
-      setError(`Not valid JSON: ${e instanceof Error ? e.message : String(e)}`);
-      return;
-    }
-    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-      setError("The payload must be a JSON object.");
-      return;
-    }
-    const next = mergeNodePayload(node, parsed as Record<string, unknown>);
-    const validated = validateNode(next, plugins);
-    if (validated) {
-      setError(validated);
-      return;
-    }
-    setError(null);
-    commit(next, `payload:${node.id}`);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => JSON.stringify(nodePayload(node), null, 2),
+    (text) => validateJsonPayload(node, text, plugins),
+    (next) => commit(next, `payload:${node.id}`),
+  );
 
   return (
     <div className="pane-field">
@@ -972,29 +953,14 @@ function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Elem
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
 function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const initial = (): string => {
-    const input = rec(node).input;
-    return input === undefined ? "{}" : JSON.stringify(input, null, 2);
-  };
-  const [draft, setDraft] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    const parsed = parseInputDraft(text, STEP_ROOTS);
-    if (!parsed.ok) {
-      setError(parsed.error);
-      return;
-    }
-    setError(null);
-    // An empty draft or an empty object `{}` means "no input", so drop the key. Every other value — a
-    // bare `${context.x}` whole-string, a literal, an array, a populated object (§6.1) — is a real input
-    // and is kept.
-    const isEmptyObject =
-      parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
-    const isEmpty = text.trim() === "" || isEmptyObject;
-    commit(isEmpty ? dropNodeKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => {
+      const input = rec(node).input;
+      return input === undefined ? "{}" : JSON.stringify(input, null, 2);
+    },
+    (text) => validateInputDraft(node, text),
+    (next) => commit(next, `input:${node.id}`),
+  );
 
   return (
     <div className="pane-section">
@@ -1053,11 +1019,9 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   // entry (#389); add/remove pass none, so each is its own entry.
   const writeRows = (next: PublishRow[], coalesce?: string): void => {
     setRows(next);
-    const named = next.filter((row) => row.key !== "");
-    if (named.some((row) => !checkInterpolationSyntax(row.value, PUBLISH_ROOTS).ok)) return;
-    const map: Record<string, string> = {};
-    for (const row of named) map[row.key] = row.value;
-    commit(Object.keys(map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), coalesce);
+    const built = validRowsToMap(next, PUBLISH_ROOTS);
+    if (!built.ok) return;
+    commit(Object.keys(built.map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: built.map } as WorkflowNode), coalesce);
   };
   const setRow = (index: number, row: PublishRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `publish:${index}:${node.id}`);
   const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
@@ -1206,36 +1170,7 @@ function MaxIterationsField({
   onChange: (v: number | string) => void;
 }): JSX.Element {
   const id = useId();
-  const [draft, setDraft] = useState(() => String(value));
-  const [error, setError] = useState<string | null>(null);
-
-  const onEdit = (text: string): void => {
-    setDraft(text);
-    const trimmed = text.trim();
-    if (trimmed === "") {
-      setError("Required — a positive whole number, or a ${config.…} / ${context.…} reference.");
-      return;
-    }
-    // A run of digits is a literal count; anything else is checked as an interpolation over the step
-    // roots (`config` / `context`), the same roots a step may read before it runs.
-    if (/^\d+$/.test(trimmed)) {
-      const n = Number(trimmed);
-      if (n < 1) {
-        setError("Must be a positive whole number.");
-        return;
-      }
-      setError(null);
-      onChange(n);
-      return;
-    }
-    const check = checkInterpolationSyntax(text, STEP_ROOTS);
-    if (!check.ok) {
-      setError(check.error ?? "Invalid interpolation.");
-      return;
-    }
-    setError(null);
-    onChange(text);
-  };
+  const { draft, error, onEdit } = useValidatedDraft(() => String(value), validateMaxIterations, onChange);
 
   return (
     <div className="pane-field pane-field-row">
@@ -1328,12 +1263,5 @@ interface LeafEditorProps {
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
-}
-
-/** Validate a prospective node inside a one-node file against the registry; returns an error, or `null` if valid. */
-function validateNode(node: WorkflowNode, plugins: WireStepPlugin[]): string | null {
-  const trial: WorkflowFile = { format: "path/workflow@3", id: crypto.randomUUID(), name: "trial", body: [node] };
-  const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
-  return result.success ? null : result.errors.join("\n");
 }
 
