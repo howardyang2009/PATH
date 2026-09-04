@@ -74,6 +74,17 @@ export function applyNodeConfig(node: WorkflowNode, config: ConfigObject | undef
   return config === undefined ? dropNodeKey(node, "config") : ({ ...node, config } as WorkflowNode);
 }
 
+/**
+ * Read a string payload/envelope datum off a node (`prompt`, `command`, `cwd`, `ref`, `parse`,
+ * `worker`), or `""` when the key is absent or non-string. The one string-payload read the first-class
+ * editors share, so each stops re-spelling `typeof rec(node).x === "string" ? … : ""` and the `rec` cast
+ * stays here at the module's single open-record boundary.
+ */
+export function nodeString(node: WorkflowNode, key: string): string {
+  const value = rec(node)[key];
+  return typeof value === "string" ? value : "";
+}
+
 /** Read a string config datum off a node (e.g. `prompt`'s `model`), or `""` when absent. */
 export function configString(node: WorkflowNode, key: string): string {
   return configStringOf(rec(node).config as Record<string, unknown> | undefined, key);

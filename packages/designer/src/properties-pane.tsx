@@ -23,6 +23,7 @@ import {
   dropNodeKey,
   nodeConfigOf,
   nodePayload,
+  nodeString,
   rec,
   setNodeField,
   withConfig,
@@ -399,7 +400,7 @@ function KindFields({
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
 function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file: WorkflowFile }): JSX.Element {
-  const prompt = typeof (rec(node)).prompt === "string" ? ((rec(node)).prompt as string) : "";
+  const prompt = nodeString(node, "prompt");
   const inheritedModel = configStringOf(file.config, "model");
   return (
     <>
@@ -454,10 +455,9 @@ function ModelField({ value, inherited, onChange }: { value: string; inherited: 
 
 /** `binary` — the first-class editor: the `command`, its `args`, its `cwd`, plus the worker. */
 function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const record = rec(node);
-  const command = typeof record.command === "string" ? record.command : "";
-  const cwd = typeof record.cwd === "string" ? record.cwd : "";
-  const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String) : [];
+  const command = nodeString(node, "command");
+  const cwd = nodeString(node, "cwd");
+  const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
   return (
     <>
       <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
@@ -478,7 +478,7 @@ function WorkflowRefEditor({
   commit: (next: WorkflowNode, coalesce?: string) => void;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
-  const ref = typeof (rec(node)).ref === "string" ? ((rec(node)).ref as string) : "";
+  const ref = nodeString(node, "ref");
   // An empty ref on a file with a path offers the target chooser (#391): reference an existing workflow,
   // or create a new one and descend into it. Without a path (a from-scratch root) or once a ref is set,
   // the plain path field is the editor — a set ref stays retargetable by hand.
@@ -602,7 +602,7 @@ function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
 function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element | null {
   const plugin = pluginFor(node.type, plugins);
   if (!plugin || plugin.workers.length <= 1) return null;
-  const current = typeof (rec(node)).worker === "string" ? ((rec(node)).worker as string) : plugin.default_worker;
+  const current = nodeString(node, "worker") || plugin.default_worker;
   const onChange = (worker: string): void => {
     // The default is the omitted case (a step naming no worker takes the type's default), so selecting
     // it drops the field rather than pinning it (§ Worker selection).
@@ -857,7 +857,7 @@ function publishRowsOf(node: WorkflowNode): KeyedRow[] {
  * validation marker on the canvas (`publish-conflicts.ts`).
  */
 function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const parse = typeof rec(node).parse === "string" ? (rec(node).parse as string) : "";
+  const parse = nodeString(node, "parse");
 
   // The node's `publish` map is a keyed-row field (`useKeyedRows`): it commits only when every value's
   // interpolation is valid, so an ill-typed `${…}` publish never reaches the file and the node stays
