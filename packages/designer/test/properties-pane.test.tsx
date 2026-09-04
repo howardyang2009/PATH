@@ -201,6 +201,41 @@ describe("#369 the three editor tiers", () => {
     expect(within(regionRow).getByRole("button", { name: "Override" })).toBeInTheDocument();
   });
 
+  it("ghosts the workflow's inherited model in a prompt's own model field", async () => {
+    // A file whose config sets a workflow-default model; the prompt step declares none of its own.
+    const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    selectNode(canvas, "alpha");
+    const model = within(pane).getByLabelText("model") as HTMLInputElement;
+    // The field is empty (no own model) but ghosts the inherited value as a placeholder.
+    expect(model.value).toBe("");
+    expect(model.placeholder).toBe("claude-sonnet-5");
+    expect(model).toHaveClass("pane-input-inherit");
+
+    // Typing overrides: the field becomes solid (no inherit ghost) and holds the local value.
+    model.focus();
+    fireEvent.change(model, { target: { value: "claude-opus-4-8" } });
+    const overridden = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(overridden.value).toBe("claude-opus-4-8");
+    expect(overridden).not.toHaveClass("pane-input-inherit");
+    // The Revert appears without re-parenting the input, so it is the same node and keeps focus —
+    // the author types on without the field dropping their cursor after the first character.
+    expect(within(pane).getByRole("button", { name: "Revert" })).toBeInTheDocument();
+    expect(overridden).toBe(model);
+    expect(document.activeElement).toBe(model);
+
+    // Revert drops the local model and restores the inherited ghost.
+    fireEvent.click(within(pane).getByRole("button", { name: "Revert" }));
+    const reverted = within(pane).getByLabelText("model") as HTMLInputElement;
+    expect(reverted.value).toBe("");
+    expect(reverted.placeholder).toBe("claude-sonnet-5");
+    expect(reverted).toHaveClass("pane-input-inherit");
+  });
+
   it("generates a form for a layoutable registry type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "call");

@@ -748,6 +748,33 @@ body {
   font-style: italic;
 }
 
+/* A first-class config field (a prompt's `model`, #369) with no own value ghosts its inherited value as
+   the placeholder: blank keeps inheriting, typing overrides. Mirrors the `.pane-ghost` config-row cue. */
+.pane-input-inherit::placeholder {
+  opacity: 0.55;
+  font-style: italic;
+}
+
+/* The overridden `model` field keeps its input and Revert on one line: the input yields the remaining
+   width, the button never wraps or shrinks. */
+.pane-model-value {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pane-model-value .pane-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.pane-model-value .pane-btn {
+  flex: none;
+  white-space: nowrap;
+}
+
 .pane-config-add {
   margin-top: 2px;
 }

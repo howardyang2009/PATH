@@ -133,7 +133,7 @@ function NodeProperties({
           onChange={(when) => applyEdit(setArmWhen(file, site.ownerId, site.armIndex, when))}
         />
       ) : null}
-      <KindFields node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
+      <KindFields file={file} node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
       {carriesEnvelope(node.type) ? <StepEnvelopeFields file={file} node={node} commit={commit} /> : null}
     </div>
   );
@@ -199,12 +199,14 @@ function kindExplanation(type: string): string {
 // ── The kind-specific field region ───────────────────────────────────────────────────────────────
 
 function KindFields({
+  file,
   node,
   plugins,
   commit,
   condSuggest,
   onAddRefTarget,
 }: {
+  file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
@@ -213,7 +215,7 @@ function KindFields({
 }): JSX.Element {
   switch (node.type) {
     case "prompt":
-      return <PromptEditor node={node} plugins={plugins} commit={commit} />;
+      return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "binary":
       return <BinaryEditor node={node} plugins={plugins} commit={commit} />;
     case "workflow":
@@ -264,14 +266,57 @@ function KindFields({
 }
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
-function PromptEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
+function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file: WorkflowFile }): JSX.Element {
   const prompt = typeof (rec(node)).prompt === "string" ? ((rec(node)).prompt as string) : "";
+  const inheritedModel = configStringOf(file.config, "model");
   return (
     <>
-      <TextField label="model" value={configString(node, "model")} onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)} />
+      <ModelField
+        value={configString(node, "model")}
+        inherited={inheritedModel}
+        onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)}
+      />
       <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
       <WorkerSelect node={node} plugins={plugins} commit={commit} />
     </>
+  );
+}
+
+/**
+ * The prompt editor's `model` line (#369). Its `model` is a config datum, so it inherits from the
+ * workflow's `config.model` like any other key — but as a first-class field it edits as an input, not a
+ * ghosted config row. When the node holds no own `model`, the input stays empty and shows the inherited
+ * value as a ghosted placeholder: leaving it blank keeps inheriting, and typing overrides. With no own
+ * and no inherited value the placeholder is a plain prompt. When the node overrides an inherited value,
+ * a **Revert** drops the local `model` and restores the inherited one — the config-row Revert, but for
+ * this first-class field.
+ */
+function ModelField({ value, inherited, onChange }: { value: string; inherited: string; onChange: (v: string) => void }): JSX.Element {
+  const inheriting = value === "" && inherited !== "";
+  const overridden = value !== "" && inherited !== "";
+  // The input keeps a fixed position in the tree — its wrapper renders in every state, and only the
+  // Revert button toggles inside it — so appearing Revert never re-parents (and so re-mounts, dropping
+  // focus) the input the author is typing into. Input and Revert share one line: the input flexes, the
+  // button stays inline (no wrap).
+  return (
+    <label className="pane-field pane-field-row">
+      <span className="pane-label">model</span>
+      <div className="pane-model-value">
+        <input
+          className={inheriting ? "pane-input pane-input-inherit" : "pane-input"}
+          type="text"
+          value={value}
+          placeholder={inherited !== "" ? inherited : "model id"}
+          onChange={(e) => onChange(e.target.value)}
+          title={inheriting ? `Inherited from the workflow config: ${inherited}` : undefined}
+        />
+        {overridden ? (
+          <button type="button" className="pane-btn" onClick={() => onChange("")} title={`Revert to the inherited model: ${inherited}`}>
+            Revert
+          </button>
+        ) : null}
+      </div>
+    </label>
   );
 }
 
@@ -1156,7 +1201,11 @@ function withOptionalArray(node: WorkflowNode, key: string, value: string[]): Wo
 
 /** Read a string config datum off a node (e.g. `prompt`'s `model`), or `""` when absent. */
 function configString(node: WorkflowNode, key: string): string {
-  const config = rec(node).config as Record<string, unknown> | undefined;
+  return configStringOf(rec(node).config as Record<string, unknown> | undefined, key);
+}
+
+/** Read a string value off a config object (a node's or the file's), or `""` when absent or non-string. */
+function configStringOf(config: Record<string, unknown> | undefined, key: string): string {
   const value = config?.[key];
   return typeof value === "string" ? value : "";
 }
