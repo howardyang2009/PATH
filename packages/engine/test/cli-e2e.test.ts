@@ -8,15 +8,14 @@ import Database from "better-sqlite3";
 import { stampGuids } from "./stamp-names.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Every test here spawns one or more *cold* `npx tsx` subprocesses (see `runCli`), and some spawn
-// three (two `run`s + a `prune`/`rm`). On a loaded CI runner that cold start alone can exceed the
-// default 5s vitest `testTimeout`, tripping unrelated PRs (#220). A timeout here is not a harmless
-// slow test either: vitest rejects the test promise but does not kill the child, so a lingering
-// `runs prune` can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir`
-// block — which is how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case.
-// These are the slowest, most I/O-bound tests in the repo; the `rm/prune` block still tripped 30s on
-// a loaded runner, so 90s gives real headroom over cold start rather than sitting just above it.
-vi.setConfig({ testTimeout: 90_000 });
+// Every test here spawns one or more *cold* `tsx` subprocesses (see `runCli`), and some spawn three
+// (two `run`s + a `prune`/`rm`). On a loaded CI runner that cold start alone can exceed the default
+// 5s vitest `testTimeout`, tripping unrelated PRs (#220). A timeout here is not a harmless slow test
+// either: vitest rejects the test promise but does not kill the child, so a lingering `runs prune`
+// can wipe `.path/runs/` out from under the *next* test in the shared-`projectDir` block — which is
+// how the timeout surfaced as a bogus "no run found" on the orphan-`rm` case. 30s gives real headroom
+// over cold start; these are the slowest, most I/O-bound tests in the repo.
+vi.setConfig({ testTimeout: 30_000 });
 
 const execFileAsync = promisify(execFile);
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
@@ -36,8 +35,15 @@ afterAll(() => {
   rmSync(fixtures, { recursive: true, force: true });
 });
 
+// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the child's
+// `cwd`; the persistence block runs with `cwd` set to a throwaway tmpdir that has no repo
+// `node_modules` above it, so `npx` there fell through to a **network install** of tsx — which on a
+// loaded CI runner hung past even a 90s test timeout, failing the first test of that block (#220).
+// `tsx` is a direct devDependency of this package, so its `.bin` shim is always present after install.
+const tsxBin = join(packageRoot, "node_modules", ".bin", "tsx");
+
 function runCli(args: string[], cwd: string = packageRoot) {
-  return execFileAsync("npx", ["tsx", bin, ...args], { cwd });
+  return execFileAsync(tsxBin, [bin, ...args], { cwd });
 }
 
 describe("path run (real dev-mode process, no packaging)", () => {
