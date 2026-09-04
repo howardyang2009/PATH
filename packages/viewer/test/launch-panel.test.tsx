@@ -69,12 +69,37 @@ function mount(client: PathApiClient, onLaunched = vi.fn()) {
 }
 
 describe("LaunchPanel", () => {
-  it("lists discovered workflows, flagging roots and nested refs", async () => {
+  it("lists discovered workflows as a folder tree, flagging roots; nested files sit under their folder", async () => {
     const { client } = stubClient({ workflows: [ROOT, NESTED] });
     mount(client);
 
+    // A top-level file shows at the top level, flagged root.
     expect(await screen.findByTestId("workflow-row-release-notes.workflow.json")).toHaveTextContent("root");
+    // A nested file is hidden until its folder is opened — the top level shows the folder, not the file.
+    const folder = screen.getByTestId("workflow-folder-lib");
+    expect(screen.queryByTestId("workflow-row-lib/draft.workflow.json")).toBeNull();
+
+    fireEvent.click(folder);
     expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toHaveTextContent("nested");
+  });
+
+  it("navigates folders as an accordion: opening one folder collapses the previously open sibling", async () => {
+    const A: WorkflowSummary = { ...NESTED, relative_path: "alpha/one.workflow.json", name: "one" };
+    const B: WorkflowSummary = { ...NESTED, relative_path: "beta/two.workflow.json", name: "two" };
+    const { client } = stubClient({ workflows: [A, B] });
+    mount(client);
+
+    fireEvent.click(await screen.findByTestId("workflow-folder-alpha"));
+    expect(screen.getByTestId("workflow-row-alpha/one.workflow.json")).toBeInTheDocument();
+
+    // Opening beta collapses alpha (one open folder per level).
+    fireEvent.click(screen.getByTestId("workflow-folder-beta"));
+    expect(screen.getByTestId("workflow-row-beta/two.workflow.json")).toBeInTheDocument();
+    expect(screen.queryByTestId("workflow-row-alpha/one.workflow.json")).toBeNull();
+
+    // Clicking the open folder again collapses it.
+    fireEvent.click(screen.getByTestId("workflow-folder-beta"));
+    expect(screen.queryByTestId("workflow-row-beta/two.workflow.json")).toBeNull();
   });
 
   it("filters the list by kind: root / nested / invalid / all", async () => {
@@ -84,26 +109,27 @@ describe("LaunchPanel", () => {
     await screen.findByTestId("workflow-row-release-notes.workflow.json");
     const filter = screen.getByLabelText("Kind");
 
-    // root — only the root workflow survives.
+    // root — only the root workflow survives; the nested file's folder drops out entirely.
     fireEvent.change(filter, { target: { value: "root" } });
     expect(screen.getByTestId("workflow-row-release-notes.workflow.json")).toBeInTheDocument();
-    expect(screen.queryByTestId("workflow-row-lib/draft.workflow.json")).toBeNull();
+    expect(screen.queryByTestId("workflow-folder-lib")).toBeNull();
     expect(screen.queryByTestId("workflow-row-broken.workflow.json")).toBeNull();
 
-    // nested — only the nested ref.
+    // nested — only the nested ref, under its folder (open the folder to reach the row).
     fireEvent.change(filter, { target: { value: "nested" } });
-    expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-row-release-notes.workflow.json")).toBeNull();
+    fireEvent.click(screen.getByTestId("workflow-folder-lib"));
+    expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toBeInTheDocument();
 
-    // invalid — only the invalid file.
+    // invalid — only the invalid file (a top-level file, no folder).
     fireEvent.change(filter, { target: { value: "invalid" } });
     expect(screen.getByTestId("workflow-row-broken.workflow.json")).toBeInTheDocument();
     expect(screen.queryByTestId("workflow-row-release-notes.workflow.json")).toBeNull();
 
-    // all — every row is back.
+    // all — the top-level rows are back, and the nested file's folder returns.
     fireEvent.change(filter, { target: { value: "all" } });
     expect(screen.getByTestId("workflow-row-release-notes.workflow.json")).toBeInTheDocument();
-    expect(screen.getByTestId("workflow-row-lib/draft.workflow.json")).toBeInTheDocument();
+    expect(screen.getByTestId("workflow-folder-lib")).toBeInTheDocument();
     expect(screen.getByTestId("workflow-row-broken.workflow.json")).toBeInTheDocument();
   });
 

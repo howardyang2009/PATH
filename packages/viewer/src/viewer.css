@@ -160,6 +160,65 @@
   padding: 0;
 }
 
+/* A nested `.workflows` (an open folder's children) carries no indent of its own — each row sets its
+   own left pad from its tree depth, so the guide line and hit target stay full-width. */
+.workflows .workflows {
+  margin: 0;
+}
+
+/* A folder row: a navigation step, same hit target as a workflow row but a single line — a chevron,
+   the folder name, and a count of the workflows under it. */
+.workflow-folder-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+button.workflow-folder-row:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.workflow-folder-row[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+button.workflow-folder-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workflow-folder-chevron {
+  font-size: var(--fs-md);
+  line-height: 1;
+  color: var(--text-muted);
+  width: 1em;
+  text-align: center;
+}
+
+.workflow-folder-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-folder-count {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* A workflow row: same hit target and states as a run row, but a two-line label (name + path). */
 .workflow-row {
   width: 100%;
@@ -203,17 +262,10 @@ button.workflow-row:focus-visible {
   min-width: 0;
 }
 
-.workflow-name {
-  font-size: var(--fs-sm);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.workflow-path {
+/* A workflow file's only line: its file name, mono so it reads as a file next to a folder row. */
+.workflow-file-name {
   font-family: var(--font-mono);
-  font-size: var(--fs-xs);
-  color: var(--text-muted);
+  font-size: var(--fs-sm);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
