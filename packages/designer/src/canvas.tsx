@@ -5,7 +5,7 @@ import { BlockTree, type DescendHandler } from "./block-tree.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
-import { fileProblems, problemMarks, refLookupFor } from "./problems.js";
+import { problemMarks, type Problem } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
 import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
@@ -25,7 +25,7 @@ export function Canvas({
   plugins,
   armedKind,
   onArm,
-  knownPaths,
+  problems,
   onOpenExisting,
   onAuthorRef,
   workflowRunStatus,
@@ -34,9 +34,9 @@ export function Canvas({
   plugins: WireStepPlugin[];
   armedKind: string | null;
   onArm: (kind: string | null) => void;
-  /** Discovered workflow paths (#392), so the render can flag a `workflow`-ref whose target is unsaved;
-   *  `null` before the first discovery scan lands, which suppresses the check. */
-  knownPaths: ReadonlySet<string> | null;
+  /** The active file's cross-node problems (#388, #392), derived once by the App and shared with the
+   *  launch button's warning count — the canvas renders them as per-node markers and the problems panel. */
+  problems: Problem[];
   /** Open the pick-an-existing-workflow dialog (#254) — the empty canvas's second entry point beside "New". */
   onOpenExisting: () => void;
   /** Open the ref-target chooser for an unset `workflow` block, keyed by its node id (#391) — the
@@ -96,7 +96,7 @@ export function Canvas({
         workflowRunStatus={workflowRunStatus}
       />
       <CanvasBody>
-        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
+        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} problems={problems} />
       </CanvasBody>
     </div>
   );
@@ -213,7 +213,7 @@ function FrameView({
   plugins,
   armedKind,
   onArm,
-  knownPaths,
+  problems,
 }: {
   frame: Frame;
   onDescend: DescendHandler;
@@ -221,7 +221,7 @@ function FrameView({
   plugins: WireStepPlugin[];
   armedKind: string | null;
   onArm: (kind: string | null) => void;
-  knownPaths: ReadonlySet<string> | null;
+  problems: Problem[];
 }): JSX.Element {
   const { state } = frame;
   if (state.phase === "loading") {
@@ -242,13 +242,9 @@ function FrameView({
       const dirty = frameDirty(frame);
       const pristine = canonicalSerialize(result.file) === frame.openedBytes;
       const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
-      // The cross-node pass runs once per render (#388): its marker map feeds the per-node ⚠ and its
-      // flat list feeds the problems panel — two coupled surfaces onto one derivation of the file. A
-      // path-bearing frame also carries a ref lookup (#392) so a dangling `workflow`-ref is flagged; a
-      // pathless frame (a from-scratch root, or a create-new child before its first save) has no directory
-      // to resolve a relative ref from, and a not-yet-loaded discovery (`null`) suppresses it — the shared
-      // `refLookupFor` folds both into `undefined`.
-      const problems = fileProblems(result.file, refLookupFor(frame.path, knownPaths));
+      // `problems` is the App's single cross-node pass (#388, #392), the same array the launch button's
+      // warning count reads. Its marker map feeds the per-node ⚠ and its flat list feeds the problems
+      // panel — two coupled surfaces onto one derivation, so a marker and the count cannot disagree.
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
           {badge ? (
