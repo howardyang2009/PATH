@@ -1,10 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import { walkNodes, type WorkflowNode } from "@path/schema";
+import type { WorkflowNode } from "@path/schema";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
-import { replaceNode } from "./edit-tree.js";
+import { findById, replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
@@ -107,7 +107,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // only offered when the active file has one.
   const fileWithNodeRef = (nodeId: string, targetPath: string) => {
     if (!openedFile || activePath === undefined) return null;
-    const node = [...walkNodes(openedFile.body)].find((n) => n.id === nodeId);
+    const node = findById(openedFile.body, nodeId);
     if (!node || node.type !== "workflow") return null;
     const ref = relativeRefPath(activePath, targetPath);
     return replaceNode(openedFile, nodeId, { ...node, ref } as WorkflowNode);

@@ -8,7 +8,6 @@ import {
   isEnvWrapper,
   isSecretWrapper,
   safeParseWorkflowFile,
-  walkNodes,
   type Condition,
   type ConfigObject,
   type ConfigValue,
@@ -29,7 +28,7 @@ import {
   setSecretSource,
   type ConfigMode,
 } from "./config-value.js";
-import { locate, replaceNode, setArmWhen } from "./edit-tree.js";
+import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
 import {
   applyNodeConfig,
   configString,
@@ -103,7 +102,7 @@ export interface PropertiesPaneProps {
 }
 
 export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselect, onAddRefTarget }: PropertiesPaneProps): JSX.Element {
-  const node = selectedId === null ? null : [...walkNodes(file.body)].find((n) => n.id === selectedId) ?? null;
+  const node = selectedId === null ? null : findById(file.body, selectedId);
   if (node === null) {
     return <FileProperties file={file} applyEdit={applyEdit} />;
   }
@@ -312,7 +311,7 @@ function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: Work
 
 /** The `when` condition of a branch arm, read back off the parent branch for the pane's builder. */
 function armWhen(file: WorkflowFile, branchId: string, armIndex: number): Condition {
-  const owner = [...walkNodes(file.body)].find((n) => n.id === branchId);
+  const owner = findById(file.body, branchId);
   const when = owner?.type === "branch" ? owner.arms[armIndex]?.when : undefined;
   return when ?? { type: "exists", path: "context.value" };
 }
@@ -328,7 +327,7 @@ function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): stri
   if (site.where === "else") return "branch else fallback";
   if (site.where === "list" && site.listKind === "branches") return "parallel branch";
   if (site.where === "arm") {
-    const owner = [...walkNodes(file.body)].find((n) => n.id === site.ownerId);
+    const owner = findById(file.body, site.ownerId);
     const total = owner?.type === "branch" ? owner.arms.length : 0;
     return `branch arm (${site.armIndex + 1} of ${total})`;
   }

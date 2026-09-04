@@ -5,6 +5,7 @@ import {
   addElse,
   addToList,
   deleteNode,
+  findById,
   insertAfter,
   isDuplicable,
   locate,
@@ -222,5 +223,19 @@ describe("edit-tree — replaceNode (#369: the pane's content commit)", () => {
   it("is a no-op for an absent id (returns the same file reference)", () => {
     const f = fixture();
     expect(replaceNode(f, uuid(999), leaf(60, "x"))).toBe(f);
+  });
+});
+
+describe("findById — the node-by-id lookup, sibling of locate", () => {
+  it("finds a top-level node, a deeply nested one, and a branch arm occupant", () => {
+    const f = fixture();
+    expect(findById(f.body, uuid(2))?.name).toBe("top-a");
+    expect(findById(f.body, uuid(5))?.name).toBe("s2"); // inside the sequence
+    expect(findById(f.body, uuid(14))?.name).toBe("body"); // inside the while-do
+    expect(findById(f.body, uuid(11))?.name).toBe("arm2"); // a branch arm occupant
+  });
+
+  it("returns null for an absent id", () => {
+    expect(findById(fixture().body, uuid(999))).toBeNull();
   });
 });

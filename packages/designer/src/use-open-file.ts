@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import { FORMAT_VERSION, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { openWorkflowFile, type OpenResult } from "./open-workflow.js";
-import { replaceNode } from "./edit-tree.js";
+import { findById, replaceNode } from "./edit-tree.js";
 import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
@@ -632,7 +632,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
             const parent = link ? patched[link.depth] : undefined;
             const parentResult = openedResultOf(parent);
             if (link && parent && parentResult && parent.path !== null) {
-              const node = [...walkNodes(parentResult.file.body)].find((n) => n.id === link.nodeId);
+              const node = findById(parentResult.file.body, link.nodeId);
               if (node && node.type === "workflow") {
                 const ref = relativeRefPath(parent.path, result.relativePath);
                 const nextParent = replaceNode(parentResult.file, link.nodeId, { ...node, ref } as WorkflowNode);

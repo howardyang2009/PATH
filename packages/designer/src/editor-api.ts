@@ -1,4 +1,4 @@
-import { walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import type { WorkflowFile, WorkflowNode } from "@path/schema";
 import { socketAcceptsKind, type SocketFlavor } from "./grammar.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node-factory.js";
 import {
@@ -6,6 +6,7 @@ import {
   addElse as addElseOp,
   addToList,
   deleteNode,
+  findById,
   insertAfter,
   isDuplicable,
   locate,
@@ -100,7 +101,7 @@ export function createEditor(
       if (next !== file) applyEdit(next);
     },
     duplicate(id) {
-      const node = [...walkNodes(file.body)].find((n) => n.id === id);
+      const node = findById(file.body, id);
       if (!node) return;
       applyEdit(insertAfter(file, id, cloneWithFreshIdentity(node, usedNames(file.body))));
     },
