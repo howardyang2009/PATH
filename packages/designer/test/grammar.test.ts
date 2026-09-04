@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { childSocketFlavor, socketAcceptsKind } from "../src/grammar.js";
+import { carriesEnvelope, childSocketFlavor, socketAcceptsKind } from "../src/grammar.js";
 import type { WorkflowNode } from "@path/schema";
 
 describe("grammar — which kind snaps into which socket (#368)", () => {
@@ -28,5 +28,10 @@ describe("grammar — which kind snaps into which socket (#368)", () => {
     expect(childSocketFlavor(wh)).toBe("single");
     expect(childSocketFlavor(br)).toBe("single");
     expect(childSocketFlavor(leaf)).toBeNull();
+  });
+
+  it("carriesEnvelope is true for a leaf/workflow type, false for every control block", () => {
+    for (const type of ["prompt", "binary", "workflow", "api-call"]) expect(carriesEnvelope(type)).toBe(true);
+    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"]) expect(carriesEnvelope(type)).toBe(false);
   });
 });

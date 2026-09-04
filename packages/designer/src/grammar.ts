@@ -38,6 +38,16 @@ export function socketAcceptsKind(flavor: SocketFlavor, kind: string): boolean {
   return true;
 }
 
+/**
+ * Does a node of `type` carry the step envelope (`config` / `input` / `parse` / `publish`)? Every leaf
+ * step type and `workflow` does; the five control blocks (`BLOCK_KINDS`) do not — they are engine
+ * constructs with no worker and no task (CONTEXT.md § Composition). So the predicate is exactly "not a
+ * block kind", which is why it lives beside `BLOCK_KINDS` rather than repeating that set.
+ */
+export function carriesEnvelope(type: string): boolean {
+  return !(BLOCK_KINDS as readonly string[]).includes(type);
+}
+
 /** The flavour a node's own child slots expose, for a caller placing into an existing block. */
 export function childSocketFlavor(node: WorkflowNode): SocketFlavor | null {
   switch (node.type) {

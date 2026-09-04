@@ -45,6 +45,7 @@ import {
   withOptionalString,
 } from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
+import { carriesEnvelope } from "./grammar.js";
 import { parseInputDraft, referenceablePaths } from "./interp-suggest.js";
 import { wireToRegistry } from "./open-workflow.js";
 
@@ -307,14 +308,6 @@ function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: Work
       </div>
     </>
   );
-}
-
-/** The six control-construct types (they carry no `config`/`input`/`parse`/`publish` envelope). */
-const CONTROL_TYPES = new Set(["parallel", "branch", "while-do", "sequence", "checkpoint"]);
-
-/** Does this node type carry the step envelope (`config` / `input` / `parse` / `publish`)? `workflow` does; the control blocks do not. */
-function carriesEnvelope(type: string): boolean {
-  return !CONTROL_TYPES.has(type);
 }
 
 /** The `when` condition of a branch arm, read back off the parent branch for the pane's builder. */
