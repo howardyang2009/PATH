@@ -73,6 +73,20 @@ export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "
 export { eventOutcome } from "./event-outcome.js";
 export { buildRunTree, type RunTreeNode } from "./run-tree.js";
 
+// The folder tree behind every workflow picker: one grouping of the flat discovery list both the
+// Viewer's launch panel and the Designer's open dialog draw the same way (#359 shared seam).
+export {
+  buildWorkflowTree,
+  countWorkflowLeaves,
+  isFolderOnOpenChain,
+  nextOpenFolder,
+  parentFolderPath,
+  workflowBaseName,
+  type WorkflowTreeFolder,
+  type WorkflowTreeLeaf,
+  type WorkflowTreeNode,
+} from "./workflow-tree.js";
+
 // The framework-free run-logic seam both the Viewer and the Designer read (#359, spec § Shared
 // seam). Each unit has one right answer a second surface must reach identically: how a launch field
 // is gated before a request is spent, how one node is named, what one log event says, and what a
