@@ -9,7 +9,8 @@ import { publishKeysOf } from "./publish-conflicts.js";
 
 /**
  * The pure support for the input-wiring editor (#370, designer-spec § Input/output wiring). A step's one
- * input is an interpolable JSON **object**: `${…}` placeholders reference dot-paths, authored with path
+ * input is an interpolable JSON **value** (any JSON value, §6.1: a map is common, a bare `"${context.x}"`
+ * whole-string or a literal is also whole): `${…}` placeholders reference dot-paths, authored with path
  * autocomplete and validated live by `checkInterpolationSyntax` — an unclosed or ill-typed placeholder
  * is rejected in the pane, the structural analogue of the unsnappable socket. There is no node-to-node
  * wire on the canvas.
@@ -46,7 +47,7 @@ export function referenceablePaths(file: WorkflowFile, roots: readonly Interpola
 }
 
 /** The outcome of parsing an input draft: the parsed object, or the first reason it is not acceptable. */
-export type InputParse = { ok: true; value: { [key: string]: JsonValue } } | { ok: false; error: string };
+export type InputParse = { ok: true; value: JsonValue } | { ok: false; error: string };
 
 /** Recursively check every string leaf of a parsed JSON value through the interpolation syntax check. */
 function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[]): string | null {
@@ -72,22 +73,31 @@ function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[
 }
 
 /**
- * Parse and validate an input-object draft against the field's roots: it must be valid JSON, a JSON
- * object (the step's one input object), and every `${…}` placeholder in it must pass the interpolation
- * check. Mirrors the raw-JSON floor's discipline (#369): an invalid draft is reported and never
- * committed, so the node stays strict-valid.
+ * Parse and validate an input draft against the field's roots. Input is **any JSON value** (§6.1 — a
+ * map is the common case, but a bare `${context.x}` whole-string, or a literal, is the whole input).
+ *
+ * A draft that looks like structured JSON — it starts with `{`, `[`, `"`, a digit/`-`, or is a bare
+ * `true`/`false`/`null` — is parsed as JSON, and every `${…}` leaf checked. Anything else is taken as a
+ * raw whole-string interpolation (`${context.x}`), authored without JSON quotes exactly like every other
+ * value field (publish, config), and checked as one interpolable string. An invalid draft is reported
+ * and never committed, so the node stays strict-valid (#369).
  */
 export function parseInputDraft(text: string, roots: readonly InterpolationRoot[]): InputParse {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(text);
-  } catch (e) {
-    return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+  const trimmed = text.trim();
+  const looksStructured = /^[[{"]/.test(trimmed) || /^-?\d/.test(trimmed) || trimmed === "true" || trimmed === "false" || trimmed === "null";
+  if (looksStructured) {
+    let parsed: unknown;
+    try {
+      parsed = JSON.parse(text);
+    } catch (e) {
+      return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    const error = checkInterpolation(parsed as JsonValue, roots);
+    if (error) return { ok: false, error };
+    return { ok: true, value: parsed as JsonValue };
   }
-  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
-    return { ok: false, error: "The input must be a JSON object." };
-  }
-  const error = checkInterpolation(parsed as JsonValue, roots);
-  if (error) return { ok: false, error };
-  return { ok: true, value: parsed as { [key: string]: JsonValue } };
+  // A raw whole-string interpolation or literal: the draft itself is the string value.
+  const check = checkInterpolationSyntax(text, roots);
+  if (!check.ok) return { ok: false, error: check.error ?? "invalid interpolation" };
+  return { ok: true, value: text };
 }

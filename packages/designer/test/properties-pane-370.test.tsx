@@ -158,12 +158,16 @@ describe("#370 input wiring", () => {
   it("live-checks the input object and rejects an unclosed placeholder", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    const input = within(pane).getByLabelText(/input object/) as HTMLTextAreaElement;
+    const input = within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement;
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a" }' } });
     expect(within(pane).getByRole("alert")).toHaveTextContent(/unclosed placeholder/);
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a}" }' } });
+    expect(within(pane).queryByRole("alert")).not.toBeInTheDocument();
+
+    // Any JSON value is allowed, not just an object: a bare whole-string commits clean (§6.1).
+    fireEvent.change(input, { target: { value: '"${context.a}"' } });
     expect(within(pane).queryByRole("alert")).not.toBeInTheDocument();
   });
 });

@@ -39,11 +39,24 @@ describe("#370 parseInputDraft", () => {
     expect(result).toEqual({ ok: true, value: { q: "${context.score}", n: 3 } });
   });
 
-  it("rejects non-JSON, a non-object, an unclosed placeholder, and an illegal root", () => {
+  it("accepts any JSON value: a literal and an array (§6.1)", () => {
+    expect(parseInputDraft("3", STEP_ROOTS)).toEqual({ ok: true, value: 3 });
+    expect(parseInputDraft('["${context.a}", 2]', STEP_ROOTS)).toEqual({ ok: true, value: ["${context.a}", 2] });
+  });
+
+  it("accepts a whole-string interpolation authored raw, without JSON quotes (§6.1/§6.6)", () => {
+    expect(parseInputDraft("${context.final_notes}", STEP_ROOTS)).toEqual({ ok: true, value: "${context.final_notes}" });
+    // The quoted form parses as the same string.
+    expect(parseInputDraft('"${context.final_notes}"', STEP_ROOTS)).toEqual({ ok: true, value: "${context.final_notes}" });
+  });
+
+  it("rejects malformed JSON, an unclosed placeholder, and an illegal root", () => {
+    // Starts with `{`, so it is taken as structured JSON and its parse error is reported.
     expect(parseInputDraft("{ not json", STEP_ROOTS).ok).toBe(false);
-    expect(parseInputDraft("[1, 2]", STEP_ROOTS).ok).toBe(false);
     expect(parseInputDraft('{ "x": "${context.a" }', STEP_ROOTS).ok).toBe(false);
-    // `output` is not a legal input root.
+    // `output` is not a legal input root — checked at every string leaf, raw whole-string included.
     expect(parseInputDraft('{ "x": "${output.a}" }', STEP_ROOTS).ok).toBe(false);
+    expect(parseInputDraft("${output.a}", STEP_ROOTS).ok).toBe(false);
+    expect(parseInputDraft("${context.a", STEP_ROOTS).ok).toBe(false);
   });
 });

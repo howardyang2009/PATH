@@ -1029,7 +1029,13 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: Work
       return;
     }
     setError(null);
-    commit(Object.keys(parsed.value).length === 0 ? dropKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
+    // An empty draft or an empty object `{}` means "no input", so drop the key. Every other value — a
+    // bare `${context.x}` whole-string, a literal, an array, a populated object (§6.1) — is a real input
+    // and is kept.
+    const isEmptyObject =
+      parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
+    const isEmpty = text.trim() === "" || isEmptyObject;
+    commit(isEmpty ? dropKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode), `input:${node.id}`);
   };
 
   return (
@@ -1037,7 +1043,7 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: Work
       <span className="pane-section-title">input</span>
       <div className="pane-field">
         <label className="pane-label" htmlFor={`input-${node.id}`}>
-          input object (JSON, ${"{…}"} interpolable)
+          input (any JSON value, ${"{…}"} interpolable)
         </label>
         <textarea
           id={`input-${node.id}`}
