@@ -16,7 +16,7 @@ config either. Nothing existing exercises `$env`. A real token-authenticated thi
 need provisioning and an account, and belongs to the register's API-endpoint step type. So this map
 brings its own proof, with **no network and no account**.
 
-Existing examples stay as they are. To rewrite release-notes to source anything via `$env` is parked in
+Existing examples stay as they are. To rewrite release-notes to source anything through `$env` is parked in
 map #113's Not-yet-specified.
 
 ## The workflow
