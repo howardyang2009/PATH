@@ -91,7 +91,7 @@ describe("#370 the typed condition builder", () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "loop");
     expect(within(pane).getByRole("group", { name: "condition" })).toBeInTheDocument();
-    expect(within(pane).getByLabelText("Max iterations")).toHaveValue(3);
+    expect(within(pane).getByLabelText("max iterations")).toHaveValue(3);
 
     selectNode(canvas, "arm1");
     expect(within(pane).getByRole("note")).toHaveTextContent("branch arm (1 of 1)");
@@ -123,7 +123,7 @@ describe("#370 input wiring", () => {
   it("live-checks the input object and rejects an unclosed placeholder", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
-    const input = within(pane).getByLabelText(/Input object/) as HTMLTextAreaElement;
+    const input = within(pane).getByLabelText(/input object/) as HTMLTextAreaElement;
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a" }' } });
     expect(within(pane).getByRole("alert")).toHaveTextContent(/unclosed placeholder/);

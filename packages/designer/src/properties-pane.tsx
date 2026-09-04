@@ -75,9 +75,9 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
       <p className="pane-explain">The workflow file — its identity and the body authored on the canvas.</p>
       <hr className="pane-divider" />
       {/* A keystroke run in one field folds to one undo entry (#389); a per-field key breaks the run. */}
-      <TextField label="Name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
+      <TextField label="name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
       <IdRow id={file.id} onReKey={() => applyEdit({ ...file, id: crypto.randomUUID() })} what="the workflow" />
-      <ReadOnlyRow label="Format" value={file.format} />
+      <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
     </div>
@@ -122,7 +122,7 @@ function NodeProperties({
       ) : null}
       <p className="pane-explain">{kindExplanation(node.type)}</p>
       <hr className="pane-divider" />
-      <TextField label="Name" value={node.name} onChange={(name) => commit({ ...node, name }, `name:${node.id}`)} />
+      <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, `name:${node.id}`)} />
       <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
       {site?.where === "arm" ? (
         <ConditionField
@@ -221,7 +221,7 @@ function KindFields({
     case "parallel":
       return (
         <SelectField
-          label="Join"
+          label="join"
           value={node.join}
           options={["collect", "wait-one", "do-not-wait"]}
           onChange={(join) => commit({ ...node, join: join as typeof node.join })}
@@ -238,7 +238,7 @@ function KindFields({
             onChange={(condition) => commit({ ...node, condition })}
           />
           <NumberField
-            label="Max iterations"
+            label="max iterations"
             value={typeof node.max_iterations === "number" ? node.max_iterations : null}
             onChange={(n) => commit({ ...node, max_iterations: n ?? 1 }, `max_iterations:${node.id}`)}
           />
@@ -268,8 +268,8 @@ function PromptEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   const prompt = typeof (rec(node)).prompt === "string" ? ((rec(node)).prompt as string) : "";
   return (
     <>
-      <TextField label="Model" value={configString(node, "model")} onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)} />
-      <TextAreaField label="Prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
+      <TextField label="model" value={configString(node, "model")} onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)} />
+      <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
       <WorkerSelect node={node} plugins={plugins} commit={commit} />
     </>
   );
@@ -283,9 +283,9 @@ function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String) : [];
   return (
     <>
-      <TextField label="Command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
-      <StringListField label="Args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
-      <TextField label="Cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
+      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
+      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
+      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
       <WorkerSelect node={node} plugins={plugins} commit={commit} />
     </>
   );
@@ -308,7 +308,7 @@ function WorkflowRefEditor({
   if (ref === "" && onAddRefTarget) {
     return (
       <div className="pane-field ref-target-field">
-        <span className="pane-label">Referenced file</span>
+        <span className="pane-label">referenced file</span>
         <p className="pane-hint">This reference has no target yet.</p>
         <button type="button" className="ref-choose-target" onClick={() => onAddRefTarget(node.id)}>
           Choose a reference target…
@@ -316,7 +316,7 @@ function WorkflowRefEditor({
       </div>
     );
   }
-  return <TextField label="Referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
+  return <TextField label="referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
 }
 
 /**
@@ -370,7 +370,8 @@ function GenericField({
   value: unknown;
   onChange: (value: unknown) => void;
 }): JSX.Element {
-  const label = titleCase(name);
+  // The field label is the payload key verbatim (small first character, matching the JSON key).
+  const label = name;
   if (spec.type === "boolean") {
     return <CheckboxField label={label} value={value === true} onChange={onChange} />;
   }
@@ -421,7 +422,7 @@ function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   return (
     <div className="pane-field">
       <label className="pane-label" htmlFor="raw-json">
-        Payload (JSON)
+        payload (JSON)
       </label>
       <textarea
         id="raw-json"
@@ -453,7 +454,7 @@ function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element |
   };
   return (
     <SelectField
-      label="Worker"
+      label="worker"
       value={current}
       options={plugin.workers}
       optionLabel={(w) => (w === plugin.default_worker ? `${w} (default)` : w)}
@@ -551,7 +552,7 @@ function ConfigEditor({
   };
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Config</span>
+      <span className="pane-section-title">config</span>
       {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list.
@@ -839,10 +840,10 @@ function InputEditor({ file, node, commit }: { file: WorkflowFile; node: Workflo
 
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Input</span>
+      <span className="pane-section-title">input</span>
       <div className="pane-field">
         <label className="pane-label" htmlFor={`input-${node.id}`}>
-          Input object (JSON, ${"{…}"} interpolable)
+          input object (JSON, ${"{…}"} interpolable)
         </label>
         <textarea
           id={`input-${node.id}`}
@@ -909,7 +910,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
 
   return (
     <div className="pane-section">
-      <span className="pane-section-title">Context writes</span>
+      <span className="pane-section-title">context writes</span>
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
         <div className="pane-publish-grid">
@@ -922,7 +923,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
         + add publish
       </button>
       <SelectField
-        label="Parse"
+        label="parse"
         value={parse === "" ? "(none)" : parse}
         options={["(none)", "text", "json"]}
         onChange={(v) => commit(v === "(none)" ? dropKey(node, "parse") : (setField(node, "parse", v)))}
@@ -966,7 +967,7 @@ function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: s
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="pane-field pane-field-row">
-      <span className="pane-label">Id</span>
+      <span className="pane-label">id</span>
       <div className="pane-id-row">
         <code className="pane-id">{id}</code>
         {confirming ? (
@@ -1046,7 +1047,10 @@ function CheckboxField({ label, value, onChange }: { label: string; value: boole
 function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
   return (
     <label className="pane-field pane-field-row pane-field-multiline">
-      <span className="pane-label">{label} (one per line)</span>
+      <span className="pane-label">
+        {label}
+        <span className="pane-label-note">(one per line)</span>
+      </span>
       <textarea
         className="pane-input"
         rows={3}
@@ -1177,7 +1181,3 @@ function validateNode(node: WorkflowNode, plugins: WireStepPlugin[]): string | n
   return result.success ? null : result.errors.join("\n");
 }
 
-/** Title-case a field name for its label: `endpoint` → `Endpoint`, `api-key` → `Api-key`. */
-function titleCase(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
-}

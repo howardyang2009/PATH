@@ -511,8 +511,9 @@ body {
   flex-direction: column;
   gap: 10px;
   /* The shared label column for property rows (`.pane-field-row`), so every row's value starts in the
-     same place down the pane. Sized to the widest label the pane shows (`Args (one per line)`). */
-  --pane-label-w: 106px;
+     same place down the pane. Sized to the widest single-line label the pane shows (`max iterations`,
+     `referenced file`); the `(one per line)` note drops to its own line, so it no longer sets the width. */
+  --pane-label-w: 72px;
 }
 
 .pane-idle,
@@ -590,6 +591,13 @@ body {
   font-size: var(--fs-xs);
   font-weight: 600;
   color: var(--text-muted);
+}
+
+/* A secondary line under a field label (e.g. Args' "(one per line)"): its own line, lighter weight. */
+.pane-label-note {
+  display: block;
+  font-weight: 400;
+  opacity: 0.8;
 }
 
 .pane-input {
