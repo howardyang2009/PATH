@@ -131,7 +131,7 @@ scope. To observe a number is none of the three.
 ## 6. Reproducing the verification
 
 One authenticated call per endpoint, with a check of status and rate-limit headers. The credential is
-passed to `curl` on **stdin** via `--config -`, so it never enters argv:
+passed to `curl` on **stdin** with `--config -`, so it never enters argv:
 
 ```sh
 printf 'header = "Authorization: Bearer %s"\nheader = "Accept: application/vnd.github+json"\nurl = "%s"\nsilent\ndump-header = "hdr.txt"\noutput = "body.json"\nwrite-out = "status=%%{http_code}\\n"\n' \

@@ -67,7 +67,7 @@ at path `["type"]`. This is the "unknown `type` rejected before any step runs" p
 every valid key in the message*. An absent `type` (value `undefined`) takes the same path.
 `optionsMap.get(undefined)` misses, and gives the same message.
 
-**Recursion through the union, via `z.lazy`.** `NodeArraySchema` and `SingleNodeSchema` (lines 60-61) are
+**Recursion through the union, with `z.lazy`.** `NodeArraySchema` and `SingleNodeSchema` (lines 60-61) are
 `z.lazy(() => ...)` wrappers. Each closes over the module-level `NodeSchema` const. Members reference them:
 `ParallelNodeSchema.branches` (line 74), `BranchArmSchema.node` (line 83), `WhileDoNodeSchema.node` (line
 104), and `SequenceNodeSchema.body` (line 116). So a node can contain nodes. Note one detail: the lazy

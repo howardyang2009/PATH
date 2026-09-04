@@ -317,7 +317,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
 
 - **Root workflow (file)** — a discovered `*.workflow.json` that no *other* discovered workflow refs as
   a nested `workflow` step. The distinction is **referential**. It is not about validity or
-  launchability. A **nested-ref file** (one reachable from another via `ref`) is an equally complete,
+  launchability. A **nested-ref file** (one reachable from another through `ref`) is an equally complete,
   schema-valid workflow. It is launchable on its own with the right input and config
   (workflow-as-step). "Root" here names a file's position in the discovered ref graph. It is distinct
   from a **root run** (an execution's top run) and from the implicit **root step**. Workflow discovery

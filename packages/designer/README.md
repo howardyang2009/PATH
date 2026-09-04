@@ -37,10 +37,10 @@ persistence — double-click to open) that settled the constrained-canvas intera
 [#255](https://github.com/howardyang2009/PATH/issues/255). It carries three switchable variants —
 drill-down, inline-Scratch, and the chosen **hybrid** — over one sample workflow, and answers the
 ticket's open questions (parallel join modes, where conditions live, mandatory while-do max-iterations,
-inline checkpoints, spatial sequence order, depth-3+ readability, the add-node gesture). Its validated
-decisions are folded into the spec above; the file is kept as the **primary source** behind them.
+inline checkpoints, spatial sequence order, depth-3+ readability, the add-node gesture). The spec above
+folds in its validated decisions; the file stays the **primary source** behind them.
 
-The **fully-iterated prototype is on `main`** — this in-tree file — merged via
+The **fully-iterated prototype is on `main`** — this in-tree file — merged through
 [#305](https://github.com/howardyang2009/PATH/pull/305). Its development branch
 [`proto/designer-canvas-255`](https://github.com/howardyang2009/PATH/tree/proto/designer-canvas-255)
-is kept as the primary-source history (and as the target of the spec's blob links); it is not deleted.
+stays as the primary-source history (and as the target of the spec's blob links); it is not deleted.

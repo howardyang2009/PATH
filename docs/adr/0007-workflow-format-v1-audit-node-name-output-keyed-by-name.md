@@ -22,7 +22,7 @@ materialization, the ones a reader of the format or the audit tables would other
 
 - **Block output is keyed by `name`, not the GUID.** `collect` outputs `{branch-name: output}`.
   `wait-one`'s output field is renamed from `id` to `name`: `{ winner: { name, output } }`. The
-  `join-applied` event narrates branch names. A step that reads `output.winner.id` via interpolation now
+  `join-applied` event narrates branch names. A step that reads `output.winner.id` through interpolation now
   reads `.name`. `name` keeps the whole-file uniqueness rule that node ids had, so these keys never
   collide.
 

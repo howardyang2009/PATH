@@ -333,7 +333,7 @@ mechanism, not a bespoke one. Each frame carries `id: <seq>`. A client's `EventS
 
 Historical replay reads from the **NDJSON backend** (`run.log`, already ordered by `seq`), not the db
 table. This avoids the read-back query that #30 flagged as a gap. **Known v0 limitation:** if a client
-disabled the `ndjson` log backend for that run (via `POST /v0/runs`'s `log_backends`), replay is
+disabled the `ndjson` log backend for that run (through `POST /v0/runs`'s `log_backends`), replay is
 unavailable. The stream only carries events from connect time onward.
 
 `404 Not Found` if `root_run_id` is unknown. The stream closes (the client sees end-of-stream) when the
@@ -362,7 +362,7 @@ schema-guaranteed relative paths (valid-root-detection.md §3).
 
 **Every discovered file is listed** — nested refs included, not deduped away. A nested-ref target is
 itself a complete, schema-valid workflow (workflow-as-step, CONTEXT.md). It is independently launchable
-via §2 with operator-supplied `input` and `config`. `is_root` is a presentation/dedupe hint, **not** a
+through §2 with operator-supplied `input` and `config`. `is_root` is a presentation/dedupe hint, **not** a
 launchability gate. This reverses the "valid-roots-only" scoping first charted in #228. See
 [ADR 0011](../adr/0011-discovery-lists-all-workflows-roots-flagged.md).
 
@@ -594,7 +594,7 @@ Response `200 OK`:
   start by ADR 0018's pure factory over the plugin folders, and this route serves that snapshot. It does
   not track a client's copy, and it stamps no version or ETag. Currency is re-checked at **write**, not
   here: `PUT /v0/workflows` (§7) re-validates every save against the live registry. A client that opens a
-  file naming a type absent from its snapshot refreshes via this route and retries
+  file naming a type absent from its snapshot refreshes through this route and retries
   ([ADR 0026](../adr/0026-designer-refuses-to-open-a-file-with-an-unregistered-step-type.md)).
 - **A running server always has a coherent registry.** A broken plugin folder — no `index.ts`, a
   throwing import, or a malformed export — is a hard load failure at engine init

@@ -93,7 +93,7 @@ export interface INodeTypeDescription extends INodeTypeBaseDescription {
 Each entry (`interfaces.ts:2043`) is `INodeProperties`. It carries `displayName`, `name`, `type`
 (`NodePropertyTypes`), `default` (required), `options?`, `required?`, `displayOptions?` (conditional
 visibility on other fields), `typeOptions?`, and `validateType?` (a `FieldType` used for "validation and
-type casting"). The base fields (`name`, `displayName`, `group`, `description`, and `version` via
+type casting"). The base fields (`name`, `displayName`, `group`, `description`, and `version` through
 `defaultVersion`) live in `INodeTypeBaseDescription` (`interfaces.ts:2687`). Note two things. First, this
 single array **is both the UI form and the validation contract**. It drives the node editor and it casts
 values. Second, validation is mostly a **runtime cast** (`validateType`). It is not a load-time schema
@@ -157,7 +157,7 @@ const { greet } = proxyActivities<typeof activities>({ startToCloseTimeout: '30 
 The type safety (`typeof activities`) is compile-time only. At runtime, the name is the only binding.
 
 **Config schema declaration + validation.** There is **no config schema**. Activity arguments are plain
-serialized values (JSON, via the default data converter). Their only "schema" is the TypeScript
+serialized values (JSON, through the default data converter). Their only "schema" is the TypeScript
 signature, and the runtime erases the signature. What travels with the call is `ActivityOptions`
 (`startToCloseTimeout`, retry policy) on `proxyActivities`. That is execution policy, not a config
 contract. The activity writes any input validation itself.

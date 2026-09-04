@@ -21,7 +21,7 @@ and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the s
 
 ## Getting started
 
-Node 24 or later is required (`engines.node` is `>=24`).
+You need Node 24 or later (`engines.node` is `>=24`).
 
 ```bash
 pnpm install
@@ -124,7 +124,7 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   format is `path/workflow@3` (codemod `scripts/migrate-workflow-format-v3.ts`), and the per-Processor
   concurrency cap is renamed from `llm` to `processor` (#331). A `prompt` step now fails on an Agent SDK
   `is_error` result instead of passing the error text downstream as output (#349). This release breaks
-  both the format (`@2` → `@3`) and the DB (`SCHEMA_VERSION` 7, clean-slate).
+  both the format (`@2` to `@3`) and the DB (`SCHEMA_VERSION` 7, clean-slate).
 
 ### What's next
 

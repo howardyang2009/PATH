@@ -42,7 +42,7 @@ below rests on them. They are recorded, not re-argued; each names its ADR where 
   can never express a structure the block grammar cannot; a workflow body is an ordered tree of
   [`path/workflow@2`](../../CONTEXT.md) nodes, never an arbitrary DAG. Extending the format to a real DAG
   is rejected ([ADR 0029](../adr/0029-designer-canvas-is-the-block-grammar-no-arbitrary-dag.md)).
-- **Authored workflows are saved through the server**, via `PUT /v0/workflows`
+- **Authored workflows are saved through the server**, with `PUT /v0/workflows`
   ([server-api-v0.md §7](../api/server-api-v0.md#7-put-v0workflows--write-a-workflow-file),
   [ADR 0016](../adr/0016-workflow-write-route-client-named-put-upsert-precondition-gated.md)) — not
   browser-download-and-drop-it-in-yourself. The write reuses `prepareWorkflow`'s resolve/confine/symlink
@@ -424,7 +424,7 @@ Request: `{ "workflow_path": "lib/draft.workflow.json", "session_id": "<uuidv4>"
 
 | Condition | Response |
 |---|---|
-| No marker, or on-disk marker expired (`now > expires_at`) | `200` + lease JSON. Fresh grant via exclusive create (`wx`); reclaim overwrites. |
+| No marker, or on-disk marker expired (`now > expires_at`) | `200` + lease JSON. Fresh grant through exclusive create (`wx`); reclaim overwrites. |
 | Live marker held by a **different** `session_id` | `409` + body `{ "held_by_other": true, "expires_at": "…" }` — the UI shows the countdown and offers takeover. |
 | `takeover: true` | Overwrites the live marker unconditionally, giving `200` + lease JSON. The UI gates this behind an explicit user confirmation. |
 | Path escapes project root | `404` |
@@ -443,7 +443,7 @@ Request: `{ "workflow_path": "…", "session_id": "<uuidv4>" }`
 Request: `{ "workflow_path": "…", "session_id": "<uuidv4>" }`
 
 Always `200`, idempotent (already-gone is success). It deletes the marker **only** when `session_id`
-matches, so a stale beacon cannot free another session's lease. It is fired from `beforeunload` via
+matches, so a stale beacon cannot free another session's lease. `beforeunload` fires it through
 `sendBeacon`. If it never lands, the TTL reaps the lease.
 
 ### Takeover and the evicted session
@@ -571,7 +571,7 @@ The Designer canvas **is** a node view, so the run relates to it spatially in tw
 - **Inspector pane.** A projection cannot be the whole surface, because **one node produces many
   runs** — a `while-do` iterates, a `parallel` fans out, a resume writes a **reuse row**, and a
   `workflow`-ref spawns a child run tree. A canvas node cannot show iteration 3 versus iteration 4. So a
-  **run-inspector pane** holds the run tree (via `buildRunTree`) and, for a selected run, its node
+  **run-inspector pane** holds the run tree (through `buildRunTree`) and, for a selected run, its node
   input/output/context (surface 7). This answers *which of this node's runs, and what did that one do*.
 
 What is fixed here: **that** run status projects onto canvas nodes, and **that** an inspector pane

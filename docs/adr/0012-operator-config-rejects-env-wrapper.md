@@ -33,11 +33,11 @@ masks every secret value out of persisted artifacts at the observation seam (CON
   #228). So `$env` on the override path would hand a browser user an env-read power they do not otherwise
   have. The spec itself pre-committed to re-open this argument "if that boundary ever moves." The browser
   launch surface is that move.
-- **Reject `$env` via a dedicated `OperatorConfigSchema`** (a `ConfigObjectSchema` variant with the
+- **Reject `$env` with a dedicated `OperatorConfigSchema`** (a `ConfigObjectSchema` variant with the
   `EnvWrapper` branch removed). Rejected: it re-encodes the recursive `ConfigValue` shape minus one
   branch and drifts from `ConfigObjectSchema`. `secret.ts` already argues against two walks that spell
   one predicate twice.
-- **Reject `$env` via a post-parse `mapEnv` walk (chosen).** `POST /v0/runs` keeps a validation of
+- **Reject `$env` with a post-parse `mapEnv` walk (chosen).** `POST /v0/runs` keeps a validation of
   `config` with the shared `ConfigObjectSchema`, then walks the parsed operator config with the existing
   `mapEnv` (`packages/schema/src/env.ts`). Any `$env` found gives a `400` that names its dot-path
   (`operator config may not source from the server environment: $env at "creds.token"`). One walk, one

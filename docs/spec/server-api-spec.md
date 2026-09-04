@@ -27,7 +27,7 @@ every section back to its originating decision.
 - No auth and no multi-project routing. v0 keeps the same trust boundary and execution guarantees that
   `@path/engine`'s CLI already has. It only makes them reachable over HTTP.
 
-**Out of scope** (the map ruled these out; they return only via a redrawn destination):
+**Out of scope** (the map ruled these out; they return only through a redrawn destination):
 
 - Web monitor UI, Flutter multi-platform runner, and visual workflow design UI. Each is its own future
   map, blocked on this spec existing first.
@@ -122,7 +122,7 @@ point at paths under the server's own project root, which a co-located client re
 
 Recommended, pending human sign-off. This spec is done when the existing
 [release-notes acceptance pipeline](../acceptance-workflow/NOTES.md) can instead be driven entirely
-through `@path/server`. That is the same workload mvp spec §11 already runs end-to-end via `path run`:
+through `@path/server`. That is the same workload mvp spec §11 already runs end-to-end through `path run`:
 
 1. `POST /v0/runs` with the release-notes workflow starts the pipeline and returns a `root_run_id`.
 2. `GET /v0/runs/:root_run_id/events` streams the full run narrative live. It matches what `run.log`

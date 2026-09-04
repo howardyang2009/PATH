@@ -31,7 +31,7 @@ wins. §12 maps every section back to its originating decision.
   backends, and secret masking at the persistence boundary.
 - Acceptance: the [release-notes pipeline](../acceptance-workflow/NOTES.md) runs end-to-end (§11).
 
-**Out of scope** (the map ruled these out; they return only via a redrawn destination):
+**Out of scope** (the map ruled these out; they return only through a redrawn destination):
 
 - Online design UI; the PATH website/cloud (remote db, storage, and log tables).
 - Remote engine workers; human/person workers.
@@ -86,7 +86,7 @@ are the invariants that implementers must not break:
     imports this same package.
   - **`@path/engine`** — the headless engine plus CLI. It depends on `@path/schema`.
 - **Tooling:** vitest for tests, tsx for dev execution.
-- **Distribution (MVP):** dev-mode CLI only. Run it via pnpm/tsx, or built JS plus node. There is no
+- **Distribution (MVP):** dev-mode CLI only. Run it through pnpm/tsx, or built JS plus node. There is no
   npm publish, no single-binary packaging, and no signing or notarization.
 - **Multi-platform stance:** door-open only. Windows, Linux, and cloud come free with Node. A future
   mobile/Flutter client talks to an engine over IPC/HTTP. The MVP never bets on sharing engine code
@@ -95,7 +95,7 @@ are the invariants that implementers must not break:
 ### CLI surface (minimum decided commands)
 
 - `path run <workflow.json>` — validate the whole file tree, then execute a root run. The operator
-  supplies launch-time config values via CLI flags and/or a config file. They override the top-level
+  supplies launch-time config values through CLI flags and/or a config file. They override the top-level
   file's config defaults per format §8 (shallow merge, nearest wins).
 - `path run <workflow.json> --resume <root-run-id>` — re-run a stopped tree as a **successor** run
   (§5.6). Reuse every node whose recorded run is `succeeded`. Re-run every node that is not. A resumed
@@ -355,7 +355,7 @@ failure that this section's "exactly once" rule exists to prevent
 **Hybrid: SQLite for structured records, plain files for blobs, all under a per-project `.path/`
 directory** beside the workflow files (like `.git`), gitignored by default.
 
-- **`.path/path.db`** — SQLite via **better-sqlite3** (the synchronous API fits the single-process
+- **`.path/path.db`** — SQLite through **better-sqlite3** (the synchronous API fits the single-process
   engine). It holds structured records only: the **runs table** (§5.7) and the **log table** (§8).
 - **`.path/settings.json`** — the **engine-settings file** (§9): a flat JSON object that carries the two
   engine-level operator settings, `log.backends` (§8.2) and `processor.concurrency` (§5.5). The engine reads
@@ -379,7 +379,7 @@ directory** beside the workflow files (like `.git`), gitignored by default.
 - **Retention: keep everything.** There is no automatic expiry. `path runs rm <root-run-id>` and
   `prune` operate on root runs. They delete the run tree's db rows and its directory tree together, so
   the two stores never drift and nothing can half-delete.
-- **Schema evolution:** stamp the db schema version via `PRAGMA user_version`. On mismatch, the engine
+- **Schema evolution:** stamp the db schema version with `PRAGMA user_version`. On mismatch, the engine
   **refuses to open**, with a clear message to delete and recreate `path.db` (blob files unaffected).
   There is no migration framework pre-1.0. This mirrors the format's exact-version rule: pre-1.0,
   nothing migrates, and everything fails loudly.
@@ -547,7 +547,7 @@ Decided-by-omission. Implementers may choose freely, provided the semantics abov
 | Deferred | Where the door is |
 |---|---|
 | ~~`wait-one` / `do-not-wait` joins~~ | **Both shipped** — the `join` field now carries all three values. `wait-one` ([wait-one-join.md](wait-one-join.md)) and `do-not-wait` ([do-not-wait-join.md](do-not-wait-join.md), §5.2/§5.4/§5.6/§5.7 above) each graduated from a held-open door to built behavior (register #109) |
-| API-endpoint step type | curl via `binary` today; a real HTTP workflow (#129) did **not** promote it — `--config -` answers argv and needs no shell; the open cost is status-and-body. Trigger in #109 |
+| API-endpoint step type | curl through `binary` today; a real HTTP workflow (#129) did **not** promote it — `--config -` answers argv and needs no shell; the open cost is status-and-body. Trigger in #109 |
 | MCP/skill step types | live as LLM-worker `options`; revisit only for engine-direct calls |
 | Function-in-binary step | v-next shape: in-process JS-module call, not FFI |
 | `config` as a condition root | additive third root |
@@ -564,7 +564,7 @@ Decided-by-omission. Implementers may choose freely, provided the semantics abov
 
 The MVP is done when the [release-notes pipeline](../acceptance-workflow/NOTES.md)
 (`docs/acceptance-workflow/release-notes.workflow.json` plus `revise-cycle.workflow.json`) runs
-end-to-end on macOS via `path run`, with no dependencies beyond git, a shell, and the Agent SDK worker,
+end-to-end on macOS through `path run`, with no dependencies beyond git, a shell, and the Agent SDK worker,
 and it:
 
 1. produces `RELEASE_NOTES.md` for a real commit range;
