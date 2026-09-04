@@ -1,0 +1,462 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="luxury">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PATH — repo explainer</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/daisyui.css">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/daisyui@5.5.19/themes.css">
+<script src="https://cdn.jsdelivr.net/npm/@tailwindcss/browser@4.2.4/dist/index.global.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+  :where(.grid, .flex) > * { min-width: 0; }
+  :where(p, h1, h2, h3, h4, h5, h6, li, dd, blockquote, figcaption, td, th, .badge, .label) { overflow-wrap: anywhere; }
+  :where(img, svg) { max-width: 100%; height: auto; }
+  .lead-num { font-variant-numeric: tabular-nums; }
+  svg text { font-family: ui-sans-serif, system-ui, sans-serif; }
+  .mono { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  .anchor { scroll-margin-top: 5rem; }
+</style>
+</head>
+<body class="bg-base-100 text-base-content">
+
+<!-- ======== NAV ======== -->
+<div class="navbar bg-base-200/80 backdrop-blur sticky top-0 z-30 border-b border-base-content/10">
+  <div class="navbar-start">
+    <span class="btn btn-ghost text-xl font-bold tracking-tight">PATH<span class="text-primary">.</span></span>
+    <span class="hidden sm:inline text-xs opacity-60 ml-1">workflow engine</span>
+  </div>
+  <div class="navbar-end hidden md:flex gap-1">
+    <a href="#what" class="btn btn-ghost btn-sm">What</a>
+    <a href="#arch" class="btn btn-ghost btn-sm">Architecture</a>
+    <a href="#model" class="btn btn-ghost btn-sm">Model</a>
+    <a href="#format" class="btn btn-ghost btn-sm">Format</a>
+    <a href="#glossary" class="btn btn-ghost btn-sm">Glossary</a>
+    <a href="#status" class="btn btn-ghost btn-sm">Status</a>
+  </div>
+</div>
+
+<main class="mx-auto max-w-6xl px-5 py-8 lg:px-8 lg:py-12">
+
+  <!-- ======== HERO ======== -->
+  <section class="mb-14">
+    <div class="badge badge-soft badge-primary mb-4">github.com/howardyang2009/PATH</div>
+    <h1 class="text-4xl lg:text-6xl font-black tracking-tight leading-[1.05]">
+      A local engine that <span class="text-primary">runs workflows</span> written as JSON.
+    </h1>
+    <p class="mt-5 text-lg opacity-80 max-w-3xl">
+      PATH runs LLM and shell pipelines end to end. You write a workflow file. The engine runs it on
+      your machine or over HTTP. You watch runs in a viewer and author files on a visual canvas in the
+      designer. Every run leaves a full audit trail on disk.
+    </p>
+    <div class="stats stats-vertical sm:stats-horizontal shadow mt-8 bg-base-200 w-full">
+      <div class="stat">
+        <div class="stat-title">Packages</div>
+        <div class="stat-value text-primary lead-num">6</div>
+        <div class="stat-desc">one pnpm monorepo</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Latest release</div>
+        <div class="stat-value lead-num">v0.5.4</div>
+        <div class="stat-desc">main carries an unreleased Designer</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Tests green</div>
+        <div class="stat-value lead-num">1536</div>
+        <div class="stat-desc">schema · engine · server · clients</div>
+      </div>
+      <div class="stat">
+        <div class="stat-title">Format</div>
+        <div class="stat-value mono text-2xl">@3</div>
+        <div class="stat-desc"><span class="mono">path/workflow@3</span></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== WHAT ======== -->
+  <section id="what" class="anchor mb-16">
+    <h2 class="text-2xl font-bold mb-2">What PATH is</h2>
+    <p class="opacity-70 mb-6 max-w-3xl">Four ideas carry the whole system. Read these first; everything below is detail.</p>
+    <div class="grid gap-4 md:grid-cols-2">
+      <div class="card card-border bg-base-200">
+        <div class="card-body">
+          <h3 class="card-title text-base"><span class="text-primary">1.</span> A workflow is a file</h3>
+          <p class="text-sm opacity-80">One JSON file. It holds <b>steps</b> (do work), <b>logicers</b> (route work), and <b>checkpoints</b> (assert). A workflow is itself a valid step type, so files nest.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-200">
+        <div class="card-body">
+          <h3 class="card-title text-base"><span class="text-primary">2.</span> A run is the only execution</h3>
+          <p class="text-sm opacity-80">There is no separate "workflow execution" concept. Every execution is a <b>run of a task</b>. A workflow-run spawns child runs. Those runs form a <b>run tree</b>.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-200">
+        <div class="card-body">
+          <h3 class="card-title text-base"><span class="text-primary">3.</span> Config in, context out</h3>
+          <p class="text-sm opacity-80"><b>Config</b> flows in from outside (author or operator). <b>Context</b> is written from inside (steps at runtime). The line never blurs.</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-200">
+        <div class="card-body">
+          <h3 class="card-title text-base"><span class="text-primary">4.</span> Everything is audited</h3>
+          <p class="text-sm opacity-80">The store <span class="mono">.path/</span> holds run rows and a log narrative in SQLite plus per-run blobs. Secrets are masked at the persistence boundary.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== ARCHITECTURE ======== -->
+  <section id="arch" class="anchor mb-16">
+    <h2 class="text-2xl font-bold mb-1">Architecture — the six packages</h2>
+    <p class="opacity-70 mb-6 max-w-3xl">
+      One domain package at the base. A local engine and its HTTP server above it. Three browser packages
+      that never touch Node. The dashed line is the only boundary that matters: the <span class="mono">v0</span> HTTP + SSE API.
+    </p>
+
+    <figure class="rounded-box border border-base-content/10 bg-base-200 p-4 lg:p-6">
+      <svg viewBox="0 0 900 470" width="100%" role="img" aria-labelledby="archTitle archDesc" style="display:block">
+        <title id="archTitle">PATH package architecture</title>
+        <desc id="archDesc">schema is the domain core; engine and server run locally; client-core, viewer and designer run in the browser and reach the server over the v0 HTTP and SSE API.</desc>
+        <defs>
+          <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill:var(--color-base-content)"></path>
+          </marker>
+          <marker id="arrowP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill:var(--color-primary)"></path>
+          </marker>
+        </defs>
+
+        <!-- zone labels -->
+        <text x="20" y="30" style="fill:var(--color-base-content);opacity:.55" font-size="13" font-weight="700">LOCAL · Node</text>
+        <text x="880" y="30" text-anchor="end" style="fill:var(--color-base-content);opacity:.55" font-size="13" font-weight="700">BROWSER · React</text>
+
+        <!-- boundary line -->
+        <line x1="470" y1="45" x2="470" y2="360" style="stroke:var(--color-primary);opacity:.5" stroke-width="2" stroke-dasharray="6 6"></line>
+        <text x="470" y="380" text-anchor="middle" style="fill:var(--color-primary)" font-size="12" font-weight="700">v0 HTTP + SSE API</text>
+
+        <!-- schema (domain core) -->
+        <g id="n-schema">
+          <title>@path/schema — the domain: workflow file format, the registry factory, and runtime wire shapes. No runtime deps.</title>
+          <rect x="300" y="395" width="300" height="58" rx="10" style="fill:var(--color-primary);opacity:.16;stroke:var(--color-primary)" stroke-width="1.5"></rect>
+          <text x="450" y="419" text-anchor="middle" style="fill:var(--color-base-content)" font-size="15" font-weight="700">@path/schema</text>
+          <text x="450" y="439" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="11">format · registry factory · wire shapes</text>
+        </g>
+
+        <!-- engine -->
+        <g id="n-engine">
+          <title>@path/engine — runs workflows locally, provides the `path` CLI, discovers step-type plugins under step-plugins/.</title>
+          <rect x="60" y="120" width="230" height="66" rx="10" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.9" stroke-width="1.5"></rect>
+          <text x="175" y="147" text-anchor="middle" style="fill:var(--color-base-content)" font-size="15" font-weight="700">@path/engine</text>
+          <text x="175" y="167" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="11">runs workflows · <tspan class="mono">path</tspan> CLI</text>
+        </g>
+
+        <!-- server -->
+        <g id="n-server">
+          <title>@path/server — an HTTP and SSE API over the engine; provides the `path-server` CLI and serves the built viewer and designer bundles.</title>
+          <rect x="60" y="240" width="230" height="66" rx="10" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.9" stroke-width="1.5"></rect>
+          <text x="175" y="267" text-anchor="middle" style="fill:var(--color-base-content)" font-size="15" font-weight="700">@path/server</text>
+          <text x="175" y="287" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="11">HTTP + SSE · <tspan class="mono">path-server</tspan></text>
+        </g>
+
+        <!-- store -->
+        <g id="n-store">
+          <title>The store: .path/ holds path.db (run rows and log events) plus per-run blobs.</title>
+          <rect x="60" y="345" width="150" height="30" rx="6" style="fill:var(--color-base-300);stroke:var(--color-base-content);opacity:.5" stroke-width="1"></rect>
+          <text x="135" y="365" text-anchor="middle" style="fill:var(--color-base-content);opacity:.85" font-size="12" font-weight="600" class="mono">.path/ store</text>
+        </g>
+
+        <!-- client-core -->
+        <g id="n-core">
+          <title>@path/client-core — a pure-TypeScript API client: SSE client, run view-model, and a run/workflow write surface. No framework, no Node.</title>
+          <rect x="610" y="240" width="230" height="66" rx="10" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.9" stroke-width="1.5"></rect>
+          <text x="725" y="267" text-anchor="middle" style="fill:var(--color-base-content)" font-size="15" font-weight="700">@path/client-core</text>
+          <text x="725" y="287" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="11">pure-TS client · SSE · write surface</text>
+        </g>
+
+        <!-- viewer -->
+        <g id="n-viewer">
+          <title>@path/viewer — a React console that watches runs live: status, run tree, per-node input and output.</title>
+          <rect x="610" y="110" width="108" height="66" rx="10" style="fill:var(--color-info);opacity:.16;stroke:var(--color-info)" stroke-width="1.5"></rect>
+          <text x="664" y="137" text-anchor="middle" style="fill:var(--color-base-content)" font-size="13" font-weight="700">viewer</text>
+          <text x="664" y="156" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="10">watch runs</text>
+        </g>
+
+        <!-- designer -->
+        <g id="n-designer">
+          <title>@path/designer — a React authoring console; edits workflow files on a live canvas and reuses the viewer's run panels.</title>
+          <rect x="732" y="110" width="108" height="66" rx="10" style="fill:var(--color-accent);opacity:.16;stroke:var(--color-accent)" stroke-width="1.5"></rect>
+          <text x="786" y="137" text-anchor="middle" style="fill:var(--color-base-content)" font-size="13" font-weight="700">designer</text>
+          <text x="786" y="156" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="10">author files</text>
+        </g>
+
+        <!-- edges: imports (to schema) -->
+        <path d="M175 186 L175 260 M175 306 L175 340" fill="none" style="stroke:var(--color-base-content);opacity:.45" stroke-width="1.5"></path>
+        <path d="M290 165 C 360 165, 360 405, 360 405" fill="none" style="stroke:var(--color-base-content);opacity:.45" stroke-width="1.5" marker-end="url(#arrow)"></path>
+        <path d="M290 285 C 340 285, 340 415, 355 418" fill="none" style="stroke:var(--color-base-content);opacity:.3" stroke-width="1.5" marker-end="url(#arrow)"></path>
+        <text x="300" y="360" style="fill:var(--color-base-content);opacity:.5" font-size="10">imports</text>
+
+        <!-- engine -> store -->
+        <path d="M135 306 L135 343" fill="none" style="stroke:var(--color-base-content);opacity:.4" stroke-width="1.5" marker-end="url(#arrow)"></path>
+
+        <!-- server -> engine (over) -->
+        <path d="M175 240 L175 188" fill="none" style="stroke:var(--color-base-content);opacity:.55" stroke-width="1.5" marker-end="url(#arrow)"></path>
+
+        <!-- client-core -> server across boundary -->
+        <path d="M610 273 L292 273" fill="none" style="stroke:var(--color-primary)" stroke-width="2" marker-end="url(#arrowP)"></path>
+
+        <!-- viewer/designer -> client-core -->
+        <path d="M664 176 L690 236" fill="none" style="stroke:var(--color-base-content);opacity:.55" stroke-width="1.5" marker-end="url(#arrow)"></path>
+        <path d="M786 176 L760 236" fill="none" style="stroke:var(--color-base-content);opacity:.55" stroke-width="1.5" marker-end="url(#arrow)"></path>
+        <!-- designer -> viewer (reuses run panels) -->
+        <path d="M732 143 L720 143" fill="none" style="stroke:var(--color-accent);opacity:.8" stroke-width="1.5" marker-end="url(#arrow)"></path>
+        <text x="726" y="100" text-anchor="middle" style="fill:var(--color-accent);opacity:.85" font-size="10">reuses run panels</text>
+
+        <!-- server serves bundles hint -->
+        <path d="M292 250 C 470 205, 470 205, 606 150" fill="none" style="stroke:var(--color-base-content);opacity:.2" stroke-width="1.2" stroke-dasharray="3 4"></path>
+        <text x="470" y="230" text-anchor="middle" style="fill:var(--color-base-content);opacity:.4" font-size="10">serves built bundles</text>
+      </svg>
+      <figcaption class="text-xs opacity-60 mt-3 text-center">
+        Arrows point from a package to what it depends on. The gold edge is the process boundary: browser code
+        reaches the engine only through the server's <span class="mono">v0</span> API.
+      </figcaption>
+    </figure>
+  </section>
+
+  <!-- ======== PACKAGE TABLE ======== -->
+  <section class="mb-16">
+    <h3 class="text-lg font-semibold mb-3 opacity-80">The packages in one line each</h3>
+    <div class="overflow-x-auto rounded-box border border-base-content/10 bg-base-100">
+      <table class="table table-zebra">
+        <thead>
+          <tr><th>Package</th><th>Runtime</th><th>What it is</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="mono font-semibold text-primary">@path/schema</td><td><span class="badge badge-sm badge-ghost">domain</span></td><td>The workflow file format (<span class="mono">path/workflow@3</span>) and the registry factory that opens its node union to plugin step types. No runtime deps.</td></tr>
+          <tr><td class="mono font-semibold">@path/engine</td><td><span class="badge badge-sm badge-ghost">Node</span></td><td>Runs workflows locally. Provides the <span class="mono">path</span> CLI. Discovers leaf step types as plugins under <span class="mono">step-plugins/</span>.</td></tr>
+          <tr><td class="mono font-semibold">@path/server</td><td><span class="badge badge-sm badge-ghost">Node</span></td><td>An HTTP and SSE API over the engine. Provides the <span class="mono">path-server</span> CLI and serves the built browser bundles.</td></tr>
+          <tr><td class="mono font-semibold">@path/client-core</td><td><span class="badge badge-sm badge-ghost">pure TS</span></td><td>An SSE client, a run view-model, and a run/workflow write surface. Needs no framework and no Node.</td></tr>
+          <tr><td class="mono font-semibold text-info">@path/viewer</td><td><span class="badge badge-sm badge-ghost">React</span></td><td>A read-only console over <span class="mono">client-core</span>. Monitors runs live; launches and resumes them.</td></tr>
+          <tr><td class="mono font-semibold text-accent">@path/designer</td><td><span class="badge badge-sm badge-ghost">React</span></td><td>An authoring console over <span class="mono">client-core</span>. Opens, edits, and saves workflow files on a live canvas. A peer of the viewer.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ======== EXECUTION MODEL ======== -->
+  <section id="model" class="anchor mb-16">
+    <h2 class="text-2xl font-bold mb-1">The execution model</h2>
+    <p class="opacity-70 mb-6 max-w-3xl">
+      One equation and one recursion explain how PATH runs anything. A step says <i>what</i>. A worker says
+      <i>how</i>. Bind them and you get a task. Execute a task and you get a run. Because a workflow is a step
+      type, a run spawns more runs.
+    </p>
+
+    <figure class="rounded-box border border-base-content/10 bg-base-200 p-4 lg:p-6 mb-4">
+      <svg viewBox="0 0 900 250" width="100%" role="img" aria-labelledby="taskTitle" style="display:block">
+        <title id="taskTitle">Step plus Worker equals Task; a Task executed is a Run on a Processor</title>
+        <!-- step -->
+        <g><title>Step — the unit of work. One input object, one output object. It declares WHAT to do, not who does it.</title>
+          <rect x="30" y="80" width="150" height="70" rx="12" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.9" stroke-width="1.5"></rect>
+          <text x="105" y="108" text-anchor="middle" style="fill:var(--color-base-content)" font-size="16" font-weight="700">Step</text>
+          <text x="105" y="130" text-anchor="middle" style="fill:var(--color-base-content);opacity:.65" font-size="12">the "what"</text>
+        </g>
+        <text x="205" y="122" text-anchor="middle" style="fill:var(--color-primary)" font-size="30" font-weight="700">+</text>
+        <!-- worker -->
+        <g><title>Worker — a named run method the step's type ships. A worker is author-trusted, in-process TypeScript. It says HOW.</title>
+          <rect x="235" y="80" width="150" height="70" rx="12" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.9" stroke-width="1.5"></rect>
+          <text x="310" y="108" text-anchor="middle" style="fill:var(--color-base-content)" font-size="16" font-weight="700">Worker</text>
+          <text x="310" y="130" text-anchor="middle" style="fill:var(--color-base-content);opacity:.65" font-size="12">the "how"</text>
+        </g>
+        <text x="410" y="122" text-anchor="middle" style="fill:var(--color-primary)" font-size="26" font-weight="700">=</text>
+        <!-- task -->
+        <g><title>Task — a step bound to a worker. task = step + worker.</title>
+          <rect x="440" y="80" width="150" height="70" rx="12" style="fill:var(--color-primary);opacity:.18;stroke:var(--color-primary)" stroke-width="1.5"></rect>
+          <text x="515" y="108" text-anchor="middle" style="fill:var(--color-base-content)" font-size="16" font-weight="700">Task</text>
+          <text x="515" y="130" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="12">bound pair</text>
+        </g>
+        <!-- arrow to run -->
+        <defs>
+          <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse">
+            <path d="M0 0 L10 5 L0 10 z" style="fill:var(--color-primary)"></path>
+          </marker>
+        </defs>
+        <path d="M590 115 L650 115" fill="none" style="stroke:var(--color-primary)" stroke-width="2" marker-end="url(#arrow2)"></path>
+        <text x="620" y="103" text-anchor="middle" style="fill:var(--color-base-content);opacity:.6" font-size="11">execute</text>
+        <!-- run -->
+        <g><title>Run — one executing (or executed) instance of a task, on a Processor (a live worker instance: a process, a thread, or an LLM chat session).</title>
+          <rect x="660" y="70" width="210" height="90" rx="12" style="fill:var(--color-success);opacity:.16;stroke:var(--color-success)" stroke-width="1.5"></rect>
+          <text x="765" y="102" text-anchor="middle" style="fill:var(--color-base-content)" font-size="16" font-weight="700">Run</text>
+          <text x="765" y="124" text-anchor="middle" style="fill:var(--color-base-content);opacity:.7" font-size="11.5">on a Processor</text>
+          <text x="765" y="142" text-anchor="middle" style="fill:var(--color-base-content);opacity:.55" font-size="10.5">process · thread · LLM session</text>
+        </g>
+        <text x="450" y="205" text-anchor="middle" style="fill:var(--color-base-content);opacity:.55" font-size="12.5">"Every execution is a run of a task. There is no separate workflow-execution concept."</text>
+      </svg>
+    </figure>
+
+    <div class="grid gap-6 lg:grid-cols-2">
+      <figure class="rounded-box border border-base-content/10 bg-base-200 p-4 lg:p-6">
+        <figcaption class="text-sm font-semibold mb-2">Workflow-as-step → a run tree</figcaption>
+        <svg viewBox="0 0 420 260" width="100%" role="img" aria-labelledby="treeTitle" style="display:block">
+          <title id="treeTitle">A root run spawns child runs, which recurse into a run tree</title>
+          <defs>
+            <marker id="tarrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+              <path d="M0 0 L10 5 L0 10 z" style="fill:var(--color-base-content);opacity:.6"></path>
+            </marker>
+          </defs>
+          <!-- edges -->
+          <path d="M210 55 L110 105 M210 55 L310 105" fill="none" style="stroke:var(--color-base-content);opacity:.4" stroke-width="1.5" marker-end="url(#tarrow)"></path>
+          <path d="M110 135 L70 185 M110 135 L150 185" fill="none" style="stroke:var(--color-base-content);opacity:.4" stroke-width="1.5" marker-end="url(#tarrow)"></path>
+          <!-- root -->
+          <g><title>Root run — the run tree's top run; the implicit root step, no parent run id.</title>
+          <rect x="150" y="25" width="120" height="34" rx="8" style="fill:var(--color-primary);opacity:.2;stroke:var(--color-primary)" stroke-width="1.5"></rect>
+          <text x="210" y="47" text-anchor="middle" style="fill:var(--color-base-content)" font-size="12.5" font-weight="700">root run</text></g>
+          <!-- children -->
+          <g><title>A nested workflow-run: the run of a workflow-step; it carries no worker and spawns its own children.</title>
+          <rect x="55" y="105" width="110" height="32" rx="8" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.85" stroke-width="1.3"></rect>
+          <text x="110" y="126" text-anchor="middle" style="fill:var(--color-base-content)" font-size="11.5">workflow-run</text></g>
+          <g><title>Leaf step — the run of a binary, prompt, or plugin step; the only kind bound to a worker.</title>
+          <rect x="255" y="105" width="110" height="32" rx="8" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.85" stroke-width="1.3"></rect>
+          <text x="310" y="126" text-anchor="middle" style="fill:var(--color-base-content)" font-size="11.5">leaf step</text></g>
+          <g>
+          <rect x="20" y="185" width="100" height="32" rx="8" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.7" stroke-width="1.3"></rect>
+          <text x="70" y="206" text-anchor="middle" style="fill:var(--color-base-content)" font-size="11.5">leaf step</text>
+          <rect x="130" y="185" width="100" height="32" rx="8" style="fill:var(--color-base-100);stroke:var(--color-base-content);opacity:.7" stroke-width="1.3"></rect>
+          <text x="180" y="206" text-anchor="middle" style="fill:var(--color-base-content)" font-size="11.5">leaf step</text>
+          </g>
+          <text x="210" y="245" text-anchor="middle" style="fill:var(--color-base-content);opacity:.55" font-size="11">disk mirrors it: <tspan class="mono">.path/runs/&lt;root&gt;/&lt;run&gt;/</tspan></text>
+        </svg>
+      </figure>
+
+      <div class="rounded-box border border-base-content/10 bg-base-200 p-5">
+        <h4 class="font-semibold mb-3">What runs the routing?</h4>
+        <p class="text-sm opacity-80 mb-4">Steps execute on workers. <b>Logicers</b> and <b>checkpoints</b> do not — the engine evaluates them. They have no worker, no task, no run.</p>
+        <ul class="space-y-2 text-sm">
+          <li><span class="badge badge-soft badge-primary badge-sm mr-1">parallel</span> races or gathers branches — joins <span class="mono">collect</span> / <span class="mono">wait-one</span> / <span class="mono">do-not-wait</span></li>
+          <li><span class="badge badge-soft badge-primary badge-sm mr-1">branch</span> first true arm wins; no match fails the run</li>
+          <li><span class="badge badge-soft badge-primary badge-sm mr-1">while-do</span> a mandatory max-iterations bound; overrun fails</li>
+          <li><span class="badge badge-soft badge-primary badge-sm mr-1">sequence</span> holds a node array where a slot needs several nodes</li>
+          <li><span class="badge badge-soft badge-warning badge-sm mr-1">checkpoint</span> asserts data; false stops the run as failed</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <!-- ======== FORMAT ======== -->
+  <section id="format" class="anchor mb-16">
+    <h2 class="text-2xl font-bold mb-1">The workflow file</h2>
+    <p class="opacity-70 mb-6 max-w-3xl">
+      A single strict JSON file, versioned <span class="mono">path/workflow@3</span>. Every node carries a durable
+      GUID <span class="mono">id</span> and a human <span class="mono">name</span>. Below: a step, a worker choice, config,
+      and a <span class="mono">$secret</span> wrapper.
+    </p>
+    <div class="mockup-code bg-base-300 text-sm">
+<pre><code>{
+  <span class="text-primary">"format"</span>: <span class="text-success">"path/workflow@3"</span>,
+  <span class="text-primary">"id"</span>: <span class="text-success">"a1b2…-uuid"</span>,   <span class="opacity-50">// machine identity, never regenerated</span>
+  <span class="text-primary">"name"</span>: <span class="text-success">"release-notes"</span>,
+  <span class="text-primary">"config"</span>: { <span class="text-primary">"model"</span>: <span class="text-success">"claude-…"</span>,
+              <span class="text-primary">"token"</span>: { <span class="text-accent">"$secret"</span>: { <span class="text-accent">"$env"</span>: <span class="text-success">"GITHUB_TOKEN"</span> } } },
+  <span class="text-primary">"body"</span>: [
+    { <span class="text-primary">"type"</span>: <span class="text-success">"binary"</span>,  <span class="text-primary">"name"</span>: <span class="text-success">"collect"</span>,
+      <span class="text-primary">"command"</span>: <span class="text-success">"git"</span>, <span class="text-primary">"args"</span>: [<span class="text-success">"log"</span>, <span class="text-success">"--oneline"</span>] },
+    { <span class="text-primary">"type"</span>: <span class="text-success">"prompt"</span>,  <span class="text-primary">"name"</span>: <span class="text-success">"draft"</span>,
+      <span class="text-primary">"worker"</span>: <span class="text-success">"sdk"</span>,      <span class="opacity-50">// pick a worker by name; else the type's default</span>
+      <span class="text-primary">"prompt"</span>: <span class="text-success">"Summarize ${context.collect}"</span> }
+  ]
+}</code></pre>
+    </div>
+    <div class="grid gap-3 sm:grid-cols-3 mt-4">
+      <div class="alert alert-soft"><span><b class="mono">binary</b> &amp; <b class="mono">prompt</b> are not privileged — they are the first two <b>step-type plugins</b> (folders under <span class="mono">step-plugins/</span>).</span></div>
+      <div class="alert alert-soft"><span><span class="mono">${config.x}</span> and <span class="mono">${context.y}</span> interpolate in allow-listed positions only.</span></div>
+      <div class="alert alert-soft"><span>Validity is <b>registry-relative</b>: a file is valid against the plugins the tree actually holds.</span></div>
+    </div>
+  </section>
+
+  <!-- ======== RESUME ======== -->
+  <section class="mb-16">
+    <h2 class="text-2xl font-bold mb-1">Run, stop, resume</h2>
+    <p class="opacity-70 mb-5 max-w-3xl">A run can stop from a crash or a cancel. Resume re-runs the stopped tree as a <b>successor</b> — it reuses every node that already succeeded and re-runs the rest.</p>
+    <ul class="steps steps-vertical lg:steps-horizontal w-full">
+      <li class="step step-primary" data-content="▶">
+        <div class="text-left px-2">
+          <div class="font-semibold text-sm"><span class="mono">path run &lt;file&gt;</span></div>
+          <div class="text-xs opacity-70">validate the whole tree, then execute a root run</div>
+        </div>
+      </li>
+      <li class="step step-primary" data-content="■">
+        <div class="text-left px-2">
+          <div class="font-semibold text-sm">stops</div>
+          <div class="text-xs opacity-70">crash or <span class="mono">^C</span> cancel; rows keep the truth of where it got to</div>
+        </div>
+      </li>
+      <li class="step step-primary" data-content="↻">
+        <div class="text-left px-2">
+          <div class="font-semibold text-sm"><span class="mono">--resume &lt;root-run-id&gt;</span></div>
+          <div class="text-xs opacity-70">a successor run; reuses <span class="mono">succeeded</span> nodes as reuse rows</div>
+        </div>
+      </li>
+    </ul>
+    <div role="alert" class="alert alert-warning alert-soft mt-5">
+      <span>
+        <b>Resume is at-least-once.</b> A re-run step can fire an external effect again (a <span class="mono">git push</span>, an API
+        <span class="mono">POST</span>). The engine cannot detect or prevent the duplicate — the workflow author must make steps idempotent.
+      </span>
+    </div>
+  </section>
+
+  <!-- ======== GLOSSARY ======== -->
+  <section id="glossary" class="anchor mb-16">
+    <h2 class="text-2xl font-bold mb-1">Ubiquitous language</h2>
+    <p class="opacity-70 mb-6 max-w-3xl">
+      <span class="mono">CONTEXT.md</span> is canonical. Code, specs, and issues use these terms exactly. The most load-bearing ones:
+    </p>
+    <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-3">
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Step / Worker / Task</h3><p class="text-xs opacity-80">Step = what. Worker = a named run method (the how). Task = the bound pair.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Run / Processor</h3><p class="text-xs opacity-80">A run is one executing instance of a task. A processor is one live worker instance it runs on.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Run tree / Run kind</h3><p class="text-xs opacity-80">Runs under one root form a tree. Four kinds: root run, nested workflow-run, leaf step, reuse row.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Config vs Context</h3><p class="text-xs opacity-80">Config flows in from outside and inherits downward. Context is written from inside, isolated per workflow-run.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Logicer / Checkpoint</h3><p class="text-xs opacity-80">Engine-evaluated routing and assertion nodes. No worker, no task, no run.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Join mode</h3><p class="text-xs opacity-80"><span class="mono">collect</span> waits all, <span class="mono">wait-one</span> races, <span class="mono">do-not-wait</span> fires and forgets.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Secret / Env-sourced</h3><p class="text-xs opacity-80"><span class="mono">$secret</span> masks a value; <span class="mono">$env</span> sources it. Scrubbed at the persistence boundary.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Observation / Log event</h3><p class="text-xs opacity-80">The engine emits typed observations at one masked choke point. Narrated ones become log events.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Viewer vs Designer</h3><p class="text-xs opacity-80">The viewer watches runs. The designer authors files. Both ride the same <span class="mono">client-core</span>.</p></div></div>
+    </div>
+  </section>
+
+  <!-- ======== STATUS ======== -->
+  <section id="status" class="anchor mb-10">
+    <h2 class="text-2xl font-bold mb-1">Where the code is</h2>
+    <div class="grid gap-4 lg:grid-cols-3 mt-4">
+      <div class="card card-border bg-base-200 lg:col-span-2">
+        <div class="card-body">
+          <h3 class="card-title text-base">Shipped</h3>
+          <p class="text-sm opacity-80">The MVP is done: local engine, the file format, an LLM/agent pipeline end to end. Since then the deferred doors opened — <span class="mono">$env</span> sourcing (v0.4.3), <b>resume</b> (v0.4.4), the <span class="mono">wait-one</span>/<span class="mono">do-not-wait</span> joins and a read/launch viewer (v0.5.0–0.5.2), reuse rows (v0.5.3), and step-type plugins (v0.5.4, where <span class="mono">binary</span> and <span class="mono">prompt</span> became the first two plugins).</p>
+        </div>
+      </div>
+      <div class="card card-border bg-base-200">
+        <div class="card-body">
+          <h3 class="card-title text-base text-accent">In flight</h3>
+          <p class="text-sm opacity-80">An unreleased <b>Designer</b> track on <span class="mono">main</span> (map #254): a visual authoring canvas over the workflow format, not yet cut into a release.</p>
+        </div>
+      </div>
+    </div>
+    <div class="mt-6 rounded-box border border-base-content/10 bg-base-100 p-5">
+      <h4 class="font-semibold mb-2 text-sm opacity-80">Where knowledge lives</h4>
+      <div class="flex flex-wrap gap-2 text-xs">
+        <span class="badge badge-lg badge-outline mono">CONTEXT.md — glossary</span>
+        <span class="badge badge-lg badge-outline mono">docs/adr/ — 31 decisions</span>
+        <span class="badge badge-lg badge-outline mono">docs/spec/ — mvp, designer, api</span>
+        <span class="badge badge-lg badge-outline mono">docs/format/ — @0…@3</span>
+        <span class="badge badge-lg badge-outline mono">docs/research/ — spikes</span>
+        <span class="badge badge-lg badge-outline mono">GitHub issues — wayfinder maps</span>
+      </div>
+    </div>
+  </section>
+
+  <footer class="text-center text-xs opacity-50 pt-8 border-t border-base-content/10">
+    Built from the repo's own <span class="mono">README.md</span>, <span class="mono">CONTEXT.md</span>, specs, and ADRs. Claims trace to those files.
+  </footer>
+
+</main>
+</body>
+</html>
