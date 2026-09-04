@@ -19,7 +19,16 @@ import {
   type WorkflowNode,
 } from "@path/schema";
 import { ConditionField } from "./condition-builder.js";
-import { configRows, dropConfigKey, isEditableScalar, setConfigKey, type ConfigRow } from "./config-inheritance.js";
+import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./config-inheritance.js";
+import {
+  configModeOf,
+  isEditableScalar,
+  referenceLabel,
+  renderConfigValue,
+  setConfigMode,
+  setSecretSource,
+  type ConfigMode,
+} from "./config-value.js";
 import { locate, replaceNode, setArmWhen } from "./edit-tree.js";
 import {
   applyNodeConfig,
@@ -847,36 +856,6 @@ function ConfigRowField({
   );
 }
 
-/** The three authoring modes a config value takes in the pane (§ `$env` / `$secret` authoring, map decision 9). */
-type ConfigMode = "literal" | "env" | "secret";
-
-/** Which mode a config value is in, read off its shape: a `$secret` wrapper, an `$env` wrapper, or a plain literal. */
-function configModeOf(value: ConfigValue): ConfigMode {
-  if (isSecretWrapper(value)) return "secret";
-  if (isEnvWrapper(value)) return "env";
-  return "literal";
-}
-
-/** The `$env` variable name carried anywhere in a value (bare `$env`, or an env-sourced `$secret`), for mode-switch reuse. */
-function envNameOf(value: ConfigValue): string {
-  if (isEnvWrapper(value)) return value.$env;
-  if (isSecretWrapper(value) && isEnvWrapper(value.$secret)) return value.$secret.$env;
-  return "";
-}
-
-/**
- * The reference-only label of a wrapper — never a resolved value (§ Display is reference-only). An `$env`
- * shows its variable name; a `$secret` shows a masked, named token (the env name when sourced from `$env`,
- * masked bullets for a literal secret). A plain scalar or nested value returns `null` (it is not a reference).
- */
-function referenceLabel(value: ConfigValue): string | null {
-  if (isSecretWrapper(value)) {
-    return isEnvWrapper(value.$secret) ? `$secret · $env · ${value.$secret.$env}` : "$secret · ••••••";
-  }
-  if (isEnvWrapper(value)) return `$env · ${value.$env}`;
-  return null;
-}
-
 /** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */
 interface ConfigControlProps {
   value: ConfigValue;
@@ -896,9 +875,7 @@ function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX
   const mode = configModeOf(value);
   const setMode = (next: ConfigMode): void => {
     if (next === mode) return;
-    if (next === "literal") onChange("");
-    else if (next === "env") onChange({ $env: envNameOf(value) });
-    else onChange({ $secret: envNameOf(value) === "" ? "" : { $env: envNameOf(value) } });
+    onChange(setConfigMode(value, next));
   };
   return (
     <div className="pane-config-control">
@@ -957,10 +934,7 @@ function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element
  */
 function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";
-  const setSource = (source: "literal" | "env"): void => {
-    if (source === "env") onChange({ $secret: { $env: isEnvWrapper(inner) ? inner.$env : "" } });
-    else onChange({ $secret: "" });
-  };
+  const setSource = (source: "literal" | "env"): void => onChange(setSecretSource(value, source));
   return (
     <div className="pane-ref-control">
       <select
@@ -996,14 +970,6 @@ function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Elem
       </code>
     </div>
   );
-}
-
-/** A config value for read-only display (an inherited ghost): a wrapper as its reference-only label, a scalar as itself, else compact JSON. */
-function renderConfigValue(value: ConfigValue): string {
-  const reference = referenceLabel(value);
-  if (reference !== null) return reference;
-  if (isEditableScalar(value)) return String(value);
-  return JSON.stringify(value);
 }
 
 /**
