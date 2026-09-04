@@ -50,7 +50,7 @@ recorded `output.json`. These are not two designs with different results; they a
 reached two ways, because of how `context.json` was produced in the first place.
 `persisted-observer.ts`'s `context-changed` handler
 (`packages/engine/src/persistence/persisted-observer.ts:92-95`) rewrites the **whole** context object on
-every mutation, not a diff. `run-workflow.ts` mutates one in-memory `context` bag via `Object.assign`
+every mutation, not a diff. `run-workflow.ts` mutates one in-memory `context` bag with `Object.assign`
 and emits the full bag each time (`packages/engine/src/run-workflow.ts:241,321,924,1054`). So a
 workflow-run's `context.json`, at any point in its life, already **is** the accumulated result of every
 completed publish up to that point. To replay publishes from output objects would recompute the

@@ -88,7 +88,7 @@ The free MIT library is fully usable in a commercial product. Bundle (bundlephob
 ≈ 1.2 MB. Layout adds dagre (~35 KB) or elkjs (~800 KB+) on top.
 
 **5. Controlled state.** Fully supported. Pass `nodes` plus `edges` and handle `onNodesChange` /
-`onEdgesChange`, and apply changes immutably via `applyNodeChanges` / `applyEdgeChanges`. The
+`onEdgesChange`, and apply changes immutably with `applyNodeChanges` / `applyEdgeChanges`. The
 alternative `defaultNodes` / `defaultEdges` is the uncontrolled path
 ([ReactFlow API](https://reactflow.dev/api-reference/react-flow)). In controlled mode the rendered graph
 is a pure function of your arrays, and node ids are author-owned strings you supply, so the id-stability
@@ -180,7 +180,7 @@ impedance mismatch with a controlled-React, JSON-as-truth architecture is real.
 Plugin-based node editor. Version surveyed: **2.0.6**.
 
 - **Constrained connections:** genuinely pre-creation. A `connectioncreate` pipe returns nothing to
-  block a connection before it is established, and sockets define compatibility via `isCompatibleWith()`.
+  block a connection before it is established, and sockets define compatibility with `isCompatibleWith()`.
   "prevents incompatible connections from being added to the graph in the first place, rather than
   removing them afterward" ([Validation guide](https://retejs.org/docs/guides/validation/)). This is the
   best connection-validation story of the graph libs, but it is still an *edge/socket* model.
@@ -188,7 +188,7 @@ Plugin-based node editor. Version surveyed: **2.0.6**.
   no container/embedding model equivalent to JointJS embeds or DOM nesting.
 - **Controlled state:** the `NodeEditor` owns the graph. You drive it imperatively through plugins, not
   as a pure render of external JSON.
-- **Auto-layout:** provided via a separate `rete-auto-arrange-plugin` (elk-based), not core.
+- **Auto-layout:** provided by a separate `rete-auto-arrange-plugin` (elk-based), not core.
 - **Licence:** **MIT** ([npm registry metadata for 2.0.6](https://registry.npmjs.org/rete/latest)).
 
 **Fit:** strong connection validation, wrong model. No containers, editor-owned state. Not a match for a

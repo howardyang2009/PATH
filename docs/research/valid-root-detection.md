@@ -7,7 +7,7 @@ whether `@path/engine`'s loader already surfaces the nested-ref set so the scann
 the union of all discovered files.
 
 Short answer: **yes**, and the primitives already exist. `loadWorkflowTree` returns the transitive set
-of files reachable from a root via `workflow` refs, keyed by absolute path. Subtract each loaded tree's
+of files reachable from a root through `workflow` refs, keyed by absolute path. Subtract each loaded tree's
 `files` keys (minus its own root) from the union of discovered files, and what remains are the true
 roots. The refs are schema-guaranteed relative, so path-set subtraction is sound, with the
 canonicalization and cycle/symlink caveats in the last section.
@@ -20,7 +20,7 @@ Yes. `loadWorkflowTree(entryPath)` returns `LoadResult`, a discriminated union. 
 - `tree.rootPath: string` — the entry file's absolute path (`resolve(entryPath)`).
   [`packages/engine/src/load-workflow-tree.ts:7`](../../packages/engine/src/load-workflow-tree.ts#L7),
   set at [`load-workflow-tree.ts:58`](../../packages/engine/src/load-workflow-tree.ts#L58).
-- `tree.files: Map<string, WorkflowFile>` — **every file reachable from the root via `workflow` step
+- `tree.files: Map<string, WorkflowFile>` — **every file reachable from the root through `workflow` step
   refs, keyed by absolute path.**
   [`load-workflow-tree.ts:9`](../../packages/engine/src/load-workflow-tree.ts#L9).
 
@@ -34,7 +34,7 @@ childPaths(root) = new Set(tree.files.keys())  minus  tree.rootPath
 There is no separate explicit edge list; the closure is flattened into the keys. Each `workflow` step's
 child is discovered at
 [`load-workflow-tree.ts:53-55`](../../packages/engine/src/load-workflow-tree.ts#L53). `collectWorkflowRefs`
-walks the file's whole `body` (through every control block, via `@path/schema`'s `walkNodes`) and pulls
+walks the file's whole `body` (through every control block, with `@path/schema`'s `walkNodes`) and pulls
 each `node.ref` where `node.type === "workflow"`
 ([`load-workflow-tree.ts:17-23`](../../packages/engine/src/load-workflow-tree.ts#L17)). Then each ref is
 resolved against the referencing file's directory (`resolve(dirname(absPath), ref)`) and visited
@@ -54,7 +54,7 @@ trueRoots = D \ nested
 
 Every file that is a nested ref of *any* discovered workflow lands in `nested` and is dropped. Whatever
 no one refs is a true root. Because keys are absolute paths, a shared child referenced from several roots
-collapses to one key (the loader itself dedups via
+collapses to one key (the loader itself dedups through
 [`load-workflow-tree.ts:35`](../../packages/engine/src/load-workflow-tree.ts#L35),
 `if (files.has(absPath)) return;`).
 
@@ -63,7 +63,7 @@ collapses to one key (the loader itself dedups via
 Yes. `loadWorkflowTree` **is** that check. It reads and schema-validates the whole file tree and never
 executes a step. It fails (`{ success: false, errors }`) on: unreadable/invalid JSON
 ([`load-workflow-tree.ts:37-43`](../../packages/engine/src/load-workflow-tree.ts#L37)), any
-`@path/schema` violation via `safeParseWorkflowFile`
+`@path/schema` violation through `safeParseWorkflowFile`
 ([`load-workflow-tree.ts:45-49`](../../packages/engine/src/load-workflow-tree.ts#L45)), and **ref
 cycles** ([`load-workflow-tree.ts:30-33`](../../packages/engine/src/load-workflow-tree.ts#L30)).
 Unresolvable refs surface as the read error at line 39. This mirrors the format's normative load-time
@@ -134,7 +134,7 @@ keys is sound.
 - **Symlinks / path aliasing** — the loader canonicalizes with `path.resolve`
   ([`load-workflow-tree.ts:54,58`](../../packages/engine/src/load-workflow-tree.ts#L54)), which is
   **lexical only** (it collapses `..` and `.` but does **not** call `realpath`). Two paths that reach the
-  same file via a symlink or a `../` detour produce **different** map keys, so string subtraction can
+  same file through a symlink or a `../` detour produce **different** map keys, so string subtraction can
   miss a match and mis-list a nested file as a root. The scanner must canonicalize its discovered paths
   **the same lexical way** the loader does (`path.resolve`). If symlinks are in play, `realpath` **both**
   the discovered set and the `tree.files` keys consistently before subtraction.

@@ -67,7 +67,7 @@ TS/Python is to use the SDK packages instead.
   calls start faster" and is "the recommended mode for scripted and SDK calls, and will become the
   default for `-p` in a future release." ([headless](https://code.claude.com/docs/en/headless))
   Background bash tasks are killed about 5 s after the result; background subagents are awaited (capped
-  at 10 min by default via `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`).
+  at 10 min by default through `CLAUDE_CODE_PRINT_BG_WAIT_CEILING_MS`).
 
 ### Context injection
 
@@ -79,7 +79,7 @@ TS/Python is to use the SDK packages instead.
 - **Files/workspace:** the run's `cwd` is the workspace; `--add-dir` grants additional directories. PATH
   can materialize step input plus shared context into the run directory and let the worker Read it.
 - **Settings/config:** `--settings <file-or-json>` (session-scoped settings override),
-  `--setting-sources user,project,local`, `--agents <json>` (inline subagent definitions), `--env` via
+  `--setting-sources user,project,local`, `--agents <json>` (inline subagent definitions), `--env` through
   process environment.
 
 ### Output capture
@@ -127,7 +127,7 @@ This maps cleanly onto PATH's "capabilities ride along on the worker" decision:
   `--permission-prompt-tool` (delegate approval to an MCP tool, a hook for a future PATH approval UI).
 - **Skills:** filesystem-based (`.claude/skills/*/SKILL.md`); auto-discovered unless `--bare`.
   User-invoked skills work in `-p` mode by inclusion of `/skill-name` in the prompt string. So skills are
-  worker config via the workspace's `.claude/` directory (or a plugin via `--plugin-dir`).
+  worker config through the workspace's `.claude/` directory (or a plugin through `--plugin-dir`).
   ([headless](https://code.claude.com/docs/en/headless), [agent-sdk overview](https://code.claude.com/docs/en/agent-sdk/overview))
 
 ### Fit for PATH
@@ -177,7 +177,7 @@ Code, programmable in Python and TypeScript."
   `{ type: 'preset', preset: 'claude_code', append: '...' }` to keep the Claude Code system prompt with
   additions; `cwd` sets the workspace; `env` sets subprocess environment; `settings`/`settingSources`
   control filesystem config loading (default loads user+project+local from `.claude/`; set a
-  `settingSources: []`-style restriction for hermetic runs); `CLAUDE.md` memory loads via the same
+  `settingSources: []`-style restriction for hermetic runs); `CLAUDE.md` memory loads through the same
   mechanism. Files: same as CLI — materialize context into `cwd` and let built-in Read/Glob/Grep tools
   pick it up. ([typescript ref](https://code.claude.com/docs/en/agent-sdk/typescript),
   [overview](https://code.claude.com/docs/en/agent-sdk/overview))
@@ -191,7 +191,7 @@ Code, programmable in Python and TypeScript."
   the CLI's `--json-schema`; validated JSON after the agent completes its workflow.
 - **Errors:** error-type result messages plus thrown exceptions on process/connection failure (the docs'
   session example explicitly handles "a single-shot `query()` throws after yielding an error result").
-- Subagent attribution via `parent_tool_use_id`, same as the CLI stream.
+- Subagent attribution through `parent_tool_use_id`, same as the CLI stream.
 
 ### Cost & auth
 
@@ -202,8 +202,8 @@ Code, programmable in Python and TypeScript."
   instead." ([overview](https://code.claude.com/docs/en/agent-sdk/overview)) For PATH: fine while PATH is
   the user's own local tool running under the user's own credentials, but if PATH is ever distributed as
   a product, subscription login must not be the offered auth path.
-- Per-invocation cost: `total_cost_usd` plus `usage` on every result message; budget/turn caps via
-  `maxTurns` (and CLI-level budget flags via settings).
+- Per-invocation cost: `total_cost_usd` plus `usage` on every result message; budget/turn caps through
+  `maxTurns` (and CLI-level budget flags through settings).
 
 ### MCP servers & skills as worker-side configuration
 
@@ -239,7 +239,7 @@ Everything is an option on the invocation, the purest expression of "capabilitie
 
 ## Option 3 — Direct Anthropic API (`@anthropic-ai/sdk`)
 
-Raw Messages API (`POST /v1/messages`) via the official TypeScript client. Reference:
+Raw Messages API (`POST /v1/messages`) through the official TypeScript client. Reference:
 [Tool use overview](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview),
 [Structured outputs](https://platform.claude.com/docs/en/build-with-claude/structured-outputs),
 [Pricing](https://platform.claude.com/docs/en/pricing).
@@ -303,7 +303,7 @@ Exists, but thinner and remote-only:
   MCP-to-tool-runner conversion helpers; TS would use `@modelcontextprotocol/sdk`) and bridge tools into
   the loop.
   ([MCP connector docs via tool-use overview](https://platform.claude.com/docs/en/agents-and-tools/tool-use/overview))
-- **Skills:** Agent Skills on the Messages API run via `container: {skills: [{type:
+- **Skills:** Agent Skills on the Messages API run through `container: {skills: [{type:
   "anthropic"|"custom", skill_id, version}]}` plus the code-execution tool, with betas
   `code-execution-2025-08-25` plus `skills-2025-10-02`. That is, skills execute in **Anthropic's hosted
   container**, not on the user's machine. Local filesystem skills (`SKILL.md` folders) are a Claude
@@ -337,7 +337,7 @@ servers and *hosted* skills; the local-first versions become engine-implemented 
 - **Context injection:** `messages[]` (with `system` role), `options` for model params. No filesystem
   access; pure text in/out.
 - **Output capture:** NDJSON streaming or `stream: false`; `format` accepts `"json"` **or a JSON schema
-  object** ("generate a response that matches the schema"), real structured output. Tool calling via
+  object** ("generate a response that matches the schema"), real structured output. Tool calling through
   `tools` (JSON schema) with `tool_calls` in responses, model-dependent. Response metrics: `eval_count`,
   `prompt_eval_count`, `total_duration`.
   ([api.md](https://github.com/ollama/ollama/blob/main/docs/api.md))
@@ -348,7 +348,7 @@ servers and *hosted* skills; the local-first versions become engine-implemented 
 
 ### llama.cpp (`llama-server`)
 
-- HTTP server on `127.0.0.1:8080`; one model per process via `-m` (router mode allows multi-model).
+- HTTP server on `127.0.0.1:8080`; one model per process through `-m` (router mode allows multi-model).
   OpenAI-compatible `POST /v1/chat/completions` **and an Anthropic-compatible `POST /v1/messages`**
   endpoint; `json_schema` and GBNF `grammar` parameters constrain generation; tool calling requires
   `--jinja`; SSE streaming; `/health` endpoint.
@@ -358,7 +358,7 @@ servers and *hosted* skills; the local-first versions become engine-implemented 
 
 ### LM Studio
 
-- Headless via the `llmster` daemon (`lms daemon up`) or `lms server start`; OpenAI-compatible endpoints
+- Headless through the `llmster` daemon (`lms daemon up`) or `lms server start`; OpenAI-compatible endpoints
   with structured output and tool use; JIT model loading.
   ([headless docs](https://lmstudio.ai/docs/app/api/headless))
 - **Uniquely among local runtimes, LM Studio has an MCP story at the API level:** its `/api/v1/chat`
@@ -372,7 +372,7 @@ servers and *hosted* skills; the local-first versions become engine-implemented 
 - All three are localhost HTTP services, the cleanest possible process model (no child process, no SDK)
   and inherently multi-platform. A PATH "local-llm" worker is a thin HTTP client.
 - Suitable for offline/no-cost pure-LLM steps with JSON-schema outputs (judge steps, extraction). Not
-  suitable as the general subagent worker: no harness, no filesystem tools, no skills, MCP only via LM
+  suitable as the general subagent worker: no harness, no filesystem tools, no skills, MCP only through LM
   Studio or PATH-built bridging, and output quality is model-dependent.
 
 ---
