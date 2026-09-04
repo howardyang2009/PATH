@@ -183,7 +183,7 @@ is #11's.
 ### 6.3 Workflow input seeds context
 
 At run start, each top-level key of the workflow's input object becomes a context key. Conceptually it
-is the implicit root step's one write. Body nodes read it via `context.*` in interpolation and
+is the implicit root step's one write. Body nodes read it through `context.*` in interpolation and
 conditions. No separate `input` root exists.
 
 ### 6.4 Workflow output

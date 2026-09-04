@@ -15,7 +15,7 @@ how `@2` treated `@0`.
 `@2` `worker: { "type": "engine" }` / `worker: { "type": "llm", "model", "options" }` union is gone.
 
 - A step's `worker` is now an optional **worker-name string** — one of the names its step type ships
-  (`binary` → `spawn`, `prompt` → `sdk`). Omitted, the step uses its type's **default worker**. A step
+  (`binary`'s `spawn`, `prompt`'s `sdk`). Omitted, the step uses its type's **default worker**. A step
   naming a worker its type does not ship fails at load with the valid names listed (§4.1).
 - `model` and `options` are no longer worker fields. They are **config**, fixed as `config.model` and
   `config.options` (§7). `model` is literal config now, so it is no longer interpolable against context;
@@ -180,7 +180,7 @@ All three step types additionally accept:
 | `publish` | no | Context writes from the step's output (§6.2). Absent = writes nothing. |
 
 `worker` is a **name string**, not a tagged object: each step type ships one or more workers (a named
-`run` method), and `worker` selects one by name — `binary` → `spawn`, `prompt` → `sdk`, each the default
+`run` method), and `worker` selects one by name — `binary`'s `spawn`, `prompt`'s `sdk`, each the default
 of its type. A step naming a worker its type does not ship **fails at load** with the valid names listed
 (the `(type, name)` pair is a worker's identity, so a name is meaningful only inside its type). A
 `workflow` step takes **no `worker`**: it runs a nested run, not a worker.
@@ -402,7 +402,7 @@ one interpolation mechanism. A step without `publish` writes nothing to context.
 ### 6.3 Workflow input seeds context
 
 At run start, each top-level key of the workflow's input object becomes a context key. Conceptually it
-is the implicit root step's one write. Nodes read it via `context.*` in interpolation and conditions.
+is the implicit root step's one write. Nodes read it through `context.*` in interpolation and conditions.
 No separate `input` root exists.
 
 ### 6.4 Workflow output
