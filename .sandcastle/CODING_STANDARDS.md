@@ -1,6 +1,6 @@
 # Coding Standards
 
-<!-- The reviewer agent loads this file during code review via @.sandcastle/CODING_STANDARDS.md
+<!-- The reviewer agent loads this file during code review through @.sandcastle/CODING_STANDARDS.md
      so these standards are enforced during review without costing tokens during implementation. -->
 
 ## Language & terminology

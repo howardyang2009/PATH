@@ -14,7 +14,7 @@ For each branch:
    rm -rf /tmp/verify && mkdir -p /tmp/verify && git archive HEAD | tar -x -C /tmp/verify && cd /tmp/verify && pnpm install && pnpm typecheck && pnpm test; cd /home/agent/workspace
    ```
 
-4. If tests fail, fix the issues in the workspace (then re-verify via the scratch copy) before proceeding to the next branch
+4. If tests fail, fix the issues in the workspace (then re-verify through the scratch copy) before proceeding to the next branch
 
 # IMPORTANT CONSTRAINT
 
