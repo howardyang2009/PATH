@@ -182,6 +182,28 @@ describe("Designer run surfaces (#372)", () => {
     expect(badge).toHaveAttribute("data-run-status", "running");
   });
 
+  it("badges the workflow-name line with the root run's status", async () => {
+    // The root run carries no node_id, so it projects onto no canvas node; its verdict shows on the
+    // breadcrumb's workflow-name line instead.
+    await renderClean({
+      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
+      tree: {
+        root_run_id: "root-1",
+        status: "succeeded",
+        output: null,
+        runs: [wireRun({ run_id: "root-1", status: "succeeded" })],
+      },
+    });
+    // No run watched yet — the workflow-name line carries no badge.
+    expect(screen.queryByTestId("workflow-run-badge")).not.toBeInTheDocument();
+
+    openDock();
+    fireEvent.click(await screen.findByTestId("run-row-root-1"));
+
+    const badge = await screen.findByTestId("workflow-run-badge");
+    expect(badge).toHaveAttribute("data-run-status", "succeeded");
+  });
+
   it("shows a selected run's node I/O, and the shared absence rule for a missing terminal output", async () => {
     await renderClean({
       runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },

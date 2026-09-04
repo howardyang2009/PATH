@@ -1732,6 +1732,107 @@ body {
   color: var(--text-muted);
 }
 
+/* The open-a-workflow picker: the same folder tree the Viewer's WORKFLOWS panel draws (shared
+   `workflow-tree` seam). A scrollable frame holds the tree; each row sets its own left pad from its
+   tree depth. */
+.open-workflow-tree {
+  max-height: 260px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 4px;
+}
+
+.open-workflow-tree .workflows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* A folder row: a navigation step — a chevron, the folder name, and a count of the workflows under it. */
+.workflow-folder-row {
+  width: 100%;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 6px;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.workflow-folder-row:hover {
+  background: color-mix(in srgb, var(--text) 7%, transparent);
+}
+
+.workflow-folder-row[aria-expanded="true"] {
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+
+.workflow-folder-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workflow-folder-chevron {
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--text-muted);
+  width: 1em;
+  text-align: center;
+}
+
+.workflow-folder-name {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workflow-folder-count {
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* A workflow file row: click to open it. One line — its file name, mono so it reads as a file. */
+.open-workflow-tree .workflow-row {
+  width: 100%;
+  display: block;
+  text-align: left;
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+}
+
+.open-workflow-tree .workflow-row:hover {
+  background: color-mix(in srgb, var(--accent) 12%, transparent);
+}
+
+.open-workflow-tree .workflow-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.workflow-file-name {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: var(--fs-sm);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 /* The empty-ref affordance in the properties pane — the entry point to the chooser. */
 .ref-target-field .pane-hint {
   margin: 0 0 8px;

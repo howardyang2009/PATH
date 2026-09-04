@@ -48,12 +48,14 @@ describe("#254 open existing — empty-canvas entry point", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
+    // Both files sit under `flows/`, so the top level shows only that folder — open it to reach them.
+    fireEvent.click(within(dialog).getByRole("button", { name: /flows/ }));
     const list = within(dialog).getByRole("list", { name: "Discovered workflows" });
-    // Discovery returned beta-before-alpha; the picker sorts, so alpha lists first.
-    const items = within(list).getAllByRole("button");
-    expect(items.map((b) => b.textContent)).toEqual([ALPHA_PATH, BETA_PATH]);
+    // Discovery returned beta-before-alpha; the tree sorts, so alpha lists first — by file name now.
+    const items = within(list).getAllByRole("button").filter((b) => b.textContent?.endsWith(".json"));
+    expect(items.map((b) => b.textContent)).toEqual(["alpha.workflow.json", "beta.workflow.json"]);
 
-    fireEvent.click(within(dialog).getByRole("button", { name: BETA_PATH }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "beta.workflow.json" }));
 
     // The chosen file opens on the canvas and the picker closes.
     await screen.findByText("beta-step");
@@ -84,7 +86,8 @@ describe("#254 open existing — toolbar entry point switches the open file", ()
     fireEvent.click(screen.getByRole("button", { name: "Open…" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
-    fireEvent.click(within(dialog).getByRole("button", { name: BETA_PATH }));
+    fireEvent.click(within(dialog).getByRole("button", { name: /flows/ }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "beta.workflow.json" }));
 
     // Beta replaces alpha as the sole root frame.
     await screen.findByText("beta-step");

@@ -1,7 +1,19 @@
-import type { PathApiClient, WorkflowSummary } from "@path/client-core";
-import { useEffect, useState } from "react";
+import type {
+  PathApiClient,
+  WorkflowSummary,
+  WorkflowTreeFolder,
+  WorkflowTreeNode,
+} from "@path/client-core";
+import { useEffect, useMemo, useState } from "react";
 import { JsonField } from "./json-field.js";
-import { parseJsonField } from "@path/client-core";
+import {
+  buildWorkflowTree,
+  countWorkflowLeaves,
+  isFolderOnOpenChain,
+  nextOpenFolder,
+  parseJsonField,
+  workflowBaseName,
+} from "@path/client-core";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 
@@ -55,6 +67,9 @@ function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boole
 export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const [state, setState] = useState<Load<WorkflowSummary[]>>({ phase: "loading" });
   const [expanded, setExpanded] = useState<string | null>(null);
+  // The deepest open folder path; a folder is expanded when it is this path or a prefix of it, so
+  // opening a sibling collapses the previous one automatically (one open folder per level).
+  const [openFolder, setOpenFolder] = useState<string | null>(null);
   const [filter, setFilter] = useState<WorkflowFilter>("all");
 
   useEffect(() => {
@@ -72,7 +87,19 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
     };
   }, [client]);
 
-  const visible = state.phase === "ready" ? state.value.filter((w) => matchesFilter(w, filter)) : [];
+  const visible = useMemo(
+    () => (state.phase === "ready" ? state.value.filter((w) => matchesFilter(w, filter)) : []),
+    [state, filter],
+  );
+  const tree = useMemo(() => buildWorkflowTree(visible), [visible]);
+
+  // Accordion open-state, one open folder per level (see `workflow-tree`): opening a sibling
+  // collapses the previous one on its own; toggling an open folder walks back to its parent.
+  const isFolderOpen = (path: string): boolean => isFolderOnOpenChain(openFolder, path);
+  const toggleFolder = (path: string): void =>
+    setOpenFolder((prev) => nextOpenFolder(prev, path));
+  const toggleFile = (path: string): void =>
+    setExpanded((current) => (current === path ? null : path));
 
   return (
     <div className="launch-panel">
@@ -106,62 +133,158 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
         ) : visible.length === 0 ? (
           <p className="pane-note">No {filter} workflows.</p>
         ) : (
-          <ul className="workflows">
-            {visible.map((workflow) => (
-              <li key={workflow.relative_path}>
-                <WorkflowRow
-                  workflow={workflow}
-                  expanded={expanded === workflow.relative_path}
-                  onToggle={() =>
-                    setExpanded((current) =>
-                      current === workflow.relative_path ? null : workflow.relative_path,
-                    )
-                  }
-                />
-                {expanded === workflow.relative_path &&
-                  (workflow.valid ? (
-                    <LaunchForm
-                      key={workflow.relative_path}
-                      client={client}
-                      workflow={workflow}
-                      onLaunched={(rootRunId) => {
-                        setExpanded(null);
-                        onLaunched(rootRunId);
-                      }}
-                    />
-                  ) : (
-                    // The invalid file's load error, revealed only while its row is expanded — the
-                    // triage detail, off the row until asked for.
-                    <p
-                      className="workflow-error-detail"
-                      data-testid={`workflow-error-${workflow.relative_path}`}
-                    >
-                      {workflow.error?.message ?? "This workflow could not be loaded."}
-                    </p>
-                  ))}
-              </li>
-            ))}
-          </ul>
+          <WorkflowTree
+            nodes={tree}
+            depth={0}
+            client={client}
+            expanded={expanded}
+            onToggleFile={toggleFile}
+            onLaunched={onLaunched}
+            isFolderOpen={isFolderOpen}
+            onToggleFolder={toggleFolder}
+          />
         ))}
     </div>
   );
 }
 
-/** One workflow in the list: a launch trigger when valid, a labelled dead row (with its load error) when not. */
+/** The left indent of one tree row at `depth`, in px — a folder step per level, over the row's base pad. */
+function indent(depth: number): React.CSSProperties {
+  return { paddingLeft: 8 + depth * 14 };
+}
+
+/**
+ * One level of the folder tree: its folders first (each a navigation step that expands the next
+ * level below it), then its workflow files (each a launch trigger that expands its form). Recurses
+ * into an open folder's children — only an open folder renders its level, so the tree walks down one
+ * folder per level.
+ */
+function WorkflowTree({
+  nodes,
+  depth,
+  client,
+  expanded,
+  onToggleFile,
+  onLaunched,
+  isFolderOpen,
+  onToggleFolder,
+}: {
+  nodes: WorkflowTreeNode[];
+  depth: number;
+  client: PathApiClient;
+  expanded: string | null;
+  onToggleFile: (path: string) => void;
+  onLaunched: (rootRunId: string) => void;
+  isFolderOpen: (path: string) => boolean;
+  onToggleFolder: (path: string) => void;
+}) {
+  return (
+    <ul className="workflows">
+      {nodes.map((node) =>
+        node.kind === "folder" ? (
+          <li key={`dir:${node.path}`}>
+            <FolderRow
+              folder={node}
+              depth={depth}
+              open={isFolderOpen(node.path)}
+              onToggle={() => onToggleFolder(node.path)}
+            />
+            {isFolderOpen(node.path) && (
+              <WorkflowTree
+                nodes={node.children}
+                depth={depth + 1}
+                client={client}
+                expanded={expanded}
+                onToggleFile={onToggleFile}
+                onLaunched={onLaunched}
+                isFolderOpen={isFolderOpen}
+                onToggleFolder={onToggleFolder}
+              />
+            )}
+          </li>
+        ) : (
+          <li key={node.workflow.relative_path}>
+            <WorkflowRow
+              workflow={node.workflow}
+              depth={depth}
+              expanded={expanded === node.workflow.relative_path}
+              onToggle={() => onToggleFile(node.workflow.relative_path)}
+            />
+            {expanded === node.workflow.relative_path &&
+              (node.workflow.valid ? (
+                <LaunchForm
+                  key={node.workflow.relative_path}
+                  client={client}
+                  workflow={node.workflow}
+                  onLaunched={(rootRunId) => {
+                    onToggleFile(node.workflow.relative_path);
+                    onLaunched(rootRunId);
+                  }}
+                />
+              ) : (
+                // The invalid file's load error, revealed only while its row is expanded — the
+                // triage detail, off the row until asked for.
+                <p
+                  className="workflow-error-detail"
+                  data-testid={`workflow-error-${node.workflow.relative_path}`}
+                >
+                  {node.workflow.error?.message ?? "This workflow could not be loaded."}
+                </p>
+              ))}
+          </li>
+        ),
+      )}
+    </ul>
+  );
+}
+
+/** One folder in the tree: a navigation step. Clicking it walks in (expands its level) or back out. */
+function FolderRow({
+  folder,
+  depth,
+  open,
+  onToggle,
+}: {
+  folder: WorkflowTreeFolder;
+  depth: number;
+  open: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      className="workflow-folder-row"
+      data-testid={`workflow-folder-${folder.path}`}
+      aria-expanded={open}
+      onClick={onToggle}
+      style={indent(depth)}
+    >
+      <span className="workflow-folder-chevron" aria-hidden="true">
+        {open ? "▾" : "▸"}
+      </span>
+      <span className="workflow-folder-name">{folder.name}</span>
+      <span className="workflow-folder-count">{countWorkflowLeaves(folder)}</span>
+    </button>
+  );
+}
+
+/** One workflow in the tree: a launch trigger when valid, a labelled dead row (with its load error) when not. */
 function WorkflowRow({
   workflow,
+  depth,
   expanded,
   onToggle,
 }: {
   workflow: WorkflowSummary;
+  depth: number;
   expanded: boolean;
   onToggle: () => void;
 }) {
+  // The row shows only the file name — the folders already sit above it, and the workflow's own
+  // `name` is redundant here (it shows on the Launch button and in the run detail). One line, mono,
+  // so a file reads distinctly from a folder row (which carries a chevron and a count instead).
   const label = (
-    <>
-      <span className="workflow-name">{workflow.name ?? "—"}</span>
-      <span className="workflow-path">{workflow.relative_path}</span>
-    </>
+    <span className="workflow-file-name">{workflowBaseName(workflow.relative_path)}</span>
   );
 
   // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
@@ -176,6 +299,7 @@ function WorkflowRow({
         data-testid={`workflow-row-${workflow.relative_path}`}
         aria-expanded={expanded}
         onClick={onToggle}
+        style={indent(depth)}
       >
         <span className="workflow-label">{label}</span>
         <RootTag workflow={workflow} />
@@ -190,6 +314,7 @@ function WorkflowRow({
       data-testid={`workflow-row-${workflow.relative_path}`}
       aria-expanded={expanded}
       onClick={onToggle}
+      style={indent(depth)}
     >
       <span className="workflow-label">{label}</span>
       <RootTag workflow={workflow} />

@@ -8,6 +8,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const packageRoot = dirname(dirname(fileURLToPath(import.meta.url)));
 const fixturesDir = join(packageRoot, "test", "fixtures");
 const bin = join(packageRoot, "bin", "path-server.ts");
+// Invoke tsx by its absolute bin path, never `npx tsx`. `npx` resolves `tsx` relative to the child's
+// `cwd`; the "defaults to cwd" test runs with `cwd` set to a throwaway tmpdir that has no repo
+// `node_modules` above it, so `npx` there fell through to a network install of tsx and hung past the
+// 5s test timeout (#220). `tsx` is a direct devDependency, so its `.bin` shim is always present.
+const tsxBin = join(packageRoot, "node_modules", ".bin", "tsx");
 
 let projectDir: string;
 let child: ChildProcessWithoutNullStreams | undefined;
@@ -30,7 +35,7 @@ afterEach(async () => {
 /** Spawns the real `path-server` bin (dev-mode, via tsx) and resolves once it prints its URL. */
 function startBin(args: string[]): Promise<{ url: string; process: ChildProcessWithoutNullStreams }> {
   return new Promise((resolvePromise, reject) => {
-    const proc = spawn("npx", ["tsx", bin, ...args], { cwd: packageRoot });
+    const proc = spawn(tsxBin, [bin, ...args], { cwd: packageRoot });
     child = proc;
     let stdout = "";
     let stderr = "";
@@ -61,7 +66,7 @@ describe("path-server bin (real dev-mode process, no packaging)", () => {
   });
 
   it("project-dir defaults to cwd when omitted", async () => {
-    child = spawn("npx", ["tsx", bin, "--port", "0"], { cwd: projectDir });
+    child = spawn(tsxBin, [bin, "--port", "0"], { cwd: projectDir });
     let stdout = "";
     const url = await new Promise<string>((resolvePromise, reject) => {
       child!.stdout.on("data", (chunk: Buffer) => {

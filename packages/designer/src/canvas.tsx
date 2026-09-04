@@ -1,7 +1,8 @@
 import type { MouseEvent } from "react";
-import type { WireStepPlugin } from "@path/client-core";
+import type { RunStatus, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { BlockTree } from "./block-tree.js";
+import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { fileProblems, problemMarks, refLookupFor } from "./problems.js";
@@ -26,6 +27,7 @@ export function Canvas({
   onArm,
   knownPaths,
   onOpenExisting,
+  workflowRunStatus,
 }: {
   session: OpenSession;
   plugins: WireStepPlugin[];
@@ -36,6 +38,10 @@ export function Canvas({
   knownPaths: ReadonlySet<string> | null;
   /** Open the pick-an-existing-workflow dialog (#254) — the empty canvas's second entry point beside "New". */
   onOpenExisting: () => void;
+  /** The watched run's workflow-level (root run) status — the implicit root run has no `nodeId`, so it
+   *  projects onto no canvas node (surface 6); instead it badges the workflow-name line on the breadcrumb.
+   *  `null` when no run is watched, which draws no badge. */
+  workflowRunStatus: RunStatus | null;
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
   const selection = useSelection();
@@ -68,7 +74,13 @@ export function Canvas({
   const active = frames[activeIndex]!;
   return (
     <div className="canvas" role="region" aria-label="Workflow canvas">
-      <Breadcrumb frames={frames} activeIndex={activeIndex} onCrumb={goTo} onSelectFile={selection?.onSelect} />
+      <Breadcrumb
+        frames={frames}
+        activeIndex={activeIndex}
+        onCrumb={goTo}
+        onSelectFile={selection?.onSelect}
+        workflowRunStatus={workflowRunStatus}
+      />
       <CanvasBody>
         <FrameView frame={active} onDescend={descend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} knownPaths={knownPaths} />
       </CanvasBody>
@@ -109,12 +121,15 @@ function Breadcrumb({
   activeIndex,
   onCrumb,
   onSelectFile,
+  workflowRunStatus,
 }: {
   frames: Frame[];
   activeIndex: number;
   onCrumb: (index: number) => void;
   /** Deselect to the file's own properties, or `undefined` when the tree renders read-only (no selection wired). */
   onSelectFile?: (id: string | null) => void;
+  /** The watched run's workflow-level status, badged next to the current crumb; `null` draws nothing. */
+  workflowRunStatus: RunStatus | null;
 }): JSX.Element {
   return (
     <nav className="breadcrumb" aria-label="File breadcrumb">
@@ -141,10 +156,28 @@ function Breadcrumb({
                 {label}
               </button>
             )}
+            {current && workflowRunStatus !== null ? <WorkflowRunBadge status={workflowRunStatus} /> : null}
           </span>
         );
       })}
     </nav>
+  );
+}
+
+/**
+ * The workflow-level run projection on the breadcrumb (surface 6): the watched run's root-run status as a
+ * glyph + label badge on the workflow-name line. The implicit root run has no `nodeId`, so it lands on no
+ * canvas node; this is where its verdict shows. It reuses the node badge's run-tint language so both canvas
+ * surfaces read the same. `data-run-status` tints it from the stylesheet.
+ */
+function WorkflowRunBadge({ status }: { status: RunStatus }): JSX.Element {
+  return (
+    <span className="node-run-badge" data-run-status={status} data-testid="workflow-run-badge">
+      <span className="node-run-badge-glyph" aria-hidden="true">
+        {RUN_STATUS_GLYPH[status]}
+      </span>
+      {status}
+    </span>
   );
 }
 
