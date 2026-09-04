@@ -156,6 +156,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const runLoad = useRunView(client, selectedRootRunId);
   const runsForProjection = runLoad.phase === "ready" ? runLoad.value.runs : null;
+  // The watched run's workflow-level (root run) status. The root run has no `nodeId`, so it projects onto
+  // no canvas node — it badges the workflow-name line on the breadcrumb instead. `null` when nothing is
+  // watched, which draws no badge (mirroring the node badges' absence).
+  const workflowRunStatus = runLoad.phase === "ready" ? runLoad.value.status : null;
 
   // Switching root run drops the node selection: a run id from the previous tree names nothing in the
   // new one.
@@ -259,6 +263,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               onArm={setArmedKind}
               knownPaths={knownPaths}
               onOpenExisting={() => setOpenExistingOpen(true)}
+              workflowRunStatus={workflowRunStatus}
             />
           </SelectionProvider>
         </RunProjectionProvider>
