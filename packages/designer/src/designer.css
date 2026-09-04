@@ -942,6 +942,12 @@ body {
   min-width: 0;
 }
 
+/* A `one-of` value list is multi-row and vertical, so it wraps onto its own full-width line under the
+   path + operator; otherwise it steals the row's width and shrinks the path input to nothing. */
+.cond-leaf > .cond-list {
+  flex: 1 1 100%;
+}
+
 .cond-range,
 .cond-scalar-controls {
   display: flex;
@@ -989,7 +995,8 @@ body {
 /* A child condition's × sits on its control row (the leaf's second line, under the labels), not up beside
    the labels — so it reads level with the inputs it removes. Bottom-aligned to that row and padded to the
    same height as `.pane-input` (5px block vs the button's 3px), so its middle lines up with the input's. */
-.cond-child > .cond-remove {
+.cond-child > .cond-remove,
+.cond-list-row > .cond-remove {
   align-self: flex-end;
   padding-top: 5px;
   padding-bottom: 5px;
