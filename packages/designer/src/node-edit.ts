@@ -1,4 +1,4 @@
-import type { ConfigObject, WorkflowNode } from "@path/schema";
+import { ENVELOPE_KEYS, type ConfigObject, type WorkflowNode } from "@path/schema";
 
 /**
  * The pure **content** edits the properties pane performs on a single `WorkflowNode` (#369) — the
@@ -10,11 +10,9 @@ import type { ConfigObject, WorkflowNode } from "@path/schema";
  * has to view the node as an open record. `rec` is that **one** cast — the single boundary where the
  * union is opened — so the rest of the module (and the pane) reads and writes payload keys through typed
  * helpers rather than scattering the cast. `nodePayload` / `mergeNodePayload` split the node at the
- * identity/control **envelope** (`ENVELOPE_KEYS`), which is what the raw-JSON floor edits around.
+ * identity/control **envelope** — `ENVELOPE_KEYS`, owned by `@path/schema` where the node shape is
+ * defined, so a new envelope field never drifts a hand-kept copy here.
  */
-
-/** The envelope keys that are never part of a node's editable payload — identity, control, and the interpolation lines. */
-const ENVELOPE_KEYS = new Set(["id", "name", "type", "worker", "config", "input", "parse", "publish"]);
 
 /** A node as an open record — the discriminated union carries no index signature, so every payload read goes through here. */
 export function rec(node: WorkflowNode): Record<string, unknown> {
@@ -74,6 +72,17 @@ export function nodeConfigOf(node: WorkflowNode): ConfigObject | undefined {
 /** Write (or drop) a node's `config`, keeping the node otherwise intact. */
 export function applyNodeConfig(node: WorkflowNode, config: ConfigObject | undefined): WorkflowNode {
   return config === undefined ? dropNodeKey(node, "config") : ({ ...node, config } as WorkflowNode);
+}
+
+/**
+ * Read a string payload/envelope datum off a node (`prompt`, `command`, `cwd`, `ref`, `parse`,
+ * `worker`), or `""` when the key is absent or non-string. The one string-payload read the first-class
+ * editors share, so each stops re-spelling `typeof rec(node).x === "string" ? … : ""` and the `rec` cast
+ * stays here at the module's single open-record boundary.
+ */
+export function nodeString(node: WorkflowNode, key: string): string {
+  const value = rec(node)[key];
+  return typeof value === "string" ? value : "";
 }
 
 /** Read a string config datum off a node (e.g. `prompt`'s `model`), or `""` when absent. */

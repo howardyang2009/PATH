@@ -317,6 +317,20 @@ async function loadFrame(
   }
 }
 
+/** The result of a `PUT /v0/workflows` — the fresh ETag and the server-resolved relative path. */
+type PutResult = Awaited<ReturnType<PathApiClient["putWorkflow"]>>;
+
+/**
+ * Advance a frame to a new **save-point** (ADR 0030): the buffer just written becomes the baseline and
+ * the write route's fresh ETag becomes the next `If-Match`. `openedBytes` moves too, so the badge's
+ * stamp-vs-edit wording measures "changed since the last save", not since first open, and `written`
+ * flips so a first-saved child acquires its lease and launch enables. The one place the save-point
+ * advance is spelt, shared by `save` and `saveNewFile`.
+ */
+function withSavePoint(frame: Frame, etag: string, savedBytes: string): Frame {
+  return { ...frame, written: true, etag, baseline: savedBytes, openedBytes: savedBytes };
+}
+
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [frames, setFrames] = useState<Frame[]>([]);
@@ -535,6 +549,53 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     runLoad(path, depth, plugins);
   }, [runLoad]);
 
+  /**
+   * The one **persist-and-advance-the-save-point** spine behind `save` and `saveNewFile` (ADR 0016,
+   * ADR 0030). It sets the transient `saving` phase, `PUT`s the buffer, and on success advances the
+   * save-point under a top-frame re-check — the guard that an author who navigated away mid-save must not
+   * have that frame re-based. The two doors differ only in the four parametrized parts:
+   *
+   * - `ifMatch` — the overwrite precondition, or `undefined` for an exclusive create (the server then
+   *   refuses an existing path with a `412` rather than clobbering it).
+   * - `sameFrame` — the identity the top-frame re-check tests (a written file matches on its path; a
+   *   from-scratch buffer matches on still being unwritten and path-less).
+   * - `patch` — how the guarded frame (and, for `saveNewFile`, its parent) is rewritten after the write.
+   * - error mapping — each caller `.catch`es the rejection and maps a `412` to its own outcome, so this
+   *   spine never swallows a failure.
+   */
+  const commitSave = useCallback(
+    (args: {
+      depth: number;
+      path: string;
+      file: WorkflowFile;
+      ifMatch: string | undefined;
+      sameFrame: (top: Frame) => boolean;
+      patch: (patched: Frame[], top: Frame, result: PutResult, savedBytes: string) => void;
+    }): Promise<PutResult> => {
+      const { depth, path, file, ifMatch, sameFrame, patch } = args;
+      setSaveState({ phase: "saving" });
+      return client
+        // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
+        .putWorkflow({ workflowPath: path, workflow: file as unknown as JsonValue, ifMatch })
+        .then((result) => {
+          // `savedBytes` is the canonical serialization of the exact buffer the server wrote and hashed;
+          // the buffer is clean iff it still equals it, so an author who edited *during* the in-flight
+          // save stays dirty against the new baseline, which is correct.
+          const savedBytes = canonicalSerialize(file);
+          setSaveState({ phase: "saved" });
+          setFrames((prev) => {
+            const top = prev[depth];
+            if (!top || !openedResultOf(top) || !sameFrame(top)) return prev;
+            const patched = prev.slice();
+            patch(patched, top, result, savedBytes);
+            return patched;
+          });
+          return result;
+        });
+    },
+    [client],
+  );
+
   const save = useCallback((): void => {
     const depth = activeIndexRef.current;
     const active = framesRef.current[depth];
@@ -544,54 +605,32 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     // exclusive create at the pre-assigned path for an unwritten create-new child (#391).
     if (!active || !opened || active.path === null) return;
     const { path, written } = active;
-    const file = opened.file;
-    setSaveState({ phase: "saving" });
-    void client
-      .putWorkflow({
-        workflowPath: path,
-        // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
-        workflow: file as unknown as JsonValue,
-        // A written file overwrites under its `If-Match` ETag; an unwritten child creates exclusively
-        // (no precondition, ADR 0016), so the server refuses an existing path rather than clobbering it.
-        ifMatch: written ? (active.etag ?? undefined) : undefined,
-      })
-      .then((result) => {
-        setSaveState({ phase: "saved" });
-        // Advance the save-point to the bytes just written (ADR 0030): `baseline` becomes the canonical
-        // serialization of the **saved** buffer (`file`, captured above — the exact bytes the server
-        // wrote and hashed) and `etag` becomes the write route's fresh ETag for the next `If-Match`. The
-        // buffer is now clean iff it still equals `file`; an author who edited *during* the in-flight save
-        // stays dirty against the new baseline, which is correct. Re-check the top frame is still the same
-        // file — an author who navigated away mid-save must not have that frame re-based.
-        const savedBytes = canonicalSerialize(file);
-        setFrames((prev) => {
-          const top = prev[depth];
-          const topResult = openedResultOf(top);
-          if (!top || top.path !== path || !topResult) return prev;
-          const patched = prev.slice();
-          // `openedBytes` moves to the new save-point too, so the badge's stamp-vs-edit wording measures
-          // "changed since the last save", not since first open: a saved id-stamp is persisted, no longer
-          // the "stamped on import" reason. The child's first save also flips `written`, so its lease is
-          // now acquired and launch enables — the from-scratch rule lifts at the first save.
-          patched[depth] = { ...top, written: true, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes };
-          return patched;
-        });
-      })
-      .catch((error: unknown) => {
-        if (error instanceof PathApiError && error.status === 412) {
-          // A `412` on a written file's overwrite is the stale-write conflict (someone else wrote it). On
-          // an unwritten child's exclusive create it means the path already exists — a create collision,
-          // not a stale write, so it is an error the author resolves by retargeting, not by reloading.
-          setSaveState(
-            written
-              ? { phase: "conflict", message: error.message }
-              : { phase: "error", message: `A workflow already exists at ${path}. Choose a different target for the reference.` },
-          );
-        } else {
-          setSaveState({ phase: "error", message: errorMessage(error) });
-        }
-      });
-  }, [client]);
+    void commitSave({
+      depth,
+      path,
+      file: opened.file,
+      // A written file overwrites under its `If-Match` ETag; an unwritten child creates exclusively
+      // (no precondition, ADR 0016), so the server refuses an existing path rather than clobbering it.
+      ifMatch: written ? (active.etag ?? undefined) : undefined,
+      sameFrame: (top) => top.path === path,
+      patch: (patched, top, result, savedBytes) => {
+        patched[depth] = withSavePoint(top, result.etag, savedBytes);
+      },
+    }).catch((error: unknown) => {
+      if (error instanceof PathApiError && error.status === 412) {
+        // A `412` on a written file's overwrite is the stale-write conflict (someone else wrote it). On
+        // an unwritten child's exclusive create it means the path already exists — a create collision,
+        // not a stale write, so it is an error the author resolves by retargeting, not by reloading.
+        setSaveState(
+          written
+            ? { phase: "conflict", message: error.message }
+            : { phase: "error", message: `A workflow already exists at ${path}. Choose a different target for the reference.` },
+        );
+      } else {
+        setSaveState({ phase: "error", message: errorMessage(error) });
+      }
+    });
+  }, [commitSave]);
 
   const saveNewFile = useCallback(
     (targetPath: string): Promise<SaveNewFileResult> => {
@@ -603,46 +642,38 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!active || !opened || active.written || active.path !== null) {
         return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
       }
-      const file = opened.file;
-      setSaveState({ phase: "saving" });
       // Exclusive create (ADR 0016): no `If-Match`, so the server refuses an existing path with a `412`
       // rather than overwriting another workflow. The server echoes the resolved `relative_path`, which
       // the frame adopts as its path — placement decided at this first save.
-      return client
-        .putWorkflow({ workflowPath: targetPath, workflow: file as unknown as JsonValue })
-        .then((result): SaveNewFileResult => {
-          const savedBytes = canonicalSerialize(file);
-          setSaveState({ phase: "saved" });
-          setFrames((prev) => {
-            const top = prev[depth];
-            const topResult = openedResultOf(top);
-            // Guard the still-a-scratch-buffer at this depth (an author who navigated mid-save must not
-            // have a stale frame re-based) — the same top-frame re-check `save` makes.
-            if (!top || top.written || top.path !== null || !topResult) return prev;
-            const patched = prev.slice();
-            // The child is now a saved frame; drop its `refParent` link — it is bound, and a re-save goes
-            // through the written-file `save` door, never here.
-            patched[depth] = { ...top, written: true, path: result.relativePath, etag: result.etag, baseline: savedBytes, openedBytes: savedBytes, refParent: undefined };
-            // Back-fill the parent node's `ref` (#391) from the path the child was actually saved to, so a
-            // create-new ref is filled by the save rather than chosen up front. The parent buffer moves off
-            // its baseline (it gains the ref), so it reads dirty — the author saves it like any edit. Skip
-            // silently if the parent frame or its `workflow` node is gone (the author deleted it, or the
-            // parent lost its path), which leaves the freshly-saved child standing on its own.
-            const link = top.refParent;
-            const parent = link ? patched[link.depth] : undefined;
-            const parentResult = openedResultOf(parent);
-            if (link && parent && parentResult && parent.path !== null) {
-              const node = findById(parentResult.file.body, link.nodeId);
-              if (node && node.type === "workflow") {
-                const ref = relativeRefPath(parent.path, result.relativePath);
-                const nextParent = replaceNode(parentResult.file, link.nodeId, { ...node, ref } as WorkflowNode);
-                patched[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
-              }
+      return commitSave({
+        depth,
+        path: targetPath,
+        file: opened.file,
+        ifMatch: undefined,
+        sameFrame: (top) => !top.written && top.path === null,
+        patch: (patched, top, result, savedBytes) => {
+          // The child is now a saved frame that adopts the server path; drop its `refParent` link — it is
+          // bound, and a re-save goes through the written-file `save` door, never here.
+          patched[depth] = { ...withSavePoint(top, result.etag, savedBytes), path: result.relativePath, refParent: undefined };
+          // Back-fill the parent node's `ref` (#391) from the path the child was actually saved to, so a
+          // create-new ref is filled by the save rather than chosen up front. The parent buffer moves off
+          // its baseline (it gains the ref), so it reads dirty — the author saves it like any edit. Skip
+          // silently if the parent frame or its `workflow` node is gone (the author deleted it, or the
+          // parent lost its path), which leaves the freshly-saved child standing on its own.
+          const link = top.refParent;
+          const parent = link ? patched[link.depth] : undefined;
+          const parentResult = openedResultOf(parent);
+          if (link && parent && parentResult && parent.path !== null) {
+            const node = findById(parentResult.file.body, link.nodeId);
+            if (node && node.type === "workflow") {
+              const ref = relativeRefPath(parent.path, result.relativePath);
+              const nextParent = replaceNode(parentResult.file, link.nodeId, { ...node, ref } as WorkflowNode);
+              patched[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
             }
-            return patched;
-          });
-          return { status: "created", path: result.relativePath };
-        })
+          }
+        },
+      })
+        .then((result): SaveNewFileResult => ({ status: "created", path: result.relativePath }))
         .catch((error: unknown): SaveNewFileResult => {
           // A `412` on a no-precondition create means the path already exists — the dialog's "choose
           // another name", not the stale-write conflict `save` shows. Drop the transient saving phase back
@@ -656,7 +687,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           return { status: "error", message };
         });
     },
-    [client],
+    [commitSave],
   );
 
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every

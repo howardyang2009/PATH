@@ -8,7 +8,7 @@ import { findById, replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
-import { fileProblems, refLookupFor } from "./problems.js";
+import { fileProblems, refLookupFor, type Problem } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { relativeRefPath } from "./resolve-ref.js";
@@ -97,9 +97,13 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The ref lookup for the active file (its own path resolves a relative ref; the discovered set says which
   // targets exist). `undefined` for a from-scratch root or before discovery loads, which skips the check.
   const refLookup = useMemo(() => refLookupFor(activePath, knownPaths), [activePath, knownPaths]);
-  // The soft cross-node warning count for the open file (#388, #392). Launch is **badged, not blocked**: the
-  // count rides the launch button so the author runs knowingly (a saved-with-warnings file is clean).
-  const warningCount = useMemo(() => (openedFile ? fileProblems(openedFile, refLookup).length : 0), [openedFile, refLookup]);
+  // The cross-node problem pass for the active file (#388, #392), derived **once** here and shared by its
+  // two readers — the canvas markers/panel and the launch button's warning count — so the two cannot
+  // disagree and the whole-file walk runs one time per render, not twice.
+  const problems = useMemo<Problem[]>(() => (openedFile ? fileProblems(openedFile, refLookup) : []), [openedFile, refLookup]);
+  // Launch is **badged, not blocked**: the count rides the launch button so the author runs knowingly (a
+  // saved-with-warnings file is clean).
+  const warningCount = problems.length;
 
   // ── Nested `workflow`-ref creation (#391) ────────────────────────────────────────────────────────
   // Set the empty `workflow` node's `ref` to reach `targetPath`. The stored ref is relative to the
@@ -246,7 +250,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               plugins={plugins}
               armedKind={armedKind}
               onArm={setArmedKind}
-              knownPaths={knownPaths}
+              problems={problems}
               onOpenExisting={() => setOpenExistingOpen(true)}
               // Double-click an unset `workflow` block to author its target — the same chooser the pane's
               // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.

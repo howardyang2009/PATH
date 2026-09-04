@@ -5,27 +5,16 @@ import {
   PUBLISH_ROOTS,
   STEP_ROOTS,
   checkInterpolationSyntax,
-  isEnvWrapper,
-  isSecretWrapper,
   type Condition,
   type ConfigObject,
-  type ConfigValue,
-  type EnvWrapper,
   type InterpolationRoot,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
 import { ConditionField } from "./condition-builder.js";
 import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./config-inheritance.js";
-import {
-  configModeOf,
-  isEditableScalar,
-  referenceLabel,
-  renderConfigValue,
-  setConfigMode,
-  setSecretSource,
-  type ConfigMode,
-} from "./config-value.js";
+import { renderConfigValue } from "./config-value.js";
+import { ConfigValueControl } from "./config-value-control.js";
 import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
 import {
   applyNodeConfig,
@@ -34,6 +23,7 @@ import {
   dropNodeKey,
   nodeConfigOf,
   nodePayload,
+  nodeString,
   rec,
   setNodeField,
   withConfig,
@@ -44,11 +34,12 @@ import { editorTier, pluginFor } from "./editor-tiers.js";
 import { carriesEnvelope } from "./grammar.js";
 import { referenceablePaths } from "./interp-suggest.js";
 import {
+  useKeyedRows,
   useValidatedDraft,
-  validRowsToMap,
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
+  type KeyedRow,
 } from "./validated-draft.js";
 
 /**
@@ -131,14 +122,8 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
   );
 }
 
-/** A workflow-output entry the editor holds as a key and an interpolable-string value. */
-interface OutputRow {
-  key: string;
-  value: string;
-}
-
 /** The file's `output` map read back as editor rows (each value coerced to its string form). */
-function outputRowsOf(file: WorkflowFile): OutputRow[] {
+function outputRowsOf(file: WorkflowFile): KeyedRow[] {
   const output = (file as { output?: unknown }).output;
   if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
   return Object.entries(output as Record<string, unknown>).map(([key, value]) => ({
@@ -157,24 +142,21 @@ function outputRowsOf(file: WorkflowFile): OutputRow[] {
  * editor authors.
  */
 function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
-  const [rows, setRows] = useState<OutputRow[]>(() => outputRowsOf(file));
-
-  // A row edit passes a per-row `coalesce` key so a keystroke run in one row folds to one undo entry
-  // (#389); add/remove pass none, so each is its own entry.
-  const writeRows = (next: OutputRow[], coalesce?: string): void => {
-    setRows(next);
-    const built = validRowsToMap(next, STEP_ROOTS);
-    if (!built.ok) return;
-    if (Object.keys(built.map).length === 0) {
-      const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
-      applyEdit(rest as WorkflowFile, coalesce);
-    } else {
-      applyEdit({ ...file, output: built.map } as WorkflowFile, coalesce);
-    }
-  };
-  const setRow = (index: number, row: OutputRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `file-output:${index}`);
-  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
-  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+  // The file's `output` map is a keyed-row field (`useKeyedRows`): an empty map drops the whole `output`
+  // key, so an empty `output: {}` never lands. A row edit folds to one undo entry (#389, `file-output:…`).
+  const { rows, setRow, addRow, removeRow } = useKeyedRows(
+    () => outputRowsOf(file),
+    STEP_ROOTS,
+    (map, coalesce) => {
+      if (Object.keys(map).length === 0) {
+        const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
+        applyEdit(rest as WorkflowFile, coalesce);
+      } else {
+        applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+      }
+    },
+    (index) => `file-output:${index}`,
+  );
 
   return (
     <div className="pane-section">
@@ -183,38 +165,26 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
       {rows.length > 0 ? (
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
-            <OutputRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+            <KeyedRowField
+              key={index}
+              row={row}
+              roots={STEP_ROOTS}
+              keyLabel="Output key"
+              valueLabel="Output value"
+              removeLabel="Remove output"
+              keyPlaceholder="output key"
+              // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most
+              // common output: land the step context value of the same name. Falls back before a key is typed.
+              valuePlaceholder={(r) => `\${context.${r.key === "" ? "key" : r.key}}`}
+              onChange={(r) => setRow(index, r)}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
       ) : null}
       <button type="button" className="pane-btn" onClick={addRow}>
         + add output key
       </button>
-    </div>
-  );
-}
-
-/** One output row: a key and its interpolable value, live-checked against the output roots (`config`/`context`). */
-function OutputRowField({ row, onChange, onRemove }: { row: OutputRow; onChange: (row: OutputRow) => void; onRemove: () => void }): JSX.Element {
-  const check = checkInterpolationSyntax(row.value, STEP_ROOTS);
-  // The value placeholder mirrors the key the author typed — `${context.<key>}` — the most common output:
-  // land the step context value of the same name. It falls back to `${context.key}` before a key is typed.
-  const valuePlaceholder = `\${context.${row.key === "" ? "key" : row.key}}`;
-  return (
-    <div className="pane-publish-row">
-      <input className="pane-input" type="text" aria-label="Output key" placeholder="output key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
-      <span className="pane-publish-eq" aria-hidden="true">=</span>
-      <div className="pane-publish-value">
-        <input className="pane-input" type="text" aria-label="Output value" placeholder={valuePlaceholder} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
-        <button type="button" className="pane-btn" aria-label="Remove output" onClick={onRemove}>
-          ×
-        </button>
-      </div>
-      {!check.ok ? (
-        <p className="pane-error" role="alert">
-          {check.error}
-        </p>
-      ) : null}
     </div>
   );
 }
@@ -430,7 +400,7 @@ function KindFields({
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
 function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file: WorkflowFile }): JSX.Element {
-  const prompt = typeof (rec(node)).prompt === "string" ? ((rec(node)).prompt as string) : "";
+  const prompt = nodeString(node, "prompt");
   const inheritedModel = configStringOf(file.config, "model");
   return (
     <>
@@ -485,10 +455,9 @@ function ModelField({ value, inherited, onChange }: { value: string; inherited: 
 
 /** `binary` — the first-class editor: the `command`, its `args`, its `cwd`, plus the worker. */
 function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const record = rec(node);
-  const command = typeof record.command === "string" ? record.command : "";
-  const cwd = typeof record.cwd === "string" ? record.cwd : "";
-  const args = Array.isArray(record.args) ? (record.args as unknown[]).map(String) : [];
+  const command = nodeString(node, "command");
+  const cwd = nodeString(node, "cwd");
+  const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
   return (
     <>
       <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
@@ -509,7 +478,7 @@ function WorkflowRefEditor({
   commit: (next: WorkflowNode, coalesce?: string) => void;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
-  const ref = typeof (rec(node)).ref === "string" ? ((rec(node)).ref as string) : "";
+  const ref = nodeString(node, "ref");
   // An empty ref on a file with a path offers the target chooser (#391): reference an existing workflow,
   // or create a new one and descend into it. Without a path (a from-scratch root) or once a ref is set,
   // the plain path field is the editor — a set ref stays retargetable by hand.
@@ -633,7 +602,7 @@ function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
 function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element | null {
   const plugin = pluginFor(node.type, plugins);
   if (!plugin || plugin.workers.length <= 1) return null;
-  const current = typeof (rec(node)).worker === "string" ? ((rec(node)).worker as string) : plugin.default_worker;
+  const current = nodeString(node, "worker") || plugin.default_worker;
   const onChange = (worker: string): void => {
     // The default is the omitted case (a step naming no worker takes the type's default), so selecting
     // it drops the field rather than pinning it (§ Worker selection).
@@ -829,122 +798,6 @@ function ConfigRowField({
   );
 }
 
-/** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */
-interface ConfigControlProps {
-  value: ConfigValue;
-  onChange: (v: ConfigValue) => void;
-  label: string;
-}
-
-/**
- * A typed control for a config value with its `Literal` / `$env` / `$secret` mode selector (map decision 9).
- * The composed `{"$secret": {"$env": …}}` is expressible through the `$secret` source sub-selector. A nested
- * array/object that is not a wrapper stays read-only — that authoring is out of this affordance's scope.
- */
-function ConfigValueControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
-  if (!isEditableScalar(value) && referenceLabel(value) === null) {
-    return <code className="pane-config-value">{renderConfigValue(value)}</code>;
-  }
-  const mode = configModeOf(value);
-  const setMode = (next: ConfigMode): void => {
-    if (next === mode) return;
-    onChange(setConfigMode(value, next));
-  };
-  return (
-    <div className="pane-config-control">
-      <select
-        className="pane-input pane-config-mode"
-        aria-label={`${label} mode`}
-        value={mode}
-        onChange={(e) => setMode(e.target.value as ConfigMode)}
-      >
-        <option value="literal">Literal</option>
-        <option value="env">$env</option>
-        <option value="secret">$secret</option>
-      </select>
-      {mode === "literal" ? <LiteralControl value={value} onChange={onChange} label={label} /> : null}
-      {mode === "env" ? <EnvControl value={value} onChange={onChange} label={label} /> : null}
-      {mode === "secret" ? <SecretControl value={value} onChange={onChange} label={label} /> : null}
-    </div>
-  );
-}
-
-/** The literal-mode control: a typed input matching the scalar's own type (boolean / number / string). */
-function LiteralControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
-  if (typeof value === "boolean") {
-    return <input type="checkbox" aria-label={label} checked={value} onChange={(e) => onChange(e.target.checked)} />;
-  }
-  if (typeof value === "number") {
-    return <input className="pane-input" type="number" aria-label={label} value={value} onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />;
-  }
-  return <input className="pane-input" type="text" aria-label={label} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
-}
-
-/** The `$env`-mode control: an env-var-name input plus the reference-only chip (`$env · NAME`). */
-function EnvControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
-  const name = isEnvWrapper(value) ? value.$env : "";
-  return (
-    <div className="pane-ref-control">
-      <input
-        className="pane-input"
-        type="text"
-        aria-label={`${label} $env variable`}
-        placeholder="ENV_VAR_NAME"
-        value={name}
-        onChange={(e) => onChange({ $env: e.target.value })}
-      />
-      <code className="pane-ref-token" data-ref="env">
-        {referenceLabel({ $env: name })}
-      </code>
-    </div>
-  );
-}
-
-/**
- * The `$secret`-mode control: a source sub-selector (a literal secret, or one sourced from `$env`) and the
- * matching input, plus the masked, named token. A literal secret edits through a password field so the
- * pane never renders the value; the composed `{"$secret": {"$env": …}}` is the env-sourced source.
- */
-function SecretControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
-  const inner: string | EnvWrapper = isSecretWrapper(value) ? value.$secret : "";
-  const setSource = (source: "literal" | "env"): void => onChange(setSecretSource(value, source));
-  return (
-    <div className="pane-ref-control">
-      <select
-        className="pane-input pane-secret-source"
-        aria-label={`${label} $secret source`}
-        value={isEnvWrapper(inner) ? "env" : "literal"}
-        onChange={(e) => setSource(e.target.value as "literal" | "env")}
-      >
-        <option value="literal">Literal secret</option>
-        <option value="env">From $env</option>
-      </select>
-      {isEnvWrapper(inner) ? (
-        <input
-          className="pane-input"
-          type="text"
-          aria-label={`${label} $secret $env variable`}
-          placeholder="ENV_VAR_NAME"
-          value={inner.$env}
-          onChange={(e) => onChange({ $secret: { $env: e.target.value } })}
-        />
-      ) : (
-        <input
-          className="pane-input"
-          type="password"
-          aria-label={`${label} $secret value`}
-          placeholder="secret"
-          value={inner}
-          onChange={(e) => onChange({ $secret: e.target.value })}
-        />
-      )}
-      <code className="pane-ref-token" data-ref="secret">
-        {referenceLabel({ $secret: inner })}
-      </code>
-    </div>
-  );
-}
-
 /**
  * The interpolable **input** object (§ Input/output wiring): one live-validated JSON textarea whose
  * `${…}` placeholders reference `config.` / `context.` dot-paths — the roots the schema allows a step to
@@ -987,14 +840,8 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: Work
   );
 }
 
-/** A publish entry the editor holds as a key and an interpolable-string value. */
-interface PublishRow {
-  key: string;
-  value: string;
-}
-
 /** The node's `publish` map read back as editor rows (each value coerced to its string form). */
-function publishRowsOf(node: WorkflowNode): PublishRow[] {
+function publishRowsOf(node: WorkflowNode): KeyedRow[] {
   const publish = rec(node).publish;
   if (publish === null || typeof publish !== "object" || Array.isArray(publish)) return [];
   return Object.entries(publish as Record<string, unknown>).map(([key, value]) => ({
@@ -1010,22 +857,19 @@ function publishRowsOf(node: WorkflowNode): PublishRow[] {
  * validation marker on the canvas (`publish-conflicts.ts`).
  */
 function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
-  const [rows, setRows] = useState<PublishRow[]>(() => publishRowsOf(node));
-  const parse = typeof rec(node).parse === "string" ? (rec(node).parse as string) : "";
+  const parse = nodeString(node, "parse");
 
-  // Hold the rows as a draft and commit only when every value's interpolation is valid, so an ill-typed
-  // `${…}` publish never reaches the file — the node stays strict-valid (§ Context reads and writes).
-  // A row edit passes a per-row `coalesce` key so a keystroke run in one publish row folds to one undo
-  // entry (#389); add/remove pass none, so each is its own entry.
-  const writeRows = (next: PublishRow[], coalesce?: string): void => {
-    setRows(next);
-    const built = validRowsToMap(next, PUBLISH_ROOTS);
-    if (!built.ok) return;
-    commit(Object.keys(built.map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: built.map } as WorkflowNode), coalesce);
-  };
-  const setRow = (index: number, row: PublishRow): void => writeRows(rows.map((r, i) => (i === index ? row : r)), `publish:${index}:${node.id}`);
-  const addRow = (): void => writeRows([...rows, { key: "", value: "" }]);
-  const removeRow = (index: number): void => writeRows(rows.filter((_, i) => i !== index));
+  // The node's `publish` map is a keyed-row field (`useKeyedRows`): it commits only when every value's
+  // interpolation is valid, so an ill-typed `${…}` publish never reaches the file and the node stays
+  // strict-valid (§ Context reads and writes). An empty map drops the `publish` key; a row edit folds to
+  // one undo entry (#389, `publish:…:node.id`, scoped by node so two nodes' rows never fold together).
+  const { rows, setRow, addRow, removeRow } = useKeyedRows(
+    () => publishRowsOf(node),
+    PUBLISH_ROOTS,
+    (map, coalesce) =>
+      commit(Object.keys(map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), coalesce),
+    (index) => `publish:${index}:${node.id}`,
+  );
 
   return (
     <div className="pane-section">
@@ -1034,7 +878,18 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
         <div className="pane-publish-grid">
           {rows.map((row, index) => (
-            <PublishRowField key={index} row={row} onChange={(r) => setRow(index, r)} onRemove={() => removeRow(index)} />
+            <KeyedRowField
+              key={index}
+              row={row}
+              roots={PUBLISH_ROOTS}
+              keyLabel="Publish key"
+              valueLabel="Publish value"
+              removeLabel="Remove publish"
+              keyPlaceholder="context key"
+              valuePlaceholder={() => "${output.x}"}
+              onChange={(r) => setRow(index, r)}
+              onRemove={() => removeRow(index)}
+            />
           ))}
         </div>
       ) : null}
@@ -1051,18 +906,42 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (nex
   );
 }
 
-/** One publish row: a context key and its interpolable value, the value live-checked against the publish roots. */
-function PublishRowField({ row, onChange, onRemove }: { row: PublishRow; onChange: (row: PublishRow) => void; onRemove: () => void }): JSX.Element {
-  const check = checkInterpolationSyntax(row.value, PUBLISH_ROOTS);
-  // One publish datum on one line: `key = value ×`. The row is transparent to the grid (`display: contents`)
-  // so its key, `=`, and value cell share the section grid and the `=` lines up down the list (§ Config).
+/**
+ * One keyed-row line — `key = value ×` — behind both the node's `publish` map and the file's `output`
+ * map. The value is live-checked against the field's own `roots`; the row is transparent to the grid
+ * (`display: contents`) so its key, `=`, and value cell share the section grid and the `=` lines up down
+ * the list (§ Config). Labels, the key placeholder, and the value placeholder come from the owner, since
+ * the two fields differ only there.
+ */
+function KeyedRowField({
+  row,
+  roots,
+  keyLabel,
+  valueLabel,
+  removeLabel,
+  keyPlaceholder,
+  valuePlaceholder,
+  onChange,
+  onRemove,
+}: {
+  row: KeyedRow;
+  roots: readonly InterpolationRoot[];
+  keyLabel: string;
+  valueLabel: string;
+  removeLabel: string;
+  keyPlaceholder: string;
+  valuePlaceholder: (row: KeyedRow) => string;
+  onChange: (row: KeyedRow) => void;
+  onRemove: () => void;
+}): JSX.Element {
+  const check = checkInterpolationSyntax(row.value, roots);
   return (
     <div className="pane-publish-row">
-      <input className="pane-input" type="text" aria-label="Publish key" placeholder="context key" value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
+      <input className="pane-input" type="text" aria-label={keyLabel} placeholder={keyPlaceholder} value={row.key} onChange={(e) => onChange({ ...row, key: e.target.value })} />
       <span className="pane-publish-eq" aria-hidden="true">=</span>
       <div className="pane-publish-value">
-        <input className="pane-input" type="text" aria-label="Publish value" placeholder="${output.x}" value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
-        <button type="button" className="pane-btn" aria-label="Remove publish" onClick={onRemove}>
+        <input className="pane-input" type="text" aria-label={valueLabel} placeholder={valuePlaceholder(row)} value={row.value} onChange={(e) => onChange({ ...row, value: e.target.value })} aria-invalid={!check.ok} />
+        <button type="button" className="pane-btn" aria-label={removeLabel} onClick={onRemove}>
           ×
         </button>
       </div>

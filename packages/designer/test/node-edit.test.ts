@@ -6,6 +6,7 @@ import {
   mergeNodePayload,
   nodeConfigOf,
   nodePayload,
+  nodeString,
   setNodeField,
   withConfig,
   withOptionalArray,
@@ -93,5 +94,16 @@ describe("withConfig / nodeConfigOf / configString", () => {
   it("configString is empty for an absent or non-string key", () => {
     expect(configString(binaryNode(), "model")).toBe("");
     expect(configString(binaryNode({ config: { model: 7 } }), "model")).toBe("");
+  });
+});
+
+describe("nodeString", () => {
+  it("reads a string payload/envelope key", () => {
+    expect(nodeString(binaryNode({ command: "echo" }), "command")).toBe("echo");
+  });
+
+  it("is empty for an absent or non-string key", () => {
+    expect(nodeString(binaryNode(), "cwd")).toBe("");
+    expect(nodeString(binaryNode({ args: ["a"] }), "args")).toBe("");
   });
 });

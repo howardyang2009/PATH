@@ -24,6 +24,7 @@ export {
 
 export {
   buildCoreMembers,
+  ENVELOPE_KEYS,
   makeNodeSchema,
   RESERVED_TYPE_NAMES,
   type NodeRecursion,
