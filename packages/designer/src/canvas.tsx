@@ -142,7 +142,8 @@ function Breadcrumb({
   onCrumb: (index: number) => void;
   /** Deselect to the file's own properties, or `undefined` when the tree renders read-only (no selection wired). */
   onSelectFile?: (id: string | null) => void;
-  /** The watched run's workflow-level status, badged next to the current crumb; `null` draws nothing. */
+  /** The watched run's workflow-level (root run) status, badged on the root crumb — the run's own file —
+   *  and never on a nested descent's crumb; `null` draws nothing. */
   workflowRunStatus: RunStatus | null;
 }): JSX.Element {
   return (
@@ -170,7 +171,7 @@ function Breadcrumb({
                 {label}
               </button>
             )}
-            {current && workflowRunStatus !== null ? <WorkflowRunBadge status={workflowRunStatus} /> : null}
+            {index === 0 && workflowRunStatus !== null ? <WorkflowRunBadge status={workflowRunStatus} /> : null}
           </span>
         );
       })}
