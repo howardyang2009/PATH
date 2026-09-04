@@ -219,6 +219,9 @@ describe("NodeIo", () => {
     expect(context).toHaveTextContent('"since_tag": "1.3.0"');
     // Context is masked at the persistence boundary too — the pane renders what it is served.
     expect(context).toHaveTextContent('"token": "[secret:github_token]"');
+    // The context object carries a provenance line like Input's and Output's, derived from a sibling
+    // ref (there is no `context_ref` column) as `runs/<root>/<run>/context.json`.
+    expect(context).toHaveTextContent(`runs/${ROOT}/${RUN}/context.json`);
   });
 
   it("reads an absent context as no context, not an error", async () => {
@@ -271,6 +274,9 @@ describe("NodeIo", () => {
 
     const error = await screen.findByTestId("node-io-error");
     expect(error).toHaveTextContent("worker exited with code 1: boom");
+    // The E block carries a provenance line too, but the error text is not a served blob file — it
+    // rides the run's step-finished event, so the line names that source rather than a filename.
+    expect(error).toHaveTextContent(/step-finished event/i);
   });
 
   it("shows no E block for a run that did not fail", async () => {

@@ -33,6 +33,19 @@ function runErrorMessage(runId: string, narrative: readonly LogEvent[]): string 
 }
 
 /**
+ * The on-disk provenance of a run's `context.json`, for the Context block's ref line. The run record
+ * carries no `context_ref` column (only `input_ref`/`output_ref`), so it is derived: a context object
+ * always sits beside the run's other blobs, so swap the filename on whichever sibling ref the record
+ * carries (input first, then output). A run with neither ref is a workflow-run that recorded no blob
+ * to derive from, so fall back to the stable `runs/<root>/<run>/context.json` layout (§6, ADR 0006).
+ */
+function contextBlobRef(run: RunNodeState): string {
+  const sibling = run.inputRef ?? run.outputRef;
+  if (sibling !== null) return sibling.replace(/[^/]+$/, "context.json");
+  return `runs/${run.rootRunId}/${run.runId}/context.json`;
+}
+
+/**
  * The node-I/O/C read surface: the selected run's input, output, and context objects, in the right
  * pane of the pinned console (#44 Variant A). A step has exactly one input object and one output
  * object (CONTEXT.md §Invariants), and now a context object too: a workflow-run keeps its own
@@ -115,8 +128,9 @@ export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
       <BlobBlock
         title="Context"
         load={context}
-        // Context has no ref column, so there is no on-disk provenance line to show for it.
-        blobRef={null}
+        // Context has no ref column; its on-disk provenance is derived from a sibling blob's ref so the
+        // line reads like Input's and Output's (`runs/<root>/<run>/context.json`).
+        blobRef={contextBlobRef(run)}
         testId="node-io-context"
         // A succeeded run records a context; an absent one is a run still in flight or one that never
         // reached a verdict — not a failure of the pane.
@@ -141,6 +155,10 @@ function ErrorBlock({ message }: { message: string }) {
         Error
       </h3>
       <pre className="node-io-error-message">{message}</pre>
+      {/* The error text is not a served blob file: it rides the run's `step-finished` event in the
+          event log (mvp spec §8.1), so its provenance is that event, not a filename like the I/O/C
+          blocks carry. The line reads in the same muted style so the four blocks stay visually kin. */}
+      <p className="blob-ref">from the run's step-finished event (event log)</p>
     </section>
   );
 }
