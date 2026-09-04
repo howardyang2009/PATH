@@ -185,10 +185,15 @@ export const RESERVED_TYPE_NAMES = [
   "checkpoint",
 ] as const;
 
-// The envelope fields the factory composes and therefore owns: the shared `commonStepFields`, plus
-// the discriminant `type` and the `worker` enum. A plugin `fields` key colliding with any of these is
-// rejected loud at freeze, so the three envelope invariants stay impossible to declare wrong.
-const ENVELOPE_FIELD_NAMES = new Set([...Object.keys(commonStepFields), "type", "worker"]);
+/**
+ * The identity/control **envelope** keys a step node carries: the shared `commonStepFields`
+ * (`id`, `name`, `config?`, `input?`, `parse?`, `publish?`), plus the discriminant `type` and the
+ * `worker` enum. Derived from `commonStepFields`, so a new envelope field added there lands here for
+ * free. The schema owns the node shape, so this is the one definition of the envelope: the plugin
+ * factory rejects a `fields` key that collides with it (below), and a consumer that splits a node at
+ * the envelope — the designer's raw-JSON payload editor — reads it from here rather than re-listing it.
+ */
+export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([...Object.keys(commonStepFields), "type", "worker"]);
 
 /**
  * One plugin-contributed leaf member, composed so a plugin author cannot declare the envelope wrong
@@ -200,10 +205,10 @@ const ENVELOPE_FIELD_NAMES = new Set([...Object.keys(commonStepFields), "type", 
  */
 function buildPluginMember(typeName: string, entry: RegistryStepType): ZodDiscriminatedUnionOption<"type"> {
   for (const fieldName of Object.keys(entry.fields)) {
-    if (ENVELOPE_FIELD_NAMES.has(fieldName)) {
+    if (ENVELOPE_KEYS.has(fieldName)) {
       throw new Error(
         `step type "${typeName}": field "${fieldName}" collides with an envelope field the schema owns ` +
-          `(reserved: ${[...ENVELOPE_FIELD_NAMES].map((name) => `"${name}"`).join(", ")})`,
+          `(reserved: ${[...ENVELOPE_KEYS].map((name) => `"${name}"`).join(", ")})`,
       );
     }
   }
