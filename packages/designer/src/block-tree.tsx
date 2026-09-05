@@ -1,6 +1,7 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { WorkflowNode } from "@path/schema";
 import { summarizeCondition } from "./condition-summary.js";
+import { leafChip, nodeHue } from "./node-kind.js";
 import { ConflictMarker } from "./conflict-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
@@ -65,37 +66,10 @@ function TailSocket({ socket, editor }: { socket: ListSocket; editor?: EditorApi
   );
 }
 
-/** The hue-token key (`--k-<kind>`) for a node kind. Leaf steps share the step hue; the ref keeps its own. */
-function hueKind(node: WorkflowNode): string {
-  switch (node.type) {
-    case "workflow":
-      return "workflow";
-    case "parallel":
-      return "parallel";
-    case "branch":
-      return "branch";
-    case "while-do":
-      return "while";
-    case "sequence":
-      return "sequence";
-    case "checkpoint":
-      return "checkpoint";
-    default:
-      return "step";
-  }
-}
-
 /** The block's CSS custom properties, so its border and mouth tint pick up its kind's hue tokens. */
 function hueStyle(node: WorkflowNode): CSSProperties {
-  const kind = hueKind(node);
+  const kind = nodeHue(node.type);
   return { "--block-fg": `var(--k-${kind})`, "--block-bg": `var(--k-${kind}-bg)` } as CSSProperties;
-}
-
-/** The chip label for a leaf step: `LLM` for a prompt, `COMMAND` for a binary, else the type upper-cased. */
-function leafChip(type: string): string {
-  if (type === "prompt") return "LLM";
-  if (type === "binary") return "COMMAND";
-  return type.toUpperCase();
 }
 
 /** The per-node structure controls: reorder, duplicate, delete (§ Reordering, deleting). Only when editable. */

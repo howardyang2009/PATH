@@ -43,6 +43,7 @@ import {
   fillPlaceholderOnTab,
 } from "./pane-controls.js";
 import { carriesEnvelope } from "./grammar.js";
+import { kindExplanation } from "./node-kind.js";
 import { referenceablePaths } from "./interp-suggest.js";
 import {
   useKeyedRows,
@@ -293,30 +294,6 @@ function occupantRole(site: ReturnType<typeof locate>, file: WorkflowFile): stri
     return `branch arm (${site.armIndex + 1} of ${total})`;
   }
   return null;
-}
-
-/** The one-line explanation of a node kind, shown above the divider (§ Pane layout, explanatory copy). */
-function kindExplanation(type: string): string {
-  switch (type) {
-    case "prompt":
-      return "An LLM prompt run against a model.";
-    case "binary":
-      return "A command run with arguments in a working directory.";
-    case "workflow":
-      return "A reference to another workflow file, run as a nested run.";
-    case "parallel":
-      return "Runs its branches together; the join mode decides how their outputs land.";
-    case "branch":
-      return "First-match-wins arms, each guarded by a condition, with an optional else.";
-    case "while-do":
-      return "Repeats one body while a condition holds, up to a maximum count.";
-    case "sequence":
-      return "An ordered stack of nodes, run one after another.";
-    case "checkpoint":
-      return "Asserts a condition on the run; a failed assertion fails the run.";
-    default:
-      return `A ${type} step.`;
-  }
 }
 
 // ── The kind-specific field region ───────────────────────────────────────────────────────────────
