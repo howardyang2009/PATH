@@ -30,7 +30,8 @@
         "verdict": "${output}"
       },
       "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \\\"pass\\\": boolean, \\\"feedback\\\": string, \\\"suggested_format\\\": \\\"short\\\" | \\\"long\\\" }.",
-      "type": "prompt"
+      "type": "prompt",
+      "parse": "json"
     },
     {
       "type": "checkpoint",
