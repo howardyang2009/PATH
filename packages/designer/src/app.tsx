@@ -1,22 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import type { WorkflowNode } from "@path/schema";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
 import { EditingToolbar } from "./editing-toolbar.js";
-import { findById, replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
-import { relativeRefPath } from "./resolve-ref.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunWatch } from "./run/use-run-watch.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useFileProblems } from "./use-file-problems.js";
+import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
@@ -41,10 +39,6 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The open-existing picker (#254). Opened from the empty-canvas affordance or the toolbar; a choice
   // opens that discovered workflow as a fresh root through `session.open`, then closes the dialog.
   const [openExistingOpen, setOpenExistingOpen] = useState(false);
-  // The ref-target chooser (#391): the id of the empty `workflow` node whose target is being chosen, or
-  // `null`. Opened from the pane's ref editor; a choice sets the parent ref (and, for create-new, descends
-  // into a fresh child), then closes it.
-  const [refTargetNode, setRefTargetNode] = useState<string | null>(null);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.activeIndex];
@@ -71,6 +65,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
 
+  // The nested-`workflow`-ref authoring flow (#391), behind one seam (`useRefAuthoring`): the in-flight node,
+  // the reference-existing edit, and the create-new descent. The pane and canvas both open it through the one
+  // `onAuthorRef` handle; the chooser renders from `refAuthoring.target`.
+  const refAuthoring = useRefAuthoring(session, openedFile, activePath);
+
   // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it owns the
   // discovery scan, the dangling-ref lookup, and the whole-file walk, derived once and shared by its two
   // readers — the canvas markers/panel and the launch button's warning count — so the two cannot disagree.
@@ -78,31 +77,6 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // Launch is **badged, not blocked**: the count rides the launch button so the author runs knowingly (a
   // saved-with-warnings file is clean).
   const warningCount = problems.length;
-
-  // ── Nested `workflow`-ref creation (#391) ────────────────────────────────────────────────────────
-  // Set the empty `workflow` node's `ref` to reach `targetPath`. The stored ref is relative to the
-  // referring file's directory (`relativeRefPath`), so this needs the parent's path — the chooser is
-  // only offered when the active file has one.
-  const fileWithNodeRef = (nodeId: string, targetPath: string) => {
-    if (!openedFile || activePath === undefined) return null;
-    const node = findById(openedFile.body, nodeId);
-    if (!node || node.type !== "workflow") return null;
-    const ref = relativeRefPath(activePath, targetPath);
-    return replaceNode(openedFile, nodeId, { ...node, ref } as WorkflowNode);
-  };
-  // Reference-existing: point the ref at a discovered workflow and close.
-  const pickExistingRef = (nodeId: string, targetPath: string): void => {
-    const next = fileWithNodeRef(nodeId, targetPath);
-    if (next) session.applyEdit(next);
-    setRefTargetNode(null);
-  };
-  // Create-new: descend at once into a fresh, unwritten, path-less child linked back to this node. No path
-  // is chosen here and no ref is set yet — the child's first save picks the path and back-fills the parent
-  // ref from it (§ Nested `workflow`-ref creation), so authoring comes first and the ref follows the save.
-  const createNewRef = (nodeId: string): void => {
-    session.descendNewUnbound(nodeId);
-    setRefTargetNode(null);
-  };
 
   // Open a discovered workflow as a fresh root (#254). `session.open` discards the current stack and its
   // per-file leases, so the selection resets through the active-frame effect above. Close the picker.
@@ -196,7 +170,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               onOpenExisting={() => setOpenExistingOpen(true)}
               // Double-click an unset `workflow` block to author its target — the same chooser the pane's
               // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.
-              onAuthorRef={activePath !== undefined ? setRefTargetNode : undefined}
+              onAuthorRef={refAuthoring.onAuthorRef}
               workflowRunStatus={run.workflowRunStatus}
             />
           </SelectionProvider>
@@ -212,7 +186,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             onReselect={setSelectedId}
             // The ref-target chooser needs the parent's path to store a relative ref, so offer it only for
             // a file that has one (#391); a from-scratch root falls back to the plain path field.
-            onAddRefTarget={activePath !== undefined ? setRefTargetNode : undefined}
+            onAddRefTarget={refAuthoring.onAuthorRef}
           />
         ) : (
           <div className="pane pane-idle">
@@ -261,13 +235,13 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     ) : null}
     {/* The ref-target chooser (#391): reference an existing workflow, or create a new one and descend into
         its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
-    {refTargetNode !== null && activePath !== undefined ? (
+    {refAuthoring.target !== null ? (
       <RefTargetDialog
         client={client}
-        excludePath={activePath}
-        onPickExisting={(targetPath) => pickExistingRef(refTargetNode, targetPath)}
-        onCreateNew={() => createNewRef(refTargetNode)}
-        onCancel={() => setRefTargetNode(null)}
+        excludePath={refAuthoring.target.excludePath}
+        onPickExisting={refAuthoring.pickExisting}
+        onCreateNew={refAuthoring.createNew}
+        onCancel={refAuthoring.cancel}
       />
     ) : null}
     </>
