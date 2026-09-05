@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { childBodies, mapChildBodies, walkNodes } from "../src/node-walk.js";
+import { CONTROL_CHILD_SLOTS, childBodies, mapChildBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -261,5 +261,26 @@ describe("mapChildBodies", () => {
     const tree = deeplyNested(step("inner"));
     const idMap = (node: WorkflowNode): WorkflowNode => mapChildBodies(node, (body) => body.map(idMap));
     expect(idMap(tree)).toEqual(tree);
+  });
+});
+
+describe("CONTROL_CHILD_SLOTS", () => {
+  it("names the same slot keys childBodies descends into (one shape, two readers)", () => {
+    const tree = deeplyNested(step("inner"));
+    // Every control node's childBodies paths must start with a key the table declares for that type.
+    const check = (node: WorkflowNode): void => {
+      const slots = (CONTROL_CHILD_SLOTS as Record<string, readonly { key: string }[]>)[node.type];
+      for (const child of childBodies(node)) {
+        if (slots) expect(slots.map((s) => s.key)).toContain(child.path[0]);
+        for (const occupant of child.nodes) check(occupant);
+      }
+    };
+    check(tree);
+  });
+
+  it("has no entry for leaf or childless kinds", () => {
+    expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).prompt).toBeUndefined();
+    expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).checkpoint).toBeUndefined();
+    expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).workflow).toBeUndefined();
   });
 });

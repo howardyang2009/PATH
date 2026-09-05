@@ -32,6 +32,39 @@ export interface NodeChildBody {
  * does **not** descend into a `workflow` step's ref'd file: that file has its own isolated context
  * and its own validation pass.
  */
+/**
+ * The child-slot shape of each control block: which of a node's own keys hold its nested bodies, and
+ * how each is shaped. `childBodies` above reads this shape through its typed, `never`-guarded switch;
+ * a consumer that must walk the same descent **before a file is schema-parsed** — the designer's open
+ * pipeline, over raw JSON — reads this table instead of re-spelling the descent a fourth time.
+ */
+export type ChildSlot =
+  /** An own key holding an ordered node array (`sequence`'s `body`, `parallel`'s `branches`). */
+  | { key: "body" | "branches"; shape: "node-list" }
+  /** An own key holding exactly one node (`while-do`'s `node`, a branch's `else`). */
+  | { key: "node" | "else"; shape: "node" }
+  /** An own key holding `{ when, node }` arms, each a single-node occupant (`branch`'s `arms`). */
+  | { key: "arms"; shape: "arm-list" };
+
+/** Every `WorkflowNode` member that nests a child body — the control block types, derived structurally. */
+type BranchingType = Extract<WorkflowNode, { body: unknown } | { branches: unknown } | { node: unknown } | { arms: unknown }>["type"];
+
+/**
+ * The one shape table. `satisfies Record<BranchingType, …>` binds it to the node union: every control
+ * block that nests a child body must appear here, and none may appear that does not. A control block
+ * added to the format is forced into `childBodies` by its `never` guard and into this table by the
+ * `satisfies`, so the typed reader and the pre-parse JSON reader can never disagree on the descent.
+ */
+export const CONTROL_CHILD_SLOTS = {
+  sequence: [{ key: "body", shape: "node-list" }],
+  parallel: [{ key: "branches", shape: "node-list" }],
+  "while-do": [{ key: "node", shape: "node" }],
+  branch: [
+    { key: "arms", shape: "arm-list" },
+    { key: "else", shape: "node" },
+  ],
+} as const satisfies Record<BranchingType, readonly ChildSlot[]>;
+
 export function childBodies(node: WorkflowNode): NodeChildBody[] {
   switch (node.type) {
     case "parallel":

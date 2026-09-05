@@ -1,8 +1,10 @@
 import { z } from "zod";
 import {
+  CONTROL_CHILD_SLOTS,
   IdSchema,
   RESERVED_TYPE_NAMES,
   safeParseWorkflowFile,
+  type ChildSlot,
   type StepPluginRegistry,
   type WireStepPlugin,
   type WorkflowFile,
@@ -64,41 +66,39 @@ interface RawNodeRef {
 }
 
 /**
- * The child node objects of one raw node, following the block grammar's descent (`node-walk.ts`
- * `childBodies`, restated here over untyped JSON). Only the four block logicers nest children inline;
- * a leaf step, a `workflow` ref, and a `checkpoint` have none — and an **unregistered** type is always a
- * leaf (the six control names are reserved and always known), so nothing renderable is skipped. A branch
- * arm's occupant is unwrapped from its `{ when, node }` shape. Each child carries its own JSON path.
+ * The child node objects of one raw node, following the block grammar's descent. This pass runs
+ * **before** the file is schema-parsed (an id-less or unregistered-type file must survive it), so it
+ * cannot take typed `WorkflowNode`s — it reads the one shape table `@path/schema` exposes
+ * (`CONTROL_CHILD_SLOTS`), the same descent `childBodies` reads for typed nodes, instead of re-spelling
+ * the grammar's shape a fourth time. A control block added to the format lands in that table and is
+ * scanned here automatically, so a new kind can no longer be silently skipped. A leaf step, a `workflow`
+ * ref, a `checkpoint`, and any unregistered type nest nothing — the table has no entry — so they descend
+ * no further. A branch arm's occupant is unwrapped from its `{ when, node }` shape. Each child carries
+ * its own JSON path.
  */
 function rawChildNodes(node: Record<string, unknown>, base: (string | number)[]): RawNodeRef[] {
-  switch (node.type) {
-    case "sequence":
-      return (asArray(node.body) ?? []).flatMap((child, i) => {
+  const type = typeof node.type === "string" ? node.type : "";
+  const slots = (CONTROL_CHILD_SLOTS as Record<string, readonly ChildSlot[]>)[type];
+  if (!slots) return [];
+  const out: RawNodeRef[] = [];
+  for (const slot of slots) {
+    const raw = node[slot.key];
+    if (slot.shape === "node-list") {
+      (asArray(raw) ?? []).forEach((child, i) => {
         const obj = asObject(child);
-        return obj ? [{ obj, path: [...base, "body", i] }] : [];
+        if (obj) out.push({ obj, path: [...base, slot.key, i] });
       });
-    case "parallel":
-      return (asArray(node.branches) ?? []).flatMap((child, i) => {
-        const obj = asObject(child);
-        return obj ? [{ obj, path: [...base, "branches", i] }] : [];
-      });
-    case "while-do": {
-      const obj = asObject(node.node);
-      return obj ? [{ obj, path: [...base, "node"] }] : [];
-    }
-    case "branch": {
-      const out: RawNodeRef[] = [];
-      (asArray(node.arms) ?? []).forEach((arm, i) => {
+    } else if (slot.shape === "arm-list") {
+      (asArray(raw) ?? []).forEach((arm, i) => {
         const obj = asObject(asObject(arm)?.node);
-        if (obj) out.push({ obj, path: [...base, "arms", i, "node"] });
+        if (obj) out.push({ obj, path: [...base, slot.key, i, "node"] });
       });
-      const elseObj = asObject(node.else);
-      if (elseObj) out.push({ obj: elseObj, path: [...base, "else"] });
-      return out;
+    } else {
+      const obj = asObject(raw);
+      if (obj) out.push({ obj, path: [...base, slot.key] });
     }
-    default:
-      return [];
   }
+  return out;
 }
 
 /** Every node object in a file body, depth-first, each with its JSON path. */
