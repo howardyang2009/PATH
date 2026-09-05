@@ -77,7 +77,7 @@ export interface OpenSession {
    * frame just ahead of the active one already holds that resolved target, it is **reused**; otherwise the
    * forward trail is truncated and the target is loaded fresh.
    */
-  descend: (ref: string) => void;
+  descend: (ref: string, nodeId: string) => void;
   /**
    * Descend into a **fresh, unwritten, path-less** child buffer for a create-new nested ref (#391), linked
    * back to the `workflow` node `parentNodeId` in the active (parent) frame. Its first save also **back-fills
@@ -212,7 +212,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   }, []);
 
   const descend = useCallback(
-    (ref: string): void => {
+    (ref: string, nodeId: string): void => {
       const plugins = pluginsRef.current;
       const { frames: current, activeIndex: depth } = sessionRef.current;
       const active = current[depth];
@@ -221,14 +221,16 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!plugins || !active || active.path === null) return;
       const path = resolveRefPath(active.path, ref);
       // Re-entry down the same trail: if the frame just ahead already holds this target, reuse it — the author
-      // returns to its live buffer (a dirty descended child is not reloaded out from under them).
+      // returns to its live buffer (a dirty descended child is not reloaded out from under them). The reused
+      // frame keeps the `descendedVia` it was first loaded with, so its breadcrumb run badge stands.
       const ahead = current[depth + 1];
       if (ahead && ahead.path === path) {
         dispatch({ type: "descendReuse" });
         return;
       }
-      // Otherwise truncate the forward trail and load the target fresh below the active frame.
-      dispatch({ type: "descendLoading", path });
+      // Otherwise truncate the forward trail and load the target fresh below the active frame. `nodeId` is the
+      // `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
+      dispatch({ type: "descendLoading", path, nodeId });
       runLoad(path, depth + 1);
     },
     [runLoad],

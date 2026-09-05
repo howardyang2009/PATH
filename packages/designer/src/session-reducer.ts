@@ -59,6 +59,14 @@ export interface Frame {
    * back-fills the parent node's `ref` from the path the child was saved to. `undefined` otherwise.
    */
   refParent?: { depth: number; nodeId: string };
+  /**
+   * The `workflow` block **in the parent frame** whose ref this frame descended through (#372, run
+   * projection on the breadcrumb): that node's durable `id`. It lets the breadcrumb badge this descent
+   * crumb with the parent node's projected run status — the sub-workflow's own verdict — so a nested run
+   * trail reads `parent failed / child failed`, not just the root. `undefined` on a root frame and on a
+   * create-new child (which carries `refParent` instead until its first save binds it).
+   */
+  descendedVia?: string;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -114,11 +122,15 @@ export function freshHistory(): History {
  */
 const NEW_FILE_DEFAULT_NAME = "untitled";
 
-/** A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens. */
-export function loadingFrame(path: string): Frame {
+/**
+ * A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens.
+ * `descendedVia` carries the parent `workflow` block id through the load (a descent) and through a reload,
+ * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open.
+ */
+export function loadingFrame(path: string, descendedVia?: string): Frame {
   // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
   // a still-loading frame is not yet leased regardless.
-  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory() };
+  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia };
 }
 
 /**
@@ -220,8 +232,12 @@ export type SessionAction =
   | { type: "openLoading"; path: string }
   /** Start a from-scratch buffer as a fresh root (#390), discarding any current stack. */
   | { type: "newFile" }
-  /** Truncate the forward trail and push a loading frame for a fresh `workflow`-ref descent (#367). */
-  | { type: "descendLoading"; path: string }
+  /**
+   * Truncate the forward trail and push a loading frame for a fresh `workflow`-ref descent (#367).
+   * `nodeId` is the parent `workflow` block the descent crossed, kept on the child frame for the
+   * breadcrumb's run badge (#372).
+   */
+  | { type: "descendLoading"; path: string; nodeId: string }
   /** Re-enter the frame just ahead down the same trail (a re-descent to a live, possibly-dirty child). */
   | { type: "descendReuse" }
   /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId` (#391). */
@@ -270,7 +286,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "descendLoading": {
       const childDepth = state.activeIndex + 1;
-      return { frames: [...state.frames.slice(0, childDepth), loadingFrame(action.path)], activeIndex: childDepth, saveState: IDLE };
+      return { frames: [...state.frames.slice(0, childDepth), loadingFrame(action.path, action.nodeId)], activeIndex: childDepth, saveState: IDLE };
     }
 
     case "descendReuse":
@@ -344,7 +360,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "reloadLoading": {
       const frames = state.frames.slice();
-      frames[action.depth] = loadingFrame(action.path);
+      // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
+      frames[action.depth] = loadingFrame(action.path, frames[action.depth]?.descendedVia);
       return { ...state, frames, saveState: IDLE };
     }
 
@@ -362,6 +379,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         baseline: action.baseline,
         openedBytes: action.openedBytes,
         history: freshHistory(),
+        // Carry the descent origin across the fetch, so the opened child keeps its breadcrumb run badge.
+        descendedVia: frames[depth]?.descendedVia,
       };
       return { ...state, frames };
     }

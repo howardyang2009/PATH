@@ -3,6 +3,7 @@ import type { RunStatus, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { BlockTree, type DescendHandler } from "./block-tree.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
+import { useRunProjection } from "./run/run-projection.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { problemMarks, type Problem } from "./problems.js";
@@ -56,7 +57,7 @@ export function Canvas({
   // a dead descent into `""`. The chooser is only offered when the active file has a path to store a
   // relative ref against, so an empty ref with no `onAuthorRef` is inert.
   const onDescend: DescendHandler = (node) => {
-    if (node.ref) descend(node.ref);
+    if (node.ref) descend(node.ref, node.id);
     else onAuthorRef?.(node.id);
   };
 
@@ -142,15 +143,23 @@ function Breadcrumb({
   onCrumb: (index: number) => void;
   /** Deselect to the file's own properties, or `undefined` when the tree renders read-only (no selection wired). */
   onSelectFile?: (id: string | null) => void;
-  /** The watched run's workflow-level (root run) status, badged on the root crumb — the run's own file —
-   *  and never on a nested descent's crumb; `null` draws nothing. */
+  /** The watched run's workflow-level (root run) status, badged on the **root** crumb — the run's own file.
+   *  A nested descent crumb badges its own descent node's projected status instead (below); `null` draws
+   *  nothing on the root. */
   workflowRunStatus: RunStatus | null;
 }): JSX.Element {
+  // The projection folds each node's runs to one status (surface 6). A descent crumb reads the status of the
+  // `workflow` block it descended through — the sub-workflow's own verdict — so the trail badges every level,
+  // e.g. `parent failed / child failed`, not only the root. Looked up once here; a per-id hook cannot loop.
+  const projection = useRunProjection();
   return (
     <nav className="breadcrumb" aria-label="File breadcrumb">
       {frames.map((frame, index) => {
         const current = index === activeIndex;
         const label = frameLabel(frame);
+        // The root crumb (index 0) badges the root run's status; a descent crumb badges its descent node's.
+        const crumbStatus =
+          index === 0 ? workflowRunStatus : frame.descendedVia ? projection?.get(frame.descendedVia) ?? null : null;
         return (
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
             {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
@@ -171,7 +180,7 @@ function Breadcrumb({
                 {label}
               </button>
             )}
-            {index === 0 && workflowRunStatus !== null ? <WorkflowRunBadge status={workflowRunStatus} /> : null}
+            {crumbStatus !== null ? <WorkflowRunBadge status={crumbStatus} /> : null}
           </span>
         );
       })}
