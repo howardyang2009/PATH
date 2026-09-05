@@ -54,7 +54,7 @@ describe("useRefAuthoring", () => {
     act(() => result.current.pickExisting("flows/other.workflow.json"));
 
     expect(applyEdit).toHaveBeenCalledTimes(1);
-    const edited = applyEdit.mock.calls[0][0] as WorkflowFile;
+    const edited = applyEdit.mock.calls[0]![0] as WorkflowFile;
     const node = edited.body[0] as WorkflowNode & { ref: string };
     expect(node.ref).toBe(relativeRefPath(PARENT_PATH, "flows/other.workflow.json"));
     expect(result.current.target).toBeNull();
