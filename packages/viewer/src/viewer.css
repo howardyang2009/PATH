@@ -1075,9 +1075,35 @@ button.workflow-row:focus-visible {
 .node-io-head {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
   padding: 2px 4px 6px;
   border-bottom: 1px solid var(--border);
+}
+
+/* The human step name is the head's title line — what the run *is*, above its id (mirrors the run
+   detail head). It shares the first row with the status pill and the right-aligned Refresh; the
+   node-id line owns the second row. */
+.node-io-head .node-name {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* Second head row: `node id <guid>` — a muted label before the mono id, like the run-meta grid. */
+.node-io-id-line {
+  flex-basis: 100%;
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  min-width: 0;
+}
+
+.node-id-label,
+.run-id-label {
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
 }
 
 .node-io-head .card-action {
@@ -1087,6 +1113,9 @@ button.workflow-row:focus-visible {
 
 .node-io-run {
   margin: -8px 4px 0;
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
   min-width: 0;
   overflow-wrap: anywhere;
 }
