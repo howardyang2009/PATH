@@ -1,4 +1,4 @@
-import type { BranchArm, Condition, WorkflowFile, WorkflowNode } from "@path/schema";
+import { childBodies, mapChildBodies, walkNodes, type BranchArm, type Condition, type WorkflowFile, type WorkflowNode } from "@path/schema";
 
 /**
  * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
@@ -33,47 +33,49 @@ export function locate(file: WorkflowFile, id: string): Site | null {
   for (let i = 0; i < file.body.length; i++) {
     const node = file.body[i]!;
     if (node.id === id) return { where: "file-body", index: i };
-    const deep = locateInChildren(node, id);
+    const deep = locateWithin(node, id);
     if (deep) return deep;
   }
   return null;
 }
 
-function locateInChildren(node: WorkflowNode, id: string): Site | null {
-  switch (node.type) {
-    case "sequence":
-      return locateInList(node.body, id, node.id, "sequence-body");
-    case "parallel":
-      return locateInList(node.branches, id, node.id, "branches");
-    case "while-do":
-      if (node.node.id === id) return { where: "while-body", ownerId: node.id };
-      return locateInChildren(node.node, id);
-    case "branch": {
-      for (let i = 0; i < node.arms.length; i++) {
-        const occupant = node.arms[i]!.node;
-        if (occupant.id === id) return { where: "arm", ownerId: node.id, armIndex: i };
-        const deep = locateInChildren(occupant, id);
-        if (deep) return deep;
-      }
-      if (node.else) {
-        if (node.else.id === id) return { where: "else", ownerId: node.id };
-        return locateInChildren(node.else, id);
-      }
-      return null;
+/**
+ * Locate `id` under `owner`, descending through the one grammar-descent owner (`@path/schema`
+ * `childBodies`) rather than re-spelling which slots each node kind has. Each child body carries the
+ * JSON `path` that names the slot, so the occupant's `Site` reads straight off that path — no second
+ * statement of the block grammar's shape.
+ */
+function locateWithin(owner: WorkflowNode, id: string): Site | null {
+  for (const child of childBodies(owner)) {
+    for (let index = 0; index < child.nodes.length; index++) {
+      const occupant = child.nodes[index]!;
+      if (occupant.id === id) return siteFromPath(owner.id, child.path, index);
+      const deep = locateWithin(occupant, id);
+      if (deep) return deep;
     }
-    default:
-      return null;
-  }
-}
-
-function locateInList(list: WorkflowNode[], id: string, ownerId: string, listKind: "sequence-body" | "branches"): Site | null {
-  for (let i = 0; i < list.length; i++) {
-    const node = list[i]!;
-    if (node.id === id) return { where: "list", ownerId, listKind, index: i };
-    const deep = locateInChildren(node, id);
-    if (deep) return deep;
   }
   return null;
+}
+
+/**
+ * The `Site` of a child body's occupant, read off the `childBodies` JSON path. A `sequence` `body`
+ * carries its whole array, so the occupant's list index is its position within the body; a `parallel`
+ * branch, a branch arm, an `else`, and a `while-do` body each carry one node, so their index lives in
+ * the path itself (`["branches", i]`, `["arms", i, "node"]`, `["else"]`, `["node"]`).
+ */
+function siteFromPath(ownerId: string, path: (string | number)[], index: number): Site {
+  switch (path[0]) {
+    case "body":
+      return { where: "list", ownerId, listKind: "sequence-body", index };
+    case "branches":
+      return { where: "list", ownerId, listKind: "branches", index: path[1] as number };
+    case "arms":
+      return { where: "arm", ownerId, armIndex: path[1] as number };
+    case "else":
+      return { where: "else", ownerId };
+    default: // "node" — the while-do body
+      return { where: "while-body", ownerId };
+  }
 }
 
 // ── The immutable spine rebuild ───────────────────────────────────────────────────────────────────
@@ -86,27 +88,10 @@ function locateInList(list: WorkflowNode[], id: string, ownerId: string, listKin
 function updateNode(body: WorkflowNode[], ownerId: string, fn: (node: WorkflowNode) => WorkflowNode): WorkflowNode[] {
   return body.map((node) => {
     if (node.id === ownerId) return fn(node);
+    // Descend through the one grammar-descent owner (`@path/schema` `mapChildBodies`, the write
+    // counterpart of `childBodies`), so the spine rebuild states the block grammar's shape nowhere here.
     return mapChildBodies(node, (childBody) => updateNode(childBody, ownerId, fn));
   });
-}
-
-/** Reconstruct `node` with each of its child bodies passed through `fn`, preserving the node's own fields. */
-function mapChildBodies(node: WorkflowNode, fn: (body: WorkflowNode[]) => WorkflowNode[]): WorkflowNode {
-  switch (node.type) {
-    case "sequence":
-      return { ...node, body: fn(node.body) };
-    case "parallel":
-      return { ...node, branches: fn(node.branches) };
-    case "while-do":
-      return { ...node, node: fn([node.node])[0]! };
-    case "branch": {
-      const arms = node.arms.map((arm) => ({ ...arm, node: fn([arm.node])[0]! }));
-      const elseNode = node.else ? fn([node.else])[0]! : undefined;
-      return { ...node, arms, else: elseNode };
-    }
-    default:
-      return node;
-  }
 }
 
 /** The file with its body replaced. */
@@ -364,34 +349,15 @@ function removeAt<T>(list: T[], i: number): T[] {
 
 /**
  * Find a node by id anywhere in a body, or `null` if it is not present. The one node-by-id lookup —
- * the sibling of `locate` (which returns the *site*), for callers that want the *node* — so no reader
- * re-spells `[...walkNodes(body)].find(n => n.id === id)`.
+ * the sibling of `locate` (which returns the *site*), for callers that want the *node*. It reads the
+ * one grammar-descent owner (`@path/schema` `walkNodes`), so it re-spells the block grammar's shape
+ * nowhere of its own.
  */
 export function findById(body: WorkflowNode[], id: string): WorkflowNode | null {
-  for (const node of body) {
+  for (const node of walkNodes(body)) {
     if (node.id === id) return node;
-    const deep = mapFind(node, id);
-    if (deep) return deep;
   }
   return null;
-}
-
-function mapFind(node: WorkflowNode, id: string): WorkflowNode | null {
-  switch (node.type) {
-    case "sequence":
-      return findById(node.body, id);
-    case "parallel":
-      return findById(node.branches, id);
-    case "while-do":
-      return findById([node.node], id);
-    case "branch": {
-      const inArms = findById(node.arms.map((arm) => arm.node), id);
-      if (inArms) return inArms;
-      return node.else ? findById([node.else], id) : null;
-    }
-    default:
-      return null;
-  }
 }
 
 // ── Duplicate a list node ─────────────────────────────────────────────────────────────────────────
