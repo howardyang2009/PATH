@@ -191,6 +191,7 @@
     {
       "id": "0923ebb7-c57e-44f4-be34-5e5fc62319f8",
       "name": "write-file",
+      "input": "${context.final_notes}",
       "publish": {
         "file": "${config.output_file}"
       },
@@ -200,8 +201,7 @@
         "cat > \"${config.output_file}\""
       ],
       "cwd": "${config.repo_path}",
-      "type": "binary",
-      "input": "${context.final_notes}"
+      "type": "binary"
     }
   ],
   "output": {
