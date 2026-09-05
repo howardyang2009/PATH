@@ -175,6 +175,52 @@ describe("Designer open + render (#367)", () => {
     expect(within(wrapAfter).queryByText("child-flow")).not.toBeInTheDocument();
   });
 
+  it("badges a descent crumb with the descended workflow node's own run status", async () => {
+    // The trail should read "w1 failed / w2 failed": the child crumb badges the run of the `workflow` node
+    // it descended through (uuid(12), "sub"), whose folded status is the sub-workflow's own verdict — not
+    // the root run's. So both crumbs carry a badge, each its own level's status.
+    const rootRow = {
+      run_id: "root-1",
+      workflow_name: "root-flow",
+      workflow_id: uuid(1),
+      workflow_path: ROOT_PATH,
+      status: "failed",
+      started_at: "2026-01-01T00:00:00Z",
+      finished_at: "2026-01-01T00:01:00Z",
+    };
+    const client = stubClient({
+      files: filesWith(rootFile()),
+      runs: { runs: [rootRow] },
+      tree: {
+        root_run_id: "root-1",
+        status: "failed",
+        output: null,
+        runs: [
+          { ...rootRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null },
+          // The `workflow` node's sub-run: keyed by the node's id, so it projects onto that node — and onto
+          // the crumb descended through it.
+          { ...rootRow, run_id: "sub-1", root_run_id: "root-1", parent_run_id: "root-1", node_id: uuid(12), node_name: "sub", status: "failed" },
+        ],
+      },
+    });
+    render(<App client={client} initialPath={ROOT_PATH} />);
+    await screen.findByText("draft");
+
+    fireEvent.click(screen.getByTestId("run-dock-toggle"));
+    fireEvent.click(await screen.findByTestId("run-row-root-1"));
+    // Descend into the child through the "sub" workflow node.
+    fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
+    await screen.findByText("child-step");
+
+    // Both crumbs carry a failed badge — the child crumb's own, from the descended node's projection.
+    const crumbs = screen.getByRole("navigation", { name: "File breadcrumb" });
+    const childWrap = within(crumbs).getByText("child-flow").closest(".crumb-wrap") as HTMLElement;
+    const childBadge = within(childWrap).getByTestId("workflow-run-badge");
+    expect(childBadge).toHaveAttribute("data-run-status", "failed");
+    const rootWrap = within(crumbs).getByText("root-flow").closest(".crumb-wrap") as HTMLElement;
+    expect(within(rootWrap).getByTestId("workflow-run-badge")).toHaveAttribute("data-run-status", "failed");
+  });
+
   it("refuses a file naming an unregistered step type, with the aggregate recoverable error", async () => {
     const file = rootFile();
     (file.body as unknown[]).push({ type: "api-call", id: uuid(50), name: "call-a", endpoint: "x" });

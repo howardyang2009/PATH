@@ -59,3 +59,11 @@ export function RunProjectionProvider({
 export function useNodeRunStatus(nodeId: string): RunStatus | null {
   return useContext(RunProjectionContext)?.get(nodeId) ?? null;
 }
+
+/**
+ * The whole projection map, or `null` when nothing is watched. For a caller that looks up **many** node ids
+ * in one render — the breadcrumb, one badge per descent crumb — where a per-id hook cannot run in a loop.
+ */
+export function useRunProjection(): ReadonlyMap<string, RunStatus> | null {
+  return useContext(RunProjectionContext);
+}

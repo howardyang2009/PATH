@@ -206,11 +206,12 @@ describe("session-reducer — the navigation trail (#367, #391)", () => {
     const root = openFrame(file("root"), { path: "root.workflow.json" });
     const stale = openFrame(file("stale"), { path: "stale.workflow.json" });
     const start: SessionState = { frames: [root, stale], activeIndex: 0, saveState: { phase: "idle" } };
-    const s = reduceSession(start, { type: "descendLoading", path: "child.workflow.json" });
+    const s = reduceSession(start, { type: "descendLoading", path: "child.workflow.json", nodeId: "wf-1" });
     expect(s.frames).toHaveLength(2); // the stale forward frame is dropped
     expect(s.activeIndex).toBe(1);
     expect(s.frames[1]!.state.phase).toBe("loading");
     expect(s.frames[1]!.path).toBe("child.workflow.json");
+    expect(s.frames[1]!.descendedVia).toBe("wf-1"); // the descent remembers the workflow node it crossed
   });
 
   it("descendReuse only moves the active index forward", () => {

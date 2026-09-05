@@ -134,7 +134,7 @@ describe("#389 per-file stack isolation — each descended ref child has its own
     });
 
     // Descend across a ref into the child frame; wait until its own fetch-and-open lands.
-    act(() => hook.result.current.descend("child.workflow.json"));
+    act(() => hook.result.current.descend("child.workflow.json", "wf-child"));
     await waitFor(() => expect(openedResultOf(hook.result.current.frames[1])).not.toBeNull());
     const childOriginal = buffer(hook);
 
