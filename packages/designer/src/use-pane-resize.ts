@@ -1,16 +1,22 @@
 import { type RefObject, useCallback, useEffect, useRef, useState } from "react";
+import { beginDrag } from "./drag-size.js";
 
 /**
  * A pair of drag-set pane widths with one fluid neighbour — the width mechanics behind the run dock's
- * three panes (RUNS │ RUN DETAIL │ NODE I/O), lifted here so the app shell's palette │ canvas │
- * properties rails resize identically. Two panes carry an explicit px width; the third region (the
- * canvas stage, or the run dock's node pane) takes whatever is left. Widths persist in `localStorage`.
+ * three panes (RUNS │ RUN DETAIL │ NODE I/O) and the app shell's palette │ canvas │ properties rails.
+ * Two panes carry an explicit px width; the third region (the canvas stage, or the run dock's node pane)
+ * takes whatever is left. Widths persist in `localStorage`.
  *
  * The two explicit panes may sit adjacent (run dock: left + middle, fluid on the far right) or on
  * opposite sides (shell: left + right, fluid in the middle) — the clamp is the same either way, since
  * it only asks that the two widths plus the fluid floor plus the separators fit the container. `grow`
  * says which pointer direction widens each pane: `+1` when its drag handle is on the pane's right edge,
  * `-1` when on its left edge, so an arrow key or a drag always moves the separator the way it points.
+ *
+ * The clamp here is coupled (each pane's max reads the other's live width), so it is this hook's own; the
+ * pointer transport — capture, body cursor, `window` listeners, teardown — is the shared `beginDrag`
+ * (`drag-size.ts`), the same one the single-dimension `useDragSize` uses, so the pointer-capture hardening
+ * is defined once for every resizable region.
  */
 export interface PaneWidthsOptions {
   /** `localStorage` key the two widths persist under, as JSON `[a, b]`. */
@@ -75,16 +81,9 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
   // between moves; a burst of synthetic events does not, which is why this only bites live dragging).
   const growRef = useRef(grow);
   growRef.current = grow;
-  // `el` + `pointerId` let the drag capture the pointer on the handle, so moves keep reaching us even
-  // when the cursor crosses the canvas — whose node/pan handlers `stopPropagation` on `pointermove` and
-  // would otherwise swallow the event before it bubbled to `window` and freeze the drag.
-  const dragRef = useRef<{
-    index: 0 | 1;
-    startX: number;
-    startWidth: number;
-    el: Element;
-    pointerId: number;
-  } | null>(null);
+  const dragRef = useRef<{ index: 0 | 1; startX: number; startWidth: number } | null>(null);
+  // The active drag's teardown (from `beginDrag`), so an unmount mid-drag can drop its listeners.
+  const stopRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (typeof localStorage === "undefined") return;
@@ -121,24 +120,8 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
     [setWidth],
   );
 
-  const endDrag = useCallback(() => {
-    const drag = dragRef.current;
-    if (drag) {
-      try {
-        drag.el.releasePointerCapture(drag.pointerId);
-      } catch {
-        /* already released (e.g. the pointer was lost) */
-      }
-    }
-    dragRef.current = null;
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
   // Drop any listeners left over if the tree unmounts mid-drag.
-  useEffect(() => endDrag, [endDrag]);
+  useEffect(() => () => stopRef.current?.(), []);
 
   const handleProps = useCallback(
     (index: 0 | 1): PaneHandleProps => ({
@@ -149,23 +132,10 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
       tabIndex: 0,
       onPointerDown: (e) => {
         e.preventDefault();
-        const el = e.currentTarget as HTMLElement;
-        // `preventDefault` above can suppress the click's own focus, so focus the handle explicitly — a
-        // plain click then leaves it focused, and the arrow keys below nudge it without a further Tab.
-        el.focus();
-        // Route every later pointer event to the handle, past the canvas's own handlers. Guarded: a
-        // `setPointerCapture` throw (a stale pointer id on some browsers) must not abort the rest of the
-        // drag setup — the `window` listeners are the transport, so the drag still starts without capture.
-        try {
-          el.setPointerCapture(e.pointerId);
-        } catch {
-          /* capture unavailable — the window listeners below still drive the drag */
-        }
-        dragRef.current = { index, startX: e.clientX, startWidth: widths[index], el, pointerId: e.pointerId };
-        document.body.style.cursor = "col-resize";
-        document.body.style.userSelect = "none";
-        window.addEventListener("pointermove", onPointerMove);
-        window.addEventListener("pointerup", endDrag);
+        dragRef.current = { index, startX: e.clientX, startWidth: widths[index] };
+        // The shared transport captures the pointer on the handle (past the canvas's `stopPropagation`),
+        // holds the col-resize cursor, and clears the drag ref on pointer up.
+        stopRef.current = beginDrag(e, { cursor: "col-resize", onMove: onPointerMove, onEnd: () => (dragRef.current = null) });
       },
       onKeyDown: (e) => {
         // Sign the step by `grow` so the separator tracks the arrow whichever edge it sits on.
@@ -179,7 +149,7 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
         }
       },
     }),
-    [widths, min, onPointerMove, endDrag, setWidth],
+    [widths, min, onPointerMove, setWidth],
   );
 
   return { widths, handleProps };
