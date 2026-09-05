@@ -7,7 +7,7 @@
     "commit_range": "HEAD~15..HEAD",
     "max_revisions": "3",
     "output_file": "RELEASE_NOTES.md",
-    "model": "claude-sonnet-5"
+    "model": "claude-haiku-4-5"
   },
   "body": [
     {

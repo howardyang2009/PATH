@@ -11,9 +11,11 @@
   },
   "body": [
     {
-      "type": "binary",
       "id": "772e1536-ccd9-4aad-bbdb-a654768cd0a4",
       "name": "gather-changes",
+      "publish": {
+        "raw_changes": "${output}"
+      },
       "command": "git",
       "args": [
         "log",
@@ -22,9 +24,7 @@
         "${config.commit_range}"
       ],
       "cwd": "${config.repo_path}",
-      "publish": {
-        "raw_changes": "${output}"
-      }
+      "type": "binary"
     },
     {
       "type": "checkpoint",
@@ -43,57 +43,57 @@
       "join": "collect",
       "branches": [
         {
-          "type": "prompt",
           "id": "ba536aae-a5b9-4c38-9f32-28a210829bc2",
           "name": "summarize-features",
           "input": {
             "raw_changes": "${context.raw_changes}"
           },
-          "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
           "publish": {
             "features_summary": "${output}"
-          }
+          },
+          "prompt": "From the raw git history in your input, summarize the user-facing FEATURES as a markdown bullet list. Ignore fixes and chores.",
+          "type": "prompt"
         },
         {
-          "type": "prompt",
           "id": "f8dafcf5-e9ec-481c-822b-40e3b3770a1c",
           "name": "summarize-fixes",
           "input": {
             "raw_changes": "${context.raw_changes}"
           },
-          "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
           "publish": {
             "fixes_summary": "${output}"
-          }
+          },
+          "prompt": "From the raw git history in your input, summarize BUG FIXES and internal improvements as a markdown bullet list. Ignore new features.",
+          "type": "prompt"
         }
       ]
     },
     {
-      "type": "prompt",
       "id": "daa17f91-c040-4dae-9279-1b94a1bb28c5",
       "name": "draft-notes",
       "input": {
         "features": "${context.features_summary}",
         "fixes": "${context.fixes_summary}"
       },
-      "prompt": "Write release notes in markdown from the feature and fix summaries in your input. Audience: users of the project.",
       "publish": {
         "draft": "${output}"
-      }
+      },
+      "prompt": "Write release notes in markdown from the feature and fix summaries in your input. Audience: users of the project.",
+      "type": "prompt"
     },
     {
-      "type": "prompt",
       "id": "53cb3fd1-ee99-4738-8c6c-5ae77e736f67",
       "name": "judge-draft",
-      "parse": "json",
       "input": {
         "draft": "${context.draft}",
         "raw_changes": "${context.raw_changes}"
       },
-      "prompt": "Judge the release-notes draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }. pass=true only if accurate, complete, and readable.",
+      "parse": "json",
       "publish": {
         "verdict": "${output}"
-      }
+      },
+      "prompt": "Judge the release-notes draft in your input. Output STRICT JSON only: { \"pass\": boolean, \"feedback\": string, \"suggested_format\": \"short\" | \"long\" }. pass=true only if accurate, complete, and readable.",
+      "type": "prompt"
     },
     {
       "type": "checkpoint",
@@ -131,7 +131,6 @@
         "type": "workflow",
         "id": "c24eda53-4975-47ac-a446-13bad94027c6",
         "name": "revise",
-        "ref": "./revise-cycle.workflow.json",
         "input": {
           "draft": "${context.draft}",
           "feedback": "${context.verdict.feedback}",
@@ -140,7 +139,8 @@
         "publish": {
           "draft": "${output.draft}",
           "verdict": "${output.verdict}"
-        }
+        },
+        "ref": "./revise-cycle.workflow.json"
       }
     },
     {
@@ -155,16 +155,16 @@
             "value": "short"
           },
           "node": {
-            "type": "prompt",
             "id": "a31156c9-9dd1-4a74-843b-fdc35914c6a6",
             "name": "format-short",
             "input": {
               "draft": "${context.draft}"
             },
-            "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
             "publish": {
               "final_notes": "${output}"
-            }
+            },
+            "prompt": "Condense the release notes in your input to at most 10 bullets under a single heading.",
+            "type": "prompt"
           }
         },
         {
@@ -174,34 +174,34 @@
             "value": "long"
           },
           "node": {
-            "type": "prompt",
             "id": "ffa663b8-8e1e-46f8-b2b5-cce82bc2ed7e",
             "name": "format-long",
             "input": {
               "draft": "${context.draft}"
             },
-            "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
             "publish": {
               "final_notes": "${output}"
-            }
+            },
+            "prompt": "Expand the release notes in your input into sections (Features / Fixes / Details) with a short intro paragraph.",
+            "type": "prompt"
           }
         }
       ]
     },
     {
-      "type": "binary",
       "id": "0b65a81d-823f-4db3-b002-9e75cb0ca35d",
       "name": "write-file",
       "input": "${context.final_notes}",
+      "publish": {
+        "file": "${config.output_file}"
+      },
       "command": "sh",
       "args": [
         "-c",
         "cat > \"${config.output_file}\""
       ],
       "cwd": "${config.repo_path}",
-      "publish": {
-        "file": "${config.output_file}"
-      }
+      "type": "binary"
     }
   ],
   "output": {

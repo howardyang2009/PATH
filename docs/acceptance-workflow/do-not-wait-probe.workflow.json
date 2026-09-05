@@ -15,7 +15,6 @@
       "join": "do-not-wait",
       "branches": [
         {
-          "type": "binary",
           "id": "349f1aab-027a-4519-ab16-f0a8e3a78419",
           "name": "post-signal",
           "command": "node",
@@ -25,22 +24,23 @@
             "${config.signal_file}",
             "${config.branch_delay_ms}",
             "${config.branch_exit_code}"
-          ]
+          ],
+          "type": "binary"
         }
       ]
     },
     {
-      "type": "binary",
       "id": "f582e529-bfc2-406d-8f06-d6ab922260d8",
       "name": "after",
+      "publish": {
+        "seen": "${output}"
+      },
       "command": "node",
       "args": [
         "-e",
         "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d));"
       ],
-      "publish": {
-        "seen": "${output}"
-      }
+      "type": "binary"
     }
   ],
   "output": {
