@@ -76,7 +76,7 @@ export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
   return (
     <div className="node-io">
       <header className="node-io-head" data-testid="node-io-head">
-        <span className="node-id">{nodeLabel(run.nodeId)}</span>
+        <span className="node-name">{run.nodeName ?? nodeLabel(run.nodeId)}</span>
         <StatusPill status={run.status} />
         <button
           type="button"
@@ -86,8 +86,13 @@ export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
         >
           Refresh
         </button>
+        <span className="node-io-id-line">
+          <span className="node-id-label">node id</span>
+          <span className="node-id">{run.nodeId ?? "—"}</span>
+        </span>
       </header>
       <p className="node-io-run">
+        <span className="run-id-label">run id</span>
         <span className="run-id">{run.runId}</span>
       </p>
 

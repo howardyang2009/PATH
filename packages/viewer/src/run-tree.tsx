@@ -88,7 +88,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           onClick={() => tree.onSelectRun(run.runId)}
         >
           <span className="node-name">{label}</span>
-          {run.nodeId && <span className="tree-ref node-ref">{run.nodeId}</span>}
+          {run.nodeId && <span className="tree-ref node-ref">({run.nodeId})</span>}
           <span className="tree-ref run-ref">{run.runId}</span>
           <StatusPill status={run.status} />
         </button>
