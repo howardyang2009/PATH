@@ -90,3 +90,41 @@ export function* walkNodes(nodes: WorkflowNode[]): Generator<WorkflowNode> {
     for (const child of childBodies(node)) yield* walkNodes(child.nodes);
   }
 }
+
+/**
+ * Rebuild `node` with each of its child bodies passed through `fn` — **the write counterpart of
+ * `childBodies`**. `childBodies` reads where a node's children are; `mapChildBodies` writes them back,
+ * so a caller rebuilding the tree (the designer's edit ops) states the block grammar's descent nowhere
+ * of its own. A single-node slot (a `while-do` body, a branch arm, an `else`) hands `fn` a one-element
+ * array and takes the first node back; a `sequence` body and a `parallel` branch list hand it the whole
+ * array. A branch arm's `when` and every other own field are preserved. A leaf carries no child body, so
+ * `fn` never runs and the node returns unchanged.
+ *
+ * It shares `childBodies`' `never` guard: a node type added to the format must say where its children
+ * are here too, or nothing builds — so the read and the write can never disagree on the shape.
+ */
+export function mapChildBodies(node: WorkflowNode, fn: (body: WorkflowNode[]) => WorkflowNode[]): WorkflowNode {
+  switch (node.type) {
+    case "sequence":
+      return { ...node, body: fn(node.body) };
+    case "parallel":
+      return { ...node, branches: fn(node.branches) };
+    case "while-do":
+      return { ...node, node: fn([node.node])[0]! };
+    case "branch": {
+      const arms = node.arms.map((arm) => ({ ...arm, node: fn([arm.node])[0]! }));
+      const elseNode = node.else ? fn([node.else])[0]! : undefined;
+      return { ...node, arms, else: elseNode };
+    }
+    case "prompt":
+    case "binary":
+    case "workflow":
+    case "checkpoint":
+      return node;
+    default: {
+      const exhaustive: never = node;
+      void exhaustive;
+      return node;
+    }
+  }
+}

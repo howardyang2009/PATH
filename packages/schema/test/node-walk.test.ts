@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { childBodies, walkNodes } from "../src/node-walk.js";
+import { childBodies, mapChildBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -225,5 +225,41 @@ describe("validation reaches deeply nested bodies", () => {
       },
     };
     expect(safeParseWorkflowFile(file([sequential]), builtinRegistry).success).toBe(true);
+  });
+});
+
+describe("mapChildBodies", () => {
+  it("returns a leaf unchanged and never calls fn", () => {
+    const leaf = step("s");
+    let called = false;
+    const out = mapChildBodies(leaf, (body) => {
+      called = true;
+      return body;
+    });
+    expect(out).toBe(leaf);
+    expect(called).toBe(false);
+  });
+
+  it("rebuilds every child slot and preserves the node's own fields (join, when, else, condition)", () => {
+    const tree = deeplyNested(step("inner"));
+    // Rename every occupant by mapping each child body through the same transform.
+    const rename = (node: WorkflowNode): WorkflowNode => mapChildBodies({ ...node, name: `${node.name}!` }, (body) => body.map(rename));
+    const out = rename(tree);
+    // Own fields survive.
+    expect(out).toMatchObject({ type: "parallel", join: "collect", name: "fan!" });
+    const branch = childBodies(out).find((c) => c.path[0] === "branches")!.nodes[0]!;
+    expect(branch).toMatchObject({ type: "branch", name: "route!" });
+    // The arm's `when` is untouched while its occupant is rebuilt.
+    const arm = (branch as Extract<WorkflowNode, { type: "branch" }>).arms[0]!;
+    expect(arm.when).toEqual({ type: "exists", path: "context.x" });
+    expect(arm.node).toMatchObject({ type: "while-do", name: "spin!" });
+    // The `else` occupant is rebuilt too.
+    expect((branch as Extract<WorkflowNode, { type: "branch" }>).else).toMatchObject({ name: "fallback!" });
+  });
+
+  it("is the write inverse of childBodies — identity fn returns an equal tree", () => {
+    const tree = deeplyNested(step("inner"));
+    const idMap = (node: WorkflowNode): WorkflowNode => mapChildBodies(node, (body) => body.map(idMap));
+    expect(idMap(tree)).toEqual(tree);
   });
 });
