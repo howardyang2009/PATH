@@ -8,15 +8,15 @@ import { findById, replaceNode } from "./edit-tree.js";
 import { NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
-import { fileProblems, refLookupFor, type Problem } from "./problems.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
 import { relativeRefPath } from "./resolve-ref.js";
 import { SelectionProvider } from "./selection-context.js";
-import { useRunView } from "@path/viewer";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
+import { useRunWatch } from "./run/use-run-watch.js";
 import { useEditLeases } from "./use-edit-leases.js";
+import { useFileProblems } from "./use-file-problems.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /**
@@ -71,36 +71,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const openedResult = openedResultOf(active);
   const openedFile = openedResult?.file ?? null;
 
-  // The discovered-workflow path set (#392), the origin the dangling-`workflow`-ref check resolves against
-  // (§ Nested `workflow`-ref creation). `null` until the first scan lands — an empty set reads as "no files
-  // exist" and would flag every saved ref dangling for one frame, so the check is suppressed until then. A
-  // fresh scan on mount and after every save transition: a create-new child's first save writes its file,
-  // so re-reading discovery on the next `saved` clears the parent's dangling marker. Discovery is
-  // best-effort — a failed scan leaves the last set, so a ref is not flagged dangling on a read blip.
-  const [knownPaths, setKnownPaths] = useState<ReadonlySet<string> | null>(null);
-  const savePhase = session.saveState.phase;
-  useEffect(() => {
-    let cancelled = false;
-    client
-      .listWorkflows()
-      .then((discovered) => {
-        if (!cancelled) setKnownPaths(new Set(discovered.workflows.map((wf) => wf.relative_path)));
-      })
-      .catch(() => {
-        // Best-effort; keep the last known set rather than flag every ref dangling on a read blip.
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, savePhase]);
-
-  // The ref lookup for the active file (its own path resolves a relative ref; the discovered set says which
-  // targets exist). `undefined` for a from-scratch root or before discovery loads, which skips the check.
-  const refLookup = useMemo(() => refLookupFor(activePath, knownPaths), [activePath, knownPaths]);
-  // The cross-node problem pass for the active file (#388, #392), derived **once** here and shared by its
-  // two readers — the canvas markers/panel and the launch button's warning count — so the two cannot
-  // disagree and the whole-file walk runs one time per render, not twice.
-  const problems = useMemo<Problem[]>(() => (openedFile ? fileProblems(openedFile, refLookup) : []), [openedFile, refLookup]);
+  // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it owns the
+  // discovery scan, the dangling-ref lookup, and the whole-file walk, derived once and shared by its two
+  // readers — the canvas markers/panel and the launch button's warning count — so the two cannot disagree.
+  const problems = useFileProblems(client, openedFile, activePath, session.saveState.phase);
   // Launch is **badged, not blocked**: the count rides the launch button so the author runs knowingly (a
   // saved-with-warnings file is clean).
   const warningCount = problems.length;
@@ -137,42 +111,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     setOpenExistingOpen(false);
   };
 
-  // The run surfaces (#372). One connection, owned here, feeds both the canvas projection and the
-  // inspector — the two are views of one live snapshot, and a second connection would tell the same
-  // story a beat apart. Selection (the watched root run, and the run inside its tree) lives here too.
-  const [selectedRootRunId, setSelectedRootRunId] = useState<string | null>(null);
-  const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  const [runsReloadNonce, setRunsReloadNonce] = useState(0);
-  const runLoad = useRunView(client, selectedRootRunId);
-  const runsForProjection = runLoad.phase === "ready" ? runLoad.value.runs : null;
-  // The watched run's workflow-level (root run) status. The root run has no `nodeId`, so it projects onto
-  // no canvas node — it badges the workflow-name line on the breadcrumb instead. `null` when nothing is
-  // watched, which draws no badge (mirroring the node badges' absence).
-  const workflowRunStatus = runLoad.phase === "ready" ? runLoad.value.status : null;
-
-  // Switching root run drops the node selection: a run id from the previous tree names nothing in the
-  // new one.
-  const selectRootRun = (rootRunId: string): void => {
-    setSelectedRootRunId(rootRunId);
-    setSelectedRunId(null);
-  };
-
-  // A launch/resume is the same transition as a click — watch the new run — plus a nudge so the list
-  // re-reads and shows the new row now, not at the next periodic tick.
-  const watchNewRun = (rootRunId: string): void => {
-    selectRootRun(rootRunId);
-    setRunsReloadNonce((nonce) => nonce + 1);
-  };
-
-  // A delete drops the watched run if it was the one removed (its tree is gone), then re-reads the
-  // list so the row disappears now rather than at the next periodic tick — the mirror of a launch.
-  const handleDeleted = (rootRunId: string): void => {
-    if (rootRunId === selectedRootRunId) {
-      setSelectedRootRunId(null);
-      setSelectedRunId(null);
-    }
-    setRunsReloadNonce((nonce) => nonce + 1);
-  };
+  // The run surfaces (#372), gathered into one module (`useRunWatch`): the watched root run, the run inside
+  // its tree, the reload nonce, the single `useRunView` connection, and the select/launch/resume/delete
+  // transitions. The App reads its derived values and wires its transitions onto the run dock.
+  const run = useRunWatch(client);
 
   // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
@@ -243,7 +185,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       }
       palette={<Palette plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />}
       canvas={
-        <RunProjectionProvider runs={runsForProjection}>
+        <RunProjectionProvider runs={run.runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
             <Canvas
               session={session}
@@ -255,7 +197,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               // Double-click an unset `workflow` block to author its target — the same chooser the pane's
               // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.
               onAuthorRef={activePath !== undefined ? setRefTargetNode : undefined}
-              workflowRunStatus={workflowRunStatus}
+              workflowRunStatus={run.workflowRunStatus}
             />
           </SelectionProvider>
         </RunProjectionProvider>
@@ -289,15 +231,15 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           workflowId={openedFile?.id ?? null}
           dirty={dirty}
           warningCount={warningCount}
-          load={runLoad}
-          rootRunId={selectedRootRunId}
-          selectedRunId={selectedRunId}
-          onSelectRootRun={selectRootRun}
-          onSelectRun={setSelectedRunId}
-          onLaunched={watchNewRun}
-          onResumed={watchNewRun}
-          onDeleted={handleDeleted}
-          reloadNonce={runsReloadNonce}
+          load={run.load}
+          rootRunId={run.rootRunId}
+          selectedRunId={run.selectedRunId}
+          onSelectRootRun={run.selectRootRun}
+          onSelectRun={run.selectRun}
+          onLaunched={run.watchNewRun}
+          onResumed={run.watchNewRun}
+          onDeleted={run.onDeleted}
+          reloadNonce={run.reloadNonce}
         />
       }
     />
