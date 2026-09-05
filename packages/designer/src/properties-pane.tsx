@@ -1,4 +1,4 @@
-import { useId, useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useId, useState } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
 import {
   CONDITION_ROOTS,
@@ -31,6 +31,17 @@ import {
   withOptionalString,
 } from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
+import {
+  CheckboxField,
+  IdRow,
+  NumberField,
+  ReadOnlyRow,
+  SelectField,
+  StringListField,
+  TextAreaField,
+  TextField,
+  fillPlaceholderOnTab,
+} from "./pane-controls.js";
 import { carriesEnvelope } from "./grammar.js";
 import { referenceablePaths } from "./interp-suggest.js";
 import {
@@ -57,27 +68,6 @@ import {
  * only when the type ships more than one worker (§ Worker selection); a single-worker type writes no
  * `worker` field.
  */
-
-/**
- * Tab in a pane field that shows a placeholder fills the placeholder in, instead of moving focus. A
- * placeholder only shows while the field is empty — a `${output.x}` reference hint, an inherited default
- * — so an author who wants exactly that value takes it with one key; a field that already holds text
- * shows no placeholder, so Tab keeps its normal focus-move there. Delegated from the pane root so it
- * covers every input and textarea without each control wiring its own handler. The value is written
- * through the element's native setter plus an `input` event, so React's controlled `onChange` runs and
- * the edit commits exactly as a keystroke would (a plain `.value =` would not notify React).
- */
-function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
-  if (e.key !== "Tab" || e.shiftKey || e.altKey || e.ctrlKey || e.metaKey) return;
-  const el = e.target;
-  if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
-  if (el.value !== "" || el.placeholder === "") return;
-  e.preventDefault();
-  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
-  const setValue = Object.getOwnPropertyDescriptor(proto, "value")?.set;
-  setValue?.call(el, el.placeholder);
-  el.dispatchEvent(new Event("input", { bubbles: true }));
-}
 
 export interface PropertiesPaneProps {
   file: WorkflowFile;
@@ -954,84 +944,7 @@ function KeyedRowField({
   );
 }
 
-// ── Identity controls ────────────────────────────────────────────────────────────────────────────
-
-/**
- * The `id` row: the read-only id and a confirmation-gated re-key (§ Pane layout). A re-key is guarded
- * because it mints a new id, which breaks resume plan-reuse (ADR 0015) — so the button first arms a
- * confirm/cancel, and only Confirm commits the new id.
- */
-function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: string }): JSX.Element {
-  const [confirming, setConfirming] = useState(false);
-  return (
-    <div className="pane-field pane-field-row">
-      <span className="pane-label">id</span>
-      <div className="pane-id-row">
-        <code className="pane-id">{id}</code>
-        {confirming ? (
-          <span className="pane-rekey-confirm">
-            <button
-              type="button"
-              className="pane-btn pane-btn-danger"
-              onClick={() => {
-                onReKey();
-                setConfirming(false);
-              }}
-            >
-              Confirm re-key
-            </button>
-            <button type="button" className="pane-btn" onClick={() => setConfirming(false)}>
-              Cancel
-            </button>
-          </span>
-        ) : (
-          <button type="button" className="pane-btn" onClick={() => setConfirming(true)}>
-            Re-key
-          </button>
-        )}
-      </div>
-      {confirming ? (
-        <p className="pane-warn" role="alert">
-          Re-keying {what} mints a new id and breaks resume plan-reuse for existing runs.
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-// ── Small typed field controls ───────────────────────────────────────────────────────────────────
-
-function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
-  return (
-    <label className="pane-field pane-field-row">
-      <span className="pane-label">{label}</span>
-      <input className="pane-input" type="text" value={value} onChange={(e) => onChange(e.target.value)} />
-    </label>
-  );
-}
-
-function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
-  return (
-    <label className="pane-field pane-field-row pane-field-multiline">
-      <span className="pane-label">{label}</span>
-      <textarea className="pane-input" rows={5} value={value} onChange={(e) => onChange(e.target.value)} />
-    </label>
-  );
-}
-
-function NumberField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }): JSX.Element {
-  return (
-    <label className="pane-field pane-field-row">
-      <span className="pane-label">{label}</span>
-      <input
-        className="pane-input"
-        type="number"
-        value={value === null ? "" : value}
-        onChange={(e) => onChange(e.target.value === "" ? null : Number(e.target.value))}
-      />
-    </label>
-  );
-}
+// ── The max-iterations field (schema-validated, so it stays with the pane) ─────────────────────────
 
 /**
  * `while-do`'s **max iterations**. The schema takes either a positive whole number or a `${config.…}` /
@@ -1070,68 +983,6 @@ function MaxIterationsField({
           {error}
         </p>
       ) : null}
-    </div>
-  );
-}
-
-function CheckboxField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }): JSX.Element {
-  return (
-    <label className="pane-field pane-field-inline">
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
-      <span className="pane-label">{label}</span>
-    </label>
-  );
-}
-
-function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
-  return (
-    <label className="pane-field pane-field-row pane-field-multiline">
-      <span className="pane-label">
-        {label}
-        <span className="pane-label-note">(one per line)</span>
-      </span>
-      <textarea
-        className="pane-input"
-        rows={3}
-        value={values.join("\n")}
-        onChange={(e) => onChange(e.target.value.split("\n").filter((line) => line.length > 0))}
-      />
-    </label>
-  );
-}
-
-function SelectField({
-  label,
-  value,
-  options,
-  optionLabel,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: readonly string[];
-  optionLabel?: (option: string) => string;
-  onChange: (v: string) => void;
-}): JSX.Element {
-  return (
-    <label className="pane-field pane-field-row">
-      <span className="pane-label">{label}</span>
-      <select className="pane-input" value={value} onChange={(e) => onChange(e.target.value)}>
-        {options.map((option) => (
-          <option key={option} value={option}>
-            {optionLabel ? optionLabel(option) : option}
-          </option>
-        ))}
-      </select>
-    </label>
-  );
-}
-
-function ReadOnlyRow({ label, value }: { label: string; value: string }): JSX.Element {
-  return (
-    <div className="pane-field pane-field-row">
-      <span className="pane-label">{label}</span>
-      <code className="pane-id">{value}</code>
     </div>
   );
 }
