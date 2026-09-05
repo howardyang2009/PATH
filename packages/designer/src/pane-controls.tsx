@@ -115,6 +115,17 @@ export function CheckboxField({ label, value, onChange }: { label: string; value
 }
 
 export function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
+  // The textarea keeps its own raw text, so a just-typed Enter (a trailing or blank line) survives the
+  // keystroke instead of being erased. The parent only ever sees the non-empty lines; we resync the draft
+  // when the parent's canonical value diverges — a different node selected, an external edit — but not on
+  // the round-trip of our own emit, where the empty lines the author is still typing would be stripped.
+  const joined = values.join("\n");
+  const [text, setText] = useState(joined);
+  const [prevJoined, setPrevJoined] = useState(joined);
+  if (joined !== prevJoined) {
+    setPrevJoined(joined);
+    setText(joined);
+  }
   return (
     <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">
@@ -124,8 +135,11 @@ export function StringListField({ label, values, onChange }: { label: string; va
       <textarea
         className="pane-input"
         rows={3}
-        value={values.join("\n")}
-        onChange={(e) => onChange(e.target.value.split("\n").filter((line) => line.length > 0))}
+        value={text}
+        onChange={(e) => {
+          setText(e.target.value);
+          onChange(e.target.value.split("\n").filter((line) => line.length > 0));
+        }}
       />
     </label>
   );
