@@ -359,7 +359,13 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   **persists** on the successor beside **Resumed-from** (`rerunFromNodePath`, `{nodeId, nodeName}[]`,
   null on plain Resume). The path is also derivable from the successor's own rows — at each level the
   first child with a genuine-execution row, not a reuse row — so the persisted field is a
-  denormalization for read, never load-bearing for correctness.
+  denormalization for read, never load-bearing for correctness. The run-id selection is checked
+  before the successor starts: a **legal K** resolves to a node still present in the current file,
+  **succeeded**, at the **top level** of its own level's body, whose whole prefix `<K` also
+  succeeded. A selection that resolves to no run in the source tree, to a since-deleted node, to a
+  node inside a loop/parallel/branch body, to a node that did not succeed, or over a prefix that did
+  not fully succeed is **refused** and no successor is created. Plain Resume omits the selection
+  entirely.
 - **Reuse-marker** — a log event on a successor run's stream. For one reused node, it names the original
   run that holds that node's real data. It is direct-to-source: it skips any predecessor tree that never
   held that node. Thus every reuse-marker is a single, always-true hop, independent of how long the
