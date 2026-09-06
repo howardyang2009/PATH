@@ -136,6 +136,43 @@ describe("LiveRuns — cancellable while executing, and only while executing", (
   });
 });
 
+describe("LiveRuns — idle drains in-flight runs (#439)", () => {
+  it("resolves immediately when nothing is in flight", async () => {
+    await expect(live.idle()).resolves.toBeUndefined();
+  });
+
+  it("stays pending while a run executes, then resolves once it settles", async () => {
+    const { rootRunId } = await startFixture("slow-step.workflow.json");
+    expect(live.cancellable).toBe(1);
+
+    let resolved = false;
+    const drain = live.idle().then(() => {
+      resolved = true;
+    });
+
+    // A run is fire-and-forget, so `idle` must not resolve while one is still executing — a caller
+    // that closed the store on an early `idle` would pull the connection out from under the run (#439).
+    await tick();
+    expect(resolved).toBe(false);
+    expect(live.cancellable).toBe(1);
+
+    // Once the run reaches its terminal row (on a still-open store), `idle` resolves.
+    await drain;
+    expect(resolved).toBe(true);
+    expect(live.cancellable).toBe(0);
+    expect(project.archive.tree(rootRunId)?.root?.status).toBe("succeeded");
+  });
+
+  it("waits for every concurrent run, not just the first to finish", async () => {
+    await Promise.all([startFixture("slow-step.workflow.json"), startFixture("two-slow-steps.workflow.json")]);
+    expect(live.cancellable).toBe(2);
+
+    await live.idle();
+    // Drained means every run settled and dropped its entry — none is left touching the store.
+    expect(live.cancellable).toBe(0);
+  });
+});
+
 describe("LiveRuns — stream", () => {
   function collect(rootRunId: string, afterSeq?: number) {
     const events: LogEvent[] = [];

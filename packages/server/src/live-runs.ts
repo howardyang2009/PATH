@@ -76,6 +76,16 @@ export interface LiveRuns {
    * slow leak in a long-lived server; a missing one is a refused cancel of a live run.
    */
   readonly cancellable: number;
+  /**
+   * Resolves once every run started here has settled — the drain a graceful shutdown awaits before it
+   * closes the store (#439). A run is fire-and-forget: `start`/`resume` resolve on `run-started`, long
+   * before the run finishes, so without this a caller that closes `Project` (its `better-sqlite3`
+   * store) right after the response would pull the connection out from under a run still executing a
+   * step, whose next `db.prepare` throws `The database connection is not open`. Awaiting `idle` first
+   * lets each in-flight run reach its terminal row on a live connection. It does not *stop* runs —
+   * `cancel` those first for a bounded shutdown — it only waits for the ones already running.
+   */
+  idle(): Promise<void>;
 }
 
 /** `Project.run`'s options, minus the audit seam and the extension points this module owns. */
@@ -160,6 +170,18 @@ export function createLiveRuns(project: Project): LiveRuns {
   const controllers = new Map<string, AbortController>();
 
   /**
+   * Every in-flight run's own promise — the whole `project.run(...).then(...).finally(finalize)` chain,
+   * not the `run-started` deferred the caller awaits. Each removes itself on settle, so the set is the
+   * live set of runs still touching the store, and `idle` drains it (#439). The chain never rejects
+   * (its `.then` handles both arms), so awaiting the set cannot throw.
+   */
+  const inFlight = new Set<Promise<void>>();
+  function track(runChain: Promise<void>): void {
+    const entry = runChain.finally(() => inFlight.delete(entry));
+    inFlight.add(entry);
+  }
+
+  /**
    * The tracking machinery `start` and `resume` share (they differ only in which engine entry point
    * they drive — `project.run` vs `project.resume`): a deferred that resolves on the first
    * `run-started`, the controller filed under the root run id for `cancel`, the live-forwarding
@@ -223,42 +245,46 @@ export function createLiveRuns(project: Project): LiveRuns {
       // Fire-and-forget from the starter's point of view: the run keeps executing after `start`
       // resolves. Never left unhandled — a rejection here means `run-started` never fired either,
       // so it also settles `started` (a no-op if it already resolved).
-      project
-        .run(rootFile, workflowDir, { ...options, ...hooks })
-        .then(
-          (result) => {
-            if (result.status === "failed") console.error(`run failed: ${result.error}`);
-          },
-          (err) => {
-            started.reject(err);
-            console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
-          },
-        )
-        .finally(finalize);
+      track(
+        project
+          .run(rootFile, workflowDir, { ...options, ...hooks })
+          .then(
+            (result) => {
+              if (result.status === "failed") console.error(`run failed: ${result.error}`);
+            },
+            (err) => {
+              started.reject(err);
+              console.error(`run crashed: ${err instanceof Error ? err.stack : String(err)}`);
+            },
+          )
+          .finally(finalize),
+      );
 
       return started.promise;
     },
 
     async resume(rootFile, resumeRootRunId, workflowDir, options): Promise<StartedRun> {
       const { started, hooks, finalize } = beginTracked();
-      project
-        .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
-        .then(
-          (result) => {
-            // The predecessor id was unknown — no successor was ever started, so nothing emitted
-            // `run-started` and the deferred is still pending. Reject it so the route answers 404.
-            if (!result.found) {
-              started.reject(new ResumeNotFound(result.error));
-              return;
-            }
-            if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
-          },
-          (err) => {
-            started.reject(err);
-            console.error(`resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`);
-          },
-        )
-        .finally(finalize);
+      track(
+        project
+          .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
+          .then(
+            (result) => {
+              // The predecessor id was unknown — no successor was ever started, so nothing emitted
+              // `run-started` and the deferred is still pending. Reject it so the route answers 404.
+              if (!result.found) {
+                started.reject(new ResumeNotFound(result.error));
+                return;
+              }
+              if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
+            },
+            (err) => {
+              started.reject(err);
+              console.error(`resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`);
+            },
+          )
+          .finally(finalize),
+      );
 
       return started.promise;
     },
@@ -311,6 +337,12 @@ export function createLiveRuns(project: Project): LiveRuns {
 
     get cancellable(): number {
       return controllers.size;
+    },
+
+    async idle(): Promise<void> {
+      // Loop: a run tracked when we snapshot the set can settle while we await, and though a closing
+      // server starts no new runs, this stays correct even if one did — drain until the set is empty.
+      while (inFlight.size > 0) await Promise.all([...inFlight]);
     },
   };
 }

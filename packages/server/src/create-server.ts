@@ -239,7 +239,8 @@ export async function startPathServer(
 
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
-  const ctx: RunsRouteContext = { project, live: createLiveRuns(project), stepPlugins: registry };
+  const live = createLiveRuns(project);
+  const ctx: RunsRouteContext = { project, live, stepPlugins: registry };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);
@@ -258,10 +259,15 @@ export async function startPathServer(
     server,
     url: `http://localhost:${actualPort}`,
     close: () =>
-      new Promise((resolvePromise) => {
+      new Promise((resolvePromise, reject) => {
         server.close(() => {
-          project.close();
-          resolvePromise();
+          // Runs are fire-and-forget, so `server.close` (which only drains HTTP connections) can fire
+          // while a run is still executing a step. Drain those runs before closing the store, so none
+          // hits a closed connection and throws `The database connection is not open` (#439).
+          live.idle().then(() => {
+            project.close();
+            resolvePromise();
+          }, reject);
         });
       }),
   };
