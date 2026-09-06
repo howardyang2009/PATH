@@ -344,7 +344,12 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   succeeded results (reuse rows, direct-to-source); K and every serialized-later node re-run in the
   successor, each subtree entire. When K sits inside a nested `workflow` file, the boundary is a
   **descent path** root→…→K: at each level the nodes before the path-node reuse, the nodes after it
-  re-run entire, and the path-node is descended into; only K itself re-runs entire. Plain Resume is K
+  re-run entire, and the path-node is descended into; only K itself re-runs entire. Thus at each level
+  on the path every top-level node has one of three **dispositions**: **reuse** (before the
+  path-node), **rerun-entire** (after the path-node, and the path-node itself when it is K), or
+  **descend** (the path-node when it is an intermediate `workflow` node — re-entered with partial
+  reuse under the next level's boundary). Intermediate path-nodes are `workflow` nodes by necessity;
+  only K may be a leaf. Plain Resume is K
   at the **auto-boundary** — the first non-succeeded top-level node — so plain Resume is the K =
   auto-boundary case of one action, not a second path. The operator selects K by the **source node's
   run id**, the one unambiguous handle (a bare node id is file-scoped and cannot tell two refs of the
