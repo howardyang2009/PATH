@@ -340,6 +340,21 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
 - **Resumed-from** — a successor run's own record of which root run it resumed from. It is always the
   *immediate* predecessor, one hop. This holds regardless of how far back the data it actually reuses
   lives.
+- **Rerun boundary (K)** — the node a Resume re-runs *from*. Nodes serialized before K reuse their
+  succeeded results (reuse rows, direct-to-source); K and every serialized-later node re-run in the
+  successor, each subtree entire. When K sits inside a nested `workflow` file, the boundary is a
+  **descent path** root→…→K: at each level the nodes before the path-node reuse, the nodes after it
+  re-run entire, and the path-node is descended into; only K itself re-runs entire. Plain Resume is K
+  at the **auto-boundary** — the first non-succeeded top-level node — so plain Resume is the K =
+  auto-boundary case of one action, not a second path. The operator selects K by the **source node's
+  run id**, the one unambiguous handle (a bare node id is file-scoped and cannot tell two refs of the
+  same nested file, or two loop iterations, apart). The engine resolves that run id to the descent
+  path of node **ids** by walking the source run's parents; the node-id path is the identity it
+  **matches** against the current file (so a rename or move of a node survives, a delete fails) and
+  **persists** on the successor beside **Resumed-from** (`rerunFromNodePath`, `{nodeId, nodeName}[]`,
+  null on plain Resume). The path is also derivable from the successor's own rows — at each level the
+  first child with a genuine-execution row, not a reuse row — so the persisted field is a
+  denormalization for read, never load-bearing for correctness.
 - **Reuse-marker** — a log event on a successor run's stream. For one reused node, it names the original
   run that holds that node's real data. It is direct-to-source: it skips any predecessor tree that never
   held that node. Thus every reuse-marker is a single, always-true hop, independent of how long the
