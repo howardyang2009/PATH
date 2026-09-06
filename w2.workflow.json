@@ -3,7 +3,7 @@
   "id": "3b8e0bf1-f926-4886-9f6e-b02b2f6eca5e",
   "name": "w2",
   "config": {
-    "model": "claude-sonnet-5"
+    "model": "claude-haiku-4-5"
   },
   "body": [
     {
@@ -26,12 +26,12 @@
       "input": {
         "draft": "${context.draft}"
       },
+      "parse": "json",
       "publish": {
         "verdict": "${output}"
       },
       "prompt": "Judge the revised draft in your input. Output STRICT JSON only: { \\\"pass\\\": boolean, \\\"feedback\\\": string, \\\"suggested_format\\\": \\\"short\\\" | \\\"long\\\" }.",
-      "type": "prompt",
-      "parse": "json"
+      "type": "prompt"
     },
     {
       "type": "checkpoint",
