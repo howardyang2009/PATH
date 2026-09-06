@@ -88,7 +88,12 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The run surfaces (#372), gathered into one module (`useRunWatch`): the watched root run, the run inside
   // its tree, the reload nonce, the single `useRunView` connection, and the select/launch/resume/delete
   // transitions. The App reads its derived values and wires its transitions onto the run dock.
-  const run = useRunWatch(client);
+  // Key the run-watch on the **root** frame's workflow id, not the active file's. A `workflow`-ref descent
+  // (or a pop) changes the active file but keeps the same watched root run — its tree spans the nested
+  // workflows and projects onto each descent crumb. Only a fresh `session.open` swaps the root frame, and
+  // that is the one transition where the watched run belongs to a workflow no longer open (#254).
+  const rootWorkflowId = openedResultOf(session.frames[0])?.file.id ?? null;
+  const run = useRunWatch(client, rootWorkflowId);
 
   // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a

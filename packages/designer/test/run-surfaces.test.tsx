@@ -25,6 +25,8 @@ function uuid(n: number): string {
 const ROOT_PATH = "flows/main.workflow.json";
 const WF_ID = uuid(1);
 const STEP_ID = uuid(2);
+const OTHER_PATH = "flows/other.workflow.json";
+const OTHER_WF_ID = uuid(9);
 
 /** A clean, fully-id'd root file — opens without a stamp, so the buffer is clean and launch is enabled. */
 function cleanFile(): Record<string, unknown> {
@@ -33,6 +35,16 @@ function cleanFile(): Record<string, unknown> {
     id: WF_ID,
     name: "root-flow",
     body: [{ type: "prompt", id: STEP_ID, name: "draft", prompt: "hi" }],
+  };
+}
+
+/** A second clean root, a workflow that was never run — its own id, so opening it re-scopes the dock. */
+function otherFile(): Record<string, unknown> {
+  return {
+    format: FORMAT_VERSION,
+    id: OTHER_WF_ID,
+    name: "other-flow",
+    body: [{ type: "prompt", id: uuid(10), name: "draft", prompt: "hi" }],
   };
 }
 
@@ -226,5 +238,41 @@ describe("Designer run surfaces (#372)", () => {
     await waitFor(() => expect(within(screen.getByTestId("node-io-input")).queryByText(/seed/)).toBeInTheDocument());
     await waitFor(() => expect(within(screen.getByTestId("node-io-output")).getByText(/No output object recorded/i)).toBeInTheDocument());
     expect(io).toBeInTheDocument();
+  });
+
+  it("drops the watched run when a different workflow is opened", async () => {
+    // Open the root file, watch its succeeded run, then open a *different* workflow that was never run. The
+    // watched run belongs to the old workflow, so it must not survive the re-scope: the run-detail pane
+    // clears and the new workflow's breadcrumb carries no status badge (the reported bug).
+    const client = stubClient({
+      files: { [ROOT_PATH]: canonicalBytes(cleanFile()), [OTHER_PATH]: canonicalBytes(otherFile()) },
+      workflows: {
+        workflows: [
+          { relative_path: ROOT_PATH, id: WF_ID, name: "root-flow", valid: true, is_root: true, error: null },
+          { relative_path: OTHER_PATH, id: OTHER_WF_ID, name: "other-flow", valid: true, is_root: true, error: null },
+        ],
+      },
+      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
+      tree: { root_run_id: "root-1", status: "succeeded", output: null, runs: [wireRun({ run_id: "root-1", status: "succeeded" })] },
+    });
+    render(<App client={client} initialPath={ROOT_PATH} />);
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    openDock();
+
+    // Watch the succeeded run: the badge lights and the run-detail pane shows the tree, not its empty note.
+    fireEvent.click(await screen.findByTestId("run-row-root-1"));
+    expect(await screen.findByTestId("workflow-run-badge")).toHaveAttribute("data-run-status", "succeeded");
+    expect(screen.queryByText("Select a run.")).not.toBeInTheDocument();
+
+    // Open the never-run workflow through the picker (the files sit under a `flows/` folder).
+    fireEvent.click(screen.getByText("Open…"));
+    fireEvent.click(await screen.findByText("flows"));
+    fireEvent.click(await screen.findByText("other.workflow.json"));
+
+    // The new workflow's name renders on the breadcrumb — with no run badge, because it never ran.
+    await screen.findByText("other-flow");
+    await waitFor(() => expect(screen.queryByTestId("workflow-run-badge")).not.toBeInTheDocument());
+    // The run-detail pane fell back to its empty note; the old run's detail is gone.
+    expect(screen.getByText("Select a run.")).toBeInTheDocument();
   });
 });
