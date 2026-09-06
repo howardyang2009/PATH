@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PathApiClient } from "@path/client-core";
 import { useRunView } from "@path/viewer";
 
@@ -14,12 +14,30 @@ import { useRunView } from "@path/viewer";
  * live snapshot, and a second connection would tell the same story a beat apart. The App reads the derived
  * values (`runsForProjection`, `workflowRunStatus`) and wires the transitions straight onto the run dock.
  */
-export function useRunWatch(client: PathApiClient) {
+export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null) {
   // The watched root run, and the run inside its tree the inspector shows. `null` when nothing is watched.
   const [rootRunId, setRootRunId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   // Bumped to make the run list re-read now (a launch/resume/delete just changed it), not at the next tick.
   const [reloadNonce, setReloadNonce] = useState(0);
+
+  // Opening a different workflow as a fresh root (`session.open`, #254) swaps the root frame, so the watched
+  // run — which belongs to the previous root workflow — names nothing here any more. Drop it, the same way
+  // `selectRootRun` drops the in-tree selection: otherwise the run-detail pane keeps rendering the old run and
+  // the canvas breadcrumb badges the new workflow with the old run's status, a run this workflow never had.
+  // The key is the *root* workflow id, so a `workflow`-ref descent (or a pop) — which changes the active file
+  // but keeps the same watched root run and its per-crumb projection — leaves the watch be. A launch/resume
+  // also keeps the same open file, so the root id does not change there either.
+  const prevRootWorkflowId = useRef<string | null | undefined>(undefined);
+  useEffect(() => {
+    const prev = prevRootWorkflowId.current;
+    prevRootWorkflowId.current = rootWorkflowId;
+    // Skip the first population (nothing watched yet); reset only on a genuine change between two root workflows.
+    if (prev !== undefined && prev !== rootWorkflowId) {
+      setRootRunId(null);
+      setSelectedRunId(null);
+    }
+  }, [rootWorkflowId]);
 
   const load = useRunView(client, rootRunId);
   // The runs feeding the canvas projection, and the watched run's workflow-level (root run) status. The root

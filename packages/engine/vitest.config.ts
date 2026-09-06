@@ -21,7 +21,18 @@ import { defineConfig } from "vitest/config";
  * per-file process isolation this drops.
  */
 export default defineConfig({
+  // Route every `better-sqlite3` import through a tracking wrapper so the leak guard below can catch a
+  // handle a test forgot to close — the source of the #436 teardown crash. The wrapper is a faithful
+  // pass-through (same prototype and statics); it only records open handles on a global registry.
+  resolve: {
+    alias: {
+      "better-sqlite3": new URL("./test/support/better-sqlite3-tracked.ts", import.meta.url).pathname,
+    },
+  },
   test: {
+    // Fail a test loudly and locally if it leaves a better-sqlite3 handle open, rather than letting the
+    // handle finalize late during teardown and abort the worker as a green-run/red-job CI flake (#436).
+    setupFiles: ["./test/support/better-sqlite3-leak-guard.ts"],
     pool: "forks",
     poolOptions: {
       forks: {
