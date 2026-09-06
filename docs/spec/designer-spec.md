@@ -545,6 +545,68 @@ an edit reuses **reuse rows** for nodes the author may have just changed. The De
 and lets the author judge when it is meaningful; the plan-reuse semantics are the engine's existing
 contract.
 
+### Resume from here (the run-tree K selection)
+
+This subsection resolves [#430](https://github.com/howardyang2009/PATH/issues/430) (part of map
+[#427](https://github.com/howardyang2009/PATH/issues/427)). The rationale is in
+[ADR 0033](../adr/0033-designer-resume-from-k-is-a-selection-driven-run-action-button.md). It is
+normative.
+
+**Resume-from-chosen-K** lets the author move the rerun boundary **K** earlier than the auto-boundary:
+nodes before K reuse their succeeded results, K and every serialized-later node re-run in a
+non-destructive successor (`CONTEXT.md` §Rerun-boundary (K)). In the Designer this is **not** a second
+action. It is the K-supplied case of the same Resume the run detail already carries (§ Cancel and
+resume): plain **Resume run** omits K (auto-boundary); **Resume from …** supplies K = a run the author
+selects in the run tree. Both open the same config-only resume form and take the same engine route
+([#429](https://github.com/howardyang2009/PATH/issues/429)).
+
+**The affordance is a run-action button, not a context menu.** The run detail's left action column
+already holds `Resume run` and `Delete run` for the selected root run (§ Run detail). A third button,
+**`Resume from …`**, sits beside them. K is named by the **run** of the node selected in the middle
+run tree — the one unambiguous handle, since a run id (unlike a bare node id) distinguishes two refs of
+one nested file and two loop iterations (`CONTEXT.md` §Rerun-boundary; ADR 0032). Only a run-tree node
+carries a run id; the canvas node maps to many runs and carries none, so the canvas never hosts this
+action.
+
+**The button is always rendered; it has exactly two states, enabled and disabled-with-reason.** It is
+never hidden. When enabled, its label carries the selected node's identity: `Resume from
+<node-name> (<short-run-id>)`, e.g. `Resume from fetch-data (f427cca4)`. The node name says *which*
+node; the short run id disambiguates duplicate names (loop iterations, two refs of one nested file);
+the full run id is the wire value (#429 `rerun_from_run_id`) and the hover title. When disabled, the
+button shows **one** reason, in this precedence (first that applies wins):
+
+1. **No node selected** — "Select a node in the run tree." A single selection drives both this button
+   and the node-I/O inspector (surface 7); selecting the root row or nothing disables the button here.
+2. **Illegal K** — the selected node is not a legal boundary. The reason is the matching entry of the
+   engine's five-reason refusal taxonomy (ADR 0032): the selection resolves to no run, to a
+   since-deleted node, to a node **inside a loop / parallel / branch body**, to a node that **did not
+   succeed**, or over a **prefix that did not fully succeed**. The client computes legality eagerly
+   from the run tree it already holds; the engine's `refusal` stays the backstop for a race (the file
+   changed under the buffer).
+3. **Buffer dirty** — a legal K, but the open file is not clean. The button shows Launch's save-first
+   affordance ("Save to enable"). Resume-from-K matches K's node path against the **bytes on disk**
+   (#429), so a dirty buffer would match a file the author is not looking at; the clean-buffer gate is
+   the same one save-point Launch uses (§ Launch is save-first, ADR 0030). Resume takes **no** edit-lock
+   lease — the lease guards authorship, not a run (§ Edit-lock lease protocol, ADR 0017).
+
+**Legal K includes nested nodes and reuse rows.** A legal K is any non-root run-tree row that is
+**succeeded**, **top-level of its own level's body**, and whose **prefix `<K` at that level also
+succeeded**. This admits a **nested workflow-run** row (K re-runs it entire, or it is descended when it
+is an intermediate path node — `CONTEXT.md` §Rerun-boundary) and a **reuse row** (a succeeded node that
+owns no execution of its own; resuming from it re-runs that node fresh — legal, though the author is
+resuming "from" a node the source only reused). The **root run row** is never a K; that is plain
+`Resume run` (auto-boundary).
+
+**Button set by root-run status** (once a root run is selected in the runs rail):
+
+| Selected root run | Left action column |
+|---|---|
+| `failed` / `cancelled` | `Resume run` · `Resume from …` · `Delete run` |
+| `succeeded` | `Resume from …` · `Delete run` |
+
+A `succeeded` run offers no plain `Resume run` (nothing remains from the auto-boundary), so
+`Resume from …` is the only resume path on it, enabled once the author selects a legal K.
+
 ### Run list, scoped to the open workflow
 
 The list is the Viewer's runs rail, **filtered to the workflow open on the canvas**. The scope key is
