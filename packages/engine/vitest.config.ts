@@ -34,12 +34,24 @@ export default defineConfig({
     // handle finalize late during teardown and abort the worker as a green-run/red-job CI flake (#436).
     setupFiles: ["./test/support/better-sqlite3-leak-guard.ts"],
     pool: "forks",
+    // Load `better-sqlite3` **once** for the whole run, not once per test file. With the default
+    // per-file isolation the forks pool disposes each file's module context at the file→file transition
+    // and the next file re-imports the native addon fresh; the previous file's `Statement` C++ wrappers
+    // then finalize against a **disposed** node environment, and `RemoveEnvironmentCleanupHook` aborts
+    // the fork with `Assertion failed: (env) != nullptr` — reliably around the second file on a busy
+    // 2-core CI runner (a green run, a red job; #436/#442/#443, and never reproducible on a fast local
+    // box). `isolate: false` shares one live environment across all 46 files, so the addon loads once and
+    // its cleanup hooks run once, at real process exit. The engine's tests already isolate their own
+    // state in per-test temp dirs and stores (verified: all 624 pass with isolation off), so they do not
+    // rely on the per-file module reset this drops.
+    isolate: false,
     poolOptions: {
       forks: {
         singleFork: true,
         // `--expose-gc` gives the leak guard's `afterAll` a `global.gc()` to force every better-sqlite3
-        // `Statement` wrapper to finalize on a live isolate, before teardown. Without it that finalize is
-        // deferred to V8 teardown and aborts the fork — a green run, a red job (#436, #442).
+        // `Statement` wrapper to finalize on a live isolate, before the single process exit. Without it
+        // that finalize is deferred to V8 teardown and aborts the fork — a green run, a red job
+        // (#436, #442). `isolate: false` above removes the per-file crash; this covers the final exit.
         execArgv: ["--expose-gc"],
       },
     },
