@@ -26,5 +26,10 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./test/setup.ts"],
     css: false,
+    // Sit above the 5000ms testing-library `asyncUtilTimeout` set in `test/setup.ts`, so a slow async
+    // wait on a starved CI runner exhausts its own poll window (and fails with a useful assertion)
+    // rather than tripping vitest's default 5000ms test timeout first. Load-only headroom; fast local
+    // runs are unaffected.
+    testTimeout: 15000,
   },
 });

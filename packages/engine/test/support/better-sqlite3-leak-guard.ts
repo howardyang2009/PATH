@@ -47,7 +47,15 @@ afterEach((ctx) => {
 // any straggler Database, then forces a GC (vitest.config.ts passes `--expose-gc`) so every Statement
 // wrapper finalizes *now*, on a live env, removing its cleanup hook cleanly. Nothing native is left to
 // finalize at teardown, so the abort cannot happen.
-afterAll(() => {
+//
+// One synchronous `gc()` is not enough on a busy CI runner (the residual #442/#443 abort): better-sqlite3's
+// Statement wrapper finalizes through a V8 weak-callback that `gc()` *schedules* rather than runs inline, so
+// the native destructor fires on a later tick. If `afterAll` returns before that tick, the destructor can
+// instead run during the fork's teardown, on a dead env, and abort. So this hook is async: after each GC it
+// yields a macrotask (`setImmediate`) to let the scheduled finalizers run on the live isolate, and loops a
+// few times because a wrapper freed by one cycle only becomes collectable on the next. The loop is bounded
+// and cheap — a handful of GCs at each file's end — and deterministic where a single inline `gc()` raced.
+afterAll(async () => {
   const all = registry.__betterSqliteAll ?? [];
   for (const handle of all) {
     try {
@@ -57,5 +65,11 @@ afterAll(() => {
     }
   }
   all.length = 0;
-  (globalThis as { gc?: () => void }).gc?.();
+  const gc = (globalThis as { gc?: () => void }).gc;
+  if (!gc) return;
+  for (let pass = 0; pass < 5; pass++) {
+    gc();
+    // Drain a macrotask so the weak-callback finalizers V8 just scheduled actually run before teardown.
+    await new Promise<void>((resolve) => setImmediate(resolve));
+  }
 });
