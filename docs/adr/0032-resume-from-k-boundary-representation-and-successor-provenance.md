@@ -6,7 +6,7 @@ A Resume-from-chosen-K request ([#429](https://github.com/howardyang2009/PATH/is
 map [#427](https://github.com/howardyang2009/PATH/issues/427)) names the rerun boundary **K** on the
 wire by the **source node's run id** — one scalar field `rerun_from_run_id` on the existing
 `POST /v0/runs/:root_run_id/resume` body (`packages/server/src/routes/resume-run.ts:10`), and
-`path resume --from <run-id>` at the CLI. The engine (`Project.resume`,
+`--from <run-id>` on the existing resume form at the CLI (`path run <workflow.json> --resume <root-run-id> --from <run-id>`; [#431](https://github.com/howardyang2009/PATH/issues/431)). The engine (`Project.resume`,
 `packages/engine/src/project.ts:199`) resolves that run id to the node-id **descent path**
 `ResumeInput.rerunFromNodePath` (the mechanism mapped in
 [#433](https://github.com/howardyang2009/PATH/issues/433),
