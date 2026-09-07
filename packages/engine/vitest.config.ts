@@ -37,6 +37,10 @@ export default defineConfig({
     poolOptions: {
       forks: {
         singleFork: true,
+        // `--expose-gc` gives the leak guard's `afterAll` a `global.gc()` to force every better-sqlite3
+        // `Statement` wrapper to finalize on a live isolate, before teardown. Without it that finalize is
+        // deferred to V8 teardown and aborts the fork — a green run, a red job (#436, #442).
+        execArgv: ["--expose-gc"],
       },
     },
   },

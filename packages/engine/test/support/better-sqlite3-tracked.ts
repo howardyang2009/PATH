@@ -11,13 +11,14 @@
 // exit, which mitigates the race; the per-test leak guard removes it at the source by catching an unclosed
 // handle the instant the leaking *test* ends, deterministically and locally.
 //
-// The per-test guard has one blind spot, and it is the one that still aborted CI on #442: a handle opened
-// *outside* a test's own lifecycle — module scope, a `beforeAll` fixture — is not a per-test leak, and the
-// guard clears its registry every `afterEach`, so nothing ever closes such a handle. Its `Statement`/
-// `Database` finalizer then runs at the fork's own exit, on a dead isolate, and aborts with
-// `Assertion failed: (env) != nullptr`. The `beforeExit` hook below is the backstop: it closes every handle
-// still open when the fork's event loop drains — while the isolate is still live — so no open native handle
-// ever reaches V8 teardown, whatever scope opened it.
+// The per-test guard has a blind spot the crash on #442 lives in: better-sqlite3 registers a per-*Statement*
+// native cleanup hook, removed only when the Statement's C++ wrapper is destroyed at JS GC — not at
+// `db.close()`. Every `db.prepare(...)` a test ran leaves such a wrapper; if its GC is deferred, the
+// destructor runs during the fork's V8 teardown, on a dead isolate, and aborts with `Assertion failed:
+// (env) != nullptr` after every test passed. The guard only inspects `db.open`, so it never sees this. The
+// `all` master list below feeds the leak guard's `afterAll`, which closes stragglers and forces a GC while
+// the isolate is still live (see `better-sqlite3-leak-guard.ts`), so no native object is left to finalize
+// at teardown.
 import { createRequire } from "node:module";
 
 const require = createRequire(import.meta.url);
@@ -34,28 +35,12 @@ export interface TrackedHandle {
 const registry = globalThis as unknown as {
   __betterSqliteLive?: TrackedHandle[];
   __betterSqliteAll?: TrackedHandle[];
-  __betterSqliteExitHook?: boolean;
 };
 // `live` is the per-test view the leak guard reads and clears each `afterEach`. `all` is a never-cleared
-// master list the `beforeExit` backstop drains, so a handle the per-test guard's clearing dropped is still
-// closed before the fork exits.
+// master list the leak guard's `afterAll` drains and GCs, so a handle the per-test clearing dropped is
+// still closed and finalized before the fork tears down.
 const live: TrackedHandle[] = (registry.__betterSqliteLive ??= []);
 const all: TrackedHandle[] = (registry.__betterSqliteAll ??= []);
-
-if (!registry.__betterSqliteExitHook) {
-  registry.__betterSqliteExitHook = true;
-  // One hook per fork, installed on first import. `beforeExit` fires while the isolate is still live, so
-  // `.close()` here removes the native cleanup hook cleanly — the abort at teardown becomes impossible.
-  process.once("beforeExit", () => {
-    for (const handle of all) {
-      try {
-        if (handle.db.open) handle.db.close();
-      } catch {
-        // Already closing or closed — nothing to do.
-      }
-    }
-  });
-}
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 function TrackedDatabase(this: unknown, ...args: any[]) {
