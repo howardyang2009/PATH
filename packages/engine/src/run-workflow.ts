@@ -129,11 +129,12 @@ export interface ResumeInput {
   /** Loads one blob of an original run by filename (`RUN_BLOB_FILE.output` / `.context`). */
   readBlob: (run: RunRecord, filename: string) => JsonValue;
   /**
-   * The **rerun boundary (K)** as the descent path of node ids root→…→K (ADR 0032/0035). `[]` or
-   * undefined is **plain Resume** (K at the auto-boundary). Length 1 is a top-level K — the only shape
-   * this ticket supports; a nested K (a longer path) is #TBD-T2. `Project.resume` is the one authority
-   * that resolves the operator's source run id to this path and validates it against the current file
-   * before any successor starts — the engine trusts it and only backstops with a throw.
+   * The **rerun boundary (K)** as the descent path of node ids root→…→K (ADR 0032/0036). `[]` or
+   * undefined is **plain Resume** (K at the auto-boundary); length 1 is a top-level K (ADR 0035); a
+   * longer path descends into nested `workflow` files, its head a top-level node of the root file and
+   * each subsequent id a top-level node of the previous path-node's file. `Project.resume` is the one
+   * authority that resolves the operator's source run id to this path and validates it against the
+   * current file before any successor starts — the engine trusts it and only backstops with a throw.
    */
   rerunFromNodePath?: string[];
 }
@@ -202,9 +203,10 @@ interface WorkflowRunParams {
   cancellation?: Cancellation;
   // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
   // run's own original counterpart (the run it corresponds to, if any). Absent for a fresh run.
-  // `rerunSet` is the Resume-from-K rerun boundary (ADR 0035), root-only — set on the root run alone
-  // and never on a descended child, which keeps suppression from misfiring on a colliding nested id.
-  resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSet?: Set<string> };
+  // `rerunSuffix` is the Resume-from-K rerun boundary as a per-level remaining descent path (ADR 0036):
+  // the root run carries the whole path, each descent hands the path-node its `slice(1)` tail, and
+  // every off-path sibling hands `[]`, so suppression reaches exactly the on-path level at each depth.
+  resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] };
   // The rerun boundary (K) descent path as `{nodeId, nodeName}[]` (#444, ADR 0032), threaded only
   // into the root run's params — a read denormalization persisted on the root row's
   // `rerun_from_node_path`. Absent on plain Resume and on every nested run.
@@ -286,17 +288,21 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
       : undefined;
   const context: { [key: string]: JsonValue } = restoredContext ? { ...restoredContext } : { ...input }; // format doc §6.3
+  // Producer A (ADR 0036): at every on-path level the level's own `suppress` set (this run's suffix
+  // head B and every serialized-later run-producing id, over this file's own body) is dropped from the
+  // plan, so B and after-B re-run instead of reusing. Off-path (`rerunSuffix` empty) it is undefined,
+  // so `planReuse` is the plain-Resume one — the reuse producer keyed off this run's own suffix, not
+  // `parentRunId === null`, which is what lets suppression reach a descended child's `planReuse`.
+  const rerunSuffix = params.resume?.rerunSuffix ?? [];
+  const levelSets = buildRerunLevelSets(file, rerunSuffix);
   const resume: RunResume | undefined = params.resume
     ? {
         input: params.resume.input,
         counterpart: resumeCounterpart,
-        // Producer A (ADR 0035): the rerun set suppresses K and every serialized-later id from the
-        // plan, so a ≥K node re-runs instead of reusing. Root-only — `rerunSet` is undefined on every
-        // descended child, so its `planReuse` is the plain-Resume one.
         plan: resumeCounterpart
-          ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId, params.resume.rerunSet)
+          ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId, levelSets?.suppress)
           : new Map(),
-        rerunSet: params.resume.rerunSet,
+        rerunSuffix,
       }
     : undefined;
   let previousOutput: JsonValue = input;
@@ -477,23 +483,10 @@ async function runWorkflowNode(
     cancellation: ctx.exec.cancellation,
     // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
-    // its already-succeeded grandchildren reuse rather than re-running from scratch.
-    resume: ctx.run.resume
-      ? {
-          input: ctx.run.resume.input,
-          // Producer B (ADR 0035): a ≥K `workflow` node gets no counterpart, so `executeWorkflowRun`
-          // seeds it fresh from input and its whole subtree re-runs entire. A <K / off-path node
-          // re-enters its original counterpart and reuses as plain Resume. `rerunSet` is not threaded
-          // to the child — suppression stays root-only for this top-level-K slice (nested-K is #TBD-T2).
-          counterpart: ctx.run.resume.rerunSet?.has(node.id)
-            ? undefined
-            : findNestedCounterpart(
-                ctx.run.resume.input.originalRuns,
-                ctx.run.resume.counterpart?.runId,
-                node.id,
-              ),
-        }
-      : undefined,
+    // its already-succeeded grandchildren reuse rather than re-running from scratch. Producer B (ADR
+    // 0036) chooses the child's disposition from this level's own suffix — reuse/off-path, rerun-entire,
+    // or descend — and threads the tail only into a descended path-node (`childResumeState`).
+    resume: childResumeState(ctx.run, node.id),
   });
 
   if (childResult.status === "cancelled") return { status: "cancelled" };
@@ -716,47 +709,104 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
  * nested workflow-runs under it (#22). See `executeWorkflowRun` for the per-run walk.
  */
 /**
- * The Resume-from-K rerun boundary as a suppression set (ADR 0035): K and every serialized-later
- * run-producing id at the root level, over `body.slice(indexOf(K))` with the exact `walkNodes` /
- * `RUN_PRODUCING_TYPES` walk `planReuse` uses. `undefined` for plain Resume (empty/absent path). This
- * ticket resolves only a top-level K, so the path is length 1 and K is its head; the `i < 0` throw is
- * the backstop the spec calls for — `Project.resume` validates the id against the file first, so it is
- * never reached after validation.
+ * One on-path level's two rerun-boundary sets (ADR 0036), derived from *this* level's own body and
+ * its own suffix head B, over the exact `walkNodes` / `RUN_PRODUCING_TYPES` walk `planReuse` uses:
+ *
+ * - `suppress` (Producer A, `planReuse`): B and every serialized-later run-producing id
+ *   (`body.slice(indexOf(B))`). Always holds B, so B never reuses-whole — it must descend or re-run.
+ * - `rerunEntire` (Producer B, the descent site): after-B only. Equals `suppress` minus B when B is
+ *   intermediate (descends), equals `suppress` when B is the leaf (B == K). That one-element gap — B
+ *   present in `suppress` but absent from `rerunEntire` — is the **descend** disposition.
+ *
+ * `undefined` off-path / plain Resume (empty suffix). A suffix head that is not a top-level node of
+ * this body is an internal-invariant violation (throw), not a silent degrade: `Project.resume`
+ * validates the whole path against the current file before any successor starts (ADR 0036, spec §5),
+ * so this backstop is unreachable after validation — an intermediate B whose counterpart is then
+ * absent over-re-runs rather than mis-reuses.
  */
-function buildRerunSuppressSet(file: WorkflowFile, rerunFromNodePath: string[] | undefined): Set<string> | undefined {
-  if (!rerunFromNodePath || rerunFromNodePath.length === 0) return undefined;
-  // This ticket resolves a top-level K only, so the path is length 1 and its head is K. A longer
-  // (nested) path is #TBD-T2 and would need a per-level pass (ADR 0036); refuse it loudly rather than
-  // silently treating the head's whole subtree as rerun-entire. `Project.resume` never emits one.
-  if (rerunFromNodePath.length > 1) {
-    throw new Error("resume: nested rerun boundary paths are not supported yet (top-level K only)");
-  }
-  const kId = rerunFromNodePath[0]!;
-  const i = file.body.findIndex((node) => node.id === kId);
+interface RerunLevelSets {
+  suppress: Set<string>;
+  rerunEntire: Set<string>;
+}
+
+function buildRerunLevelSets(file: WorkflowFile, suffix: string[]): RerunLevelSets | undefined {
+  if (suffix.length === 0) return undefined;
+  const head = suffix[0]!;
+  const i = file.body.findIndex((node) => node.id === head);
   if (i < 0) {
-    throw new Error(`resume: rerun boundary node "${kId}" is not a top-level node of the workflow`);
+    throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
   }
   const suppress = new Set<string>();
   for (const node of walkNodes(file.body.slice(i))) {
     if (RUN_PRODUCING_TYPES.has(node.type)) suppress.add(node.id);
   }
-  return suppress;
+  const isLeaf = suffix.length === 1;
+  const rerunEntire = isLeaf ? suppress : new Set([...suppress].filter((id) => id !== head));
+  return { suppress, rerunEntire };
 }
 
 /**
- * The persisted denormalization of the rerun boundary path (ADR 0032): each node id paired with its
- * current human name from the file. `undefined` for plain Resume. Correctness never reads it — it is
- * for #418's descent crumbs — so a name the file no longer carries falls back to the id.
+ * The resume state a child `workflow` run inherits (Producer B, ADR 0036), computed from this run's
+ * own suffix. Undefined when this run is not resuming. For a resuming run one of three dispositions:
+ *
+ * - **descend** — `nodeId` is this level's path-node B and B is intermediate (a longer tail follows):
+ *   re-enter B's original counterpart and hand it `S.slice(1)`, so B reuses its inner prefix and applies
+ *   its own boundary one level down.
+ * - **rerun-entire** — `nodeId` is after B, or is B == K (a leaf `workflow` node): no counterpart, so
+ *   the child seeds fresh and its whole subtree re-runs. Cascade-up is this rule per level.
+ * - **reuse / off-path** — `nodeId` is before B, or this run is off-path (empty suffix): re-enter the
+ *   counterpart exactly as plain Resume, tail `[]`. (A before-B node that reused short-circuits before
+ *   dispatch and never reaches here; one that did not — added since, or unsucceeded — re-enters plain.)
+ */
+function childResumeState(
+  run: RunContext,
+  nodeId: string,
+): { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] } | undefined {
+  const resume = run.resume;
+  if (!resume) return undefined;
+  const suffix = resume.rerunSuffix;
+  const isPathNode = suffix.length > 0 && nodeId === suffix[0];
+  const descend = isPathNode && suffix.length > 1;
+  const rerunEntire = buildRerunLevelSets(run.file, suffix)?.rerunEntire;
+  const counterpart =
+    descend || !(rerunEntire?.has(nodeId) ?? false)
+      ? findNestedCounterpart(resume.input.originalRuns, resume.counterpart?.runId, nodeId)
+      : undefined;
+  return { input: resume.input, counterpart, rerunSuffix: descend ? suffix.slice(1) : [] };
+}
+
+/**
+ * The persisted denormalization of the rerun boundary path (ADR 0032/0036): each node id paired with
+ * its current human name **at its own level**. `undefined` for plain Resume. The descent resolves each
+ * level's name from its own file, following the path-node's `workflow` ref down. Correctness never
+ * reads it — it is for #418's descent crumbs — so a name the file no longer carries (or a ref that no
+ * longer resolves) falls back to the id.
  */
 function resolveRerunFromNodePath(
-  file: WorkflowFile,
+  rootFile: WorkflowFile,
+  rootDir: string,
+  files: Map<string, WorkflowFile> | undefined,
   rerunFromNodePath: string[] | undefined,
 ): RerunFromNodePathEntry[] | undefined {
   if (!rerunFromNodePath || rerunFromNodePath.length === 0) return undefined;
-  return rerunFromNodePath.map((id) => {
-    const node = [...walkNodes(file.body)].find((n) => n.id === id);
-    return { nodeId: id, nodeName: node?.name ?? id };
-  });
+  const entries: RerunFromNodePathEntry[] = [];
+  let curFile: WorkflowFile | undefined = rootFile;
+  let curDir = rootDir;
+  for (let level = 0; level < rerunFromNodePath.length; level++) {
+    const id = rerunFromNodePath[level]!;
+    const node = curFile ? [...walkNodes(curFile.body)].find((n) => n.id === id) : undefined;
+    entries.push({ nodeId: id, nodeName: node?.name ?? id });
+    if (level === rerunFromNodePath.length - 1) break;
+    // Descend into the intermediate path-node's ref for the next level's file (best-effort).
+    if (node && node.type === "workflow" && files) {
+      const childPath = resolve(curDir, node.ref);
+      curFile = files.get(childPath);
+      curDir = dirname(childPath);
+    } else {
+      curFile = undefined;
+    }
+  }
+  return entries;
 }
 
 export async function runWorkflow(
@@ -824,18 +874,21 @@ export async function runWorkflow(
       },
       // Resume (#172): the root run's original counterpart is the original tree's own root run.
       // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
-      // non-succeeded nested workflow-run. `rerunSet` seeds the root-only Resume-from-K boundary
-      // (ADR 0035): the suppression set of K-and-later ids, undefined on plain Resume.
+      // non-succeeded nested workflow-run. `rerunSuffix` seeds the whole Resume-from-K descent path
+      // (ADR 0036) at the root; each level slices its own head off before handing the tail down, and
+      // an empty path is plain Resume. `Project.resume` validated it against this file already.
       resume: options.resume
         ? {
             input: options.resume,
             counterpart: originalRoot,
-            rerunSet: buildRerunSuppressSet(file, options.resume.rerunFromNodePath),
+            rerunSuffix: options.resume.rerunFromNodePath ?? [],
           }
         : undefined,
       // The rerun boundary (K) descent path, denormalized to `{nodeId, nodeName}[]` for the root row
       // (#444, ADR 0032). Undefined on plain Resume, which leaves `rerun_from_node_path` null.
-      rerunFromNodePath: options.resume ? resolveRerunFromNodePath(file, options.resume.rerunFromNodePath) : undefined,
+      rerunFromNodePath: options.resume
+        ? resolveRerunFromNodePath(file, fileDir, options.files, options.resume.rerunFromNodePath)
+        : undefined,
       // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
       // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
       // never carry one.

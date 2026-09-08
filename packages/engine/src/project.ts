@@ -240,7 +240,10 @@ export function openProject(dir: string): OpenProjectResult {
         const { rerunFromRunId, ...runOpts } = opts;
         let rerunFromNodePath: string[] | undefined;
         if (rerunFromRunId !== undefined) {
-          const verdict = resolveLegalK(rootFile, directRuns, rerunFromRunId);
+          // The loaded file tree and the root file's own directory let legal-K descend a nested K one
+          // level per path element (ADR 0036), resolving each intermediate `workflow` ref against the
+          // same tree the run resolves refs against. A top-level K never reads them.
+          const verdict = resolveLegalK(rootFile, directRuns, rerunFromRunId, runOpts.files ?? new Map(), workflowDir);
           if (!verdict.ok) return { found: false, refusal: verdict.refusal };
           rerunFromNodePath = verdict.nodePath;
         }

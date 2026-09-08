@@ -146,12 +146,15 @@ export interface RunResume {
   /** Node ids of this run's direct children that reuse, each pointing at the original run it reuses. */
   plan: ReusePlan;
   /**
-   * The Resume-from-K rerun boundary as a suppression set of run-producing node ids (ADR 0035): K and
-   * every serialized-later top-level node. **Root-only** — it is set on the root run alone and left
-   * undefined on every nested run, so a nested id collision cannot misfire (this ticket's top-level-K
-   * slice; nested-K is #TBD-T2). Producer A (`planReuse`) drops its ids from the plan; Producer B (the
-   * descent site) refuses the counterpart of a suppressed `workflow` node so its whole subtree
-   * re-runs. Undefined on plain Resume.
+   * The Resume-from-K rerun boundary as a **per-level remaining descent path** (ADR 0036): the tail of
+   * `ResumeInput.rerunFromNodePath` from this level down, whose head is *this* level's path-node B.
+   * `[]` = off-path / plain Resume. Threaded structurally: the root run carries the whole path, each
+   * descent into the path-node hands its child `suffix.slice(1)`, and every off-path sibling hands `[]`
+   * — so on-path-ness is by construction and a nested id collision can never suppress the wrong node.
+   * Each on-path level derives two sets from its own body and this head (`buildRerunLevelSets`):
+   * Producer A (`planReuse`) drops B-and-after from the plan; Producer B (the descent site) refuses the
+   * counterpart of an after-B / B==K `workflow` node (rerun-entire) but re-enters an intermediate B with
+   * the tail (descend). They differ by exactly B, only when B is intermediate — that gap is descend.
    */
-  rerunSet?: Set<string>;
+  rerunSuffix: string[];
 }
