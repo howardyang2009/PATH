@@ -288,6 +288,7 @@ describe("resolveLegalK — the refusal reason code (spec §6)", () => {
         type: "parallel",
         id: "par",
         name: "par",
+        join: "collect",
         branches: [{ type: "prompt", id: "b", name: "b", prompt: "b" }],
       },
     ]);
