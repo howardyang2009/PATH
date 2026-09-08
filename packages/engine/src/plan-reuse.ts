@@ -1,7 +1,9 @@
-import { walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
+import { RUN_PRODUCING_TYPES, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
 
-/** Node ids that produce a run row of their own (domain invariant 1) — the only ones a plan considers. */
-export const RUN_PRODUCING_TYPES = new Set(["prompt", "binary", "workflow"]);
+// The run-producing types now live in `@path/schema` (invariant 1), so the engine's reuse plan and the
+// client's eager legal-K check share one authority. Re-exported here so the engine's own importers keep
+// reading it from the reuse module that uses it.
+export { RUN_PRODUCING_TYPES };
 
 /** A re-read tree's node ids that reuse, each pointing at the original run whose data it reuses. */
 export type ReusePlan = Map<string, RunRecord>;

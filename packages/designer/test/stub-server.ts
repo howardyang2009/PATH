@@ -88,6 +88,8 @@ export interface DesignerStubOptions {
   blobs?: Record<string, unknown>;
   /** Override `POST /v0/runs` per call (the launch). Default: 202 with a fresh `root_run_id`. */
   onStartRun?: (body: { workflow_path: string; input?: unknown; config?: unknown }) => Response;
+  /** Override `POST /v0/runs/:id/resume` per call — e.g. a legal-K `refusal`. Default: 202 successor. */
+  onResumeRun?: (call: { rootRunId: string; body: unknown }) => Response;
   /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390). Default: empty. */
   workflows?: unknown;
 }
@@ -140,8 +142,9 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     const resumeMatch = /^\/v0\/runs\/([^/]+)\/resume$/.exec(input);
     if (resumeMatch && init?.method === "POST") {
       const rootRunId = decodeURIComponent(resumeMatch[1]!);
-      calls?.resume.push({ rootRunId, body: init?.body ? JSON.parse(init.body as string) : undefined });
-      return json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
+      const body = init?.body ? JSON.parse(init.body as string) : undefined;
+      calls?.resume.push({ rootRunId, body });
+      return options.onResumeRun ? options.onResumeRun({ rootRunId, body }) : json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
     }
     if (input === "/v0/runs" && init?.method === "POST") {
       const b = init?.body ? (JSON.parse(init.body as string) as { workflow_path: string; input?: unknown; config?: unknown }) : { workflow_path: "" };

@@ -125,6 +125,52 @@ export function* walkNodes(nodes: WorkflowNode[]): Generator<WorkflowNode> {
 }
 
 /**
+ * The leaf step types whose runs a resume can **reuse** — the run-producing types (`prompt`, `binary`,
+ * `workflow`). Control blocks own no run of their own, so their success is their run-producing
+ * descendants' (a prefix `while-do` passes on any succeeded iteration). The **one authority** the
+ * engine's reuse plan (`plan-reuse.ts`) and the client's eager legal-K check (`@path/client-core`'s
+ * `resume-from-eligibility.ts`) both read — a bare literal copied into each would drift silently when
+ * a run-producing type is added.
+ */
+export const RUN_PRODUCING_TYPES: ReadonlySet<string> = new Set(["prompt", "binary", "workflow"]);
+
+/**
+ * The operator-facing name of a control block, as the rerun-boundary refusal taxonomy spells it
+ * (spec §6): `loop` is a `while-do`, the others keep their type name (CONTEXT.md § Rerun-boundary).
+ */
+export type ControlBlockKind = "loop" | "parallel" | "branch" | "sequence";
+
+const CONTROL_BLOCK_KINDS: Record<"while-do" | "parallel" | "branch" | "sequence", ControlBlockKind> = {
+  "while-do": "loop",
+  parallel: "parallel",
+  branch: "branch",
+  sequence: "sequence",
+};
+
+/**
+ * The innermost control block enclosing `targetId` in `body`, or `undefined` when `targetId` is a
+ * top-level node (enclosed by nothing) or absent. Walks the block grammar via `childBodies` and names
+ * the nearest control node whose child body holds the target — what the rerun-boundary "inside a … body"
+ * refusal names (`@path/engine`'s `resolveLegalK`, the client's eager mirror). The **one** statement of
+ * that locus lookup, so the two never disagree on which block a node sits in.
+ */
+export function enclosingControlBlock(body: WorkflowNode[], targetId: string): ControlBlockKind | undefined {
+  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined => {
+    for (const node of nodes) {
+      if (node.id === targetId) return enclosing;
+      for (const child of childBodies(node)) {
+        const found = search(child.nodes, node);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+  const container = search(body, undefined);
+  if (container === undefined) return undefined;
+  return CONTROL_BLOCK_KINDS[container.type as keyof typeof CONTROL_BLOCK_KINDS];
+}
+
+/**
  * Rebuild `node` with each of its child bodies passed through `fn` — **the write counterpart of
  * `childBodies`**. `childBodies` reads where a node's children are; `mapChildBodies` writes them back,
  * so a caller rebuilding the tree (the designer's edit ops) states the block grammar's descent nowhere

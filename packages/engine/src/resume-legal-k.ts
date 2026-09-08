@@ -1,6 +1,12 @@
 import { dirname, resolve } from "node:path";
-import { childBodies, walkNodes, type RunRecord, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { RUN_PRODUCING_TYPES } from "./plan-reuse.js";
+import {
+  enclosingControlBlock,
+  RUN_PRODUCING_TYPES,
+  walkNodes,
+  type ControlBlockKind,
+  type RunRecord,
+  type WorkflowFile,
+} from "@path/schema";
 
 /**
  * The **legal-K** authority for Resume-from-chosen-K (spec §5, ADR 0032/0036). One shared predicate,
@@ -41,8 +47,12 @@ export type LegalKReasonCode =
   | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
   | "prefix-unsucceeded"; // #5 — a top-level node before K at K's level did not succeed
 
-/** The innermost enclosing logicer named in an `in-body` refusal (spec §6): `loop` is `while-do`. */
-export type LegalKContainer = "loop" | "parallel" | "branch" | "sequence";
+/**
+ * The innermost enclosing logicer named in an `in-body` refusal (spec §6): `loop` is `while-do`. The
+ * locus vocabulary and its lookup now live in `@path/schema` (`enclosingControlBlock`), shared with the
+ * client's eager mirror; this alias keeps the taxonomy's own name for the engine's readers.
+ */
+export type LegalKContainer = ControlBlockKind;
 
 export interface LegalKRefusal {
   status: number;
@@ -59,34 +69,6 @@ export type LegalKResult =
 
 function refuse(status: number, message: string, reason: LegalKReasonCode, container?: LegalKContainer): LegalKResult {
   return { ok: false, refusal: container ? { status, message, reason, container } : { status, message, reason } };
-}
-
-const CONTAINER_LABELS: Record<"while-do" | "parallel" | "branch" | "sequence", LegalKContainer> = {
-  "while-do": "loop",
-  parallel: "parallel",
-  branch: "branch",
-  sequence: "sequence",
-};
-
-/**
- * The innermost logicer enclosing `targetId` in `body`, or `undefined` when `targetId` is a top-level
- * node (never in-body) or absent. Walks the block grammar via `childBodies` and returns the nearest
- * control node whose child body holds the target — what spec §6's locus reason names.
- */
-function innermostContainer(body: WorkflowNode[], targetId: string): LegalKContainer | undefined {
-  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined => {
-    for (const node of nodes) {
-      if (node.id === targetId) return enclosing;
-      for (const child of childBodies(node)) {
-        const found = search(child.nodes, node);
-        if (found !== undefined) return found;
-      }
-    }
-    return undefined;
-  };
-  const container = search(body, undefined);
-  if (container === undefined) return undefined;
-  return CONTAINER_LABELS[container.type as keyof typeof CONTAINER_LABELS];
 }
 
 /**
@@ -160,7 +142,7 @@ export function resolveLegalK(
         400,
         `run "${runId}" resolves to node "${label}", which is inside a loop, parallel, or branch body and cannot be a rerun boundary`,
         "in-body",
-        innermostContainer(curFile.body, nodeId),
+        enclosingControlBlock(curFile.body, nodeId),
       );
     }
     const node = curFile.body[topLevelIndex]!;
