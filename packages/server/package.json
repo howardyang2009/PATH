@@ -18,7 +18,7 @@
   "dependencies": {
     "@path/engine": "workspace:*",
     "@path/schema": "workspace:*",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^13.0.3",
     "zod": "^3.23.8"
   },
   "devDependencies": {
