@@ -1,5 +1,5 @@
 import { dirname, resolve } from "node:path";
-import { walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
+import { childBodies, walkNodes, type RunRecord, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { RUN_PRODUCING_TYPES } from "./plan-reuse.js";
 
 /**
@@ -26,17 +26,67 @@ import { RUN_PRODUCING_TYPES } from "./plan-reuse.js";
  * message is the one wording authority — the CLI prints it verbatim, and the Designer/listing render
  * the same taxonomy — so it must read on its own.
  */
+/**
+ * The §5 taxonomy classification of a refusal, for a surface that renders its own short reason rather
+ * than the verbatim `message` — the `--list-eligible` listing's `eligible?` column (spec §6), whose
+ * cell vocabulary is 1:1 with this set. `--from` renders `message` and ignores this. Exposing the
+ * classification (rather than re-deriving it from the message text) keeps the one authority: the
+ * predicate that decides eligible/ineligible also names *why*, so the listing can never disagree.
+ */
+export type LegalKReasonCode =
+  | "not-in-tree" // #1 — the run id names no run of the source tree (never fires on a listed row)
+  | "root-run" // the root row; the implicit root step is never a K
+  | "not-in-file" // #2 — resolves to a node (or nested-workflow ref) no longer in the current file
+  | "in-body" // #3 — present, but inside a loop / parallel / branch (/ sequence) body
+  | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
+  | "prefix-unsucceeded"; // #5 — a top-level node before K at K's level did not succeed
+
+/** The innermost enclosing logicer named in an `in-body` refusal (spec §6): `loop` is `while-do`. */
+export type LegalKContainer = "loop" | "parallel" | "branch" | "sequence";
+
 export interface LegalKRefusal {
   status: number;
   message: string;
+  /** The §5 taxonomy classification (spec §6). See {@link LegalKReasonCode}. */
+  reason: LegalKReasonCode;
+  /** Only on `reason: "in-body"`: the innermost enclosing logicer, so the listing can name it. */
+  container?: LegalKContainer;
 }
 
 export type LegalKResult =
   | { ok: true; nodePath: string[] }
   | { ok: false; refusal: LegalKRefusal };
 
-function refuse(status: number, message: string): LegalKResult {
-  return { ok: false, refusal: { status, message } };
+function refuse(status: number, message: string, reason: LegalKReasonCode, container?: LegalKContainer): LegalKResult {
+  return { ok: false, refusal: container ? { status, message, reason, container } : { status, message, reason } };
+}
+
+const CONTAINER_LABELS: Record<"while-do" | "parallel" | "branch" | "sequence", LegalKContainer> = {
+  "while-do": "loop",
+  parallel: "parallel",
+  branch: "branch",
+  sequence: "sequence",
+};
+
+/**
+ * The innermost logicer enclosing `targetId` in `body`, or `undefined` when `targetId` is a top-level
+ * node (never in-body) or absent. Walks the block grammar via `childBodies` and returns the nearest
+ * control node whose child body holds the target — what spec §6's locus reason names.
+ */
+function innermostContainer(body: WorkflowNode[], targetId: string): LegalKContainer | undefined {
+  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined => {
+    for (const node of nodes) {
+      if (node.id === targetId) return enclosing;
+      for (const child of childBodies(node)) {
+        const found = search(child.nodes, node);
+        if (found !== undefined) return found;
+      }
+    }
+    return undefined;
+  };
+  const container = search(body, undefined);
+  if (container === undefined) return undefined;
+  return CONTAINER_LABELS[container.type as keyof typeof CONTAINER_LABELS];
 }
 
 /**
@@ -58,13 +108,13 @@ export function resolveLegalK(
   const byRunId = new Map(sourceRows.map((r) => [r.runId, r]));
   const selected = byRunId.get(runId);
   if (!selected) {
-    return refuse(400, `run id "${runId}" is not in the run tree being resumed`);
+    return refuse(400, `run id "${runId}" is not in the run tree being resumed`, "not-in-tree");
   }
 
   // The root run is never a rerun boundary (it owns no node — a top-level workflow-step, invariant 2).
   // A succeeded root run's only resume is plain Resume, not Resume-from-K.
   if (selected.parentRunId === null || selected.nodeId === null) {
-    return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`);
+    return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
   }
 
   // The descent path of runs root→…→K, top-down (root excluded): walk the selected run's parents up
@@ -101,13 +151,16 @@ export function resolveLegalK(
       const presentSomewhere = [...walkNodes(curFile.body)].some((node) => node.id === nodeId);
       // 2. Resolves to a node no longer in this level's file (rename/move survive by id; a delete fails).
       if (!presentSomewhere) {
-        return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`);
+        return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
       }
       // 3. Present, but nested inside a loop / parallel / branch body — an illegal K locus (out of
-      // scope, per-iteration identity; #427), one level down as at the root.
+      // scope, per-iteration identity; #427), one level down as at the root. The innermost enclosing
+      // logicer is named for the listing's locus reason (spec §6).
       return refuse(
         400,
         `run "${runId}" resolves to node "${label}", which is inside a loop, parallel, or branch body and cannot be a rerun boundary`,
+        "in-body",
+        innermostContainer(curFile.body, nodeId),
       );
     }
     const node = curFile.body[topLevelIndex]!;
@@ -117,7 +170,11 @@ export function resolveLegalK(
     // reported as such even when its prefix also broke. Only the leaf is gated — an intermediate
     // path-node is descended and re-run from its inner K, not reused, so its own status carries no reuse.
     if (isLeaf && pathRun.status !== "succeeded") {
-      return refuse(409, `run "${runId}" (node "${label}") did not succeed; a rerun boundary must be a succeeded node`);
+      return refuse(
+        409,
+        `run "${runId}" (node "${label}") did not succeed; a rerun boundary must be a succeeded node`,
+        "not-succeeded",
+      );
     }
 
     // 5. The whole prefix `<node` at this level must have succeeded, so it can be reused. A top-level
@@ -134,6 +191,7 @@ export function resolveLegalK(
           return refuse(
             409,
             `run "${runId}" (node "${label}") has an unsucceeded node before it; the whole prefix must succeed to reuse it`,
+            "prefix-unsucceeded",
           );
         }
       }
@@ -146,6 +204,7 @@ export function resolveLegalK(
         return refuse(
           409,
           `run "${runId}" resolves through node "${label}", which is no longer a nested workflow and cannot be descended`,
+          "not-in-file",
         );
       }
       const childPath = resolve(curDir, node.ref);
@@ -154,6 +213,7 @@ export function resolveLegalK(
         return refuse(
           409,
           `run "${runId}" resolves through node "${label}", whose referenced file "${node.ref}" is no longer in the workflow`,
+          "not-in-file",
         );
       }
       curFile = childFile;

@@ -1,5 +1,14 @@
 import { resolve } from "node:path";
-import { isReuseRow, type JsonValue, type WorkflowFile } from "@path/schema";
+import {
+  childrenByParent,
+  findRootRun,
+  isReuseRow,
+  isTerminal,
+  type JsonValue,
+  type RunRecord,
+  type RunStatus,
+  type WorkflowFile,
+} from "@path/schema";
 import type Database from "better-sqlite3";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
@@ -10,7 +19,7 @@ import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
 import { getRun, getRunsForRoot } from "./persistence/run-store.js";
-import { resolveLegalK } from "./resume-legal-k.js";
+import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import { type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
@@ -71,6 +80,18 @@ export interface Project {
    * `run-started` — throws rather than masquerading as `found: false`; it is not reachable from input.)
    */
   resume(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, opts?: ProjectRunOptions): Promise<ResumeResult>;
+  /**
+   * The `--list-eligible` dry-run of resume (#446): compute, but do not launch, the per-node eligibility
+   * of the source tree rooted at `rootRunId`, evaluated against `rootFile`. Launches nothing — no
+   * successor run, no store write. Returns every run of the source tree in DFS pre-order, each with the
+   * `eligible?` verdict from the **same** `resolveLegalK` authority `resume` validates a single `--from`
+   * against (spec §3), so the listing can never say *eligible* where `--from` would refuse.
+   *
+   * The whole-command gates mirror a real resume (spec §7): an unknown root run or a non-terminal source
+   * refuses the whole command (`found: false`) rather than yielding a per-row verdict; `files` supplies
+   * the nested-workflow tree the descent resolves refs against, exactly as `resume` receives it.
+   */
+  listEligible(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, files?: Map<string, WorkflowFile>): ListEligibleResult;
   /** Closes the db. A `Project` outlives one run (the server holds one per process) and must be closed once. */
   close(): void;
 }
@@ -105,6 +126,77 @@ export type ResumeResult =
 export interface ResumeRefusal {
   status: number;
   message: string;
+}
+
+/**
+ * One node's `--list-eligible` verdict (#446, spec §6): `eligible: true` when it is a legal K, else the
+ * §5 taxonomy classification of *why* it is not — the same classification `resolveLegalK` attaches to a
+ * `--from` refusal, so the listing can never disagree with what `--from` accepts. The reason is a code,
+ * not a rendered string: the CLI owns the §6 cell wording (`inside a loop body`, …); the engine owns the
+ * verdict.
+ */
+export type EligibilityVerdict =
+  | { eligible: true }
+  | { eligible: false; reason: LegalKReasonCode; container?: LegalKContainer };
+
+/** One row of the `--list-eligible` listing (#446, spec §5): a source-tree run and its eligibility verdict. */
+export interface EligibilityRow {
+  runId: string;
+  /** The producing node's human `name`; null for the root run (the CLI renders `-`). */
+  nodeName: string | null;
+  status: RunStatus;
+  verdict: EligibilityVerdict;
+}
+
+/**
+ * The outcome of `Project.listEligible` (#446, spec §7). The whole-command gates mirror a real resume:
+ * `found: false` carries the same `no run found`/non-terminal message a resume of this root would, so
+ * the CLI exits 1 with one wording; `found: true` carries every source-tree run in DFS pre-order.
+ */
+export type ListEligibleResult =
+  | { found: false; error: string }
+  | { found: true; rows: EligibilityRow[] };
+
+/**
+ * The whole-command precondition `resume` and `listEligible` share (spec §7): the source tree named by
+ * `rootRunId` must exist (a known root run) and be **terminal**. `getRunsForRoot` keys on `root_run_id`,
+ * so a non-root (child) id — like an unknown id — returns no rows, which is the same `not-found` case.
+ * Terminality is checked on the root row: a node's status can still flip while the tree runs, so the
+ * legal-K test assumes a terminal source (spec §5 precondition, ADR 0032); a non-terminal source is
+ * refused whole, never a per-row verdict (spec §7). `undefined` means the precondition holds.
+ *
+ * The two problems differ in kind so each surface renders them right: `not-found` is the unknown-root
+ * case plain Resume already had (a 404 / `no run found` on the server), while `non-terminal` is a state
+ * conflict the server answers 409 with the message intact — both exit 1 on the CLI.
+ */
+type ResumeSourceProblem = { kind: "not-found"; message: string } | { kind: "non-terminal"; message: string };
+
+function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourceProblem | undefined {
+  const root = rows.find((r) => r.parentRunId === null);
+  if (rows.length === 0 || !root) {
+    return { kind: "not-found", message: `no run found with root run id "${rootRunId}"` };
+  }
+  if (!isTerminal(root.status)) {
+    return { kind: "non-terminal", message: `run "${rootRunId}" is still ${root.status}; resume needs a terminal source run` };
+  }
+  return undefined;
+}
+
+/**
+ * The source tree's runs in **tree pre-order (depth-first)** (spec §4): a node sits under its parent, so
+ * the tree structure reads top-down. Built from the `parentRunId` adjacency; children keep their stored
+ * order. The root always has at least its own row, so the listing is never empty.
+ */
+function preorderRuns(rows: RunRecord[]): RunRecord[] {
+  const byParent = childrenByParent(rows);
+  const root = findRootRun(rows);
+  const out: RunRecord[] = [];
+  const visit = (row: RunRecord): void => {
+    out.push(row);
+    for (const child of byParent.get(row.runId) ?? []) visit(child);
+  };
+  if (root) visit(root);
+  return out;
 }
 
 /**
@@ -228,8 +320,14 @@ export function openProject(dir: string): OpenProjectResult {
         // own presence is the second half of "known root run": a set of rows without it is not a tree
         // this can resume from.
         const directRuns = getRunsForRoot(db, rootRunId);
-        if (directRuns.length === 0 || !directRuns.some((r) => r.parentRunId === null)) {
-          return { found: false, error: `no run found with root run id "${rootRunId}"` };
+        const problem = checkResumeSource(directRuns, rootRunId);
+        if (problem !== undefined) {
+          // Unknown root stays the `error` (404 / not-found) plain Resume had; a non-terminal source is
+          // a state conflict — a refusal carrying 409 and the message, so a surface answers it truthfully
+          // rather than as "not found" (spec §7, §9.6). Both exit 1 on the CLI (`reportResume`).
+          return problem.kind === "not-found"
+            ? { found: false, error: problem.message }
+            : { found: false, refusal: { status: 409, message: problem.message } };
         }
 
         // Resume-from-K (#444, ADR 0032): resolve the operator's source run id to the top-level rerun
@@ -297,6 +395,40 @@ export function openProject(dir: string): OpenProjectResult {
           output: result.output,
           ...(result.error !== undefined ? { error: result.error } : {}),
         };
+      },
+      listEligible(
+        rootFile: WorkflowFile,
+        rootRunId: string,
+        workflowDir: string,
+        files: Map<string, WorkflowFile> = new Map(),
+      ): ListEligibleResult {
+        // The whole source tree's raw rows (reuse rows and their real statuses intact) — the same
+        // `getRunsForRoot` input `resume` feeds `resolveLegalK`, so the verdict per row and the check
+        // `resume` runs against one `--from` share the one authority (spec §3).
+        const directRuns = getRunsForRoot(db, rootRunId);
+        const problem = checkResumeSource(directRuns, rootRunId);
+        // Both the unknown-root and non-terminal gates refuse the whole listing and exit 1 with the one
+        // message a real resume gives (spec §7) — never a per-row verdict.
+        if (problem !== undefined) return { found: false, error: problem.message };
+
+        // One row per node, DFS pre-order (spec §4). Each row's verdict is the shared legal-K predicate
+        // over that row's own run id — the root row resolves to reason `root-run`, an eligible node to
+        // `ok`, and every other to its §5 taxonomy reason. Never store-rows-only: the file is what tells
+        // a top-level node from one nested in a logicer body (spec §3), so `rootFile`/`files` are passed.
+        const rows = preorderRuns(directRuns).map((run): EligibilityRow => {
+          const verdict = resolveLegalK(rootFile, directRuns, run.runId, files, workflowDir);
+          return {
+            runId: run.runId,
+            nodeName: run.nodeName,
+            status: run.status,
+            verdict: verdict.ok
+              ? { eligible: true }
+              : verdict.refusal.container !== undefined
+                ? { eligible: false, reason: verdict.refusal.reason, container: verdict.refusal.container }
+                : { eligible: false, reason: verdict.refusal.reason },
+          };
+        });
+        return { found: true, rows };
       },
       close(): void {
         db.close();

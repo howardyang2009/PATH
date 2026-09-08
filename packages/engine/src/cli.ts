@@ -5,7 +5,7 @@ import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { WorkerOverrides } from "./run-workflow.js";
 import { mergeConfig } from "./merge-config.js";
-import { openProject, type ProjectRunOptions, type ResumeResult } from "./project.js";
+import { openProject, type EligibilityVerdict, type ListEligibleResult, type ProjectRunOptions, type ResumeResult } from "./project.js";
 import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
 
 export interface CliIo {
@@ -60,7 +60,7 @@ const consoleIo: CliIo = {
 const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id>]] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
+  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id> | --list-eligible]] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
@@ -76,6 +76,10 @@ interface ParsedRunArgs {
   // forwards this source run id to `Project.resume`, which resolves and validates it. Only valid with
   // `--resume`.
   rerunFromRunId?: string;
+  // `--list-eligible` (#446): a dry-run of resume that prints one row per source-tree node with an
+  // `eligible?` column, so an operator can find a legal `--from` value. Requires `--resume`, is mutually
+  // exclusive with `--from`, and refuses the launch-only flags — it launches nothing (spec §2).
+  listEligible: boolean;
   configFile?: string;
   setPairs: [string, string][];
   contextFile?: string;
@@ -111,6 +115,7 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   let resumeRootRunId: string | undefined;
   let rerunFromRunId: string | undefined;
+  let listEligible = false;
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
   let contextFile: string | undefined;
@@ -130,6 +135,9 @@ function parseRunArgs(argv: string[]): ParseResult {
       if (!taken.success) return taken;
       rerunFromRunId = taken.value;
       i += 1;
+    } else if (flag === "--list-eligible") {
+      // A bare boolean flag — it takes no value; it selects the dry-run listing mode.
+      listEligible = true;
     } else if (flag === "--config") {
       const taken = takeValue(rest, i, "--config", "a path", RUN_USAGE);
       if (!taken.success) return taken;
@@ -187,9 +195,41 @@ function parseRunArgs(argv: string[]): ParseResult {
     return { success: false, error: `--from requires --resume\n${RUN_USAGE}` };
   }
 
+  // `--list-eligible` is a dry-run of resume (#446, spec §2): it needs a source tree, so it requires
+  // `--resume`; it lists candidate Ks, the opposite of `--from` naming one, so the two are mutually
+  // exclusive; and it launches nothing, so the launch-only flags have nothing to apply to and are
+  // refused. All three are parse-time misuse — exit 2, never an engine refusal.
+  if (listEligible) {
+    if (resumeRootRunId === undefined) {
+      return { success: false, error: `--list-eligible requires --resume\n${RUN_USAGE}` };
+    }
+    if (rerunFromRunId !== undefined) {
+      return {
+        success: false,
+        error: `--list-eligible cannot be combined with --from: one lists candidate rerun boundaries, the other resumes from a chosen one\n${RUN_USAGE}`,
+      };
+    }
+    // The launch-only flags, in flag-name form for the message. `--context`/`--set-context` are already
+    // refused with `--resume` above, so a `--list-eligible` run never reaches them here; the rest only
+    // configure a launch this mode does not perform.
+    const launchFlag =
+      configFile !== undefined
+        ? "--config"
+        : setPairs.length > 0
+          ? "--set"
+          : logBackends !== undefined
+            ? "--log-backends"
+            : processorConcurrency !== undefined
+              ? "--processor-concurrency"
+              : undefined;
+    if (launchFlag !== undefined) {
+      return { success: false, error: `--list-eligible cannot be combined with ${launchFlag}: it launches nothing\n${RUN_USAGE}` };
+    }
+  }
+
   return {
     success: true,
-    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
+    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, listEligible, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
   };
 }
 
@@ -400,6 +440,21 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   }
   const project = opened.project;
 
+  // `--list-eligible` (#446) is a dry-run of resume: it reads the source tree and prints the per-node
+  // eligibility, launching nothing — so it runs before the SIGINT handler and the run assembly below,
+  // over the same file load and `-C` store resolution `path run` already did. The `files` tree lets the
+  // shared legal-K predicate descend a nested K's refs, exactly as `resume` passes it.
+  if (parsed.args.listEligible) {
+    let listResult: ListEligibleResult;
+    try {
+      // `resumeRootRunId` is defined — `parseRunArgs` refuses `--list-eligible` without `--resume`.
+      listResult = project.listEligible(workflow.rootFile, parsed.args.resumeRootRunId!, workflow.workflowDir, workflow.files);
+    } finally {
+      project.close();
+    }
+    return reportListEligible(listResult, io);
+  }
+
   // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
   const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
 
@@ -497,6 +552,55 @@ function reportResume(result: ResumeResult, io: CliIo): number {
   return reportOutcome(result.status, result.error, io);
 }
 
+const ELIGIBLE_TABLE_HEADERS = ["run-id", "node-name", "status", "eligible?"] as const;
+
+// The `eligible?` cell (#446, spec §6): `yes` for a legal K, otherwise one reason rendered 1:1 from the
+// §5 taxonomy the engine's verdict classified it as. This is the one place the taxonomy codes become
+// operator-facing wording, distinct from the verbatim `--from` refusal message; the locus reason names
+// the innermost enclosing logicer the verdict carried (`inside a loop body`).
+function eligibilityCell(verdict: EligibilityVerdict): string {
+  if (verdict.eligible) return "yes";
+  switch (verdict.reason) {
+    case "root-run":
+      return "root run (never a boundary)";
+    case "not-in-file":
+      return "not in current file";
+    case "in-body":
+      // The verdict always carries a container for an in-body node; the fallback keeps the cell truthful
+      // if a future locus ever lacks one, rather than printing a bare "inside a  body".
+      return `inside a ${verdict.container ?? "loop, parallel, or branch"} body`;
+    case "not-succeeded":
+      return "not succeeded";
+    case "prefix-unsucceeded":
+      return "prefix not all succeeded";
+    case "not-in-tree":
+      // Unreachable on a listed row — every row is a run of the tree being listed (spec §6) — but the
+      // exhaustive switch must account for it.
+      return "not in the run tree";
+  }
+}
+
+// `--list-eligible`'s outcome (#446, spec §7): an unknown root run or a non-terminal source refuses the
+// whole command with the engine's own message and exits 1 — the same message and code a real resume of
+// this root gives. Otherwise the four-column listing prints and exits 0; it is never empty (the root row
+// is always shown).
+function reportListEligible(result: ListEligibleResult, io: CliIo): number {
+  if (!result.found) {
+    io.error(result.error);
+    return 1;
+  }
+  const rows = result.rows.map((row): readonly string[] => [
+    // The run id is never truncated — the operator copies it into `--from` (spec §5). `node-name` is `-`
+    // when the row records none (the root run).
+    row.runId,
+    row.nodeName ?? "-",
+    row.status,
+    eligibilityCell(row.verdict),
+  ]);
+  io.log(formatTable(ELIGIBLE_TABLE_HEADERS, rows));
+  return 0;
+}
+
 // `-C <dir>` (git's own flag for "run as if started in <dir>") can appear anywhere in a `runs`
 // invocation's args, ahead of or behind the subcommand — `path runs -C foo rm <id>` and
 // `path runs rm -C foo <id>` both mean the same thing, so it's stripped before the rest of parsing
@@ -569,16 +673,18 @@ const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "fin
 // One rendered row of the listing — a cell per header, in header order.
 type RunsTableRow = [string, string, string, string, string, string];
 
-// Space-aligned columns (#174): the root run id is never truncated, so its column is as wide as the
-// longest id on the page. Every column but the last is padded to its width; the last carries no
-// trailing padding.
-function formatRunsTable(rows: readonly RunsTableRow[]): string {
-  const widths = RUNS_TABLE_HEADERS.map((header, col) =>
-    Math.max(header.length, ...rows.map((row) => row[col]!.length)),
-  );
+// Space-aligned columns (#174): a header line, then every column but the last padded to its widest
+// cell so the last (and any never-truncated id column) carries no trailing padding. Shared by `path
+// runs` and `--list-eligible` (#446) so the two listings render identically.
+function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
+  const widths = headers.map((header, col) => Math.max(header.length, ...rows.map((row) => row[col]!.length)));
   const line = (cols: readonly string[]): string =>
     cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");
-  return [line(RUNS_TABLE_HEADERS), ...rows.map(line)].join("\n");
+  return [line(headers), ...rows.map(line)].join("\n");
+}
+
+function formatRunsTable(rows: readonly RunsTableRow[]): string {
+  return formatTable(RUNS_TABLE_HEADERS, rows);
 }
 
 // `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`
