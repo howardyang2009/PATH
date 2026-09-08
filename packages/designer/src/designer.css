@@ -1337,6 +1337,19 @@ body {
   flex: none;
 }
 
+/* The `Resume from …` K-selection action, above the run tree in the detail column. Its submit label
+ * grows with the node name, so it wraps rather than clip; the reason/error notes sit under it. */
+.resume-from {
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.resume-from-submit {
+  white-space: normal;
+  text-align: left;
+}
+
 .run-dock-io {
   flex: 1 1 0;
 }

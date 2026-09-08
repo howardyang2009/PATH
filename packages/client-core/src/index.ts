@@ -96,3 +96,15 @@ export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from
 export { nodeLabel, nodeEventLabel } from "./node-label.js";
 export { eventMessage } from "./event-message.js";
 export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";
+
+// The Designer's `Resume from …` button's eager legal-K check (spec § Resume from here, ADR 0033):
+// the client mirror of the engine's one legal-K rule, computed from the run tree + the open file so an
+// illegal K greys before any round-trip; the engine's `refusal` stays the authority for a race.
+export {
+  resumeFromEligibility,
+  shortRunId,
+  type ResumeFromEligibility,
+  type ResumeFromEligibilityArgs,
+  type ResumeFromReasonCode,
+  type ResumeFromContainer,
+} from "./resume-from-eligibility.js";

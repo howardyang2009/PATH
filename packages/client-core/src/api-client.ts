@@ -236,12 +236,21 @@ export class PathApiClient {
    * here on. A `404` (unknown run, or its workflow file is gone), a `400` (invalid body, a rejected
    * `$env` config, or the workflow no longer validates), and a `409` (not resumable) arrive as
    * `PathApiError`s carrying the status and the server's message.
+   *
+   * `rerunFromRunId` is the **Resume-from-chosen-K** boundary (#444, ADR 0032): the source run id of
+   * the node the operator picked as K. Omitted, this is plain Resume (the auto-boundary case); present,
+   * it rides the body as `rerun_from_run_id` and the engine's one legal-K authority validates it,
+   * refusing an illegal pick with the taxonomy status + message. It sends a body even when `config` is
+   * omitted, so a K with no config override is still a JSON request, not the no-body plain resume.
    */
-  async resumeRun(rootRunId: string, config?: ConfigObject): Promise<StartRunResponse> {
+  async resumeRun(rootRunId: string, config?: ConfigObject, rerunFromRunId?: string): Promise<StartRunResponse> {
     const path = `/v0/runs/${encodeURIComponent(rootRunId)}/resume`;
-    return config === undefined
+    const body: { config?: ConfigObject; rerun_from_run_id?: string } = {};
+    if (config !== undefined) body.config = config;
+    if (rerunFromRunId !== undefined) body.rerun_from_run_id = rerunFromRunId;
+    return Object.keys(body).length === 0
       ? this.postReadingReply<StartRunResponse>(path)
-      : this.postJson<StartRunResponse>(path, { config });
+      : this.postJson<StartRunResponse>(path, body);
   }
 
   /**

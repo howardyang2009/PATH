@@ -208,6 +208,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           // from-scratch root, rather than relying on its (always-dirty) buffer to block launch.
           workflowPath={active?.written ? activePath ?? null : null}
           workflowId={openedFile?.id ?? null}
+          rootFile={openedFile}
           dirty={dirty}
           warningCount={warningCount}
           load={run.load}

@@ -68,7 +68,17 @@ export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathReso
 
 // The block grammar's descent (format §3) — stated once, so a node type added to the format cannot
 // be silently skipped by anything that walks a workflow body.
-export { CONTROL_CHILD_SLOTS, childBodies, mapChildBodies, walkNodes, type ChildSlot, type NodeChildBody } from "./node-walk.js";
+export {
+  CONTROL_CHILD_SLOTS,
+  RUN_PRODUCING_TYPES,
+  childBodies,
+  enclosingControlBlock,
+  mapChildBodies,
+  walkNodes,
+  type ChildSlot,
+  type ControlBlockKind,
+  type NodeChildBody,
+} from "./node-walk.js";
 
 // Which roots are legal where — one declaration each, referenced rather than restated.
 export {
