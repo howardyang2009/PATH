@@ -1,3 +1,4 @@
+import { join } from "node:path";
 import type { RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { resolveLegalK } from "../src/resume-legal-k.js";
@@ -54,18 +55,18 @@ function abcRows(statuses: { a?: RunRecord["status"]; b?: RunRecord["status"]; c
 
 describe("resolveLegalK — the legal path", () => {
   it("resolves a top-level succeeded node with a succeeded prefix to its length-1 node path", () => {
-    const verdict = resolveLegalK(abcFile, abcRows(), "b-run");
+    const verdict = resolveLegalK(abcFile, abcRows(), "b-run", new Map(), "/tmp");
     expect(verdict).toEqual({ ok: true, nodePath: ["b"] });
   });
 
   it("accepts the first node (empty prefix)", () => {
-    expect(resolveLegalK(abcFile, abcRows(), "a-run")).toEqual({ ok: true, nodePath: ["a"] });
+    expect(resolveLegalK(abcFile, abcRows(), "a-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["a"] });
   });
 });
 
 describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
   it("reason 1: a run id in no run of the tree is 400", () => {
-    const verdict = resolveLegalK(abcFile, abcRows(), "nope");
+    const verdict = resolveLegalK(abcFile, abcRows(), "nope", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(400);
@@ -73,7 +74,7 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
   });
 
   it("the root run is never a boundary — 400", () => {
-    const verdict = resolveLegalK(abcFile, abcRows(), "root");
+    const verdict = resolveLegalK(abcFile, abcRows(), "root", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(400);
@@ -86,7 +87,7 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
       { type: "prompt", id: "a", name: "a", prompt: "a" },
       { type: "prompt", id: "c", name: "c", prompt: "c" },
     ]);
-    const verdict = resolveLegalK(withoutB, abcRows(), "b-run");
+    const verdict = resolveLegalK(withoutB, abcRows(), "b-run", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(409);
@@ -106,7 +107,7 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
         node: { type: "prompt", id: "b", name: "b", prompt: "b" },
       },
     ]);
-    const verdict = resolveLegalK(nestedB, abcRows(), "b-run");
+    const verdict = resolveLegalK(nestedB, abcRows(), "b-run", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(400);
@@ -114,7 +115,7 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
   });
 
   it("reason 4: an unsucceeded K node is 409", () => {
-    const verdict = resolveLegalK(abcFile, abcRows({ b: "failed" }), "b-run");
+    const verdict = resolveLegalK(abcFile, abcRows({ b: "failed" }), "b-run", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(409);
@@ -123,10 +124,112 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
 
   it("reason 5: a broken prefix before a succeeded K is 409", () => {
     // K = c succeeded, but b before it did not — the prefix cannot be reused.
-    const verdict = resolveLegalK(abcFile, abcRows({ b: "failed" }), "c-run");
+    const verdict = resolveLegalK(abcFile, abcRows({ b: "failed" }), "c-run", new Map(), "/tmp");
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(409);
     expect(verdict.refusal.message).toContain("prefix");
+  });
+
+  it("reports K-not-succeeded (#4) before a broken prefix (#5) when both fail", () => {
+    // K = b failed AND a before it failed. The dependency order is #4 before #5, so the reason is
+    // the boundary's own failure, not the prefix.
+    const verdict = resolveLegalK(abcFile, abcRows({ a: "failed", b: "failed" }), "b-run", new Map(), "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.message).toContain("did not succeed");
+    expect(verdict.refusal.message).not.toContain("prefix");
+  });
+
+  it("a reuse-row K is legal (a reuse row is written succeeded)", () => {
+    const rows = abcRows();
+    // b is a reuse row (#257): status succeeded, pointing at a source run in another tree.
+    rows[2] = run({
+      runId: "b-run",
+      parentRunId: "root",
+      nodeId: "b",
+      status: "succeeded",
+      reusedFromRunId: "src-run",
+      reusedFromRootRunId: "src-root",
+    });
+    expect(resolveLegalK(abcFile, rows, "b-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["b"] });
+  });
+});
+
+// Root [a, sub→nested, d]; nested [p, k, q]. K = k inside sub, reached by the descent path [sub, k].
+const NESTED_PATH = join("/tmp", "nested.workflow.json");
+const nestedFile = tree([
+  { type: "prompt", id: "p", name: "p", prompt: "p" },
+  { type: "prompt", id: "k", name: "k", prompt: "k" },
+  { type: "prompt", id: "q", name: "q", prompt: "q" },
+]);
+const rootWithSub = tree([
+  { type: "prompt", id: "a", name: "a", prompt: "a" },
+  { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} },
+  { type: "prompt", id: "d", name: "d", prompt: "d" },
+]);
+const nestedFiles = new Map([[NESTED_PATH, nestedFile]]);
+
+function nestedRows(
+  over: { sub?: RunRecord["status"]; p?: RunRecord["status"]; k?: RunRecord["status"]; q?: RunRecord["status"] } = {},
+): RunRecord[] {
+  return [
+    run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+    run({ runId: "a-run", parentRunId: "root", nodeId: "a", status: "succeeded" }),
+    run({ runId: "sub-run", parentRunId: "root", nodeId: "sub", status: over.sub ?? "failed" }),
+    run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", status: over.p ?? "succeeded" }),
+    run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", status: over.k ?? "succeeded" }),
+    run({ runId: "q-run", parentRunId: "sub-run", nodeId: "q", status: over.q ?? "failed" }),
+    run({ runId: "d-run", parentRunId: "root", nodeId: "d", status: "failed" }),
+  ];
+}
+
+describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
+  it("resolves a nested K by walking the run's parents to root", () => {
+    // sub itself failed (a later node re-runs), but K = k succeeded with a succeeded inner prefix p.
+    const verdict = resolveLegalK(rootWithSub, nestedRows(), "k-run", nestedFiles, "/tmp");
+    expect(verdict).toEqual({ ok: true, nodePath: ["sub", "k"] });
+  });
+
+  it("a since-deleted intermediate workflow is 409", () => {
+    const withoutSub = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      { type: "prompt", id: "d", name: "d", prompt: "d" },
+    ]);
+    const verdict = resolveLegalK(withoutSub, nestedRows(), "k-run", nestedFiles, "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.status).toBe(409);
+    expect(verdict.refusal.message).toContain("no longer in the workflow");
+  });
+
+  it("an intermediate node that is no longer a nested workflow is 409", () => {
+    const subNotWorkflow = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      { type: "prompt", id: "sub", name: "sub", prompt: "sub" },
+      { type: "prompt", id: "d", name: "d", prompt: "d" },
+    ]);
+    const verdict = resolveLegalK(subNotWorkflow, nestedRows(), "k-run", nestedFiles, "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.status).toBe(409);
+    expect(verdict.refusal.message).toContain("no longer a nested workflow");
+  });
+
+  it("a broken prefix one level down (before K inside sub) is 409", () => {
+    // p (before k, inside sub) did not succeed — the inner prefix cannot be reused.
+    const verdict = resolveLegalK(rootWithSub, nestedRows({ p: "failed" }), "k-run", nestedFiles, "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.status).toBe(409);
+    expect(verdict.refusal.message).toContain("prefix");
+  });
+
+  it("an unsucceeded nested K is 409", () => {
+    const verdict = resolveLegalK(rootWithSub, nestedRows({ k: "failed" }), "k-run", nestedFiles, "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.status).toBe(409);
+    expect(verdict.refusal.message).toContain("did not succeed");
   });
 });

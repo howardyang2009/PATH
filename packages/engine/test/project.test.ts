@@ -478,6 +478,100 @@ describe("Project.resume — Resume-from-K (#444)", () => {
   });
 });
 
+describe("Project.resume — nested Resume-from-K (#445)", () => {
+  // Parent [a, sub→child, d]; child [p, k, q]. K = k inside sub, selected by its own nested run id.
+  function writeNested(): void {
+    writeFileSync(
+      join(dir, "child.workflow.json"),
+      JSON.stringify(stampGuids({
+        format: "path/workflow@3",
+        id: "child-id",
+        name: "child",
+        body: [emit("p", "P_OUT"), emit("k", "K_OUT"), emit("q", "Q_OUT")],
+      })),
+      "utf8",
+    );
+    writeFileSync(
+      join(dir, "parent.workflow.json"),
+      JSON.stringify(stampGuids({
+        format: "path/workflow@3",
+        id: "parent-id",
+        name: "parent",
+        body: [emit("a", "A_OUT"), { type: "workflow", id: "sub", name: "sub", ref: "./child.workflow.json", input: {} }, emit("d", "D_OUT")],
+      })),
+      "utf8",
+    );
+  }
+
+  it("descends into a nested workflow: reuses the inner prefix, re-runs from K, cascades up, and persists the 2-level path", async () => {
+    writeNested();
+    const project = open();
+    try {
+      const loaded = await loadWorkflowTree(join(dir, "parent.workflow.json"));
+      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+      const { rootFile, files, workflowDir } = loaded.workflow;
+
+      const first = await project.run(rootFile, workflowDir, { files });
+      expect(first.status).toBe("succeeded");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+      // The disk fixture's ids are real GUIDs (name holds the human label), so nodes are found by name.
+      // K = k, named by its own nested run id — the one handle that tells the nested ref apart (ADR 0032).
+      const kRunId = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeName === "k")!.runId;
+
+      const result = await project.resume(rootFile, originalRootId, workflowDir, { files, rerunFromRunId: kRunId });
+      if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
+      expect(result.status).toBe("succeeded");
+
+      const successor = project.archive.tree(result.rootRunId)!;
+      const row = (nodeName: string) => successor.runs.find((r) => r.nodeName === nodeName)!;
+      // a is <sub at the root → reuse row; sub is the descended path-node → an executed workflow row.
+      expect(row("a").reusedFromRunId).not.toBeNull();
+      expect(row("sub").reusedFromRunId).toBeNull();
+      // Inside sub: p is <K → reuse row; k and q are ≥K → executed; d is after sub → executed (cascade-up).
+      expect(row("p").reusedFromRunId).not.toBeNull();
+      expect(row("k").reusedFromRunId).toBeNull();
+      expect(row("q").reusedFromRunId).toBeNull();
+      expect(row("d").reusedFromRunId).toBeNull();
+
+      // The descent path is persisted root-only as {nodeId, nodeName}[], both levels (nodeId a GUID here).
+      expect(successor.root!.rerunFromNodePath!.map((e) => e.nodeName)).toEqual(["sub", "k"]);
+    } finally {
+      project.close();
+    }
+  });
+
+  it("re-runs a reuse-row K fresh across a chained nested resume", async () => {
+    writeNested();
+    const project = open();
+    try {
+      const loaded = await loadWorkflowTree(join(dir, "parent.workflow.json"));
+      if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+      const { rootFile, files, workflowDir } = loaded.workflow;
+
+      await project.run(rootFile, workflowDir, { files });
+      const root1 = project.archive.listRoots()[0]!.runId;
+      const k1 = project.archive.tree(root1)!.runs.find((r) => r.nodeName === "k")!.runId;
+
+      // First nested resume from K=k: the successor writes a reuse row for the inner prefix p.
+      const r2 = await project.resume(rootFile, root1, workflowDir, { files, rerunFromRunId: k1 });
+      if (!r2.found) throw new Error("expected found:true");
+      const p2 = project.archive.tree(r2.rootRunId)!.runs.find((r) => r.nodeName === "p")!;
+      expect(p2.reusedFromRunId).not.toBeNull(); // p is a reuse row in the second tree
+
+      // Now resume the second tree from K = that reuse row p: a reuse row is a legal K, and K re-runs
+      // fresh — the successor's own p is an executed row, not a reuse row.
+      const r3 = await project.resume(rootFile, r2.rootRunId, workflowDir, { files, rerunFromRunId: p2.runId });
+      if (!r3.found) throw new Error(`expected found:true, got ${JSON.stringify(r3)}`);
+      expect(r3.status).toBe("succeeded");
+      const t3 = project.archive.tree(r3.rootRunId)!;
+      expect(t3.runs.find((r) => r.nodeName === "p")!.reusedFromRunId).toBeNull();
+      expect(t3.root!.rerunFromNodePath!.map((e) => e.nodeName)).toEqual(["sub", "p"]);
+    } finally {
+      project.close();
+    }
+  });
+});
+
 describe("Project — the projectDir / workflowDir distinction (#59)", () => {
   it("resolves a nested workflow ref against the workflow's own directory, not the project's", async () => {
     // The shape that broke: the workflow lives in a subdirectory, `.path/` at the project root.

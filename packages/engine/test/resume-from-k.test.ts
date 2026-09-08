@@ -193,3 +193,113 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
     expect(plain.markers).toEqual(["a", "b"]);
   });
 });
+
+// Root [a, sub→nested, d]; nested [p, k, q]. A nested K inside `sub` reached by the path [sub, k].
+const NESTED_PATH = join("/tmp", "nested.workflow.json");
+const nestedPkq = () =>
+  tree([
+    { type: "prompt", id: "p", name: "p", prompt: "p", publish: { fromP: "${output}" } },
+    { type: "prompt", id: "k", name: "k", prompt: "k", publish: { fromK: "${output}" } },
+    { type: "prompt", id: "q", name: "q", prompt: "q", publish: { fromQ: "${output}" } },
+  ]);
+const rootAsubD = () =>
+  tree([
+    { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
+    { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { seed: "${context.fromA}" } },
+    { type: "prompt", id: "d", name: "d", prompt: "d", publish: { fromD: "${output}" } },
+  ]);
+const asubdOriginalRuns = (): RunRecord[] => [
+  run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+  run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
+  run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
+  run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", nodeName: "p", status: "succeeded" }),
+  run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", nodeName: "k", status: "succeeded" }),
+  run({ runId: "q-run", parentRunId: "sub-run", nodeId: "q", nodeName: "q", status: "succeeded" }),
+  run({ runId: "d-run", parentRunId: "orig-root", nodeId: "d", nodeName: "d", status: "succeeded" }),
+];
+
+describe("Resume-from-K — nested boundary (ADR 0036)", () => {
+  it("descends into the containing workflow: reuses the inner prefix, re-runs from K, cascades up", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+
+    const result = await runWorkflow(rootAsubD(), "/tmp", {
+      observer,
+      files: new Map([[NESTED_PATH, nestedPkq()]]),
+      workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", q: "FRESH_Q", d: "FRESH_D" }, ran)),
+      resume: {
+        originalRuns: asubdOriginalRuns(),
+        readBlob: reader(
+          {
+            "orig-root/context.json": {},
+            "a-run/output.json": "REUSED_A",
+            "sub-run/context.json": {},
+            "p-run/output.json": "REUSED_P",
+          },
+          reads,
+        ),
+        // K = k inside sub: a reuses (<sub at root); sub descends; p reuses (<k inside sub); k and q
+        // re-run (k == K, q after K); d re-runs (after sub at root, cascade-up).
+        rerunFromNodePath: ["sub", "k"],
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["k", "q", "d"]);
+    // Partial reuse inside the descended child: the inner prefix p reused, one marker per reused node.
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "p"]);
+    // The inner prefix's blob was read (it reused); K's and Q's originals were not (they re-ran).
+    expect(reads).toContain("p-run/output.json");
+    expect(reads.some((key) => key.startsWith("k-run/") || key.startsWith("q-run/"))).toBe(false);
+  });
+
+  it("splits an intermediate level: the path-node descends, an after-B sibling workflow re-runs entire", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const sub2Path = join("/tmp", "sub2.workflow.json");
+    // Root [sub→[p,k], sub2→[p2]]; K = k inside sub. sub descends (reuses p); sub2 is after sub, so it
+    // re-runs entire — its own succeeded prefix p2 is *not* reused.
+    const nestedPk = tree([
+      { type: "prompt", id: "p", name: "p", prompt: "p", publish: { fromP: "${output}" } },
+      { type: "prompt", id: "k", name: "k", prompt: "k", publish: { fromK: "${output}" } },
+    ]);
+    const nestedP2 = tree([{ type: "prompt", id: "p2", name: "p2", prompt: "p2", publish: { fromP2: "${output}" } }]);
+    const rootTwoSubs = tree([
+      { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} },
+      { type: "workflow", id: "sub2", name: "sub2", ref: "./sub2.workflow.json", input: {} },
+    ]);
+
+    const result = await runWorkflow(rootTwoSubs, "/tmp", {
+      observer,
+      files: new Map([
+        [NESTED_PATH, nestedPk],
+        [sub2Path, nestedP2],
+      ]),
+      workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", p2: "FRESH_P2" }, ran)),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
+          run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", nodeName: "p", status: "succeeded" }),
+          run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", nodeName: "k", status: "succeeded" }),
+          run({ runId: "sub2-run", parentRunId: "orig-root", nodeId: "sub2", nodeName: "sub2", status: "succeeded" }),
+          run({ runId: "p2-run", parentRunId: "sub2-run", nodeId: "p2", nodeName: "p2", status: "succeeded" }),
+        ],
+        readBlob: reader(
+          { "orig-root/context.json": {}, "sub-run/context.json": {}, "p-run/output.json": "REUSED_P" },
+          reads,
+        ),
+        rerunFromNodePath: ["sub", "k"],
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    // sub descended → p reused, k re-ran; sub2 re-ran entire → p2 re-ran fresh (no reuse inside it).
+    expect(ran).toEqual(["k", "p2"]);
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["p"]);
+    // The after-B subtree was forced fresh: its collapsed original blob was never read.
+    expect(reads.some((key) => key.startsWith("sub2-run/") || key.startsWith("p2-run/"))).toBe(false);
+  });
+});
