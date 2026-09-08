@@ -41,8 +41,15 @@ import Database from "better-sqlite3";
  * `runs.worker_name`, a bare string — the resolved worker name a leaf step ran on, null on a
  * workflow-run's own row. Clean-slate bump-and-break, no backfill: an existing pre-#332 db refuses to
  * open rather than reading the old object-shaped column as a name.
+ *
+ * Bumped to 8 in #444 for Resume-from-chosen-K (ADR 0032): a successor root run now records the
+ * **rerun boundary (K)** it resumed from, so `runs` gains `rerun_from_node_path` — the descent path
+ * root→…→K as JSON `{nodeId, nodeName}[]`, root-only, null on plain Resume. A read denormalization
+ * (correctness re-derives K from the successor's own rows); it exists for #418's descent crumbs.
+ * Same bump-and-break, clean-slate reading: an existing pre-#444 db refuses to open rather than
+ * silently lacking the column a Resume-from-K successor writes to.
  */
-export const SCHEMA_VERSION = 7;
+export const SCHEMA_VERSION = 8;
 
 export class SchemaVersionError extends Error {}
 
@@ -62,6 +69,7 @@ const RUNS_TABLE_DDL = `
     usage TEXT,
     estimated_cost_usd REAL,
     resumed_from_root_run_id TEXT,
+    rerun_from_node_path TEXT,
     reused_from_run_id TEXT,
     workflow_id TEXT,
     workflow_name TEXT,

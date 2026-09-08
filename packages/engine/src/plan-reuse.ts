@@ -1,7 +1,7 @@
 import { walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
 
 /** Node ids that produce a run row of their own (domain invariant 1) — the only ones a plan considers. */
-const RUN_PRODUCING_TYPES = new Set(["prompt", "binary", "workflow"]);
+export const RUN_PRODUCING_TYPES = new Set(["prompt", "binary", "workflow"]);
 
 /** A re-read tree's node ids that reuse, each pointing at the original run whose data it reuses. */
 export type ReusePlan = Map<string, RunRecord>;
@@ -23,8 +23,18 @@ export type ReusePlan = Map<string, RunRecord>;
  * A `while-do` body's node id repeats once per iteration, so more than one succeeded row can share
  * an id — which recorded attempt answers a single re-read node is undefined, so an id with more than
  * one succeeded candidate does not reuse rather than guessing at one.
+ *
+ * `suppress` is the Resume-from-K rerun boundary as a set of run-producing node ids (ADR 0035,
+ * Producer A): K and every serialized-later node. A suppressed id is skipped in the walk, so it never
+ * plans reuse and re-runs instead — the one guard that discards the reuse an operator asked to drop.
+ * Absent (plain Resume) leaves every succeeded node reusing exactly as before.
  */
-export function planReuse(originalRuns: RunRecord[], tree: WorkflowFile, parentRunId?: string): ReusePlan {
+export function planReuse(
+  originalRuns: RunRecord[],
+  tree: WorkflowFile,
+  parentRunId?: string,
+  suppress?: Set<string>,
+): ReusePlan {
   const plan: ReusePlan = new Map();
   const scopeRunId = parentRunId ?? originalRuns.find((run) => run.parentRunId === null)?.runId;
   if (scopeRunId === undefined) return plan;
@@ -32,6 +42,7 @@ export function planReuse(originalRuns: RunRecord[], tree: WorkflowFile, parentR
   const candidates = originalRuns.filter((run) => run.parentRunId === scopeRunId);
   for (const node of walkNodes(tree.body)) {
     if (!RUN_PRODUCING_TYPES.has(node.type)) continue;
+    if (suppress?.has(node.id)) continue;
     const succeeded = candidates.filter((candidate) => candidate.nodeId === node.id && candidate.status === "succeeded");
     const [only] = succeeded;
     if (only && succeeded.length === 1) plan.set(node.id, only);

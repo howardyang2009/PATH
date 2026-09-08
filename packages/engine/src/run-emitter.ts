@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue } from "@path/schema";
+import type { JsonValue, RerunFromNodePathEntry } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
@@ -79,6 +79,7 @@ export interface Emitter {
   runStarted(args: {
     input: JsonValue;
     resumedFromRootRunId?: string;
+    rerunFromNodePath?: RerunFromNodePathEntry[];
     workflowId?: string;
     workflowName?: string;
     workflowPath?: string;
@@ -131,6 +132,9 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         input: args.input,
         // Successor lineage rides presence, not root-ness — the caller sets it on the root alone.
         ...(args.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: args.resumedFromRootRunId } : {}),
+        // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,
+        // and the caller supplies it on the root alone, so gating on `isRoot` keeps it there.
+        ...(isRoot && args.rerunFromNodePath !== undefined ? { rerunFromNodePath: args.rerunFromNodePath } : {}),
         // Source-workflow identity is root-only (ADR 0006): a nested run's producing node is already
         // named by `nodeId`/`nodeName`, so the trio is dropped for it even when supplied.
         ...(isRoot && args.workflowId !== undefined ? { workflowId: args.workflowId } : {}),

@@ -21,6 +21,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
     usage: null,
     estimated_cost_usd: null,
     resumed_from_root_run_id: null,
+    rerun_from_node_path: null,
     reused_from_run_id: null,
     reused_from_root_run_id: null,
     workflow_id: null,

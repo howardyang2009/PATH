@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { formatIssues, mapSecrets, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { formatIssues, mapSecrets, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
-import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
+import { findNestedCounterpart, planReuse, RUN_PRODUCING_TYPES } from "./plan-reuse.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
@@ -128,6 +128,14 @@ export interface ResumeInput {
   originalRuns: RunRecord[];
   /** Loads one blob of an original run by filename (`RUN_BLOB_FILE.output` / `.context`). */
   readBlob: (run: RunRecord, filename: string) => JsonValue;
+  /**
+   * The **rerun boundary (K)** as the descent path of node ids root→…→K (ADR 0032/0035). `[]` or
+   * undefined is **plain Resume** (K at the auto-boundary). Length 1 is a top-level K — the only shape
+   * this ticket supports; a nested K (a longer path) is #TBD-T2. `Project.resume` is the one authority
+   * that resolves the operator's source run id to this path and validates it against the current file
+   * before any successor starts — the engine trusts it and only backstops with a throw.
+   */
+  rerunFromNodePath?: string[];
 }
 
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
@@ -194,7 +202,13 @@ interface WorkflowRunParams {
   cancellation?: Cancellation;
   // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
   // run's own original counterpart (the run it corresponds to, if any). Absent for a fresh run.
-  resume?: { input: ResumeInput; counterpart: RunRecord | undefined };
+  // `rerunSet` is the Resume-from-K rerun boundary (ADR 0035), root-only — set on the root run alone
+  // and never on a descended child, which keeps suppression from misfiring on a colliding nested id.
+  resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSet?: Set<string> };
+  // The rerun boundary (K) descent path as `{nodeId, nodeName}[]` (#444, ADR 0032), threaded only
+  // into the root run's params — a read denormalization persisted on the root row's
+  // `rerun_from_node_path`. Absent on plain Resume and on every nested run.
+  rerunFromNodePath?: RerunFromNodePathEntry[];
   // The predecessor's root run id, stamped on this run's `run-started` (#173). Set only on the root
   // run of a resumed tree — a nested run's predecessor is the tree's, not its own, so it never
   // carries one. It is the successor-identity fact persistence records on the root row.
@@ -276,7 +290,13 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     ? {
         input: params.resume.input,
         counterpart: resumeCounterpart,
-        plan: resumeCounterpart ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId) : new Map(),
+        // Producer A (ADR 0035): the rerun set suppresses K and every serialized-later id from the
+        // plan, so a ≥K node re-runs instead of reusing. Root-only — `rerunSet` is undefined on every
+        // descended child, so its `planReuse` is the plain-Resume one.
+        plan: resumeCounterpart
+          ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId, params.resume.rerunSet)
+          : new Map(),
+        rerunSet: params.resume.rerunSet,
       }
     : undefined;
   let previousOutput: JsonValue = input;
@@ -345,6 +365,9 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     await emitter.runStarted({
       input,
       resumedFromRootRunId: params.resumedFromRootRunId,
+      // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
+      // run passing undefined here changes nothing.
+      rerunFromNodePath: params.rerunFromNodePath,
       workflowId: file.id,
       workflowName: file.name,
       workflowPath: params.sourceWorkflowPath,
@@ -458,11 +481,17 @@ async function runWorkflowNode(
     resume: ctx.run.resume
       ? {
           input: ctx.run.resume.input,
-          counterpart: findNestedCounterpart(
-            ctx.run.resume.input.originalRuns,
-            ctx.run.resume.counterpart?.runId,
-            node.id,
-          ),
+          // Producer B (ADR 0035): a ≥K `workflow` node gets no counterpart, so `executeWorkflowRun`
+          // seeds it fresh from input and its whole subtree re-runs entire. A <K / off-path node
+          // re-enters its original counterpart and reuses as plain Resume. `rerunSet` is not threaded
+          // to the child — suppression stays root-only for this top-level-K slice (nested-K is #TBD-T2).
+          counterpart: ctx.run.resume.rerunSet?.has(node.id)
+            ? undefined
+            : findNestedCounterpart(
+                ctx.run.resume.input.originalRuns,
+                ctx.run.resume.counterpart?.runId,
+                node.id,
+              ),
         }
       : undefined,
   });
@@ -686,6 +715,50 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
  * is wrapped in an implicit root step whose run this call *is*. `workflow` steps in the body spawn
  * nested workflow-runs under it (#22). See `executeWorkflowRun` for the per-run walk.
  */
+/**
+ * The Resume-from-K rerun boundary as a suppression set (ADR 0035): K and every serialized-later
+ * run-producing id at the root level, over `body.slice(indexOf(K))` with the exact `walkNodes` /
+ * `RUN_PRODUCING_TYPES` walk `planReuse` uses. `undefined` for plain Resume (empty/absent path). This
+ * ticket resolves only a top-level K, so the path is length 1 and K is its head; the `i < 0` throw is
+ * the backstop the spec calls for — `Project.resume` validates the id against the file first, so it is
+ * never reached after validation.
+ */
+function buildRerunSuppressSet(file: WorkflowFile, rerunFromNodePath: string[] | undefined): Set<string> | undefined {
+  if (!rerunFromNodePath || rerunFromNodePath.length === 0) return undefined;
+  // This ticket resolves a top-level K only, so the path is length 1 and its head is K. A longer
+  // (nested) path is #TBD-T2 and would need a per-level pass (ADR 0036); refuse it loudly rather than
+  // silently treating the head's whole subtree as rerun-entire. `Project.resume` never emits one.
+  if (rerunFromNodePath.length > 1) {
+    throw new Error("resume: nested rerun boundary paths are not supported yet (top-level K only)");
+  }
+  const kId = rerunFromNodePath[0]!;
+  const i = file.body.findIndex((node) => node.id === kId);
+  if (i < 0) {
+    throw new Error(`resume: rerun boundary node "${kId}" is not a top-level node of the workflow`);
+  }
+  const suppress = new Set<string>();
+  for (const node of walkNodes(file.body.slice(i))) {
+    if (RUN_PRODUCING_TYPES.has(node.type)) suppress.add(node.id);
+  }
+  return suppress;
+}
+
+/**
+ * The persisted denormalization of the rerun boundary path (ADR 0032): each node id paired with its
+ * current human name from the file. `undefined` for plain Resume. Correctness never reads it — it is
+ * for #418's descent crumbs — so a name the file no longer carries falls back to the id.
+ */
+function resolveRerunFromNodePath(
+  file: WorkflowFile,
+  rerunFromNodePath: string[] | undefined,
+): RerunFromNodePathEntry[] | undefined {
+  if (!rerunFromNodePath || rerunFromNodePath.length === 0) return undefined;
+  return rerunFromNodePath.map((id) => {
+    const node = [...walkNodes(file.body)].find((n) => n.id === id);
+    return { nodeId: id, nodeName: node?.name ?? id };
+  });
+}
+
 export async function runWorkflow(
   file: WorkflowFile,
   fileDir: string,
@@ -751,8 +824,18 @@ export async function runWorkflow(
       },
       // Resume (#172): the root run's original counterpart is the original tree's own root run.
       // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
-      // non-succeeded nested workflow-run.
-      resume: options.resume ? { input: options.resume, counterpart: originalRoot } : undefined,
+      // non-succeeded nested workflow-run. `rerunSet` seeds the root-only Resume-from-K boundary
+      // (ADR 0035): the suppression set of K-and-later ids, undefined on plain Resume.
+      resume: options.resume
+        ? {
+            input: options.resume,
+            counterpart: originalRoot,
+            rerunSet: buildRerunSuppressSet(file, options.resume.rerunFromNodePath),
+          }
+        : undefined,
+      // The rerun boundary (K) descent path, denormalized to `{nodeId, nodeName}[]` for the root row
+      // (#444, ADR 0032). Undefined on plain Resume, which leaves `rerun_from_node_path` null.
+      rerunFromNodePath: options.resume ? resolveRerunFromNodePath(file, options.resume.rerunFromNodePath) : undefined,
       // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
       // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
       // never carry one.

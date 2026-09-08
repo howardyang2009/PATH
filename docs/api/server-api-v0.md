@@ -171,6 +171,7 @@ snake_case):
       "usage": null,
       "estimated_cost_usd": null,
       "resumed_from_root_run_id": null,
+      "rerun_from_node_path": null,
       "reused_from_run_id": null,
       "reused_from_root_run_id": null,
       "workflow_id": "<uuid>",
@@ -192,6 +193,10 @@ snake_case):
   #43 added the blob route below (§4.1) to serve their content over HTTP.
 - `resumed_from_root_run_id` is set only on the root row of a resumed tree. It is the predecessor's root
   run id (#168). It is null on a fresh run and on every nested row.
+- `rerun_from_node_path` is set only on the root row of a **Resume-from-K** successor (#444, ADR 0032):
+  the rerun boundary K's descent path as `[{ "nodeId": "...", "nodeName": "..." }]` (length 1 for a
+  top-level K), null on plain Resume and on every nested row. It is a read denormalization for the
+  descent crumbs (#418); correctness never reads it.
 - **Reuse rows** (#257): a resumed tree records a reused node as a real `succeeded` row. It carries
   `reused_from_run_id`, the source run whose recorded work it reuses, direct-to-source (ADR 0001), and
   `reused_from_root_run_id`, the root of the source's tree. Both are null on a genuinely-executed row.
@@ -266,22 +271,31 @@ Re-runs a `cancelled` or `failed` root run as a **successor** (ADR 0001, engine
 and async like §2. It answers `202` with the successor's *own* fresh ids the moment it starts. Then the
 client watches that new run over §5 to its terminal status.
 
-**Optional request body — a `config` override only:**
+**Optional request body — a `config` override and/or a rerun boundary:**
 
 ```json
-{ "config": { "output_file": "RELEASE_NOTES_v2.md" } }
+{ "config": { "output_file": "RELEASE_NOTES_v2.md" }, "rerun_from_run_id": "<run-id>" }
 ```
 
 The workflow file to re-run is recovered from the predecessor's own row (`workflow_path`, recorded on
-every launch since engine #169). So a resume names *which run* to continue, not what to run. The one
-thing the caller may supply is a `config` override, validated by `ConfigObjectSchema` and carrying the
-same `$env` reject as §2 ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)). The engine
-applies operator config on the resume path too (it shadows the workflow's declared config, key by key,
-for the steps that re-run). Thus an operator can change a value (an output path, a range) before the
-continue. There is **no `input`**: a resumed run restores its context from the predecessor's tree
-(engine `cli.ts`), so a fresh input seed would be silently discarded. To omit the body (or send none)
-resumes with the workflow's own declared config. The successor records its own `workflow_path` and is
-therefore itself resumable.
+every launch since engine #169). So a resume names *which run* to continue, not what to run. The caller
+may supply a `config` override, validated by `ConfigObjectSchema` and carrying the same `$env` reject as
+§2 ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)). The engine applies operator config
+on the resume path too (it shadows the workflow's declared config, key by key, for the steps that
+re-run). Thus an operator can change a value (an output path, a range) before the continue. There is
+**no `input`**: a resumed run restores its context from the predecessor's tree (engine `cli.ts`), so a
+fresh input seed would be silently discarded. To omit the body (or send none) resumes with the
+workflow's own declared config. The successor records its own `workflow_path` and is therefore itself
+resumable.
+
+**Resume-from-K** (#444, [ADR 0032](../adr/0032-resume-from-k-boundary-representation-and-successor-provenance.md)):
+`rerun_from_run_id` names the rerun boundary **K** by the source node's run id. Nodes serialized before
+K reuse their succeeded results; K and every serialized-later top-level node re-run in the successor.
+Absent, the resume is **plain Resume** (K at the auto-boundary) — byte-for-byte as before. The engine's
+`Project.resume` is the one authority: it resolves the run id to K's node-id path, enforces legal-K, and
+returns a structured refusal the route renders verbatim (below). When `rerun_from_run_id` is supplied,
+the already-succeeded `409` is relaxed — a succeeded run is a valid Resume-from-K target. This ticket
+supports a **top-level K** only (a top-level node of the root file); a nested K is a later ticket.
 
 Responses:
 
@@ -296,13 +310,18 @@ Responses:
   disk.
 - `400 Bad Request` — a malformed body, a `config` override that fails `ConfigObjectSchema` or carries
   an `$env` wrapper (ADR 0012), or a workflow file that was found but no longer passes validation
-  (`error.details` carries the issues), exactly as a fresh launch of it would.
+  (`error.details` carries the issues), exactly as a fresh launch of it would. A Resume-from-K refusal
+  also lands here when `rerun_from_run_id` names no run of the tree, or resolves to an illegal locus
+  (spec §5 reasons 1 and 3).
 - `409 Conflict` — the run is not in a resumable state, each case named distinctly: still `running`
-  (nothing to resume yet); already `succeeded` (nothing to resume); it carries no recorded
-  `workflow_path` (a pre-#169 run), so the server cannot know which file to re-run; or the file now at
-  that path is a **different workflow** (its `id` no longer matches the run's, ADR 0006). The path is
-  recovered from the row, not re-confirmed by the operator, so a swapped file is refused rather than run
-  against the predecessor's restored context.
+  (nothing to resume yet); already `succeeded` (nothing to resume — **relaxed** when `rerun_from_run_id`
+  is supplied); it carries no recorded `workflow_path` (a pre-#169 run), so the server cannot know which
+  file to re-run; or the file now at that path is a **different workflow** (its `id` no longer matches
+  the run's, ADR 0006). The path is recovered from the row, not re-confirmed by the operator, so a
+  swapped file is refused rather than run against the predecessor's restored context. A Resume-from-K
+  selection that resolves to a since-deleted node, an unsucceeded K, or a broken prefix also lands here
+  (spec §5 reasons 2, 4, 5). Every Resume-from-K refusal's `error.message` is the engine's verbatim
+  wording — one authority across route, CLI, and listing.
 
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 

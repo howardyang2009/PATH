@@ -10,6 +10,7 @@ import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
 import { getRun, getRunsForRoot } from "./persistence/run-store.js";
+import { resolveLegalK } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import { type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
@@ -85,6 +86,7 @@ export interface Project {
  */
 export type ResumeResult =
   | { found: false; error: string }
+  | { found: false; refusal: ResumeRefusal }
   | {
       found: true;
       rootRunId: string;
@@ -92,6 +94,18 @@ export type ResumeResult =
       output: JsonValue;
       error?: string;
     };
+
+/**
+ * A Resume-from-K refusal (#444, ADR 0032): the one legal-K authority (`Project.resume`) rejected the
+ * operator's `rerunFromRunId` before any successor started. `status` follows the §5 taxonomy (400 =
+ * unresolvable/unsupported selection, 409 = state/file-divergence conflict); `message` is the one
+ * wording authority a surface renders verbatim. Distinct from `{found:false, error}`, which stays the
+ * unknown-root-run case shared by plain Resume.
+ */
+export interface ResumeRefusal {
+  status: number;
+  message: string;
+}
 
 /**
  * `RunOptions` minus the audit seam, which is the `Project`'s to compose, plus the two engine
@@ -107,6 +121,12 @@ export interface ProjectRunOptions extends Omit<RunOptions, "observer"> {
    * SSE subscribers regardless of what the run persists to.
    */
   extraBackends?: LogBackend[];
+  /**
+   * Resume-only (#444): the operator's **source run id** naming the rerun boundary K. `Project.resume`
+   * resolves it to a top-level node-id path and enforces legal-K (spec §5) — the one authority.
+   * Absent = plain Resume (K at the auto-boundary). Ignored by `run`.
+   */
+  rerunFromRunId?: string;
   /**
    * Observers appended **after** the built-in pair, always. The server's capture observer resolves
    * the deferred that sends its 202, and a client may `GET` the run the instant that lands — so it
@@ -212,6 +232,19 @@ export function openProject(dir: string): OpenProjectResult {
           return { found: false, error: `no run found with root run id "${rootRunId}"` };
         }
 
+        // Resume-from-K (#444, ADR 0032): resolve the operator's source run id to the top-level rerun
+        // boundary node-id path and enforce legal-K here — the one authority (spec §5). A refusal is
+        // returned before any successor starts; absent `rerunFromRunId` is plain Resume, path undefined.
+        // The raw predecessor tree (`directRuns`, reuse rows and their real statuses intact) is the
+        // legal-K input, never the reuse-swapped `originalRuns` below.
+        const { rerunFromRunId, ...runOpts } = opts;
+        let rerunFromNodePath: string[] | undefined;
+        if (rerunFromRunId !== undefined) {
+          const verdict = resolveLegalK(rootFile, directRuns, rerunFromRunId);
+          if (!verdict.ok) return { found: false, refusal: verdict.refusal };
+          rerunFromNodePath = verdict.nodePath;
+        }
+
         // A reuse row (#257) is a pointer, not the data: its `runId`/`rootRunId` are this predecessor
         // tree's, but the reused output lives under the *source* run named by `reusedFromRunId`. So
         // before planning reuse, swap each reuse row for that source record — keeping the reuse row's
@@ -243,9 +276,10 @@ export function openProject(dir: string): OpenProjectResult {
         const resume: ResumeInput = {
           originalRuns,
           readBlob: (record, filename) => readJsonBlob(runBlobDir(absDir, record.rootRunId, record.runId), filename),
+          rerunFromNodePath,
         };
 
-        const result = await execute(rootFile, workflowDir, opts, resume, [capture]);
+        const result = await execute(rootFile, workflowDir, runOpts, resume, [capture]);
 
         // `run-started` precedes every other observation of a tree (run-observer.ts), and the root
         // run always starts, so by here the capture has fired — a missing id would be an engine bug,

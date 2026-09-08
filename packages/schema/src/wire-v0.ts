@@ -1,7 +1,7 @@
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { LogBackendId } from "./log-backend-id.js";
-import type { RunRecord } from "./run-record.js";
+import type { RerunFromNodePathEntry, RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
 
 /**
@@ -36,6 +36,12 @@ export interface WireRunRecord {
   usage: JsonValue | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  /**
+   * The rerun boundary (K) descent path this successor root run resumed from (ADR 0032), as
+   * `{nodeId, nodeName}[]` — root-only, null on plain Resume and on every nested row. A read
+   * denormalization for #418's descent crumbs; correctness never reads it.
+   */
+  rerun_from_node_path: RerunFromNodePathEntry[] | null;
   /** Set on a reuse row alone (#257): the source run whose output it reuses, direct-to-source. */
   reused_from_run_id: string | null;
   /** Set on a reuse row alone (#257): the root run id of the tree the source run lives in. */
@@ -142,6 +148,7 @@ export function toWireRunRecord(row: RunRecord): WireRunRecord {
     usage: row.usage,
     estimated_cost_usd: row.estimatedCostUsd,
     resumed_from_root_run_id: row.resumedFromRootRunId,
+    rerun_from_node_path: row.rerunFromNodePath,
     reused_from_run_id: row.reusedFromRunId,
     reused_from_root_run_id: row.reusedFromRootRunId,
     workflow_id: row.workflowId,

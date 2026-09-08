@@ -328,6 +328,71 @@ describe("cli main() — --resume (ticket #177)", () => {
       after.close();
     }
   });
+
+  // --from names the rerun boundary K on the resume form (#444, spec §7.2). The CLI does zero
+  // K-logic: it forwards the run id and, on refusal, prints the engine's message verbatim.
+  it("rejects --from without --resume at parse time (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--from", "some-run-id"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--from requires --resume/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("exits 1 and prints the engine's refusal message verbatim for an unknown --from run id", async () => {
+    // A real (failed) terminal source, so the tree exists and the refusal is the legal-K one.
+    expect(await main(["run", workflow()], fakeIo())).toBe(1);
+    const db = openDb(dbFilePath(projectDir));
+    const originalRoot = (
+      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        root_run_id: string;
+      }
+    ).root_run_id;
+    db.close();
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot, "--from", "not-a-run"], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/not in the run tree being resumed/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("re-runs from K, reusing the <K prefix, and exits 0 with the successor id", async () => {
+    // A fully-succeeded source (mode=ok), so K=step-b has a succeeded prefix to reuse.
+    expect(await main(["run", workflow(), "--set", "mode=ok"], fakeIo())).toBe(0);
+    const db = openDb(dbFilePath(projectDir));
+    const originalRoot = (
+      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        root_run_id: string;
+      }
+    ).root_run_id;
+    const stepBRun = (
+      db.prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'").get(originalRoot) as { run_id: string }
+    ).run_id;
+    db.close();
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot, "--from", stepBRun, "--set", "mode=ok"], io);
+    expect(code).toBe(0);
+    const successorRoot = io.log.mock.calls.at(-1)![0] as string;
+    expect(successorRoot).not.toBe(originalRoot);
+
+    const after = openDb(dbFilePath(projectDir));
+    try {
+      // step-a is <K: a reuse row. step-b is K: an ordinary re-executed row. The boundary is persisted.
+      const rows = after
+        .prepare("SELECT node_name, reused_from_run_id FROM runs WHERE root_run_id = ?")
+        .all(successorRoot) as { node_name: string | null; reused_from_run_id: string | null }[];
+      expect(rows.find((r) => r.node_name === "step-a")!.reused_from_run_id).not.toBeNull();
+      expect(rows.find((r) => r.node_name === "step-b")!.reused_from_run_id).toBeNull();
+      const rootRow = after
+        .prepare("SELECT rerun_from_node_path FROM runs WHERE run_id = ?")
+        .get(successorRoot) as { rerun_from_node_path: string | null };
+      expect(JSON.parse(rootRow.rerun_from_node_path!)).toEqual([{ nodeId: "548ed098-0a65-499d-a5ea-4a1e091aca04", nodeName: "step-b" }]);
+    } finally {
+      after.close();
+    }
+  });
 });
 
 // `-C <dir>` relocates the `.path/` store away from the workflow file's own directory (ticket #201,
