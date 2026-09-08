@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/schema";
+import type { JsonValue, RerunFromNodePathEntry } from "@path/schema";
 import type { Trace } from "./condition.js";
 
 /**
@@ -70,6 +70,13 @@ export type Observation =
        * Persistence records it on the root row's `resumed_from_root_run_id`; no other observer reads it.
        */
       resumedFromRootRunId?: string;
+      /**
+       * The rerun boundary (K) descent path a Resume-from-K successor resumed from (#444, ADR 0032),
+       * as `{nodeId, nodeName}[]`. Set only on the successor's **root** run-started, absent on plain
+       * Resume and on every nested run. Persistence writes it to the root row's `rerun_from_node_path`;
+       * a read denormalization no correctness path reads.
+       */
+      rerunFromNodePath?: RerunFromNodePathEntry[];
       /**
        * The producing workflow's source identity (#202, ADR 0006): its durable GUID `id`, human
        * `name`, and the launcher-supplied path (relative to the store dir). Set **only on the root

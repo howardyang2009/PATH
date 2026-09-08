@@ -2,6 +2,17 @@ import type { JsonValue } from "./json-value.js";
 import type { RunStatus } from "./run-status.js";
 
 /**
+ * One node on a **rerun boundary (K)** descent path (ADR 0032): the node's durable GUID `id` and its
+ * human `name`, one entry per level root→…→K. Persisted root-only as JSON on the successor run and
+ * exposed on the read wire so #418's descent crumbs read K per crumb from one clean source. For a
+ * top-level K the path is length 1.
+ */
+export interface RerunFromNodePathEntry {
+  nodeId: string;
+  nodeName: string;
+}
+
+/**
  * One run, as the domain describes it (mvp spec §5.7): the authoritative queryable record of a step
  * run, in the domain's own camelCase spelling.
  *
@@ -40,6 +51,14 @@ export interface RunRecord {
   estimatedCostUsd: number | null;
   /** Null except on a root row created by resuming a prior tree — that predecessor's root run id (#168). */
   resumedFromRootRunId: string | null;
+  /**
+   * The **rerun boundary (K)** descent path this successor resumed from (ADR 0032): the node-id path
+   * root→…→K as `{nodeId, nodeName}[]`, root-only, and null on plain Resume (and on every nested row).
+   * A **read denormalization** — correctness never reads it, since it is re-derivable from the
+   * successor's own rows — kept so #418's descent crumbs read K from one stored source. It is a
+   * stored column, so every row read carries it. For a top-level K the path is length 1.
+   */
+  rerunFromNodePath: RerunFromNodePathEntry[] | null;
   /**
    * Set on a **reuse row** alone (#257): a resumed tree records a reused node with a real (succeeded)
    * row of its own — rather than only a log marker — and this field is the *source* run whose recorded

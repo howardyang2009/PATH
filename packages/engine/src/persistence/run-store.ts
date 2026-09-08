@@ -1,5 +1,5 @@
 import type Database from "better-sqlite3";
-import type { JsonValue, RunRecord, RunStatus, TerminalRunStatus } from "@path/schema";
+import type { JsonValue, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus } from "@path/schema";
 
 // `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
 // What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
@@ -18,6 +18,12 @@ export interface NewRunRow {
   inputRef?: string;
   /** Meaningful only on a root row (#168): the predecessor's root run id for a resumed tree. */
   resumedFromRootRunId?: string | null;
+  /**
+   * Root-only (#444, ADR 0032): the rerun boundary (K) descent path a Resume-from-K successor
+   * resumed from, `{nodeId, nodeName}[]`. Null/undefined on plain Resume and every nested row. Stored
+   * as JSON TEXT.
+   */
+  rerunFromNodePath?: RerunFromNodePathEntry[] | null;
   /** Source-workflow identity, meaningful only on a root row (#202, ADR 0006): the producing workflow's GUID `id`. */
   workflowId?: string | null;
   /** Root-only (#202): the producing workflow's human `name`. */
@@ -28,8 +34,8 @@ export interface NewRunRow {
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, status, started_at, input_ref, resumed_from_root_run_id, workflow_id, workflow_name, workflow_path)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @status, @startedAt, @inputRef, @resumedFromRootRunId, @workflowId, @workflowName, @workflowPath)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -42,6 +48,8 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     startedAt: new Date().toISOString(),
     inputRef: row.inputRef ?? null,
     resumedFromRootRunId: row.resumedFromRootRunId ?? null,
+    // JSON-encoded descent path, root-only; null on plain Resume and every nested row (#444).
+    rerunFromNodePath: row.rerunFromNodePath ? JSON.stringify(row.rerunFromNodePath) : null,
     workflowId: row.workflowId ?? null,
     workflowName: row.workflowName ?? null,
     workflowPath: row.workflowPath ?? null,
@@ -127,6 +135,7 @@ interface RunRowDb {
   usage: string | null;
   estimated_cost_usd: number | null;
   resumed_from_root_run_id: string | null;
+  rerun_from_node_path: string | null;
   reused_from_run_id: string | null;
   workflow_id: string | null;
   workflow_name: string | null;
@@ -149,6 +158,9 @@ function fromDbRow(row: RunRowDb): RunRecord {
     usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
     estimatedCostUsd: row.estimated_cost_usd,
     resumedFromRootRunId: row.resumed_from_root_run_id,
+    rerunFromNodePath: row.rerun_from_node_path
+      ? (JSON.parse(row.rerun_from_node_path) as RerunFromNodePathEntry[])
+      : null,
     reusedFromRunId: row.reused_from_run_id,
     // Not a stored column: the source run's root is resolved on demand by the archive read path
     // (createRunArchive.tree, #257), the only reader that needs it. A bare row read leaves it null.

@@ -24,6 +24,7 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     usage: null,
     estimatedCostUsd: null,
     resumedFromRootRunId: null,
+    rerunFromNodePath: null,
     reusedFromRunId: null,
     reusedFromRootRunId: null,
     workflowId: null,

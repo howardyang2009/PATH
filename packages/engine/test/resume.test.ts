@@ -36,6 +36,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
     usage: null,
     estimatedCostUsd: null,
     resumedFromRootRunId: null,
+    rerunFromNodePath: null,
     reusedFromRunId: null,
     reusedFromRootRunId: null,
     workflowId: null,

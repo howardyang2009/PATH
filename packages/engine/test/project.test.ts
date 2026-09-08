@@ -1,7 +1,7 @@
 import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { WorkflowFile } from "@path/schema";
+import { toWireRunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
@@ -395,6 +395,83 @@ describe("Project.resume (#173)", () => {
       expect(snapshot(rootRunTreeDir(dir, originalRootId))).toEqual(treeBefore);
       // ...and the original rows are unchanged too (no status flipped, no ref rewritten).
       expect(JSON.stringify(project.archive.tree(originalRootId)!.runs)).toBe(rowsBefore);
+    } finally {
+      project.close();
+    }
+  });
+});
+
+describe("Project.resume — Resume-from-K (#444)", () => {
+  // A three-step workflow that fully succeeds; Resume-from-K re-runs a succeeded region from K.
+  const kabc: WorkflowFile = {
+    format: "path/workflow@3",
+    id: "wf-id",
+    name: "resumable-k",
+    body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c", "C_OUT")],
+    output: { a: "${context.from_a}", b: "${context.from_b}", c: "${context.from_c}" },
+  };
+
+  it("re-runs from K, reuses the <K prefix, and persists rerun_from_node_path on the successor root (also on the wire)", async () => {
+    const project = open();
+    try {
+      const first = await project.run(kabc, dir);
+      expect(first.status).toBe("succeeded");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+      // K = b, named by its own run id — the one unambiguous handle (ADR 0032).
+      const bRunId = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "b")!.runId;
+
+      // A succeeded source is a valid Resume-from-K target — the already-succeeded gate is a route
+      // concern, relaxed there; `Project.resume` itself just resolves and re-runs.
+      const result = await project.resume(kabc, originalRootId, dir, { rerunFromRunId: bRunId });
+      if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
+      expect(result.status).toBe("succeeded");
+      expect(result.output).toEqual({ a: "A_OUT", b: "B_OUT", c: "C_OUT" });
+
+      const successor = project.archive.tree(result.rootRunId)!;
+      // a is <K: a reuse row (direct-to-source). b and c are ≥K: ordinary executed rows.
+      expect(successor.runs.find((r) => r.nodeId === "a")!.reusedFromRunId).not.toBeNull();
+      expect(successor.runs.find((r) => r.nodeId === "b")!.reusedFromRunId).toBeNull();
+      expect(successor.runs.find((r) => r.nodeId === "c")!.reusedFromRunId).toBeNull();
+
+      // The boundary is persisted root-only as {nodeId, nodeName}[], and rides the read wire (#418).
+      expect(successor.root!.rerunFromNodePath).toEqual([{ nodeId: "b", nodeName: "b" }]);
+      expect(toWireRunRecord(successor.root!).rerun_from_node_path).toEqual([{ nodeId: "b", nodeName: "b" }]);
+      // A nested/executed row carries none.
+      expect(successor.runs.find((r) => r.nodeId === "b")!.rerunFromNodePath).toBeNull();
+    } finally {
+      project.close();
+    }
+  });
+
+  it("leaves rerun_from_node_path null on a plain Resume (the K-omitted superset case)", async () => {
+    const project = open();
+    try {
+      const failing: WorkflowFile = { ...kabc, body: [emit("a", "A_OUT"), emit("b")] };
+      const fixed: WorkflowFile = { ...kabc, body: [emit("a", "A_OUT"), emit("b", "B_OUT")] };
+      await project.run(failing, dir);
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      const result = await project.resume(fixed, originalRootId, dir); // no rerunFromRunId = plain Resume
+      if (!result.found) throw new Error("expected found:true");
+      expect(project.archive.tree(result.rootRunId)!.root!.rerunFromNodePath).toBeNull();
+    } finally {
+      project.close();
+    }
+  });
+
+  it("refuses an unknown --from run id with a structured refusal, starting no successor", async () => {
+    const project = open();
+    try {
+      await project.run(kabc, dir);
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+      const before = project.archive.listRoots().length;
+
+      const result = await project.resume(kabc, originalRootId, dir, { rerunFromRunId: "not-a-run" });
+      expect(result.found).toBe(false);
+      if (result.found || !("refusal" in result)) throw new Error("expected a refusal");
+      expect(result.refusal.status).toBe(400);
+      // No successor tree was created — validation happens before any run starts.
+      expect(project.archive.listRoots().length).toBe(before);
     } finally {
       project.close();
     }

@@ -145,4 +145,13 @@ export interface RunResume {
   counterpart: RunRecord | undefined;
   /** Node ids of this run's direct children that reuse, each pointing at the original run it reuses. */
   plan: ReusePlan;
+  /**
+   * The Resume-from-K rerun boundary as a suppression set of run-producing node ids (ADR 0035): K and
+   * every serialized-later top-level node. **Root-only** — it is set on the root run alone and left
+   * undefined on every nested run, so a nested id collision cannot misfire (this ticket's top-level-K
+   * slice; nested-K is #TBD-T2). Producer A (`planReuse`) drops its ids from the plan; Producer B (the
+   * descent site) refuses the counterpart of a suppressed `workflow` node so its whole subtree
+   * re-runs. Undefined on plain Resume.
+   */
+  rerunSet?: Set<string>;
 }

@@ -3,11 +3,17 @@ import { ConfigObjectSchema, formatIssues, isTerminal, type StartRunResponse } f
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
-import { ResumeNotFound } from "../live-runs.js";
+import { ResumeNotFound, ResumeRefused } from "../live-runs.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
-/** The one optional field: a config override for the resumed run (§4.3). No `input` — see below. */
-const ResumeBodySchema = z.object({ config: ConfigObjectSchema.optional() }).strict();
+/**
+ * Two optional fields: a config override for the resumed run (§4.3, no `input` — see below), and
+ * `rerun_from_run_id` — the rerun boundary K's source run id (#444, ADR 0032). Absent
+ * `rerun_from_run_id` is plain Resume; present, the engine's one legal-K authority validates it.
+ */
+const ResumeBodySchema = z
+  .object({ config: ConfigObjectSchema.optional(), rerun_from_run_id: z.string().optional() })
+  .strict();
 
 /**
  * `POST /v0/runs/:root_run_id/resume` (server-api-v0.md §4.3) — re-runs a finished-but-unsuccessful
@@ -41,7 +47,7 @@ export async function handleResumeRun(
     sendError(res, 400, "invalid request body", formatIssues(parsed.error));
     return;
   }
-  const { config } = parsed.data;
+  const { config, rerun_from_run_id: rerunFromRunId } = parsed.data;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) {
@@ -64,7 +70,11 @@ export async function handleResumeRun(
     sendError(res, 409, `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`);
     return;
   }
-  if (root.status === "succeeded") {
+  // Plain Resume of a succeeded run has nothing to do; but a **Resume-from-K** target is legitimately
+  // succeeded (#444, ADR 0032) — the operator re-runs a succeeded region from K against changed
+  // config. So the already-succeeded refusal is relaxed exactly when `rerun_from_run_id` is supplied;
+  // plain Resume's gate is unchanged.
+  if (root.status === "succeeded" && rerunFromRunId === undefined) {
     sendError(res, 409, `run "${rootRunId}" already succeeded; there is nothing to resume`);
     return;
   }
@@ -117,11 +127,21 @@ export async function handleResumeRun(
       operatorConfig: config,
       // Recorded on the successor's root row so it is itself resumable.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
+      // The rerun boundary K, forwarded verbatim (#444): the route does no K-logic; `Project.resume`
+      // resolves and validates it, and a refusal comes back as `ResumeRefused`.
+      rerunFromRunId,
     });
   } catch (err) {
     // The row vanished between the check above and the engine's own lookup (a concurrent `rm`).
     if (err instanceof ResumeNotFound) {
       sendError(res, 404, `no run found with id "${rootRunId}"`);
+      return;
+    }
+    // A Resume-from-K refusal (#444, spec §5): the engine's one legal-K authority rejected the
+    // selection before any successor started. The route only translates — it renders the taxonomy
+    // `status` and the verbatim `message`, holding no status of its own.
+    if (err instanceof ResumeRefused) {
+      sendError(res, err.status, err.message);
       return;
     }
     sendError(res, 500, `resume failed to start: ${err instanceof Error ? err.message : String(err)}`);

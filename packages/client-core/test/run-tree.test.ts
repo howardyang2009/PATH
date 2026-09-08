@@ -18,6 +18,7 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     usage: null,
     estimatedCostUsd: null,
     resumedFromRootRunId: null,
+    rerunFromNodePath: null,
     reusedFromRunId: null,
     reusedFromRootRunId: null,
     workflowId: null,

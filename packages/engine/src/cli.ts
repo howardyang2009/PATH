@@ -60,7 +60,7 @@ const consoleIo: CliIo = {
 const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id>] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
+  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id>]] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
@@ -72,6 +72,10 @@ interface ParsedRunArgs {
   // (ADR 0005). Undefined means the default: the workflow file's own directory.
   storeDir?: string;
   resumeRootRunId?: string;
+  // `--from <run-id>`: the rerun boundary K on the resume form (#444). The CLI does zero K-logic — it
+  // forwards this source run id to `Project.resume`, which resolves and validates it. Only valid with
+  // `--resume`.
+  rerunFromRunId?: string;
   configFile?: string;
   setPairs: [string, string][];
   contextFile?: string;
@@ -106,6 +110,7 @@ function parseRunArgs(argv: string[]): ParseResult {
   if (!workflowPath) return { success: false, error: RUN_USAGE };
 
   let resumeRootRunId: string | undefined;
+  let rerunFromRunId: string | undefined;
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
   let contextFile: string | undefined;
@@ -119,6 +124,11 @@ function parseRunArgs(argv: string[]): ParseResult {
       const taken = takeValue(rest, i, "--resume", "a root run id", RUN_USAGE);
       if (!taken.success) return taken;
       resumeRootRunId = taken.value;
+      i += 1;
+    } else if (flag === "--from") {
+      const taken = takeValue(rest, i, "--from", "a run id", RUN_USAGE);
+      if (!taken.success) return taken;
+      rerunFromRunId = taken.value;
       i += 1;
     } else if (flag === "--config") {
       const taken = takeValue(rest, i, "--config", "a path", RUN_USAGE);
@@ -170,9 +180,16 @@ function parseRunArgs(argv: string[]): ParseResult {
     };
   }
 
+  // `--from` names the rerun boundary K *within* a resume (#444, spec §7.2), so it rides the existing
+  // resume form and is meaningless without `--resume`. A parse-time misuse — exit 2 — never an engine
+  // refusal.
+  if (rerunFromRunId !== undefined && resumeRootRunId === undefined) {
+    return { success: false, error: `--from requires --resume\n${RUN_USAGE}` };
+  }
+
   return {
     success: true,
-    args: { workflowPath, storeDir, resumeRootRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
+    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
   };
 }
 
@@ -415,7 +432,9 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
         workflow.rootFile,
         parsed.args.resumeRootRunId,
         workflow.workflowDir,
-        projectOptions,
+        // `--from` forwarded verbatim (#444): the CLI does zero K-logic, `Project.resume` is the one
+        // authority. Absent = plain Resume.
+        { ...projectOptions, rerunFromRunId: parsed.args.rerunFromRunId },
       );
     } finally {
       sigint.dispose();
@@ -467,7 +486,10 @@ function reportOutcome(status: RunStatus, error: string | undefined, io: CliIo):
 // of how it ended; the exit code and any error/cancel message then mirror a fresh run's.
 function reportResume(result: ResumeResult, io: CliIo): number {
   if (!result.found) {
-    io.error(result.error);
+    // A Resume-from-K refusal (#444) and an unknown root run both exit 1 (every engine refusal
+    // collapses to 1; the command parsed, the engine refused — spec §7.2). The CLI prints the
+    // engine's `refusal.message` verbatim, so there is one wording authority across route / CLI.
+    io.error("refusal" in result ? result.refusal.message : result.error);
     return 1;
   }
 

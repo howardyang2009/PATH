@@ -20,6 +20,8 @@ interface RunTreeBody {
     node_id: string | null;
     node_name: string | null;
     status: string;
+    reused_from_run_id?: string | null;
+    rerun_from_node_path?: { nodeId: string; nodeName: string }[] | null;
   }[];
 }
 
@@ -992,6 +994,44 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(409);
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain("succeeded");
+  });
+
+  // Resume-from-K (#444): the already-succeeded gate is relaxed when `rerun_from_run_id` is supplied —
+  // a succeeded region is a legitimate re-run target. Plain Resume of a succeeded run stays 409 above.
+  it("202s Resume-from-K on a succeeded run and persists rerun_from_node_path on the successor", async () => {
+    const { root_run_id: original } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    const originalBody = await pollUntilTerminal(original);
+    expect(originalBody.status).toBe("succeeded");
+    // K = shout, named by its run id — reuse greet (<K), re-run shout (K).
+    const shoutRunId = originalBody.runs.find((r) => r.node_name === "shout")!.run_id;
+
+    const res = await resumeRun(original, { rerun_from_run_id: shoutRunId });
+    expect(res.status).toBe(202);
+    const { root_run_id: successor } = (await res.json()) as { root_run_id: string };
+    expect(successor).not.toBe(original);
+
+    const successorBody = await pollUntilTerminal(successor);
+    expect(successorBody.status).toBe("succeeded");
+    const successorRoot = successorBody.runs.find((r) => r.parent_run_id === null)!;
+    // The boundary rides the read wire, root-only, as {nodeId, nodeName}[] (#418).
+    expect(successorRoot.rerun_from_node_path).toEqual([{ nodeId: "bf356711-5a8c-4e46-9ca3-ea4f9aa9610a", nodeName: "shout" }]);
+    // greet reused (<K), shout re-ran (K).
+    expect(successorBody.runs.find((r) => r.node_name === "greet")!.reused_from_run_id).not.toBeNull();
+    expect(successorBody.runs.find((r) => r.node_name === "shout")!.reused_from_run_id).toBeNull();
+  });
+
+  it("forwards an engine Resume-from-K refusal verbatim, with its taxonomy status", async () => {
+    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
+
+    // An unresolvable selection — reason #1, status 400 (spec §5), message forwarded verbatim.
+    const res = await resumeRun(root_run_id, { rerun_from_run_id: "not-a-run" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("not in the run tree being resumed");
   });
 
   it("404s for an unknown root_run_id", async () => {

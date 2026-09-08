@@ -131,6 +131,11 @@ export interface ResumeRunOptions {
   operatorConfig?: ConfigObject;
   /** Recorded on the successor's root row so a resumed run is itself resumable (see `StartRunOptions`). */
   sourceWorkflowPath?: string;
+  /**
+   * The rerun boundary K's source run id (#444): forwarded verbatim to `Project.resume`, the one
+   * legal-K authority. Absent = plain Resume. A refusal surfaces as {@link ResumeRefused}.
+   */
+  rerunFromRunId?: string;
 }
 
 /** Thrown by `resume` when the engine reports the predecessor root run id unknown. */
@@ -138,6 +143,21 @@ export class ResumeNotFound extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ResumeNotFound";
+  }
+}
+
+/**
+ * Thrown by `resume` when `Project.resume` refuses a Resume-from-K selection (#444, spec §5): the
+ * legal-K authority rejected `rerunFromRunId` before any successor started. Carries the taxonomy
+ * `status` and the verbatim `message` the route answers with — one wording authority.
+ */
+export class ResumeRefused extends Error {
+  constructor(
+    readonly status: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "ResumeRefused";
   }
 }
 
@@ -270,10 +290,16 @@ export function createLiveRuns(project: Project): LiveRuns {
           .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
           .then(
             (result) => {
-              // The predecessor id was unknown — no successor was ever started, so nothing emitted
-              // `run-started` and the deferred is still pending. Reject it so the route answers 404.
+              // No successor was started (unknown predecessor, or a Resume-from-K refusal validated
+              // before launch), so nothing emitted `run-started` and the deferred is still pending.
+              // Reject it with the shape the route branches on: a refusal keeps its taxonomy status
+              // (#444), an unknown root run answers 404.
               if (!result.found) {
-                started.reject(new ResumeNotFound(result.error));
+                started.reject(
+                  "refusal" in result
+                    ? new ResumeRefused(result.refusal.status, result.refusal.message)
+                    : new ResumeNotFound(result.error),
+                );
                 return;
               }
               if (result.status === "failed") console.error(`resumed run failed: ${result.error}`);
