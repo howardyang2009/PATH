@@ -233,3 +233,81 @@ describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
     expect(verdict.refusal.message).toContain("did not succeed");
   });
 });
+
+// The refusal's machine `reason` (and, for an in-body locus, the `container`) is what the
+// `--list-eligible` listing renders its 1:1 short cell from (#446, spec §6) — the same authority a
+// `--from` refusal carries, so the column can never disagree with `--from`. This pins each code.
+describe("resolveLegalK — the refusal reason code (spec §6)", () => {
+  function refusalOf(...args: Parameters<typeof resolveLegalK>) {
+    const verdict = resolveLegalK(...args);
+    if (verdict.ok) throw new Error("expected a refusal");
+    return verdict.refusal;
+  }
+
+  it("the root run is reason `root-run`", () => {
+    expect(refusalOf(abcFile, abcRows(), "root", new Map(), "/tmp").reason).toBe("root-run");
+  });
+
+  it("a since-deleted top-level node is reason `not-in-file`", () => {
+    const withoutB = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      { type: "prompt", id: "c", name: "c", prompt: "c" },
+    ]);
+    expect(refusalOf(withoutB, abcRows(), "b-run", new Map(), "/tmp").reason).toBe("not-in-file");
+  });
+
+  it("an unsucceeded K is reason `not-succeeded`", () => {
+    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "b-run", new Map(), "/tmp").reason).toBe("not-succeeded");
+  });
+
+  it("a broken prefix is reason `prefix-unsucceeded`", () => {
+    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "c-run", new Map(), "/tmp").reason).toBe("prefix-unsucceeded");
+  });
+
+  it("a node inside a while-do body is reason `in-body` with container `loop`", () => {
+    const nestedB = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      {
+        type: "while-do",
+        id: "loop",
+        name: "loop",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 3,
+        node: { type: "prompt", id: "b", name: "b", prompt: "b" },
+      },
+    ]);
+    const refusal = refusalOf(nestedB, abcRows(), "b-run", new Map(), "/tmp");
+    expect(refusal.reason).toBe("in-body");
+    expect(refusal.container).toBe("loop");
+  });
+
+  it("a node inside a parallel branch is reason `in-body` with container `parallel`", () => {
+    const nestedB = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      {
+        type: "parallel",
+        id: "par",
+        name: "par",
+        branches: [{ type: "prompt", id: "b", name: "b", prompt: "b" }],
+      },
+    ]);
+    const refusal = refusalOf(nestedB, abcRows(), "b-run", new Map(), "/tmp");
+    expect(refusal.reason).toBe("in-body");
+    expect(refusal.container).toBe("parallel");
+  });
+
+  it("a node inside a branch arm is reason `in-body` with container `branch`", () => {
+    const nestedB = tree([
+      { type: "prompt", id: "a", name: "a", prompt: "a" },
+      {
+        type: "branch",
+        id: "br",
+        name: "br",
+        arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: "b", name: "b", prompt: "b" } }],
+      },
+    ]);
+    const refusal = refusalOf(nestedB, abcRows(), "b-run", new Map(), "/tmp");
+    expect(refusal.reason).toBe("in-body");
+    expect(refusal.container).toBe("branch");
+  });
+});

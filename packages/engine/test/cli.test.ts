@@ -252,6 +252,32 @@ describe("cli main() — --resume (ticket #177)", () => {
     expect(io.log).not.toHaveBeenCalled();
   });
 
+  it("refuses a non-terminal source run whole (exit 1) rather than resuming a still-running tree", async () => {
+    // Run once so the store exists, then plant a still-`running` root: the legal-K test assumes a
+    // terminal source (a node's status can still flip while the tree runs), so resume refuses it whole.
+    expect(await main(["run", workflow()], fakeIo())).toBe(1);
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      insertRun(db, {
+        runId: "live-root",
+        rootRunId: "live-root",
+        parentRunId: null,
+        nodeId: null,
+        nodeName: null,
+        workerName: null,
+        status: "running",
+      });
+    } finally {
+      db.close();
+    }
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "live-root"], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/live-root.*still running/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
   it("prints the successor's root run id and exits 1 when the resumed run itself fails again", async () => {
     const firstIo = fakeIo();
     expect(await main(["run", workflow()], firstIo)).toBe(1);
@@ -392,6 +418,146 @@ describe("cli main() — --resume (ticket #177)", () => {
     } finally {
       after.close();
     }
+  });
+});
+
+// `--list-eligible` (#446, spec §7): a dry-run of resume that prints one row per source-tree node with
+// an `eligible?` column, so an operator can find a legal `--from` value. Launches nothing; its verdict
+// runs the same legal-K authority `--from` is validated against, so the column can never disagree.
+describe("cli main() — --list-eligible (#446)", () => {
+  let projectDir: string;
+
+  beforeEach(() => {
+    projectDir = mkdtempSync(join(tmpdir(), "path-engine-list-eligible-cli-"));
+    cpSync(join(realFixtures, "resumable.workflow.json"), join(projectDir, "workflow.json"));
+  });
+
+  afterEach(() => {
+    rmSync(projectDir, { recursive: true, force: true });
+  });
+
+  const workflow = () => join(projectDir, "workflow.json");
+
+  // The root run id of the one non-resumed root in the store.
+  function originalRootOf(): string {
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      return (
+        db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+          root_run_id: string;
+        }
+      ).root_run_id;
+    } finally {
+      db.close();
+    }
+  }
+
+  // The single table string the listing logs, split into its lines (header first).
+  function tableLines(io: ReturnType<typeof fakeIo>): string[] {
+    expect(io.log).toHaveBeenCalledTimes(1);
+    return (io.log.mock.calls[0]![0] as string).split("\n");
+  }
+
+  it("requires --resume (exit 2, launches nothing)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--list-eligible"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible requires --resume/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("is mutually exclusive with --from (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "whatever", "--from", "k", "--list-eligible"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible cannot be combined with --from/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("refuses a launch-only flag it cannot apply (exit 2)", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "whatever", "--list-eligible", "--set", "mode=ok"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible cannot be combined with --set/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("exits 1 with the resume 'no run found' message for an unknown root run id", async () => {
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "no-such-root", "--list-eligible"], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/no run found.*no-such-root/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("refuses a non-terminal source whole, with the same exit code a resume gives (exit 1)", async () => {
+    // Run once so the store + schema exist, then plant a still-`running` root row: a node's status can
+    // still flip while a tree runs, so the legal-K test assumes a terminal source (spec §5, §7).
+    expect(await main(["run", workflow()], fakeIo())).toBe(1);
+    const db = openDb(dbFilePath(projectDir));
+    try {
+      insertRun(db, {
+        runId: "live-root",
+        rootRunId: "live-root",
+        parentRunId: null,
+        nodeId: null,
+        nodeName: null,
+        workerName: null,
+        status: "running",
+      });
+    } finally {
+      db.close();
+    }
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "live-root", "--list-eligible"], io);
+    expect(code).toBe(1);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/live-root.*still running/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("lists every node in DFS pre-order — root marked, and eligible nodes `yes` — on a fully-succeeded source", async () => {
+    expect(await main(["run", workflow(), "--set", "mode=ok"], fakeIo())).toBe(0);
+    const originalRoot = originalRootOf();
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot, "--list-eligible"], io);
+    expect(code).toBe(0);
+
+    const lines = tableLines(io);
+    // Header, then the root row first (pre-order), then step-a and step-b.
+    expect(lines[0]).toMatch(/run-id\s+node-name\s+status\s+eligible\?/);
+    expect(lines).toHaveLength(4); // header + 3 runs
+    const rootLine = lines.find((l) => l.includes(originalRoot))!;
+    expect(rootLine).toMatch(/root run \(never a boundary\)/);
+    const stepA = lines.find((l) => /\bstep-a\b/.test(l))!;
+    const stepB = lines.find((l) => /\bstep-b\b/.test(l))!;
+    // step-a is the first node (empty prefix) and step-b's prefix (step-a) succeeded — both legal K.
+    expect(stepA).toMatch(/\byes$/);
+    expect(stepB).toMatch(/\byes$/);
+    // The run-id column is never truncated: step-b's full id is copyable into --from.
+    const stepBRun = openDb(dbFilePath(projectDir));
+    try {
+      const id = (stepBRun.prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'").get(originalRoot) as { run_id: string }).run_id;
+      expect(stepB.startsWith(id)).toBe(true);
+    } finally {
+      stepBRun.close();
+    }
+  });
+
+  it("names the reason for an ineligible node — a failed K lists `not succeeded`", async () => {
+    // mode=fail: step-a succeeds, step-b fails. So the root row is marked, step-a is a legal K, and
+    // step-b lists its own failure — never `yes`, so the column can never disagree with --from.
+    expect(await main(["run", workflow()], fakeIo())).toBe(1);
+    const originalRoot = originalRootOf();
+
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", originalRoot, "--list-eligible"], io);
+    expect(code).toBe(0);
+
+    const lines = tableLines(io);
+    expect(lines.find((l) => /\bstep-a\b/.test(l))!).toMatch(/\byes$/);
+    expect(lines.find((l) => /\bstep-b\b/.test(l))!).toMatch(/not succeeded$/);
   });
 });
 
