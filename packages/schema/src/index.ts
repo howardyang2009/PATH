@@ -149,6 +149,13 @@ export {
 export type { RerunFromNodePathEntry, RunRecord } from "./run-record.js";
 export { isReuseRow, isRootRun, runKind, type RunKind, type RunKindFields } from "./run-kind.js";
 export { childrenByParent, findRootRun, subtree, type RunTreeFields } from "./run-tree.js";
+export {
+  classifyLevelK,
+  type ClassifyLevelKArgs,
+  type LegalKLevelReason,
+  type LegalKLevelResult,
+  type LegalKLevelRun,
+} from "./legal-k.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
   toRootRunSummary,
