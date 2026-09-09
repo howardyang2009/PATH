@@ -1,5 +1,6 @@
 import type Database from "better-sqlite3";
-import type { JsonValue, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus } from "@path/schema";
+import { fromWireRunRecord } from "@path/schema";
+import type { JsonValue, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus, WireRunRecord } from "@path/schema";
 
 // `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
 // What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
@@ -143,32 +144,21 @@ interface RunRowDb {
 }
 
 function fromDbRow(row: RunRowDb): RunRecord {
-  return {
-    runId: row.run_id,
-    rootRunId: row.root_run_id,
-    parentRunId: row.parent_run_id,
-    nodeId: row.node_id,
-    nodeName: row.node_name,
-    workerName: row.worker_name,
-    status: row.status,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    inputRef: row.input_ref,
-    outputRef: row.output_ref,
+  // The db row is the wire shape already (snake_case), bar three columns the store stores differently.
+  // Normalize those, then let the one wire codec (`fromWireRunRecord`) map every field to the domain
+  // record — so a field added to `RunRecord` reaches this read from the shared manifest, not a hand-copy.
+  const wire: WireRunRecord = {
+    ...row,
+    // Stored as JSON TEXT; the wire/domain shape is the parsed value.
     usage: row.usage ? (JSON.parse(row.usage) as JsonValue) : null,
-    estimatedCostUsd: row.estimated_cost_usd,
-    resumedFromRootRunId: row.resumed_from_root_run_id,
-    rerunFromNodePath: row.rerun_from_node_path
+    rerun_from_node_path: row.rerun_from_node_path
       ? (JSON.parse(row.rerun_from_node_path) as RerunFromNodePathEntry[])
       : null,
-    reusedFromRunId: row.reused_from_run_id,
     // Not a stored column: the source run's root is resolved on demand by the archive read path
     // (createRunArchive.tree, #257), the only reader that needs it. A bare row read leaves it null.
-    reusedFromRootRunId: null,
-    workflowId: row.workflow_id,
-    workflowName: row.workflow_name,
-    workflowPath: row.workflow_path,
+    reused_from_root_run_id: null,
   };
+  return fromWireRunRecord(wire);
 }
 
 /**

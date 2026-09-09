@@ -72,3 +72,25 @@ export function findRootRun<T extends { parentRunId: string | null }>(rows: Iter
   }
   return undefined;
 }
+
+/**
+ * The ancestor path from the tree root down to `startId`, top-down and inclusive of both ends —
+ * `[root, …, startId]`. The complement of `subtree` (which walks down): this walks the `parentRunId`
+ * chain up. `[]` when no row has `startId`. Resume descends this path level by level (root→…→K), so
+ * it reads the rerun-boundary chain from one primitive rather than re-walking `parentRunId` by hand.
+ * A complete tree reaches a null-parent root; if a parent row is missing (an incomplete stream), the
+ * walk stops at the highest reachable ancestor rather than looping.
+ */
+export function pathToRoot<T extends RunTreeFields>(rows: Iterable<T>, startId: string): T[] {
+  const byId = new Map([...rows].map((row) => [row.runId, row] as const));
+  const start = byId.get(startId);
+  if (start === undefined) return [];
+  const chain: T[] = [];
+  let cursor: T | undefined = start;
+  while (cursor !== undefined) {
+    chain.unshift(cursor);
+    if (cursor.parentRunId === null) break;
+    cursor = byId.get(cursor.parentRunId);
+  }
+  return chain;
+}

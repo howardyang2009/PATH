@@ -172,7 +172,7 @@ export type ListEligibleResult =
 type ResumeSourceProblem = { kind: "not-found"; message: string } | { kind: "non-terminal"; message: string };
 
 function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourceProblem | undefined {
-  const root = rows.find((r) => r.parentRunId === null);
+  const root = findRootRun(rows);
   if (rows.length === 0 || !root) {
     return { kind: "not-found", message: `no run found with root run id "${rootRunId}"` };
   }

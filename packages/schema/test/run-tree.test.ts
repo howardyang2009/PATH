@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { childrenByParent, findRootRun, subtree } from "../src/run-tree.js";
+import { childrenByParent, findRootRun, pathToRoot, subtree } from "../src/run-tree.js";
 
 interface Row {
   runId: string;
@@ -66,5 +66,28 @@ describe("findRootRun", () => {
 
   it("is undefined when the tree has rows but no root of its own", () => {
     expect(findRootRun([{ runId: "child-only", parentRunId: "root" }])).toBeUndefined();
+  });
+});
+
+describe("pathToRoot", () => {
+  it("returns the root→…→start chain, inclusive of both ends", () => {
+    expect(pathToRoot(complete, "a1").map((r) => r.runId)).toEqual(["root", "a", "a1"]);
+  });
+
+  it("returns just the root when start is the root", () => {
+    expect(pathToRoot(complete, "root").map((r) => r.runId)).toEqual(["root"]);
+  });
+
+  it("is empty when no row has the start id", () => {
+    expect(pathToRoot(complete, "nope")).toEqual([]);
+  });
+
+  it("stops at the highest reachable ancestor when a parent row is missing", () => {
+    // `mid`'s parent row is absent, so the walk cannot reach the real root.
+    const partial: Row[] = [
+      { runId: "mid", parentRunId: "gone" },
+      { runId: "leaf", parentRunId: "mid" },
+    ];
+    expect(pathToRoot(partial, "leaf").map((r) => r.runId)).toEqual(["mid", "leaf"]);
   });
 });

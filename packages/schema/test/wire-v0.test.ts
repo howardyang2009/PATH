@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunRecord } from "../src/run-record.js";
-import { toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
+import { blankRunRecord } from "../src/run-record.js";
+import { fromWireRunRecord, toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
 
 /**
  * The wire shape must carry every field of the domain record, under its snake_case name — checked
@@ -175,6 +176,29 @@ describe("the v0 wire record", () => {
   // here by comparing key counts against the fixture above. `_WireCarriesEveryRecordField` states it
   // at compile time instead, over the types themselves — so it no longer depends on this file's
   // fixture being complete, and it fails in both directions rather than only when a field is added.
+});
+
+describe("fromWireRunRecord — the inverse", () => {
+  it("round-trips a full record through the wire and back unchanged", () => {
+    expect(fromWireRunRecord(toWireRunRecord(record))).toEqual(record);
+  });
+
+  it("round-trips an all-null record unchanged", () => {
+    expect(fromWireRunRecord(toWireRunRecord(emptyRecord))).toEqual(emptyRecord);
+  });
+});
+
+describe("blankRunRecord", () => {
+  it("is all-null (status pending) with the seed overlaid, carrying every record field", () => {
+    const blank = blankRunRecord({ runId: "r", rootRunId: "root", nodeId: "n", nodeName: "name" });
+    expect(blank).toEqual({
+      ...emptyRecord,
+      runId: "r",
+      rootRunId: "root",
+      nodeId: "n",
+      nodeName: "name",
+    });
+  });
 });
 
 describe("toRootRunSummary", () => {

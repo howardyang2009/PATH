@@ -1,9 +1,8 @@
 import {
-  enclosingControlBlock,
+  classifyLevelK,
   isRootRun,
-  RUN_PRODUCING_TYPES,
-  walkNodes,
   type ControlBlockKind,
+  type LegalKLevelReason,
   type RunRecord,
   type WorkflowFile,
 } from "@path/schema";
@@ -30,10 +29,7 @@ import {
  */
 export type ResumeFromReasonCode =
   | "no-selection" // spec #1 — nothing selected, or the root row (never a K)
-  | "not-in-file" // engine #2 — resolves to a since-deleted node
-  | "in-body" // engine #3 — inside a loop / parallel / branch body
-  | "not-succeeded" // engine #4 — the selected node did not succeed
-  | "prefix-unsucceeded" // engine #5 — a node before K did not succeed
+  | LegalKLevelReason // engine #2–#5, the per-level taxonomy shared with the engine (`classifyLevelK`)
   | "dirty-buffer"; // spec #3 — a legal K, but the open file is not saved
 
 /** The innermost enclosing logicer named in an `in-body` reason (`loop` is `while-do`), as the engine. */
@@ -58,26 +54,6 @@ export interface ResumeFromEligibilityArgs {
 /** The short run id shown in the button label; the full id is the wire value and the hover title. */
 export function shortRunId(runId: string): string {
   return runId.slice(0, 8);
-}
-
-/**
- * How node `id`'s runs directly under `scopeRunId` stand, for the prefix-reuse rule (#5), mirroring the
- * engine's `resolve-legal-k.ts`:
- *  - `succeeded` — at least one succeeded run. A reuse row counts (it is recorded `succeeded`), and a
- *    `while-do` body that ran many times passes on any succeeded iteration row, the same
- *    multi-iteration reuse limit plain Resume has.
- *  - `skipped` — no run at all under scope: an untaken branch arm, or a zero-iteration `while-do` body.
- *    K does not depend on it, so it does not gate the prefix.
- *  - `unsucceeded` — it ran but no run succeeded, which breaks reuse.
- */
-function scopeRunState(runs: Iterable<RunRecord>, scopeRunId: string, id: string): "succeeded" | "skipped" | "unsucceeded" {
-  let ran = false;
-  for (const run of runs) {
-    if (run.parentRunId !== scopeRunId || run.nodeId !== id) continue;
-    if (run.status === "succeeded") return "succeeded";
-    ran = true;
-  }
-  return ran ? "unsucceeded" : "skipped";
 }
 
 /**
@@ -121,9 +97,11 @@ function noSelection(): ResumeFromEligibility {
 }
 
 /**
- * The root-level taxonomy check, in the engine's order: locate the node (#2 since-deleted, #3 in-body),
- * then the leaf's own success (#4), then the prefix's success (#5). Returns the first illegal reason,
- * or `null` when the top-level K is legal.
+ * The root-level taxonomy check: the shared `classifyLevelK` predicate (`@path/schema`) run over the
+ * open root file at the root scope, with the selected run as the leaf. Returns the first illegal reason
+ * worded for the button, or `null` when the top-level K is legal. The rule body — locate (#2/#3), the
+ * leaf's own success (#4), the prefix's success (#5) — is the one the engine authority runs; only the
+ * message wording is the client's.
  */
 function classifyTopLevel(
   rootFile: WorkflowFile,
@@ -132,46 +110,31 @@ function classifyTopLevel(
   selected: RunRecord,
   nodeName: string,
 ): Extract<ResumeFromEligibility, { ok: false }> | null {
-  const nodeId = selected.nodeId!;
-  const topLevelIndex = rootFile.body.findIndex((node) => node.id === nodeId);
-  if (topLevelIndex < 0) {
-    const presentSomewhere = [...walkNodes(rootFile.body)].some((node) => node.id === nodeId);
-    // #2 — the node was deleted from the file (a rename/move survives by id).
-    if (!presentSomewhere) {
+  const level = classifyLevelK({
+    body: rootFile.body,
+    rows: runs.values(),
+    scopeRunId: rootRunId,
+    nodeId: selected.nodeId!,
+    leafStatus: selected.status,
+  });
+  if (level.ok) return null;
+  switch (level.reason) {
+    case "not-in-file":
       return { ok: false, reason: "not-in-file", message: `“${nodeName}” is no longer in the workflow.` };
-    }
-    // #3 — present, but nested inside a control body: an illegal K locus.
-    const container = enclosingControlBlock(rootFile.body, nodeId);
-    return {
-      ok: false,
-      reason: "in-body",
-      message: `“${nodeName}” is inside a ${container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary.`,
-      ...(container ? { container } : {}),
-    };
+    case "in-body":
+      return {
+        ok: false,
+        reason: "in-body",
+        message: `“${nodeName}” is inside a ${level.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary.`,
+        ...(level.container ? { container: level.container } : {}),
+      };
+    case "not-succeeded":
+      return { ok: false, reason: "not-succeeded", message: `“${nodeName}” did not succeed.` };
+    case "prefix-unsucceeded":
+      return {
+        ok: false,
+        reason: "prefix-unsucceeded",
+        message: `A node before “${nodeName}” did not succeed; the whole prefix must succeed to reuse it.`,
+      };
   }
-
-  // #4 — the leaf K's own run must have succeeded (a reuse row is recorded `succeeded`).
-  if (selected.status !== "succeeded") {
-    return { ok: false, reason: "not-succeeded", message: `“${nodeName}” did not succeed.` };
-  }
-
-  // #5 — every run-producing node in the prefix `<K` that actually ran must have a succeeded run under
-  // the root scope, so it can be reused. A control node owns no run of its own, so its success is its
-  // descendants'. A descendant that never ran (an untaken branch arm, a zero-iteration `while-do` body)
-  // is skipped, not broken: K does not depend on it, so it does not gate the prefix — only a ran-but-
-  // unsucceeded descendant does. The engine's `resolve-legal-k.ts` #5 owns this rule; this mirrors it.
-  for (const prefixNode of rootFile.body.slice(0, topLevelIndex)) {
-    for (const inner of walkNodes([prefixNode])) {
-      if (!RUN_PRODUCING_TYPES.has(inner.type)) continue;
-      if (scopeRunState(runs.values(), rootRunId, inner.id) === "unsucceeded") {
-        return {
-          ok: false,
-          reason: "prefix-unsucceeded",
-          message: `A node before “${nodeName}” did not succeed; the whole prefix must succeed to reuse it.`,
-        };
-      }
-    }
-  }
-
-  return null;
 }

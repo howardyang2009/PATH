@@ -1,9 +1,10 @@
 import { dirname, resolve } from "node:path";
 import {
-  enclosingControlBlock,
-  RUN_PRODUCING_TYPES,
-  walkNodes,
+  classifyLevelK,
+  findRootRun,
+  pathToRoot,
   type ControlBlockKind,
+  type LegalKLevelReason,
   type RunRecord,
   type WorkflowFile,
 } from "@path/schema";
@@ -42,10 +43,7 @@ import {
 export type LegalKReasonCode =
   | "not-in-tree" // #1 — the run id names no run of the source tree (never fires on a listed row)
   | "root-run" // the root row; the implicit root step is never a K
-  | "not-in-file" // #2 — resolves to a node (or nested-workflow ref) no longer in the current file
-  | "in-body" // #3 — present, but inside a loop / parallel / branch (/ sequence) body
-  | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
-  | "prefix-unsucceeded"; // #5 — a top-level node before K at K's level did not succeed
+  | LegalKLevelReason; // #2–#5, the per-level taxonomy shared with the client's eager mirror (`classifyLevelK`)
 
 /**
  * The innermost enclosing logicer named in an `in-body` refusal (spec §6): `loop` is `while-do`. The
@@ -99,17 +97,12 @@ export function resolveLegalK(
     return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
   }
 
-  // The descent path of runs root→…→K, top-down (root excluded): walk the selected run's parents up
-  // to the null-parent root. Each run's `nodeId` is the path-node at its level; its parent's run is
-  // the scope the level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so every
-  // `parentRunId` resolves and the walk always reaches the root.
-  const chain: RunRecord[] = [];
-  let cursor: RunRecord | undefined = selected;
-  while (cursor && cursor.parentRunId !== null) {
-    chain.unshift(cursor);
-    cursor = byRunId.get(cursor.parentRunId);
-  }
-  const rootRun = sourceRows.find((r) => r.parentRunId === null);
+  // The descent path of runs root→…→K, top-down (root excluded): `pathToRoot` walks the selected run's
+  // `parentRunId` chain up to the null-parent root, so `slice(1)` drops the root and leaves the
+  // path-nodes. Each run's `nodeId` is the path-node at its level; its parent's run is the scope the
+  // level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
+  const chain = pathToRoot(sourceRows, runId).slice(1);
+  const rootRun = findRootRun(sourceRows);
 
   // Walk the levels top-down, descending the current file tree alongside the run chain. `scopeRunId`
   // is the run whose direct children are this level's nodes: the root run at level 0, then each
@@ -126,67 +119,44 @@ export function resolveLegalK(
     const isLeaf = level === chain.length - 1;
     nodePath.push(nodeId);
 
-    // Locate the node at this level. A top-level, run-producing node is the only legal locus; anything
-    // else splits into the since-deleted (#2) and illegal-locus (#3) reasons.
-    const topLevelIndex = curFile.body.findIndex((node) => node.id === nodeId);
-    if (topLevelIndex < 0) {
-      const presentSomewhere = [...walkNodes(curFile.body)].some((node) => node.id === nodeId);
-      // 2. Resolves to a node no longer in this level's file (rename/move survive by id; a delete fails).
-      if (!presentSomewhere) {
-        return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
-      }
-      // 3. Present, but nested inside a loop / parallel / branch body — an illegal K locus (out of
-      // scope, per-iteration identity; #427), one level down as at the root. The innermost enclosing
-      // logicer is named for the listing's locus reason (spec §6).
-      return refuse(
-        400,
-        `run "${runId}" resolves to node "${label}", which is inside a loop, parallel, or branch body and cannot be a rerun boundary`,
-        "in-body",
-        enclosingControlBlock(curFile.body, nodeId),
-      );
-    }
-    const node = curFile.body[topLevelIndex]!;
-
-    // 4. The leaf K itself must have succeeded (a reuse row counts — it is written `succeeded`). Checked
-    // before the prefix (#5), keeping the taxonomy dependency order (spec §5): a not-succeeded K is
-    // reported as such even when its prefix also broke. Only the leaf is gated — an intermediate
-    // path-node is descended and re-run from its inner K, not reused, so its own status carries no reuse.
-    if (isLeaf && pathRun.status !== "succeeded") {
-      return refuse(
-        409,
-        `run "${runId}" (node "${label}") did not succeed; a rerun boundary must be a succeeded node`,
-        "not-succeeded",
-      );
-    }
-
-    // 5. The whole prefix `<node` at this level must have succeeded, so it can be reused. A top-level
-    // control node owns no run row of its own, so its success is that of its run-producing descendants,
-    // checked against this level's scope run's own children. A prefix `while-do` whose body ran many
-    // times passes on *any* succeeded iteration row for a body id — the same multi-iteration reuse
-    // limit plain Resume has (spec §4), inherited here rather than a new gap.
-    //
-    // A run-producing descendant that produced *no* run under this scope was legitimately **skipped**,
-    // not broken: an untaken branch arm, or a zero-iteration `while-do` body. K does not depend on its
-    // output and there is nothing to reuse, so it does not gate the prefix — `walkNodes` yields the
-    // whole static block, but only the paths that actually ran carry a reuse obligation. Only a
-    // descendant that *ran and did not succeed* breaks reuse, and a genuine prefix failure never reaches
-    // K, so admitting the skipped ones stays sound. The client's eager mirror applies the same rule.
-    const ranInScope = (id: string): boolean =>
-      sourceRows.some((r) => r.parentRunId === scopeRunId && r.nodeId === id);
-    const succeededInScope = (id: string): boolean =>
-      sourceRows.some((r) => r.parentRunId === scopeRunId && r.nodeId === id && r.status === "succeeded");
-    for (const prefixNode of curFile.body.slice(0, topLevelIndex)) {
-      for (const inner of walkNodes([prefixNode])) {
-        if (!RUN_PRODUCING_TYPES.has(inner.type)) continue;
-        if (ranInScope(inner.id) && !succeededInScope(inner.id)) {
+    // The per-level §5 taxonomy — locate (#2/#3), the leaf's own success (#4), the prefix's success
+    // (#5) — is the one predicate shared with the client's eager mirror (`@path/schema/classifyLevelK`,
+    // ADR 0032/0036). Only the leaf level gates its own status; an intermediate path-node is descended
+    // and re-run, not reused. The engine owns the descent, the HTTP status, and the verbatim message;
+    // the reason code it returns is this taxonomy. `#427`: an in-body locus names its enclosing logicer.
+    const levelResult = classifyLevelK({
+      body: curFile.body,
+      rows: sourceRows,
+      scopeRunId,
+      nodeId,
+      leafStatus: isLeaf ? pathRun.status : null,
+    });
+    if (!levelResult.ok) {
+      switch (levelResult.reason) {
+        case "not-in-file":
+          return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
+        case "in-body":
+          return refuse(
+            400,
+            `run "${runId}" resolves to node "${label}", which is inside a loop, parallel, or branch body and cannot be a rerun boundary`,
+            "in-body",
+            levelResult.container,
+          );
+        case "not-succeeded":
+          return refuse(
+            409,
+            `run "${runId}" (node "${label}") did not succeed; a rerun boundary must be a succeeded node`,
+            "not-succeeded",
+          );
+        case "prefix-unsucceeded":
           return refuse(
             409,
             `run "${runId}" (node "${label}") has an unsucceeded node before it; the whole prefix must succeed to reuse it`,
             "prefix-unsucceeded",
           );
-        }
       }
     }
+    const node = curFile.body.find((n) => n.id === nodeId)!;
 
     if (!isLeaf) {
       // An intermediate path-node is descended into, so it must still be a nested `workflow` node whose
