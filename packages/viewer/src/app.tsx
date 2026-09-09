@@ -1,5 +1,5 @@
-import type { PathApiClient } from "@path/client-core";
-import { useState } from "react";
+import type { PathApiClient, WorkflowFile } from "@path/client-core";
+import { useEffect, useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { LaunchPanel } from "./launch-panel.js";
 import { NodeIo } from "./node-io.js";
@@ -26,6 +26,40 @@ export function App({ client }: { client: PathApiClient }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
+
+  // The watched run's root workflow file, read for the eager `Resume from …` legal-K check. The
+  // Designer feeds its open editor buffer here; the Viewer authors nothing, so it reads the file from
+  // disk (a GET, no lease — ADR 0017) so the in-body / since-deleted / prefix reasons grey the button
+  // eagerly, exactly as they do in the Designer, rather than waiting for the engine's refusal on click.
+  // `null` while it loads or if the read/parse fails (a nested run's file, a since-moved file): the
+  // check then falls back to the run-tree-derivable reasons and the engine backstops the rest.
+  const [rootFile, setRootFile] = useState<WorkflowFile | null>(null);
+  const rootWorkflowPath =
+    load.phase === "ready" && selectedRootRunId !== null
+      ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
+      : null;
+  useEffect(() => {
+    if (rootWorkflowPath === null) {
+      setRootFile(null);
+      return;
+    }
+    let cancelled = false;
+    setRootFile(null);
+    client
+      .getWorkflowFile(rootWorkflowPath)
+      .then((raw) => {
+        if (cancelled) return;
+        // A structural parse is enough for the eager check — it reads only node ids/types and the
+        // control-body nesting, never the plugin-validated leaf shapes — so no step registry is needed.
+        setRootFile(JSON.parse(raw.text) as WorkflowFile);
+      })
+      .catch(() => {
+        if (!cancelled) setRootFile(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [client, rootWorkflowPath]);
 
   // Switching root run drops the node selection: a run id from the previous tree names nothing in
   // the new one, and the node pane would be left pointing at a run this root does not contain.
@@ -69,11 +103,13 @@ export function App({ client }: { client: PathApiClient }) {
           onDeleted={handleDeleted}
           reloadNonce={runsReloadNonce}
           // The `Resume from …` action lives in the selected row's action panel, below plain Resume.
-          // The Viewer holds no editor buffer, so the eager top-level legal-K check has no file
-          // (`rootFile: null`, `dirty: false`); the engine's `refusal` backstops on click. K is the
-          // node picked in the detail pane's run tree.
+          // The Viewer reads the watched run's root file (above) so the eager legal-K check greys the
+          // button for the same reasons the Designer does — in-body, since-deleted, prefix — rather
+          // than only on the engine's refusal. It never edits, so `dirty` stays false. K is the node
+          // picked in the detail pane's run tree.
           resumeTree={load.phase === "ready" ? load.value.runs : undefined}
           resumeSelectedRunId={selectedRunId}
+          resumeRootFile={rootFile}
         />
       }
       detail={
