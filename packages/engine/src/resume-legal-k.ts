@@ -1,6 +1,8 @@
 import { dirname, resolve } from "node:path";
 import {
   classifyLevelK,
+  findRootRun,
+  pathToRoot,
   type ControlBlockKind,
   type LegalKLevelReason,
   type RunRecord,
@@ -95,17 +97,12 @@ export function resolveLegalK(
     return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
   }
 
-  // The descent path of runs root→…→K, top-down (root excluded): walk the selected run's parents up
-  // to the null-parent root. Each run's `nodeId` is the path-node at its level; its parent's run is
-  // the scope the level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so every
-  // `parentRunId` resolves and the walk always reaches the root.
-  const chain: RunRecord[] = [];
-  let cursor: RunRecord | undefined = selected;
-  while (cursor && cursor.parentRunId !== null) {
-    chain.unshift(cursor);
-    cursor = byRunId.get(cursor.parentRunId);
-  }
-  const rootRun = sourceRows.find((r) => r.parentRunId === null);
+  // The descent path of runs root→…→K, top-down (root excluded): `pathToRoot` walks the selected run's
+  // `parentRunId` chain up to the null-parent root, so `slice(1)` drops the root and leaves the
+  // path-nodes. Each run's `nodeId` is the path-node at its level; its parent's run is the scope the
+  // level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
+  const chain = pathToRoot(sourceRows, runId).slice(1);
+  const rootRun = findRootRun(sourceRows);
 
   // Walk the levels top-down, descending the current file tree alongside the run chain. `scopeRunId`
   // is the run whose direct children are this level's nodes: the root run at level 0, then each

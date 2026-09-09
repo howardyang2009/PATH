@@ -1,4 +1,4 @@
-import { RUN_PRODUCING_TYPES, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
+import { findRootRun, RUN_PRODUCING_TYPES, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
 
 // The run-producing types now live in `@path/schema` (invariant 1), so the engine's reuse plan and the
 // client's eager legal-K check share one authority. Re-exported here so the engine's own importers keep
@@ -38,7 +38,7 @@ export function planReuse(
   suppress?: Set<string>,
 ): ReusePlan {
   const plan: ReusePlan = new Map();
-  const scopeRunId = parentRunId ?? originalRuns.find((run) => run.parentRunId === null)?.runId;
+  const scopeRunId = parentRunId ?? findRootRun(originalRuns)?.runId;
   if (scopeRunId === undefined) return plan;
 
   const candidates = originalRuns.filter((run) => run.parentRunId === scopeRunId);
