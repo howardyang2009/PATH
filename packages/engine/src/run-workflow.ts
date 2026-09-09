@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { formatIssues, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
 import { findNestedCounterpart, planReuse, RUN_PRODUCING_TYPES } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
@@ -822,7 +822,7 @@ export async function runWorkflow(
   // The original tree's own root run (`parentRunId === null`), found once: it is both the root run's
   // resume counterpart (#172) and — being the predecessor of this fresh root run — the successor
   // identity fact stamped on its `run-started` (#173).
-  const originalRoot = options.resume?.originalRuns.find((r) => r.parentRunId === null);
+  const originalRoot = findRootRun(options.resume?.originalRuns ?? []);
   const emit: Emit = observer
     ? async (o) => {
         await observer.observe(masker.isEmpty ? o : maskObservation(masker, o));

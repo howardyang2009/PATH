@@ -1,4 +1,4 @@
-import { buildRunTree, type RunNodeState, type RunTreeNode } from "@path/client-core";
+import { buildRunTree, isIterationRun, type RunNodeState, type RunTreeNode } from "@path/client-core";
 import { useState } from "react";
 import { nodeLabel } from "@path/client-core";
 import { StatusPill } from "./status-pill.js";
@@ -61,7 +61,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // `while-do` iteration container (ADR 0037) shares its loop's name across passes, so its 1-based
   // ordinal trails the name to tell one pass from the next.
   const name = run.nodeName ?? nodeLabel(run.nodeId);
-  const label = run.iteration !== null ? `${name} · iteration ${run.iteration}` : name;
+  const label = isIterationRun(run) ? `${name} · iteration ${run.iteration}` : name;
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>

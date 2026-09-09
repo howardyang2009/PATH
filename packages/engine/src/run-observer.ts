@@ -66,7 +66,7 @@ export type Observation =
       /**
        * A `while-do` iteration container's 1-based ordinal (ADR 0037, #454), set only on a container's
        * run-started and absent on every other run. Persistence records it on the row's `iteration`
-       * column; `runKind` reads it to classify the row as an iteration scope.
+       * column; `isIterationRun` reads it to classify the row as an iteration scope.
        */
       iteration?: number;
       /**

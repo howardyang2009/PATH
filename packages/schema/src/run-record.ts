@@ -44,7 +44,7 @@ export interface RunRecord {
   /**
    * The 1-based ordinal of a `while-do` iteration container (ADR 0037, #454), null on every other run
    * kind. A loop mints one container per pass so its body's runs get a unique parent scope; this
-   * ordinal both classifies the row (`runKind` reads it) and pairs a resumed iteration to its recorded
+   * ordinal both classifies the row (`isIterationRun` reads it) and pairs a resumed iteration to its recorded
    * counterpart. The container is worker-less like a workflow-run but shares the loop's context, so it
    * is its own kind rather than a nested workflow-run.
    */
