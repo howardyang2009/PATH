@@ -312,3 +312,63 @@ describe("resolveLegalK — the refusal reason code (spec §6)", () => {
     expect(refusal.container).toBe("branch");
   });
 });
+
+// #5's static walk yields every run-producing node of a prefix control block, but a control block runs
+// its bodies conditionally: a branch takes one arm, a `while-do` may run zero iterations. A node that
+// produced no run under scope was legitimately skipped, not broken — K does not depend on it, so it
+// must not gate the prefix. Only a node that ran and did not succeed breaks reuse. (Repro: #— — a run
+// with a passed verdict skips its revise-loop and untaken format arm, yet write-file is a legal K.)
+describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () => {
+  // Root: [branch pick { short, long }, write]. Only the `long` arm ran; `short` has no run row.
+  const pickFile = tree([
+    {
+      type: "branch",
+      id: "pick",
+      name: "pick",
+      arms: [
+        { when: { type: "exists", path: "context.short" }, node: { type: "prompt", id: "fmt-short", name: "fmt-short", prompt: "s" } },
+        { when: { type: "exists", path: "context.long" }, node: { type: "prompt", id: "fmt-long", name: "fmt-long", prompt: "l" } },
+      ],
+    },
+    { type: "binary", id: "write", name: "write", command: "echo" },
+  ]);
+  function pickRows(over: { long?: RunRecord["status"] } = {}): RunRecord[] {
+    return [
+      run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+      // `fmt-short` never ran — the branch took the other arm. No row for it.
+      run({ runId: "long-run", parentRunId: "root", nodeId: "fmt-long", status: over.long ?? "succeeded" }),
+      run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
+    ];
+  }
+
+  it("an untaken branch arm before K does not break the prefix", () => {
+    expect(resolveLegalK(pickFile, pickRows(), "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"] });
+  });
+
+  it("a branch arm that ran and failed before K still breaks the prefix", () => {
+    const verdict = resolveLegalK(pickFile, pickRows({ long: "failed" }), "write-run", new Map(), "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.reason).toBe("prefix-unsucceeded");
+  });
+
+  it("a zero-iteration while-do body before K does not break the prefix", () => {
+    // Root: [while-do revise { revise }, write]. The loop ran zero times, so `revise` has no run row.
+    const loopFile = tree([
+      {
+        type: "while-do",
+        id: "revise-loop",
+        name: "revise-loop",
+        condition: { type: "exists", path: "context.retry" },
+        max_iterations: 3,
+        node: { type: "prompt", id: "revise", name: "revise", prompt: "r" },
+      },
+      { type: "binary", id: "write", name: "write", command: "echo" },
+    ]);
+    const rows = [
+      run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+      run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
+    ];
+    expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"] });
+  });
+});

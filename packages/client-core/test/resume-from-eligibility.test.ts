@@ -211,3 +211,57 @@ describe("resumeFromEligibility taxonomy (root level)", () => {
     expect(result).toMatchObject({ ok: false, reason: "not-succeeded" });
   });
 });
+
+describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one", () => {
+  /** A `branch` whose arms' `node`s never run under the control node itself (they run under the root). */
+  function branch(id: string, ...armNodes: WorkflowNode[]): WorkflowNode {
+    return {
+      type: "branch",
+      id,
+      name: id,
+      arms: armNodes.map((node) => ({ when: { path: "context.x", predicate: "is-true" }, node })),
+    } as unknown as WorkflowNode;
+  }
+
+  it("an untaken branch arm before K does not break the prefix — the arm never ran", () => {
+    // The prefix is a branch: `taken` ran and succeeded, `untaken` has no run at all. K = write after it.
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(rootRow(), run("taken"), run("write")),
+      rootFile: file([branch("pick", leaf("taken"), leaf("untaken")), leaf("write")]),
+      selectedRunId: "write",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: true, runId: "write" });
+  });
+
+  it("a zero-iteration while-do body before K does not break the prefix — the body never ran", () => {
+    const loopNode = {
+      type: "while-do",
+      id: "revise-loop",
+      name: "revise-loop",
+      condition: { path: "context.go", predicate: "is-true" },
+      node: leaf("revise"),
+    } as unknown as WorkflowNode;
+    // `revise` (the loop body) has no run row: the loop ran zero iterations, yet the run still succeeded.
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(rootRow(), run("write")),
+      rootFile: file([loopNode, leaf("write")]),
+      selectedRunId: "write",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: true, runId: "write" });
+  });
+
+  it("a branch arm that ran and failed still breaks the prefix (only skipped paths are excused)", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(rootRow(), run("taken", { status: "failed" }), run("write")),
+      rootFile: file([branch("pick", leaf("taken"), leaf("untaken")), leaf("write")]),
+      selectedRunId: "write",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "prefix-unsucceeded" });
+  });
+});

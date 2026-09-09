@@ -5,7 +5,7 @@ import {
   type RunNodeState,
   type WorkflowFile,
 } from "@path/client-core";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
 
@@ -75,6 +75,12 @@ export function ResumeActions({
   const [config, setConfig] = useState("");
   const [showConfig, setShowConfig] = useState(false);
   const [error, setError] = useState<ErrorState>(null);
+
+  // A new K-selection makes a prior action's result stale: the refusal alert belonged to the node
+  // that was selected when the button was pressed, not the one now selected. Clear it on change.
+  useEffect(() => {
+    setError(null);
+  }, [selectedRunId]);
 
   const configResult = parseJsonField(config, { allowEmpty: true });
 

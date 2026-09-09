@@ -61,15 +61,23 @@ export function shortRunId(runId: string): string {
 }
 
 /**
- * Does node `id` have a succeeded run directly under `scopeRunId` in the tree? A reuse row counts —
- * it is recorded `succeeded` — and a `while-do` body that ran many times passes on any succeeded
- * iteration row, the same multi-iteration reuse limit plain Resume has (engine #5).
+ * How node `id`'s runs directly under `scopeRunId` stand, for the prefix-reuse rule (#5), mirroring the
+ * engine's `resolve-legal-k.ts`:
+ *  - `succeeded` — at least one succeeded run. A reuse row counts (it is recorded `succeeded`), and a
+ *    `while-do` body that ran many times passes on any succeeded iteration row, the same
+ *    multi-iteration reuse limit plain Resume has.
+ *  - `skipped` — no run at all under scope: an untaken branch arm, or a zero-iteration `while-do` body.
+ *    K does not depend on it, so it does not gate the prefix.
+ *  - `unsucceeded` — it ran but no run succeeded, which breaks reuse.
  */
-function succeededInScope(runs: Iterable<RunRecord>, scopeRunId: string, id: string): boolean {
+function scopeRunState(runs: Iterable<RunRecord>, scopeRunId: string, id: string): "succeeded" | "skipped" | "unsucceeded" {
+  let ran = false;
   for (const run of runs) {
-    if (run.parentRunId === scopeRunId && run.nodeId === id && run.status === "succeeded") return true;
+    if (run.parentRunId !== scopeRunId || run.nodeId !== id) continue;
+    if (run.status === "succeeded") return "succeeded";
+    ran = true;
   }
-  return false;
+  return ran ? "unsucceeded" : "skipped";
 }
 
 /**
@@ -147,12 +155,15 @@ function classifyTopLevel(
     return { ok: false, reason: "not-succeeded", message: `“${nodeName}” did not succeed.` };
   }
 
-  // #5 — every run-producing node in the prefix `<K` must have a succeeded run under the root scope, so
-  // it can be reused. A control node owns no run of its own, so its success is its descendants'.
+  // #5 — every run-producing node in the prefix `<K` that actually ran must have a succeeded run under
+  // the root scope, so it can be reused. A control node owns no run of its own, so its success is its
+  // descendants'. A descendant that never ran (an untaken branch arm, a zero-iteration `while-do` body)
+  // is skipped, not broken: K does not depend on it, so it does not gate the prefix — only a ran-but-
+  // unsucceeded descendant does. The engine's `resolve-legal-k.ts` #5 owns this rule; this mirrors it.
   for (const prefixNode of rootFile.body.slice(0, topLevelIndex)) {
     for (const inner of walkNodes([prefixNode])) {
       if (!RUN_PRODUCING_TYPES.has(inner.type)) continue;
-      if (!succeededInScope(runs.values(), rootRunId, inner.id)) {
+      if (scopeRunState(runs.values(), rootRunId, inner.id) === "unsucceeded") {
         return {
           ok: false,
           reason: "prefix-unsucceeded",

@@ -164,12 +164,21 @@ export function resolveLegalK(
     // checked against this level's scope run's own children. A prefix `while-do` whose body ran many
     // times passes on *any* succeeded iteration row for a body id — the same multi-iteration reuse
     // limit plain Resume has (spec §4), inherited here rather than a new gap.
+    //
+    // A run-producing descendant that produced *no* run under this scope was legitimately **skipped**,
+    // not broken: an untaken branch arm, or a zero-iteration `while-do` body. K does not depend on its
+    // output and there is nothing to reuse, so it does not gate the prefix — `walkNodes` yields the
+    // whole static block, but only the paths that actually ran carry a reuse obligation. Only a
+    // descendant that *ran and did not succeed* breaks reuse, and a genuine prefix failure never reaches
+    // K, so admitting the skipped ones stays sound. The client's eager mirror applies the same rule.
+    const ranInScope = (id: string): boolean =>
+      sourceRows.some((r) => r.parentRunId === scopeRunId && r.nodeId === id);
     const succeededInScope = (id: string): boolean =>
       sourceRows.some((r) => r.parentRunId === scopeRunId && r.nodeId === id && r.status === "succeeded");
     for (const prefixNode of curFile.body.slice(0, topLevelIndex)) {
       for (const inner of walkNodes([prefixNode])) {
         if (!RUN_PRODUCING_TYPES.has(inner.type)) continue;
-        if (!succeededInScope(inner.id)) {
+        if (ranInScope(inner.id) && !succeededInScope(inner.id)) {
           return refuse(
             409,
             `run "${runId}" (node "${label}") has an unsucceeded node before it; the whole prefix must succeed to reuse it`,
