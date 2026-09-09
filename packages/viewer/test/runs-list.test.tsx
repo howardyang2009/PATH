@@ -238,11 +238,21 @@ describe("RunsList", () => {
       expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
     });
 
-    it.each([SUCCEEDED, RUNNING])("offers no Resume when a %s row is clicked", async (run) => {
-      const { client } = stubClient([run]);
+    it("shows Resume greyed, not hidden, when a succeeded row is clicked", async () => {
+      const { client } = stubClient([SUCCEEDED]);
       renderList(client);
 
-      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+      fireEvent.click(await screen.findByTestId(`run-row-${SUCCEEDED.run_id}`));
+      const button = await screen.findByTestId("resume-button");
+      expect(button).toHaveTextContent("Resume run");
+      expect(button).toBeDisabled();
+    });
+
+    it("offers no Resume when a running row is clicked", async () => {
+      const { client } = stubClient([RUNNING]);
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
       expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
     });
 

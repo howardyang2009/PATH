@@ -414,25 +414,29 @@ button.workflow-row:focus-visible {
   margin: 0;
 }
 
-/* ---------- resume-from-K action ---------- */
+/* ---------- resume actions (plain Resume + Resume-from-K) ---------- */
 
-/* The `Resume from …` K-selection action, in the selected run's action panel below plain Resume
- * (ADR 0033). One block in the `.run-actions` flex column, so its own spacing is just the field gap;
- * the submit label grows with the node name, so it wraps rather than clip. Shared by the Viewer's runs
- * rail and the Designer's run dock. */
-.resume-from {
+/* One resume verb per line: its compact button, then its disabled reason on the same line beside it
+ * (both `Resume run` and `Resume from …`). The reason takes the remaining width and wraps under
+ * itself, never pushing the button wide. Shared by the Viewer's runs rail and the Designer's run dock. */
+.resume-line {
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  align-items: baseline;
+  gap: 8px;
 }
 
+/* Compact, single line — the same shape as its `Resume run`/`Delete run …` peers. */
 .resume-from-submit {
-  white-space: normal;
-  text-align: left;
+  flex: none;
 }
 
-.resume-from-reason {
+/* The disabled reason beside a button: muted, small, taking the rest of the line. */
+.resume-reason {
+  flex: 1;
+  min-width: 0;
   margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
 }
 
 /* ---------- runs list ---------- */
@@ -768,24 +772,38 @@ button.workflow-row:focus-visible {
 /* Resume reuses the launch form's card + submit-button styling (`.launch-form`/`.launch-submit`),
    expanded under a run row exactly as the launch form sits under a workflow row. */
 
-/* The action panel under an expanded run row: Resume (when applicable) and Delete, stacked. */
+/* The action panel under an expanded run row is one card: `Resume run`, `Resume from …` and Delete
+   stacked inside a single rectangle. The frame lives here, on the panel, not on each button's own
+   form — the nested forms drop their frames below so the three read as sections of one card, not three
+   boxed cards. */
 .run-actions {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  padding: 8px 8px 10px;
+  margin: 2px 0 6px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
 
-/* Delete's card, mirroring `.launch-form` but tinted with the failed color so it never reads as a
-   neutral action — this is the one affordance with no undo. */
+/* Inside the one panel card, each verb's own form is frameless — no border, background, pad or margin
+   of its own — so the panel is the only rectangle. The forms keep their internal field spacing. */
+.run-actions > .launch-form,
+.run-actions > .delete-form {
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: none;
+}
+
+/* Delete stays legible as the destructive verb through its red arm/confirm buttons (below); it no
+   longer needs its own tinted frame now that it shares the panel card. */
 .delete-form {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 8px 8px 10px;
-  margin: 2px 0 6px;
-  background: var(--surface);
-  border: 1px solid color-mix(in srgb, var(--status-failed-fg) 35%, var(--border));
-  border-radius: 8px;
 }
 
 /* The disarmed trigger: a quiet outline button, not a filled one, so the loud step is the confirm. */

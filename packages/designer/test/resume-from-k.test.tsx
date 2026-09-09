@@ -118,9 +118,9 @@ describe("Designer Resume-from-K button (#447)", () => {
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     const submit = await screen.findByTestId("resume-from-submit");
     await waitFor(() => expect(submit).toBeEnabled());
-    // The label carries K's identity; the full run id is the hover title.
-    expect(submit).toHaveTextContent("Resume from review (r-step2)");
-    expect(submit).toHaveAttribute("title", "r-step2");
+    // The label stays compact; K's identity (node name + full run id) is the hover title.
+    expect(submit).toHaveTextContent("Resume from …");
+    expect(submit).toHaveAttribute("title", "Resume from review (r-step2)");
     expect(screen.queryByTestId("resume-from-reason")).not.toBeInTheDocument();
 
     fireEvent.click(submit);
@@ -163,7 +163,7 @@ describe("Designer Resume-from-K button (#447)", () => {
     expect(screen.getByTestId("resume-from-submit")).toBeInTheDocument();
   });
 
-  it("a succeeded root run offers Resume from … as its only resume path (no plain Resume run)", async () => {
+  it("a succeeded root run offers Resume from … as its resume path, plain Resume greyed", async () => {
     await renderWatching({
       rootStatus: "succeeded",
       treeRuns: [
@@ -173,8 +173,9 @@ describe("Designer Resume-from-K button (#447)", () => {
       ],
     });
 
-    // The rail's plain Resume (cancelled/failed only) is absent on a succeeded run; Resume from … stands.
-    expect(screen.queryByTestId("resume-button")).not.toBeInTheDocument();
+    // On a succeeded run plain Resume (cancelled/failed only) is greyed but kept, not hidden; the live
+    // resume path is Resume from …, which stands alongside it.
+    expect(await screen.findByTestId("resume-button")).toBeDisabled();
     expect(await screen.findByTestId("resume-from-submit")).toBeInTheDocument();
 
     // Selecting a legal K enables it — the succeeded root's one way back in.
