@@ -159,6 +159,8 @@ interface RunRow {
   // Nullable: a workflow-run row is inserted without a worker (persisted-observer.ts); a leaf step
   // carries its worker's name (ADR 0021 sub-14).
   worker_name: string | null;
+  // A `while-do` iteration container's 1-based ordinal (ADR 0037); null on every other run kind.
+  iteration: number | null;
   status: string;
   input_ref: string | null;
   output_ref: string | null;
@@ -178,20 +180,25 @@ function readRuns(projectDir: string): RunRow[] {
 }
 
 /**
- * Splits the run tree into workflow-runs and leaf step runs.
+ * Splits the run tree into workflow-runs, `while-do` iteration containers, and leaf step runs.
  *
  * Node ids are unique per *file*, not per tree, and the real pipeline leans on that: `revise` is
  * both the `workflow` step in release-notes and the first `prompt` step inside revise-cycle. So
  * rows are classified structurally — a workflow-run is the root or any row some other row calls
  * its parent — rather than by node id, which would conflate the two.
+ *
+ * An **iteration container** (ADR 0037) is also a parent (of the loop body's run), so it is told
+ * apart by its `iteration` ordinal and kept out of `workflowRuns` and `leaves` — those two keep
+ * meaning "genuine workflow-run" and "genuine leaf step".
  */
-function classifyRuns(runs: RunRow[]): { root: RunRow; workflowRuns: RunRow[]; leaves: RunRow[] } {
+function classifyRuns(runs: RunRow[]): { root: RunRow; workflowRuns: RunRow[]; iterations: RunRow[]; leaves: RunRow[] } {
   const parentIds = new Set(runs.map((row) => row.parent_run_id).filter((id): id is string => id !== null));
   const root = runs.find((row) => row.parent_run_id === null)!;
   return {
     root,
-    workflowRuns: runs.filter((row) => parentIds.has(row.run_id)),
-    leaves: runs.filter((row) => !parentIds.has(row.run_id)),
+    workflowRuns: runs.filter((row) => parentIds.has(row.run_id) && row.iteration === null),
+    iterations: runs.filter((row) => row.iteration !== null),
+    leaves: runs.filter((row) => !parentIds.has(row.run_id) && row.iteration === null),
   };
 }
 
@@ -292,7 +299,15 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     expect(workflowRuns).toHaveLength(2);
     const cycle = workflowRuns.find((row) => row.run_id !== root.run_id)!;
     expect(cycle.node_name).toBe("revise");
-    expect(cycle.parent_run_id).toBe(root.run_id);
+    // One `while-do` iteration ran, so one iteration container (ADR 0037) sits between the root and
+    // the revise-cycle: the container hangs off the root, and the cycle hangs off the container.
+    const { iterations } = classifyRuns(runs);
+    expect(iterations).toHaveLength(1);
+    const container = iterations[0]!;
+    expect(container.node_name).toBe("revise-loop");
+    expect(container.iteration).toBe(1);
+    expect(container.parent_run_id).toBe(root.run_id);
+    expect(cycle.parent_run_id).toBe(container.run_id);
     const cycleLeaves = leaves.filter((row) => row.parent_run_id === cycle.run_id);
     expect(cycleLeaves.map((row) => row.node_name)).toEqual(["revise", "judge"]);
   });
@@ -575,5 +590,65 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     }
     const reburn = llmLeaves.reduce((sum, row) => sum + (row.estimated_cost_usd ?? 0), 0);
     expect(reburn).toBeCloseTo(3 * SCRIPTED_COST_USD);
+  });
+});
+
+/**
+ * #454 (ADR 0037): a completed `while-do` that ran **more than one iteration**, resumed from a K
+ * serialized **after** the loop, must reuse **every** iteration of the loop body — the exact case the
+ * old node-id-only reuse key mis-handled (it re-ran the whole loop from scratch when the loop ran >1
+ * time, while a one-iteration loop reused correctly). The per-iteration run scope makes the loop body's
+ * runs unique across iterations, so each reuses.
+ */
+describe("acceptance: Resume-from-K after a multi-iteration while-do (#454)", () => {
+  // The judge inside the revise-cycle fails once, then passes — so the `revise-loop` runs exactly two
+  // iterations before the verdict turns true and the loop exits.
+  function twoIterationScript(): Record<string, ScriptedHandler> {
+    return {
+      ...happyPathScript(),
+      judge: (_request, callNumber) => verdict(callNumber >= 2),
+    };
+  }
+
+  it("reuses both loop iterations and re-runs only write-file", async () => {
+    // A full, successful run whose loop ran twice.
+    const worker = createScriptedLlmWorker(twoIterationScript(), labelPrompt);
+    await expect(runPipeline(worker)).resolves.toBe(0);
+    expect(worker.calls.filter((call) => call.nodeName === "revise")).toHaveLength(2);
+
+    const runs = readRuns(harness.projectDir);
+    const { root, iterations } = classifyRuns(runs);
+    // Two iteration containers, one per loop pass (ADR 0037), ordinals 1 and 2.
+    expect(iterations.map((row) => row.iteration).sort()).toEqual([1, 2]);
+    const writeFile = runs.find((row) => row.node_name === "write-file")!;
+
+    // Resume from K = write-file: everything before it reuses, only write-file re-runs.
+    harness.stdout.length = 0;
+    const resumeWorker = createScriptedLlmWorker(twoIterationScript(), labelPrompt);
+    const code = await main(
+      ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", root.run_id, "--from", writeFile.run_id],
+      harness.io,
+      { workerOverrides: overrides(resumeWorker) },
+    );
+
+    expect(code).toBe(0);
+    expect(harness.stderr).toEqual([]);
+    expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toBe(FINAL_NOTES);
+
+    // The decisive proof: not one LLM step re-ran. Before the fix, the loop re-ran from scratch, so the
+    // successor's worker was asked for `revise`/`judge` again; now every pre-write-file node reuses.
+    expect(resumeWorker.calls).toEqual([]);
+
+    // Both loop iterations reused, recorded as reuse-markers on the `revise` node — one per iteration.
+    const successorRootRunId = harness.stdout.join("\n").trim();
+    expect(successorRootRunId).not.toBe(root.run_id);
+    const markers = readReuseMarkers(harness.projectDir, successorRootRunId);
+    expect(markers.filter((marker) => marker.nodeName === "revise")).toHaveLength(2);
+
+    // No fresh revise-cycle ran in the successor: the loop body left no genuine-execution leaf, only
+    // reuse rows. (A reuse row carries no worker; a fresh run would.)
+    const successorRuns = readRuns(harness.projectDir).filter((row) => row.root_run_id === successorRootRunId);
+    const { leaves } = classifyRuns(successorRuns);
+    expect(leaves.filter(isLlmRun)).toHaveLength(0);
   });
 });

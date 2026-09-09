@@ -279,9 +279,11 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
 
   // Resume (#172): a re-entered workflow-run restores its context blackboard from its original
   // counterpart's recorded `context.json` verbatim (restore-by-load, resume-restore-semantics.md
-  // §1–2) instead of seeding fresh from input. A run with no counterpart — added since, or a
-  // while-do body's nested run whose iteration can't be told apart — is a first attempt and seeds
-  // fresh (invariant 4). The reuse plan is this run's own, scoped to its counterpart's children.
+  // §1–2) instead of seeding fresh from input. A run with no counterpart — added since — is a first
+  // attempt and seeds fresh (invariant 4). A `while-do` body's runs now each sit under their own
+  // per-iteration container (ADR 0037, #454), so an iteration is told apart by ordinal and its body
+  // re-enters the matching counterpart; `runWhileDoNode` supplies that counterpart via the container's
+  // own resume state. The reuse plan is this run's own, scoped to its counterpart's children.
   const resumeCounterpart = params.resume?.counterpart;
   const restoredContext =
     params.resume && resumeCounterpart
@@ -1186,6 +1188,85 @@ async function runBranchNode(
   return { status: "failed", error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)` };
 }
 
+/**
+ * The resume state for one `while-do` iteration container (ADR 0037, #454), or `undefined` to run the
+ * iteration fresh. Reuse applies only when three things hold: the enclosing run is resuming against a
+ * counterpart, the loop is **not** in a Resume-from-K rerun region (K at or after it — the whole loop
+ * re-runs entire then), and that counterpart has a **succeeded** iteration container with this ordinal.
+ * The container's plan is scoped to that counterpart, whose only run-producing child is the loop body,
+ * so the body reuses whole; a body that did not reuse re-enters its own counterpart through the
+ * container scope, where `findNestedCounterpart` is now unambiguous — one body run per container.
+ */
+function loopIterationResume(run: RunContext, node: WhileDoNode, iteration: number): RunResume | undefined {
+  const resume = run.resume;
+  if (!resume || !resume.counterpart) return undefined;
+  // A loop at or after this level's rerun boundary B re-runs entire (ADR 0036), so every iteration is
+  // fresh. Off-path / plain Resume (no level sets) leaves the loop in the reuse region.
+  const levelSets = buildRerunLevelSets(run.file, resume.rerunSuffix);
+  if (levelSets) {
+    const bIndex = run.file.body.findIndex((n) => n.id === resume.rerunSuffix[0]);
+    const whileIndex = run.file.body.findIndex((n) => n.id === node.id);
+    if (whileIndex >= 0 && bIndex >= 0 && whileIndex >= bIndex) return undefined;
+  }
+  const counterpart = resume.input.originalRuns.find(
+    (r) =>
+      r.parentRunId === resume.counterpart!.runId &&
+      r.nodeId === node.id &&
+      r.iteration === iteration &&
+      r.status === "succeeded",
+  );
+  if (!counterpart) return undefined;
+  return {
+    input: resume.input,
+    counterpart,
+    // Scoped to the container: its only run-producing child is the loop body, so the plan holds just
+    // that node — the whole point of the per-iteration scope (uniqueness restored one level down).
+    plan: planReuse(resume.input.originalRuns, run.file, counterpart.runId),
+    rerunSuffix: [],
+  };
+}
+
+/**
+ * One `while-do` iteration as its own run scope (ADR 0037, #454): a container run under the enclosing
+ * run, with the loop body dispatched **inside** it so the body's runs get a unique parent — which is
+ * what lets a completed loop reuse across Resume. The container does **not** isolate context: `exec`
+ * (the loop's shared blackboard) is threaded through unchanged, so the condition and the cross-iteration
+ * default-input chain keep reading and writing the enclosing run's context. This is the one way it
+ * differs from a nested `workflow` step's run.
+ */
+async function runLoopIteration(
+  run: RunContext,
+  node: WhileDoNode,
+  iteration: number,
+  iterationInput: JsonValue,
+  exec: NodeExecContext,
+): Promise<SeqOutcome> {
+  const containerIdentity: RunIdentity = {
+    runId: randomUUID(),
+    rootRunId: run.identity.rootRunId,
+    parentRunId: run.identity.runId,
+    nodeId: node.id,
+    nodeName: node.name,
+    iteration,
+  };
+  const containerEmitter = run.emitter.child(containerIdentity);
+  await containerEmitter.runStarted({ input: iterationInput });
+
+  // The container reuses this run's file/config/env/runtime/detached, swapping only its identity,
+  // emitter, and resume state; `exec` (the shared context) is passed unchanged so the body publishes
+  // into the loop's context, not a fresh one.
+  const containerRun: RunContext = {
+    ...run,
+    identity: containerIdentity,
+    emitter: containerEmitter,
+    resume: loopIterationResume(run, node, iteration),
+  };
+  // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
+  const outcome = await runSequence(containerRun, [node.node], iterationInput, exec);
+  await containerEmitter.runFinished(outcome);
+  return outcome;
+}
+
 // A `while-do` node: check the condition before every iteration against the run's `context` + the
 // output that seeds the next iteration's first node (spec §5.2, §5.4). Zero iterations is a normal,
 // transparent exit — the block forwards its predecessor's output unchanged. Each iteration's body
@@ -1238,8 +1319,9 @@ async function runWhileDoNode(
     }
     iterations += 1;
     await run.emitter.iterationStarted(node, { iteration: iterations, trace });
-    // The loop body is a single node (`@2` §4.3), run as a one-node sequence each iteration.
-    const bodyOutcome = await runSequence(run, [node.node], iterationOutput, exec);
+    // Each iteration is its own run scope (ADR 0037): a container run under this one, with the body
+    // dispatched inside it so its runs get a unique parent and a completed loop reuses across Resume.
+    const bodyOutcome = await runLoopIteration(run, node, iterations, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
   }

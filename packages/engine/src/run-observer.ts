@@ -64,6 +64,12 @@ export type Observation =
       nodeName: string | null;
       input: JsonValue;
       /**
+       * A `while-do` iteration container's 1-based ordinal (ADR 0037, #454), set only on a container's
+       * run-started and absent on every other run. Persistence records it on the row's `iteration`
+       * column; `runKind` reads it to classify the row as an iteration scope.
+       */
+      iteration?: number;
+      /**
        * The predecessor's root run id (#173), set only on a resumed tree's **root** run-started —
        * the one identity fact that marks this fresh root run as a successor of another (#168). Absent
        * for an ordinary run and for every nested run, whose predecessor is the tree's, not its own.

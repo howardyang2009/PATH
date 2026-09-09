@@ -14,6 +14,8 @@ export interface NewRunRow {
   nodeName: string | null;
   /** A leaf step run's worker *name* (ADR 0021 sub-14); null for a workflow-run's own row. */
   workerName: string | null;
+  /** A `while-do` iteration container's 1-based ordinal (ADR 0037); null/undefined on every other row. */
+  iteration?: number | null;
   status: RunStatus;
   /** Written with the row: the input blob is always on disk before the row exists (#72). */
   inputRef?: string;
@@ -35,8 +37,8 @@ export interface NewRunRow {
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, iteration, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @iteration, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -45,6 +47,8 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     nodeName: row.nodeName,
     // A bare string now (ADR 0021 sub-14): the JSON.stringify the object-shaped worker needed is gone.
     workerName: row.workerName,
+    // A `while-do` iteration container's ordinal (ADR 0037); null on every other run kind.
+    iteration: row.iteration ?? null,
     status: row.status,
     startedAt: new Date().toISOString(),
     inputRef: row.inputRef ?? null,
@@ -128,6 +132,7 @@ interface RunRowDb {
   node_id: string | null;
   node_name: string | null;
   worker_name: string | null;
+  iteration: number | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;

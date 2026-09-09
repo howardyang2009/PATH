@@ -57,8 +57,11 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
   // The human step name is the row's headline; the GUID `nodeId` and the `runId` trail it as the
-  // two machine identities. `nodeName`/`nodeId` are null together on the implicit root run.
-  const label = run.nodeName ?? nodeLabel(run.nodeId);
+  // two machine identities. `nodeName`/`nodeId` are null together on the implicit root run. A
+  // `while-do` iteration container (ADR 0037) shares its loop's name across passes, so its 1-based
+  // ordinal trails the name to tell one pass from the next.
+  const name = run.nodeName ?? nodeLabel(run.nodeId);
+  const label = run.iteration !== null ? `${name} · iteration ${run.iteration}` : name;
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>

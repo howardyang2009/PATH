@@ -13,6 +13,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
     node_id: "draft",
     node_name: "draft",
     worker_name: "spawn",
+    iteration: null,
     status: "running",
     started_at: "t0",
     finished_at: null,

@@ -48,6 +48,9 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       nodeName: string | null;
       workerName: string | null;
       input: JsonValue;
+      // Present only on a `while-do` iteration container's run-started (ADR 0037): its 1-based ordinal.
+      // Undefined on every other run, which leaves the `iteration` column null.
+      iteration?: number;
       // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
       resumedFromRootRunId?: string;
       // Present only on a Resume-from-K successor's root run-started (#444, ADR 0032): the rerun
@@ -61,7 +64,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, input, resumedFromRootRunId, rerunFromNodePath } = fact;
+    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, input, resumedFromRootRunId, rerunFromNodePath } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
     insertRun(db, {
@@ -71,6 +74,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       nodeId,
       nodeName,
       workerName,
+      iteration,
       status: "running",
       inputRef,
       resumedFromRootRunId,

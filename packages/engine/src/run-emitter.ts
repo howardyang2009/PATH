@@ -117,7 +117,7 @@ export interface Emitter {
  * observation still passes through). `identity` fixes the envelope for this run's whole life.
  */
 export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
-  const { runId, rootRunId, parentRunId, nodeId, nodeName } = identity;
+  const { runId, rootRunId, parentRunId, nodeId, nodeName, iteration } = identity;
   const isRoot = parentRunId === null;
 
   return {
@@ -130,6 +130,9 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         nodeId,
         nodeName,
         input: args.input,
+        // A `while-do` iteration container's ordinal (ADR 0037): part of this run's identity, so it
+        // rides its own `run-started` and nothing else has to pass it. Omitted on every other run.
+        ...(iteration !== undefined ? { iteration } : {}),
         // Successor lineage rides presence, not root-ness — the caller sets it on the root alone.
         ...(args.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: args.resumedFromRootRunId } : {}),
         // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,

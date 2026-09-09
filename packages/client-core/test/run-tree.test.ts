@@ -10,6 +10,7 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     nodeId: runId,
     nodeName: runId,
     workerName: null,
+    iteration: null,
     status: "running",
     startedAt,
     finishedAt: null,

@@ -26,6 +26,7 @@ function tree(status: RunViewState["status"], output: RunTreeResponse["output"] 
         node_id: null,
         node_name: null,
         worker_name: "spawn",
+        iteration: null,
         status,
         started_at: "t0",
         finished_at: null,
@@ -124,6 +125,7 @@ describe("RunViewModel", () => {
       node_id: "draft",
       node_name: "draft",
       worker_name: "spawn",
+      iteration: null,
       // The row was read before the engine persisted the finish.
       status: "running",
       started_at: "t1",

@@ -86,6 +86,12 @@ export interface RunIdentity {
   nodeId: string | null;
   /** The `workflow` node's human `name` for a nested run; null for the root (ADR 0007). */
   nodeName: string | null;
+  /**
+   * A `while-do` iteration container's 1-based ordinal (ADR 0037); omitted/undefined on every other
+   * run. It carries the container's `nodeId`/`nodeName` (the `while-do` node's) plus this ordinal, so
+   * the run tree can tell one loop pass from the next.
+   */
+  iteration?: number;
 }
 
 /**

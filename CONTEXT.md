@@ -49,14 +49,17 @@ and issues use them exactly.
   primitive in `@path/schema` builds and walks the tree from the flat rows (`childrenByParent`,
   `subtree`, `findRootRun`). The engine's read-time cost SUM and a client's nested view read the same
   tree. They do not read two hand-rolled trees.
-- **Run kind** — which of four shapes a run row is. `@path/schema` classifies it in one place
-  (`runKind`, with `isRootRun` and `isReuseRow`). A **root run** has no parent run id. A **nested
-  workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is the run of any
-  leaf step type — `binary`, `prompt`, or any plugin folder; it is the only kind bound to a worker.
-  `binary` and `prompt` are two such folders, not a privileged pair. A **reuse row** is part of Resume
-  (below). The
-  `runs` table is one flat row shape across all four kinds. `runKind` names the distinction. Scattered
-  null-checks (`parentRunId === null`, `reusedFromRunId !== null`) used to re-derive it at each reader.
+- **Run kind** — which of five shapes a run row is. `@path/schema` classifies it in one place
+  (`runKind`, with `isRootRun`, `isReuseRow`, and `isIterationRun`). A **root run** has no parent run
+  id. A **nested workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is
+  the run of any leaf step type — `binary`, `prompt`, or any plugin folder; it is the only kind bound to
+  a worker. `binary` and `prompt` are two such folders, not a privileged pair. A **reuse row** is part
+  of Resume (below). An **iteration** is one pass of a `while-do` loop (ADR 0037): a container run minted
+  per iteration so the loop body's runs get a unique parent scope, told apart by its 1-based `iteration`
+  ordinal. It is worker-less like a workflow-run but does **not** isolate context — the loop's shared
+  blackboard stays the enclosing run's. The `runs` table is one flat row shape across all five kinds.
+  `runKind` names the distinction. Scattered null-checks (`parentRunId === null`, `reusedFromRunId !==
+  null`) used to re-derive it at each reader.
 
 ## Step-type plugins
 
