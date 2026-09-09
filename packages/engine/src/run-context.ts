@@ -157,10 +157,10 @@ export interface RunResume {
    * `[]` = off-path / plain Resume. Threaded structurally: the root run carries the whole path, each
    * descent into the path-node hands its child `suffix.slice(1)`, and every off-path sibling hands `[]`
    * — so on-path-ness is by construction and a nested id collision can never suppress the wrong node.
-   * Each on-path level derives two sets from its own body and this head (`buildRerunLevelSets`):
-   * Producer A (`planReuse`) drops B-and-after from the plan; Producer B (the descent site) refuses the
-   * counterpart of an after-B / B==K `workflow` node (rerun-entire) but re-enters an intermediate B with
-   * the tail (descend). They differ by exactly B, only when B is intermediate — that gap is descend.
+   * Producer A (`buildSuppressSet` → `planReuse`) drops B-and-after run-producing ids from the reuse
+   * plan. The per-node verdict the descent site reads — reuse / descend / rerun-entire — is
+   * `@path/schema`'s `rerunDisposition` over this body and this head, the one authority both the
+   * `workflow`-child descent and the `while-do` loop consult.
    */
   rerunSuffix: string[];
 }
