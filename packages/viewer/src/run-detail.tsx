@@ -1,9 +1,8 @@
-import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import { isTerminal, type PathApiClient } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { Narrative } from "./narrative.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
-import { ResumeFromButton } from "./resume-from-button.js";
 import { RunTree } from "./run-tree.js";
 import { StatusPill } from "./status-pill.js";
 import type { RunViewLoad } from "./use-run-view.js";
@@ -29,18 +28,6 @@ export interface RunDetailProps {
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
-  /**
-   * When provided, the `Resume from …` K-selection action renders above the run tree (ADR 0033),
-   * handed the successor's fresh root run id on a resume. Omit it for a purely read-only embed.
-   */
-  onResumed?: (successorRootRunId: string) => void;
-  /**
-   * The open buffer's parsed file, for the eager legal-K check. The Designer passes its open buffer;
-   * the Viewer holds no buffer and passes `null`, leaving the engine's `refusal` to backstop on click.
-   */
-  rootFile?: WorkflowFile | null;
-  /** The open buffer's dirty flag — the Designer's save-first gate. Defaults to `false` (the Viewer). */
-  dirty?: boolean;
 }
 
 /**
@@ -51,16 +38,7 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({
-  client,
-  load,
-  rootRunId,
-  selectedRunId,
-  onSelectRun,
-  onResumed,
-  rootFile = null,
-  dirty = false,
-}: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -134,21 +112,6 @@ export function RunDetail({
 
   return (
     <div className="run-detail" ref={detailRef}>
-      {/* The K-selection action, above the run tree that drives it (spec: K is the run of the node
-          selected in the tree). Rendered only when the surface supplies an `onResumed` — the Viewer
-          and the Designer both do; a read-only embed omits it. Plain Resume/Delete stay on the runs
-          rail's rows, keyed on a root-run row rather than the tree selection. */}
-      {onResumed && (
-        <ResumeFromButton
-          client={client}
-          rootRunId={rootRunId}
-          runs={state.runs}
-          rootFile={rootFile}
-          selectedRunId={selectedRunId}
-          dirty={dirty}
-          onResumed={onResumed}
-        />
-      )}
       <header className="run-head" data-testid="run-head">
         <span className="run-workflow-name">{root?.workflowName ?? "—"}</span>
         <StatusPill status={state.status} />

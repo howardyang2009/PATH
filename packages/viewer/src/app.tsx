@@ -68,6 +68,12 @@ export function App({ client }: { client: PathApiClient }) {
           onResumed={handleLaunched}
           onDeleted={handleDeleted}
           reloadNonce={runsReloadNonce}
+          // The `Resume from …` action lives in the selected row's action panel, below plain Resume.
+          // The Viewer holds no editor buffer, so the eager top-level legal-K check has no file
+          // (`rootFile: null`, `dirty: false`); the engine's `refusal` backstops on click. K is the
+          // node picked in the detail pane's run tree.
+          resumeTree={load.phase === "ready" ? load.value.runs : undefined}
+          resumeSelectedRunId={selectedRunId}
         />
       }
       detail={
@@ -80,10 +86,6 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
-            // The Viewer holds no editor buffer, so the eager top-level legal-K check has no file to
-            // read (`rootFile: null`, `dirty: false`); the engine's `refusal` backstops on click. A
-            // resume is the same app transition as a launch — watch the fresh successor run.
-            onResumed={handleLaunched}
           />
         )
       }

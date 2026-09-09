@@ -147,6 +147,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
               onResumed={props.onResumed}
               onDeleted={props.onDeleted}
               reloadNonce={props.reloadNonce}
+              // The `Resume from …` K-selection action rides in the selected row's action panel,
+              // below plain Resume (ADR 0033). The Designer feeds it its open buffer
+              // (`rootFile`/`dirty`) for the eager legal-K check; K is the node selected in the tree.
+              resumeTree={props.load.phase === "ready" ? props.load.value.runs : undefined}
+              resumeSelectedRunId={props.selectedRunId}
+              resumeRootFile={props.rootFile}
+              resumeDirty={props.dirty}
             />
           </div>
           <div
@@ -160,19 +167,14 @@ export function RunDock(props: RunDockProps): JSX.Element {
             {props.rootRunId === null ? (
               <p className="pane-note">Select a run.</p>
             ) : (
-              // The `Resume from …` K-selection action rides inside `RunDetail` now (above the run
-              // tree that drives it), shared with the Viewer. The Designer feeds it its open buffer
-              // (`rootFile`/`dirty`) for the eager legal-K check; plain Resume/Delete stay on the
-              // rail's rows, keyed on a root-run row rather than the tree selection (ADR 0033).
+              // The run tree here drives K for the `Resume from …` action, which itself lives in the
+              // runs rail's action panel (left column) alongside plain Resume/Delete.
               <RunDetail
                 client={props.client}
                 load={props.load}
                 rootRunId={props.rootRunId}
                 selectedRunId={props.selectedRunId}
                 onSelectRun={props.onSelectRun}
-                onResumed={props.onResumed}
-                rootFile={props.rootFile}
-                dirty={props.dirty}
               />
             )}
           </div>
