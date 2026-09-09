@@ -118,8 +118,8 @@ describe("Designer Resume-from-K button (#447)", () => {
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     const submit = await screen.findByTestId("resume-from-submit");
     await waitFor(() => expect(submit).toBeEnabled());
-    // The label stays compact; K's identity (node name + full run id) is the hover title.
-    expect(submit).toHaveTextContent("Resume from …");
+    // Once a legal K is selected the label carries its identity; the full run id is the hover title.
+    expect(submit).toHaveTextContent("Resume from review(r-step2)");
     expect(submit).toHaveAttribute("title", "Resume from review (r-step2)");
     expect(screen.queryByTestId("resume-from-reason")).not.toBeInTheDocument();
 

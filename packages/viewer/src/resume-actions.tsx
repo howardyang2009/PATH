@@ -185,7 +185,11 @@ export function ResumeActions({
             title={eligibility.ok ? `Resume from ${eligibility.nodeName} (${eligibility.runId})` : eligibility.message}
             onClick={sendResumeFrom}
           >
-            {phase === "sending" ? "Resuming…" : "Resume from …"}
+            {phase === "sending"
+              ? "Resuming…"
+              : eligibility.ok
+                ? `Resume from ${eligibility.nodeName}(${eligibility.shortRunId})`
+                : "Resume from …"}
           </button>
           {!eligibility.ok && (
             <span className="resume-reason" data-testid="resume-from-reason" role="note">
