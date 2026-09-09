@@ -1,11 +1,12 @@
 import {
+  blankRunRecord,
+  fromWireRunRecord,
   isTerminal,
   type JsonValue,
   type LogEvent,
   type RunRecord,
   type RunStatus,
   type RunTreeResponse,
-  type WireRunRecord,
 } from "@path/schema";
 
 /**
@@ -33,6 +34,13 @@ export type StreamPhase = "connecting" | "live" | "reconnecting" | "closed" | "f
  */
 export type RunNodeState = RunRecord;
 
+/**
+ * Decode one wire run row to the client's live node state. It is `fromWireRunRecord` (`@path/schema`)
+ * under a client-facing name — the shared inverse of the encode the server ran, so the field set can
+ * never drift from the wire shape the way a hand-written decode silently could.
+ */
+const nodeFromRecord = fromWireRunRecord;
+
 /** The immutable snapshot a view renders. Every mutating call produces a fresh object. */
 export interface RunViewState {
   rootRunId: string;
@@ -48,31 +56,6 @@ export interface RunViewState {
 }
 
 export type RunViewListener = (state: RunViewState) => void;
-
-function nodeFromRecord(row: WireRunRecord): RunNodeState {
-  return {
-    runId: row.run_id,
-    rootRunId: row.root_run_id,
-    parentRunId: row.parent_run_id,
-    nodeId: row.node_id,
-    nodeName: row.node_name,
-    workerName: row.worker_name,
-    status: row.status,
-    startedAt: row.started_at,
-    finishedAt: row.finished_at,
-    inputRef: row.input_ref,
-    outputRef: row.output_ref,
-    usage: row.usage,
-    estimatedCostUsd: row.estimated_cost_usd,
-    resumedFromRootRunId: row.resumed_from_root_run_id,
-    rerunFromNodePath: row.rerun_from_node_path,
-    reusedFromRunId: row.reused_from_run_id,
-    reusedFromRootRunId: row.reused_from_root_run_id,
-    workflowId: row.workflow_id,
-    workflowName: row.workflow_name,
-    workflowPath: row.workflow_path,
-  };
-}
 
 export class RunViewModel {
   private runs = new Map<string, RunNodeState>();
@@ -142,28 +125,18 @@ export class RunViewModel {
 
   private applyToRun(event: LogEvent): void {
     const existing = this.runs.get(event.run_id);
-    const node: RunNodeState = existing ?? {
-      runId: event.run_id,
-      rootRunId: this.rootRunId,
-      parentRunId: null,
-      nodeId: event.node_id,
-      nodeName: event.node_name,
-      workerName: null,
-      status: "pending",
-      startedAt: null,
-      finishedAt: null,
-      inputRef: null,
-      outputRef: null,
-      usage: null,
-      estimatedCostUsd: null,
-      resumedFromRootRunId: null,
-      rerunFromNodePath: null,
-      reusedFromRunId: null,
-      reusedFromRootRunId: null,
-      workflowId: null,
-      workflowName: null,
-      workflowPath: null,
-    };
+    // An event can name a run before its tree row arrives (parentage comes from the row, not the
+    // event). Start it blank — all-null, status `pending` — and let the step-started/finished below
+    // and a later `hydrate` fill it. `blankRunRecord` builds it from the record's own field manifest,
+    // so a new field is never forgotten here.
+    const node: RunNodeState =
+      existing ??
+      blankRunRecord({
+        runId: event.run_id,
+        rootRunId: this.rootRunId,
+        nodeId: event.node_id,
+        nodeName: event.node_name,
+      });
 
     if (event.type === "step-started") {
       // A run is terminal for good — a loop iteration spawns a *new* run, it never restarts one

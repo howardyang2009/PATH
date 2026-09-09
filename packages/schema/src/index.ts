@@ -146,7 +146,7 @@ export {
   type EventFrame,
   type EventFrameDecoder,
 } from "./event-frame.js";
-export type { RerunFromNodePathEntry, RunRecord } from "./run-record.js";
+export { blankRunRecord, RUN_RECORD_FIELDS, type RerunFromNodePathEntry, type RunRecord } from "./run-record.js";
 export { isReuseRow, isRootRun, runKind, type RunKind, type RunKindFields } from "./run-kind.js";
 export { childrenByParent, findRootRun, pathToRoot, subtree, type RunTreeFields } from "./run-tree.js";
 export {
@@ -158,6 +158,7 @@ export {
 } from "./legal-k.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
+  fromWireRunRecord,
   toRootRunSummary,
   toWireRunRecord,
   type BlobName,

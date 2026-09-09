@@ -91,3 +91,45 @@ export interface RunRecord {
    */
   workflowPath: string | null;
 }
+
+/**
+ * Every `RunRecord` field, as a set. This is the **one** enumeration of the record's shape: the wire
+ * codec (`toWireRunRecord`/`fromWireRunRecord`), the db read (`fromDbRow`), and `blankRunRecord` all
+ * iterate it, so a field added to `RunRecord` is a compile error here (the `Record<keyof RunRecord>`
+ * type) and reaches every crossing from one edit — never the shotgun surgery of six hand-copies, one
+ * of which the compiler could not see. The wire's snake_case name is the field's mechanical
+ * snake spelling (`wire-v0.ts`, pinned by the `keyof WireRunRecord` assertion in `wire-v0.test.ts`),
+ * so no per-field name pair is listed.
+ */
+export const RUN_RECORD_FIELDS: Record<keyof RunRecord, true> = {
+  runId: true,
+  rootRunId: true,
+  parentRunId: true,
+  nodeId: true,
+  nodeName: true,
+  workerName: true,
+  status: true,
+  startedAt: true,
+  finishedAt: true,
+  inputRef: true,
+  outputRef: true,
+  usage: true,
+  estimatedCostUsd: true,
+  resumedFromRootRunId: true,
+  rerunFromNodePath: true,
+  reusedFromRunId: true,
+  reusedFromRootRunId: true,
+  workflowId: true,
+  workflowName: true,
+  workflowPath: true,
+};
+
+/**
+ * An all-null `RunRecord` (status `pending`) with `seed` overlaid — the shape an event-created run
+ * node starts as before a tree read or a `step-started`/`step-finished` fills it (view-model.ts).
+ * Built from `RUN_RECORD_FIELDS`, so it can never fall out of step with the record's own fields.
+ */
+export function blankRunRecord(seed: Partial<RunRecord> & Pick<RunRecord, "runId" | "rootRunId">): RunRecord {
+  const blank = Object.fromEntries(Object.keys(RUN_RECORD_FIELDS).map((key) => [key, null])) as unknown as RunRecord;
+  return { ...blank, status: "pending", ...seed };
+}

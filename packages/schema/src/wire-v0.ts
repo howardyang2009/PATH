@@ -1,7 +1,7 @@
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { LogBackendId } from "./log-backend-id.js";
-import type { RerunFromNodePathEntry, RunRecord } from "./run-record.js";
+import { RUN_RECORD_FIELDS, type RerunFromNodePathEntry, type RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
 
 /**
@@ -13,10 +13,11 @@ import type { RunStatus } from "./run-status.js";
  * renamed on one side type-checked cleanly on both and broke only at runtime, in the browser.
  *
  * Field casing is snake_case (§1), which is the whole reason a translation exists: the domain speaks
- * camelCase (`RunRecord`) and the wire speaks snake_case. `toWireRunRecord` is that translation,
- * beside the two shapes it maps between. There is no inverse: the server encodes, and the client
- * projects the wire record straight onto its own view state (`client-core/view-model.ts`) rather
- * than decoding back to a domain record it has no other use for.
+ * camelCase (`RunRecord`) and the wire speaks snake_case. `toWireRunRecord` is that translation and
+ * `fromWireRunRecord` its inverse; both iterate the one `RUN_RECORD_FIELDS` manifest, so a field can
+ * never survive on one side and vanish on the other. The client decodes with `fromWireRunRecord`
+ * (`client-core/view-model.ts`) rather than re-listing the record's fields by hand — the copy that
+ * used to reintroduce the very drift this shared shape prevents, silently, in the browser.
  */
 
 /** One `RunRecord` on the wire (server-api-v0.md §4), snake_case. */
@@ -131,30 +132,36 @@ export interface ListWorkflowsResponse {
  */
 export type BlobName = "input" | "output" | "context";
 
-/** Domain record → wire. The one encode; every route that emits a run row goes through it. */
+/**
+ * A camelCase field's snake_case wire name. The wire contract is exactly the record's mechanical
+ * snake spelling (pinned by `wire-v0.test.ts`'s `keyof WireRunRecord` assertion), so this one
+ * transform derives every name — no hand-listed pair to drift. Every `RunRecord` key is letters only.
+ */
+function camelToSnake(key: string): string {
+  return key.replace(/[A-Z]/g, (upper) => `_${upper.toLowerCase()}`);
+}
+
+/**
+ * Domain record → wire, and back. Both iterate `RUN_RECORD_FIELDS`, copying each field under its
+ * camel (domain) or snake (wire) name. Per-field value types are identical across the two shapes
+ * (both `JsonValue | null`, `string | null`, …), so the copy is a pure rename — the `as` casts carry
+ * the rename past the compiler, which has already checked the field set is complete.
+ */
 export function toWireRunRecord(row: RunRecord): WireRunRecord {
-  return {
-    run_id: row.runId,
-    root_run_id: row.rootRunId,
-    parent_run_id: row.parentRunId,
-    node_id: row.nodeId,
-    node_name: row.nodeName,
-    worker_name: row.workerName,
-    status: row.status,
-    started_at: row.startedAt,
-    finished_at: row.finishedAt,
-    input_ref: row.inputRef,
-    output_ref: row.outputRef,
-    usage: row.usage,
-    estimated_cost_usd: row.estimatedCostUsd,
-    resumed_from_root_run_id: row.resumedFromRootRunId,
-    rerun_from_node_path: row.rerunFromNodePath,
-    reused_from_run_id: row.reusedFromRunId,
-    reused_from_root_run_id: row.reusedFromRootRunId,
-    workflow_id: row.workflowId,
-    workflow_name: row.workflowName,
-    workflow_path: row.workflowPath,
-  };
+  const wire = {} as Record<string, unknown>;
+  for (const camel of Object.keys(RUN_RECORD_FIELDS)) {
+    wire[camelToSnake(camel)] = (row as unknown as Record<string, unknown>)[camel];
+  }
+  return wire as unknown as WireRunRecord;
+}
+
+/** Wire → domain record — the inverse the client decodes with (`view-model.ts`). */
+export function fromWireRunRecord(wire: WireRunRecord): RunRecord {
+  const row = {} as Record<string, unknown>;
+  for (const camel of Object.keys(RUN_RECORD_FIELDS)) {
+    row[camel] = (wire as unknown as Record<string, unknown>)[camelToSnake(camel)];
+  }
+  return row as unknown as RunRecord;
 }
 
 /** The root-run summary `GET /v0/runs` returns — a projection of the full record, not a new shape. */
