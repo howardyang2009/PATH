@@ -3,7 +3,9 @@
  * standing in for a sum type: root run, nested workflow-run, leaf step, reuse row, or a `while-do`
  * iteration container. "Which kind" used to be re-derived by scattered null-checks — `parentRunId ===
  * null` for root, `reusedFromRunId !== null` for reuse — restated at every reader and across the
- * engine/client seam. This is the one place that classifies.
+ * engine/client seam. The three type-guards below are where each distinction now lives — one reader of
+ * `parentRunId`, one of `reusedFromRunId`, one of `iteration` — so a reader narrows through the guard
+ * instead of re-writing its null-check. The five kinds a `runs` row stands in for:
  *
  * - **root** — the tree's top run, no parent (its own id is the root run id). A workflow-run.
  * - **nested-workflow** — a `workflow` step's run, spawned under a parent (workflow-as-step). Also a
@@ -15,7 +17,6 @@
  *   for Resume reuse. Worker-less like a workflow-run, but it does *not* isolate context — the loop's
  *   shared blackboard is the enclosing run's — so it is its own kind, told apart by `iteration` being set.
  */
-export type RunKind = "root" | "nested-workflow" | "leaf" | "reuse" | "iteration";
 
 /** The fields a run's kind is read from — a `RunRecord` or a client-side `RunNodeState` fits. */
 export interface RunKindFields {
@@ -48,19 +49,4 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T):
  */
 export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(run: T): run is T & { iteration: number } {
   return run.iteration !== null;
-}
-
-/**
- * Classify one run row. Reuse is tested first (a reuse row has a parent, so it must not read as root
- * or leaf); then an iteration container (worker-less like a workflow-run, so it must be told apart
- * before the worker-name test); then root; then the worker name distinguishes a nested workflow-run
- * (none — workflow-runs carry no worker) from a leaf step (bound to one). Every worker-less non-root
- * non-reuse non-iteration row is a nested workflow-run, so the fall-through to `leaf` is reached only
- * for a real worker-bound step.
- */
-export function runKind(run: RunKindFields): RunKind {
-  if (isReuseRow(run)) return "reuse";
-  if (isIterationRun(run)) return "iteration";
-  if (isRootRun(run)) return "root";
-  return run.workerName === null ? "nested-workflow" : "leaf";
 }

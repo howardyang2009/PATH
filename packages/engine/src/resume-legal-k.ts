@@ -1,4 +1,3 @@
-import { dirname, resolve } from "node:path";
 import {
   classifyLevelK,
   findRootRun,
@@ -8,6 +7,7 @@ import {
   type RunRecord,
   type WorkflowFile,
 } from "@path/schema";
+import { descendNodePath } from "./descend-node-path.js";
 
 /**
  * The **legal-K** authority for Resume-from-chosen-K (spec §5, ADR 0032/0036). One shared predicate,
@@ -103,21 +103,30 @@ export function resolveLegalK(
   // level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
   const chain = pathToRoot(sourceRows, runId).slice(1);
   const rootRun = findRootRun(sourceRows);
+  const nodePath = chain.map((run) => run.nodeId!); // non-null: the chain excludes the root run
 
-  // Walk the levels top-down, descending the current file tree alongside the run chain. `scopeRunId`
-  // is the run whose direct children are this level's nodes: the root run at level 0, then each
-  // descended path-node's own run.
-  let curFile = rootFile;
-  let curDir = rootDir;
+  // Descend the current file tree along the node-id path once, up front (`descendNodePath`), so each
+  // level's file feeds the taxonomy and this walk never re-resolves a `ref`. The run chain — not the
+  // files — supplies each level's scope; a level the descent could not reach ends the walk with a
+  // file-divergence refusal below, mapped from the descent's own `miss`.
+  const descent = descendNodePath(rootFile, rootDir, files, nodePath);
+
+  // Walk the levels top-down. `scopeRunId` is the run whose direct children are this level's nodes:
+  // the root run at level 0, then each descended path-node's own run.
   let scopeRunId = rootRun?.runId;
-  const nodePath: string[] = [];
 
   for (let level = 0; level < chain.length; level++) {
     const pathRun = chain[level]!;
-    const nodeId = pathRun.nodeId!; // non-null: the chain excludes the root run
+    const nodeId = pathRun.nodeId!;
     const label = pathRun.nodeName ?? nodeId;
     const isLeaf = level === chain.length - 1;
-    nodePath.push(nodeId);
+
+    // The descent reaches this level whenever every prior level descended (a prior miss refuses first),
+    // so `levelInfo` is present here; treat its absence as a file divergence rather than assume it.
+    const levelInfo = descent.levels[level];
+    if (!levelInfo) {
+      return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
+    }
 
     // The per-level §5 taxonomy — locate (#2/#3), the leaf's own success (#4), the prefix's success
     // (#5) — is the one predicate shared with the client's eager mirror (`@path/schema/classifyLevelK`,
@@ -125,7 +134,7 @@ export function resolveLegalK(
     // and re-run, not reused. The engine owns the descent, the HTTP status, and the verbatim message;
     // the reason code it returns is this taxonomy. `#427`: an in-body locus names its enclosing logicer.
     const levelResult = classifyLevelK({
-      body: curFile.body,
+      body: levelInfo.file.body,
       rows: sourceRows,
       scopeRunId,
       nodeId,
@@ -156,29 +165,27 @@ export function resolveLegalK(
           );
       }
     }
-    const node = curFile.body.find((n) => n.id === nodeId)!;
 
     if (!isLeaf) {
-      // An intermediate path-node is descended into, so it must still be a nested `workflow` node whose
-      // ref resolves to a loaded file. A type change or a since-removed ref is a file divergence (#2).
-      if (node.type !== "workflow") {
+      // An intermediate path-node is descended into: `descendNodePath` reports the exact reason it could
+      // not, and a type change or a since-removed ref is a file divergence (#2). `classifyLevelK` above
+      // already caught a since-deleted node at this level, so the miss here is `not-workflow` / `ref`.
+      if (descent.miss && descent.miss.atIndex === level) {
+        if (descent.miss.reason === "not-workflow") {
+          return refuse(
+            409,
+            `run "${runId}" resolves through node "${label}", which is no longer a nested workflow and cannot be descended`,
+            "not-in-file",
+          );
+        }
+        const node = levelInfo.node;
+        const ref = node && node.type === "workflow" ? node.ref : "";
         return refuse(
           409,
-          `run "${runId}" resolves through node "${label}", which is no longer a nested workflow and cannot be descended`,
+          `run "${runId}" resolves through node "${label}", whose referenced file "${ref}" is no longer in the workflow`,
           "not-in-file",
         );
       }
-      const childPath = resolve(curDir, node.ref);
-      const childFile = files.get(childPath);
-      if (!childFile) {
-        return refuse(
-          409,
-          `run "${runId}" resolves through node "${label}", whose referenced file "${node.ref}" is no longer in the workflow`,
-          "not-in-file",
-        );
-      }
-      curFile = childFile;
-      curDir = dirname(childPath);
       scopeRunId = pathRun.runId;
     }
   }

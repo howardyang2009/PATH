@@ -125,12 +125,18 @@ export function* walkNodes(nodes: WorkflowNode[]): Generator<WorkflowNode> {
 }
 
 /**
- * The leaf step types whose runs a resume can **reuse** — the run-producing types (`prompt`, `binary`,
- * `workflow`). Control blocks own no run of their own, so their success is their run-producing
- * descendants' (a prefix `while-do` passes on any succeeded iteration). The **one authority** the
- * engine's reuse plan (`plan-reuse.ts`) and the client's eager legal-K check (`@path/client-core`'s
- * `resume-from-eligibility.ts`) both read — a bare literal copied into each would drift silently when
- * a run-producing type is added.
+ * The node types whose runs a resume can **reuse at node grain** — one succeeded run per node id under
+ * a scope (`prompt`, `binary`, `workflow`). This is the reuse-plan's matching set, not the set of every
+ * type that mints a run: `while-do` is **deliberately excluded** even though ADR 0037 makes it mint one
+ * iteration-container run *per pass*. A loop id maps to many runs, not one, so it is not a node-grain
+ * reuse candidate; its per-iteration reuse is handled at container grain by `loopIterationResume`, whose
+ * disposition test (`@path/schema`'s `rerunDisposition`) is index-based and needs no membership here.
+ * Control blocks own no run of their own, so their success is their run-producing descendants' (a prefix
+ * `while-do` passes on any succeeded iteration).
+ *
+ * The **one authority** the engine's reuse plan (`plan-reuse.ts`) and the client's eager legal-K check
+ * (`@path/client-core`'s `resume-from-eligibility.ts`) both read — a bare literal copied into each would
+ * drift silently when a node-grain-reusable type is added.
  */
 export const RUN_PRODUCING_TYPES: ReadonlySet<string> = new Set(["prompt", "binary", "workflow"]);
 

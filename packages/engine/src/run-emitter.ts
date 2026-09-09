@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue, RerunFromNodePathEntry } from "@path/schema";
+import { isRootRun, type JsonValue, type RerunFromNodePathEntry } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
@@ -118,7 +118,7 @@ export interface Emitter {
  */
 export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
   const { runId, rootRunId, parentRunId, nodeId, nodeName, iteration } = identity;
-  const isRoot = parentRunId === null;
+  const isRoot = isRootRun(identity);
 
   return {
     runStarted(args): Promise<void> {

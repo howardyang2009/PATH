@@ -3,6 +3,7 @@ import {
   childrenByParent,
   findRootRun,
   isReuseRow,
+  isRootRun,
   isTerminal,
   type JsonValue,
   type RunRecord,
@@ -367,7 +368,7 @@ export function openProject(dir: string): OpenProjectResult {
         let successorRootRunId: string | undefined;
         const capture: RunObserver = {
           observe(o) {
-            if (o.type === "run-started" && o.parentRunId === null) successorRootRunId = o.runId;
+            if (o.type === "run-started" && isRootRun(o)) successorRootRunId = o.runId;
           },
         };
 
