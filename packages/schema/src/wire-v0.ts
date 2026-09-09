@@ -29,6 +29,8 @@ export interface WireRunRecord {
   node_name: string | null;
   /** Null for a workflow-run's own row; a leaf step run carries its worker's *name* (ADR 0021 sub-14). */
   worker_name: string | null;
+  /** The 1-based ordinal of a `while-do` iteration container (ADR 0037), null on every other kind. */
+  iteration: number | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;

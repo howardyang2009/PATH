@@ -48,8 +48,15 @@ import Database from "better-sqlite3";
  * (correctness re-derives K from the successor's own rows); it exists for #418's descent crumbs.
  * Same bump-and-break, clean-slate reading: an existing pre-#444 db refuses to open rather than
  * silently lacking the column a Resume-from-K successor writes to.
+ *
+ * Bumped to 9 in #454 for per-iteration run scope (ADR 0037): a `while-do` loop now mints one
+ * **iteration container** run per pass, so `runs` gains `iteration` — the container's 1-based ordinal,
+ * null on every other run kind. The container gives a loop body's runs a unique parent scope, which
+ * restores `(scope, node id)` uniqueness across iterations so a completed loop reuses across Resume.
+ * Same bump-and-break, clean-slate reading: an existing pre-#454 db refuses to open rather than
+ * silently lacking the column an iteration container writes to.
  */
-export const SCHEMA_VERSION = 8;
+export const SCHEMA_VERSION = 9;
 
 export class SchemaVersionError extends Error {}
 
@@ -61,6 +68,7 @@ const RUNS_TABLE_DDL = `
     node_id TEXT,
     node_name TEXT,
     worker_name TEXT,
+    iteration INTEGER,
     status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','cancelled')),
     started_at TEXT,
     finished_at TEXT,

@@ -12,6 +12,7 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
     nodeId: "step",
     nodeName: "step",
     workerName: "spawn",
+    iteration: null,
     status: "running",
     startedAt: null,
     finishedAt: null,

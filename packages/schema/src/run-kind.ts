@@ -1,22 +1,29 @@
 /**
- * The kind of a run row (#257 grew the set to four). A `runs` row is a flat struct standing in for a
- * sum type: root run, nested workflow-run, leaf step, or reuse row. "Which kind" used to be re-derived
- * by scattered null-checks — `parentRunId === null` for root, `reusedFromRunId !== null` for reuse —
- * restated at every reader and across the engine/client seam. This is the one place that classifies.
+ * The kind of a run row (#257 grew the set to four; #454 to five). A `runs` row is a flat struct
+ * standing in for a sum type: root run, nested workflow-run, leaf step, reuse row, or a `while-do`
+ * iteration container. "Which kind" used to be re-derived by scattered null-checks — `parentRunId ===
+ * null` for root, `reusedFromRunId !== null` for reuse — restated at every reader and across the
+ * engine/client seam. This is the one place that classifies.
  *
  * - **root** — the tree's top run, no parent (its own id is the root run id). A workflow-run.
  * - **nested-workflow** — a `workflow` step's run, spawned under a parent (workflow-as-step). Also a
  *   workflow-run, so it carries no worker of its own.
  * - **leaf** — a `binary`/`prompt` step run, the only kind bound to a worker.
  * - **reuse** — a resumed tree's pointer row: owns no execution, names the source run it reused.
+ * - **iteration** — one pass of a `while-do` loop (ADR 0037, #454): a run scope minted per iteration so
+ *   the loop body's runs get a unique parent, restoring `(scope, node id)` uniqueness across iterations
+ *   for Resume reuse. Worker-less like a workflow-run, but it does *not* isolate context — the loop's
+ *   shared blackboard is the enclosing run's — so it is its own kind, told apart by `iteration` being set.
  */
-export type RunKind = "root" | "nested-workflow" | "leaf" | "reuse";
+export type RunKind = "root" | "nested-workflow" | "leaf" | "reuse" | "iteration";
 
-/** The three fields a run's kind is read from — a `RunRecord` or a client-side `RunNodeState` fits. */
+/** The fields a run's kind is read from — a `RunRecord` or a client-side `RunNodeState` fits. */
 export interface RunKindFields {
   parentRunId: string | null;
   reusedFromRunId: string | null;
   workerName: string | null;
+  /** 1-based ordinal on a `while-do` iteration container (ADR 0037), null on every other kind. */
+  iteration: number | null;
 }
 
 /**
@@ -35,13 +42,25 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T):
 }
 
 /**
+ * A `while-do` iteration container (ADR 0037): a run scope minted once per loop pass, told apart by its
+ * 1-based `iteration` ordinal, which no other kind carries. A type guard, so the branch that knows a
+ * row is an iteration also knows its `iteration` is set.
+ */
+export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(run: T): run is T & { iteration: number } {
+  return run.iteration !== null;
+}
+
+/**
  * Classify one run row. Reuse is tested first (a reuse row has a parent, so it must not read as root
- * or leaf); then root; then the worker name distinguishes a nested workflow-run (none — workflow-runs
- * carry no worker) from a leaf step (bound to one). Every worker-less non-root non-reuse row is a
- * nested workflow-run, so the fall-through to `leaf` is reached only for a real worker-bound step.
+ * or leaf); then an iteration container (worker-less like a workflow-run, so it must be told apart
+ * before the worker-name test); then root; then the worker name distinguishes a nested workflow-run
+ * (none — workflow-runs carry no worker) from a leaf step (bound to one). Every worker-less non-root
+ * non-reuse non-iteration row is a nested workflow-run, so the fall-through to `leaf` is reached only
+ * for a real worker-bound step.
  */
 export function runKind(run: RunKindFields): RunKind {
   if (isReuseRow(run)) return "reuse";
+  if (isIterationRun(run)) return "iteration";
   if (isRootRun(run)) return "root";
   return run.workerName === null ? "nested-workflow" : "leaf";
 }

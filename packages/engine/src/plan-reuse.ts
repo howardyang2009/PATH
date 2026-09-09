@@ -22,9 +22,11 @@ export type ReusePlan = Map<string, RunRecord>;
  * whole subtree is collapsed for free — nothing inside it is a candidate, and nothing inside it is
  * ever inspected.
  *
- * A `while-do` body's node id repeats once per iteration, so more than one succeeded row can share
- * an id — which recorded attempt answers a single re-read node is undefined, so an id with more than
- * one succeeded candidate does not reuse rather than guessing at one.
+ * A node id with more than one succeeded row under one scope does not reuse rather than guessing which
+ * attempt answers it. Since ADR 0037 (#454) a `while-do` body's runs sit under one per-iteration
+ * container each, so a loop body no longer collides here — within a container scope it has exactly one
+ * run; `runWhileDoNode` scopes a `planReuse` to each iteration's container. This guard now only trips on
+ * a genuinely ambiguous collision, and refuses it.
  *
  * `suppress` is the Resume-from-K rerun boundary as a set of run-producing node ids (ADR 0035,
  * Producer A): K and every serialized-later node. A suppressed id is skipped in the walk, so it never
@@ -63,11 +65,12 @@ type ParallelBranch = ParallelNode["branches"][number];
  * undefined to start fresh. Matched by (parent run, node id) within the original tree:
  * `counterpartRunId` is the re-entering run's own original counterpart (the top-level call passes the
  * original root run id; the engine passes a re-entered nested run's counterpart when it recurses).
- * Exactly one match re-enters and restores; zero (a node added since) or more than one (a while-do
- * body's workflow step, one run per iteration — which to restore is undefined) both start fresh,
- * mirroring `planReuse`'s refusal to guess among multiple candidates. A node that *reused* never
- * reaches here: the executor short-circuits it before dispatch, so this only runs for a genuinely
- * re-entered run.
+ * Exactly one match re-enters and restores; zero (a node added since) or more than one both start
+ * fresh, mirroring `planReuse`'s refusal to guess among multiple candidates. Since ADR 0037 (#454) a
+ * `while-do` body's workflow step is matched within its per-iteration container (`counterpartRunId` is
+ * that container), so it has one run per scope and no longer trips the more-than-one case. A node that
+ * *reused* never reaches here: the executor short-circuits it before dispatch, so this only runs for a
+ * genuinely re-entered run.
  */
 export function findNestedCounterpart(
   originalRuns: RunRecord[],
