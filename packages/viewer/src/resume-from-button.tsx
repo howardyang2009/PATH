@@ -1,10 +1,10 @@
 import {
-  parseJsonField,
   resumeFromEligibility,
   type PathApiClient,
   type RunNodeState,
+  type WorkflowFile,
 } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
+import { parseJsonField } from "@path/client-core";
 import { useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
@@ -15,11 +15,16 @@ export interface ResumeFromButtonProps {
   rootRunId: string;
   /** The watched run's tree, keyed by run id — the same map the run tree renders; K is a row of it. */
   runs: ReadonlyMap<string, RunNodeState>;
-  /** The open buffer's parsed file (the root level), or `null` when nothing is open. */
+  /**
+   * The open buffer's parsed file (the root level), or `null` when the surface holds no file. The
+   * Designer passes its open buffer, so a top-level K is located in the file body — the eager legal-K
+   * check; the Viewer holds no buffer and passes `null`, so only the run-tree-derivable reasons grey
+   * eagerly and the engine's `refusal` backstops the rest on click (spec § Resume from here).
+   */
   rootFile: WorkflowFile | null;
-  /** The run selected in the middle run tree; K is this run. `null` when nothing (or the root) is selected. */
+  /** The run selected in the run tree; K is this run. `null` when nothing (or the root) is selected. */
   selectedRunId: string | null;
-  /** The open buffer's dirty flag — the same save-first gate Launch uses (ADR 0030). */
+  /** The open buffer's dirty flag — the Designer's save-first gate (ADR 0030). The Viewer passes `false`. */
   dirty: boolean;
   /** Handed the successor's fresh root run id so the app can switch to watching it (as a launch/resume). */
   onResumed: (successorRootRunId: string) => void;
@@ -29,16 +34,17 @@ type Phase = "idle" | "sending";
 
 /**
  * The **`Resume from …`** run-action button (spec § Resume from here, ADR 0033) — the K-supplied case
- * of the one Resume action. K is the **run** of the node the author selects in the middle run tree
- * (the only handle carrying a run id); the button is **always rendered** for a selected root run and
- * has exactly two states, enabled or disabled-with-one-reason.
+ * of the one Resume action, shared by the Designer's run dock and the Viewer's run detail (both mount
+ * the same run panels from `@path/viewer`). K is the **run** of the node the author selects in the run
+ * tree (the only handle carrying a run id); the button is **always rendered** for a selected root run
+ * and has exactly two states, enabled or disabled-with-one-reason.
  *
  * Legality is computed **eagerly**, client-side, by `resumeFromEligibility` (the client mirror of the
  * engine's one legal-K rule): the disabled reason follows the fixed precedence — (1) no node selected,
- * (2) an illegal K in the engine's taxonomy, (3) a legal K over a dirty buffer ("Save to enable").
- * The engine's `refusal` stays the authority for a **race** (the file moved under the buffer) — it
- * lands here as the error alert, not a second gate. Resume reads the file only, so it takes **no**
- * edit-lock lease (ADR 0017).
+ * (2) an illegal K in the engine's taxonomy, (3) a legal K over a dirty buffer ("Save to enable"). The
+ * engine's `refusal` stays the authority for a **race** (the file moved under the buffer) — it lands
+ * here as the error alert, not a second gate. Resume reads the file only, so it takes **no** edit-lock
+ * lease (ADR 0017).
  *
  * When enabled the label carries K's identity — `Resume from <node-name> (<short-run-id>)` — with the
  * full run id as the hover title and the `rerun_from_run_id` wire value. Under it is the same optional
@@ -90,13 +96,13 @@ export function ResumeFromButton({
         <>
           <button
             type="button"
-            className="run-disclosure"
+            className="launch-disclosure"
             data-testid="resume-from-config-toggle"
             aria-expanded={configOpen}
             onClick={() => setShowConfig((shown) => !shown)}
           >
             {configOpen ? "▾" : "▸"} Override config (optional)
-            {config.trim() !== "" && <span className="run-disclosure-dot"> · set</span>}
+            {config.trim() !== "" && <span className="launch-disclosure-dot"> · set</span>}
           </button>
           {configOpen && (
             <JsonField
@@ -115,7 +121,7 @@ export function ResumeFromButton({
 
       <button
         type="button"
-        className="run-submit resume-from-submit"
+        className="launch-submit resume-from-submit"
         data-testid="resume-from-submit"
         disabled={!canResume}
         // The full run id is the hover title on an enabled K; on a disabled button the title is the
@@ -131,12 +137,12 @@ export function ResumeFromButton({
       </button>
 
       {!eligibility.ok && (
-        <p className="run-note run-gate" data-testid="resume-from-reason" role="note">
+        <p className="pane-note resume-from-reason" data-testid="resume-from-reason" role="note">
           {eligibility.message}
         </p>
       )}
       {error !== null && (
-        <p className="run-note run-error" data-testid="resume-from-error" role="alert">
+        <p className="pane-note pane-error launch-error" data-testid="resume-from-error" role="alert">
           {error}
         </p>
       )}

@@ -414,6 +414,26 @@ button.workflow-row:focus-visible {
   margin: 0;
 }
 
+/* ---------- resume-from-K action ---------- */
+
+/* The `Resume from …` K-selection action, above the run tree in the detail pane. Its submit label
+ * grows with the node name, so it wraps rather than clip; the reason/error notes sit under it. Shared
+ * by the Viewer's run detail and the Designer's run dock (ADR 0033). */
+.resume-from {
+  margin: 0 0 10px;
+  padding: 0 0 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.resume-from-submit {
+  white-space: normal;
+  text-align: left;
+}
+
+.resume-from-reason {
+  margin: 6px 0 0;
+}
+
 /* ---------- runs list ---------- */
 
 .runs-toolbar {

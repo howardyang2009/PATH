@@ -80,6 +80,10 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
+            // The Viewer holds no editor buffer, so the eager top-level legal-K check has no file to
+            // read (`rootFile: null`, `dirty: false`); the engine's `refusal` backstops on click. A
+            // resume is the same app transition as a launch — watch the fresh successor run.
+            onResumed={handleLaunched}
           />
         )
       }
