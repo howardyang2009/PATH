@@ -1,10 +1,17 @@
-import type { PathApiClient, RootRunSummary, RunStatus } from "@path/client-core";
+import {
+  isTerminal,
+  type PathApiClient,
+  type RootRunSummary,
+  type RunNodeState,
+  type RunStatus,
+  type WorkflowFile,
+} from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { DeleteButton } from "./delete-button.js";
-import { ResumeButton } from "./resume-button.js";
+import { ResumeActions } from "./resume-actions.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -27,6 +34,9 @@ export const RUNS_REFRESH_MS = 5000;
 
 /** The pane's status filter: one `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
+
+/** A stable empty tree for rows that show no `Resume from …` — spares a new Map each render. */
+const EMPTY_RUNS: ReadonlyMap<string, RunNodeState> = new Map();
 
 export interface RunsListProps {
   client: PathApiClient;
@@ -57,6 +67,19 @@ export interface RunsListProps {
    * one-shot read, triggered a beat early.
    */
   reloadNonce?: number;
+  /**
+   * The watched run's tree (the same live snapshot the detail pane renders), passed only when the
+   * surface wants the `Resume from …` K-selection action in the selected row's action panel. When
+   * omitted, the panel offers only plain Resume/Delete. K is {@link resumeSelectedRunId}, the node
+   * picked in the detail pane's run tree; the button reads this map to prove K's eligibility eagerly.
+   */
+  resumeTree?: ReadonlyMap<string, RunNodeState>;
+  /** The run selected in the detail pane's tree — K for `Resume from …`. */
+  resumeSelectedRunId?: string | null;
+  /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
+  resumeRootFile?: WorkflowFile | null;
+  /** The open buffer's dirty flag — the Designer's save-first gate; the Viewer passes `false`. */
+  resumeDirty?: boolean;
 }
 
 /**
@@ -72,6 +95,10 @@ export function RunsList({
   onResumed,
   onDeleted,
   reloadNonce,
+  resumeTree,
+  resumeSelectedRunId = null,
+  resumeRootFile = null,
+  resumeDirty = false,
 }: RunsListProps) {
   // The scope sent to the wire: a string scopes to one workflow, `undefined` leaves the list
   // cross-workflow. `null` (a scoped surface with nothing open) never reaches a query — the effects
@@ -192,11 +219,19 @@ export function RunsList({
           <ul className="runs">
             {state.value.map((run) => {
               // Every row expands an action panel under itself — the rail's mirror of the launch form
-              // under a workflow row (#233). The panel always offers Delete; a finished-but-unsuccessful
-              // run also offers Resume. Rendered as a sibling of the row button, never inside it (a
-              // button cannot nest the panel's own buttons).
+              // under a workflow row (#233). The panel always offers Delete. Every finished run also
+              // shows plain Resume: enabled on a `cancelled`/`failed` run (`canResume`), greyed on a
+              // `succeeded` one — kept visible, not hidden, so its pairing with `Resume from …` reads.
+              // A still-running run shows no Resume at all. Rendered as a sibling of the row button,
+              // never inside it (a button cannot nest the panel's own buttons).
               const canResume = run.status === "cancelled" || run.status === "failed";
+              const showResume = isTerminal(run.status);
               const open = openFor === run.run_id;
+              // `Resume from …` (K-selection) shows in the watched run's own panel — the only row with a
+              // loaded tree behind it — when the surface opted in by passing `resumeTree`. It sits below
+              // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
+              // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033).
+              const showResumeFrom = resumeTree !== undefined && run.run_id === selectedRootRunId;
               return (
                 <li key={run.run_id}>
                   <button
@@ -220,10 +255,17 @@ export function RunsList({
                   </button>
                   {open && (
                     <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
-                      {canResume && (
-                        <ResumeButton
+                      {(showResume || showResumeFrom) && (
+                        <ResumeActions
                           client={client}
                           rootRunId={run.run_id}
+                          showResume={showResume}
+                          plainResumable={canResume}
+                          showResumeFrom={showResumeFrom}
+                          runs={resumeTree ?? EMPTY_RUNS}
+                          rootFile={resumeRootFile}
+                          selectedRunId={resumeSelectedRunId}
+                          dirty={resumeDirty}
                           onResumed={(successorRootRunId) => {
                             // Collapse on success, as the launch form does on launch — then hand the
                             // successor to the app to select and watch.

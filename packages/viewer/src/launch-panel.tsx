@@ -5,13 +5,12 @@ import type {
   WorkflowTreeNode,
 } from "@path/client-core";
 import { useEffect, useMemo, useState } from "react";
-import { JsonField } from "./json-field.js";
+import { LaunchForm } from "./launch-form.js";
 import {
   buildWorkflowTree,
   countWorkflowLeaves,
   isFolderOnOpenChain,
   nextOpenFolder,
-  parseJsonField,
   workflowBaseName,
 } from "@path/client-core";
 import { errorMessage, type Load } from "./load-state.js";
@@ -215,7 +214,11 @@ function WorkflowTree({
                 <LaunchForm
                   key={node.workflow.relative_path}
                   client={client}
-                  workflow={node.workflow}
+                  workflowPath={node.workflow.relative_path}
+                  submitLabel={`Launch ${node.workflow.name ?? "workflow"}`}
+                  idBase={`launch-${node.workflow.relative_path}`}
+                  testIdPrefix="launch"
+                  containerTestId={`launch-form-${node.workflow.relative_path}`}
                   onLaunched={(rootRunId) => {
                     onToggleFile(node.workflow.relative_path);
                     onLaunched(rootRunId);
@@ -332,104 +335,3 @@ function RootTag({ workflow }: { workflow: WorkflowSummary }) {
   );
 }
 
-type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; message: string };
-
-/**
- * The inline launch form under an expanded workflow row (#233 variant A). Raw JSON for `input`
- * (prefilled `{}`, empty allowed — the format declares no input schema) and, behind a disclosure,
- * an optional `config` override. Client-side JSON is gated by {@link parseJsonField}; the server is
- * still the validator, and its `400` (schema failure, a rejected `$env` override — ADR 0012) lands
- * back here as an alert without collapsing the form, so the operator can fix the body and retry.
- */
-function LaunchForm({
-  client,
-  workflow,
-  onLaunched,
-}: {
-  client: PathApiClient;
-  workflow: WorkflowSummary;
-  onLaunched: (rootRunId: string) => void;
-}) {
-  const [input, setInput] = useState("{}");
-  const [config, setConfig] = useState("");
-  const [showConfig, setShowConfig] = useState(false);
-  const [submit, setSubmit] = useState<Submit>({ phase: "idle" });
-
-  // Config is always parsed from its own text, not gated on `showConfig`: a value the operator typed
-  // is a value they meant to send, whether or not the disclosure happens to be open, and gating on
-  // visibility would silently drop an override on launch. The disclosure only shows/hides the field.
-  const inputResult = parseJsonField(input, { allowEmpty: true });
-  const configResult = parseJsonField(config, { allowEmpty: true });
-  const canLaunch = inputResult.ok && configResult.ok && submit.phase !== "sending";
-  // An invalid config cannot hide behind a collapsed disclosure — that would disable Launch with the
-  // reason off-screen — so a bad config forces the field open.
-  const configOpen = showConfig || !configResult.ok;
-
-  const launch = (): void => {
-    if (!inputResult.ok || !configResult.ok) return;
-    setSubmit({ phase: "sending" });
-    client
-      .startRun({
-        workflowPath: workflow.relative_path,
-        input: inputResult.value,
-        config: configResult.value,
-      })
-      .then((res) => onLaunched(res.root_run_id))
-      .catch((error: unknown) => setSubmit({ phase: "error", message: errorMessage(error) }));
-  };
-
-  return (
-    <div className="launch-form" data-testid={`launch-form-${workflow.relative_path}`}>
-      <JsonField
-        id={`launch-input-${workflow.relative_path}`}
-        testId="launch-input"
-        label="input · JSON"
-        value={input}
-        onChange={setInput}
-        result={inputResult}
-        rows={4}
-      />
-
-      <button
-        type="button"
-        className="launch-disclosure"
-        data-testid="launch-config-toggle"
-        aria-expanded={configOpen}
-        onClick={() => setShowConfig((shown) => !shown)}
-      >
-        {configOpen ? "▾" : "▸"} Override config (optional)
-        {config.trim() !== "" && <span className="launch-disclosure-dot"> · set</span>}
-      </button>
-      {configOpen && (
-        <JsonField
-          id={`launch-config-${workflow.relative_path}`}
-          testId="launch-config"
-          label="config override · JSON"
-          value={config}
-          onChange={setConfig}
-          result={configResult}
-          rows={3}
-          placeholder='{"model": "…", "$secret": {"name": "…"}}'
-        />
-      )}
-
-      <div className="launch-actions">
-        <button
-          type="button"
-          className="launch-submit"
-          data-testid="launch-submit"
-          disabled={!canLaunch}
-          onClick={launch}
-        >
-          {submit.phase === "sending" ? "Launching…" : `Launch ${workflow.name ?? "workflow"}`}
-        </button>
-      </div>
-
-      {submit.phase === "error" && (
-        <p className="pane-note pane-error launch-error" data-testid="launch-error" role="alert">
-          {submit.message}
-        </p>
-      )}
-    </div>
-  );
-}

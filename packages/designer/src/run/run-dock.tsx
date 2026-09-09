@@ -1,14 +1,10 @@
-import type { PathApiClient, RunNodeState } from "@path/client-core";
+import type { PathApiClient } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { NodeIo, RunDetail, RunsList, type RunViewLoad } from "@path/viewer";
 import { useRef, useState } from "react";
 import { useDragSize } from "../drag-size.js";
 import { usePaneWidths } from "../use-pane-resize.js";
-import { ResumeFromButton } from "./resume-from-button.js";
 import { RunLaunch } from "./run-launch.js";
-
-/** The empty run map a not-yet-ready load stands in for, so the resume button has a stable shape. */
-const NO_RUNS: ReadonlyMap<string, RunNodeState> = new Map<string, RunNodeState>();
 
 /** Persisted open-dock height, in px. The panes inside scroll; this is the drawer's own height. */
 const HEIGHT_KEY = "path.designer.run-dock-height";
@@ -151,6 +147,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
               onResumed={props.onResumed}
               onDeleted={props.onDeleted}
               reloadNonce={props.reloadNonce}
+              // The `Resume from …` K-selection action rides in the selected row's action panel,
+              // below plain Resume (ADR 0033). The Designer feeds it its open buffer
+              // (`rootFile`/`dirty`) for the eager legal-K check; K is the node selected in the tree.
+              resumeTree={props.load.phase === "ready" ? props.load.value.runs : undefined}
+              resumeSelectedRunId={props.selectedRunId}
+              resumeRootFile={props.rootFile}
+              resumeDirty={props.dirty}
             />
           </div>
           <div
@@ -164,28 +167,15 @@ export function RunDock(props: RunDockProps): JSX.Element {
             {props.rootRunId === null ? (
               <p className="pane-note">Select a run.</p>
             ) : (
-              <>
-                {/* The K-selection action, above the run tree that drives it (spec: K is the run of the
-                    node selected in the middle tree). Always rendered for a selected root run, enabled
-                    once the author picks a legal K below. Plain Resume/Delete stay on the rail's rows —
-                    they key on a root-run row, not the tree selection, and take no Designer buffer state. */}
-                <ResumeFromButton
-                  client={props.client}
-                  rootRunId={props.rootRunId}
-                  runs={props.load.phase === "ready" ? props.load.value.runs : NO_RUNS}
-                  rootFile={props.rootFile}
-                  selectedRunId={props.selectedRunId}
-                  dirty={props.dirty}
-                  onResumed={props.onResumed}
-                />
-                <RunDetail
-                  client={props.client}
-                  load={props.load}
-                  rootRunId={props.rootRunId}
-                  selectedRunId={props.selectedRunId}
-                  onSelectRun={props.onSelectRun}
-                />
-              </>
+              // The run tree here drives K for the `Resume from …` action, which itself lives in the
+              // runs rail's action panel (left column) alongside plain Resume/Delete.
+              <RunDetail
+                client={props.client}
+                load={props.load}
+                rootRunId={props.rootRunId}
+                selectedRunId={props.selectedRunId}
+                onSelectRun={props.onSelectRun}
+              />
             )}
           </div>
           <div
