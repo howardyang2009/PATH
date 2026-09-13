@@ -12,11 +12,11 @@ export const stepPlugin = defineStepPlugin({
   fields,
   config,
   workers: {
-    manual: {
+    person: {
       meters: false,
       needsProcessorSlot: false,
       run: async () => ({ status: "awaiting" as const }),
     },
   },
-  defaultWorker: "manual",
+  defaultWorker: "person",
 });
