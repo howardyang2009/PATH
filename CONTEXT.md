@@ -258,9 +258,11 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   in one module, not in every observation literal.
 - **Log event** — a **narrated observation**. It is the append-only subset that reaches a **log
   backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set
-  covers step lifecycle (`step-started`, `step-finished`) and control-node activity (`branch-taken`,
-  `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`, `loop-exited`,
-  `join-applied`, `run-cancelled`). The shared envelope has `seq` (monotonic per root run, the ordering
+  covers step lifecycle (`step-started`, `step-awaiting`, `step-finished`) and control-node activity
+  (`branch-taken`, `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`,
+  `loop-exited`, `join-applied`, `run-cancelled`). `step-awaiting` marks a step that suspended on an
+  external completion (a **person-activity** step, #462); it carries no terminal status, so it is its
+  own log event beside `step-finished`. The shared envelope has `seq` (monotonic per root run, the ordering
   truth), `ts`, `type` (a flat discriminated union), `run_id`, and `node_id`. The projection is not
   one-to-one. A workflow-run's own start and a leaf step's start are both `step-started` (invariant 2).
   The two finishes are alike. One `checkpoint-evaluated` observation becomes `checkpoint-passed` or

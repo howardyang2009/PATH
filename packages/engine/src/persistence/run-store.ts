@@ -89,6 +89,15 @@ export function insertReuseRun(
   });
 }
 
+/**
+ * Move a run to a non-terminal status without stamping `finished_at` — the transition into
+ * `awaiting` (#462). A terminal status is rejected at the type level: it belongs to `finishRun`,
+ * which also stamps `finished_at`, so routing one here would leave a "done" row with a null finish.
+ */
+export function setRunStatus(db: Database.Database, runId: string, status: Exclude<RunStatus, TerminalRunStatus>): void {
+  db.prepare(`UPDATE runs SET status = @status WHERE run_id = @runId`).run({ status, runId });
+}
+
 export function finishRun(db: Database.Database, runId: string, status: TerminalRunStatus): void {
   db.prepare(`UPDATE runs SET status = @status, finished_at = @finishedAt WHERE run_id = @runId`).run({
     status,

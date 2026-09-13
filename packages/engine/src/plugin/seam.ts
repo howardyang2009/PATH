@@ -66,7 +66,8 @@ export interface StepRequest<F extends ZodRawShape = ZodRawShape, C extends ZodR
  */
 export type StepResult =
   | { status: "succeeded"; output: JsonValue; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
-  | { status: "failed"; error: string; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string };
+  | { status: "failed"; error: string; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
+  | { status: "awaiting" };
 
 /**
  * One named worker of a step type — a `run` method plus the closed set of capability flags the engine

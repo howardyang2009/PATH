@@ -1491,6 +1491,10 @@ body {
   color: var(--run-running);
   background: var(--run-running-bg);
 }
+.run-pill[data-status="awaiting"] {
+  color: var(--run-awaiting);
+  background: var(--run-awaiting-bg);
+}
 .run-pill[data-status="succeeded"] {
   color: var(--run-succeeded);
   background: var(--run-succeeded-bg);
@@ -1529,6 +1533,10 @@ body {
 .node-run-badge[data-run-status="running"] {
   color: var(--run-running);
   background: var(--run-running-bg);
+}
+.node-run-badge[data-run-status="awaiting"] {
+  color: var(--run-awaiting);
+  background: var(--run-awaiting-bg);
 }
 .node-run-badge[data-run-status="succeeded"] {
   color: var(--run-succeeded);

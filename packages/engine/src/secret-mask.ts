@@ -188,6 +188,7 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
     case "join-applied":
     case "run-cancelled":
     case "reuse-marker":
+    case "step-awaiting":
       return o;
     default: {
       const exhaustive: never = o;

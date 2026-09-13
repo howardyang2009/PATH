@@ -1,4 +1,4 @@
-import type { LoadedStepPluginRegistry, LogBackend, LogBackendId, Project, RunObserver } from "@path/engine";
+import { CompletionRegistry, type LoadedStepPluginRegistry, type LogBackend, type LogBackendId, type Project, type RunObserver } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
@@ -71,6 +71,11 @@ export interface LiveRuns {
    * `seq` is tracked so nothing replay already covered is sent twice.
    */
   stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe;
+  /**
+   * Completes an awaiting step run (#462) with the given output. Returns false when no step by that
+   * id is awaiting completion in any run executing here.
+   */
+  complete(stepRunId: string, output: JsonValue): boolean;
   /**
    * How many runs are cancellable here — 0 once every started run has settled. A leaked entry is a
    * slow leak in a long-lived server; a missing one is a refused cancel of a live run.
@@ -188,6 +193,7 @@ export function createLiveRuns(project: Project): LiveRuns {
    * outcome.
    */
   const controllers = new Map<string, AbortController>();
+  const completionRegistries = new Map<string, CompletionRegistry>();
 
   /**
    * Every in-flight run's own promise — the whole `project.run(...).then(...).finally(finalize)` chain,
@@ -210,13 +216,15 @@ export function createLiveRuns(project: Project): LiveRuns {
    */
   function beginTracked(): {
     started: ReturnType<typeof createDeferred<StartedRun>>;
-    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void };
+    completions: CompletionRegistry;
+    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void; completions: CompletionRegistry };
     finalize: () => void;
   } {
     // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
     // the response goes out before the run finishes, not before it starts.
     const started = createDeferred<StartedRun>();
     const controller = new AbortController();
+    const completions = new CompletionRegistry();
     let registeredRootRunId: string | undefined;
 
     const captureObserver: RunObserver = {
@@ -226,6 +234,7 @@ export function createLiveRuns(project: Project): LiveRuns {
         if (registeredRootRunId === undefined) {
           registeredRootRunId = o.rootRunId;
           controllers.set(o.rootRunId, controller);
+          completionRegistries.set(o.rootRunId, completions);
         }
         started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
       },
@@ -233,6 +242,7 @@ export function createLiveRuns(project: Project): LiveRuns {
 
     return {
       started,
+      completions,
       hooks: {
         // The live-forwarding backend rides alongside the configured db/NDJSON backends so
         // subscribers (§5) see every already-masked event in `seq` order — independent of which
@@ -243,6 +253,7 @@ export function createLiveRuns(project: Project): LiveRuns {
         extraObservers: [captureObserver],
         signal: controller.signal,
         warn: (message) => console.error(`warning: ${message}`),
+        completions,
       },
       // However it ended, the run is over. Tearing both registries down here rather than in each
       // arm is what makes "on every outcome" true by construction, so a long-lived server
@@ -250,6 +261,7 @@ export function createLiveRuns(project: Project): LiveRuns {
       finalize: () => {
         if (registeredRootRunId === undefined) return; // never started; neither holds an entry
         controllers.delete(registeredRootRunId);
+        completionRegistries.delete(registeredRootRunId);
         // Normally already closed: the root run's terminal event drives the live backend's `close`.
         // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
         // with a propagating bug rather than converting it to a failed run (#74). Without it the
@@ -322,6 +334,13 @@ export function createLiveRuns(project: Project): LiveRuns {
       // still-unwinding run is not a refusal.
       controller.abort();
       return true;
+    },
+
+    complete(stepRunId: string, output: JsonValue): boolean {
+      for (const registry of completionRegistries.values()) {
+        if (registry.complete(stepRunId, { output })) return true;
+      }
+      return false;
     },
 
     stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe {

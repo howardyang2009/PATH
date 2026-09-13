@@ -1,4 +1,5 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
+import type { CompletionRegistry } from "./completion-registry.js";
 import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { Emitter } from "./run-emitter.js";
@@ -37,6 +38,7 @@ export type Emit = (o: Observation) => Promise<void>;
 export interface StepRuntime {
   registry: LoadedStepPluginRegistry;
   semaphore: ProcessorSemaphore;
+  completions?: CompletionRegistry;
 }
 
 // The result of running one node (or a whole node sequence). A step run that a failing sibling
