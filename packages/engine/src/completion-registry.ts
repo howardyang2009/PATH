@@ -47,7 +47,10 @@ export class CompletionRegistry {
         return deferred.promise;
       }
       signal.addEventListener("abort", onAbort, { once: true });
-      deferred.promise.finally(() => signal.removeEventListener("abort", onAbort));
+      // Detach the listener once the deferred settles. The `.catch` swallows this cleanup chain's
+      // own rejection (a copy of the "cancelled" reject the caller already handles on `deferred.promise`),
+      // so it never surfaces as an unhandled rejection.
+      void deferred.promise.finally(() => signal.removeEventListener("abort", onAbort)).catch(() => {});
     }
 
     return deferred.promise;
