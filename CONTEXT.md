@@ -110,6 +110,28 @@ and issues use them exactly.
   present and fail where it is absent, and both verdicts are correct. There is no registry-free notion
   of a valid workflow file, which is why a consumer that cannot scan the folder — a browser design
   surface, say — **receives** a registry as data rather than assuming one (#315).
+- **Person-activity** — a built-in **leaf step** type (plugin folder `person-activity/`) that suspends a
+  run for an external human action. Its single **worker** `person` (also the **default worker**) does no
+  I/O and returns `{ status: "awaiting" }`; the run then holds the **Awaiting** status. It declares three
+  **type fields**: `description` (required, interpolable — the instructions shown to the person),
+  `outputSchema` (optional — a JSON Schema *object* describing the shape the person's completion output
+  must satisfy; omitted means any JSON output is accepted), and `assignee` (optional, informational
+  string, no enforcement). It declares no **config** keys in v1; the worker meters nothing and holds no
+  processor slot. Awaiting is **durable**, not a held process: the run row persists with `status =
+  awaiting` and no output blob, and the engine may tear down entirely, because a person can take days.
+  Completion is therefore a *fresh engine invocation*, not a resumed held process (ADR 0039). `POST
+  /v0/runs/:step_run_id/complete` carries the person's `output`; the engine reopens the same **run tree**
+  (the appendable-tree / **Model Q** mechanism shared with debug-stepping #419, not a new successor tree
+  as Resume mints), restores **context**, reloads the workflow file, reads *this* node's `outputSchema`
+  by node **id**, re-interpolates it against the run's config, and validates the submitted output with
+  `ajv` (ADR 0040). Invalid output is **refused** (`400` with validation details) and the step stays `awaiting` for
+  a retry; valid output is written as the step's output blob, the step moves to `succeeded`, and the run
+  continues. The schema is read from the *current* file at completion, so the file is the authority: an
+  author's edit to `outputSchema` between launch and Complete validates against the newer shape.
+  `outputSchema` is thus both a **UI contract** (the **Viewer** and **Designer** build the Complete form
+  from it) and a **validation contract** (Complete checks against it), and it lives in the workflow file,
+  never on the run row. `parse: "json"` is a no-op for this type, because the Complete body already
+  carries a structured `JsonValue` rather than a stdout string.
 
 ## Composition
 
