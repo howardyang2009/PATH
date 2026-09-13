@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeRunBlob } from "./blob-store.js";
 import { RUN_BLOB_FILE, runBlobDir } from "./paths.js";
-import { finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunUsage } from "./run-store.js";
+import { finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunStatus, setRunUsage } from "./run-store.js";
 
 /**
  * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/`
@@ -130,6 +130,10 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
         // context as it stood when it finished — the input/output pair gains a context companion.
         case "step-context":
           writeRunBlob(projectDir, o.rootRunId, o.runId, RUN_BLOB_FILE.context, o.context);
+          return;
+
+        case "step-awaiting":
+          setRunStatus(db, o.runId, "awaiting");
           return;
 
         case "step-finished":

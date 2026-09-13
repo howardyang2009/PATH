@@ -100,6 +100,12 @@ export interface RunOptions {
    */
   signal?: AbortSignal;
   /**
+   * The completion registry for steps that return `{ status: "awaiting" }` (#462). The engine
+   * suspends on the registry when a step goes awaiting; the external complete call resolves it.
+   * Absent when no person-activity steps are expected.
+   */
+  completions?: import("./completion-registry.js").CompletionRegistry;
+  /**
    * Resume a prior tree (#172): reuse the recorded work of every succeeded run whose node id still
    * matches (#170's `planReuse`), and restore each re-entered workflow-run's context blackboard from
    * the original tree, rather than re-running the whole pipeline from scratch. Absent for an ordinary
@@ -536,6 +542,8 @@ export interface SettleStepResult {
   signal?: AbortSignal;
   /** The enclosing block's cancellation, read for the cause the `run-cancelled` narrates. */
   cancellation?: Cancellation;
+  /** The run tree's completion registry, for steps that return `{ status: "awaiting" }` (#462). */
+  completions?: import("./completion-registry.js").CompletionRegistry;
 }
 
 /**
@@ -566,15 +574,39 @@ export interface SettleStepResult {
  *    leaf type so they can't drift.
  */
 export async function settleStepResult(args: SettleStepResult): Promise<SeqOutcome> {
-  const { step, node, result, meters, signal, cancellation } = args;
+  const { step, node, result, meters, signal, cancellation, completions } = args;
 
   // 1. stderr rides every outcome, into the audit blob.
-  if (result.stderr !== undefined) await step.stderr(result.stderr);
+  if (result.status !== "awaiting" && result.stderr !== undefined) await step.stderr(result.stderr);
 
   // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status.
   if (signal?.aborted) {
     await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
     return { status: "cancelled" };
+  }
+
+  // 2b. A worker that returned `awaiting` suspends on the completion registry (#462). The step
+  // transitions: running -> awaiting (emitted as step-awaiting) -> succeeded (emitted as
+  // step-finished). The sequence runner is unaware of this: the promise resolves when the
+  // external complete call provides the output.
+  if (result.status === "awaiting") {
+    if (!completions) {
+      const error = `step "${node.name}": returned awaiting but no completion registry is available`;
+      await step.finished({ status: "failed", error });
+      return { status: "failed", error, causeRunId: step.runId };
+    }
+    await step.awaiting();
+    let completion: import("./completion-registry.js").CompletionResult;
+    try {
+      completion = await completions.wait(step.runId, signal);
+    } catch {
+      if (signal?.aborted) {
+        await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
+        return { status: "cancelled" };
+      }
+      throw new Error(`step "${node.name}": completion wait failed unexpectedly`);
+    }
+    return finishSucceeded(step, node, completion.output);
   }
 
   // 3. Leaf-only spend (§5.7), from a metering worker only: recorded here, never rolled up — subtree
@@ -591,10 +623,23 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   }
 
   // 5. Success: `parse: "json"` on a string result, then finish.
-  let output: JsonValue = result.output;
-  if (node.parse === "json" && typeof result.output === "string") {
+  return finishSucceeded(step, node, result.output);
+}
+
+/**
+ * The shared success tail: apply `parse: "json"` to a string output, then emit the succeeded finish.
+ * Both a worker's own success (section 5) and an awaiting step's external completion (#462) land
+ * here, so a person-activity node declaring `parse: "json"` gets the same parsing a leaf worker does.
+ */
+async function finishSucceeded(
+  step: StepEmitter,
+  node: SettleStepResult["node"],
+  rawOutput: JsonValue,
+): Promise<SeqOutcome> {
+  let output: JsonValue = rawOutput;
+  if (node.parse === "json" && typeof rawOutput === "string") {
     try {
-      output = parseStepOutput(result.output);
+      output = parseStepOutput(rawOutput);
     } catch (err) {
       if (!(err instanceof OutputParseError)) throw err;
       const parseError = `step "${node.name}": ${err.message}`;
@@ -699,6 +744,7 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
       meters: descriptor.meters,
       signal: ctx.exec.signal,
       cancellation: ctx.exec.cancellation,
+      completions: ctx.run.runtime.completions,
     });
   } finally {
     // The processor is gone by now; holding its slot any longer would shrink the cap.
@@ -853,6 +899,7 @@ export async function runWorkflow(
       runtime: {
         registry,
         semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
+        completions: options.completions,
       },
       // Resume (#172): the root run's original counterpart is the original tree's own root run.
       // From there `executeWorkflowRun` plans reuse and restores context, recursing into every

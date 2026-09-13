@@ -96,6 +96,8 @@ export function toLogEvent(o: Observation, envelope: (runId: string, node?: Node
       // Paired with a `cancelled` step-finished for the same run. `cause` distinguishes a failing
       // sibling branch from an operator stopping the root run (#52).
       return { type: "run-cancelled", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), cause: o.cause, cause_run_id: o.causeRunId };
+    case "step-awaiting":
+      return { type: "step-awaiting", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }) };
     case "reuse-marker":
       // A reused node's whole narrative (#172): the log carries it where no step-lifecycle pair does,
       // node_id being the reused node's own id and original_run_id the back-reference to the run that

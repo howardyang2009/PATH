@@ -2,6 +2,7 @@ export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-w
 export { validateWorkflowFile, type ValidateWorkflowFileResult } from "./validate-workflow-file.js";
 export { loadStepPluginRegistry, type LoadedStepPluginRegistry } from "./plugin/scan.js";
 export { runWorkflow, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
+export { CompletionRegistry } from "./completion-registry.js";
 export {
   openProject,
   type EligibilityRow,

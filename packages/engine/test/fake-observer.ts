@@ -12,6 +12,7 @@ import type { Observation, RunObserver } from "../src/run-observer.js";
 export const OBSERVATION_TYPES = [
   "run-started",
   "step-started",
+  "step-awaiting",
   "step-stderr",
   "step-usage",
   "step-finished",

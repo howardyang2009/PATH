@@ -27,6 +27,8 @@ export function eventOutcome(event: LogEvent): RunStatus | null {
       return "cancelled";
     case "loop-exited":
       return event.reason === "max-iterations-exceeded" ? "failed" : null;
+    case "step-awaiting":
+      return "awaiting";
     case "branch-taken":
     case "join-applied":
     case "iteration-started":

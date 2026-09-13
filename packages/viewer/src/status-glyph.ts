@@ -11,6 +11,7 @@ import type { RunStatus } from "@path/client-core";
  */
 export const STATUS_GLYPH: Record<RunStatus, string> = {
   running: "◐",
+  awaiting: "⏳",
   succeeded: "✓",
   failed: "✕",
   cancelled: "⊘",

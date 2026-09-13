@@ -27,6 +27,8 @@
   --status-failed-bg: #ffebe9;
   --status-cancelled-fg: #656d76;
   --status-cancelled-bg: #eaeef2;
+  --status-awaiting-fg: #8250df;
+  --status-awaiting-bg: #fbefff;
   --status-pending-fg: #9a6700;
   --status-pending-bg: #fff8c5;
 
@@ -57,6 +59,8 @@
   --status-failed-bg: #2d1416;
   --status-cancelled-fg: #8b949e;
   --status-cancelled-bg: #21262d;
+  --status-awaiting-fg: #bc8cff;
+  --status-awaiting-bg: #271a3a;
   --status-pending-fg: #d29922;
   --status-pending-bg: #2a2213;
 }
@@ -78,6 +82,8 @@
     --status-failed-bg: #2d1416;
     --status-cancelled-fg: #8b949e;
     --status-cancelled-bg: #21262d;
+    --status-awaiting-fg: #bc8cff;
+    --status-awaiting-bg: #271a3a;
     --status-pending-fg: #d29922;
     --status-pending-bg: #2a2213;
   }

@@ -4,6 +4,7 @@ import { fileURLToPath } from "node:url";
 import { loadStepPluginRegistry, openProject, type LoadedStepPluginRegistry } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { handleCancelRun } from "./routes/cancel-run.js";
+import { handleCompleteRun } from "./routes/complete-run.js";
 import { handleDeleteRun } from "./routes/delete-run.js";
 import { handleResumeRun } from "./routes/resume-run.js";
 import { handleGetRun } from "./routes/get-run.js";
@@ -27,6 +28,7 @@ import { serveStatic } from "./serve-static.js";
 const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
 const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
 const RUN_CANCEL_ROUTE = /^\/v0\/runs\/([^/]+)\/cancel$/;
+const RUN_COMPLETE_ROUTE = /^\/v0\/runs\/([^/]+)\/complete$/;
 const RUN_RESUME_ROUTE = /^\/v0\/runs\/([^/]+)\/resume$/;
 const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
 
@@ -132,6 +134,12 @@ async function handleRequest(
     const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
     if (req.method === "POST" && cancelMatch) {
       handleCancelRun(res, ctx, decodeURIComponent(cancelMatch[1]!));
+      return;
+    }
+
+    const completeMatch = RUN_COMPLETE_ROUTE.exec(pathname);
+    if (req.method === "POST" && completeMatch) {
+      await handleCompleteRun(req, res, ctx, decodeURIComponent(completeMatch[1]!));
       return;
     }
 

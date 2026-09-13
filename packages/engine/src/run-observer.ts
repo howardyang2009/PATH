@@ -183,6 +183,8 @@ export type Observation =
    * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
    */
   | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; nodeName: string; originalRunId: string }
+  /** A leaf step run entered the `awaiting` status (#462): the engine suspended it. */
+  | { type: "step-awaiting"; runId: string; rootRunId: string; nodeId: string; nodeName: string }
   /**
    * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
    * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run

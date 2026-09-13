@@ -134,9 +134,15 @@ const LoopExitedSchema = z
 // in the *original* tree that holds the real data, so a reader follows the pointer instead of a gap.
 const ReuseMarkerSchema = z.object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() }).strict();
 
+// A leaf step entered the `awaiting` status (#462): the worker returned `{ status: "awaiting" }` and
+// the engine suspended the step until an external `complete` call resolves it. The step is still live
+// (not terminal), so this is a distinct event from `step-finished`.
+const StepAwaitingSchema = z.object({ type: z.literal("step-awaiting"), ...envelope }).strict();
+
 export const LogEventSchema = z.discriminatedUnion("type", [
   StepStartedSchema,
   StepFinishedSchema,
+  StepAwaitingSchema,
   CheckpointPassedSchema,
   CheckpointFailedSchema,
   BranchTakenSchema,
@@ -153,4 +159,5 @@ export type StepStartedEvent = z.infer<typeof StepStartedSchema>;
 export type StepFinishedEvent = z.infer<typeof StepFinishedSchema>;
 export type JoinAppliedEvent = z.infer<typeof JoinAppliedSchema>;
 export type RunCancelledEvent = z.infer<typeof RunCancelledSchema>;
+export type StepAwaitingEvent = z.infer<typeof StepAwaitingSchema>;
 export type ReuseMarkerEvent = z.infer<typeof ReuseMarkerSchema>;

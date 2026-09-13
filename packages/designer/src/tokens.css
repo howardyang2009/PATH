@@ -39,6 +39,8 @@
   /* Run status (#372) — colour + glyph, never hue alone. Foreground + soft background per status. */
   --run-running: #1f6feb;
   --run-running-bg: #ddf0ff;
+  --run-awaiting: #8250df;
+  --run-awaiting-bg: #fbefff;
   --run-succeeded: #1a7f37;
   --run-succeeded-bg: #dcfce7;
   --run-failed: #cf222e;
@@ -90,6 +92,8 @@
 
   --run-running: #58a6ff;
   --run-running-bg: #12283f;
+  --run-awaiting: #bc8cff;
+  --run-awaiting-bg: #271a3a;
   --run-succeeded: #3fb950;
   --run-succeeded-bg: #12261a;
   --run-failed: #f85149;
@@ -131,6 +135,8 @@
 
     --run-running: #58a6ff;
     --run-running-bg: #12283f;
+    --run-awaiting: #bc8cff;
+    --run-awaiting-bg: #271a3a;
     --run-succeeded: #3fb950;
     --run-succeeded-bg: #12261a;
     --run-failed: #f85149;

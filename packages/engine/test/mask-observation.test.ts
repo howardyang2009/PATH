@@ -65,6 +65,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
     trace: { type: "exists", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
   "reuse-marker": { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "n1", originalRunId: "orig-run" },
+  "step-awaiting": { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1" },
 };
 
 /**
@@ -73,7 +74,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
  * Naming them is what stops the sweep below from passing vacuously: any *other* member whose sample
  * does not really hold a secret is a sample that proves nothing.
  */
-const CANNOT_CARRY_A_SECRET = new Set<Observation["type"]>(["join-applied", "run-cancelled", "reuse-marker"]);
+const CANNOT_CARRY_A_SECRET = new Set<Observation["type"]>(["join-applied", "run-cancelled", "reuse-marker", "step-awaiting"]);
 
 describe("maskObservation", () => {
   it("leaves no secret in any observation type", () => {

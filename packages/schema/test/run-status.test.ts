@@ -21,6 +21,7 @@ describe("isTerminal", () => {
   it("is false while a run has not ended", () => {
     expect(isTerminal("pending")).toBe(false);
     expect(isTerminal("running")).toBe(false);
+    expect(isTerminal("awaiting")).toBe(false);
   });
 
   it("agrees with TERMINAL_RUN_STATUSES", () => {
