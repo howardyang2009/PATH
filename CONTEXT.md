@@ -38,6 +38,17 @@ and issues use them exactly.
   cancelled run ends with the `cancelled` status. This status is distinct from `failed`: an operator
   that stops a run is not the workflow breaking. A cancelled run lands no publishes. A `run-cancelled`
   log event describes it and carries its cause.
+- **Awaiting** — a non-terminal run status a **leaf step** holds while it waits for an external human
+  action (a **person-activity** step, #462). The leaf's worker returns `{ status: "awaiting" }` and the
+  run suspends until a person completes the offline activity and presses Complete. It is reached only
+  from `running`. It leaves in one of two ways: a valid Complete (output that validates against the
+  step's `outputSchema`) moves it to `succeeded`; an operator Cancel moves it to `cancelled`. It never
+  returns to `running` and reaches no terminal status by any other path. `isTerminal` returns false for
+  it, beside `pending` and `running`. It does **not** propagate: a root run and every enclosing
+  workflow-run stay `running` while a descendant awaits, and the awaiting-ness reads at the leaf that
+  holds it, never rolled up to a parent (ADR 0038). It is distinct from debug's `paused` (waiting for a
+  debugger, #419), which is not yet a run status; a run in `awaiting` waits for a person. A
+  `step-awaiting` log event narrates the entry (Audit, "Log event").
 - **Workflow** — a composition of steps. A workflow is itself a valid step type ("workflow-as-step").
   Thus to execute a workflow is to run the task of the step that wraps it. An implicit root step wraps
   the top-level workflow. The run of a workflow-step spawns **child runs** for its inner steps. These
