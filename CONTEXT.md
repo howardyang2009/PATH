@@ -119,12 +119,12 @@ and issues use them exactly.
   string, no enforcement). It declares no **config** keys in v1; the worker meters nothing and holds no
   processor slot. Awaiting is **durable**, not a held process: the run row persists with `status =
   awaiting` and no output blob, and the engine may tear down entirely, because a person can take days.
-  Completion is therefore a *fresh engine invocation*, not a resumed held process. `POST
+  Completion is therefore a *fresh engine invocation*, not a resumed held process (ADR 0039). `POST
   /v0/runs/:step_run_id/complete` carries the person's `output`; the engine reopens the same **run tree**
   (the appendable-tree / **Model Q** mechanism shared with debug-stepping #419, not a new successor tree
   as Resume mints), restores **context**, reloads the workflow file, reads *this* node's `outputSchema`
   by node **id**, re-interpolates it against the run's config, and validates the submitted output with
-  `ajv`. Invalid output is **refused** (`400` with validation details) and the step stays `awaiting` for
+  `ajv` (ADR 0040). Invalid output is **refused** (`400` with validation details) and the step stays `awaiting` for
   a retry; valid output is written as the step's output blob, the step moves to `succeeded`, and the run
   continues. The schema is read from the *current* file at completion, so the file is the authority: an
   author's edit to `outputSchema` between launch and Complete validates against the newer shape.
