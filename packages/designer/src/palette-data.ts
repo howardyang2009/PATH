@@ -56,7 +56,7 @@ function stepsGroup(plugins: WireStepPlugin[]): PaletteGroup {
 
 /** Blocks — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
 const BLOCKS: PaletteGroup = {
-  title: "Blocks",
+  title: "Controllers",
   entries: [
     { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
     { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
