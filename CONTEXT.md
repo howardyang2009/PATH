@@ -34,7 +34,9 @@ and issues use them exactly.
   and tears down the processor. It holds no deadline and no force path. There are three **causes**.
   **operator** is a cancel request against a root run. **sibling-failed** means a parallel branch
   failed, so the engine cancels its in-flight siblings. **sibling-succeeded** means a `wait-one` branch
-  reached `succeeded`, so the engine cancels the still-running losers of the race (mvp spec §5.6). A
+  reached `succeeded`, so the engine cancels the still-running losers of the race (mvp spec §5.6).
+  Both sibling causes reach a still-**Awaiting** leaf too: a parked person-activity branch is cancelled
+  like any other non-terminal loser, and its later Complete lands `409` (ADR 0042). A
   cancelled run ends with the `cancelled` status. This status is distinct from `failed`: an operator
   that stops a run is not the workflow breaking. A cancelled run lands no publishes. A `run-cancelled`
   log event describes it and carries its cause.
@@ -168,6 +170,18 @@ and issues use them exactly.
   It adds **no new cancel cause**. Resume **re-fires** a non-succeeded detached branch with no
   short-circuit
   ([ADR 0009](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0009-do-not-wait-resume-re-fires-no-short-circuit.md)).
+  An **Awaiting** leaf inside a branch is an ordinary non-terminal branch member; a join invents no
+  special case for it
+  ([ADR 0042](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0042-awaiting-inside-parallel-joins.md)).
+  Under **collect**, awaiting branches each resolve on their own Complete in any order; a sibling
+  *failure* cancels the still-awaiting branches (cause `sibling-failed`). Under **wait-one**, an
+  awaiting branch is a live racer: it wins if its Complete lands first, and it is cancelled (cause
+  `sibling-succeeded`) if a sibling succeeds first. Under **do-not-wait** a person-activity step is
+  legal only when its **publish set** is empty (the ordinary detached-branch rule, keyed on declared
+  `publish` keys, not on completion output); a detached branch parked awaiting holds the
+  enclosing-workflow-run barrier open, so the root stays `running` (ADR 0038). None of these adds a
+  cancel cause; a never-Completed awaiting branch is non-succeeded, so Resume re-runs it and it parks
+  afresh.
 - **Checkpoint** — an engine-evaluated assertion node. It is a fail-fast gate. It mechanically tests
   data or context (format, presence, ranges, exit codes). If the test is true, the workflow continues.
   If the test is false, the run stops as failed. A checkpoint has no worker. It never exercises
