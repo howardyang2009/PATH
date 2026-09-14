@@ -121,6 +121,7 @@ describe("Designer save through the write route (#371)", () => {
   });
 
   it("surfaces a 412 as a stale-write conflict the author must resolve, keeping the buffer", async () => {
+    const calls = makeCalls();
     const idless = rootFile();
     delete idless.id;
     const onPut = (): Response =>
@@ -128,11 +129,15 @@ describe("Designer save through the write route (#371)", () => {
         status: 412,
         headers: { "Content-Type": "application/json" },
       });
-    render(<App client={stubClient({ files: filesWith(idless), onPut })} initialPath={ROOT_PATH} />);
+    render(<App client={stubClient({ files: filesWith(idless), calls, onPut })} initialPath={ROOT_PATH} />);
 
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
+    // Anchor on the async cause before asserting its effect: wait for the PUT to have landed (the 412), so the
+    // conflict dispatch is one render away. Without this the banner assertion raced the in-flight save and
+    // could time out under a loaded CI runner.
+    await waitFor(() => expect(calls.put).toHaveLength(1));
     const alert = await screen.findByText(/changed on disk since you opened it/);
     expect(alert).toBeInTheDocument();
     // The buffer is not discarded — the canvas still holds the file.
