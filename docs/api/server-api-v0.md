@@ -96,7 +96,8 @@ never stored, and the same-origin policy blocks a read of the response cross-ori
 config).
 
 The gate is a header check, no auth (it graduates to token auth if remote access ever lands, §0). It
-guards every **state-changing** route (`POST /v0/runs` and `POST /v0/runs/:root_run_id/cancel`, §4.2).
+guards every **state-changing** route (`POST /v0/runs`; `POST /v0/runs/:root_run_id/cancel`, §4.2;
+`POST /v0/runs/:root_run_id/resume`, §4.3; and `POST /v0/runs/:step_run_id/complete`, §4.4).
 It rejects with `403` when the request looks like a cross-origin browser call:
 
 - `Sec-Fetch-Site`, when present, is decisive. `same-origin` and `none` (a user-initiated load) pass.
@@ -322,6 +323,97 @@ Responses:
   selection that resolves to a since-deleted node, an unsucceeded K, or a broken prefix also lands here
   (spec §5 reasons 2, 4, 5). Every Resume-from-K refusal's `error.message` is the engine's verbatim
   wording — one authority across route, CLI, and listing.
+
+### 4.4 `POST /v0/runs/:step_run_id/complete` — complete an awaiting step
+
+Added by issue [#466](https://github.com/howardyang2009/PATH/issues/466), part of the person-activity
+step-type plugin ([#461](https://github.com/howardyang2009/PATH/issues/461)). A `person-activity` leaf
+step returns `{ status: "awaiting" }` and the run **suspends** (CONTEXT.md § Awaiting); a person does the
+offline activity and calls this route with the output. Valid output moves the leaf to `succeeded` and the
+engine continues; invalid output is refused and the leaf stays `awaiting` for a retry. It is a **named
+action** on an existing run, like Cancel (§4.2) and Resume (§4.3), and async like `POST /v0/runs` (§2).
+
+**The path names the leaf, not the root.** Unlike Cancel and Resume — which act on a whole tree and key
+on `:root_run_id` — Complete targets one **awaiting leaf**, identified by its own `step_run_id`. A tree
+may hold several `awaiting` leaves at once (parallel branches; CONTEXT.md § Awaiting), so the root alone
+would not say which one. The server resolves the row by `run_id`, reads its status, and derives the
+`root_run_id` from the row (for the single-writer lease, below). No `/steps/` sub-path and no
+`:root_run_id` segment: the leaf id is sufficient and self-locating.
+
+**Request body** — the person's output, no status field (Complete always succeeds; failure is Cancel,
+#461):
+
+```json
+{ "output": <json-value> }
+```
+
+`output` is a structured `JsonValue`, not a stdout string, so `parse: "json"` is a no-op for this type
+([ADR 0040](../adr/0040-output-schema-is-json-schema-validated-with-ajv-from-the-current-file.md)). A
+missing `output` is a `400`.
+
+**Validation runs before the lease.** Validation is per-leaf; the single-writer lease is per-tree. The
+route validates *first* so a bad submit on one leaf never blocks a valid concurrent Complete on a sibling
+leaf. The order:
+
+1. **Resolve** `step_run_id` to a run row. Unknown → `404`. Row exists but its status is not `awaiting`
+   → `409` (below).
+2. **Reload the workflow file** (recovered from the run's source-workflow identity, the same requirement
+   Resume carries, [ADR 0039](../adr/0039-complete-is-a-durable-engine-re-invocation-over-the-appendable-tree.md)),
+   read *this* node's `outputSchema` by node `id`, re-interpolate it against the run's config, and
+   validate `output` with **ajv** (ADR 0040). A node with no `outputSchema` accepts any JSON. Invalid →
+   `400`, `error.details` carries the ajv issues; no lease is taken and the leaf is untouched.
+3. **Acquire the per-root-run lease** (the [ADR 0017](../adr/0017-designer-edit-lock-is-a-server-owned-expiring-file-lease.md) expiring-store-lease
+   pattern; [ADR 0041](../adr/0041-awaiting-continue-is-a-replay-from-root-over-the-appendable-tree.md)).
+   Held by another Complete → `409`; the person retries (never queued — a queue re-introduces the held
+   wait ADR 0039 removes).
+4. **Commit the leaf** under a compare-and-swap `awaiting → succeeded`, write `output` as the leaf's
+   output blob, then **drive the tail in the background** — a replay from the root that reuses every
+   `succeeded` row and re-drives only the unfinished path (ADR 0041). The route does **not** wait for the
+   tail; a long continuation must not hold the HTTP request.
+
+Responses:
+
+- `202 Accepted` — the output was validated and the leaf committed `succeeded`; the tail runs (or parks)
+  in the background:
+  ```json
+  { "step_run_id": "<uuid>", "root_run_id": "<uuid>" }
+  ```
+  The response goes out before the subsequent execution finishes (ADR 0041: the route is thin). It
+  carries `root_run_id` because the caller submitted a leaf id but watches the **root's** SSE stream
+  (§5) for the tail. If the replay reaches a still-`awaiting` sibling it parks at the incomplete join and
+  the tree stays `running`; whichever Complete last satisfies the join runs the shared tail exactly once
+  (ADR 0041). Either way this call answers `202` — its own leaf is already `succeeded`.
+- `400 Bad Request` — a malformed body; a missing `output`; an `output` that fails the node's
+  `outputSchema` (`error.details` carries the ajv issues, ADR 0040); or the reloaded file no longer
+  passes validation (`error.details` carries the issues), exactly as a fresh launch would. The leaf stays
+  `awaiting`; the person may resubmit corrected output to the same route.
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1). Complete is
+  state-changing and guarded like every other write route.
+- `404 Not Found` — no run with that `step_run_id`; or the workflow file recovered from the run's row no
+  longer exists on disk (the replay cannot run without it, ADR 0039). `404` is reserved for "the thing to
+  act on cannot be found."
+- `409 Conflict` — the run exists but cannot be completed, each case named distinctly in
+  `error.message`:
+  - the row's status is not `awaiting` (a root run, a workflow-run, or a leaf in `pending`/`running`/
+    `succeeded`/`cancelled`) — the message names the actual status. A double-submit on an
+    already-`succeeded` leaf lands here (the CAS precondition fails, ADR 0041).
+  - the per-root-run lease is held by another in-flight Complete (retry).
+  - the file at the recorded path is a **different workflow** (its root `id` no longer matches the run's,
+    [ADR 0006](../adr/0006-workflow-and-node-identity-guid-plus-name.md)), or the run carries no recorded workflow path — the
+    same swapped-file / pre-#169 refusals Resume makes (§4.3).
+  - the file loads and matches, but this node `id` is gone from it or is no longer a `person-activity`
+    type (an author deleted or retyped the node mid-wait). The leaf can never validly complete against
+    the current file; the person's only exit is Cancel (§4.2), which moves the leaf `awaiting → cancelled`
+    (ADR 0041).
+
+The transitional in-memory `CompletionRegistry` + `live.complete` path (ADR 0039, ADR 0041) is superseded
+by the replay-from-root design and is not the route's contract; the durable re-invocation above is.
+
+**Deferred, not specified here:** the log events the engine emits for the `awaiting` transition and the
+Complete action (a `step-awaiting` event is named in CONTEXT.md § Awaiting, but the full observation/
+log-event set rides the audit-model ticket, #461); and any assignee notification (out of scope for v1,
+#461). Complete enforces no identity binding — v1 has no user model, so any caller may complete any
+awaiting leaf (#461).
 
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 
