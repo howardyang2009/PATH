@@ -24,9 +24,9 @@ export type SocketFlavor =
   /** A `parallel`'s branch list: each entry is a node owing an output key. No checkpoint. */
   | "branches";
 
-/** The five block kinds fixed by the grammar (§ What is authorable); leaf step kinds arrive from the registry. */
-export const BLOCK_KINDS = ["parallel", "branch", "while-do", "sequence", "checkpoint"] as const;
-export type BlockKind = (typeof BLOCK_KINDS)[number];
+/** The five controller kinds fixed by the grammar (§ What is authorable); leaf step kinds arrive from the registry. */
+export const CONTROLLER_KINDS = ["parallel", "branch", "while-do", "sequence", "checkpoint"] as const;
+export type ControllerKind = (typeof CONTROLLER_KINDS)[number];
 
 /**
  * Is `kind` legal in a socket of `flavor`? `kind` is a node `type` discriminant — a block keyword or a
@@ -40,12 +40,12 @@ export function socketAcceptsKind(flavor: SocketFlavor, kind: string): boolean {
 
 /**
  * Does a node of `type` carry the step envelope (`config` / `input` / `parse` / `publish`)? Every leaf
- * step type and `workflow` does; the five control blocks (`BLOCK_KINDS`) do not — they are engine
+ * step type and `workflow` does; the five controllers (`CONTROLLER_KINDS`) do not — they are engine
  * constructs with no worker and no task (CONTEXT.md § Composition). So the predicate is exactly "not a
- * block kind", which is why it lives beside `BLOCK_KINDS` rather than repeating that set.
+ * controller kind", which is why it lives beside `CONTROLLER_KINDS` rather than repeating that set.
  */
 export function carriesEnvelope(type: string): boolean {
-  return !(BLOCK_KINDS as readonly string[]).includes(type);
+  return !(CONTROLLER_KINDS as readonly string[]).includes(type);
 }
 
 /** The flavour a node's own child slots expose, for a caller placing into an existing block. */
