@@ -49,7 +49,7 @@ describe("classifyLevelK — the refusal taxonomy (spec §5)", () => {
     });
   });
 
-  it("#3 in-body — present, but inside a control body, and it names the enclosing logicer", () => {
+  it("#3 in-body — present, but inside a control body, and it names the enclosing controller", () => {
     const withLoop: WorkflowNode[] = [step("a"), loop("spin", step("inner"))];
     expect(classifyLevelK({ body: withLoop, rows: allSucceeded, scopeRunId: "scope", nodeId: "inner", leafStatus: "succeeded" })).toEqual(
       // The locus vocabulary spells while-do as `loop` (ControlBlockKind, spec §6).

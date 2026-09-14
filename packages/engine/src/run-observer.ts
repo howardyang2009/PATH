@@ -140,7 +140,7 @@ export type Observation =
    * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
    * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the
    * `winner` branch won the race and only its buffered publishes landed, `branches` naming just the
-   * winner. A control-node observation (the block is a logicer, not a run) — `runId` is the enclosing
+   * winner. A control-node observation (the block is a controller, not a run) — `runId` is the enclosing
    * workflow-run, `nodeId` the `parallel` node. `winner` is set only for a `wait-one` join.
    */
   | {

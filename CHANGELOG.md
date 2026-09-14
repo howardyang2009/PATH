@@ -112,7 +112,7 @@ No format break, no DB break — an existing `path.db` and `@2` workflow files k
 ## v0.5.1 — 2026-08-20
 
 One shape, everywhere. The **workflow format grows up again** — `path/workflow@1`'s three different
-container slots collapse into a single uniform node shape, and a new `sequence` logicer carries the
+container slots collapse into a single uniform node shape, and a new `sequence` controller carries the
 "run these in order" case that used to be smuggled inside a bare node array. A parallel branch is now
 just a node (it already carries its own `id` + `name` — the `collect`/`wait-one` key — so the old
 `{id,name,body}` wrapper was pure ceremony); a branch arm, an `else`, and a `while-do` body each hold
@@ -151,18 +151,18 @@ scripts 14), typecheck green throughout; `scripts/` now runs inside CI (#287).
   run-the-codemod message. Migrate with `scripts/migrate-workflow-format-v2.ts` (fill-once, idempotent,
   refuses on a name collision).
 - **`sequence` node** (#278) — the multi-step case that lived in a bare node array is now an explicit
-  `{type: "sequence", id, name, body}` logicer (body: node array, min 1); output is the last child's.
-  As a logicer it rejects worker/config/input/parse/publish. Only two multi-node slots remain in the
+  `{type: "sequence", id, name, body}` controller (body: node array, min 1); output is the last child's.
+  As a controller it rejects worker/config/input/parse/publish. Only two multi-node slots remain in the
   format: top-level `body` and `sequence.body`.
 
 ### Features
 
-- feat(schema): `@2` uniform single-node containers + `sequence` logicer (#278) — collapses the three
+- feat(schema): `@2` uniform single-node containers + `sequence` controller (#278) — collapses the three
   `@1` slot shapes into one node shape and adds `sequence`, per the frozen `workflow-format-v2.md`
   spec. `FORMAT_VERSION` is `path/workflow@2`, the only accepted string; `node-walk` re-expresses each
   single-node slot as a one-element body and drops the `branchName` special case.
 - feat(engine,server): consume `@2` single-node containers + `sequence` (#278) — branch arm / `else` /
-  `while-do` body run as one-node sequences; the `sequence` logicer runs its body nested, output = last
+  `while-do` body run as one-node sequences; the `sequence` controller runs its body nested, output = last
   child. `run-parallel` and `plan-reuse` walk `[branch]` for a branch-as-node.
 - feat(scripts): `@1` → `@2` workflow-format codemod (#278) — the one-time repo codemod the loader's
   rejection names, following its `@0` → `@1` predecessor. Unwraps single-node branches (name-preserving),
@@ -918,7 +918,7 @@ _None_
 - Add acceptance workflow sketch: repo release-notes pipeline (resolves wayfinder ticket #9)
 - Add Agent SDK spike findings (resolves wayfinder ticket #13)
 - Add LLM worker execution options survey (resolves wayfinder ticket #6)
-- CONTEXT.md: nested block grammar + MVP logicer subset (resolves wayfinder ticket #5)
+- CONTEXT.md: nested block grammar + MVP controller subset (resolves wayfinder ticket #5)
 - Add CONTEXT.md: PATH domain model glossary (resolves wayfinder ticket #2)
 - Path: add brainstorm.md
 

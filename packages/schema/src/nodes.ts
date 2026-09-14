@@ -111,7 +111,7 @@ export function buildCoreMembers({
     .strict();
 
   // `sequence` is the single-node grammar's answer to "this slot needs several nodes in order"
-  // (`@2` §4.4). A logicer: it takes none of `worker`/`config`/`input`/`parse`/`publish`; its `body`
+  // (`@2` §4.4). A controller: it takes none of `worker`/`config`/`input`/`parse`/`publish`; its `body`
   // is a node array of minimum length 1, run in order, and its output is its last child's output.
   const SequenceNodeSchema = z
     .object({

@@ -60,11 +60,11 @@ destination. That is what the two lists disagreed about until now.
 ## 2. Domain model
 
 [CONTEXT.md](../../CONTEXT.md) is the canonical glossary (step, worker, task, run, processor,
-workflow-as-step, logicer, checkpoint, config vs context, log event, trace, log backend, secret). These
+workflow-as-step, controller, checkpoint, config vs context, log event, trace, log backend, secret). These
 are the invariants that implementers must not break:
 
-1. Only **steps** execute on workers. Logicers and checkpoints are engine constructs: no worker, no
-   task, no run.
+1. Only **steps** execute on workers. Controllers (including `checkpoint`) are engine constructs: no
+   worker, no task, no run.
 2. Every execution is a **run of a task**. There is no separate "workflow execution" concept. An
    implicit root step wraps the top-level workflow. A workflow-step's run spawns child runs, which form
    the run tree.
@@ -151,9 +151,9 @@ doc wins on any detail:
 - **Every container slot holds exactly one node** (ADR 0014). A `parallel` branch, a `branch` arm's
   occupant, an `else`, and a `while-do` body are each a node, not a wrapper. Only two slots carry a node
   array: the file's top-level `body` and a `sequence`'s `body`.
-- Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`); logicers `parallel`
+- Nodes: steps `prompt` / `binary` / `workflow` (relative-path `ref`); controllers `parallel`
   (`join: "collect" | "wait-one" | "do-not-wait"`) / `branch` / `while-do` (mandatory `max_iterations`)
-  / `sequence` (a node array wherever a slot needs several nodes in order); plus `checkpoint`.
+  / `sequence` (a node array wherever a slot needs several nodes in order) / `checkpoint`.
 - `${dot.path}` interpolation with the whole-string typing rule, in allowlisted positions only. Roots
   are `config` and `context`, plus `output` in `publish` maps.
 - Uniform data flow: `input` builds the step's input object (absent means the previous node's output).
@@ -182,11 +182,11 @@ Concurrency exists only inside `parallel` blocks. There is no lookahead and no r
   Zero iterations is a normal exit. If the condition is still true after `max_iterations` completed
   iterations, the **run fails**. Post-loop nodes may assume the condition resolved to false.
 - **Checkpoint** — if the condition is true, continue. If it is false, the run stops as failed.
-- **Sequence** — a logicer that holds a **node array** (`body`). It is the answer to "this single-node
+- **Sequence** — a controller that holds a **node array** (`body`). It is the answer to "this single-node
   slot needs several nodes in order." Its nodes run sequentially, like a top-level body. Its output
   object is its **last child's**. Its first child's default input is the `sequence`'s predecessor's
   output (§5.4). It adds no new execution rule; it restates the block-slot rules over one node. Being a
-  logicer, it has no worker, task, or run. It is a legal occupant of any single-node slot (a `while-do`
+  controller, it has no worker, task, or run. It is a legal occupant of any single-node slot (a `while-do`
   body, a `branch` arm, an `else`, a `parallel` branch).
 - **Parallel** — structured concurrency. The run tree stays **strictly nested** (every workflow-run
   contains its descendants). The `join` decides completion. `collect` waits for **all** branches.
@@ -585,7 +585,7 @@ workflow's NOTES.md.
 | Domain model (§2) | [#2](https://github.com/howardyang2009/PATH/issues/2), recorded in CONTEXT.md |
 | Stack & layout (§3) | [#3](https://github.com/howardyang2009/PATH/issues/3) |
 | Step-type subset (§1, §4) | [#4](https://github.com/howardyang2009/PATH/issues/4) |
-| Logicer subset & block grammar (§4, §5) | [#5](https://github.com/howardyang2009/PATH/issues/5) |
+| Controller subset & block grammar (§4, §5) | [#5](https://github.com/howardyang2009/PATH/issues/5) |
 | LLM worker survey (§7) | [#6](https://github.com/howardyang2009/PATH/issues/6), recorded in the research doc |
 | Condition language (§4) | [#7](https://github.com/howardyang2009/PATH/issues/7) |
 | Persistence (§6) | [#8](https://github.com/howardyang2009/PATH/issues/8) |

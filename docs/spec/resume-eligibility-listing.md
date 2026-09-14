@@ -41,7 +41,7 @@ The file lives on `path run`, not on the file-free `path runs` family; ADR 0034 
 
 ## 3. Eligibility is file-aware, from one authority
 
-The `eligible?` verdict is **not** computed from the store's run rows alone. Logicers (parallel,
+The `eligible?` verdict is **not** computed from the store's run rows alone. Controllers (parallel,
 branch, while-do, sequence) leave **no run row** (invariant 1), so the run tree keyed on `parentRunId`
 cannot tell a top-level node from one nested inside a loop / parallel / branch body — both carry the
 enclosing workflow-run as their parent run. The legal-K test therefore needs the workflow **structure**,
@@ -103,7 +103,7 @@ tree**), which can never fire here — every listed row is a run of the tree bei
 | `prefix not all succeeded`                 | #5 (409)          | a top-level node before K at K's level did not succeed               |
 | `root run (never a boundary)`              | —                 | the root row; the implicit root step is never a K                    |
 
-The container name in the locus reason is the innermost enclosing logicer (`loop` for while-do,
+The container name in the locus reason is the innermost enclosing controller (`loop` for while-do,
 `parallel`, or `branch`).
 
 ## 7. Whole-command gates and exit codes

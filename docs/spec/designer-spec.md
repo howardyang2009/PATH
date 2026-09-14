@@ -86,7 +86,7 @@ prototype (three variants: drill-down, inline-Scratch, hybrid). This section is 
 ### The model: inline within a file, drill-down across a ref boundary
 
 Nesting **inside a single workflow file renders inline and visible**. Every node is a block. The three
-block logicers (`parallel`, `branch`, `while-do`) are C-shaped wrappers. Their arms and body nest in
+block controllers (`parallel`, `branch`, `while-do`) are C-shaped wrappers. Their arms and body nest in
 the mouth. This **supersedes** the pure level-by-level drill-down of decision 6's 2026-08-19 amendment.
 The author sees a level's structure without a descent into it. The canvas drills in only one place: a
 **`workflow`-ref crossing to another file**. That boundary already forces a separate write precondition
@@ -187,7 +187,7 @@ All four are **canvas** actions (structure), never pane controls:
 - **Add** — drag a palette block into a **legal socket**, or use a sequence's tail add-affordance. The
   socket accepts only grammar-legal kinds. The palette is **grouped into Steps** (one entry per leaf
   step type the registry describes — `prompt`, `binary`, `workflow`, and any plugin type such as
-  `api-call`) **and Blocks** (the logicers plus checkpoint). Each step type is its own entry, so the
+  `api-call`) **and Blocks** (the controllers, `checkpoint` included). Each step type is its own entry, so the
   author picks the **type** up front (the worker is a later per-step selection, § The v1 authoring
   palette). A branch whose `else` was deleted offers an **add-`else`** affordance (there is at most one
   `else`).
@@ -253,7 +253,7 @@ stale snapshot surfaces as a rejected write, never a corrupt file.
 Every node kind is a palette entry. Nothing is v1-deferred to hand-editing the JSON.
 
 - **Steps** — one entry per registry leaf type (above).
-- **Blocks** — the four logicers and the checkpoint: `parallel` (with its `collect` / `wait-one` /
+- **Blocks** — the five controllers: `parallel` (with its `collect` / `wait-one` /
   `do-not-wait` join modes), `branch`, `while-do`, `sequence`, and `checkpoint` (CONTEXT.md
   § Composition). `sequence` is an **explicit** palette block the author places, and it renders as its
   own inline stack (this resolves the map's open "sequence visibility" question toward *its own level*,

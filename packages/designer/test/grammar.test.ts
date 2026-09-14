@@ -3,7 +3,7 @@ import { carriesEnvelope, childSocketFlavor, socketAcceptsKind } from "../src/gr
 import type { WorkflowNode } from "@path/schema";
 
 describe("grammar — which kind snaps into which socket (#368)", () => {
-  it("admits every step and logicer kind in every socket flavour", () => {
+  it("admits every step and controller kind in every socket flavour", () => {
     for (const flavor of ["sequence", "single", "branches"] as const) {
       for (const kind of ["prompt", "binary", "workflow", "parallel", "branch", "while-do", "sequence", "api-call"]) {
         expect(socketAcceptsKind(flavor, kind)).toBe(true);

@@ -32,7 +32,7 @@ set to the per-level chain that lets K sit inside a nested `workflow`.
   the set is one `findIndex` at build time.
 - **A new resume-aware node walker.** Rejected as unnecessary. The predicate "node is ≥K" is precise
   for all three ≥K shapes using the walk `planReuse` already runs: a ≥K leaf contributes its own id; a
-  ≥K logicer (`while-do`/`parallel`/`sequence`) owns no run row (invariant 1) but `walkNodes` descends
+  ≥K controller (`while-do`/`parallel`/`sequence`) owns no run row (invariant 1) but `walkNodes` descends
   it, so its run-producing descendants land in the set (subtree entire); a ≥K `workflow` node contributes
   only its own id (`walkNodes` never descends a ref, `plan-reuse.ts:19-21`) and its subtree is forced
   fresh by the counterpart-refusal guard. No second traversal earns its keep.

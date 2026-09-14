@@ -26,7 +26,7 @@ describe("eventOutcome", () => {
   it("counts the engine constructs that stop a run as failures", () => {
     expect(eventOutcome({ ...ENVELOPE, type: "checkpoint-failed", trace: TRACE })).toBe("failed");
     expect(eventOutcome({ ...ENVELOPE, type: "branch-no-match", traces: [TRACE] })).toBe("failed");
-    // A while-do that exceeds its mandatory max-iterations bound fails the run (CONTEXT.md, Logicer).
+    // A while-do that exceeds its mandatory max-iterations bound fails the run (CONTEXT.md, Controller).
     expect(
       eventOutcome({ ...ENVELOPE, type: "loop-exited", reason: "max-iterations-exceeded", iterations: 3, trace: TRACE }),
     ).toBe("failed");

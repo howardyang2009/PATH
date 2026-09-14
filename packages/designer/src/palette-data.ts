@@ -2,7 +2,7 @@ import type { WireStepPlugin } from "@path/client-core";
 
 /**
  * The palette's two groups (#368, designer-spec § The v1 authoring palette): **Steps** — one entry per
- * leaf step type — and **Blocks** — the four logicers plus `checkpoint`, fixed by the grammar.
+ * leaf step type — and **Blocks** — the five controllers (`checkpoint` included), fixed by the grammar.
  *
  * The Steps half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
  * leaf type the received `GET /v0/step-plugins` snapshot describes (`prompt`, `binary`, and any plugin
@@ -54,7 +54,7 @@ function stepsGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return { title: "Steps", entries: [...fromRegistry, workflowRef] };
 }
 
-/** Blocks — the four logicers plus checkpoint, fixed by the grammar (§ What is authorable). */
+/** Blocks — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
 const BLOCKS: PaletteGroup = {
   title: "Blocks",
   entries: [

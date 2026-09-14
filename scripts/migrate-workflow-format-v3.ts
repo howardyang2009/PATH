@@ -161,7 +161,7 @@ function walkNode(node: unknown, pointer: string, ctx: Ctx): void {
     rewriteWorker(node, `${pointer}/worker`, ctx.fileConfigHasModel || stepHasModel, isPrompt, ctx.fileWorkerType);
   }
 
-  // Recurse into every nested-node slot (`@2` §4.3/§4.4): a step carries none, a logicer does.
+  // Recurse into every nested-node slot (`@2` §4.3/§4.4): a step carries none, a controller does.
   if (Array.isArray(node.branches)) walkNodeArray(node.branches, `${pointer}/branches`, ctx);
   if (Array.isArray(node.arms)) {
     node.arms.forEach((arm, index) => {

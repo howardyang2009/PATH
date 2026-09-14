@@ -557,7 +557,7 @@ const ELIGIBLE_TABLE_HEADERS = ["run-id", "node-name", "status", "eligible?"] as
 // The `eligible?` cell (#446, spec §6): `yes` for a legal K, otherwise one reason rendered 1:1 from the
 // §5 taxonomy the engine's verdict classified it as. This is the one place the taxonomy codes become
 // operator-facing wording, distinct from the verbatim `--from` refusal message; the locus reason names
-// the innermost enclosing logicer the verdict carried (`inside a loop body`).
+// the innermost enclosing controller the verdict carried (`inside a loop body`).
 function eligibilityCell(verdict: EligibilityVerdict): string {
   if (verdict.eligible) return "yes";
   switch (verdict.reason) {

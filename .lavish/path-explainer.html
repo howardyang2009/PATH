@@ -81,7 +81,7 @@
       <div class="card card-border bg-base-200">
         <div class="card-body">
           <h3 class="card-title text-base"><span class="text-primary">1.</span> A workflow is a file</h3>
-          <p class="text-sm opacity-80">One JSON file. It holds <b>steps</b> (do work), <b>logicers</b> (route work), and <b>checkpoints</b> (assert). A workflow is itself a valid step type, so files nest.</p>
+          <p class="text-sm opacity-80">One JSON file. It holds <b>steps</b> (do work) and <b>controllers</b> (route work, and assert with a <b>checkpoint</b>). A workflow is itself a valid step type, so files nest.</p>
         </div>
       </div>
       <div class="card card-border bg-base-200">
@@ -329,7 +329,7 @@
 
       <div class="rounded-box border border-base-content/10 bg-base-200 p-5">
         <h4 class="font-semibold mb-3">What runs the routing?</h4>
-        <p class="text-sm opacity-80 mb-4">Steps execute on workers. <b>Logicers</b> and <b>checkpoints</b> do not — the engine evaluates them. They have no worker, no task, no run.</p>
+        <p class="text-sm opacity-80 mb-4">Steps execute on workers. <b>Controllers</b> (checkpoint included) do not — the engine evaluates them. They have no worker, no task, no run.</p>
         <ul class="space-y-2 text-sm">
           <li><span class="badge badge-soft badge-primary badge-sm mr-1">parallel</span> races or gathers branches — joins <span class="mono">collect</span> / <span class="mono">wait-one</span> / <span class="mono">do-not-wait</span></li>
           <li><span class="badge badge-soft badge-primary badge-sm mr-1">branch</span> first true arm wins; no match fails the run</li>
@@ -415,7 +415,7 @@
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Run / Processor</h3><p class="text-xs opacity-80">A run is one executing instance of a task. A processor is one live worker instance it runs on.</p></div></div>
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Run tree / Run kind</h3><p class="text-xs opacity-80">Runs under one root form a tree. Four kinds: root run, nested workflow-run, leaf step, reuse row.</p></div></div>
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Config vs Context</h3><p class="text-xs opacity-80">Config flows in from outside and inherits downward. Context is written from inside, isolated per workflow-run.</p></div></div>
-      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Logicer / Checkpoint</h3><p class="text-xs opacity-80">Engine-evaluated routing and assertion nodes. No worker, no task, no run.</p></div></div>
+      <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Controller</h3><p class="text-xs opacity-80">Engine-evaluated routing and assertion nodes. No worker, no task, no run.</p></div></div>
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Join mode</h3><p class="text-xs opacity-80"><span class="mono">collect</span> waits all, <span class="mono">wait-one</span> races, <span class="mono">do-not-wait</span> fires and forgets.</p></div></div>
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Secret / Env-sourced</h3><p class="text-xs opacity-80"><span class="mono">$secret</span> masks a value; <span class="mono">$env</span> sources it. Scrubbed at the persistence boundary.</p></div></div>
       <div class="card card-border card-sm bg-base-200"><div class="card-body"><h3 class="card-title text-sm">Observation / Log event</h3><p class="text-xs opacity-80">The engine emits typed observations at one masked choke point. Narrated ones become log events.</p></div></div>

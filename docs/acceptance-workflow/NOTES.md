@@ -31,9 +31,9 @@ Runs locally with no dependencies beyond git, a shell, and the Agent SDK worker.
 | Step type: runnable binary + config | `gather-changes`, `write-file` |
 | Step type: prompt + context | all summarize/draft/judge/revise/format steps |
 | Step type: nested workflow (relative path) | `revise` → `./revise-cycle.workflow.json` |
-| Logicer: parallel + collect join | `summarize` block |
-| Logicer: branch | `pick-format` |
-| Logicer: while-do with mandatory max-iterations | `revise-loop` (exceeded → run fails, so post-loop nodes assume a passing draft) |
+| Controller: parallel + collect join | `summarize` block |
+| Controller: branch | `pick-format` |
+| Controller: while-do with mandatory max-iterations | `revise-loop` (exceeded → run fails, so post-loop nodes assume a passing draft) |
 | Checkpoint = mechanical assertion; judge-step pattern | `judge-draft` + `verdict-wellformed`; also inside `revise-cycle` |
 | Condition language (predicate trees) | `matches`, `equals`, `one-of`, `exists`, `all` over `context.*` paths |
 | Config from outside, inherited downward | workflow-level `repo_path`/`commit_range`/`max_revisions`/`output_file` |

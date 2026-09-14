@@ -83,7 +83,7 @@ export function toLogEvent(o: Observation, envelope: (runId: string, node?: Node
       };
     case "join-applied":
       // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
-      // the `parallel` node — never a run of its own (a logicer has no run, invariant 1).
+      // the `parallel` node — never a run of its own (a controller has no run, invariant 1).
       return {
         type: "join-applied",
         ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }),

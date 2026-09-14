@@ -25,7 +25,7 @@ column needs the workflow file, and files live on `path run`, never on `path run
 - **A `path runs show <root-run-id>` subcommand** (the issue's proposal). Rejected. The `runs` family is
   file-free by design — it operates on the `.path/` store the way a `git` subcommand operates on a repo
   (`path runs`, `runs rm`, `runs prune`, `runs -C`; mvp-spec §3, ADR 0005). A truthful `eligible?`
-  column cannot be computed store-only: **logicers leave no run row** (invariant 1), so the run tree
+  column cannot be computed store-only: **controllers leave no run row** (invariant 1), so the run tree
   keyed on `parentRunId` cannot separate a top-level node from one nested inside a loop / parallel /
   branch body — both carry the enclosing workflow-run as parent. Three of the four listing-relevant
   legal-K reasons (locus, prefix-`<K`-succeeded, and file-presence for a since-deleted node) therefore

@@ -415,7 +415,7 @@ export function openProject(dir: string): OpenProjectResult {
         // One row per node, DFS pre-order (spec §4). Each row's verdict is the shared legal-K predicate
         // over that row's own run id — the root row resolves to reason `root-run`, an eligible node to
         // `ok`, and every other to its §5 taxonomy reason. Never store-rows-only: the file is what tells
-        // a top-level node from one nested in a logicer body (spec §3), so `rootFile`/`files` are passed.
+        // a top-level node from one nested in a controller body (spec §3), so `rootFile`/`files` are passed.
         const rows = preorderRuns(directRuns).map((run): EligibilityRow => {
           const verdict = resolveLegalK(rootFile, directRuns, run.runId, files, workflowDir);
           return {

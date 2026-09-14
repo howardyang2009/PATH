@@ -10,8 +10,8 @@ and its **losers** `cancelled` (cause `sibling-succeeded`). On a naive cause-bli
 reuses the winner, but the losers are not `succeeded`, so they would **re-run**, and re-race a contest
 already won.
 
-The resolution: **the `wait-one` logicer re-evaluates on resume, and a reused `succeeded` winner
-satisfies the join before any loser is launched.** A `wait-one` is a **logicer**. It has no run of its
+The resolution: **the `wait-one` controller re-evaluates on resume, and a reused `succeeded` winner
+satisfies the join before any loser is launched.** A `wait-one` is a **controller**. It has no run of its
 own (invariant 1). The engine re-evaluates it on replay exactly as it re-evaluates `branch` and
 `while-do`. On replay, it finds the winner's run reused as `succeeded`, so first-to-succeed is already
 met, and it **starts no loser run at all.**
@@ -27,7 +27,7 @@ met, and it **starts no loser run at all.**
   cancellation is "done, do not re-run." Rejected: it carves a cause-specific exception into the
   cause-blind rule, precisely the coupling ADR 0001 keeps out. And it reasons about the loser *runs*
   when the real actor is the join above them.
-- **Re-evaluate the logicer; a reused winner short-circuits.** Chosen. The decision lives where it
+- **Re-evaluate the controller; a reused winner short-circuits.** Chosen. The decision lives where it
   belongs, in the join, which is engine-evaluated fresh on every replay. The losers are never launched,
   so there is no loser run for cause-blindness to have an opinion about. The resume rule is untouched:
   it still governs runs, and here no run is started.
@@ -42,7 +42,7 @@ met, and it **starts no loser run at all.**
   a property of the join, not a weakening of the at-least-once contract. A re-run *winner* (if the
   winner itself had not succeeded) still fires at-least-once like any other node.
 - **The engine's resume path must consult reused child status when it re-evaluates a `wait-one`
-  logicer.** Before it launches any branch, check whether a branch's terminal step run is reused as
+  controller.** Before it launches any branch, check whether a branch's terminal step run is reused as
   `succeeded`. If one is, satisfy the join from it (lowest `seq` wins on the reused observations, same
   tie-break as a live race, §6 of the spec) and launch nothing. The exact reuse lookup rides on the
   reuse-marker back-reference that ADR 0001 already requires.

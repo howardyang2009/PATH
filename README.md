@@ -5,7 +5,7 @@ and blocks (parallel, branch, while-do). A parallel block uses a `wait-one` or `
 workflow can also have checkpoints. You run a workflow on your machine or over HTTP. You watch,
 launch, and resume runs in a web viewer. You author workflow files on a visual canvas in the designer.
 
-Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, logicer, checkpoint,
+Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, controller, checkpoint,
 and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the specs.
 
 ## Packages
@@ -98,7 +98,7 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   resume. Each root run now records its source-workflow identity. `path runs list` gains a `workflow`
   column and the `--workflow` and `--workflow-id` filters.
 - **v0.5.1** — the workflow format grows up again. The three container slot shapes of
-  `path/workflow@1` collapse into one uniform node shape. A new `sequence` logicer carries the
+  `path/workflow@1` collapse into one uniform node shape. A new `sequence` controller carries the
   multi-step case. That case used to hide in a bare node array (ADR 0014). A parallel branch is now a
   node. The branch arm, `else`, and `while-do` slots each hold one `node`. The new format is
   `path/workflow@2`. It is clean-slate and codemod-migrated. The codemod

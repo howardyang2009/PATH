@@ -82,7 +82,7 @@ function rerunSet(body: WorkflowNode[], k: string): Set<string> {
 The exact predicate for "node is ≥K": **its run-producing id appears in `rerunSet(file.body, K)`.**
 This is precise for all three ≥K shapes:
 - A ≥K **leaf** (`prompt`/`binary`): its own id is in the set.
-- A ≥K **logicer** (`while-do`/`parallel`/`sequence`) has no run row of its own (CONTEXT invariant
+- A ≥K **controller** (`while-do`/`parallel`/`sequence`) has no run row of its own (CONTEXT invariant
   1, `CONTEXT.md:109-110`); `walkNodes` descends into it, so all its run-producing **descendant** ids
   land in the set — "child subtree taken entire."
 - A ≥K **`workflow`** node: `walkNodes` never descends a `workflow` ref (`plan-reuse.ts:19-21`), so
