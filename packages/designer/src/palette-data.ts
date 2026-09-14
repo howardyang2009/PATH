@@ -54,8 +54,8 @@ function stepsGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return { title: "Steps", entries: [...fromRegistry, workflowRef] };
 }
 
-/** Blocks — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
-const BLOCKS: PaletteGroup = {
+/** Controllers — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
+const CONTROLLERS: PaletteGroup = {
   title: "Controllers",
   entries: [
     { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
@@ -66,9 +66,9 @@ const BLOCKS: PaletteGroup = {
   ],
 };
 
-/** The palette's groups for a received registry snapshot: registry-driven Steps, then grammar-fixed Blocks. */
+/** The palette's groups for a received registry snapshot: registry-driven Steps, then grammar-fixed Controllers. */
 export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[] {
-  return [stepsGroup(plugins), BLOCKS];
+  return [stepsGroup(plugins), CONTROLLERS];
 }
 
 /** The leaf step type a block's auto-filled occupants take — the first Steps entry, else `prompt`. */
