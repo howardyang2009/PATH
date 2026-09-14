@@ -7,7 +7,7 @@ import type { LogEvent, RunStatus } from "@path/schema";
  * **Why this is core and not view.** Which events mean a run stopped is the engine's semantics, not
  * a rendering choice: a failed checkpoint stops the run, a branch that matched no arm with no else
  * fails it, and a while-do that exceeds its mandatory max-iterations bound fails it (CONTEXT.md,
- * *Logicer* / *Checkpoint*). A branch that took an arm, an applied join and a started iteration are
+ * *Controller* / *Checkpoint*). A branch that took an arm, an applied join and a started iteration are
  * pure control flow and get no status. A second consumer of this package — a designer's surface, a
  * mobile client — must reach the same verdicts as the web viewer, so the verdicts live on this side
  * of the seam and only their presentation stays on the other.

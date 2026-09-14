@@ -276,7 +276,7 @@
 //  Shared in-memory workflow model — the SAME body rendered by all three variants.
 //  Grammar mirrors path/workflow@2: every node carries {id,name,kind}; a container slot holds
 //  exactly one node, and a `sequence` carries the array where a slot needs several nodes in order.
-//  This sample exercises all four logicers + checkpoints + a workflow-ref, and reaches depth 4.
+//  This sample exercises all five controllers (checkpoint included) + a workflow-ref, and reaches depth 4.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 let uid = 0; const gid = () => "id-" + (++uid).toString().padStart(4, "0"); // short readable ids for the sample
 // A real UUIDv4 (ADR 0015). crypto.randomUUID needs a secure context (missing on file://), so fall
@@ -316,7 +316,7 @@ const step  = (name, note)               => llm(name, note);   // internal defau
 const check = (name, condition)          => ({ id: gid(), name, kind: "checkpoint", condition });   // condition: Condition
 const seq   = (name, nodes)              => ({ id: gid(), name, kind: "sequence", nodes });
 // A parallel branch IS a node (@2, node-type.ts): its own `name` is the collect/wait-one output key —
-// there is no separate arm name. So `parallel.branches` is a plain node array. A branch logicer's arm,
+// there is no separate arm name. So `parallel.branches` is a plain node array. A branch controller's arm,
 // by contrast, wraps a node with its own `when` condition.
 const par   = (name, join, branches)     => ({ id: gid(), name, kind: "parallel", join, branches }); // branches: node[]
 const branch= (name, arms, elseNode)     => ({ id: gid(), name, kind: "branch", arms, else: elseNode }); // arms: [{when:Condition,node}], else?: node
@@ -795,7 +795,7 @@ function renderC(stage) {
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
 //  Shared bits: palette, properties pane, node lookup.
 //= = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = = =
-// Two groups: STEPS (the three leaf worker types) and BLOCKS (the structural logicers + checkpoint).
+// Two groups: STEPS (the three leaf worker types) and BLOCKS (the five controllers, checkpoint included).
 // A step's `type` is a creation-time choice, so each of the three is its own palette entry; sub-workflow
 // keeps its own hue as the one boundary-crosser.
 const STEP_ENTRIES  = [
@@ -825,8 +825,8 @@ function palette(hybrid) {
   group("steps", STEP_ENTRIES);
   group("blocks", BLOCK_ENTRIES);
   p.appendChild(el("div", "legalnote", hybrid
-    ? "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal tree is unsnappable. Sub-workflow is the one you descend into (double-click)."
-    : "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural logicers. Drag into any legal socket — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
+    ? "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural controllers. Drag into any legal socket — an illegal tree is unsnappable. Sub-workflow is the one you descend into (double-click)."
+    : "Steps are the leaf workers (LLM, command, sub-workflow); blocks are the structural controllers. Drag into any legal socket — an illegal structure is physically unsnappable. Sockets glow green (legal) or red (illegal) as you drag."));
   return p;
 }
 

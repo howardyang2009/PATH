@@ -110,7 +110,7 @@ Resume is **cause-blind**. It re-runs every node that is not `succeeded`. It reu
 them. To re-run the losers of an already-won race is pure waste. Resume is **at-least-once**, so it
 could **re-fire their side effects**.
 
-The resolution: **the join re-evaluates and short-circuits.** A `wait-one` is a **logicer**. It has no
+The resolution: **the join re-evaluates and short-circuits.** A `wait-one` is a **controller**. It has no
 run of its own. The engine re-evaluates it on resume, as it does `branch` and `while-do`. On replay,
 it finds the winner's run reused as `succeeded`. Thus *first-to-succeed is already satisfied*, and it
 **starts no loser at all**. It creates no loser run, so cause-blindness has nothing to act on. This
@@ -145,7 +145,7 @@ Order the commits by dependency. Keep them small. Repo rule: `main` is protected
      All-fail gives an aggregate block failure.
    - Land the winner's buffer only. Discard the loser buffers. The block output is
      `{winner:{name,output}}`. Emit `join-applied{winner}` on success. Emit none on all-fail.
-4. **Resume re-eval** (§7) — resume path. The `wait-one` logicer checks for a reused `succeeded` child
+4. **Resume re-eval** (§7) — resume path. The `wait-one` controller checks for a reused `succeeded` child
    before it launches. If it finds one, it satisfies the join and starts no losers.
 5. **Docs** — update `mvp-spec.md` §5.2, §5.4, §5.6, and the §467 row; `workflow-format-v0.md` §10; and
    ADR 0004. CONTEXT.md is already updated (*Cancellation*, *Join mode*).

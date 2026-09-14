@@ -75,7 +75,7 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
     expect(screen.getByText("designer · authoring")).toBeInTheDocument();
   });
 
-  it("shows the palette shell split into registry-driven Steps and grammar-fixed Blocks", async () => {
+  it("shows the palette shell split into registry-driven Steps and grammar-fixed Controllers", async () => {
     render(<App client={stubClient()} />);
     const palette = screen.getByRole("region", { name: "Palette" });
     const steps = within(palette).getByRole("region", { name: "Steps" });
@@ -85,9 +85,9 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
     for (const label of ["Binary", "Workflow"]) {
       expect(within(steps).getByText(label)).toBeInTheDocument();
     }
-    const blocks = within(palette).getByRole("region", { name: "Blocks" });
+    const controllers = within(palette).getByRole("region", { name: "Controllers" });
     for (const label of ["Parallel", "Branch", "While-do", "Sequence", "Checkpoint"]) {
-      expect(within(blocks).getByText(label)).toBeInTheDocument();
+      expect(within(controllers).getByText(label)).toBeInTheDocument();
     }
   });
 

@@ -140,18 +140,18 @@ and issues use them exactly.
   block grammar*). Under `path/workflow@2`, every container slot holds exactly one node. A `sequence`
   carries the node array where a slot needs several nodes in order. Checkpoints can appear anywhere in
   a sequence.
-- **Logicer** — an engine-evaluated control construct that routes and coordinates step execution. The
+- **Controller** — an engine-evaluated control construct that routes and coordinates step execution. The
   block grammar realizes it. collect, wait-one, and do-not-wait are **join modes of the parallel
-  block**. branch, while-do, and sequence are **block types**. A logicer has no worker, no task, and no
-  run. The engine of the enclosing workflow evaluates it. (Spell it *logicer*.) The MVP subset has
-  **four logicers** under `path/workflow@2`. The first is parallel (with its collect, wait-one, and
+  block**. branch, while-do, and sequence are **block types**. A controller has no worker, no task, and no
+  run. The engine of the enclosing workflow evaluates it. (Spell it *controller*.) The MVP subset has
+  **five controllers** under `path/workflow@2`. The first is parallel (with its collect, wait-one, and
   do-not-wait joins). The second is branch. The third is while-do; it needs a mandatory max-iterations
   bound, and the run fails if it exceeds the bound. The fourth is sequence; this block type carries the
   node array wherever a single-node slot needs several nodes in order
   ([ADR 0014](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0014-single-node-container-slots-and-sequence-logicer.md)).
-  The subset grew from three to four when `@2` made every container slot hold one node. `checkpoint`
-  sits beside the logicers, not inside them (below). No "special node" term exists. All three joins have
-  shipped.
+  The block-type count grew from three to four when `@2` made every container slot hold one node. The
+  fifth controller is `checkpoint`; it is a controller too, not a block type (below). No "special node"
+  term exists. All three joins have shipped.
 - **Join mode** — how a parallel block resolves its branches. **collect** waits for every branch. It
   lands every branch's buffered publishes at the join. It outputs `{branch-node-name: output}`
   deterministically. **wait-one** races the branches. The **first-to-succeed** branch wins. The engine
@@ -203,8 +203,8 @@ and issues use them exactly.
 
 ## Invariants
 
-1. Only steps execute on workers. Logicers and checkpoints are engine constructs: no worker, no task,
-   no run.
+1. Only steps execute on workers. Controllers (including `checkpoint`) are engine constructs: no worker,
+   no task, no run.
 2. Every execution is a run of a task. There is no separate "workflow execution" concept
    (workflow-as-step).
 3. One step has exactly one input object and one output object.

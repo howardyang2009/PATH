@@ -7,7 +7,7 @@
 
 This is the normative definition of `path/workflow@2`. `@path/schema` implements it as zod schemas. The
 engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
-logicer, checkpoint, config vs context, output object, publish).
+controller, checkpoint, config vs context, output object, publish).
 
 This document is **self-contained**: everything needed to author, validate, or interpret a
 `path/workflow@2` file is stated here. It **supersedes** [`workflow-format-v0.md`](workflow-format-v0.md),
@@ -20,7 +20,7 @@ CHANGELOG and several closed issues link it, and it carries a superseded banner 
 one node.** A `parallel` branch is a node. A `branch` arm's occupant is a node. An `else` is a node. A
 `while-do` body is a node. The `@1` branch wrapper `{ id, name, body }`, a thing that was *not* itself a
 node, is gone. For the case that a slot genuinely needs several nodes in order, `@2` adds a fourth
-logicer, **`sequence`** `{ type, id, name, body }`, whose `body` is a node array.
+controller, **`sequence`** `{ type, id, name, body }`, whose `body` is a node array.
 
 Two slots keep arrays, and only two: the **file's top-level `body`** and a **`sequence`'s `body`**.
 Both are true node sequences. Everywhere else, one node.
@@ -84,7 +84,7 @@ built from `output` at the end (§6.4). Rather than mint a `sequence` node to wr
 file simply *is* its own outermost sequence. This is a spec rule, not an inference. (Rejected: a single
 top-level `node` field, because it would force a minted `sequence` name into every multi-node file; and
 a merge of the envelope with a `sequence` node, because it would put one `id` on both the run-bearing
-implicit root and a run-less logicer.)
+implicit root and a run-less controller.)
 
 There is **no input declaration**. The input object arrives at runtime (from the parent workflow-step,
 or empty for a top-level run) and seeds the initial context (§6.3).
@@ -92,7 +92,7 @@ or empty for a top-level run) and seeds the initial context (§6.3).
 ## 3. Conventions
 
 - **Discriminator.** Every tagged union in the format discriminates on a single field named `type`:
-  nodes, workers, and conditions alike. There is no second-level tag. Step kinds and logicers form
+  nodes, workers, and conditions alike. There is no second-level tag. Step kinds and controllers form
   **one flat node union**. Behaviour depends on `type`, never on the presence or absence of a field.
 - **Identity — `id` + `name`.** The workflow and **every node** carry two identifiers. `id` is a
   durable **GUID** (UUIDv4): the stable machine identity, assigned once by the codemod and never
@@ -106,7 +106,7 @@ or empty for a top-level run) and seeds the initial context (§6.3).
   no wrapper that carries a name that is "not a node's name." `@1`'s branch-wrapper name (which in `@1`
   had no `id` at all) is gone, and with it the branch-arm identity problem. An arm is now `{ when, node
   }`, and the node carries its own `id` and `name`.
-- **The step-vs-logicer distinction** (only steps have workers, tasks, and runs) is a domain rule
+- **The step-vs-controller distinction** (only steps have workers, tasks, and runs) is a domain rule
   enforced by the schema, not an extra nesting level in the JSON.
 
 ### 3.1 The one naming rule
@@ -132,15 +132,16 @@ author puts a `sequence` there.
 | `prompt` | step | `prompt` |
 | `binary` | step | `command`, `args?`, `cwd?` |
 | `workflow` | step | `ref` |
-| `parallel` | logicer | `join`, `branches` |
-| `branch` | logicer | `arms`, `else?` |
-| `while-do` | logicer | `condition`, `max_iterations`, `node` |
-| `sequence` | logicer | `body` |
-| `checkpoint` | — | `condition` |
+| `parallel` | controller | `join`, `branches` |
+| `branch` | controller | `arms`, `else?` |
+| `while-do` | controller | `condition`, `max_iterations`, `node` |
+| `sequence` | controller | `body` |
+| `checkpoint` | controller | `condition` |
 
-Three step types, four logicers, and `checkpoint`. The logicer list grows from three to four (the new
-`sequence`). `checkpoint` stays beside the logicers, not inside them. No "special node" or "control
-node" taxonomy term is introduced. The taxonomy is otherwise unchanged from `@1`.
+Three step types and five controllers. The block-type controllers grew from three to four with the new
+`sequence`; `checkpoint` is a controller too, a non-block controller that carries only a `condition`. No
+"special node" or "control node" taxonomy term is introduced. The taxonomy is otherwise unchanged from
+`@1`.
 
 **The union has a closed half and an open half.** Six `type` values are **engine-owned and reserved**:
 `workflow`, `parallel`, `branch`, `while-do`, `sequence`, and `checkpoint`. They are the constructs the
@@ -175,7 +176,7 @@ All three step types additionally accept:
 | `parse` | no | `"text"` (default) or `"json"` (§6.5). |
 | `publish` | no | Context writes from the step's output (§6.2). Absent = writes nothing. |
 
-Logicers (`parallel`, `branch`, `while-do`, `sequence`) and `checkpoint` take **none** of `worker`,
+Controllers (`parallel`, `branch`, `while-do`, `sequence`, `checkpoint`) take **none** of `worker`,
 `config`, `input`, `parse`, or `publish`. They have no worker, no task, and no run.
 
 ### 4.2 Step types
@@ -200,10 +201,10 @@ resolved against the directory of the referencing file. The child run starts wit
 seeded only by its input object (§6.3). Data returns only through the child's `output` object. Config
 crosses the boundary (§8). **Worker does not**; every file declares its own (§7).
 
-### 4.3 Logicers
+### 4.3 Controllers
 
-A logicer routes and coordinates step execution. The engine of its enclosing workflow evaluates it. It
-has no worker, no task, and no run. So no logicer is ever a run row or a resume key (§5.5).
+A controller routes and coordinates step execution. The engine of its enclosing workflow evaluates it. It
+has no worker, no task, and no run. So no controller is ever a run row or a resume key (§5.5).
 
 **`parallel`** — `join` is `"collect"`, `"wait-one"`, or `"do-not-wait"`. `branches` is a **non-empty
 array of nodes** (§3.1). Each branch is a node that carries its own `id` and `name`.
@@ -257,7 +258,7 @@ tests it (the judge-step pattern). `checkpoint` is **unchanged** from `@1`.
 | `name` | yes | Human label, unique across the file (§3). |
 | `body` | yes | **Node array, minimum length 1** — the nodes run in order. |
 
-`sequence` takes **none** of `worker`, `config`, `input`, `parse`, or `publish`. It is a logicer, not a
+`sequence` takes **none** of `worker`, `config`, `input`, `parse`, or `publish`. It is a controller, not a
 step. It **adds no new execution rules**. Its semantics are exactly the existing block-slot rules:
 
 - **Output object** is its **last child's** output object.
@@ -295,7 +296,7 @@ the same key still collide. (This is `@1` behaviour, now stated out loud.)
 
 ### 5.2 Node output objects
 
-Every step produces an output object (§6.5). Logicer output objects:
+Every step produces an output object (§6.5). Controller output objects:
 
 - **`sequence`** — its **last child's** output object.
 - **`branch`** — the taken arm's **node's** output object.
@@ -333,7 +334,7 @@ not decided by `@2`.)
 
 > Resume, cancellation, and cost aggregation are invariant under `@2`. Reuse keys on a node's `id`, and
 > only run-producing nodes (`prompt`, `binary`, `workflow`) produce a run. `sequence` and every branch
-> node are logicers with no run (invariant 1). So none is ever a reuse key, a cancel cause, or a term in
+> node are controllers with no run (invariant 1). So none is ever a reuse key, a cancel cause, or a term in
 > a run's cost SUM. A `wait-one` race still replays to the same winner: resume orders reused winners by
 > recorded completion time, then by branch declaration order, both preserved when a branch is a node.
 > (Build map: the `parallel` and `plan-reuse` consumers that today walk a branch wrapper's `body`

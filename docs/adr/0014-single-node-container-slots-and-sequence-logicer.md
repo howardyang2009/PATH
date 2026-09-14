@@ -1,4 +1,4 @@
-# Single-node container slots, and a `sequence` logicer for the array
+# Single-node container slots, and a `sequence` controller for the array
 
 **Status:** accepted; freezes the two structural rulings of `path/workflow@2`
 ([workflow-format-v2.md](../format/workflow-format-v2.md), map
@@ -8,7 +8,7 @@ of the format would otherwise have to reconstruct.
 
 `@2` makes one structural change and nothing else: **every container slot holds exactly one node.** Two
 rulings compose that change: what the slot holds (a node, not a wrapper), and how a slot that genuinely
-needs several nodes says so (a `sequence` logicer, not an optional `body` on every node). Each is
+needs several nodes says so (a `sequence` controller, not an optional `body` on every node). Each is
 recorded below with its rejected alternatives.
 
 ## Decision 1 — every container slot holds a single node
@@ -51,9 +51,9 @@ Why:
 - **Single node per slot (chosen).** Identity comes free, one walker path, one slot rule. It is paid
   for by a one-time codemod that is a no-op on today's files.
 
-## Decision 2 — a `sequence` logicer, not an optional `body` on every node
+## Decision 2 — a `sequence` controller, not an optional `body` on every node
 
-For the case where a slot genuinely needs several nodes in order, `@2` adds a fourth logicer,
+For the case where a slot genuinely needs several nodes in order, `@2` adds a fourth controller,
 **`sequence`** `{ type, id, name, body }`, whose `body` is a node array. The array lives on one new node
 type, not as an optional `body` field added to every node type.
 
@@ -72,7 +72,7 @@ An optional `body` on every node breaks in five ways:
    `body` is present rather than on `type`. This violates the flat-union rule that behaviour depends on
    `type` and never on a field's presence or absence.
 
-A dedicated `sequence` node avoids all five. It is one more `type` in the flat union, a logicer with no
+A dedicated `sequence` node avoids all five. It is one more `type` in the flat union, a controller with no
 worker, task, or run, whose output is its last child's and whose default-input chain is the pre-existing
 block-slot rule. It **adds no new execution semantics**, only a place to put the array.
 
@@ -84,9 +84,9 @@ block-slot rule. It **adds no new execution semantics**, only a place to put the
   more than one top-level node would need an author-invented wrapper name. `@2` instead lets the file's
   `body` array be the file's own outermost sequence (format §2).
 - **Merge the envelope with a `sequence` node (rejected).** It would put one `id` on both a run-bearing
-  implicit root step and a run-less logicer. The root step (which owns the root run row and root
+  implicit root step and a run-less controller. The root step (which owns the root run row and root
   lifecycle events) and a `sequence` (which never produces a run) cannot share one identity.
-- **A dedicated `sequence` logicer (chosen).** One new flat-union type that carries the array, no new
+- **A dedicated `sequence` controller (chosen).** One new flat-union type that carries the array, no new
   execution rules, envelope and root identity left intact.
 
 ## Consequences
@@ -101,8 +101,8 @@ block-slot rule. It **adds no new execution semantics**, only a place to put the
   codemod **renames each unwrapped node to its wrapper's `name`** (10 renames, 0 collisions) to keep
   emitted output byte-identical (format §11). The output shape a downstream stdin consumer sees is
   unchanged.
-- **The logicer count grows from three to four.** `sequence` joins `parallel`/`branch`/`while-do`.
-  `checkpoint` stays beside the logicers, not inside them, and no "special node" or "control node"
+- **The controller count grows from three to four.** `sequence` joins `parallel`/`branch`/`while-do`.
+  `checkpoint` stays beside the controllers, not inside them, and no "special node" or "control node"
   taxonomy term is introduced (CONTEXT.md, format §4).
 - **The build map owns the code.** Schema, engine dispatch, the `node-walk` rewrite, load-error message
   text, the codemod implementation, and the migration of the 30 files and their inline `.ts` fixtures

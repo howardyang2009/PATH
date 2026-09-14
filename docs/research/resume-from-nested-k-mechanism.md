@@ -123,7 +123,7 @@ short-circuit) **and** *given a tail* (so it descends), which no single #428 set
 
 The predicate is precise for all shapes, exactly as #428 (its §2), because it is the same walk:
 - an after-B **leaf** — its own id is in both sets;
-- an after-B **logicer** (`while-do`/`parallel`/`sequence`) — no run row of its own (invariant 1,
+- an after-B **controller** (`while-do`/`parallel`/`sequence`) — no run row of its own (invariant 1,
   `CONTEXT.md:170-172`); `walkNodes` descends it, so its run-producing descendants land in both sets;
 - an after-B **`workflow`** — only its own id is in the set (`walkNodes` does not descend the ref); its
   subtree is forced fresh by the §3 counterpart refusal;
@@ -257,7 +257,7 @@ mis-reuses — safe, but a sign the #429 gate was bypassed.
 | 3 | `planReuse` gets `suppress` at every on-path level; descent site chooses reuse / rerun-entire / descend. | `plan-reuse.ts:34-37`, `run-workflow.ts:279`, `458-467` |
 | 4 | Cascade-up is the after-B rule applied per level; mechanical, no dataflow pass. | `run-workflow.ts:1168`, §2 |
 | 5 | Empty path ≡ plain Resume; length-1 ≡ #428; K=auto ≡ plain Resume. One code path. | `run-workflow.ts:279`, `755` |
-| 6 | Prefix loops/parallel unchanged; path through a logicer inherits #427 out-of-scope. | `run-workflow.ts:1088-1109`, `plan-reuse.ts:23-25` |
+| 6 | Prefix loops/parallel unchanged; path through a controller inherits #427 out-of-scope. | `run-workflow.ts:1088-1109`, `plan-reuse.ts:23-25` |
 | 7 | #429 pre-validates the whole path (delete fails); engine throws on per-level `i < 0`. | `run-workflow.ts:279`, `CONTEXT.md` §Resume |
 
 ## Flagged / not determined
@@ -269,4 +269,4 @@ mis-reuses — safe, but a sign the #429 gate was bypassed.
   id (`CONTEXT.md` §Identity) still resolves; the cost is one `findIndex` per level at set-build time.
 - Not analyzed: whether `path resume --from` accepts a human node *path* and resolves it to ids at the
   CLI edge (a UX choice for #429; the engine seam is id-only), and the exact 4xx reasons the #429 route
-  returns for a missing / non-top-level / through-a-logicer path element.
+  returns for a missing / non-top-level / through-a-controller path element.

@@ -5,7 +5,7 @@
 
 ## Language & terminology
 
-- CONTEXT.md at the repo root is the canonical glossary (ubiquitous language). Code, tests, comments, and commit messages use its terms exactly: Step, Worker, Task, Run, Processor, Workflow, Logicer, Checkpoint, Config, Context, Log event, Trace.
+- CONTEXT.md at the repo root is the canonical glossary (ubiquitous language). Code, tests, comments, and commit messages use its terms exactly: Step, Worker, Task, Run, Processor, Workflow, Controller, Checkpoint, Config, Context, Log event, Trace.
 - Do not invent synonyms — e.g. there is no "workflow execution", only a Run; "task = step + worker" is a definition, not a loose phrase.
 
 ## Style

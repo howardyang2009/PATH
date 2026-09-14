@@ -46,7 +46,7 @@ export type LegalKReasonCode =
   | LegalKLevelReason; // #2–#5, the per-level taxonomy shared with the client's eager mirror (`classifyLevelK`)
 
 /**
- * The innermost enclosing logicer named in an `in-body` refusal (spec §6): `loop` is `while-do`. The
+ * The innermost enclosing controller named in an `in-body` refusal (spec §6): `loop` is `while-do`. The
  * locus vocabulary and its lookup now live in `@path/schema` (`enclosingControlBlock`), shared with the
  * client's eager mirror; this alias keeps the taxonomy's own name for the engine's readers.
  */
@@ -57,7 +57,7 @@ export interface LegalKRefusal {
   message: string;
   /** The §5 taxonomy classification (spec §6). See {@link LegalKReasonCode}. */
   reason: LegalKReasonCode;
-  /** Only on `reason: "in-body"`: the innermost enclosing logicer, so the listing can name it. */
+  /** Only on `reason: "in-body"`: the innermost enclosing controller, so the listing can name it. */
   container?: LegalKContainer;
 }
 
@@ -132,7 +132,7 @@ export function resolveLegalK(
     // (#5) — is the one predicate shared with the client's eager mirror (`@path/schema/classifyLevelK`,
     // ADR 0032/0036). Only the leaf level gates its own status; an intermediate path-node is descended
     // and re-run, not reused. The engine owns the descent, the HTTP status, and the verbatim message;
-    // the reason code it returns is this taxonomy. `#427`: an in-body locus names its enclosing logicer.
+    // the reason code it returns is this taxonomy. `#427`: an in-body locus names its enclosing controller.
     const levelResult = classifyLevelK({
       body: levelInfo.file.body,
       rows: sourceRows,

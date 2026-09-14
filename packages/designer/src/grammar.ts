@@ -6,12 +6,12 @@ import type { WorkflowNode } from "@path/schema";
  * *unsnappable* rather than merely rejected on save. This module is the one statement of which node
  * kind is legal in which socket, read by both the palette-into-socket add and the single-slot swap.
  *
- * At `path/workflow@2` every socket admits every step and every logicer; the one kind with a placement
- * rule is `checkpoint`. CONTEXT.md § Composition: "checkpoint sits beside the logicers, not inside
- * them" and "checkpoints can appear anywhere **in a sequence**". So a checkpoint is legal only where
+ * At `path/workflow@2` every socket admits every step and every controller; the one kind with a placement
+ * rule is `checkpoint`. Per CONTEXT.md § Composition it is a controller but not a block type, and a
+ * checkpoint "can appear anywhere **in a sequence**". So a checkpoint is legal only where
  * nodes sit in an ordered list that is itself a run-in-order body — the file body and a `sequence`
- * body — and never as the sole occupant of a logicer slot (a `while-do` body, a branch arm or `else`)
- * nor as a `parallel` branch (which is inside the logicer and owes an output key a checkpoint has none
+ * body — and never as the sole occupant of a controller slot (a `while-do` body, a branch arm or `else`)
+ * nor as a `parallel` branch (which is inside the controller and owes an output key a checkpoint has none
  * of). Every other kind is legal in every socket.
  */
 
@@ -24,14 +24,14 @@ export type SocketFlavor =
   /** A `parallel`'s branch list: each entry is a node owing an output key. No checkpoint. */
   | "branches";
 
-/** The five block kinds fixed by the grammar (§ What is authorable); leaf step kinds arrive from the registry. */
-export const BLOCK_KINDS = ["parallel", "branch", "while-do", "sequence", "checkpoint"] as const;
-export type BlockKind = (typeof BLOCK_KINDS)[number];
+/** The five controller kinds fixed by the grammar (§ What is authorable); leaf step kinds arrive from the registry. */
+export const CONTROLLER_KINDS = ["parallel", "branch", "while-do", "sequence", "checkpoint"] as const;
+export type ControllerKind = (typeof CONTROLLER_KINDS)[number];
 
 /**
  * Is `kind` legal in a socket of `flavor`? `kind` is a node `type` discriminant — a block keyword or a
  * registry leaf step type. Only `checkpoint` is restricted (to `sequence`-flavoured lists); every other
- * kind, leaf or logicer, is legal everywhere.
+ * kind, leaf or controller, is legal everywhere.
  */
 export function socketAcceptsKind(flavor: SocketFlavor, kind: string): boolean {
   if (kind === "checkpoint") return flavor === "sequence";
@@ -40,12 +40,12 @@ export function socketAcceptsKind(flavor: SocketFlavor, kind: string): boolean {
 
 /**
  * Does a node of `type` carry the step envelope (`config` / `input` / `parse` / `publish`)? Every leaf
- * step type and `workflow` does; the five control blocks (`BLOCK_KINDS`) do not — they are engine
+ * step type and `workflow` does; the five controllers (`CONTROLLER_KINDS`) do not — they are engine
  * constructs with no worker and no task (CONTEXT.md § Composition). So the predicate is exactly "not a
- * block kind", which is why it lives beside `BLOCK_KINDS` rather than repeating that set.
+ * controller kind", which is why it lives beside `CONTROLLER_KINDS` rather than repeating that set.
  */
 export function carriesEnvelope(type: string): boolean {
-  return !(BLOCK_KINDS as readonly string[]).includes(type);
+  return !(CONTROLLER_KINDS as readonly string[]).includes(type);
 }
 
 /** The flavour a node's own child slots expose, for a caller placing into an existing block. */

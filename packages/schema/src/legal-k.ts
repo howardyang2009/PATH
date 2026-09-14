@@ -25,7 +25,7 @@ export type LegalKLevelReason =
   | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
   | "prefix-unsucceeded"; // #5 — a node before K at K's level ran and did not succeed
 
-/** A level classification: legal, or the first §5 reason it is not (with the enclosing logicer on `in-body`). */
+/** A level classification: legal, or the first §5 reason it is not (with the enclosing controller on `in-body`). */
 export type LegalKLevelResult =
   | { ok: true }
   | { ok: false; reason: LegalKLevelReason; container?: ControlBlockKind };

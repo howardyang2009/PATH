@@ -137,7 +137,7 @@ top-level `else` body. Arm ordering and matching semantics, and whether `else` i
 
 **`while-do`** — `condition` (a condition, §9) sits on the block. Evaluation timing is #11's (the
 acceptance pipeline requires check-before-each-iteration). `max_iterations` is a positive integer, or an
-interpolable string that resolves to one. It is **required**, per the MVP logicer decision. To exceed it
+interpolable string that resolves to one. It is **required**, per the MVP controller decision. To exceed it
 fails the run. `body` as above.
 
 **`checkpoint`** — `condition` only. If it is true, continue. If it is false, the run stops as failed.

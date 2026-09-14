@@ -32,7 +32,7 @@ export type ResumeFromReasonCode =
   | LegalKLevelReason // engine #2–#5, the per-level taxonomy shared with the engine (`classifyLevelK`)
   | "dirty-buffer"; // spec #3 — a legal K, but the open file is not saved
 
-/** The innermost enclosing logicer named in an `in-body` reason (`loop` is `while-do`), as the engine. */
+/** The innermost enclosing controller named in an `in-body` reason (`loop` is `while-do`), as the engine. */
 export type ResumeFromContainer = ControlBlockKind;
 
 export type ResumeFromEligibility =

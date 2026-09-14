@@ -331,7 +331,7 @@ describe("runNode — while-do", () => {
 });
 
 describe("runNode — sequence", () => {
-  // The `@2` logicer for "this single-node slot needs several nodes in order" (format §4.4). It adds
+  // The `@2` controller for "this single-node slot needs several nodes in order" (format §4.4). It adds
   // no execution rule: its output is its last child's, its first child is seeded by the `sequence`'s
   // own predecessor, and it narrates nothing of its own — the block-slot rules of §5.4, restated over
   // one node.
@@ -340,7 +340,7 @@ describe("runNode — sequence", () => {
     const node: Node = { type: "sequence", id: "steps", name: "steps", body: [append("one", "-1"), append("two", "-2")] };
 
     expect(await runNode(run, node, "seed", makeExec())).toEqual({ status: "succeeded", output: "seed-1-2" });
-    // A logicer has no worker, task or run of its own: only its children are narrated.
+    // A controller has no worker, task or run of its own: only its children are narrated.
     expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["one", "two"]);
   });
 

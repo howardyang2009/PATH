@@ -120,7 +120,7 @@ describe("step nodes", () => {
   });
 });
 
-describe("logicers reject step-only fields", () => {
+describe("controllers reject step-only fields", () => {
   it("rejects worker/config/input/parse/publish on checkpoint", () => {
     expect(
       NodeSchema.safeParse({

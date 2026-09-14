@@ -11,7 +11,7 @@
 
 `@2` deletes the `parallel`-branch wrapper `{id, name, body}`. **Every container slot now holds one
 node.** `parallel.branches` is an array of nodes. An arm, an `else`, and a `while-do` each hold one
-node. A new `sequence` logicer `{type, id, name, body:[node,…]}` carries the multi-node case. Every
+node. A new `sequence` controller `{type, id, name, body:[node,…]}` carries the multi-node case. Every
 rule that today treats "a branch" as a thing distinct from a node is restated below over **the branch
 node**. That node can be a `sequence`. Thus its rules must reach *through* that `sequence` into its
 children.

@@ -32,7 +32,7 @@ interface NameOccurrence {
   path: (string | number)[];
 }
 
-// Every node — steps, logicers, checkpoints, and each `parallel` branch (now itself a node, `@2`
+// Every node — steps, controllers, checkpoints, and each `parallel` branch (now itself a node, `@2`
 // §4.3) — carries a required human `name`, unique across the whole file at every nesting level
 // (workflow-format-v2.md §3). The GUID `id` beside it is unique by construction, so only `name` is
 // checked here. Branch nodes are reached by ordinary recursion: `childBodies` exposes each branch as

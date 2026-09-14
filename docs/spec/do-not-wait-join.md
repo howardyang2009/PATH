@@ -223,7 +223,7 @@ Order the commits by dependency. Keep them small. Repo rule: `main` is protected
 - Sibling spec: [wait-one-join.md](wait-one-join.md)
 - `mvp-spec.md` §5.2–5.7
 - `workflow-format-v0.md` §10
-- CONTEXT.md — *Logicer*, *Join mode*, *Cancellation*, *Cost*
+- CONTEXT.md — *Controller*, *Join mode*, *Cancellation*, *Cost*
 - [ADR 0001 — resumed run is a successor run](../adr/0001-resumed-run-is-a-successor-run.md)
 - [ADR 0004 — `wait-one` resume short-circuit](../adr/0004-wait-one-resume-short-circuit.md) (the contrast, §7)
 - [ADR 0008 — a `do-not-wait` detached failure does not fail its tree](../adr/0008-do-not-wait-detached-failure-does-not-fail-tree.md)

@@ -1,6 +1,6 @@
 /**
  * One-time codemod for the workflow-format @2 migration — uniform single-node container slots and the
- * `sequence` logicer (workflow-format-v2.md §0, §11; ADR 0014).
+ * `sequence` controller (workflow-format-v2.md §0, §11; ADR 0014).
  *
  * Rewrites every `*.workflow.json` in this repo from `path/workflow@1` to `path/workflow@2`:
  *

@@ -1355,9 +1355,9 @@ async function runWhileDoNode(
  * input, executes it, and lands its `publish`. `incomingOutput` is what the default-input chain
  * offers it — its predecessor's output (format doc §6.1).
  *
- * This is the engine's node seam, and there is one of it. Seven kinds sit behind it — three step
- * types executed on a worker, four engine-evaluated logicers and checkpoints (CONTEXT invariant 1)
- * — and a caller, or a test, needs to know none of that. Which of the seven a node is, what config
+ * This is the engine's node seam, and there is one of it. Eight kinds sit behind it — three step
+ * types executed on a worker, five engine-evaluated controllers, `checkpoint` included (CONTEXT invariant 1)
+ * — and a caller, or a test, needs to know none of that. Which of the eight a node is, what config
  * it inherits, whether its output publishes: all of that is on this side of the seam.
  *
  * It replaces five exported walkers and three private ones (#76 got as far as pulling the control
@@ -1380,7 +1380,7 @@ export async function runNode(
     // A `sequence` adds no execution rule (`@2` §4.4): it runs its body as a nested node sequence,
     // seeded by its predecessor's output, and its output is its last child's output — exactly what
     // `runSequence` already does. It is transparent to `exec` (same context/cancellation) like the
-    // other logicers.
+    // other controllers.
     if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
     // The compile-time guard: if the control set grows a member this dispatch does not walk, the build
     // fails here rather than someone discovering it by running a workflow. A leaf step type never
