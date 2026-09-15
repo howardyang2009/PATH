@@ -1220,6 +1220,59 @@ function validateRunStartConfig(
   }: ${issues.join("; ")}`;
 }
 
+/** A node found by id in a loaded ref tree, with the effective config that reaches it. */
+export interface ResolvedNode {
+  /** The node exactly as it stands in the current file. */
+  node: WorkflowNode;
+  /**
+   * The `config` scope a caller interpolates this node's fields against — the file's config merged
+   * with the node's own, `$env`-resolved, `$secret` still wrapped, exactly the shape `runLeafStep`
+   * hands `configScope` when it interpolates fields at execution time.
+   */
+  config: ConfigObject;
+}
+
+/**
+ * Locate a node by its durable GUID `id` across the loaded ref tree, threading effective config
+ * across each `workflow` boundary exactly as the run will (`validateRunStartConfig`, format §8) — so
+ * the config a caller interpolates a field against here is the one the run itself used. `undefined`
+ * when no reachable file carries a node with that id (the author deleted it mid-wait).
+ *
+ * The Complete route (#485) reads a parked `person-activity` leaf's `outputSchema` through this,
+ * re-interpolates it against config, and ajv-validates the submitted output (ADR 0040) — all before
+ * any lease is taken, so a bad submit never blocks a sibling leaf.
+ */
+export function resolveNode(
+  rootFile: WorkflowFile,
+  rootDir: string,
+  nodeId: string,
+  options: { files?: Map<string, WorkflowFile>; operatorConfig?: ConfigObject; env?: EnvSource } = {},
+): ResolvedNode | undefined {
+  const env: EnvSource = options.env ?? { ...process.env };
+  const files = options.files;
+
+  function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): ResolvedNode | undefined {
+    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    for (const node of walkNodes(file.body)) {
+      const nodeConfig = "config" in node ? node.config : undefined;
+      const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+      if (node.id === nodeId) return { node, config: stepConfig };
+      // A nested `workflow` step's ref'd file has its own body of ids to search, entered with this
+      // step's effective config (config crosses the boundary; context does not — format §8).
+      if (node.type === "workflow") {
+        const child = files?.get(resolve(dir, node.ref));
+        if (child) {
+          const found = walk(child, stepConfig, dirname(resolve(dir, node.ref)));
+          if (found) return found;
+        }
+      }
+    }
+    return undefined;
+  }
+
+  return walk(rootFile, options.operatorConfig ?? {}, rootDir);
+}
+
 /**
  * Every config object a run can read, in one sweep: operator overrides first (they win a token key
  * on a duplicated value — nearest config), then each reachable file's declared config and each of

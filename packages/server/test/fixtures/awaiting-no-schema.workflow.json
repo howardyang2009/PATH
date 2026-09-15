@@ -1,0 +1,13 @@
+{
+  "format": "path/workflow@3",
+  "id": "f5083db1-ee78-411f-b774-e378463b20bc",
+  "name": "awaiting-no-schema",
+  "body": [
+    {
+      "type": "person-activity",
+      "id": "aa0e5b2c-6d41-4f2a-9c3d-1b7e8f0a2c55",
+      "name": "collect",
+      "description": "a person submits free-form output with no schema"
+    }
+  ]
+}

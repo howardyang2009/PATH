@@ -1,0 +1,32 @@
+{
+  "format": "path/workflow@3",
+  "id": "84c0b1d1-9372-4e9c-9fce-5db6f10b4865",
+  "name": "awaiting-complete",
+  "body": [
+    {
+      "type": "person-activity",
+      "id": "3408257a-0c34-437b-a93e-041ad4dc52aa",
+      "name": "review",
+      "description": "a person reviews and submits an approval decision",
+      "outputSchema": {
+        "type": "object",
+        "properties": { "approved": { "type": "boolean" } },
+        "required": ["approved"],
+        "additionalProperties": false
+      },
+      "publish": {
+        "decision": "${output}"
+      }
+    },
+    {
+      "type": "binary",
+      "id": "f599b76c-2230-4eca-8020-5d1287aa13e9",
+      "name": "finalize",
+      "command": "node",
+      "args": ["-e", "process.stdout.write('finalized')"]
+    }
+  ],
+  "output": {
+    "decision": "${context.decision}"
+  }
+}
