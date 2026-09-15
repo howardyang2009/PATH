@@ -1,0 +1,20 @@
+{
+  "format": "path/workflow@3",
+  "id": "4a08fd8d-ae68-4e38-bf25-a04bdfc62b1b",
+  "name": "awaiting-config-schema",
+  "config": { "allowed": "high" },
+  "body": [
+    {
+      "type": "person-activity",
+      "id": "36abcbe6-6ae9-4b2f-85fc-0235cee0adad",
+      "name": "grade",
+      "description": "a person grades against a config-driven allowed value",
+      "outputSchema": {
+        "type": "object",
+        "properties": { "level": { "enum": ["${config.allowed}"] } },
+        "required": ["level"],
+        "additionalProperties": false
+      }
+    }
+  ]
+}
