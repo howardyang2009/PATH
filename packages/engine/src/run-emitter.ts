@@ -103,8 +103,13 @@ export interface Emitter {
     args: { branches: string[]; publishedKeys: string[]; winner?: string },
   ): Promise<void>;
   reuseMarker(node: NodeRef, args: { originalRunId: string }): Promise<void>;
-  /** Open a step-scoped sub-emitter for one leaf step run, minting its run id. */
-  step(node: NodeRef): StepEmitter;
+  /**
+   * Open a step-scoped sub-emitter for one leaf step run. Mints a fresh run id normally; a Complete
+   * replay (ADR 0041) passes the **existing** parked leaf's step-run id (`existingRunId`) so the
+   * `step-finished` it emits transitions that same row `awaiting → succeeded` in place, rather than
+   * inserting a second row for the leaf.
+   */
+  step(node: NodeRef, existingRunId?: string): StepEmitter;
   /**
    * The emitter for a nested workflow-run (#22), over this run tree's *same* masking sink — the one
    * door a child run gets to the audit seam. Its own `identity` fixes its envelope; nothing of this
@@ -230,10 +235,11 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         originalRunId: args.originalRunId,
       });
     },
-    step(node): StepEmitter {
+    step(node, existingRunId): StepEmitter {
       // The step run's own id, minted once and shared across its four observations — the reason the
-      // step tier is a handle and not four run-emitter methods each re-passed the same id.
-      const stepRunId = randomUUID();
+      // step tier is a handle and not four run-emitter methods each re-passed the same id. A Complete
+      // replay re-enters an existing parked leaf, reusing its id so `step-finished` updates that row.
+      const stepRunId = existingRunId ?? randomUUID();
       return {
         runId: stepRunId,
         started(args): Promise<void> {

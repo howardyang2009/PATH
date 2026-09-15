@@ -34,7 +34,13 @@ export function handleCancelRun(res: ServerResponse, ctx: RunsRouteContext, root
   // A `running` row this server is not executing is a real case, not a theoretical one: `path run`
   // writes to the same `.path/path.db`, so a CLI-launched run is visible here, and a run left
   // behind by an earlier crashed process sits in the db as `running` forever.
-  if (!ctx.live.cancel(rootRunId)) {
+  //
+  // A **parked** `awaiting` run is a second such case, and one this server *can* cancel: a
+  // person-activity park tears the engine down (ADR 0039), so it holds no controller, but the tree is
+  // genuinely not executing anywhere — `Project.cancel` transitions its `awaiting` leaf and `running`
+  // ancestors to `cancelled` at the store (ADR 0041). A live drive of the same tree (a Complete in
+  // flight) is still cancelled through its controller by `live.cancel` above, which is tried first.
+  if (!ctx.live.cancel(rootRunId) && !ctx.project.cancel(rootRunId)) {
     sendError(
       res,
       409,

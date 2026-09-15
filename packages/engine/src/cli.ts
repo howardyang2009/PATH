@@ -531,6 +531,13 @@ function reportOutcome(status: RunStatus, error: string | undefined, io: CliIo):
     io.error(`run failed: ${error}`);
     return 1;
   }
+  // A run that parked at a person-activity leaf (ADR 0039/0041): it is neither done nor broken, so it
+  // exits 0 with a note rather than a failure. The engine tore down; the parked leaf lives in the
+  // store and is resolved later through Complete (the server's `POST /complete`, not `path run`).
+  if (status === "awaiting") {
+    io.error("run is awaiting completion of a person-activity step");
+    return 0;
+  }
   return 0;
 }
 

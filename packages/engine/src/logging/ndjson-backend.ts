@@ -21,11 +21,16 @@ export function createNdjsonBackend(projectDir: string): LogBackend {
   }
 
   return {
-    async open({ runId, format }) {
+    async open({ runId, format, append }) {
       const dir = rootRunTreeDir(projectDir, runId);
       mkdirSync(dir, { recursive: true });
-      fd = openSync(join(dir, "run.log"), "w");
-      writeLine({ type: "log-header", format, run_id: runId });
+      const logPath = join(dir, "run.log");
+      // A Complete re-invocation appends to the existing `run.log` (ADR 0041) — `"a"` preserves the
+      // launch narrative and its header, so the file stays one continuous per-root stream. A launch
+      // (or a re-invocation whose log was never written) opens `"w"` and writes the header line.
+      const continuing = append === true && existsSync(logPath);
+      fd = openSync(logPath, continuing ? "a" : "w");
+      if (!continuing) writeLine({ type: "log-header", format, run_id: runId });
     },
     async write(event) {
       writeLine(event);

@@ -55,8 +55,14 @@ import Database from "better-sqlite3";
  * restores `(scope, node id)` uniqueness across iterations so a completed loop reuses across Resume.
  * Same bump-and-break, clean-slate reading: an existing pre-#454 db refuses to open rather than
  * silently lacking the column an iteration container writes to.
+ *
+ * Bumped to 10 in #484 for the `awaiting` run status (ADR 0039/0041): a person-activity leaf parks at
+ * `awaiting` and the engine tears down, so the `runs.status` CHECK constraint must admit it — the
+ * status enum (`@path/schema`) already carried it, but the on-disk constraint did not, so a park
+ * would have been rejected by SQLite. Same bump-and-break, clean-slate reading: an existing pre-#484
+ * db refuses to open rather than rejecting the first `awaiting` transition at write time.
  */
-export const SCHEMA_VERSION = 9;
+export const SCHEMA_VERSION = 10;
 
 export class SchemaVersionError extends Error {}
 
@@ -69,7 +75,7 @@ const RUNS_TABLE_DDL = `
     node_name TEXT,
     worker_name TEXT,
     iteration INTEGER,
-    status TEXT NOT NULL CHECK (status IN ('pending','running','succeeded','failed','cancelled')),
+    status TEXT NOT NULL CHECK (status IN ('pending','running','awaiting','succeeded','failed','cancelled')),
     started_at TEXT,
     finished_at TEXT,
     input_ref TEXT,

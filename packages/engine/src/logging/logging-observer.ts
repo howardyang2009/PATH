@@ -126,11 +126,26 @@ export function toLogEvent(o: Observation, envelope: (runId: string, node?: Node
  * `step-finished` + `close`) are still emitted best-effort to the survivors. Terminal emission never
  * rejects — the run is already ending.
  */
-export function createLoggingObserver(backends: LogBackend[]): RunObserver {
+/**
+ * Options for a **re-invocation** over an existing tree (ADR 0041, Complete). A launch passes none.
+ * `startSeq` seeds the monotonic per-root `seq` from where the tree left off, so the appended events
+ * do not collide with the existing `(root_run_id, seq)` rows; `append` tells the backends to add to
+ * the existing `run.log` rather than truncate it and re-write its header.
+ */
+export interface LoggingObserverOptions {
+  startSeq?: number;
+  append?: boolean;
+}
+
+export function createLoggingObserver(backends: LogBackend[], options: LoggingObserverOptions = {}): RunObserver {
   const managed: ManagedBackend[] = backends.map((backend) => ({ backend, active: true, tail: Promise.resolve() }));
   const nodeIdByRun = new Map<string, string | null>();
   const nodeNameByRun = new Map<string, string | null>();
-  let seq = 0;
+  // `seq` continues from `startSeq` on a re-invocation (0 on a launch), so a Complete's appended
+  // events keep the per-root ordering monotonic instead of restarting at 1 and colliding.
+  let seq = options.startSeq ?? 0;
+  const append = options.append ?? false;
+  let opened = false;
   let terminated = false;
 
   // Lifecycle events default `node_id`/`node_name` to the run's own node (both null for the root, the
@@ -172,7 +187,7 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
   }
 
   async function openAll(runId: string): Promise<void> {
-    await fanOut((mb) => mb.backend.open({ runId, format: LOG_FORMAT }), { label: "log backend open failed", bestEffort: false });
+    await fanOut((mb) => mb.backend.open({ runId, format: LOG_FORMAT, append }), { label: "log backend open failed", bestEffort: false });
   }
 
   // Deliver one already-assembled, schema-valid event to every active backend. `terminal` events
@@ -184,13 +199,19 @@ export function createLoggingObserver(backends: LogBackend[]): RunObserver {
 
   return {
     async observe(o) {
-      // Backends live per root run, and their lifetime rides the root run's own start and finish —
-      // which the observer contract guarantees bracket every other observation of the tree.
+      // Backends live per root run. On a launch the first observation is the root's `run-started`
+      // (the observer contract guarantees it precedes every other), so opening on the first
+      // observation of the tree is equivalent there — and it also opens for a **Complete
+      // re-invocation** (ADR 0041), whose re-entered root emits no fresh `run-started` yet whose first
+      // observation (a step-finished, a forward step) still carries the root run id to open under.
+      if (!opened) {
+        opened = true;
+        await openAll(o.rootRunId);
+      }
       if (o.type === "run-started") {
         // null for the root; the `workflow` node's GUID + name for a nested run (#22)
         nodeIdByRun.set(o.runId, o.nodeId);
         nodeNameByRun.set(o.runId, o.nodeName);
-        if (o.runId === o.rootRunId) await openAll(o.runId);
       }
       if (o.type === "step-started") {
         nodeIdByRun.set(o.runId, o.nodeId);

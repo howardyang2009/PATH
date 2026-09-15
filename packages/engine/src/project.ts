@@ -13,17 +13,19 @@ import {
 import type Database from "better-sqlite3";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
+import { maxLogSeqForRoot } from "./logging/db-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
+import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { getRun, getRunsForRoot } from "./persistence/run-store.js";
+import { cancelNonTerminalRuns, getRun, getRunsForRoot } from "./persistence/run-store.js";
 import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
-import { type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
+import { type ContinueInput, type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
 import { type EngineSettings, loadEngineSettings } from "./settings/engine-settings.js";
 
 /**
@@ -93,9 +95,58 @@ export interface Project {
    * the nested-workflow tree the descent resolves refs against, exactly as `resume` receives it.
    */
   listEligible(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, files?: Map<string, WorkflowFile>): ListEligibleResult;
+  /**
+   * Complete a parked `awaiting` leaf (ADR 0041): a fresh engine invocation that replays the leaf's
+   * tree **from the root**, reusing every `succeeded` row read-only, restoring re-entered runs'
+   * context, reaches the leaf named by `stepRunId`, transitions it `awaiting → succeeded` with
+   * `output`, and appends forward in the **same** tree — no successor root, unlike `resume`.
+   *
+   * The guard is two-part (ADR 0041). A per-root-run **expiring lease** lets one Complete advance a
+   * tree at a time: a concurrent Complete against a held lease is rejected (`reason: "lease-held"`, the
+   * route's `409`). A leaf **compare-and-swap** is the write precondition: a Complete on a
+   * non-`awaiting` leaf — including a double-submit, which sees the leaf already `succeeded` — is
+   * rejected (`reason: "not-awaiting"`). An unknown `stepRunId` is `reason: "not-found"`.
+   *
+   * `rootFile`/`workflowDir` are the reloaded workflow (the same requirement Resume carries): a moved
+   * file or relocated store must still resolve for the replay. Returns a discriminated result and never
+   * throws on operator input; an engine-invariant breach still throws.
+   */
+  complete(rootFile: WorkflowFile, stepRunId: string, output: JsonValue, workflowDir: string, opts?: ProjectRunOptions): Promise<CompleteResult>;
+  /**
+   * Cancel a **parked** `awaiting` tree at the store (ADR 0039/0041). A person-activity park tears the
+   * engine down, so there is no live process to abort — a tree whose only non-terminal work is an
+   * `awaiting` leaf is cancelled by transitioning it and its `running` ancestors to `cancelled`
+   * directly (`awaiting → cancelled`, the ADR 0041 chain). Returns `true` when it did so.
+   *
+   * Returns `false` — leaving the caller to refuse — when the tree is unknown, already terminal, not
+   * parked (no `awaiting` leaf; it may be a run executing live in another process, which is cancelled
+   * through its own controller, not here), or currently held by a Complete lease (that Complete's own
+   * controller owns the cancel). A live run in *this* process is cancelled through `LiveRuns.cancel`
+   * before this is ever reached.
+   */
+  cancel(rootRunId: string): boolean;
   /** Closes the db. A `Project` outlives one run (the server holds one per process) and must be closed once. */
   close(): void;
 }
+
+/**
+ * The outcome of `Project.complete` (ADR 0041) — a Result, not a throw, because "no such leaf", "not
+ * awaiting", and "lease held" are ordinary states the route branches on to choose a status code, not
+ * exceptional ones. `ok: false` carries the rejection `reason` (the route maps `not-found → 404`,
+ * `not-awaiting`/`lease-held → 409`) and the message a surface renders. `ok: true` carries the tree's
+ * **own** root run id (never a successor's — Complete appends in place) and the drive's outcome:
+ * `succeeded`/`failed`/`cancelled` when the tail settled, or `awaiting` when a still-parked sibling
+ * parked the walk again (park-at-join).
+ */
+export type CompleteResult =
+  | { ok: false; reason: "not-found" | "not-awaiting" | "lease-held"; message: string }
+  | {
+      ok: true;
+      rootRunId: string;
+      status: "succeeded" | "failed" | "cancelled" | "awaiting";
+      output: JsonValue;
+      error?: string;
+    };
 
 /**
  * The outcome of `Project.resume` (#173) — a Result, not a throw, because "no such root run" is an
@@ -112,7 +163,9 @@ export type ResumeResult =
   | {
       found: true;
       rootRunId: string;
-      status: "succeeded" | "failed" | "cancelled";
+      // `awaiting` when the resumed successor re-ran a person-activity step and parked (ADR 0041): the
+      // successor tree's root stays `running`, resolvable later through Complete like any fresh run.
+      status: "succeeded" | "failed" | "cancelled" | "awaiting";
       output: JsonValue;
       error?: string;
     };
@@ -274,6 +327,7 @@ export function openProject(dir: string): OpenProjectResult {
     opts: ProjectRunOptions,
     resume: ResumeInput | undefined,
     appendObservers: RunObserver[],
+    continueInput?: ContinueInput,
   ): Promise<RunResult> {
     const { logBackends, processorConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
 
@@ -282,12 +336,19 @@ export function openProject(dir: string): OpenProjectResult {
     const backendIds = logBackends ?? settings.logBackends ?? DEFAULT_LOG_BACKENDS;
     const backends = createLogBackends(backendIds, { db, projectDir: absDir });
 
+    // A Complete re-invocation continues the existing per-root log stream (ADR 0041): its events keep
+    // counting `seq` from where the tree left off (so they never collide with the recorded rows) and
+    // append to the existing `run.log` rather than truncating it. A launch or Resume passes neither.
+    const loggingOptions = continueInput
+      ? { startSeq: maxLogSeqForRoot(db, continueInput.rootRunId), append: true }
+      : {};
+
     // Persistence first, deliberately. A log backend write failure raises `ObserverError`, which
     // aborts the remaining observers for that observation — so with logging first, a run whose
     // audit failed would also have no run row. The row is what survives a failed audit.
     const observer = composeObservers(
       createPersistedObserver(db, absDir),
-      createLoggingObserver([...backends, ...extraBackends]),
+      createLoggingObserver([...backends, ...extraBackends], loggingOptions),
       ...extraObservers,
       ...appendObservers,
     );
@@ -297,6 +358,7 @@ export function openProject(dir: string): OpenProjectResult {
       observer,
       processorConcurrency: processorConcurrency ?? settings.processorConcurrency,
       resume,
+      continue: continueInput,
     });
   }
 
@@ -430,6 +492,94 @@ export function openProject(dir: string): OpenProjectResult {
           };
         });
         return { found: true, rows };
+      },
+      async complete(
+        rootFile: WorkflowFile,
+        stepRunId: string,
+        output: JsonValue,
+        workflowDir: string,
+        opts: ProjectRunOptions = {},
+      ): Promise<CompleteResult> {
+        // Resolve the leaf and its tree. An unknown id is `not-found` (the route's 404). A leaf that is
+        // not `awaiting` — a step that already succeeded, or a double-submit landing on the row a prior
+        // Complete already flipped — is `not-awaiting` (409). This is the compare half of the leaf CAS;
+        // the lease below makes the swap single-writer so the check cannot be raced within a process.
+        const leaf = getRun(db, stepRunId);
+        if (leaf === undefined) {
+          return { ok: false, reason: "not-found", message: `no step run found with id "${stepRunId}"` };
+        }
+        if (leaf.status !== "awaiting") {
+          return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${leaf.status}, not awaiting` };
+        }
+        const rootRunId = leaf.rootRunId;
+
+        // The per-root-run expiring lease (ADR 0041): one Complete advances a tree at a time. A held
+        // lease rejects (`lease-held` → 409) rather than queueing.
+        const lease = acquireCompleteLease(absDir, rootRunId);
+        if (lease === null) {
+          return { ok: false, reason: "lease-held", message: `run "${rootRunId}" is being completed in another invocation` };
+        }
+        try {
+          // Re-read under the lease to close the TOCTOU against a concurrent Complete that already
+          // flipped this leaf between the check above and the lease grant.
+          const fresh = getRun(db, stepRunId);
+          if (fresh === undefined || fresh.status !== "awaiting") {
+            return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${fresh?.status ?? "gone"}, not awaiting` };
+          }
+
+          // The whole tree's rows, with each reuse row swapped for its source record (direct-to-source,
+          // ADR 0001) exactly as `resume` does — so a `succeeded` row the replay reuses addresses its
+          // own output blob, whether it ran here or was itself reused from an earlier tree. A source
+          // since `rm`'d resolves to nothing and is dropped; that node then re-runs.
+          const directRuns = getRunsForRoot(db, rootRunId);
+          const existingRuns = directRuns.flatMap((r) => {
+            if (!isReuseRow(r)) return [r];
+            const source = getRun(db, r.reusedFromRunId);
+            return source ? [{ ...source, parentRunId: r.parentRunId }] : [];
+          });
+
+          const continueInput: ContinueInput = {
+            rootRunId,
+            existingRuns,
+            // Read blobs straight out of the run they belong to — this same tree for a re-entered run,
+            // or the source tree for a swapped reuse row (its `rootRunId` is the source's). Read-only.
+            readBlob: (record, filename) => readJsonBlob(runBlobDir(absDir, record.rootRunId, record.runId), filename),
+            target: { stepRunId, output },
+          };
+
+          const { rerunFromRunId: _ignored, ...runOpts } = opts;
+          const result = await execute(rootFile, workflowDir, runOpts, undefined, [], continueInput);
+          return {
+            ok: true,
+            rootRunId,
+            status: result.status,
+            output: result.output,
+            ...(result.error !== undefined ? { error: result.error } : {}),
+          };
+        } finally {
+          lease.release();
+        }
+      },
+      cancel(rootRunId: string): boolean {
+        const rows = getRunsForRoot(db, rootRunId);
+        const root = findRootRun(rows);
+        // Unknown or already-terminal trees are not this method's to cancel — the route answers those
+        // (404 / already-finished) before it reaches here.
+        if (!root || isTerminal(root.status)) return false;
+        // Only a *parked* tree is safe to cancel at the store: an `awaiting` leaf means the engine tore
+        // down (no live process). A non-terminal tree with no `awaiting` leaf may be executing live in
+        // another process, so it is refused here and cancelled through its own controller instead.
+        if (!rows.some((r) => r.status === "awaiting")) return false;
+        // Take the Complete lease so this never races a Complete advancing the same tree; a held lease
+        // means that Complete's own controller owns the cancel, so refuse here.
+        const lease = acquireCompleteLease(absDir, rootRunId);
+        if (lease === null) return false;
+        try {
+          cancelNonTerminalRuns(db, rootRunId);
+          return true;
+        } finally {
+          lease.release();
+        }
       },
       close(): void {
         db.close();

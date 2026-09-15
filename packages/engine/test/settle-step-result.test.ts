@@ -4,7 +4,6 @@ import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
 import type { Cancellation, RunIdentity } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
 import type { StepResult } from "../src/plugin/seam.js";
-import { CompletionRegistry } from "../src/completion-registry.js";
 import { settleStepResult, type SettleStepResult } from "../src/run-workflow.js";
 
 /**
@@ -159,61 +158,28 @@ describe("settleStepResult — usage is leaf-only and metering-gated", () => {
   });
 });
 
-describe("settleStepResult — awaiting suspends until completion", () => {
-  it("emits step-awaiting, then waits for the completion registry, then finishes succeeded", async () => {
+describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", () => {
+  it("emits step-awaiting and returns awaiting, holding no process", async () => {
     const { step, seen } = harness();
-    const completions = new CompletionRegistry();
 
-    const settlePromise = settle({ step, result: { status: "awaiting" }, completions });
-
-    // Let the awaiting emission land.
-    await new Promise((r) => setTimeout(r, 10));
-    expect(seen.map((o) => o.type)).toEqual(["step-awaiting"]);
-
-    // Complete the step.
-    expect(completions.complete(step.runId, { output: { approved: true } })).toBe(true);
-
-    const outcome = await settlePromise;
-    expect(outcome).toEqual({ status: "succeeded", output: { approved: true } });
-    expect(seen.map((o) => o.type)).toEqual(["step-awaiting", "step-finished"]);
-    expect(seen[1]).toMatchObject({ type: "step-finished", status: "succeeded", output: { approved: true } });
-  });
-
-  it('applies parse: "json" to an awaiting step\'s completion output', async () => {
-    const { step, seen } = harness();
-    const completions = new CompletionRegistry();
-
-    const settlePromise = settle({ step, node: { ...NODE, parse: "json" }, result: { status: "awaiting" }, completions });
-
-    await new Promise((r) => setTimeout(r, 10));
-    expect(completions.complete(step.runId, { output: '{"n":1}' })).toBe(true);
-
-    const outcome = await settlePromise;
-    expect(outcome).toEqual({ status: "succeeded", output: { n: 1 } });
-    expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "succeeded", output: { n: 1 } });
-  });
-
-  it("fails the step when no completion registry is available", async () => {
-    const { step, seen } = harness();
     const outcome = await settle({ step, result: { status: "awaiting" } });
 
-    expect(outcome.status).toBe("failed");
-    expect((outcome as { error: string }).error).toContain("no completion registry");
-    expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "failed" });
+    // The step parks: one `step-awaiting`, no terminal `step-finished`. The engine does not wait —
+    // the outcome propagates up and the tree is reopened later by a Complete replay (ADR 0041).
+    expect(outcome).toEqual({ status: "awaiting" });
+    expect(seen.map((o) => o.type)).toEqual(["step-awaiting"]);
   });
 
-  it("cancels an awaiting step when the signal aborts", async () => {
+  it("cancels rather than parks when the signal is already aborted", async () => {
     const { step, seen } = harness();
-    const completions = new CompletionRegistry();
     const controller = new AbortController();
-
-    const settlePromise = settle({ step, result: { status: "awaiting" }, completions, signal: controller.signal });
-
-    await new Promise((r) => setTimeout(r, 10));
     controller.abort();
 
-    const outcome = await settlePromise;
+    const outcome = await settle({ step, result: { status: "awaiting" }, signal: controller.signal });
+
+    // The signal-derived cancel outranks the worker's awaiting verdict: no `step-awaiting` is emitted,
+    // and the kill pair lands instead. This is what makes Cancel work on an awaiting-bound step.
     expect(outcome).toEqual({ status: "cancelled" });
-    expect(seen.map((o) => o.type)).toEqual(["step-awaiting", "run-cancelled", "step-finished"]);
+    expect(seen.map((o) => o.type)).toEqual(["run-cancelled", "step-finished"]);
   });
 });

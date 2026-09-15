@@ -49,6 +49,18 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
 }
 
 /**
+ * The highest `seq` recorded for a root run's narrative, or 0 when none — the point a Complete
+ * re-invocation continues the monotonic per-root `seq` from (ADR 0041), so its appended events do not
+ * collide with the existing `(root_run_id, seq)` rows.
+ */
+export function maxLogSeqForRoot(db: Database.Database, rootRunId: string): number {
+  const row = db.prepare(`SELECT MAX(seq) AS maxSeq FROM log_events WHERE root_run_id = @rootRunId`).get({ rootRunId }) as {
+    maxSeq: number | null;
+  };
+  return row.maxSeq ?? 0;
+}
+
+/**
  * Reads one root run's narrative back in `seq` order, revalidating each stored event.
  *
  * `RunArchive.events()` reaches for this when a run has no `run.log` to replay — the ndjson backend
