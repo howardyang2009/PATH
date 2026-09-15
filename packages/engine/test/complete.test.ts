@@ -118,6 +118,31 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
     }
   });
 
+  it("continues the per-root log stream: monotonic seq, no duplicates, tail narrated after the leaf", async () => {
+    const project = open();
+    try {
+      const wf = workflow([person("approve"), marker("after")]);
+      await project.run(wf, dir);
+      const rootRunId = project.archive.listRoots()[0]!.runId;
+      const seqsAfterLaunch = project.archive.tree(rootRunId)!.events().map((e) => e.seq);
+      const leaf = awaitingLeaf(project, rootRunId);
+
+      await project.complete(wf, leaf.runId, { ok: true }, dir);
+
+      const events = project.archive.tree(rootRunId)!.events();
+      const seqs = events.map((e) => e.seq);
+      // Strictly increasing and unique across launch + Complete — the re-invocation resumed the seq
+      // rather than restarting it (which would collide on the (root, seq) key / duplicate run.log lines).
+      expect(new Set(seqs).size).toBe(seqs.length);
+      expect([...seqs].sort((a, b) => a - b)).toEqual(seqs);
+      // The Complete appended events past where the launch stopped, and the tail is narrated.
+      expect(seqs.length).toBeGreaterThan(seqsAfterLaunch.length);
+      expect(events.some((e) => e.type === "step-started" && e.node_id === "after")).toBe(true);
+    } finally {
+      project.close();
+    }
+  });
+
   it("rejects a double-submit: a second Complete of the same leaf is not-awaiting", async () => {
     const project = open();
     try {

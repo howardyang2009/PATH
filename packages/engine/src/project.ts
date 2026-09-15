@@ -15,6 +15,7 @@ import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./lo
 import type { LogBackend } from "./logging/log-backend.js";
 import { maxLogSeqForRoot } from "./logging/db-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
+import { readNdjsonLog } from "./logging/ndjson-backend.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
 import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
@@ -339,8 +340,16 @@ export function openProject(dir: string): OpenProjectResult {
     // A Complete re-invocation continues the existing per-root log stream (ADR 0041): its events keep
     // counting `seq` from where the tree left off (so they never collide with the recorded rows) and
     // append to the existing `run.log` rather than truncating it. A launch or Resume passes neither.
+    // The continuation point is the max recorded `seq` across *both* stores, so it is correct whichever
+    // backend the launch used — the db table is empty for an ndjson-only run, and vice versa.
     const loggingOptions = continueInput
-      ? { startSeq: maxLogSeqForRoot(db, continueInput.rootRunId), append: true }
+      ? {
+          startSeq: Math.max(
+            maxLogSeqForRoot(db, continueInput.rootRunId),
+            readNdjsonLog(absDir, continueInput.rootRunId).reduce((max, event) => Math.max(max, event.seq), 0),
+          ),
+          append: true,
+        }
       : {};
 
     // Persistence first, deliberately. A log backend write failure raises `ObserverError`, which
@@ -512,6 +521,15 @@ export function openProject(dir: string): OpenProjectResult {
           return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${leaf.status}, not awaiting` };
         }
         const rootRunId = leaf.rootRunId;
+        // The appendable window closes the instant the tree reaches a terminal status (ADR 0041): a
+        // Complete on a terminal tree is rejected. In the normal flow an `awaiting` leaf keeps its root
+        // `running`, so this only guards the corner where a leaf is left `awaiting` under a tree that
+        // went terminal by another path (a wait-one winner landing over a parked loser) — never re-drive
+        // a settled tree.
+        const rootRow = getRun(db, rootRunId);
+        if (rootRow !== undefined && isTerminal(rootRow.status)) {
+          return { ok: false, reason: "not-awaiting", message: `run "${rootRunId}" already finished with status "${rootRow.status}"` };
+        }
 
         // The per-root-run expiring lease (ADR 0041): one Complete advances a tree at a time. A held
         // lease rejects (`lease-held` → 409) rather than queueing.
