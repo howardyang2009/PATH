@@ -1,5 +1,4 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
-import type { CompletionRegistry } from "./completion-registry.js";
 import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { Emitter } from "./run-emitter.js";
@@ -38,16 +37,23 @@ export type Emit = (o: Observation) => Promise<void>;
 export interface StepRuntime {
   registry: LoadedStepPluginRegistry;
   semaphore: ProcessorSemaphore;
-  completions?: CompletionRegistry;
 }
 
 // The result of running one node (or a whole node sequence). A step run that a failing sibling
 // cancelled reports `cancelled`; a genuine failure carries its `error` and, when a killed step run
 // is the trigger, the `causeRunId` the sibling cancellations narrate (mvp spec §5.6).
+//
+// `awaiting` is the person-activity park (ADR 0039/0041): a leaf returned `{ status: "awaiting" }`
+// and the engine tore down rather than holding a process. It propagates up like a non-success
+// (fail-fast stops the walk) but is neither a failure nor a cancel — the enclosing runs stay
+// `running` (no terminal `run-finished`), and the tree is reopened later by a Complete replay. It
+// carries no payload: the parked leaf's `awaiting` row already lives in the store, and the Complete
+// entry point locates the leaf by its own step-run id, not by this outcome.
 export type SeqOutcome =
   | { status: "succeeded"; output: JsonValue }
   | { status: "failed"; error: string; causeRunId?: string }
-  | { status: "cancelled" };
+  | { status: "cancelled" }
+  | { status: "awaiting" };
 
 // The shared cancellation of one `parallel` block: its branches all run under `signal`, and either a
 // branch failing (`collect`) or a branch winning the race (`wait-one`) aborts the in-flight siblings
@@ -131,6 +137,13 @@ export interface RunContext {
   /** This workflow-run's resume state (#172), when the run is being resumed; absent for a fresh run. */
   resume?: RunResume;
   /**
+   * Complete-continue state (ADR 0041), present only during a Complete replay over the appendable
+   * tree. Unlike Resume — which mints a fresh successor tree — a Complete re-drives **this same tree**
+   * in place: every re-entered run keeps its existing run id and every already-`succeeded` node is
+   * reused read-only from its own rows (no reuse marker, no new row). Absent on launch and on Resume.
+   */
+  continue?: ContinueState;
+  /**
    * Detached `do-not-wait` branch runs launched under this workflow-run (do-not-wait-join.md §2): a
    * `do-not-wait` block starts every branch and does *not* await it at the join, pushing its run here
    * instead. The owning run drains these at its exit barrier (`settleDetached`, §1.1/§2) so the tree
@@ -139,6 +152,27 @@ export interface RunContext {
    * except on an audit (ObserverError) fault.
    */
   detached: Promise<void>[];
+}
+
+/**
+ * The Complete-continue state threaded through a replay over the appendable tree (ADR 0041). One
+ * instance serves the whole re-driven tree; each node walker reads it to decide, per node, whether an
+ * existing run of **this** tree already answers it.
+ *
+ * - `existingRuns` is every run row of the tree being continued, read once. Reuse rows are pre-swapped
+ *   for their source record (as `Project.resume` does), so a `succeeded` row here always addresses its
+ *   own output blob directly.
+ * - `readBlob` loads one blob (an existing run's `output.json`, a re-entered run's `context.json`) out
+ *   of the store.
+ * - `target` names the parked leaf being completed and the output to write. The walk reaches this leaf
+ *   as the one `awaiting` run whose id matches, transitions it `awaiting → succeeded` with that output
+ *   (the narrow read-only exception), and continues forward; every other `awaiting` leaf it meets is a
+ *   still-parked sibling and parks the walk again (park-at-join).
+ */
+export interface ContinueState {
+  existingRuns: RunRecord[];
+  readBlob: (run: RunRecord, filename: string) => JsonValue;
+  target: { stepRunId: string; output: JsonValue };
 }
 
 /**

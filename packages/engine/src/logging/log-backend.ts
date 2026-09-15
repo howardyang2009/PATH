@@ -15,7 +15,13 @@ export type LogFormat = typeof LOG_FORMAT;
  * concurrent `write`s) — an implementation need not guard against re-entrancy itself.
  */
 export interface LogBackend {
-  open(run: { runId: string; format: LogFormat }): Promise<void>;
+  /**
+   * Open the stream for one root run. `append` (ADR 0041, a Complete re-invocation) says to add to the
+   * existing stream rather than start a fresh one — the NDJSON backend appends to `run.log` and skips
+   * a second header; a launch or Resume passes it false/absent and opens fresh. The db backend is
+   * append-agnostic: the engine seeds the continuing `seq` so its inserts never collide.
+   */
+  open(run: { runId: string; format: LogFormat; append?: boolean }): Promise<void>;
   /** Flush; called on run end, success or failure. */
   close(): Promise<void>;
   write(event: LogEvent): Promise<void>;

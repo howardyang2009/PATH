@@ -53,6 +53,12 @@ export interface RunArchive {
    */
   tree(rootRunId: string): RunTree | null;
   /**
+   * The root run id of the tree a given run belongs to, or `null` when no row has that id. A leaf
+   * step run names its tree's root so a Complete route can recover the root's recorded workflow path
+   * (ADR 0041) — the path lives on the root row, but the caller holds only the parked leaf's id.
+   */
+  rootRunIdOf(runId: string): string | null;
+  /**
    * The live successor trees that would be orphaned by deleting `rootRunId` — every *other* root run
    * still holding a reuse-marker whose `original_run_id` points at a run inside this tree (#175). The
    * back-reference is resolved by membership: a marker blocks iff the run it names is one of this
@@ -169,6 +175,10 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       // Resolve each reuse row's provenance once here (#257), so every reader downstream — `blob()`,
       // the wire encoder, the viewer — reads a record that no longer lies about what it has.
       return makeTree(db, dir, rootRunId, runs.map((run) => resolveReuseRow(db, run)));
+    },
+
+    rootRunIdOf(runId: string): string | null {
+      return rootRunIdOf(db, runId);
     },
 
     blockingSuccessors(rootRunId: string): string[] {

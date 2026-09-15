@@ -107,6 +107,23 @@ export function finishRun(db: Database.Database, runId: string, status: Terminal
 }
 
 /**
+ * Cancel a **parked** tree's every non-terminal run in one write — an `awaiting` leaf and the
+ * `running` workflow-runs above it (ADR 0041: `awaiting → cancelled`). Used only when the tree is not
+ * executing live (no held process to abort, ADR 0039 teardown), so there is nothing racing these rows
+ * inside the transition; a live tree is cancelled through its `AbortController` instead. `pending` is
+ * included for completeness though no row rests there after start. Returns the number of rows moved.
+ */
+export function cancelNonTerminalRuns(db: Database.Database, rootRunId: string): number {
+  const info = db
+    .prepare(
+      `UPDATE runs SET status = 'cancelled', finished_at = @finishedAt
+       WHERE root_run_id = @rootRunId AND status IN ('pending', 'running', 'awaiting')`,
+    )
+    .run({ finishedAt: new Date().toISOString(), rootRunId });
+  return info.changes;
+}
+
+/**
  * The output ref lands on its own UPDATE because it cannot be known at insert time — a run's output
  * exists only once the run has succeeded. The *input* ref goes in with the row (`insertRun`), which
  * is why there is no setter for it (#72).

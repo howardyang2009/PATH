@@ -221,6 +221,11 @@ export async function runParallelNode(
     // No winner. A cancelled branch means we were aborted from outside; otherwise every branch
     // failed, and the block fails with a synthetic aggregate distinct from any one branch's error (§2).
     if (branchResults.some((r) => r.outcome.status === "cancelled")) return { status: "cancelled" };
+    // Park-at-join (ADR 0041): no branch won yet, but a branch parked at a person-activity leaf, so the
+    // race is not decided — the parked branch may still win once it is Completed. The block parks: it
+    // returns `awaiting`, lands nothing, and is reopened by a Complete replay. Only when no branch is
+    // awaiting either is the block a genuine all-failed.
+    if (branchResults.some((r) => r.outcome.status === "awaiting")) return { status: "awaiting" };
     return { status: "failed", error: `parallel "${node.name}": all ${node.branches.length} wait-one branches failed` };
   }
 
@@ -237,6 +242,15 @@ export async function runParallelNode(
   // No local failure but a cancelled branch means the enclosing block aborted us: propagate.
   if (branchResults.some((r) => r.outcome.status === "cancelled")) {
     return { status: "cancelled" };
+  }
+
+  // Park-at-join (ADR 0041): a `collect` join waits for *all* branches, so a single parked branch
+  // parks the whole block. No publish lands and no join is applied — the tail after the join is not
+  // reached. A Complete replay re-drives this block: once every parked sibling has been Completed the
+  // join is satisfied on that replay and the tail runs exactly once. Ordered after failed/cancelled so
+  // a real failure still fails the block rather than parking it.
+  if (branchResults.some((r) => r.outcome.status === "awaiting")) {
+    return { status: "awaiting" };
   }
 
   // All branches succeeded: land their buffered publishes at the join, in branch declaration

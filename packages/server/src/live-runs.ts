@@ -1,4 +1,4 @@
-import { CompletionRegistry, type LoadedStepPluginRegistry, type LogBackend, type LogBackendId, type Project, type RunObserver } from "@path/engine";
+import { type CompleteResult, type LoadedStepPluginRegistry, type LogBackend, type LogBackendId, type Project, type RunObserver } from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
@@ -72,10 +72,21 @@ export interface LiveRuns {
    */
   stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe;
   /**
-   * Completes an awaiting step run (#462) with the given output. Returns false when no step by that
-   * id is awaiting completion in any run executing here.
+   * Completes a parked `awaiting` leaf (ADR 0041) by a fresh engine replay over the appendable tree:
+   * `Project.complete` re-enters the existing tree in place, reaches the leaf named by `stepRunId`,
+   * writes `output`, and drives the tail. The tail is streamed to the root run's live channel and is
+   * cancellable for its duration (a controller is filed under `rootRunId`), so Cancel still works on a
+   * run a Complete is advancing. Resolves with the engine's discriminated result — a rejection
+   * (unknown id, not-awaiting, lease held) or the drive's outcome — which the route maps to a status.
    */
-  complete(stepRunId: string, output: JsonValue): boolean;
+  complete(
+    rootFile: WorkflowFile,
+    rootRunId: string,
+    stepRunId: string,
+    output: JsonValue,
+    workflowDir: string,
+    options: CompleteRunOptions,
+  ): Promise<CompleteResult>;
   /**
    * How many runs are cancellable here — 0 once every started run has settled. A leaked entry is a
    * slow leak in a long-lived server; a missing one is a refused cancel of a live run.
@@ -143,6 +154,20 @@ export interface ResumeRunOptions {
   rerunFromRunId?: string;
 }
 
+/**
+ * What `complete` needs beyond the leaf id and its output: the reloaded workflow structure (the route
+ * re-reads it from disk, since a Complete re-runs the workflow file, not a db copy) and the backend
+ * overrides the other entry points take. No `input`/`operatorConfig` — a Complete resolves one leaf and
+ * drives the existing tree's tail; it seeds nothing.
+ */
+export interface CompleteRunOptions {
+  files: Map<string, WorkflowFile>;
+  /** The registry the workflow was validated against (see `StartRunOptions.registry`). */
+  registry: LoadedStepPluginRegistry;
+  logBackends?: LogBackendId[];
+  processorConcurrency?: number;
+}
+
 /** Thrown by `resume` when the engine reports the predecessor root run id unknown. */
 export class ResumeNotFound extends Error {
   constructor(message: string) {
@@ -193,7 +218,6 @@ export function createLiveRuns(project: Project): LiveRuns {
    * outcome.
    */
   const controllers = new Map<string, AbortController>();
-  const completionRegistries = new Map<string, CompletionRegistry>();
 
   /**
    * Every in-flight run's own promise — the whole `project.run(...).then(...).finally(finalize)` chain,
@@ -211,20 +235,18 @@ export function createLiveRuns(project: Project): LiveRuns {
    * The tracking machinery `start` and `resume` share (they differ only in which engine entry point
    * they drive — `project.run` vs `project.resume`): a deferred that resolves on the first
    * `run-started`, the controller filed under the root run id for `cancel`, the live-forwarding
-   * backend, and the teardown that drops both registries on any outcome. `hooks` is spread into the
+   * backend, and the teardown that drops the controller on any outcome. `hooks` is spread into the
    * engine options; `finalize` is the `.finally` both attach.
    */
   function beginTracked(): {
     started: ReturnType<typeof createDeferred<StartedRun>>;
-    completions: CompletionRegistry;
-    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void; completions: CompletionRegistry };
+    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void };
     finalize: () => void;
   } {
     // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
     // the response goes out before the run finishes, not before it starts.
     const started = createDeferred<StartedRun>();
     const controller = new AbortController();
-    const completions = new CompletionRegistry();
     let registeredRootRunId: string | undefined;
 
     const captureObserver: RunObserver = {
@@ -234,7 +256,6 @@ export function createLiveRuns(project: Project): LiveRuns {
         if (registeredRootRunId === undefined) {
           registeredRootRunId = o.rootRunId;
           controllers.set(o.rootRunId, controller);
-          completionRegistries.set(o.rootRunId, completions);
         }
         started.resolve({ runId: o.runId, rootRunId: o.rootRunId });
       },
@@ -242,7 +263,6 @@ export function createLiveRuns(project: Project): LiveRuns {
 
     return {
       started,
-      completions,
       hooks: {
         // The live-forwarding backend rides alongside the configured db/NDJSON backends so
         // subscribers (§5) see every already-masked event in `seq` order — independent of which
@@ -253,7 +273,6 @@ export function createLiveRuns(project: Project): LiveRuns {
         extraObservers: [captureObserver],
         signal: controller.signal,
         warn: (message) => console.error(`warning: ${message}`),
-        completions,
       },
       // However it ended, the run is over. Tearing both registries down here rather than in each
       // arm is what makes "on every outcome" true by construction, so a long-lived server
@@ -261,7 +280,6 @@ export function createLiveRuns(project: Project): LiveRuns {
       finalize: () => {
         if (registeredRootRunId === undefined) return; // never started; neither holds an entry
         controllers.delete(registeredRootRunId);
-        completionRegistries.delete(registeredRootRunId);
         // Normally already closed: the root run's terminal event drives the live backend's `close`.
         // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
         // with a propagating bug rather than converting it to a failed run (#74). Without it the
@@ -336,11 +354,38 @@ export function createLiveRuns(project: Project): LiveRuns {
       return true;
     },
 
-    complete(stepRunId: string, output: JsonValue): boolean {
-      for (const registry of completionRegistries.values()) {
-        if (registry.complete(stepRunId, { output })) return true;
+    async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options): Promise<CompleteResult> {
+      // A Complete re-drives the *existing* tree in place (ADR 0041), so unlike `start`/`resume` there
+      // is no fresh `run-started` to key registration off — the root run id is already known. File the
+      // controller under it directly so an operator Cancel reaches the tail (Cancel still works on an
+      // awaiting run), and ride the live backend so the tail streams to that root's SSE subscribers.
+      const controller = new AbortController();
+      // Only own the controller/channel when no drive is already active for this root: a concurrent
+      // Complete the engine lease will reject must not clobber the live drive's controller nor close
+      // its subscribers' channel out from under it. When rejected for any reason, no drive runs, so
+      // there is nothing to cancel and (for an idle tree) no open channel to close.
+      const owns = !controllers.has(rootRunId);
+      if (owns) controllers.set(rootRunId, controller);
+      const drive = project.complete(rootFile, stepRunId, output, workflowDir, {
+        ...options,
+        extraBackends: [createLiveLogBackend(hub)],
+        signal: controller.signal,
+        warn: (message) => console.error(`warning: ${message}`),
+      });
+      // Track the whole drive so a graceful shutdown drains it (#439); it settles to a result either
+      // way, so this arm never rejects.
+      track(drive.then(() => {}, () => {}));
+      try {
+        return await drive;
+      } finally {
+        if (owns) {
+          controllers.delete(rootRunId);
+          // The tail's terminal event already closed the channel for a settled tree; this is the
+          // backstop for a rejection (no drive ran) or a bug that never emitted a terminal. Idempotent,
+          // and a no-op when no channel was open.
+          hub.close(rootRunId);
+        }
       }
-      return false;
     },
 
     stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe {

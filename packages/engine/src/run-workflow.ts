@@ -9,6 +9,7 @@ import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import {
   type Cancellation,
+  type ContinueState,
   type Emit,
   type StepRuntime,
   type NodeExecContext,
@@ -100,12 +101,6 @@ export interface RunOptions {
    */
   signal?: AbortSignal;
   /**
-   * The completion registry for steps that return `{ status: "awaiting" }` (#462). The engine
-   * suspends on the registry when a step goes awaiting; the external complete call resolves it.
-   * Absent when no person-activity steps are expected.
-   */
-  completions?: import("./completion-registry.js").CompletionRegistry;
-  /**
    * Resume a prior tree (#172): reuse the recorded work of every succeeded run whose node id still
    * matches (#170's `planReuse`), and restore each re-entered workflow-run's context blackboard from
    * the original tree, rather than re-running the whole pipeline from scratch. Absent for an ordinary
@@ -113,6 +108,15 @@ export interface RunOptions {
    * with its own root run id and its own `.path/runs/` tree (resume-restore-semantics.md §4).
    */
   resume?: ResumeInput;
+  /**
+   * Complete an awaiting leaf by replaying the **existing** tree in place (ADR 0041). Distinct from
+   * `resume` (which mints a fresh successor tree): the re-invocation re-enters this same tree's runs by
+   * their own ids, reuses every `succeeded` row read-only, reaches the parked leaf named by
+   * `target.stepRunId`, transitions it `awaiting → succeeded` with `target.output`, and appends forward
+   * under the same root. Mutually exclusive with `resume`. `Project.complete` is the one authority that
+   * builds it (loads the tree, pre-swaps reuse rows, takes the lease, validates the leaf).
+   */
+  continue?: ContinueInput;
   /**
    * Where the root `workflow.json` lives, as a path **relative to the store dir** (#202, ADR 0006) —
    * recorded on the root run's `workflow_path` as provenance for a central `-C` store (ADR 0005).
@@ -146,6 +150,23 @@ export interface ResumeInput {
   rerunFromNodePath?: string[];
 }
 
+/**
+ * What a Complete re-invocation needs to replay the appendable tree (ADR 0041). Built by
+ * `Project.complete`; the engine core does no I/O, so the tree rows and a blob reader are supplied.
+ *
+ * - `rootRunId` is the tree being continued — the re-invocation keeps this id, minting no successor.
+ * - `existingRuns` is every run row of that tree, with reuse rows already swapped for their source
+ *   record (so a `succeeded` row addresses its own output blob), matching `ResumeInput.originalRuns`.
+ * - `readBlob` loads a blob (an existing run's `output.json`, a re-entered run's `context.json`).
+ * - `target` names the parked leaf's step-run id and the validated output to write on its transition.
+ */
+export interface ContinueInput {
+  rootRunId: string;
+  existingRuns: RunRecord[];
+  readBlob: (run: RunRecord, filename: string) => JsonValue;
+  target: { stepRunId: string; output: JsonValue };
+}
+
 // Shaped differently from @path/schema's success/failure results: a failed run still carries
 // the last-succeeded node's output (useful to a caller even on failure), so `output` is
 // unconditional rather than living only in a success branch.
@@ -153,7 +174,12 @@ export interface RunResult {
   // `cancelled` is a run whose leaf steps the engine killed best-effort (mvp spec §5.6): because a
   // sibling parallel branch failed (#24), or because an operator aborted `RunOptions.signal` (#52) —
   // which any run in the tree, the root included, may end on.
-  status: "succeeded" | "failed" | "cancelled";
+  //
+  // `awaiting` is **not** a terminal status: the run reached a person-activity leaf and tore down
+  // (ADR 0039/0041). Its root row stays `running` (no `run-finished` was emitted) and the tree is
+  // reopened by a later Complete replay. A caller reads it as "the run parked, do not treat it as an
+  // outcome" — the CLI reports it, and the server does not log it as a failure.
+  status: "succeeded" | "failed" | "cancelled" | "awaiting";
   /**
    * On success: the workflow's `output` map, evaluated at successful run end (format doc §6.4) —
    * absent map = `{}`, and the value is **real**, secrets included; it is the run's product.
@@ -214,6 +240,13 @@ interface WorkflowRunParams {
   // the root run carries the whole path, each descent hands the path-node its `slice(1)` tail, and
   // every off-path sibling hands `[]`, so suppression reaches exactly the on-path level at each depth.
   resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] };
+  // Complete-continue over the appendable tree (ADR 0041): the shared continue state plus **this**
+  // run's own existing row. `existing` defined means the run is re-entered in place — its row already
+  // exists, so no `run-started` is emitted and its context is restored from its own `context.json`; on
+  // success it emits `run-finished`, transitioning the row `running → succeeded`. `existing`
+  // undefined (in continue mode) is a fresh run appended forward past the parked leaf — an ordinary
+  // `run-started`/`run-finished` pair under the same root. Absent entirely on launch and Resume.
+  continue?: { state: ContinueState; existing: RunRecord | undefined };
   // The rerun boundary (K) descent path as `{nodeId, nodeName}[]` (#444, ADR 0032), threaded only
   // into the root run's params — a read denormalization persisted on the root row's
   // `rerun_from_node_path`. Absent on plain Resume and on every nested run.
@@ -292,10 +325,17 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // re-enters the matching counterpart; `runWhileDoNode` supplies that counterpart via the container's
   // own resume state. The reuse plan is this run's own, scoped to its counterpart's children.
   const resumeCounterpart = params.resume?.counterpart;
+  // Complete-continue (ADR 0041): a re-entered run of the tree being Completed (`continue.existing`
+  // defined) restores its context from its **own** `context.json` in this same tree — the blackboard
+  // as it stood when the run parked. This is the appendable-tree analogue of Resume's restore-by-load,
+  // over the run itself rather than a counterpart in a separate original tree.
+  const continueReenter = params.continue?.existing;
   const restoredContext =
-    params.resume && resumeCounterpart
-      ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
-      : undefined;
+    params.continue && continueReenter
+      ? (params.continue.state.readBlob(continueReenter, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
+      : params.resume && resumeCounterpart
+        ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
+        : undefined;
   const context: { [key: string]: JsonValue } = restoredContext ? { ...restoredContext } : { ...input }; // format doc §6.3
   // Producer A (ADR 0036): at every on-path level the level's own `suppress` set (this run's suffix
   // head B and every serialized-later run-producing id, over this file's own body) is dropped from the
@@ -322,7 +362,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
   // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
   const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
-  const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, runtime: params.runtime, resume, detached: [] };
+  const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, runtime: params.runtime, resume, continue: params.continue?.state, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
     await emitter.runFinished({ status: "failed", error });
     return { status: "failed", output: previousOutput, error };
@@ -377,23 +417,31 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     // The emitter gates the root-only trio on `isRoot` itself (run-emitter.ts): the source-workflow
     // id/name/path ride only a root run's `run-started`, and `resumedFromRootRunId` (#173, persisted
     // to the root row) only when supplied. A nested run passes the file id/name and they are dropped.
-    await emitter.runStarted({
-      input,
-      resumedFromRootRunId: params.resumedFromRootRunId,
-      // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
-      // run passing undefined here changes nothing.
-      rerunFromNodePath: params.rerunFromNodePath,
-      workflowId: file.id,
-      workflowName: file.name,
-      workflowPath: params.sourceWorkflowPath,
-    });
+    //
+    // Complete-continue re-entry (ADR 0041): a run re-entered in place already has its row and its
+    // `context.json` in this tree — it was `running`, never terminal, so nothing was frozen. Emitting
+    // a second `run-started` would insert a duplicate row, and rewriting `context.json` from the
+    // restored blackboard would be a no-op write, so both are skipped. A *fresh* run appended forward
+    // past the parked leaf (`continue.existing` undefined) is an ordinary run and takes this path.
+    if (continueReenter === undefined) {
+      await emitter.runStarted({
+        input,
+        resumedFromRootRunId: params.resumedFromRootRunId,
+        // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
+        // run passing undefined here changes nothing.
+        rerunFromNodePath: params.rerunFromNodePath,
+        workflowId: file.id,
+        workflowName: file.name,
+        workflowPath: params.sourceWorkflowPath,
+      });
 
-    // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
-    // (its run-started seed). A re-entered workflow-run's real starting context is the restored one,
-    // so write it straight through as a fresh, self-sufficient `context.json` under the new tree
-    // (resume-restore-semantics.md §1) — overwriting the input-seed with what actually resumes.
-    if (restoredContext !== undefined) {
-      await emitter.contextChanged(context);
+      // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
+      // (its run-started seed). A re-entered workflow-run's real starting context is the restored one,
+      // so write it straight through as a fresh, self-sufficient `context.json` under the new tree
+      // (resume-restore-semantics.md §1) — overwriting the input-seed with what actually resumes.
+      if (restoredContext !== undefined) {
+        await emitter.contextChanged(context);
+      }
     }
 
     // A run-start config failure (#116) lands *here* rather than at load: the run exists, is
@@ -421,6 +469,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         await emitter.contextChanged(context);
       },
     });
+    // The run reached a person-activity leaf and parked (ADR 0039/0041): it neither succeeded nor
+    // failed, so it emits no terminal `run-finished` and this row stays `running`. The tree is
+    // reopened by a later Complete replay, which re-enters this same run and drives it forward. We
+    // return before the detached barrier: the run is not finishing, so its do-not-wait branches keep
+    // running under it and are drained only when a Complete actually settles it.
+    if (outcome.status === "awaiting") return { status: "awaiting", output: previousOutput };
     // Enclosing-workflow-run barrier (do-not-wait-join.md §1.1/§2): drain every detached branch to a
     // terminal status before this run reports finished, so the run tree stays strictly nested and
     // `path run` never returns with live work behind it. Runs regardless of the main path's outcome —
@@ -468,8 +522,17 @@ async function runWorkflowNode(
     return { status: "failed", error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
+  // Complete-continue (ADR 0041): a nested run still `running` in this tree is re-entered **in place**
+  // — same run id, no `run-started` — so its parked descendants resolve under the identity they
+  // already have. A node with no existing run is a fresh forward run appended past the parked leaf; it
+  // mints an id like any launch run. (A `succeeded` nested run never reaches here — `runNode` reused
+  // it and did not descend.)
+  const continueExisting =
+    ctx.run.continue !== undefined
+      ? findExistingChild(ctx.run.continue.existingRuns, ctx.run.identity.runId, node.id)
+      : undefined;
   const childIdentity: RunIdentity = {
-    runId: randomUUID(),
+    runId: continueExisting?.runId ?? randomUUID(),
     rootRunId: ctx.run.identity.rootRunId,
     parentRunId: ctx.run.identity.runId,
     nodeId: node.id,
@@ -490,6 +553,9 @@ async function runWorkflowNode(
     runtime: ctx.run.runtime,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
+    // Continue this child in place when the tree is being Completed (undefined otherwise): its own
+    // existing row (re-enter) or undefined (fresh forward run under the same root).
+    continue: ctx.run.continue ? { state: ctx.run.continue, existing: continueExisting } : undefined,
     // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
     // its already-succeeded grandchildren reuse rather than re-running from scratch. Producer B (ADR
@@ -499,6 +565,10 @@ async function runWorkflowNode(
   });
 
   if (childResult.status === "cancelled") return { status: "cancelled" };
+  // The nested run parked at a person-activity leaf (ADR 0041): it stays `running`, and this
+  // `workflow` step's own run *is* that child run (invariant 2), so it parks too. The `awaiting`
+  // propagates up unchanged — no enclosing run finishes.
+  if (childResult.status === "awaiting") return { status: "awaiting" };
   if (childResult.status === "failed") {
     return { status: "failed", error: `workflow step "${node.name}": ${childResult.error}` };
   }
@@ -542,8 +612,6 @@ export interface SettleStepResult {
   signal?: AbortSignal;
   /** The enclosing block's cancellation, read for the cause the `run-cancelled` narrates. */
   cancellation?: Cancellation;
-  /** The run tree's completion registry, for steps that return `{ status: "awaiting" }` (#462). */
-  completions?: import("./completion-registry.js").CompletionRegistry;
 }
 
 /**
@@ -574,7 +642,7 @@ export interface SettleStepResult {
  *    leaf type so they can't drift.
  */
 export async function settleStepResult(args: SettleStepResult): Promise<SeqOutcome> {
-  const { step, node, result, meters, signal, cancellation, completions } = args;
+  const { step, node, result, meters, signal, cancellation } = args;
 
   // 1. stderr rides every outcome, into the audit blob.
   if (result.status !== "awaiting" && result.stderr !== undefined) await step.stderr(result.stderr);
@@ -585,28 +653,15 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
     return { status: "cancelled" };
   }
 
-  // 2b. A worker that returned `awaiting` suspends on the completion registry (#462). The step
-  // transitions: running -> awaiting (emitted as step-awaiting) -> succeeded (emitted as
-  // step-finished). The sequence runner is unaware of this: the promise resolves when the
-  // external complete call provides the output.
+  // 2b. A worker that returned `awaiting` (person-activity) parks the leaf and the engine tears down
+  // (ADR 0039/0041): no held process, no in-memory deferred. The step transitions running -> awaiting
+  // (emitted as `step-awaiting`, persisted with no `finished_at`) and the walk stops here — the
+  // `awaiting` outcome propagates up like a non-success, leaving every enclosing run `running`. The
+  // parked leaf is resolved later by a Complete replay from the root (ADR 0041), which reaches this
+  // same leaf run and writes its output through the CAS, never through this call.
   if (result.status === "awaiting") {
-    if (!completions) {
-      const error = `step "${node.name}": returned awaiting but no completion registry is available`;
-      await step.finished({ status: "failed", error });
-      return { status: "failed", error, causeRunId: step.runId };
-    }
     await step.awaiting();
-    let completion: import("./completion-registry.js").CompletionResult;
-    try {
-      completion = await completions.wait(step.runId, signal);
-    } catch {
-      if (signal?.aborted) {
-        await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
-        return { status: "cancelled" };
-      }
-      throw new Error(`step "${node.name}": completion wait failed unexpectedly`);
-    }
-    return finishSucceeded(step, node, completion.output);
+    return { status: "awaiting" };
   }
 
   // 3. Leaf-only spend (§5.7), from a metering worker only: recorded here, never rolled up — subtree
@@ -744,7 +799,6 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
       meters: descriptor.meters,
       signal: ctx.exec.signal,
       cancellation: ctx.exec.cancellation,
-      completions: ctx.run.runtime.completions,
     });
   } finally {
     // The processor is gone by now; holding its slot any longer would shrink the cap.
@@ -817,6 +871,37 @@ function childResumeState(
 }
 
 /**
+ * The one existing run of the tree being Completed that answers a given node (ADR 0041): the row whose
+ * parent run is this workflow-run and whose `nodeId` matches — plus, for a `while-do` iteration
+ * container, whose `iteration` ordinal matches. Within one tree a node under one parent has exactly one
+ * such row (a loop body one per iteration), so a single match or none is the only outcome; more than
+ * one would be a corrupt tree, so it is treated as none and the node runs fresh rather than guessing.
+ */
+function findExistingChild(
+  existingRuns: RunRecord[],
+  parentRunId: string,
+  nodeId: string,
+  iteration?: number,
+): RunRecord | undefined {
+  const matches = existingRuns.filter(
+    (r) =>
+      r.parentRunId === parentRunId &&
+      r.nodeId === nodeId &&
+      (iteration === undefined || r.iteration === iteration),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * The recorded output of an existing `succeeded` run of the tree being Completed. Reuse rows were
+ * pre-swapped for their source record (`Project.complete`), so a `succeeded` row always carries its
+ * own `outputRef` addressing its output blob; a `{}` fallback covers the theoretical row with no ref.
+ */
+function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
+  return run.outputRef ? state.readBlob(run, RUN_BLOB_FILE.output) : {};
+}
+
+/**
  * The persisted denormalization of the rerun boundary path (ADR 0032/0036): each node id paired with
  * its current human name **at its own level**. `undefined` for plain Resume. The descent resolves each
  * level's name from its own file, following the path-node's `workflow` ref down. Correctness never
@@ -842,7 +927,9 @@ export async function runWorkflow(
   fileDir: string,
   options: RunOptions = {},
 ): Promise<RunResult> {
-  const runId = randomUUID();
+  // A Complete re-invocation (ADR 0041) keeps the tree's own root run id — it appends in place and
+  // mints no successor. A launch or Resume mints a fresh root id.
+  const runId = options.continue?.rootRunId ?? randomUUID();
 
   // One snapshot for the whole run (#116). The environment is read here and nowhere else, so a
   // variable changed mid-run cannot make a step's config disagree with what the masker collected
@@ -899,7 +986,6 @@ export async function runWorkflow(
       runtime: {
         registry,
         semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
-        completions: options.completions,
       },
       // Resume (#172): the root run's original counterpart is the original tree's own root run.
       // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
@@ -912,6 +998,13 @@ export async function runWorkflow(
             counterpart: originalRoot,
             rerunSuffix: options.resume.rerunFromNodePath ?? [],
           }
+        : undefined,
+      // Complete-continue (ADR 0041): the root run is re-entered in place — its own row is the
+      // `existing` one, so `executeWorkflowRun` skips its `run-started` and restores its context from
+      // this same tree. The walk then reuses succeeded rows, resolves the parked leaf, and appends
+      // forward. Mutually exclusive with `resume`.
+      continue: options.continue
+        ? { state: { existingRuns: options.continue.existingRuns, readBlob: options.continue.readBlob, target: options.continue.target }, existing: findRootRun(options.continue.existingRuns) }
         : undefined,
       // The rerun boundary (K) descent path, denormalized to `{nodeId, nodeName}[]` for the root row
       // (#444, ADR 0032). Undefined on plain Resume, which leaves `rerun_from_node_path` null.
@@ -1264,8 +1357,17 @@ async function runLoopIteration(
   iterationInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
+  // Complete-continue (ADR 0041): the existing container for this ordinal in the tree being Completed.
+  // A `succeeded` one is reused read-only — its recorded output threads the loop's default-input chain
+  // and the body is not re-walked. A `running` one is the parked iteration, re-entered in place (same
+  // id, no `run-started`). None means a fresh iteration appended past the parked leaf.
+  const continueExisting =
+    run.continue !== undefined ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id, iteration) : undefined;
+  if (run.continue && continueExisting && continueExisting.status === "succeeded") {
+    return { status: "succeeded", output: readExistingOutput(run.continue, continueExisting) };
+  }
   const containerIdentity: RunIdentity = {
-    runId: randomUUID(),
+    runId: continueExisting?.runId ?? randomUUID(),
     rootRunId: run.identity.rootRunId,
     parentRunId: run.identity.runId,
     nodeId: node.id,
@@ -1273,11 +1375,12 @@ async function runLoopIteration(
     iteration,
   };
   const containerEmitter = run.emitter.child(containerIdentity);
-  await containerEmitter.runStarted({ input: iterationInput });
+  // A re-entered running container already has its row; a fresh iteration starts one.
+  if (continueExisting === undefined) await containerEmitter.runStarted({ input: iterationInput });
 
-  // The container reuses this run's file/config/env/runtime/detached, swapping only its identity,
-  // emitter, and resume state; `exec` (the shared context) is passed unchanged so the body publishes
-  // into the loop's context, not a fresh one.
+  // The container reuses this run's file/config/env/runtime/detached/continue, swapping only its
+  // identity, emitter, and resume state; `exec` (the shared context) is passed unchanged so the body
+  // publishes into the loop's context, not a fresh one.
   const containerRun: RunContext = {
     ...run,
     identity: containerIdentity,
@@ -1286,6 +1389,10 @@ async function runLoopIteration(
   };
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
   const outcome = await runSequence(containerRun, [node.node], iterationInput, exec);
+  // The body parked at a person-activity leaf (ADR 0041): the container stays `running` (no terminal
+  // `run-finished`) and the loop stops here, propagating `awaiting` up. A Complete replay re-enters
+  // this iteration container and drives it forward.
+  if (outcome.status === "awaiting") return outcome;
   await containerEmitter.runFinished(outcome);
   return outcome;
 }
@@ -1407,13 +1514,36 @@ export async function runNode(
   // fires once per reuse decision, never once per descendant. Everything downstream treats the
   // reused output identically to a freshly produced one, so the `publish` block below is shared.
   const reused = run.resume?.plan.get(node.id);
+  // Complete-continue (ADR 0041): the existing run of *this* tree that answers this node, if any.
+  const existingChild = run.continue ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id) : undefined;
   let outcome: SeqOutcome;
   // A leaf runner reports its minted step emitter here (via `onLeafStep`), so the post-publish
   // context snapshot below is attributed to the step's own run id. A reused node and a nested
   // `workflow` node leave this undefined — the former emits no step run, the latter keeps its own
   // context.json — so neither gets a per-step snapshot here.
   let leafStep: StepEmitter | undefined;
-  if (run.resume && reused) {
+  if (run.continue && existingChild && existingChild.status === "succeeded") {
+    // A node already `succeeded` in this tree is reused **read-only from its own row** — no reuse
+    // marker and no new row, because unlike Resume this is not a fresh successor tree. Its recorded
+    // output threads down the default-input chain, and a `succeeded` `workflow` node collapses its
+    // whole subtree here exactly as Resume's reuse does (we never descend into it).
+    outcome = { status: "succeeded", output: readExistingOutput(run.continue, existingChild) };
+  } else if (run.continue && existingChild && existingChild.status === "awaiting") {
+    if (existingChild.runId === run.continue.target.stepRunId) {
+      // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
+      // read-only exception) by re-entering its own step-run id and finishing it with the supplied
+      // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
+      // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
+      // the node's `publish` land just as they would for a freshly produced leaf output.
+      const step = run.emitter.step(node, existingChild.runId);
+      leafStep = step;
+      outcome = await finishSucceeded(step, node, run.continue.target.output);
+    } else {
+      // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
+      // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
+      return { status: "awaiting" };
+    }
+  } else if (run.resume && reused) {
     const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
     await run.emitter.reuseMarker(node, { originalRunId: reused.runId });
     outcome = { status: "succeeded", output };
