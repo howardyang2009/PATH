@@ -175,6 +175,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 rootRunId={props.rootRunId}
                 selectedRunId={props.selectedRunId}
                 onSelectRun={props.onSelectRun}
+                // The open buffer is the run's root file here, so an awaiting leaf's assignee chip in the
+                // rail resolves by node id — the same surface the Viewer draws (ADR 0031, #487).
+                rootFile={props.rootFile}
               />
             )}
           </div>
@@ -189,7 +192,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
             {selectedRun === undefined ? (
               <p className="pane-note">Select a run in the tree.</p>
             ) : (
-              <NodeIo client={props.client} run={selectedRun} narrative={narrative} />
+              // Passing the open buffer lets an awaiting leaf's Complete slide-over build from the node's
+              // `outputSchema` — the very same form the Viewer mounts, not a Designer fork (ADR 0031, #487).
+              <NodeIo client={props.client} run={selectedRun} narrative={narrative} rootFile={props.rootFile} />
             )}
           </div>
         </div>

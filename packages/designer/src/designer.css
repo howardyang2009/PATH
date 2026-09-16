@@ -334,6 +334,13 @@ body {
   color: var(--block-fg, var(--text));
 }
 
+/* A leaf kind's glyph, drawn before its chip (#487) — a second, shape-based cue beside the hue. */
+.leaf-glyph {
+  flex: none;
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+
 .node-name {
   font-weight: 600;
 }

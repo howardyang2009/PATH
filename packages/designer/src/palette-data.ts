@@ -39,6 +39,7 @@ function titleCase(name: string): string {
 function leafBlurb(name: string): string {
   if (name === "prompt") return "LLM prompt against a model";
   if (name === "binary") return "A command with args and cwd";
+  if (name === "person-activity") return "An offline activity a person completes";
   return `A ${name} step`;
 }
 

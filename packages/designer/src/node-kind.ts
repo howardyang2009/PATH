@@ -17,11 +17,17 @@ interface KindDescriptor {
   hue: string;
   /** The one-line explanation shown above the pane divider (§ Pane layout, explanatory copy). */
   explanation: string;
+  /** An optional leaf glyph drawn before the chip, so a kind reads by shape as well as by hue (#487). */
+  glyph?: string;
 }
 
 const KIND: Record<string, KindDescriptor> = {
   prompt: { hue: "step", explanation: "An LLM prompt run against a model." },
   binary: { hue: "step", explanation: "A command run with arguments in a working directory." },
+  // A `person-activity` leaf carries its own teal hue and a person glyph, so it no longer reads as a
+  // generic step in the indigo `--k-step` (#470, #487). It suspends the run as `awaiting` until a person
+  // completes the offline activity (CONTEXT.md § Awaiting).
+  "person-activity": { hue: "person", explanation: "An offline activity a person completes; the run awaits their Complete.", glyph: "👤" },
   workflow: { hue: "workflow", explanation: "A reference to another workflow file, run as a nested run." },
   parallel: { hue: "parallel", explanation: "Runs its branches together; the join mode decides how their outputs land." },
   branch: { hue: "branch", explanation: "First-match-wins arms, each guarded by a condition, with an optional else." },
@@ -44,5 +50,11 @@ export function kindExplanation(type: string): string {
 export function leafChip(type: string): string {
   if (type === "prompt") return "LLM";
   if (type === "binary") return "COMMAND";
+  if (type === "person-activity") return "PERSON";
   return type.toUpperCase();
+}
+
+/** The leaf glyph a kind draws before its chip, or `""` when it has none (§ #487 person glyph). */
+export function leafGlyph(type: string): string {
+  return KIND[type]?.glyph ?? "";
 }

@@ -9,7 +9,7 @@ import {
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
-import { dropNodeKey, mergeNodePayload } from "./node-edit.js";
+import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { parseInputDraft } from "./interp-suggest.js";
 import { wireToRegistry } from "./open-workflow.js";
 
@@ -95,6 +95,27 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
     parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
   const isEmpty = text.trim() === "" || isEmptyObject;
   return { ok: true, value: isEmpty ? dropNodeKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode) };
+}
+
+/**
+ * The `person-activity` **outputSchema** rule (#487): the field is the JSON Schema object the Complete
+ * form is built from (ADR 0040). An empty draft means "no schema" — the key is dropped, and the server
+ * then accepts any JSON output. A present draft must parse and be a JSON **object** (`{ … }`), never an
+ * array or a scalar — the same shape `findAwaitingNode` keeps and normalises. An unparseable or
+ * non-object draft returns its error and is not committed, so the node on the canvas stays strict-valid.
+ */
+export function validateOutputSchema(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
+  if (text.trim() === "") return { ok: true, value: dropNodeKey(node, "outputSchema") };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch (e) {
+    return { ok: false, error: `Not valid JSON: ${e instanceof Error ? e.message : String(e)}` };
+  }
+  if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+    return { ok: false, error: "The output schema must be a JSON object." };
+  }
+  return { ok: true, value: setNodeField(node, "outputSchema", parsed) };
 }
 
 /**

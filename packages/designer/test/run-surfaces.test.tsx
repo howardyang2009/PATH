@@ -1,4 +1,4 @@
-import { FORMAT_VERSION } from "@path/schema";
+import { FORMAT_VERSION, type WireStepPlugin } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
@@ -274,5 +274,97 @@ describe("Designer run surfaces (#372)", () => {
     await waitFor(() => expect(screen.queryByTestId("workflow-run-badge")).not.toBeInTheDocument());
     // The run-detail pane fell back to its empty note; the old run's detail is gone.
     expect(screen.getByText("Select a run.")).toBeInTheDocument();
+  });
+});
+
+/**
+ * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock feeds the open
+ * buffer to `RunDetail`/`NodeIo` as their `rootFile`, so an awaiting `person-activity` leaf reads the
+ * same assignee chip in the rail and the same schema-built Complete slide-over the Viewer draws — no
+ * Designer fork. This test would fail if the dock stopped threading `rootFile` (the surface would degrade
+ * to the schema-less fallback, showing `awaiting-unresolved`).
+ */
+describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, ADR 0031)", () => {
+  const PERSON_PLUGINS: WireStepPlugin[] = [
+    ...DEFAULT_PLUGINS,
+    {
+      name: "person-activity",
+      fields: {
+        description: { type: "string", optional: false },
+        outputSchema: { type: "object", optional: true },
+        assignee: { type: "string", optional: true },
+      },
+      workers: ["person"],
+      default_worker: "person",
+    },
+  ];
+
+  /** A root file whose only step is an awaiting-capable `person-activity` leaf at `STEP_ID`. */
+  function awaitingFile(): Record<string, unknown> {
+    return {
+      format: FORMAT_VERSION,
+      id: WF_ID,
+      name: "root-flow",
+      body: [
+        {
+          type: "person-activity",
+          id: STEP_ID,
+          name: "review",
+          description: "Review the draft",
+          outputSchema: { type: "object", properties: { approved: { type: "boolean" } }, required: ["approved"] },
+          assignee: "editor",
+        },
+      ],
+    };
+  }
+
+  function canonicalWith(file: Record<string, unknown>, plugins: WireStepPlugin[]): string {
+    const result = openWorkflowFile(JSON.stringify(file), plugins);
+    if (result.status !== "opened") throw new Error(`fixture did not open: ${result.status}`);
+    return canonicalSerialize(result.file);
+  }
+
+  async function renderAwaiting() {
+    const client = stubClient({
+      files: { [ROOT_PATH]: canonicalWith(awaitingFile(), PERSON_PLUGINS) },
+      plugins: PERSON_PLUGINS,
+      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null }] },
+      tree: {
+        root_run_id: "root-1",
+        status: "running",
+        output: null,
+        // The root stays running while the leaf awaits (ADR 0038).
+        runs: [wireRun({ run_id: "root-1", status: "running" }), wireRun({ run_id: "r-step", status: "awaiting", node_id: STEP_ID, node_name: "review" })],
+      },
+    });
+    render(<App client={client} initialPath={ROOT_PATH} />);
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    openDock();
+    fireEvent.click(await screen.findByTestId("run-row-root-1"));
+  }
+
+  it("shows the awaiting pill and the assignee chip in the run rail", async () => {
+    await renderAwaiting();
+    const row = await screen.findByTestId("tree-row-r-step");
+    // ⏳ purple awaiting pill (the pill's label is the status) + the informational assignee chip.
+    expect(within(row).getByText("awaiting")).toBeInTheDocument();
+    expect(within(row).getByTestId("assignee-chip")).toHaveTextContent("editor");
+  });
+
+  it("mounts the Viewer's Complete slide-over, built from the node's outputSchema (not the schema-less fallback)", async () => {
+    await renderAwaiting();
+    fireEvent.click(await screen.findByTestId("tree-row-r-step"));
+
+    // The detail-panel awaiting surface resolves the node from the open buffer (rootFile), so it is the
+    // real form, never the degraded "could not read this step's form" note.
+    expect(await screen.findByTestId("awaiting-actions")).toBeInTheDocument();
+    expect(screen.queryByTestId("awaiting-unresolved")).not.toBeInTheDocument();
+    expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Review the draft");
+
+    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
+    const panel = await screen.findByTestId("complete-slide-over");
+    expect(panel).toBeInTheDocument();
+    // The `approved` control proves the form was built from `outputSchema`, matching the Viewer.
+    expect(within(panel).getByTestId("complete-field-approved")).toBeInTheDocument();
   });
 });

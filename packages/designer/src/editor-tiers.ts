@@ -5,7 +5,7 @@ import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
  * raw-JSON floor). Every in-registry leaf step type opens; the tiers form a total order so the worst
  * case is a validated JSON box, never a blocked node (ADR 0026, ADR 0018).
  *
- * - **first-class** — `prompt`, `binary`, `workflow`: hand-built editors elsewhere.
+ * - **first-class** — `prompt`, `binary`, `workflow`, `person-activity`: hand-built editors elsewhere.
  * - **generic** — any other registry type whose every field a form can lay out: a control per field.
  * - **raw-json** — any type with a field a form cannot lay out: one live-validated JSON textarea.
  *
@@ -14,8 +14,8 @@ import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
  */
 export type EditorTier = "first-class" | "generic" | "raw-json";
 
-/** The three leaf types with a hand-built editor (§ Editors, first row). */
-const FIRST_CLASS = new Set(["prompt", "binary", "workflow"]);
+/** The leaf types with a hand-built editor (§ Editors, first row); `person-activity` joins them (#487). */
+const FIRST_CLASS = new Set(["prompt", "binary", "workflow", "person-activity"]);
 
 /**
  * Can the generic form lay out a control for this field? Scalars (`string`, `number`, `boolean`) and a

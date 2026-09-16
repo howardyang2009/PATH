@@ -348,3 +348,92 @@ describe("the workflow-level output object (§6.4)", () => {
     expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe("${context.verdict}");
   });
 });
+
+describe("#487 person-activity first-class editor + canvas identity", () => {
+  const PERSON_PLUGINS: WireStepPlugin[] = [
+    ...RICH_PLUGINS,
+    {
+      name: "person-activity",
+      fields: {
+        description: { type: "string", optional: false },
+        outputSchema: { type: "object", optional: true },
+        assignee: { type: "string", optional: true },
+      },
+      workers: ["person"],
+      default_worker: "person",
+    },
+  ];
+
+  /** A file with one `person-activity` leaf carrying all three fields. */
+  function personFile(): Record<string, unknown> {
+    return {
+      format: FORMAT_VERSION,
+      id: uuid(1),
+      name: "flow",
+      body: [
+        {
+          type: "person-activity",
+          id: uuid(20),
+          name: "review",
+          description: "Review the draft {{context.title}}",
+          outputSchema: { type: "object", properties: { approved: { type: "boolean" } } },
+          assignee: "editor",
+        },
+      ],
+    };
+  }
+
+  async function openPersonPane(calls?: ReturnType<typeof makeCalls>) {
+    const client = stubClient({ calls, files: { [PATH]: JSON.stringify(personFile()) }, plugins: PERSON_PLUGINS });
+    render(<App client={client} initialPath={PATH} />);
+    await screen.findByText("review");
+    return {
+      client,
+      canvas: screen.getByRole("region", { name: "Workflow canvas" }),
+      pane: screen.getByRole("region", { name: "Properties" }),
+    };
+  }
+
+  it("renders a teal person-activity block with the person glyph and a PERSON chip", async () => {
+    const { canvas } = await openPersonPane();
+    const block = within(canvas).getByText("review").closest(".node-block") as HTMLElement;
+    expect(block).toHaveAttribute("data-node-type", "person-activity");
+    expect(block.getAttribute("style")).toContain("--k-person");
+    expect(within(canvas).getByTestId(`leaf-glyph-${uuid(20)}`)).toHaveTextContent("👤");
+    expect(within(block).getByText("PERSON")).toBeInTheDocument();
+  });
+
+  it("exposes description, outputSchema, and assignee, seeded from the node", async () => {
+    const { canvas, pane } = await openPersonPane();
+    selectNode(canvas, "review");
+    expect(within(pane).getByText(/person completes/)).toBeInTheDocument();
+    expect((within(pane).getByLabelText("description") as HTMLTextAreaElement).value).toBe("Review the draft {{context.title}}");
+    expect((within(pane).getByLabelText("assignee") as HTMLInputElement).value).toBe("editor");
+    const schema = within(pane).getByLabelText(/outputSchema/) as HTMLTextAreaElement;
+    expect(JSON.parse(schema.value)).toEqual({ type: "object", properties: { approved: { type: "boolean" } } });
+  });
+
+  it("commits an edited description and drops outputSchema when cleared", async () => {
+    const calls = makeCalls();
+    const { canvas, pane } = await openPersonPane(calls);
+    selectNode(canvas, "review");
+
+    fireEvent.change(within(pane).getByLabelText("description"), { target: { value: "New instructions" } });
+    fireEvent.change(within(pane).getByLabelText(/outputSchema/), { target: { value: "" } });
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    const node = (calls.put[0]!.body.workflow.body as Record<string, unknown>[])[0]!;
+    expect(node.description).toBe("New instructions");
+    expect("outputSchema" in node).toBe(false);
+  });
+
+  it("keeps a strict-valid node when the outputSchema draft is invalid (never commits it)", async () => {
+    const { canvas, pane } = await openPersonPane();
+    selectNode(canvas, "review");
+    const schema = within(pane).getByLabelText(/outputSchema/);
+    fireEvent.change(schema, { target: { value: "{ not json" } });
+    expect(schema).toBeInvalid();
+    expect(within(pane).getByRole("alert")).toHaveTextContent(/Not valid JSON/);
+  });
+});

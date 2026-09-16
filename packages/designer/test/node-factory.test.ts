@@ -20,6 +20,8 @@ describe("node-factory — minting nodes with client identity (#368, ADR 0015)",
     expect(createNode("prompt", new Set())).toMatchObject({ type: "prompt", prompt: "" });
     expect(createNode("binary", new Set())).toMatchObject({ type: "binary", command: "" });
     expect(createNode("workflow", new Set())).toMatchObject({ type: "workflow", ref: "" });
+    // person-activity's one required field is `description` (#487).
+    expect(createNode("person-activity", new Set())).toMatchObject({ type: "person-activity", description: "" });
   });
 
   it("gives every minted name and id in a block subtree distinct, valid values", () => {
