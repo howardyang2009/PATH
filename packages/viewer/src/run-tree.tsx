@@ -1,6 +1,6 @@
-import { buildRunTree, isIterationRun, type RunNodeState, type RunTreeNode } from "@path/client-core";
+import { buildRunTree, findAwaitingNode, isIterationRun, nodeLabel, type RunNodeState, type RunTreeNode, type WorkflowFile } from "@path/client-core";
 import { useState } from "react";
-import { nodeLabel } from "@path/client-core";
+import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
@@ -18,9 +18,11 @@ export interface RunTreeProps {
   /** The run whose I/O the node pane is showing, if any. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
+  /** The root workflow file, for an awaiting leaf's assignee chip (read from the node by id). */
+  rootFile?: WorkflowFile | null;
 }
 
-export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun }: RunTreeProps) {
+export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, rootFile = null }: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const root = buildRunTree(rootRunId, runs);
@@ -30,6 +32,7 @@ export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun }: RunTree
     collapsed,
     selectedRunId,
     onSelectRun,
+    rootFile,
     onToggle: (runId) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -51,6 +54,7 @@ interface TreeView {
   selectedRunId: string | null;
   onToggle: (runId: string) => void;
   onSelectRun: (runId: string) => void;
+  rootFile: WorkflowFile | null;
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
@@ -62,6 +66,13 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // ordinal trails the name to tell one pass from the next.
   const name = run.nodeName ?? nodeLabel(run.nodeId);
   const label = isIterationRun(run) ? `${name} · iteration ${run.iteration}` : name;
+  // An awaiting leaf shows its assignee as a chip in the rail (CONTEXT.md § Person-activity). The
+  // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
+  // is not loaded or the node has no assignee.
+  const assignee =
+    run.status === "awaiting" && tree.rootFile !== null && run.nodeId !== null
+      ? findAwaitingNode(tree.rootFile, run.nodeId)?.assignee ?? null
+      : null;
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>
@@ -94,6 +105,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           {run.nodeId && <span className="tree-ref node-ref">({run.nodeId})</span>}
           <span className="tree-ref run-ref">{run.runId}</span>
           <StatusPill status={run.status} />
+          {assignee !== null && <AssigneeChip assignee={assignee} />}
         </button>
       </div>
       {children.length > 0 && !isCollapsed && (

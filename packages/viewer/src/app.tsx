@@ -122,6 +122,7 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
+            rootFile={rootFile}
           />
         )
       }
@@ -133,6 +134,7 @@ export function App({ client }: { client: PathApiClient }) {
             client={client}
             run={selectedRun}
             narrative={load.phase === "ready" ? load.value.narrative : []}
+            rootFile={rootFile}
           />
         )
       }

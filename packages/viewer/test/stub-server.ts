@@ -59,6 +59,12 @@ export interface StubServerOptions {
   blobs?: Record<string, unknown>;
   /** Status for a blob that *is* in `blobs` — for the failure path (e.g. 500). */
   blobStatus?: number;
+  /**
+   * Canned reply for `POST /v0/runs/:step_run_id/complete`. Omitted, the route answers a `202` with a
+   * `{ step_run_id, root_run_id }` echo. `completeBodies` records each request's parsed body.
+   */
+  complete?: { status: number; body: unknown };
+  completeBodies?: unknown[];
 }
 
 export function stubClient(options: StubServerOptions = {}): PathApiClient {
@@ -68,6 +74,12 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     if (input.endsWith("/events")) {
       const body = (stream ?? new EventStreamStub()).body(init?.signal);
       return new Response(body, { status: 200, headers: { "Content-Type": "text/event-stream" } });
+    }
+    const completeMatch = /^\/v0\/runs\/([^/]+)\/complete$/.exec(input);
+    if (completeMatch && init?.method === "POST") {
+      options.completeBodies?.push(init.body ? JSON.parse(init.body as string) : undefined);
+      if (options.complete) return json(options.complete.body, options.complete.status);
+      return json({ step_run_id: decodeURIComponent(completeMatch[1]!), root_run_id: "run_root" }, 202);
     }
     if (input === "/v0/workflows") {
       return json(workflows, 200);

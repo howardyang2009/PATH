@@ -1309,6 +1309,13 @@ button.workflow-row:focus-visible {
   background: var(--status-pending-bg);
 }
 
+/* Awaiting: a leaf parked for a person (ADR 0038). Purple, distinct from running's blue and pending's
+   amber, so "waiting on a human" reads apart from "waiting on the engine" (the #470 pinned pair). */
+.pill[data-status="awaiting"] {
+  color: var(--status-awaiting-fg);
+  background: var(--status-awaiting-bg);
+}
+
 /* Carried over from the #44 prototype: a running run is the one thing on screen still moving, so
    the glyph spins to say "live" without adding a second color. Honours reduced-motion. */
 .pill[data-status="running"] .pill-glyph {
@@ -1326,4 +1333,228 @@ button.workflow-row:focus-visible {
   .pill[data-status="running"] .pill-glyph {
     animation: none;
   }
+}
+
+/* ---------- awaiting / Complete surfaces (issue #486) ---------- */
+
+/* The assignee of an awaiting step — informational only (no enforcement), so a quiet chip, not a
+   status. Shared by the rail (on an awaiting leaf) and the detail panel. */
+.assignee-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px 1px 2px;
+  border-radius: 999px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+  white-space: nowrap;
+}
+
+.tree-row .assignee-chip {
+  margin-left: 6px;
+  max-width: 40%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.assignee-avatar {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 999px;
+  background: var(--status-awaiting-fg);
+  color: #fff;
+  font-size: 9px;
+  font-weight: 700;
+}
+
+/* The rail's count badge — several leaves awaiting at once (parallel joins, ADR 0042). */
+.awaiting-count-badge {
+  margin-left: auto;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--status-awaiting-bg);
+  color: var(--status-awaiting-fg);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+}
+
+/* + the runs count that follows keeps its own left margin off, so the badge owns the `margin-left:auto`. */
+.awaiting-count-badge + .card-count {
+  margin-left: 8px;
+}
+
+/* The interpolable `description` shown to the person — a purple-edged callout, shown as authored
+   (the Viewer does not resolve `{{…}}`; the server does, at Complete time). */
+.awaiting-callout {
+  margin: 10px 0;
+  padding: 9px 11px;
+  border-left: 3px solid var(--status-awaiting-fg);
+  border-radius: 4px;
+  background: var(--status-awaiting-bg);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  white-space: pre-wrap;
+}
+
+/* The awaiting step's detail-panel surface: callout + assignee + the Complete button. */
+.awaiting-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 4px 4px 12px;
+  padding: 10px;
+  border: 1px solid color-mix(in srgb, var(--status-awaiting-fg) 30%, var(--border));
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--status-awaiting-bg) 40%, var(--surface));
+}
+
+.awaiting-complete-button {
+  background: var(--status-awaiting-fg);
+}
+
+/* ---------- Complete slide-over ---------- */
+
+.slide-over-scrim {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 20, 30, 0.38);
+  z-index: 40;
+}
+
+.slide-over {
+  position: fixed;
+  top: 0;
+  right: 0;
+  height: 100%;
+  width: min(440px, 92vw);
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  box-shadow: -6px 0 24px rgba(15, 20, 30, 0.18);
+  z-index: 50;
+}
+
+.slide-over:focus-visible {
+  outline: none;
+}
+
+.slide-over-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.slide-over-close {
+  margin-left: auto;
+  font: inherit;
+  font-size: 20px;
+  line-height: 1;
+  color: var(--text-muted);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0 4px;
+}
+
+.slide-over-close:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.slide-over-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px;
+}
+
+/* ---------- Complete form (schema-driven) ---------- */
+
+.complete-form {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  margin-top: 12px;
+}
+
+.complete-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.complete-label {
+  margin: 0;
+}
+
+.complete-req {
+  color: var(--status-failed-fg);
+}
+
+.complete-help {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--fs-xs);
+}
+
+.complete-input,
+.complete-select {
+  width: 100%;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 5px;
+  padding: 6px 8px;
+}
+
+.complete-input:focus-visible,
+.complete-select:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.complete-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.complete-check input {
+  width: 15px;
+  height: 15px;
+}
+
+.complete-label-text {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+}
+
+.complete-field--invalid .complete-input,
+.complete-field--invalid .complete-select {
+  border-color: color-mix(in srgb, var(--status-failed-fg) 65%, var(--border));
+}
+
+.complete-field-error {
+  margin: 0;
+  color: var(--status-failed-fg);
+  font-size: var(--fs-xs);
+}
+
+.complete-form-error {
+  margin: 0;
 }

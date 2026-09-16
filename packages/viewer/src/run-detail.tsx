@@ -1,4 +1,4 @@
-import { isTerminal, type PathApiClient } from "@path/client-core";
+import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { Narrative } from "./narrative.js";
@@ -28,6 +28,8 @@ export interface RunDetailProps {
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
+  /** The watched run's root workflow file, for an awaiting leaf's assignee chip in the rail. */
+  rootFile?: WorkflowFile | null;
 }
 
 /**
@@ -38,7 +40,7 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun }: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, rootFile = null }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -106,6 +108,10 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
+  // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
+  // more than one does, so the operator sees at a glance there is more than the selected one to act on.
+  let awaitingCount = 0;
+  for (const run of state.runs.values()) if (run.status === "awaiting") awaitingCount += 1;
   // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
   // The finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
   const cancellable = !isTerminal(state.status);
@@ -133,6 +139,11 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
           <h3 className="card-title" id="run-tree-title">
             Run tree
           </h3>
+          {awaitingCount >= 2 && (
+            <span className="awaiting-count-badge" data-testid="awaiting-count-badge">
+              {awaitingCount} awaiting
+            </span>
+          )}
           <span className="card-count">{state.runs.size} runs</span>
         </header>
         <RunTree
@@ -140,6 +151,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun 
           runs={state.runs}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
+          rootFile={rootFile}
         />
       </section>
 

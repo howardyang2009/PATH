@@ -1,5 +1,15 @@
-import { isReuseRow, isTerminal, nodeLabel, type LogEvent, type PathApiClient, type RunNodeState } from "@path/client-core";
+import {
+  findAwaitingNode,
+  isReuseRow,
+  isTerminal,
+  nodeLabel,
+  type LogEvent,
+  type PathApiClient,
+  type RunNodeState,
+  type WorkflowFile,
+} from "@path/client-core";
 import { useState } from "react";
+import { AwaitingActions } from "./awaiting-actions.js";
 import { JsonView } from "./json-view.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
@@ -14,6 +24,13 @@ export interface NodeIoProps {
    * Optional and empty-by-default: before any event is known the pane simply has no error to show.
    */
   narrative?: readonly LogEvent[];
+  /**
+   * The watched run's root workflow file, parsed structurally (the app reads it once for the eager
+   * legal-K check). An `awaiting` leaf's `description`/`assignee`/`outputSchema` live here, not on the
+   * run row, so the Complete surface resolves them by node id. `null` while it loads or when the file
+   * could not be read — the awaiting surface then degrades to a schema-less submit.
+   */
+  rootFile?: WorkflowFile | null;
 }
 
 /**
@@ -61,10 +78,16 @@ function contextBlobRef(run: RunNodeState): string {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
+export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
   const errorMessage = runErrorMessage(run.runId, narrative);
+  // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
+  // from the workflow file by id (they never ride the run row); a leaf in a nested file reads as null
+  // and the surface degrades. The root run stays `running` while a leaf awaits (ADR 0038), so only the
+  // leaf row itself carries this.
+  const awaitingNode =
+    run.status === "awaiting" && rootFile !== null && run.nodeId !== null ? findAwaitingNode(rootFile, run.nodeId) : null;
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
@@ -95,6 +118,8 @@ export function NodeIo({ client, run, narrative = [] }: NodeIoProps) {
         <span className="run-id-label">run id</span>
         <span className="run-id">{run.runId}</span>
       </p>
+
+      {run.status === "awaiting" && <AwaitingActions client={client} run={run} awaitingNode={awaitingNode} />}
 
       {isReuseRow(run) && (
         <p className="node-io-reused" data-testid="node-io-reused">
