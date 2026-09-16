@@ -18,6 +18,8 @@ export {
   type ListRunsResponse,
   type ListWorkflowsResponse,
   type LogBackendId,
+  type CompleteRunRequest,
+  type CompleteRunResponse,
   type LogEvent,
   type RootRunSummary,
   type RunRecord,
@@ -96,6 +98,22 @@ export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from
 export { nodeLabel, nodeEventLabel } from "./node-label.js";
 export { eventMessage } from "./event-message.js";
 export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";
+
+// The Viewer/Designer awaiting surface (issue #486, ADR 0040): the `person-activity` node read from the
+// workflow file by id, and the framework-free Complete-form model — field list, value coercion, client
+// pre-check, and the server `400`→field mapping — so both surfaces draw the same form and read the same
+// errors. The React components keep only their own inputs on the other side (spec § Shared seam).
+export { AWAITING_STEP_TYPE, awaitingNodeForRun, findAwaitingNode, type AwaitingNode } from "./awaiting-node.js";
+export {
+  buildCompleteFields,
+  coerceCompleteOutput,
+  mapCompleteErrors,
+  validateCompleteOutput,
+  type CompleteField,
+  type CompleteFieldKind,
+  type CompleteFieldValue,
+  type MappedCompleteErrors,
+} from "./complete-form.js";
 
 // The Designer's `Resume from …` button's eager legal-K check (spec § Resume from here, ADR 0033):
 // the client mirror of the engine's one legal-K rule, computed from the run tree + the open file so an

@@ -249,6 +249,42 @@ describe("PathApiClient", () => {
     });
   });
 
+  it("POST /v0/runs/:step_run_id/complete encodes the id, sends { output }, and returns the wire reply", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ step_run_id: "leaf 1", root_run_id: "root" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.completeStep("leaf 1", { approved: true, reviewer: "Dana" });
+    expect(res).toEqual({ step_run_id: "leaf 1", root_run_id: "root" });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/leaf%201/complete");
+    expect(inits[0]?.method).toBe("POST");
+    expect(inits[0]?.headers).toEqual({ Accept: "application/json", "Content-Type": "application/json" });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({ output: { approved: true, reviewer: "Dana" } });
+  });
+
+  it("completeStep surfaces a 400 schema rejection as a PathApiError carrying the ajv issues", async () => {
+    const issues = [{ instancePath: "/riskLevel", keyword: "enum", message: "must be equal to one of the allowed values" }];
+    const stub = stubFetch(() => json({ error: { message: "output does not match the step's outputSchema", details: issues } }, 400));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.completeStep("leaf1", { riskLevel: "extreme" })).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 400,
+      message: "output does not match the step's outputSchema",
+      details: issues,
+    });
+  });
+
+  it("completeStep surfaces a 409 (double-submit / not awaiting) with its status and message", async () => {
+    const stub = stubFetch(() => json({ error: { message: `step run "leaf1" is succeeded, not awaiting` } }, 409));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.completeStep("leaf1", {})).rejects.toMatchObject({ name: "PathApiError", status: 409 });
+  });
+
   it("GET /v0/workflows returns the raw discovery list, roots flagged", async () => {
     const stub = stubFetch(() =>
       json({

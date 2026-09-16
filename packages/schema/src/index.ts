@@ -163,6 +163,8 @@ export {
   toRootRunSummary,
   toWireRunRecord,
   type BlobName,
+  type CompleteRunRequest,
+  type CompleteRunResponse,
   type ListRunsResponse,
   type ListWorkflowsResponse,
   type RootRunSummary,

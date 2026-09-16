@@ -98,6 +98,24 @@ export interface StartRunResponse {
   root_run_id: string;
 }
 
+/**
+ * `POST /v0/runs/:step_run_id/complete` request body (server-api-v0.md §4.4). The person's `output`
+ * is the only field — no status flag; the route derives the leaf and its tree from the path id.
+ */
+export interface CompleteRunRequest {
+  output: JsonValue;
+}
+
+/**
+ * `POST /v0/runs/:step_run_id/complete` — the 202 body (server-api-v0.md §4.4). Echoes the leaf id the
+ * caller passed and the root the server derived, so the client knows which tree's SSE stream carries
+ * the continuation it should already be watching.
+ */
+export interface CompleteRunResponse {
+  step_run_id: string;
+  root_run_id: string;
+}
+
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {

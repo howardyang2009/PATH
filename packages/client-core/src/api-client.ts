@@ -1,5 +1,6 @@
 import type {
   BlobName,
+  CompleteRunResponse,
   ConfigObject,
   JsonValue,
   ListRunsResponse,
@@ -251,6 +252,20 @@ export class PathApiClient {
     return Object.keys(body).length === 0
       ? this.postReadingReply<StartRunResponse>(path)
       : this.postJson<StartRunResponse>(path, body);
+  }
+
+  /**
+   * `POST /v0/runs/:step_run_id/complete` — resolve a parked `awaiting` leaf with a person's `output`
+   * (server-api-v0.md §4.4, ADR 0039/0040/0041). The path names the **leaf**; the server derives its
+   * tree's root. Validation runs before the lease, so an `output` that fails the node's `outputSchema`
+   * is a `400` carrying the ajv issues in `error.details` (`PathApiError.details`) and leaves the leaf
+   * `awaiting` for a corrected resubmit. On success the `202` carries `{ step_run_id, root_run_id }`;
+   * the run continues in the background and the caller learns the outcome from the root's SSE stream it
+   * is already watching. A `404` (unknown id / file gone) and a `409` (not-`awaiting`, lease held, or a
+   * node the author retyped mid-wait) also arrive as `PathApiError`s carrying the status and message.
+   */
+  async completeStep(stepRunId: string, output: JsonValue): Promise<CompleteRunResponse> {
+    return this.postJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, { output });
   }
 
   /**
