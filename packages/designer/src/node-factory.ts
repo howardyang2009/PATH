@@ -44,6 +44,11 @@ function makeLeaf(type: string, used: Set<string>): WorkflowNode {
       return { ...base, command: "" } as WorkflowNode;
     case "workflow":
       return { ...base, ref: "" } as WorkflowNode;
+    case "person-activity":
+      // Its `description` is the one required field (the pane fills the rest); stub it empty so a freshly
+      // placed person-activity is strict-shaped like `prompt`/`binary`, not a generic empty-payload leaf.
+      // Cast through `unknown` because `person-activity` is a plugin leaf outside the core node union.
+      return { ...base, description: "" } as unknown as WorkflowNode;
     default:
       // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the pane fills its
       // fields. The working model tolerates the empty payload — save-time validation is a later ticket.

@@ -1,7 +1,7 @@
 import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { WorkflowNode } from "@path/schema";
 import { summarizeCondition } from "./condition-summary.js";
-import { leafChip, nodeHue } from "./node-kind.js";
+import { leafChip, leafGlyph, nodeHue } from "./node-kind.js";
 import { ConflictMarker } from "./conflict-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
@@ -177,6 +177,7 @@ function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend:
 
 /** A leaf `step` — a chip block, its kind named by the `LLM` / `COMMAND` / plugin-type chip. */
 function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }): JSX.Element {
+  const glyph = leafGlyph(node.type);
   return (
     <div
       className="node-block leaf"
@@ -186,6 +187,11 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
       onKeyDown={deleteKeyHandler(node, editor)}
       {...useSelectable(node)}
     >
+      {glyph ? (
+        <span className="leaf-glyph" data-testid={`leaf-glyph-${node.id}`} aria-hidden="true">
+          {glyph}
+        </span>
+      ) : null}
       <span className="chip">{leafChip(node.type)}</span>
       <span className="node-name">{node.name}</span>
       <NodeRunBadge id={node.id} />

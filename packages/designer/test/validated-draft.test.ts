@@ -6,6 +6,7 @@ import {
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
+  validateOutputSchema,
 } from "../src/validated-draft.js";
 
 /**
@@ -81,6 +82,31 @@ describe("validateMaxIterations", () => {
     expect(validateMaxIterations("").ok).toBe(false);
     expect(validateMaxIterations("0").ok).toBe(false);
     expect(validateMaxIterations("${config.x").ok).toBe(false);
+  });
+});
+
+describe("validateOutputSchema", () => {
+  function personNode(extra: Record<string, unknown> = {}): WorkflowNode {
+    return { id: UUID, name: "review", type: "person-activity", description: "do it", ...extra } as unknown as WorkflowNode;
+  }
+
+  it("commits a valid JSON-object schema", () => {
+    const r = validateOutputSchema(personNode(), '{"type":"object"}');
+    expect(r.ok).toBe(true);
+    if (r.ok) expect(asRec(r.value).outputSchema).toEqual({ type: "object" });
+  });
+
+  it("drops the outputSchema key for an empty draft", () => {
+    const withSchema = personNode({ outputSchema: { type: "object" } });
+    const r = validateOutputSchema(withSchema, "   ");
+    expect(r.ok).toBe(true);
+    if (r.ok) expect("outputSchema" in asRec(r.value)).toBe(false);
+  });
+
+  it("rejects unparseable JSON and a non-object schema without committing", () => {
+    expect(validateOutputSchema(personNode(), "{ not json").ok).toBe(false);
+    expect(validateOutputSchema(personNode(), "[1,2]")).toEqual({ ok: false, error: "The output schema must be a JSON object." });
+    expect(validateOutputSchema(personNode(), "42").ok).toBe(false);
   });
 });
 

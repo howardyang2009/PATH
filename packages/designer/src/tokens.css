@@ -23,6 +23,8 @@
    * palette once. Steps share the step hue; the workflow-ref keeps its own, the one boundary-crosser. */
   --k-step: #4c6ef5;
   --k-step-bg: #eef2ff;
+  --k-person: #0f766e;
+  --k-person-bg: #cff9f2;
   --k-workflow: #cf222e;
   --k-workflow-bg: #ffebe9;
   --k-parallel: #1a7f37;
@@ -77,6 +79,8 @@
 
   --k-step: #6b8bff;
   --k-step-bg: #131b33;
+  --k-person: #2dd4bf;
+  --k-person-bg: #0d2b28;
   --k-workflow: #f85149;
   --k-workflow-bg: #2d1416;
   --k-parallel: #3fb950;

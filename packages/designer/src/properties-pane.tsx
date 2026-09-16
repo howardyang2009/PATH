@@ -51,6 +51,7 @@ import {
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
+  validateOutputSchema,
   type KeyedRow,
 } from "./validated-draft.js";
 
@@ -313,6 +314,11 @@ function KindFields({
   condSuggest: string[];
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
+  // `person-activity` is a plugin leaf outside the core node union (its fields ride loosely, like
+  // `awaiting-node.ts` reads them), so it is dispatched here by its string type before the union switch.
+  if ((node.type as string) === "person-activity") {
+    return <PersonActivityEditor node={node} commit={commit} />;
+  }
   switch (node.type) {
     case "prompt":
       return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
@@ -461,6 +467,69 @@ function WorkflowRefEditor({
     );
   }
   return <TextField label="referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
+}
+
+/**
+ * `person-activity` — the first-class editor (#487, #470): the three type fields a Complete surface reads
+ * from the file by node id (CONTEXT.md § Person-activity). `description` is the interpolable (`{{…}}`)
+ * instructions shown to the person, authored as plain text — the server resolves the placeholders at
+ * Complete time, so the pane neither resolves nor validates them. `outputSchema` is the JSON-Schema object
+ * the Complete form is built from (re-read and validated at Complete, ADR 0040): a live-validated JSON box
+ * that commits only a valid object and drops the key when cleared. `assignee` is the optional
+ * informational label (no enforcement). The step's own worker is fixed (`person`), so no worker selector shows.
+ */
+function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+  const description = nodeString(node, "description");
+  const assignee = nodeString(node, "assignee");
+  return (
+    <>
+      <TextAreaField
+        label="description"
+        value={description}
+        onChange={(v) => commit(setNodeField(node, "description", v), `description:${node.id}`)}
+      />
+      <OutputSchemaField key={node.id} node={node} commit={commit} />
+      <TextField label="assignee" value={assignee} onChange={(v) => commit(withOptionalString(node, "assignee", v), `assignee:${node.id}`)} />
+    </>
+  );
+}
+
+/**
+ * `person-activity`'s **outputSchema** — a live-validated JSON textarea (`validateOutputSchema`): a valid
+ * JSON object commits, an empty box drops the key (the server then accepts any output), and an
+ * unparseable or non-object draft is shown with its error but never committed, so the node stays
+ * strict-valid. Seeded from the node's current schema, pretty-printed.
+ */
+function OutputSchemaField({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => {
+      const schema = rec(node).outputSchema;
+      return schema === undefined ? "" : JSON.stringify(schema, null, 2);
+    },
+    (text) => validateOutputSchema(node, text),
+    (next) => commit(next, `outputSchema:${node.id}`),
+  );
+
+  return (
+    <div className="pane-field">
+      <label className="pane-label" htmlFor={`output-schema-${node.id}`}>
+        outputSchema (JSON Schema, optional)
+      </label>
+      <textarea
+        id={`output-schema-${node.id}`}
+        className="pane-input pane-json"
+        value={draft}
+        onChange={(e) => onEdit(e.target.value)}
+        aria-invalid={error !== null}
+        rows={8}
+      />
+      {error ? (
+        <p className="pane-error" role="alert">
+          {error}
+        </p>
+      ) : null}
+    </div>
+  );
 }
 
 /**
