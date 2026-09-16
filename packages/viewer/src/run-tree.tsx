@@ -1,4 +1,4 @@
-import { buildRunTree, findAwaitingNode, isIterationRun, nodeLabel, type RunNodeState, type RunTreeNode, type WorkflowFile } from "@path/client-core";
+import { awaitingNodeForRun, buildRunTree, isIterationRun, nodeLabel, type RunNodeState, type RunTreeNode, type WorkflowFile } from "@path/client-core";
 import { useState } from "react";
 import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
@@ -69,10 +69,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // An awaiting leaf shows its assignee as a chip in the rail (CONTEXT.md § Person-activity). The
   // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
   // is not loaded or the node has no assignee.
-  const assignee =
-    run.status === "awaiting" && tree.rootFile !== null && run.nodeId !== null
-      ? findAwaitingNode(tree.rootFile, run.nodeId)?.assignee ?? null
-      : null;
+  const assignee = awaitingNodeForRun(tree.rootFile, run)?.assignee ?? null;
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>

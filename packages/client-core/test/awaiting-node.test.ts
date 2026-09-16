@@ -1,6 +1,6 @@
-import type { WorkflowFile } from "@path/schema";
+import type { RunStatus, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { findAwaitingNode } from "../src/awaiting-node.js";
+import { awaitingNodeForRun, findAwaitingNode } from "../src/awaiting-node.js";
 
 /**
  * A workflow file whose `body` is the given raw nodes. `person-activity` is a plugin leaf type
@@ -53,5 +53,24 @@ describe("findAwaitingNode", () => {
     const bare = { id: "ask", type: "person-activity", name: "ask", description: "Do the thing." };
     const found = findAwaitingNode(file([bare]), "ask");
     expect(found).toEqual({ description: "Do the thing.", assignee: null, outputSchema: null });
+  });
+});
+
+describe("awaitingNodeForRun", () => {
+  const wf = file([personNode]);
+  const run = (over: { status?: RunStatus; nodeId?: string | null } = {}) => ({
+    status: "awaiting" as RunStatus,
+    nodeId: "legal-signoff" as string | null,
+    ...over,
+  });
+
+  it("resolves the node for an awaiting run naming it", () => {
+    expect(awaitingNodeForRun(wf, run())?.assignee).toBe("legal@acme.co");
+  });
+
+  it("returns null for a non-awaiting run, a null file, or a run with no node id", () => {
+    expect(awaitingNodeForRun(wf, run({ status: "running" }))).toBeNull();
+    expect(awaitingNodeForRun(null, run())).toBeNull();
+    expect(awaitingNodeForRun(wf, run({ nodeId: null }))).toBeNull();
   });
 });

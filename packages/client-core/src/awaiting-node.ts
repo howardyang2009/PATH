@@ -1,4 +1,4 @@
-import { walkNodes, type JsonValue, type WorkflowFile } from "@path/schema";
+import { walkNodes, type JsonValue, type RunStatus, type WorkflowFile } from "@path/schema";
 
 /**
  * The one awaiting leaf step type v1 ships (ADR 0039). A leaf is completable only while its node is
@@ -55,4 +55,18 @@ export function findAwaitingNode(file: WorkflowFile, nodeId: string): AwaitingNo
     };
   }
   return null;
+}
+
+/**
+ * The awaiting node for a run, or `null` — the one guard both the rail (`run-tree`) and the detail
+ * panel (`node-io`) apply, so the triple condition (leaf is `awaiting`, the file is loaded, the run
+ * names a node) lives in one place. A run that is not `awaiting`, a file not yet read, or a row with no
+ * node id (the implicit root run) all resolve to `null` without a walk.
+ */
+export function awaitingNodeForRun(
+  file: WorkflowFile | null,
+  run: { status: RunStatus; nodeId: string | null },
+): AwaitingNode | null {
+  if (run.status !== "awaiting" || file === null || run.nodeId === null) return null;
+  return findAwaitingNode(file, run.nodeId);
 }

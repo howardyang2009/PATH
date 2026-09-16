@@ -23,6 +23,10 @@ export interface CompleteSlideOverProps {
  * not a modal. It repeats the step's `description` and `assignee` for context above the schema-driven
  * form, so the person completes the activity without losing the instructions. `Escape` and a click on
  * the scrim both close it; focus moves into the panel on open.
+ *
+ * It is a **non-modal** `dialog` (no `aria-modal`): the run behind it stays live — the root keeps
+ * streaming and its tree is still there — which is the whole point of "no modal" (variant C's blocking
+ * modal was the rejected option). So focus is placed inside on open but not trapped.
  */
 export function CompleteSlideOver({ open, onClose, client, stepRunId, stepName, awaitingNode, onCompleted }: CompleteSlideOverProps) {
   const panelRef = useRef<HTMLElement>(null);
@@ -46,7 +50,6 @@ export function CompleteSlideOver({ open, onClose, client, stepRunId, stepName, 
       <aside
         className="slide-over"
         role="dialog"
-        aria-modal="true"
         aria-label={`Complete ${stepName}`}
         tabIndex={-1}
         ref={panelRef}
@@ -62,7 +65,7 @@ export function CompleteSlideOver({ open, onClose, client, stepRunId, stepName, 
         <div className="slide-over-body">
           {awaitingNode.assignee !== null && <AssigneeChip assignee={awaitingNode.assignee} />}
           {awaitingNode.description !== null && (
-            <p className="awaiting-callout" data-testid="awaiting-description">
+            <p className="awaiting-callout" data-testid="slide-over-description">
               {awaitingNode.description}
             </p>
           )}

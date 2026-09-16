@@ -1,5 +1,5 @@
 import {
-  findAwaitingNode,
+  awaitingNodeForRun,
   isReuseRow,
   isTerminal,
   nodeLabel,
@@ -86,8 +86,7 @@ export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoP
   // from the workflow file by id (they never ride the run row); a leaf in a nested file reads as null
   // and the surface degrades. The root run stays `running` while a leaf awaits (ADR 0038), so only the
   // leaf row itself carries this.
-  const awaitingNode =
-    run.status === "awaiting" && rootFile !== null && run.nodeId !== null ? findAwaitingNode(rootFile, run.nodeId) : null;
+  const awaitingNode = awaitingNodeForRun(rootFile, run);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
