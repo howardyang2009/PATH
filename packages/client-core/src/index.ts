@@ -73,7 +73,7 @@ export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "
 // with one right answer — which events say a run stopped, and which run spawned which — so a second
 // surface reaching different answers would be showing a different run, not a differently styled one.
 export { eventOutcome } from "./event-outcome.js";
-export { awaitingAncestorRunIds, buildRunTree, type RunTreeNode } from "./run-tree.js";
+export { buildRunTree, effectiveRunStatus, type RunTreeNode } from "./run-tree.js";
 
 // The folder tree behind every workflow picker: one grouping of the flat discovery list both the
 // Viewer's launch panel and the Designer's open dialog draw the same way (#359 shared seam).

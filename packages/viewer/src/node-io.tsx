@@ -1,5 +1,6 @@
 import {
   awaitingNodeForRun,
+  effectiveRunStatus,
   isReuseRow,
   isTerminal,
   nodeLabel,
@@ -15,10 +16,20 @@ import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunBlob, type BlobLoad } from "./use-run-blob.js";
 
+/** A stable empty map for the default `runs`, so the effect-free derivation never allocates per render. */
+const EMPTY_RUNS: ReadonlyMap<string, RunNodeState> = new Map();
+
 export interface NodeIoProps {
   client: PathApiClient;
   /** The run selected in the tree, as the live snapshot holds it — one step's run. */
   run: RunNodeState;
+  /**
+   * The whole run map of the watched tree, so the head pill derives the same display status the rail
+   * and the run-detail head show (`effectiveRunStatus`): a running run with an awaiting run below reads
+   * `awaiting`. Empty by default — the head then shows the run's own record status. Only the pill uses
+   * it; the Complete surface and the blob reads stay keyed on the real `run.status`.
+   */
+  runs?: ReadonlyMap<string, RunNodeState>;
   /**
    * The root run's narrative, so the pane can surface this run's own failure message (the E block).
    * Optional and empty-by-default: before any event is known the pane simply has no error to show.
@@ -78,9 +89,13 @@ function contextBlobRef(run: RunNodeState): string {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoProps) {
+export function NodeIo({ client, run, narrative = [], rootFile = null, runs }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
+  // The head pill uses the shared display status (a running run with an awaiting run below reads
+  // `awaiting`); everything else on this run — the Complete surface, the blob settling — stays on the
+  // real `run.status`, because a flipped ancestor is not itself awaiting and has no completion to make.
+  const displayStatus = effectiveRunStatus(run, runs ?? EMPTY_RUNS);
   const errorMessage = runErrorMessage(run.runId, narrative);
   // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
   // from the workflow file by id (they never ride the run row); a leaf in a nested file reads as null
@@ -99,7 +114,7 @@ export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoP
     <div className="node-io">
       <header className="node-io-head" data-testid="node-io-head">
         <span className="node-name">{run.nodeName ?? nodeLabel(run.nodeId)}</span>
-        <StatusPill status={run.status} />
+        <StatusPill status={displayStatus} />
         <button
           type="button"
           className="card-action"

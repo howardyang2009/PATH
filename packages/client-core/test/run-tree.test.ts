@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { awaitingAncestorRunIds, buildRunTree } from "../src/run-tree.js";
+import { buildRunTree, effectiveRunStatus } from "../src/run-tree.js";
 import type { RunStatus } from "@path/schema";
 import type { RunNodeState } from "../src/view-model.js";
 
@@ -126,50 +126,45 @@ describe("buildRunTree", () => {
   });
 });
 
-describe("awaitingAncestorRunIds", () => {
+describe("effectiveRunStatus", () => {
   const ts = "2026-07-25T10:00:00.000Z";
 
-  it("returns the running ancestors of an awaiting leaf, up to the root", () => {
-    const tree = buildRunTree(
-      "root",
-      mapOf(run("root", null), run("mid", "root", ts), run("leaf", "mid", ts, "awaiting")),
-    )!;
+  it("returns `awaiting` for a running run with an awaiting run anywhere below it", () => {
+    const runs = mapOf(run("root", null), run("mid", "root", ts), run("leaf", "mid", ts, "awaiting"));
 
-    // Both running ancestors flip; the awaiting leaf itself is not in the set (it needs no derivation).
-    expect([...awaitingAncestorRunIds(tree)].sort()).toEqual(["mid", "root"]);
+    // Both running ancestors read awaiting through the one shared derivation.
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "mid", status: "running" }, runs)).toBe("awaiting");
   });
 
-  it("is empty when no run in the tree is awaiting", () => {
-    const tree = buildRunTree("root", mapOf(run("root", null), run("mid", "root", ts)))!;
-    expect(awaitingAncestorRunIds(tree).size).toBe(0);
+  it("returns the record status when no descendant is awaiting", () => {
+    const runs = mapOf(run("root", null), run("mid", "root", ts));
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, runs)).toBe("running");
   });
 
-  it("never flips a terminal ancestor, only a running one", () => {
-    // A succeeded parent with an awaiting child (a shape ADR 0038 does not produce, but the derivation
-    // must not invent an awaiting on a finished run regardless).
-    const tree = buildRunTree(
-      "root",
-      mapOf(run("root", null), run("done", "root", ts, "succeeded"), run("leaf", "done", ts, "awaiting")),
-    )!;
+  it("returns a run's own status untouched when it is not running", () => {
+    // An awaiting leaf reports awaiting directly; a terminal or pending run is never repainted.
+    const runs = mapOf(run("root", null), run("leaf", "root", ts, "awaiting"));
+    expect(effectiveRunStatus({ runId: "leaf", status: "awaiting" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "root", status: "succeeded" }, runs)).toBe("succeeded");
+    expect(effectiveRunStatus({ runId: "root", status: "pending" }, runs)).toBe("pending");
+  });
 
-    expect([...awaitingAncestorRunIds(tree)]).toEqual(["root"]);
+  it("derives only from the given map, so an empty map returns the record status", () => {
+    // The runs list holds only summaries for the runs it is not watching: no descendants, no repaint.
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, new Map())).toBe("running");
   });
 
   it("flips only the branch that holds the awaiting leaf", () => {
-    const tree = buildRunTree(
-      "root",
-      mapOf(
-        run("root", null),
-        run("branch-a", "root", ts),
-        run("leaf-a", "branch-a", ts, "awaiting"),
-        run("branch-b", "root", ts),
-        run("leaf-b", "branch-b", ts, "running"),
-      ),
-    )!;
+    const runs = mapOf(
+      run("root", null),
+      run("branch-a", "root", ts),
+      run("leaf-a", "branch-a", ts, "awaiting"),
+      run("branch-b", "root", ts),
+      run("leaf-b", "branch-b", ts, "running"),
+    );
 
-    const ids = awaitingAncestorRunIds(tree);
-    expect(ids.has("root")).toBe(true);
-    expect(ids.has("branch-a")).toBe(true);
-    expect(ids.has("branch-b")).toBe(false);
+    expect(effectiveRunStatus({ runId: "branch-a", status: "running" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "branch-b", status: "running" }, runs)).toBe("running");
   });
 });

@@ -1,4 +1,4 @@
-import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import { effectiveRunStatus, isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { Narrative } from "./narrative.js";
@@ -108,6 +108,9 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
+  // The head shows the same derived status the rail does: a root whose leaf is parked reads `awaiting`
+  // although its record stays `running` (ADR 0038). One shared derivation, so the panes never disagree.
+  const displayStatus = effectiveRunStatus({ runId: rootRunId, status: state.status }, state.runs);
   // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
   // more than one does, so the operator sees at a glance there is more than the selected one to act on.
   let awaitingCount = 0;
@@ -120,7 +123,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
     <div className="run-detail" ref={detailRef}>
       <header className="run-head" data-testid="run-head">
         <span className="run-workflow-name">{root?.workflowName ?? "—"}</span>
-        <StatusPill status={state.status} />
+        <StatusPill status={displayStatus} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <dl className="run-meta-grid">
           <dt>workflow id</dt>

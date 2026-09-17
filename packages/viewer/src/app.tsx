@@ -133,6 +133,7 @@ export function App({ client }: { client: PathApiClient }) {
           <NodeIo
             client={client}
             run={selectedRun}
+            runs={load.phase === "ready" ? load.value.runs : undefined}
             narrative={load.phase === "ready" ? load.value.narrative : []}
             rootFile={rootFile}
           />

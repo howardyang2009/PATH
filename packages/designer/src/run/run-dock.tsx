@@ -194,7 +194,13 @@ export function RunDock(props: RunDockProps): JSX.Element {
             ) : (
               // Passing the open buffer lets an awaiting leaf's Complete slide-over build from the node's
               // `outputSchema` — the very same form the Viewer mounts, not a Designer fork (ADR 0031, #487).
-              <NodeIo client={props.client} run={selectedRun} narrative={narrative} rootFile={props.rootFile} />
+              <NodeIo
+                client={props.client}
+                run={selectedRun}
+                runs={props.load.phase === "ready" ? props.load.value.runs : undefined}
+                narrative={narrative}
+                rootFile={props.rootFile}
+              />
             )}
           </div>
         </div>

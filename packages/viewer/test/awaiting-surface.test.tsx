@@ -110,6 +110,14 @@ describe("awaiting rail (RunDetail)", () => {
     await screen.findByTestId("tree-item-run_legal");
     expect(screen.queryByTestId("awaiting-count-badge")).toBeNull();
   });
+
+  it("shows awaiting in the run-detail head when a descendant leaf awaits (root stays running in record)", async () => {
+    render(<ConnectedDetail client={stubClient({ tree: TREE })} />);
+    const head = await screen.findByTestId("run-head");
+    // The root's record status is running (ADR 0038); the head reads awaiting through the shared
+    // derivation, matching the rail's root row.
+    expect(within(head).getByText("awaiting")).toBeInTheDocument();
+  });
 });
 
 describe("awaiting detail panel — inline Complete (NodeIo)", () => {
@@ -178,5 +186,18 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     expect(screen.getByTestId("awaiting-unresolved")).toBeInTheDocument();
     expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
     expect(screen.getByTestId("complete-submit")).toBeInTheDocument();
+  });
+
+  it("shows awaiting in the node I/O head for a running run with an awaiting descendant, but no Complete form", () => {
+    const runs = new Map<string, RunNodeState>([
+      ["run_root", runState({ runId: "run_root", parentRunId: null, nodeId: null, nodeName: null, status: "running" })],
+      ["run_legal", runState()],
+    ]);
+    render(<NodeIo client={stubClient()} run={runs.get("run_root")!} runs={runs} rootFile={ROOT_FILE} />);
+
+    // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so it
+    // gets no Complete surface — that stays keyed on the real status.
+    expect(within(screen.getByTestId("node-io-head")).getByText("awaiting")).toBeInTheDocument();
+    expect(screen.queryByTestId("awaiting-actions")).toBeNull();
   });
 });

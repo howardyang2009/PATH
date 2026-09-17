@@ -1,4 +1,4 @@
-import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary } from "@path/client-core";
+import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary, type RunNodeState } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
@@ -112,6 +112,46 @@ describe("RunsList", () => {
     expect(pillOf("run_beta")).toHaveTextContent("◐running");
     expect(pillOf("run_beta")).toHaveAttribute("data-status", "running");
     expect(pillOf("run_alpha")).toHaveTextContent("✓succeeded");
+    expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
+  });
+
+  it("paints the watched root awaiting when its tree holds an awaiting leaf (record stays running)", async () => {
+    const { client } = stubClient([RUNNING, SUCCEEDED]);
+    // The app hands the watched root's full tree as `resumeTree`. run_beta (running) has a parked leaf,
+    // so its row reads awaiting through the shared derivation; the summary status stays running.
+    const node = (over: Partial<RunNodeState> & { runId: string }): RunNodeState => ({
+      rootRunId: "run_beta",
+      parentRunId: "run_beta",
+      nodeId: over.runId,
+      nodeName: over.runId,
+      workerName: null,
+      iteration: null,
+      status: "running",
+      startedAt: null,
+      finishedAt: null,
+      inputRef: null,
+      outputRef: null,
+      usage: null,
+      estimatedCostUsd: null,
+      resumedFromRootRunId: null,
+      rerunFromNodePath: null,
+      reusedFromRunId: null,
+      reusedFromRootRunId: null,
+      workflowId: null,
+      workflowName: null,
+      workflowPath: null,
+      ...over,
+    });
+    const resumeTree = new Map<string, RunNodeState>([
+      ["run_beta", node({ runId: "run_beta", parentRunId: null, status: "running" })],
+      ["leaf", node({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
+    ]);
+
+    renderList(client, { selectedRootRunId: "run_beta", resumeTree });
+    await screen.findByTestId("run-row-run_beta");
+
+    expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
+    // A row the app is not watching has no tree, so it keeps its record status.
     expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 

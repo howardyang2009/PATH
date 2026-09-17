@@ -1,4 +1,5 @@
 import {
+  effectiveRunStatus,
   isTerminal,
   type PathApiClient,
   type RootRunSummary,
@@ -232,6 +233,12 @@ export function RunsList({
               // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
               // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033).
               const showResumeFrom = resumeTree !== undefined && run.run_id === selectedRootRunId;
+              // The row shows the same derived status the other three surfaces do: a running root whose
+              // leaf is parked reads `awaiting` (view-only, ADR 0038). The list holds only summaries, so
+              // it can derive this only for the watched root, whose full tree the app passes as
+              // `resumeTree`; every other row has no descendants loaded and keeps its record status.
+              const rowRuns = resumeTree !== undefined && run.run_id === selectedRootRunId ? resumeTree : EMPTY_RUNS;
+              const displayStatus = effectiveRunStatus({ runId: run.run_id, status: run.status }, rowRuns);
               return (
                 <li key={run.run_id}>
                   <button
@@ -249,7 +256,7 @@ export function RunsList({
                     }}
                   >
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
-                    <StatusPill status={run.status} />
+                    <StatusPill status={displayStatus} />
                     <span className="run-id">{run.run_id}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
