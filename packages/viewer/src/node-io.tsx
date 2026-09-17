@@ -36,12 +36,14 @@ export interface NodeIoProps {
    */
   narrative?: readonly LogEvent[];
   /**
-   * The watched run's root workflow file, parsed structurally (the app reads it once for the eager
-   * legal-K check). An `awaiting` leaf's `description`/`assignee`/`outputSchema` live here, not on the
-   * run row, so the Complete surface resolves them by node id. `null` while it loads or when the file
-   * could not be read — the awaiting surface then degrades to a schema-less submit.
+   * The watched run's reachable workflow files, parsed structurally: the root file and every file its
+   * `workflow` steps ref, transitively (`loadReachableWorkflowFiles`). An `awaiting` leaf's
+   * `description`/`assignee`/`outputSchema` live on the node in the file that defines it, not on the run
+   * row, so the Complete surface resolves them by node id — and that file can be a nested one, not only
+   * the root (issue #486 follow-up). Empty while it loads or when the files could not be read; the
+   * awaiting surface then degrades to a schema-less submit.
    */
-  rootFile?: WorkflowFile | null;
+  workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
@@ -89,7 +91,7 @@ function contextBlobRef(run: RunNodeState): string {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run, narrative = [], rootFile = null, runs }: NodeIoProps) {
+export function NodeIo({ client, run, narrative = [], workflowFiles = [], runs }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
   // The head pill uses the shared display status (a running run with an awaiting run below reads
@@ -98,10 +100,11 @@ export function NodeIo({ client, run, narrative = [], rootFile = null, runs }: N
   const displayStatus = effectiveRunStatus(run, runs ?? EMPTY_RUNS);
   const errorMessage = runErrorMessage(run.runId, narrative);
   // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
-  // from the workflow file by id (they never ride the run row); a leaf in a nested file reads as null
-  // and the surface degrades. The root run stays `running` while a leaf awaits (ADR 0038), so only the
-  // leaf row itself carries this.
-  const awaitingNode = awaitingNodeForRun(rootFile, run);
+  // from the workflow file by id (they never ride the run row); the file may be the root or any nested
+  // one its `workflow` steps ref, so the search spans the whole reachable set (issue #486 follow-up). A
+  // leaf the set cannot resolve reads as null and the surface degrades. The root run stays `running`
+  // while a leaf awaits (ADR 0038), so only the leaf row itself carries this.
+  const awaitingNode = awaitingNodeForRun(workflowFiles, run);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });

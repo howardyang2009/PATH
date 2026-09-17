@@ -73,4 +73,15 @@ describe("awaitingNodeForRun", () => {
     expect(awaitingNodeForRun(null, run())).toBeNull();
     expect(awaitingNodeForRun(wf, run({ nodeId: null }))).toBeNull();
   });
+
+  it("scans a set of files and resolves a node that lives in a nested one, not only the root", () => {
+    const root = file([{ id: "step-sub", type: "workflow", name: "sub", ref: "sub.workflow.json" }]);
+    const sub = file([{ id: "nested", type: "person-activity", name: "nested", description: "Nested.", assignee: "ops@acme.co" }]);
+    // The node id is defined in the sub-file; the array form finds it wherever it sits.
+    expect(awaitingNodeForRun([root, sub], run({ nodeId: "nested" }))?.assignee).toBe("ops@acme.co");
+    // Root-only cannot resolve it — the caller then degrades to the schema-less submit.
+    expect(awaitingNodeForRun([root], run({ nodeId: "nested" }))).toBeNull();
+    // An empty set resolves nothing.
+    expect(awaitingNodeForRun([], run({ nodeId: "nested" }))).toBeNull();
+  });
 });

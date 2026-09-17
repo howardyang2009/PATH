@@ -104,6 +104,7 @@ export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } f
 // pre-check, and the server `400`→field mapping — so both surfaces draw the same form and read the same
 // errors. The React components keep only their own inputs on the other side (spec § Shared seam).
 export { AWAITING_STEP_TYPE, awaitingNodeForRun, findAwaitingNode, type AwaitingNode } from "./awaiting-node.js";
+export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
 export {
   buildCompleteFields,
   coerceCompleteOutput,

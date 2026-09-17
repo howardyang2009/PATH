@@ -28,8 +28,11 @@ export interface RunDetailProps {
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
-  /** The watched run's root workflow file, for an awaiting leaf's assignee chip in the rail. */
-  rootFile?: WorkflowFile | null;
+  /**
+   * The watched run's reachable workflow files (root + transitively-ref'd sub-files), for an awaiting
+   * leaf's assignee chip in the rail — the node may sit in a nested file, not only the root.
+   */
+  workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
@@ -40,7 +43,7 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, rootFile = null }: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, workflowFiles = [] }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -154,7 +157,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
           runs={state.runs}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
-          rootFile={rootFile}
+          workflowFiles={workflowFiles}
         />
       </section>
 

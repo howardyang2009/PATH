@@ -176,8 +176,10 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 selectedRunId={props.selectedRunId}
                 onSelectRun={props.onSelectRun}
                 // The open buffer is the run's root file here, so an awaiting leaf's assignee chip in the
-                // rail resolves by node id — the same surface the Viewer draws (ADR 0031, #487).
-                rootFile={props.rootFile}
+                // rail resolves by node id — the same surface the Viewer draws (ADR 0031, #487). The
+                // Designer resolves against the one open buffer; the Viewer widens this to the whole
+                // reachable file set for a nested leaf.
+                workflowFiles={props.rootFile ? [props.rootFile] : []}
               />
             )}
           </div>
@@ -199,7 +201,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
                 run={selectedRun}
                 runs={props.load.phase === "ready" ? props.load.value.runs : undefined}
                 narrative={narrative}
-                rootFile={props.rootFile}
+                workflowFiles={props.rootFile ? [props.rootFile] : []}
               />
             )}
           </div>
