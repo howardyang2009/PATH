@@ -22,9 +22,9 @@ import {
  * end-to-end through `path run` against a real git repo.
  *
  * Everything here is the real thing except the LLM processor: the engine, both workflow files,
- * git, the sqlite db, the blob tree and both log backends. The `prompt`/`sdk` worker is scripted
+ * git, the sqlite db, the blob tree and both log backends. The `prompt`/`anthropic` worker is scripted
  * (see ./scripted-llm-worker.ts) so the pipeline is deterministic and free to run in CI; the seam it
- * plugs into is `workerOverrides.prompt.sdk`, the same registry override the CLI leaves open (ADR 0021).
+ * plugs into is `workerOverrides.prompt.anthropic`, the same registry override the CLI leaves open (ADR 0021).
  */
 
 // Each test drives the whole pipeline in-process through `main` against a real git repo, sqlite db
@@ -64,7 +64,7 @@ function happyPathScript(): Record<string, ScriptedHandler> {
 }
 
 /**
- * Recover the node name from a prompt request. The `prompt`/`sdk` seam carries no node name (ADR 0021
+ * Recover the node name from a prompt request. The `prompt`/`anthropic` seam carries no node name (ADR 0021
  * sub-6), so the scripted worker identifies the node from its interpolated prompt text — each of the
  * two real workflow files' prompts opens with distinct wording.
  */
@@ -81,9 +81,9 @@ function labelPrompt(request: { fields: { [key: string]: unknown } }): string {
   throw new Error(`labelPrompt: unrecognized prompt "${prompt.slice(0, 40)}..."`);
 }
 
-/** Plug a scripted worker in as the `prompt` type's `sdk` worker (ADR 0021 sub-15). */
+/** Plug a scripted worker in as the `prompt` type's `anthropic` worker (ADR 0021 sub-15). */
 function overrides(worker: ScriptedLlmWorker) {
-  return { prompt: { sdk: worker } };
+  return { prompt: { anthropic: worker } };
 }
 
 interface Harness {
@@ -203,8 +203,8 @@ function classifyRuns(runs: RunRow[]): { root: RunRow; workflowRuns: RunRow[]; i
 }
 
 function isLlmRun(row: RunRow): boolean {
-  // A `prompt` step runs on the `sdk` worker (ADR 0021 sub-2); its name is the bare column value now.
-  return row.worker_name === "sdk";
+  // A `prompt` step runs on the `anthropic` worker (ADR 0021 sub-2); its name is the bare column value now.
+  return row.worker_name === "anthropic";
 }
 
 function readDbLogEvents(projectDir: string, rootRunId: string): { seq: number; type: string }[] {

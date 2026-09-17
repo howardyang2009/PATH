@@ -1,6 +1,6 @@
 // The worker *names* each built-in step type ships (ADR 0021 sub-1/sub-2). A Worker is a named
 // `run` method of a step type (CONTEXT: **Worker**), so the name is the method it performs —
-// `binary` spawns a child process (`spawn`), `prompt` calls the Agent SDK (`sdk`). The pair
+// `binary` spawns a child process (`spawn`), `prompt` calls a model provider (`anthropic`). The pair
 // `(type, name)` is a worker's identity, so a name is unique only inside its type.
 //
 // The node union is still closed here (ADR 0021 realized on the pre-plugin union, #332): the names
@@ -13,10 +13,15 @@ export const BINARY_WORKER_NAMES = ["spawn"] as const;
 /** The worker a `binary` step uses when it names none (`@3` §4). */
 export const BINARY_DEFAULT_WORKER = "spawn";
 
-/** `prompt`'s worker names; `sdk` (the Agent SDK) is the default worker. `cli`/`remote` are unbuilt. */
-export const PROMPT_WORKER_NAMES = ["sdk"] as const;
+/**
+ * `prompt`'s worker names: one per model provider. `anthropic` (the Agent SDK transport) is the
+ * default worker; `deepseek` is the OpenAI-compatible one. The plugin folder is the authority — these
+ * mirror `packages/engine/step-plugins/prompt/index.ts`, whose registry the load validates against —
+ * and #309's `cli`/`remote` remain unbuilt.
+ */
+export const PROMPT_WORKER_NAMES = ["anthropic", "deepseek"] as const;
 /** The worker a `prompt` step uses when it names none (`@3` §4). */
-export const PROMPT_DEFAULT_WORKER = "sdk";
+export const PROMPT_DEFAULT_WORKER = "anthropic";
 
 export type BinaryWorkerName = (typeof BINARY_WORKER_NAMES)[number];
 export type PromptWorkerName = (typeof PROMPT_WORKER_NAMES)[number];

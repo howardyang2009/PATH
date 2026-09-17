@@ -29,7 +29,7 @@ export interface CliIo {
 export interface RunOverrides {
   /**
    * Replace named `(type, worker)` pairs in the scanned registry (ADR 0021 sub-15), forwarded to
-   * `runWorkflow` verbatim. The acceptance run substitutes its scripted `prompt`/`sdk` worker here.
+   * `runWorkflow` verbatim. The acceptance run substitutes its scripted `prompt`/`anthropic` worker here.
    */
   workerOverrides?: WorkerOverrides;
   /**

@@ -34,7 +34,7 @@ const StepStartedSchema = z
     ...envelope,
     step_type: z.string(),
     // The *name* of the worker the step ran on (ADR 0021 sub-14). A leaf step carries its resolved
-    // worker name (`spawn`/`sdk`); a workflow-run's implicit-root-step event carries `"workflow"`,
+    // worker name (`spawn`/`anthropic`); a workflow-run's implicit-root-step event carries `"workflow"`,
     // the step type itself — a workflow step runs a nested run, not a worker.
     worker_name: z.string(),
   })

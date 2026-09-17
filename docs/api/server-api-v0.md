@@ -692,12 +692,12 @@ Response `200 OK`:
 ```json
 {
   "step_plugins": [
-    { "name": "prompt", "fields": { "...": "..." }, "workers": ["sdk"], "default_worker": "sdk" },
+    { "name": "prompt", "fields": { "...": "..." }, "workers": ["anthropic"], "default_worker": "anthropic" },
     { "name": "binary", "fields": { "...": "..." }, "workers": ["local"], "default_worker": "local" },
     {
       "name": "api-call",
       "fields": { "...": "..." },
-      "workers": ["fetch", "sdk"],
+      "workers": ["fetch", "anthropic"],
       "default_worker": "fetch"
     }
   ]

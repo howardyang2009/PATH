@@ -9,7 +9,7 @@ import type { StepRequest, StepResult, WorkerDescriptor } from "../../src/plugin
 export type ScriptedHandler = (request: StepRequest, callNumber: number) => string;
 
 /**
- * Maps a worker request to the script key (the node's name). The `prompt`/`sdk` seam carries no node
+ * Maps a worker request to the script key (the node's name). The `prompt`/`anthropic` seam carries no node
  * name (ADR 0021 sub-6 — the engine owns the name and never hands it to a worker), so a scripted
  * worker recovers the identity from the request itself, typically from the interpolated prompt text.
  */
@@ -44,12 +44,12 @@ export const SCRIPTED_USAGE: JsonValue = { input_tokens: 1200, output_tokens: 34
 export const SCRIPTED_COST_USD = 0.0042;
 
 /**
- * A stand-in for the shipped `prompt`/`sdk` worker (mvp spec §7) that answers from a per-label script
+ * A stand-in for the shipped `prompt`/`anthropic` worker (mvp spec §7) that answers from a per-label script
  * instead of spawning a processor. It is the *only* thing faked in the acceptance run: the engine, the
  * real workflow files, git, persistence and logging are all real. Faking it is what makes the pipeline
  * deterministic and free to run in CI — a live processor is neither.
  *
- * It plugs into `runWorkflow` as `workerOverrides.prompt.sdk` (ADR 0021 sub-15). It declares
+ * It plugs into `runWorkflow` as `workerOverrides.prompt.anthropic` (ADR 0021 sub-15). It declares
  * `needsProcessorSlot: true` and holds no semaphore of its own, so the engine's processor cap governs
  * it — each call holds its slot for a turn of the event loop before resolving, so two branches the
  * engine genuinely runs at once overlap here and `maxConcurrent` can observe the cap.

@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import { editorTier, fieldsLayOut } from "../src/editor-tiers.js";
 
 const plugins: WireStepPlugin[] = [
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["sdk"], default_worker: "sdk" },
+  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
   {
     name: "api-call",
     fields: { endpoint: { type: "string", optional: false }, retries: { type: "number", optional: true } },

@@ -40,12 +40,13 @@ describe("GET /v0/step-plugins", () => {
     // Both built-ins are present, peers of any plugin type (ADR 0021).
     expect(Object.keys(byName)).toEqual(expect.arrayContaining(["binary", "prompt"]));
 
-    // Each entry matches its registration, snake_case on the wire.
+    // Each entry matches its registration, snake_case on the wire. A `prompt` step's two model
+    // workers ride along, which is what the Designer's worker dropdown is built from.
     expect(byName.prompt).toEqual({
       name: "prompt",
       fields: { prompt: { type: "string", optional: false } },
-      workers: ["sdk"],
-      default_worker: "sdk",
+      workers: ["anthropic", "deepseek"],
+      default_worker: "anthropic",
     });
     expect(byName.binary).toEqual({
       name: "binary",
@@ -66,7 +67,7 @@ describe("GET /v0/step-plugins", () => {
         config: {},
         workers: {
           fetch: { run: doNotRun, meters: false, needsProcessorSlot: false },
-          sdk: { run: doNotRun, meters: true, needsProcessorSlot: true },
+          anthropic: { run: doNotRun, meters: true, needsProcessorSlot: true },
         },
         defaultWorker: "fetch",
       },
@@ -83,7 +84,7 @@ describe("GET /v0/step-plugins", () => {
           endpoint: { type: "string", optional: false },
           method: { type: "string", optional: true },
         },
-        workers: ["fetch", "sdk"],
+        workers: ["fetch", "anthropic"],
         default_worker: "fetch",
       },
     ]);

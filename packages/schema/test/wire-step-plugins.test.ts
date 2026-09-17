@@ -62,8 +62,8 @@ describe("toWireStepPlugins", () => {
     expect(byName.prompt).toEqual({
       name: "prompt",
       fields: { prompt: { type: "string", optional: false } },
-      workers: ["sdk"],
-      default_worker: "sdk",
+      workers: ["anthropic"],
+      default_worker: "anthropic",
     });
   });
 
@@ -74,7 +74,7 @@ describe("toWireStepPlugins", () => {
         config: {},
         workers: {
           fetch: { run: doNotRun, meters: false, needsProcessorSlot: false },
-          sdk: { run: doNotRun, meters: true, needsProcessorSlot: true },
+          anthropic: { run: doNotRun, meters: true, needsProcessorSlot: true },
         },
         defaultWorker: "fetch",
       },
@@ -87,7 +87,7 @@ describe("toWireStepPlugins", () => {
         endpoint: { type: "string", optional: false },
         method: { type: "string", optional: true },
       },
-      workers: ["fetch", "sdk"],
+      workers: ["fetch", "anthropic"],
       default_worker: "fetch",
     });
   });

@@ -19,7 +19,7 @@ export const DEFAULT_PLUGINS: WireStepPlugin[] = [
     workers: ["spawn"],
     default_worker: "spawn",
   },
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["sdk"], default_worker: "sdk" },
+  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
 ];
 
 /** Every write/lock request body the stub saw, for assertions in the edit-lock + save tests (#371). */

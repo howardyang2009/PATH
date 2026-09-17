@@ -130,7 +130,7 @@ describe("run-store", () => {
       rootRunId: "r1",
       parentRunId: null,
       nodeId: "summarize", nodeName: "summarize",
-      workerName: "sdk",
+      workerName: "anthropic",
       status: "running",
     });
     setRunUsage(db, "r1", { usage: { input_tokens: 12, output_tokens: 34 }, estimatedCostUsd: 0.0053 });

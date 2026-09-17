@@ -69,14 +69,14 @@ describe("createLoggingObserver", () => {
       parentRunId: "root-1",
       nodeId: "boom", nodeName: "boom",
       stepType: "binary",
-      workerName: "sdk",
+      workerName: "anthropic",
       input: {},
     });
     await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", status: "failed", error: 'step "boom" exited with code 3' });
     await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "failed", error: 'step "boom" exited with code 3' });
 
     const step = rec.events.find((e) => e.run_id === "step-1" && e.type === "step-started");
-    expect(step).toMatchObject({ step_type: "binary", worker_name: "sdk" });
+    expect(step).toMatchObject({ step_type: "binary", worker_name: "anthropic" });
     const finished = rec.events.find((e) => e.run_id === "step-1" && e.type === "step-finished");
     expect(finished).toMatchObject({ status: "failed", error: 'step "boom" exited with code 3' });
   });

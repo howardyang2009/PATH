@@ -60,7 +60,7 @@ export interface RunOptions {
    * The shape is `{ [type]: { [name]: WorkerDescriptor } }`, merged over the frozen registry inside
    * `runWorkflow` **replace-only**: an override naming a `(type, name)` pair the scan did not produce
    * is a hard error, never an insertion — the registry's name set stays owned by the folder scan (ADR
-   * 0019 sub-2). The acceptance run's scripted `prompt`/`sdk` worker plugs in here; a live run passes
+   * 0019 sub-2). The acceptance run's scripted `prompt`/`anthropic` worker plugs in here; a live run passes
    * nothing and every leaf runs on its shipped worker.
    */
   workerOverrides?: WorkerOverrides;

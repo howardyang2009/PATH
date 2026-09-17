@@ -2,18 +2,31 @@ import { defineStepPlugin, z } from "@path/engine/plugin";
 import type { JsonValue, StepRequest, StepResult } from "@path/engine/plugin";
 
 import { renderPromptMessage } from "./render-prompt-message.js";
+import { runDeepseekWorker } from "./deepseek-worker.js";
 
 /**
  * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `step-plugins/` and
  * written against the public `@path/engine/plugin` subpath exactly as a third-party plugin is (ADR
- * 0019 sub-10, #336). Its `sdk` worker runs one Agent SDK session per step-run — one `query()` call is
- * one processor, iterated to its terminal `result` message and torn down when `run` returns, so no
- * conversational state leaks between steps (mvp spec §5.5).
+ * 0019 sub-10, #336).
+ *
+ * The type ships **two workers, one per model provider**: `anthropic` (the default) runs an Agent SDK
+ * session against Anthropic, and `deepseek` makes one OpenAI-compatible Chat Completions request.
+ * Selecting one is the ordinary PATH gesture — an optional `worker` name on the step
+ * (workflow-format-v3.md §4) — so a workflow author picks the model provider with the same field that
+ * picks any other method, and `prompt` needs no vendor-specific node field. A step that names no
+ * worker gets `anthropic`, which is what every `prompt` step written before the second worker existed means.
+ *
+ * Each worker owns one processor per step-run and tears it down when `run` returns, so no
+ * conversational state leaks between steps (mvp spec §5.5). The two transports are deliberately not
+ * unified behind a shared abstraction: they ask the same question through protocols that share no
+ * vocabulary (an SDK message stream; an HTTP request/response), and a step names one of them outright,
+ * so there is nothing for an indirection layer to decide. `anthropic` lives here and `deepseek` in
+ * `deepseek-worker.ts`, each reading only what its own transport needs.
  *
  * The folder name *is* the type name. Since the cutover (#337) this folder is the *only* `prompt`
  * implementation — the old `src/llm/agent-sdk-worker.ts` is gone, and the engine dispatches every
- * `prompt` step through the worker discovered here. Only the `sdk` worker ships — the `cli` and
- * `remote` prompt workers named in #309 stay unbuilt.
+ * `prompt` step through a worker discovered here. #309's `cli` and `remote` prompt workers stay
+ * unbuilt; both are plugin folders/workers away, not engine changes.
  */
 
 // The `prompt` type's one author-fixed node field (ADR 0022 sub-1): the instruction text.
@@ -27,6 +40,14 @@ const config = {
   model: z.string(),
   options: z.record(z.unknown()).optional(),
 };
+
+/**
+ * The two fragments as `ZodRawShape`s, shared with the worker in the sibling file so it types its
+ * `request` from the very shapes this plugin declares rather than restating them. A `type` export is
+ * erased at run time, so this does not make the two modules circular.
+ */
+export type PromptFields = typeof fields;
+export type PromptConfig = typeof config;
 
 /** The pinned Agent SDK's entry point, imported for its type only so nothing loads the ~250 MB package until a `prompt` step runs (mvp spec §7). */
 type SdkQuery = typeof import("@anthropic-ai/claude-agent-sdk").query;
@@ -70,16 +91,17 @@ function describeSdkFailure(message: SdkResultMessage): string {
 
 let queryPromise: Promise<SdkQuery> | undefined;
 
-// Loaded on the first `prompt` step, then reused by every later processor.
+// Loaded on the first `anthropic` step, then reused by every later processor.
 function loadQuery(): Promise<SdkQuery> {
   queryPromise ??= import("@anthropic-ai/claude-agent-sdk").then((mod) => mod.query);
   return queryPromise;
 }
 
 /**
- * The `sdk` worker. It declares `needsProcessorSlot: true` and holds no semaphore of its own — the
- * engine acquires the processor-concurrency slot and holds it for this call (ADR 0021 sub-5, #331).
- * It `meters`, reporting real `usage` and the SDK's cost estimate on its result.
+ * The `anthropic` worker, and the type's **default worker**. It declares
+ * `needsProcessorSlot: true` and holds no semaphore of its own — the engine acquires the
+ * processor-concurrency slot and holds it for this call (ADR 0021 sub-5, #331) — and it `meters`,
+ * reporting real `usage` and the SDK's cost estimate on its result.
  *
  * Auth is left to the SDK: it reads the subscription credential when `ANTHROPIC_API_KEY` is unset and
  * the API key when it is set, so neither path needs engine code (mvp spec §7).
@@ -145,7 +167,9 @@ export const stepPlugin = defineStepPlugin({
   fields,
   config,
   workers: {
-    sdk: { meters: true, needsProcessorSlot: true, run: runSdk },
+    // `anthropic` first: `defaultWorker` names it, and the wire response keeps this declaration order.
+    anthropic: { meters: true, needsProcessorSlot: true, run: runSdk },
+    deepseek: { meters: true, needsProcessorSlot: true, run: runDeepseekWorker },
   },
-  defaultWorker: "sdk",
+  defaultWorker: "anthropic",
 });

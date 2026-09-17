@@ -57,7 +57,7 @@ function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[])
 }
 
 function promptOverride(worker: WorkerDescriptor) {
-  return { prompt: { sdk: worker } };
+  return { prompt: { anthropic: worker } };
 }
 
 function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInput["readBlob"] {

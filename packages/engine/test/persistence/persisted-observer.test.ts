@@ -259,7 +259,7 @@ describe("createPersistedObserver", () => {
       parentRunId: "root-1",
       nodeId: "summarize", nodeName: "summarize",
       stepType: "prompt",
-      workerName: "sdk",
+      workerName: "anthropic",
       input: {},
     });
     await observer.observe({ type: "step-usage",

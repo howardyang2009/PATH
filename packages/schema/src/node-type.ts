@@ -16,7 +16,7 @@ interface CommonStepFields {
 
 export interface PromptStep extends CommonStepFields {
   type: "prompt";
-  /** The worker *name* to run on (`@3` §4); omitted resolves to `prompt`'s default worker `sdk`. */
+  /** The worker *name* to run on (`@3` §4); omitted resolves to `prompt`'s default worker `anthropic`. */
   worker?: PromptWorkerName;
   prompt: string;
 }

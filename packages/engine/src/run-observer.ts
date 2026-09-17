@@ -104,7 +104,7 @@ export type Observation =
       nodeId: string;
       nodeName: string;
       stepType: string;
-      /** The *name* of the worker this leaf step ran on (ADR 0021 sub-14): `spawn`/`sdk`. */
+      /** The *name* of the worker this leaf step ran on (ADR 0021 sub-14): `spawn`/`anthropic`. */
       workerName: string;
       input: JsonValue;
     }

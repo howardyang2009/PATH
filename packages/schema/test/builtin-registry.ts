@@ -20,7 +20,7 @@ export const builtinRegistry: StepPluginRegistry = {
   prompt: {
     fields: { prompt: z.string() },
     config: { model: z.string(), options: z.record(z.unknown()).optional() },
-    workers: { sdk: { run: doNotRun, meters: true, needsProcessorSlot: true } },
-    defaultWorker: "sdk",
+    workers: { anthropic: { run: doNotRun, meters: true, needsProcessorSlot: true } },
+    defaultWorker: "anthropic",
   },
 };

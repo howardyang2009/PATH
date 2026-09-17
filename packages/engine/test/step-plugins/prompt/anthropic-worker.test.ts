@@ -1,15 +1,15 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-// The `sdk` worker loads the Agent SDK through a dynamic `import("@anthropic-ai/claude-agent-sdk")`;
+// The `anthropic` worker loads the Agent SDK through a dynamic `import("@anthropic-ai/claude-agent-sdk")`;
 // mocking the specifier lets each case script the single terminal `result` message the worker reads.
 const query = vi.fn();
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query }));
 
 import { stepPlugin } from "../../../step-plugins/prompt/index.js";
 
-const sdk = stepPlugin.workers.sdk;
-if (!sdk) throw new Error("prompt plugin is missing its sdk worker");
-const run = sdk.run;
+const anthropic = stepPlugin.workers.anthropic;
+if (!anthropic) throw new Error("prompt plugin is missing its anthropic worker");
+const run = anthropic.run;
 
 // One async-iterable session yielding the messages the SDK would stream; the worker only reads the
 // terminal `result`, so a single result message is enough.
@@ -31,7 +31,7 @@ function request(): Parameters<typeof run>[0] {
   } as unknown as Parameters<typeof run>[0];
 }
 
-describe("sdk prompt worker", () => {
+describe("anthropic prompt worker", () => {
   beforeEach(() => query.mockReset());
 
   it("returns the result text on a clean success", async () => {

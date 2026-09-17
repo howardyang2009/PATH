@@ -800,7 +800,7 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   }
 
   function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
-    return { prompt: { sdk: worker } };
+    return { prompt: { anthropic: worker } };
   }
 
   function runFanout(worker: WorkerDescriptor, ...args: string[]) {
@@ -868,7 +868,7 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   }
 
   function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
-    return { prompt: { sdk: worker } };
+    return { prompt: { anthropic: worker } };
   }
 
   /**
