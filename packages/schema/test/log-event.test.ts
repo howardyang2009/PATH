@@ -90,6 +90,23 @@ describe("LogEventSchema", () => {
     expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run-2" });
   });
 
+  it("carries the assignee on a step-awaiting event (#488)", () => {
+    const parsed = LogEventSchema.parse({ type: "step-awaiting", ...envelope, assignee: "alex" });
+    expect(parsed).toMatchObject({ type: "step-awaiting", assignee: "alex" });
+  });
+
+  it("accepts a step-awaiting event that named no assignee", () => {
+    const parsed = LogEventSchema.parse({ type: "step-awaiting", ...envelope, assignee: null });
+    expect(parsed).toMatchObject({ type: "step-awaiting", assignee: null });
+  });
+
+  it("reads a pre-#488 step-awaiting line — written with no assignee — back as null", () => {
+    // Every persisted NDJSON line is re-validated on replay, so a line written before the field
+    // existed must keep parsing: `assignee` defaults to null.
+    const parsed = LogEventSchema.parse({ type: "step-awaiting", ...envelope });
+    expect(parsed).toMatchObject({ type: "step-awaiting", assignee: null });
+  });
+
   it("rejects an unknown event type", () => {
     expect(() => LogEventSchema.parse({ type: "branch-taken", ...envelope })).toThrow();
   });

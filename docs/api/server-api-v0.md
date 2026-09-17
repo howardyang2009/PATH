@@ -409,11 +409,12 @@ Responses:
 The transitional in-memory `CompletionRegistry` + `live.complete` path (ADR 0039, ADR 0041) is superseded
 by the replay-from-root design and is not the route's contract; the durable re-invocation above is.
 
-**Deferred, not specified here:** the log events the engine emits for the `awaiting` transition and the
-Complete action (a `step-awaiting` event is named in CONTEXT.md § Awaiting, but the full observation/
-log-event set rides the audit-model ticket, #461); and any assignee notification (out of scope for v1,
-#461). Complete enforces no identity binding — v1 has no user model, so any caller may complete any
-awaiting leaf (#461).
+The engine narrates the cycle so it reconstructs from the log alone (#488): the `awaiting` transition
+emits a `step-awaiting` event carrying the leaf's `node_id` and its `assignee` (null when the node named
+none), and the Complete action's `awaiting → succeeded` flip emits the leaf's `step-finished`. Still
+**deferred, not specified here:** any assignee *notification* (the string is informational, no delivery,
+out of scope for v1, #461). Complete enforces no identity binding — v1 has no user model, so any caller
+may complete any awaiting leaf (#461).
 
 ## 5. `GET /v0/runs/:root_run_id/events` — SSE event stream
 

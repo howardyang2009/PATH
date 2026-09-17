@@ -67,7 +67,11 @@ export interface StepRequest<F extends ZodRawShape = ZodRawShape, C extends ZodR
 export type StepResult =
   | { status: "succeeded"; output: JsonValue; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
   | { status: "failed"; error: string; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
-  | { status: "awaiting" };
+  // A worker that parks its run (person-activity, #462) may echo an informational `assignee` — who the
+  // offline activity is for — so the engine can put it on the `step-awaiting` audit record. It is an
+  // opaque interpolated string to the engine (masked at the emit choke point like any author value),
+  // not a plugin-specific field the engine reads; a worker that names no assignee omits it.
+  | { status: "awaiting"; assignee?: string };
 
 /**
  * One named worker of a step type — a `run` method plus the closed set of capability flags the engine

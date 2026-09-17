@@ -97,7 +97,9 @@ export function toLogEvent(o: Observation, envelope: (runId: string, node?: Node
       // sibling branch from an operator stopping the root run (#52).
       return { type: "run-cancelled", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), cause: o.cause, cause_run_id: o.causeRunId };
     case "step-awaiting":
-      return { type: "step-awaiting", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }) };
+      // `assignee` (#488) rides the log so an `awaiting`/Complete cycle reconstructs from the stream
+      // alone — who the offline activity was for, `null` when the node named none.
+      return { type: "step-awaiting", ...envelope(o.runId, { id: o.nodeId, name: o.nodeName }), assignee: o.assignee };
     case "reuse-marker":
       // A reused node's whole narrative (#172): the log carries it where no step-lifecycle pair does,
       // node_id being the reused node's own id and original_run_id the back-reference to the run that

@@ -15,7 +15,10 @@ export const stepPlugin = defineStepPlugin({
     person: {
       meters: false,
       needsProcessorSlot: false,
-      run: async () => ({ status: "awaiting" as const }),
+      // The park carries the interpolated `assignee` (#488) so the `step-awaiting` audit record names
+      // who the offline activity is for — reconstructable from the log alone, not only from the file.
+      // `assignee` is optional (CONTEXT § Person-activity), so it is echoed only when the node sets it.
+      run: async ({ fields }) => ({ status: "awaiting" as const, assignee: fields.assignee }),
     },
   },
   defaultWorker: "person",

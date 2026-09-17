@@ -188,8 +188,11 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
     case "join-applied":
     case "run-cancelled":
     case "reuse-marker":
-    case "step-awaiting":
       return o;
+    // `assignee` (#488) is an interpolated author value — it can read `${config.x}`, so it can reach a
+    // secret — and must be scrubbed by value like any other payload before it crosses the seam.
+    case "step-awaiting":
+      return o.assignee === null ? o : { ...o, assignee: masker.maskString(o.assignee) };
     default: {
       const exhaustive: never = o;
       return exhaustive;

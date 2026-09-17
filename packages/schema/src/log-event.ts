@@ -137,7 +137,15 @@ const ReuseMarkerSchema = z.object({ type: z.literal("reuse-marker"), ...envelop
 // A leaf step entered the `awaiting` status (#462): the worker returned `{ status: "awaiting" }` and
 // the engine suspended the step until an external `complete` call resolves it. The step is still live
 // (not terminal), so this is a distinct event from `step-finished`.
-const StepAwaitingSchema = z.object({ type: z.literal("step-awaiting"), ...envelope }).strict();
+//
+// `assignee` (#488) names who the offline activity is for — an informational string carried on the
+// record so an `awaiting`/Complete cycle reconstructs from the log alone (`null` when the node named
+// none). It `.default(null)` for the same reason `run-cancelled.cause` does: every persisted NDJSON
+// line is re-validated on read, so a pre-#488 `step-awaiting` line, written before the field existed,
+// must keep parsing — it reads back as `assignee: null`.
+const StepAwaitingSchema = z
+  .object({ type: z.literal("step-awaiting"), ...envelope, assignee: z.string().nullable().default(null) })
+  .strict();
 
 export const LogEventSchema = z.discriminatedUnion("type", [
   StepStartedSchema,

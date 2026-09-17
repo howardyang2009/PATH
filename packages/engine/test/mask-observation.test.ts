@@ -65,7 +65,8 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
     trace: { type: "exists", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
   "reuse-marker": { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "n1", originalRunId: "orig-run" },
-  "step-awaiting": { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1" },
+  // `assignee` is an interpolated author value (#488), so it can reach a secret and must be scrubbed.
+  "step-awaiting": { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1", assignee: "s3cret-value" },
 };
 
 /**
@@ -74,7 +75,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
  * Naming them is what stops the sweep below from passing vacuously: any *other* member whose sample
  * does not really hold a secret is a sample that proves nothing.
  */
-const CANNOT_CARRY_A_SECRET = new Set<Observation["type"]>(["join-applied", "run-cancelled", "reuse-marker", "step-awaiting"]);
+const CANNOT_CARRY_A_SECRET = new Set<Observation["type"]>(["join-applied", "run-cancelled", "reuse-marker"]);
 
 describe("maskObservation", () => {
   it("leaves no secret in any observation type", () => {
@@ -117,6 +118,13 @@ describe("maskObservation", () => {
 
     const cancelled: Observation = { type: "step-finished", ...ids, status: "cancelled" };
     expect(maskObservation(masker, cancelled)).toEqual(cancelled);
+  });
+
+  it("masks an interpolated assignee on step-awaiting, and leaves a null assignee alone (#488)", () => {
+    expect(maskObservation(masker, SAMPLES["step-awaiting"])).toMatchObject({ assignee: TOKEN });
+
+    const none: Observation = { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1", assignee: null };
+    expect(maskObservation(masker, none)).toEqual(none);
   });
 
   // mvp spec §8.1: a leaf's recorded value is "post-masking". A condition reads `context`/`output`,

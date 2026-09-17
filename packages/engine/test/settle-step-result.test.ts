@@ -168,6 +168,19 @@ describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", (
     // the outcome propagates up and the tree is reopened later by a Complete replay (ADR 0041).
     expect(outcome).toEqual({ status: "awaiting" });
     expect(seen.map((o) => o.type)).toEqual(["step-awaiting"]);
+    // A park that named no assignee carries `assignee: null` on the record (#488).
+    expect(seen[0]).toEqual({ type: "step-awaiting", runId: step.runId, rootRunId: "root-run", nodeId: NODE.id, nodeName: NODE.name, assignee: null });
+  });
+
+  it("carries the worker's echoed assignee on the step-awaiting record (#488)", async () => {
+    const { step, seen } = harness();
+
+    const outcome = await settle({ step, result: { status: "awaiting", assignee: "alex" } });
+
+    // The audit record names who the offline activity is for, so an `awaiting`/Complete cycle
+    // reconstructs from the log alone rather than only from the (mutable, maybe-absent) file.
+    expect(outcome).toEqual({ status: "awaiting" });
+    expect(seen[0]).toMatchObject({ type: "step-awaiting", assignee: "alex" });
   });
 
   it("cancels rather than parks when the signal is already aborted", async () => {
