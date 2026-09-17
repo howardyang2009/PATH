@@ -1,8 +1,8 @@
 import {
   buildCompleteFields,
   coerceCompleteOutput,
+  coerceRawCompleteOutput,
   mapCompleteErrors,
-  parseRawCompleteOutput,
   PathApiError,
   validateCompleteOutput,
   type CompleteField,
@@ -34,17 +34,17 @@ export interface CompleteFormProps {
  * The server is the authority: a client pre-check that passes is never a promise, so a `400` still
  * lands and its **own** field errors (ajv's messages, verbatim) replace the client's. On a `400` the
  * leaf stays `awaiting` — the same form is ready for a corrected resubmit. A node with **no** schema
- * (`outputSchema` omitted) accepts any JSON (ADR 0040), so the form draws a single raw-JSON control
+ * (`outputSchema` omitted) accepts any JSON (ADR 0040), so the form draws a single free-text control
  * instead of no fields at all — otherwise the person had nowhere to enter the `${output}` the step
- * publishes. Blank raw text still submits an empty output, the historical bare-submit.
+ * publishes. That control takes anything: JSON becomes its value, plain prose becomes a JSON string,
+ * and blank submits an empty output (the historical bare-submit) — so it never rejects.
  */
 export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "Complete this activity", onCompleted }: CompleteFormProps) {
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
-  // A schema with no drawable fields (none authored) falls back to the raw-JSON control.
+  // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
   const [values, setValues] = useState<Partial<Record<string, CompleteFieldValue>>>({});
   const [rawText, setRawText] = useState("");
-  const [rawError, setRawError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "sending">("idle");
@@ -56,14 +56,8 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
   const submit = (): void => {
     let output: JsonValue;
     if (raw) {
-      const parsed = parseRawCompleteOutput(rawText);
-      if (!parsed.ok) {
-        setRawError(parsed.error);
-        setFormErrors([]);
-        return;
-      }
-      output = parsed.value;
-      setRawError(null);
+      // The free-text control never rejects: JSON becomes its value, anything else a JSON string.
+      output = coerceRawCompleteOutput(rawText);
     } else {
       output = coerceCompleteOutput(fields, values);
       const clientErrors = validateCompleteOutput(fields, output);
@@ -107,7 +101,7 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
       }}
     >
       {raw ? (
-        <RawOutputControl value={rawText} error={rawError} onChange={setRawText} />
+        <RawOutputControl value={rawText} onChange={setRawText} />
       ) : (
         fields.map((field) => (
           <CompleteControl
@@ -137,40 +131,31 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
 
 interface RawOutputControlProps {
   value: string;
-  error: string | null;
   onChange: (value: string) => void;
 }
 
 /**
- * The one control a schema-less `person-activity` node draws: a raw-JSON textarea for the step's
- * `${output}`. Any JSON value is accepted (ADR 0040); blank submits an empty output.
+ * The one control a schema-less `person-activity` node draws: a free-text textarea for the step's
+ * `${output}`. It never rejects (ADR 0040: any JSON is accepted) — plain text submits as a JSON
+ * string, JSON submits as its value, and blank submits an empty output.
  */
-function RawOutputControl({ value, error, onChange }: RawOutputControlProps) {
+function RawOutputControl({ value, onChange }: RawOutputControlProps) {
   const id = "complete-fld-__raw";
-  const errId = `${id}-err`;
-  const invalid = error !== null;
 
   return (
-    <div className={`complete-field${invalid ? " complete-field--invalid" : ""}`} data-testid="complete-field-__raw">
+    <div className="complete-field" data-testid="complete-field-__raw">
       <label className="field-label complete-label" htmlFor={id}>
         Output
       </label>
-      <p className="complete-help">Enter the step&rsquo;s output as JSON. Leave blank to submit an empty output.</p>
+      <p className="complete-help">Enter any text, or JSON for a structured value. Leave blank to submit an empty output.</p>
       <textarea
         id={id}
         className="launch-textarea complete-input"
         rows={4}
         value={value}
-        aria-invalid={invalid || undefined}
-        aria-describedby={invalid ? errId : undefined}
         data-testid="complete-raw-output"
         onChange={(event) => onChange(event.target.value)}
       />
-      {invalid && (
-        <p className="complete-field-error" id={errId}>
-          {error}
-        </p>
-      )}
     </div>
   );
 }

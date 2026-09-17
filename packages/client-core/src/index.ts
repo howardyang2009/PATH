@@ -107,8 +107,8 @@ export { AWAITING_STEP_TYPE, awaitingNodeForRun, findAwaitingNode, type Awaiting
 export {
   buildCompleteFields,
   coerceCompleteOutput,
+  coerceRawCompleteOutput,
   mapCompleteErrors,
-  parseRawCompleteOutput,
   validateCompleteOutput,
   type CompleteField,
   type CompleteFieldKind,

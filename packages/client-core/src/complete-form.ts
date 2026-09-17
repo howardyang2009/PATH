@@ -74,19 +74,23 @@ export function buildCompleteFields(outputSchema: JsonValue | null): CompleteFie
 }
 
 /**
- * The output a schema-less node's raw-JSON control makes (ADR 0040: no `outputSchema` ⇒ any JSON is
- * accepted). Blank text keeps the historical "bare submit" — an empty object `{}` — so a node that
- * wants nothing back still completes with one click. Non-blank text is parsed as JSON: a person can
- * submit any JSON value (a string, a number, an array, an object), which is what `${output}` then
- * carries. Invalid JSON returns an error the form shows on the control; the server never sees it.
+ * The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON is
+ * accepted). It never rejects — the person can type anything:
+ *
+ * - blank ⇒ an empty object `{}`, the historical "bare submit" so a node that wants nothing back still
+ *   completes with one click;
+ * - text that parses as JSON ⇒ that JSON value (a number, a boolean, an array, an object), so a
+ *   structured output is still possible;
+ * - anything else ⇒ the text itself, as a JSON string. So `done` submits `"done"`, not a parse error —
+ *   a schema-less step takes plain prose as readily as JSON, which is what `${output}` then carries.
  */
-export function parseRawCompleteOutput(text: string): { ok: true; value: JsonValue } | { ok: false; error: string } {
+export function coerceRawCompleteOutput(text: string): JsonValue {
   const trimmed = text.trim();
-  if (trimmed === "") return { ok: true, value: {} };
+  if (trimmed === "") return {};
   try {
-    return { ok: true, value: JSON.parse(trimmed) as JsonValue };
+    return JSON.parse(trimmed) as JsonValue;
   } catch {
-    return { ok: false, error: 'Enter valid JSON (e.g. "done", 42, or { "key": "value" }).' };
+    return trimmed;
   }
 }
 

@@ -91,14 +91,14 @@ describe("CompleteForm", () => {
     await waitFor(() => expect(screen.getByTestId("complete-form-error")).toHaveTextContent(/not awaiting/));
   });
 
-  it("draws a raw-JSON output control when the node has no outputSchema", () => {
+  it("draws a free-text output control when the node has no outputSchema", () => {
     const { client } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
     render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={() => {}} />);
 
     expect(screen.getByTestId("complete-raw-output")).not.toBeNull();
   });
 
-  it("sends the parsed raw JSON as the output on a 202", async () => {
+  it("sends parsed JSON as the output when the raw text is JSON", async () => {
     const onCompleted = vi.fn();
     const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
     render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={onCompleted} />);
@@ -110,15 +110,16 @@ describe("CompleteForm", () => {
     expect(bodies[0]).toEqual({ output: { confirmed: true } });
   });
 
-  it("blocks submit on invalid raw JSON and never calls the server", () => {
-    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
-    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={() => {}} />);
+  it("sends plain text as a JSON string, never rejecting non-JSON", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={onCompleted} />);
 
-    fireEvent.change(screen.getByTestId("complete-raw-output"), { target: { value: "{ not json" } });
+    fireEvent.change(screen.getByTestId("complete-raw-output"), { target: { value: "ship it please" } });
     fireEvent.click(screen.getByTestId("complete-submit"));
 
-    expect(screen.getByTestId("complete-field-__raw")).toHaveTextContent(/valid JSON/);
-    expect(bodies).toEqual([]);
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: "ship it please" });
   });
 
   it("submits an empty output when the raw control is left blank", async () => {

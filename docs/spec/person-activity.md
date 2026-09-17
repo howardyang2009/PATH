@@ -222,8 +222,10 @@ The rail carries a **count badge** when several leaves await at once (parallel j
 **Complete (inline in the node I/O/C/E panel).** The awaiting step's detail panel shows the Complete
 surface **inline**: the `description` callout, the `assignee` chip, the step's `outputSchema` (shown even
 when empty, so the person sees the shape their output is checked against), and the form built from that
-schema. A node with no `outputSchema` draws a single raw-JSON control instead, so any-JSON output still
-has somewhere to go. Field validation is inline; the **Complete this activity** button calls
+schema. A node with no `outputSchema` draws a single free-text control instead, which takes anything the
+person types: JSON becomes its value, plain prose becomes a JSON string, and blank submits an empty
+output. It never rejects, matching the server's "any JSON accepted" for a schema-less node. Field
+validation is inline; the **Complete this activity** button calls
 `POST /v0/runs/:step_run_id/complete` directly with the panel's output value. On `400` the step stays
 `awaiting` for a retry and the server's field errors show in place. On `202` the client watches the root
 SSE stream and the run continues to the next `awaiting` step or to completion. (An earlier build put this
