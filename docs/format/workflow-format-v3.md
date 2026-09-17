@@ -15,7 +15,7 @@ how `@2` treated `@0`.
 `@2` `worker: { "type": "engine" }` / `worker: { "type": "llm", "model", "options" }` union is gone.
 
 - A step's `worker` is now an optional **worker-name string** — one of the names its step type ships
-  (`binary`'s `spawn`, `prompt`'s `sdk`). Omitted, the step uses its type's **default worker**. A step
+  (`binary`'s `spawn`, `prompt`'s `anthropic`). Omitted, the step uses its type's **default worker**. A step
   naming a worker its type does not ship fails at load with the valid names listed (§4.1).
 - `model` and `options` are no longer worker fields. They are **config**, fixed as `config.model` and
   `config.options` (§7). `model` is literal config now, so it is no longer interpolable against context;
@@ -181,7 +181,7 @@ All three step types additionally accept:
 | `publish` | no | Context writes from the step's output (§6.2). Absent = writes nothing. |
 
 `worker` is a **name string**, not a tagged object: each step type ships one or more workers (a named
-`run` method), and `worker` selects one by name — `binary`'s `spawn`, `prompt`'s `sdk`, each the default
+`run` method), and `worker` selects one by name — `binary`'s `spawn`, `prompt`'s `anthropic`, each the default
 of its type. A step naming a worker its type does not ship **fails at load** with the valid names listed
 (the `(type, name)` pair is a worker's identity, so a name is meaningful only inside its type). A
 `workflow` step takes **no `worker`**: it runs a nested run, not a worker.
@@ -191,13 +191,28 @@ Controllers (`parallel`, `branch`, `while-do`, `sequence`, `checkpoint`) take **
 
 ### 4.2 Step types
 
-**`prompt`** — `prompt` (string, interpolable) is the instruction text. Its worker (`sdk`, the Agent SDK)
-receives the prompt plus the step's entire input object, rendered, and the **model** it runs on from
-`config.model` (§7). There is no `context_refs` mechanism. What the step reads is exactly what its
-`input` map builds. `config.model` is required for a `prompt` step; a step with none **fails at run
+**`prompt`** — `prompt` (string, interpolable) is the instruction text. The step's **worker** selects the
+model provider, because a provider *is* a named method that produces the step's output: this type ships
+two, `anthropic` (the default, Anthropic via the Agent SDK) and `deepseek` (one OpenAI-compatible Chat
+Completions request). A step naming no worker gets `anthropic`, which is what every `prompt` step written
+before the second worker existed means, so `worker` is the only thing that changes when an author
+switches provider. Either worker receives the prompt plus the step's entire input object, rendered, and
+the **model** it runs on from `config.model` (§7); the rendered message is identical for both, so the
+two answer the same question. There is no `context_refs` mechanism. What the step reads is exactly what
+its `input` map builds. `config.model` is required for a `prompt` step; a step with none **fails at run
 start**, not at load — config carries no per-key required declaration, so the check has no load to live
-at (ADR 0021 sub-10). `config.options` is the SDK invocation bag (MCP servers, skills, system prompt),
-passed to the worker verbatim.
+at (ADR 0021 sub-10). `config.options` is the worker's invocation bag, read per worker: `anthropic` passes the
+whole bag to the Agent SDK (MCP servers, skills, system prompt, `settingSources`), while `deepseek`
+honors the subset its HTTP transport can express (`systemPrompt` as a string, `maxTokens`,
+`temperature`, `thinking`) and ignores the rest.
+
+`worker` is per-step: there is **no file-level or run-level worker default** (§4, ADR 0021 sub-8), so
+putting a whole workflow on `deepseek` means naming that worker on each of its `prompt` steps. The
+`deepseek` worker's credential and endpoint are **environment**, never file values —
+`DEEPSEEK_API_KEY`, and `DEEPSEEK_BASE_URL` for a gateway — where `anthropic` uses the Agent SDK's own
+`ANTHROPIC_API_KEY` or subscription credential. A `deepseek` step whose `config.model` still names a
+Claude model has that name mapped onto a DeepSeek model (opus → `deepseek-v4-pro`, sonnet/haiku →
+`deepseek-flash`) and reports the substitution as a step diagnostic rather than failing.
 
 **`binary`** — `command` (string), `args` (string array, default `[]`), and `cwd` (string, default: the
 directory of the workflow file), all interpolable. A **relative `cwd` resolves against the directory of
@@ -568,7 +583,7 @@ silent-change classes forever.
   (§4.2), because config has no per-key required declaration. Letting a type declare a config key
   required is [#320](https://github.com/howardyang2009/PATH/issues/320)'s to design; `prompt.model` is
   its first named case.
-- **`prompt`'s `cli` and `remote` workers.** #309's model names them; only `sdk` is built. Each is
+- **`prompt`'s `cli` and `remote` workers.** #309's model names them; only `anthropic` is built. Each is
   addable later as a second worker in the `prompt` folder with **no format change** — the `worker` enum
   simply widens.
 - **Whether `else` should become mandatory.** mvp-spec §5.2 fails a no-match-with-no-`else` run. A

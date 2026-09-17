@@ -26,7 +26,7 @@ describe("step nodes", () => {
     const result = NodeSchema.safeParse({
       type: "prompt",
       id: ID, name: "summarize",
-      worker: "sdk",
+      worker: "anthropic",
       config: { model: "claude-sonnet-5", temperature: 0 },
       input: { raw_changes: "${context.raw_changes}" },
       parse: "json",
@@ -38,7 +38,7 @@ describe("step nodes", () => {
 
   it("accepts an omitted worker (the type default) and the type's own worker name (`@3` §4)", () => {
     expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", prompt: "hi" }).success).toBe(true);
-    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "sdk", prompt: "hi" }).success).toBe(true);
+    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "anthropic", prompt: "hi" }).success).toBe(true);
     expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "spawn", command: "git" }).success).toBe(true);
   });
 
@@ -46,15 +46,15 @@ describe("step nodes", () => {
     const promptResult = NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "spawn", prompt: "hi" });
     expect(promptResult.success).toBe(false);
     if (!promptResult.success) {
-      expect(JSON.stringify(promptResult.error.issues)).toContain("sdk");
+      expect(JSON.stringify(promptResult.error.issues)).toContain("anthropic");
     }
-    // `binary` ships `spawn`, not `sdk` — a step type's worker names are its own (the pair is the identity).
-    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "sdk", command: "git" }).success).toBe(false);
+    // `binary` ships `spawn`, not `anthropic` — a step type's worker names are its own (the pair is the identity).
+    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "anthropic", command: "git" }).success).toBe(false);
   });
 
   it("rejects a worker on a workflow step — a workflow step runs a nested run, not a worker (`@3` §4)", () => {
     expect(
-      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./child.workflow.json", worker: "sdk" }).success,
+      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./child.workflow.json", worker: "anthropic" }).success,
     ).toBe(false);
   });
 
@@ -150,7 +150,7 @@ describe("controllers reject step-only fields", () => {
         type: "sequence",
         id: ID, name: "s",
         body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
-        worker: "sdk",
+        worker: "anthropic",
       }).success,
     ).toBe(false);
   });

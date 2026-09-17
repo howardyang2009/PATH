@@ -16,9 +16,9 @@ import { fakeObserver } from "../fake-observer.js";
  * `(type, worker-name)` dispatch, and the `workerOverrides` seam.
  */
 
-// A scripted stand-in for `prompt`'s `sdk` worker: it records the request and answers a fixed string,
-// so the run stays deterministic and free without the Agent SDK. It is plugged in as `prompt.sdk`.
-function scriptedSdk(calls: StepRequest[]): WorkerDescriptor {
+// A scripted stand-in for `prompt`'s `anthropic` worker: it records the request and answers a fixed string,
+// so the run stays deterministic and free without the Agent SDK. It is plugged in as `prompt.anthropic`.
+function scriptedAnthropic(calls: StepRequest[]): WorkerDescriptor {
   return {
     meters: true,
     needsProcessorSlot: true,
@@ -69,15 +69,15 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
 
     const result = await runWorkflow(file, fileDir, {
       observer,
-      workerOverrides: { prompt: { sdk: scriptedSdk(calls) } },
+      workerOverrides: { prompt: { anthropic: scriptedAnthropic(calls) } },
     });
 
     // End to end: the binary ran on the real `spawn` worker and its output threaded into the prompt,
-    // which ran on the overridden `sdk` worker; the workflow output is the prompt's result.
+    // which ran on the overridden `anthropic` worker; the workflow output is the prompt's result.
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ notes: "SUMMARY of: CHANGES" });
 
-    // The prompt's default worker (`sdk`) received the binary's output as its input.
+    // The prompt's default worker (`anthropic`) received the binary's output as its input.
     expect(calls).toHaveLength(1);
     expect(calls[0]?.input).toBe("CHANGES");
 
@@ -88,10 +88,10 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
     const summarize = started.find((s) => s.nodeName === "summarize")!;
     expect(gather.workerName).toBe("spawn");
     expect(gather.stepType).toBe("binary");
-    expect(summarize.workerName).toBe("sdk");
+    expect(summarize.workerName).toBe("anthropic");
     expect(summarize.stepType).toBe("prompt");
 
-    // Only the metering worker's spend is recorded: `sdk` meters, `spawn` does not.
+    // Only the metering worker's spend is recorded: `anthropic` meters, `spawn` does not.
     const usage = observer["step-usage"].mock.calls.map((c) => c[0]);
     expect(usage).toHaveLength(1);
     expect(usage[0]).toMatchObject({ usage: { input_tokens: 5 }, estimatedCostUsd: 0.01 });

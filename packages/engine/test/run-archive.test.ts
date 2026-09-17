@@ -462,7 +462,7 @@ function seedLeaf(opts: {
     rootRunId: opts.rootRunId,
     parentRunId: opts.parentRunId,
     nodeId: opts.nodeId, nodeName: opts.nodeId,
-    workerName: "sdk",
+    workerName: "anthropic",
     status: "succeeded",
   });
   setRunUsage(db, opts.runId, { usage: { input_tokens: 1 }, estimatedCostUsd: opts.cost });

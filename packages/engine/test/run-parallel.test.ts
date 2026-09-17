@@ -41,13 +41,13 @@ afterEach(() => {
 });
 
 // The real scanned registry (binary/prompt), loaded once for the whole file. Leaf dispatch reads it;
-// a prompt-fanout test swaps in its own `prompt`/`sdk` worker via `registryWith`.
+// a prompt-fanout test swaps in its own `prompt`/`anthropic` worker via `registryWith`.
 let registry: LoadedStepPluginRegistry;
 beforeAll(async () => {
   registry = await scanStepPlugins();
 });
 
-/** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted `sdk`. */
+/** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted `anthropic`. */
 function registryWith(type: string, name: string, descriptor: WorkerDescriptor): LoadedStepPluginRegistry {
   const clone: LoadedStepPluginRegistry = {};
   for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
@@ -291,7 +291,7 @@ describe("runNode — parallel", () => {
       },
     };
     const { run } = makeRun({
-      runtime: { registry: registryWith("prompt", "sdk", worker), semaphore: createProcessorSemaphore(2) },
+      runtime: { registry: registryWith("prompt", "anthropic", worker), semaphore: createProcessorSemaphore(2) },
     });
     const ask = (id: string) => ({
       type: "sequence" as const,

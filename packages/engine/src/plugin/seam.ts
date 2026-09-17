@@ -83,12 +83,12 @@ export interface WorkerDescriptor<F extends ZodRawShape = ZodRawShape, C extends
   run(request: StepRequest<F, C>): Promise<StepResult>;
   /**
    * The worker reports spend (`usage`/`estimatedCostUsd` on its result). The engine emits the usage
-   * observer event only for a metering worker; `prompt`'s `sdk` sets it, `binary`'s `spawn` does not.
+   * observer event only for a metering worker; `prompt`'s `anthropic` sets it, `binary`'s `spawn` does not.
    */
   meters: boolean;
   /**
    * The worker needs a processor-concurrency slot before it runs, so the engine acquires one from the
-   * processor semaphore and holds it for the call (#331 rename, ADR 0021 sub-5). `prompt`'s `sdk` sets
+   * processor semaphore and holds it for the call (#331 rename, ADR 0021 sub-5). `prompt`'s `anthropic` sets
    * it; `binary`'s `spawn` stays uncapped.
    */
   needsProcessorSlot: boolean;

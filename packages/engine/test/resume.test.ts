@@ -47,7 +47,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
   };
 }
 
-// The `prompt`/`sdk` seam carries no node name (ADR 0021 sub-6), so these fixtures set each prompt
+// The `prompt`/`anthropic` seam carries no node name (ADR 0021 sub-6), so these fixtures set each prompt
 // node's `prompt` to its own id — the worker reads `fields.prompt` as the node label.
 function nodeLabel(request: StepRequest): string {
   return String(request.fields.prompt);
@@ -66,9 +66,9 @@ function recordingWorker(outputs: { [nodeName: string]: string }, ran: string[])
   };
 }
 
-/** Plug a scripted `prompt`/`sdk` worker in via the registry override seam (ADR 0021 sub-15). */
+/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021 sub-15). */
 function promptOverride(worker: WorkerDescriptor) {
-  return { prompt: { sdk: worker } };
+  return { prompt: { anthropic: worker } };
 }
 
 /** A reader over an in-memory original tree, recording every `<runId>/<filename>` it is asked for. */

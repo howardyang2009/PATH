@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeWorkflowFileSchema, safeParseWorkflowFileWith } from "@path/schema";
+import { makeWorkflowFileSchema, safeParseWorkflowFileWith, toWireStepPlugins } from "@path/schema";
 
 import { scanStepPlugins, STEP_PLUGINS_DIR } from "../../src/plugin/scan.js";
 import type { StepRequest, StepResult } from "../../src/plugin/seam.js";
@@ -29,14 +29,14 @@ describe("the shipped built-ins load through the scanner", () => {
     expect(registry.binary).toBeDefined();
     expect(registry.prompt).toBeDefined();
     expect(registry.binary!.defaultWorker).toBe("spawn");
-    expect(registry.prompt!.defaultWorker).toBe("sdk");
+    expect(registry.prompt!.defaultWorker).toBe("anthropic");
   });
 
   it("declares the processor-slot and metering flags per worker", async () => {
     const registry = await loadRegistry();
 
-    // `prompt`'s `sdk` needs a processor slot and meters; `binary`'s `spawn` stays uncapped and meters nothing.
-    expect(registry.prompt!.workers.sdk).toMatchObject({ needsProcessorSlot: true, meters: true });
+    // `prompt`'s `anthropic` needs a processor slot and meters; `binary`'s `spawn` stays uncapped and meters nothing.
+    expect(registry.prompt!.workers.anthropic).toMatchObject({ needsProcessorSlot: true, meters: true });
     expect(registry.binary!.workers.spawn).toMatchObject({ needsProcessorSlot: false, meters: false });
   });
 
@@ -45,6 +45,71 @@ describe("the shipped built-ins load through the scanner", () => {
 
     expect(registry.binary).not.toHaveProperty("type");
     expect(registry.prompt).not.toHaveProperty("type");
+  });
+});
+
+describe("the `prompt` plugin's two model workers", () => {
+  it("ships `anthropic` as the default and `deepseek` beside it", async () => {
+    const registry = await loadRegistry();
+
+    expect(Object.keys(registry.prompt!.workers)).toEqual(["anthropic", "deepseek"]);
+    expect(registry.prompt!.defaultWorker).toBe("anthropic");
+  });
+
+  it("gives both workers the same capabilities — each makes one metered processor call per step-run", async () => {
+    const registry = await loadRegistry();
+
+    expect(registry.prompt!.workers.anthropic).toMatchObject({ meters: true, needsProcessorSlot: true });
+    expect(registry.prompt!.workers.deepseek).toMatchObject({ meters: true, needsProcessorSlot: true });
+  });
+
+  it("declares no vendor field on the node — selecting a provider is the `worker` envelope field", async () => {
+    const registry = await loadRegistry();
+
+    expect(Object.keys(registry.prompt!.fields)).toEqual(["prompt"]);
+  });
+
+  it("offers both workers on the wire, so no surface restates the provider list", async () => {
+    const registry = await loadRegistry();
+    // The same projection `GET /v0/step-plugins` serves the browser Designer (wire-step-plugins.ts);
+    // its worker dropdown appears whenever a type ships more than one.
+    const response = toWireStepPlugins(registry);
+    const prompt = response.step_plugins.find((p) => p.name === "prompt")!;
+
+    expect(prompt.workers).toEqual(["anthropic", "deepseek"]);
+    expect(prompt.default_worker).toBe("anthropic");
+  });
+
+  it("validates a prompt step that names either worker, and one that names none", async () => {
+    const registry = await loadRegistry();
+    const schema = makeWorkflowFileSchema(registry);
+    const body = (worker?: string) => ({
+      format: "path/workflow@3",
+      id: UUID_FILE,
+      name: "providers",
+      body: [{ type: "prompt", id: UUID_PROMPT, name: "summarize", prompt: "Summarize the diff.", ...(worker === undefined ? {} : { worker }) }],
+    });
+
+    expect(safeParseWorkflowFileWith(schema, body("deepseek")).success).toBe(true);
+    expect(safeParseWorkflowFileWith(schema, body("anthropic")).success).toBe(true);
+    expect(safeParseWorkflowFileWith(schema, body()).success).toBe(true);
+  });
+
+  it("rejects a worker name the type does not ship, at load, naming the valid ones", async () => {
+    const registry = await loadRegistry();
+    const schema = makeWorkflowFileSchema(registry);
+
+    const result = safeParseWorkflowFileWith(schema, {
+      format: "path/workflow@3",
+      id: UUID_FILE,
+      name: "providers",
+      body: [{ type: "prompt", id: UUID_PROMPT, name: "summarize", prompt: "Summarize the diff.", worker: "openai" }],
+    });
+
+    expect(result.success).toBe(false);
+    // The `(type, name)` pair is a worker's identity, so an unknown name is a load error — never a
+    // silent fallback to the default worker.
+    expect(JSON.stringify(result)).toContain("openai");
   });
 });
 

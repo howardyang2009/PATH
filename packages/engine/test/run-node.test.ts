@@ -40,17 +40,17 @@ afterEach(() => {
 });
 
 // The real scanned registry (binary/prompt), loaded once. Leaf dispatch reads it; a prompt test swaps
-// in its own `prompt`/`sdk` worker via `promptRuntime`.
+// in its own `prompt`/`anthropic` worker via `promptRuntime`.
 let registry: LoadedStepPluginRegistry;
 beforeAll(async () => {
   registry = await scanStepPlugins();
 });
 
-/** A run runtime whose `prompt`/`sdk` worker is the given descriptor — for the prompt-step tests. */
+/** A run runtime whose `prompt`/`anthropic` worker is the given descriptor — for the prompt-step tests. */
 function promptRuntime(worker: WorkerDescriptor, semaphore = createProcessorSemaphore(1)): RunContext["runtime"] {
   const clone: LoadedStepPluginRegistry = {};
   for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
-  clone.prompt!.workers.sdk = worker;
+  clone.prompt!.workers.anthropic = worker;
   return { registry: clone, semaphore };
 }
 

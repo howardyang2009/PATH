@@ -19,9 +19,9 @@ function loadFixture(name: string): WorkflowFile {
   return JSON.parse(readFileSync(join(fixturesDir, name), "utf8")) as WorkflowFile;
 }
 
-/** Plug a scripted `prompt`/`sdk` worker in via the registry override seam (ADR 0021 sub-15). */
+/** Plug a scripted `prompt`/`anthropic` worker in via the registry override seam (ADR 0021 sub-15). */
 function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
-  return { prompt: { sdk: worker } };
+  return { prompt: { anthropic: worker } };
 }
 
 // `stampGuids` already produces a valid `@3` file and `runWorkflow` never re-validates, so this stands

@@ -307,7 +307,7 @@ describe("PathApiClient", () => {
       json({
         step_plugins: [
           { name: "binary", fields: { command: { type: "string", optional: false } }, workers: ["spawn"], default_worker: "spawn" },
-          { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["sdk"], default_worker: "sdk" },
+          { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
         ],
       }),
     );

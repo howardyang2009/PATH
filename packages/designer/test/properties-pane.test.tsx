@@ -49,7 +49,7 @@ function paneFile(): Record<string, unknown> {
 
 /** Registry with a multi-worker prompt, a layoutable generic type, and an unlayoutable (raw-JSON) type. */
 const RICH_PLUGINS: WireStepPlugin[] = [
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["sdk", "batch"], default_worker: "sdk" },
+  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic", "batch"], default_worker: "anthropic" },
   {
     name: "binary",
     fields: {
@@ -96,6 +96,45 @@ describe("#369 selection populates the pane", () => {
     expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
     expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
+  });
+
+  it("offers the prompt type's model workers through the worker dropdown, anthropic marked as the default", async () => {
+    const { canvas, pane } = await openPane();
+    selectNode(canvas, "alpha");
+
+    // `RICH_PLUGINS` gives `prompt` two workers, so the generic worker selector renders — the same
+    // mechanism that offers `anthropic` and `deepseek`. No vendor-specific field is involved.
+    const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["anthropic", "batch"]);
+    expect(select.options[0]!.textContent).toBe("anthropic (default)");
+  });
+
+  it("writes `worker` when a non-default model worker is picked, and drops the key on returning to the default", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    selectNode(canvas, "alpha");
+
+    // A step that names no worker renders as the type's default worker.
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("anthropic");
+
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put.length).toBe(1));
+    const saved = calls.put.at(-1)!.body.workflow as { body: { name: string; worker?: string }[] };
+    expect(saved.body.find((n) => n.name === "alpha")!.worker).toBe("batch");
+
+    // Picking the default again drops the key, so the step is identical to one that never named a worker.
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "anthropic" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put.length).toBe(2));
+    const reSaved = calls.put.at(-1)!.body.workflow as { body: { name: string; worker?: string }[] };
+    expect(reSaved.body.find((n) => n.name === "alpha")).not.toHaveProperty("worker");
   });
 
   it("labels a branch arm, a branch else, and a parallel branch by role", async () => {
@@ -293,14 +332,14 @@ describe("#369 worker selection", () => {
 
   it("shows a default-preselected dropdown for a >1-worker type and writes the chosen worker", async () => {
     const { canvas, pane } = await openPane();
-    selectNode(canvas, "alpha"); // prompt ships sdk + batch
+    selectNode(canvas, "alpha"); // prompt ships anthropic + batch
     const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
-    expect(select.value).toBe("sdk");
+    expect(select.value).toBe("anthropic");
     fireEvent.change(select, { target: { value: "batch" } });
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
     // Selecting the default again drops the field back to the default.
-    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "sdk" } });
-    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("sdk");
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "anthropic" } });
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("anthropic");
   });
 });
 

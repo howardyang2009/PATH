@@ -218,7 +218,7 @@ async function runOnce(file: WorkflowFile, token: ConfigValue): Promise<RunOutco
     // survives the token injection.
     const result = await runWorkflow(stampNames({ ...file, config: { ...file.config, token } }), dir, {
       observer,
-      workerOverrides: { prompt: { sdk: llmWorker } },
+      workerOverrides: { prompt: { anthropic: llmWorker } },
     });
 
     const rootRunId = (
