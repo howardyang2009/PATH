@@ -23,8 +23,13 @@ import {
  * `reconnecting` is a transient state, not an error; `closed` is the terminal one (the root run
  * finished and the server closed the stream for good), and `failed` means reconnect is off or
  * exhausted and no more events are coming.
+ *
+ * `waiting` is the quiescent state a `person-activity` run reaches: a leaf is parked `awaiting` and the
+ * server has no more events until a `complete`, so it ends the stream although the root run is still
+ * `running` (ADR 0038). That is not a dropped connection — the core slow-polls for the continuation
+ * rather than hot-looping a reconnect — so the viewer shows a calm "waiting" note, not "reconnecting".
  */
-export type StreamPhase = "connecting" | "live" | "reconnecting" | "closed" | "failed";
+export type StreamPhase = "connecting" | "live" | "waiting" | "reconnecting" | "closed" | "failed";
 
 /**
  * One run's live state: the client's mutable projection of a run row, event-updated. It is the domain

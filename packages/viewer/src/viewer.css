@@ -1078,6 +1078,17 @@ button.workflow-row:focus-visible {
   animation: stream-pulse 0.7s ease-in-out infinite;
 }
 
+/* Quiescent, not dropped: a leaf is parked awaiting a person (ADR 0038). It reads in the awaiting hue
+   with a slow, calm pulse — the run is paused on purpose, nothing is wrong. */
+.stream-indicator[data-phase="waiting"] {
+  color: var(--status-awaiting-fg);
+}
+
+.stream-indicator[data-phase="waiting"] .stream-dot {
+  background: var(--status-awaiting-fg);
+  animation: stream-pulse 2.2s ease-in-out infinite;
+}
+
 .stream-indicator[data-phase="failed"] {
   color: var(--status-failed-fg);
 }

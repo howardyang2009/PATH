@@ -177,6 +177,37 @@ describe("connectRunViewModel", () => {
     connected.close();
   });
 
+  it("reports waiting (not reconnecting) while a leaf is parked, then live again on completion", async () => {
+    const stream = new EventStream();
+    const stub = stubFetch([[ROOT_ROW, record({ run_id: CHILD })]], stream);
+    const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
+
+    const connected = await connectRunViewModel({ client, rootRunId: ROOT, idlePollMs: 20 });
+    await waitFor(() => connected.model.getState().stream === "live");
+
+    const phases: string[] = [connected.model.getState().stream];
+    connected.model.subscribe((state) => {
+      if (phases.at(-1) !== state.stream) phases.push(state.stream);
+    });
+
+    // A leaf parks awaiting, then the server ends the stream (quiescent, root still running).
+    stream.push({ type: "step-awaiting", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", node_name: "draft", assignee: null });
+    await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "awaiting");
+    stream.end();
+
+    // The stream reads as waiting, and re-opening it to poll does not flicker back to live.
+    await waitFor(() => connected.model.getState().stream === "waiting" && stream.opens >= 2);
+    expect(connected.model.getState().stream).toBe("waiting");
+
+    // A completion arrives on the next poll: the leaf finishes, the stream reads live again.
+    stream.push({ type: "step-finished", seq: 2, ts: "t2", run_id: CHILD, node_id: "draft", node_name: "draft", status: "succeeded" });
+    await waitFor(() => connected.model.getState().stream === "live");
+
+    expect(phases).toEqual(["live", "waiting", "live"]);
+    expect(phases).not.toContain("reconnecting");
+    connected.close();
+  });
+
   it("marks the stream closed when the root run goes terminal", async () => {
     const stream = new EventStream();
     const stub = stubFetch([[ROOT_ROW]], stream);
