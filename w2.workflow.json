@@ -34,6 +34,16 @@
       "type": "prompt"
     },
     {
+      "id": "3ea7fc7b-7346-4b0c-b266-4e547203a1e9",
+      "name": "person-check-2",
+      "type": "person-activity",
+      "description": "do some person check here",
+      "publish": {
+        "person-check": "${output}"
+      },
+      "assignee": "Liying Zhu"
+    },
+    {
       "type": "checkpoint",
       "id": "bf4356f1-5515-4e42-8189-4fd845a32eb4",
       "name": "verdict-wellformed",
