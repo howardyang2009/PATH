@@ -108,6 +108,7 @@ export {
   buildCompleteFields,
   coerceCompleteOutput,
   mapCompleteErrors,
+  parseRawCompleteOutput,
   validateCompleteOutput,
   type CompleteField,
   type CompleteFieldKind,

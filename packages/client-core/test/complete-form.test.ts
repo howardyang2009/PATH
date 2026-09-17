@@ -4,6 +4,7 @@ import {
   buildCompleteFields,
   coerceCompleteOutput,
   mapCompleteErrors,
+  parseRawCompleteOutput,
   validateCompleteOutput,
 } from "../src/complete-form.js";
 
@@ -39,6 +40,26 @@ describe("buildCompleteFields", () => {
 
   it("returns no fields for a null schema (any JSON accepted)", () => {
     expect(buildCompleteFields(null)).toEqual([]);
+  });
+});
+
+describe("parseRawCompleteOutput", () => {
+  it("treats blank text as an empty output (the historical bare submit)", () => {
+    expect(parseRawCompleteOutput("")).toEqual({ ok: true, value: {} });
+    expect(parseRawCompleteOutput("   \n ")).toEqual({ ok: true, value: {} });
+  });
+
+  it("parses any JSON value: object, string, number, array", () => {
+    expect(parseRawCompleteOutput('{ "url": "x" }')).toEqual({ ok: true, value: { url: "x" } });
+    expect(parseRawCompleteOutput('"done"')).toEqual({ ok: true, value: "done" });
+    expect(parseRawCompleteOutput("42")).toEqual({ ok: true, value: 42 });
+    expect(parseRawCompleteOutput("[1, 2]")).toEqual({ ok: true, value: [1, 2] });
+  });
+
+  it("returns an error for invalid JSON", () => {
+    const result = parseRawCompleteOutput("{ not json");
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error).toMatch(/valid JSON/);
   });
 });
 

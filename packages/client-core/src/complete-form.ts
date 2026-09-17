@@ -74,6 +74,23 @@ export function buildCompleteFields(outputSchema: JsonValue | null): CompleteFie
 }
 
 /**
+ * The output a schema-less node's raw-JSON control makes (ADR 0040: no `outputSchema` ⇒ any JSON is
+ * accepted). Blank text keeps the historical "bare submit" — an empty object `{}` — so a node that
+ * wants nothing back still completes with one click. Non-blank text is parsed as JSON: a person can
+ * submit any JSON value (a string, a number, an array, an object), which is what `${output}` then
+ * carries. Invalid JSON returns an error the form shows on the control; the server never sees it.
+ */
+export function parseRawCompleteOutput(text: string): { ok: true; value: JsonValue } | { ok: false; error: string } {
+  const trimmed = text.trim();
+  if (trimmed === "") return { ok: true, value: {} };
+  try {
+    return { ok: true, value: JSON.parse(trimmed) as JsonValue };
+  } catch {
+    return { ok: false, error: 'Enter valid JSON (e.g. "done", 42, or { "key": "value" }).' };
+  }
+}
+
+/**
  * The output object a set of control values makes: a boolean field's value verbatim, a number field
  * parsed (blank omitted), any other field trimmed (blank omitted). An omitted field is left off the
  * object rather than sent as `null`/`""`, so a `required` check reads the same as the server's.
