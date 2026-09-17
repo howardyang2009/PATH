@@ -116,6 +116,12 @@ export interface RunResume {
   rerunFromNodePath ?? []`. Each descent into the path-node passes `suffix.slice(1)`; every off-path
   sibling passes `[]`. On-path-ness is structural — only the node whose id equals the suffix head receives
   a tail — so ids stay file-scoped by construction (ADR 0036).
+- **Reusable at node grain** are the types that mint exactly one succeeded run per node id under a
+  scope: `prompt`, `binary`, `person-activity`, and `workflow` (`RUN_PRODUCING_TYPES`). A
+  `person-activity` gate reuses like any produced output — its row flips `awaiting → succeeded` in
+  place, so it is one run per id — which means resuming from a later K keeps an earlier completed human
+  decision rather than re-asking the person. `while-do` is excluded (many runs per id, reused at
+  container grain instead), and control blocks own no run of their own.
 - **Each on-path level derives two sets** from its own body `B[]` and suffix head `head = S[0]`, `i =
   B.findIndex(n => n.id === head)`, `isLeaf = S.length === 1`, over the run-producing ids of `B.slice(i)`
   (the exact `walkNodes`/`RUN_PRODUCING_TYPES` walk `planReuse` already uses):

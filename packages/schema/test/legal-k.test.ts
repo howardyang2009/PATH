@@ -11,6 +11,10 @@ import { classifyLevelK, type LegalKLevelRun } from "../src/legal-k.js";
 // A leaf step node; the human id doubles as `id` and `name`, as the structural tests do.
 const step = (id: string): WorkflowNode => ({ type: "binary", id, name: id, command: "node", args: ["-e", ""] });
 
+// A person-activity leaf — a plugin type, so it is not in the `WorkflowNode` union; cast as the
+// structural tests do. It is node-grain reusable (resume-from-k.md), so it gates the prefix like any step.
+const person = (id: string): WorkflowNode => ({ type: "person-activity", id, name: id, description: `do ${id}` }) as unknown as WorkflowNode;
+
 // A while-do wrapping one leaf — a control body, so its inner node is an illegal K locus (#3).
 const loop = (id: string, inner: WorkflowNode): WorkflowNode => ({
   type: "while-do",
@@ -78,6 +82,30 @@ describe("classifyLevelK — the refusal taxonomy (spec §5)", () => {
       ok: false,
       reason: "not-succeeded",
     });
+  });
+});
+
+describe("classifyLevelK — a person-activity is node-grain reusable (resume-from-k.md)", () => {
+  // K = c, preceded by a succeeded person-activity gate. The human decision reuses, so a later K
+  // is legal — the operator keeps the earlier gate instead of being re-asked.
+  const withGate: WorkflowNode[] = [person("gate"), step("b"), step("c")];
+
+  it("admits a later K whose prefix person-activity succeeded (its decision reuses)", () => {
+    const rows = [run("gate", "succeeded"), run("b", "succeeded")];
+    expect(classifyLevelK({ body: withGate, rows, scopeRunId: "scope", nodeId: "c", leafStatus: "succeeded" })).toEqual({ ok: true });
+  });
+
+  it("#5 prefix-unsucceeded — a prefix person-activity still parked (awaiting) blocks a later K", () => {
+    const rows = [run("gate", "awaiting"), run("b", "succeeded")];
+    expect(classifyLevelK({ body: withGate, rows, scopeRunId: "scope", nodeId: "c", leafStatus: "succeeded" })).toEqual({
+      ok: false,
+      reason: "prefix-unsucceeded",
+    });
+  });
+
+  it("a succeeded person-activity is a legal K locus of its own", () => {
+    const rows = [run("gate", "succeeded")];
+    expect(classifyLevelK({ body: withGate, rows, scopeRunId: "scope", nodeId: "gate", leafStatus: "succeeded" })).toEqual({ ok: true });
   });
 });
 

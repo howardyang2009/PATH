@@ -126,19 +126,27 @@ export function* walkNodes(nodes: WorkflowNode[]): Generator<WorkflowNode> {
 
 /**
  * The node types whose runs a resume can **reuse at node grain** — one succeeded run per node id under
- * a scope (`prompt`, `binary`, `workflow`). This is the reuse-plan's matching set, not the set of every
- * type that mints a run: `while-do` is **deliberately excluded** even though ADR 0037 makes it mint one
- * iteration-container run *per pass*. A loop id maps to many runs, not one, so it is not a node-grain
- * reuse candidate; its per-iteration reuse is handled at container grain by `loopIterationResume`, whose
- * disposition test (`@path/schema`'s `rerunDisposition`) is index-based and needs no membership here.
- * Control blocks own no run of their own, so their success is their run-producing descendants' (a prefix
- * `while-do` passes on any succeeded iteration).
+ * a scope (`prompt`, `binary`, `person-activity`, `workflow`). The membership test is exactly *one
+ * succeeded run per node id*, not "is a step": a `person-activity` leaf mints one such run (its row
+ * flips `awaiting → succeeded` in place), so a completed human decision reuses like any prompt output
+ * — an operator who picks a later K keeps the earlier human gate rather than being re-asked (resume-from-k.md).
+ *
+ * This is the reuse-plan's matching set, not the set of every type that mints a run. `while-do` is
+ * **deliberately excluded** even though ADR 0037 makes it mint one iteration-container run *per pass*:
+ * a loop id maps to many runs, not one, so it is not a node-grain reuse candidate; its per-iteration
+ * reuse is handled at container grain by `loopIterationResume`, whose disposition test (`@path/schema`'s
+ * `rerunDisposition`) is index-based and needs no membership here. Control blocks (`parallel`, `branch`,
+ * `sequence`, `checkpoint`) own no run of their own, so their success is their run-producing descendants'
+ * (a prefix `while-do` passes on any succeeded iteration). Neither class can be added by widening this
+ * set: `planReuse`'s `succeeded.length === 1` guard would refuse a loop's many rows, and a control block
+ * has no row to reuse — so an allowlist keyed on the one-run-per-id invariant is the safe shape here, not
+ * a "reuse every step except a controller blocklist" one.
  *
  * The **one authority** the engine's reuse plan (`plan-reuse.ts`) and the client's eager legal-K check
  * (`@path/client-core`'s `resume-from-eligibility.ts`) both read — a bare literal copied into each would
  * drift silently when a node-grain-reusable type is added.
  */
-export const RUN_PRODUCING_TYPES: ReadonlySet<string> = new Set(["prompt", "binary", "workflow"]);
+export const RUN_PRODUCING_TYPES: ReadonlySet<string> = new Set(["prompt", "binary", "person-activity", "workflow"]);
 
 /**
  * The operator-facing name of a control block, as the rerun-boundary refusal taxonomy spells it

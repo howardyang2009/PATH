@@ -51,6 +51,13 @@ function checkpoint(id: string): CheckpointNode {
   return { type: "checkpoint", id, name: id, condition: { type: "exists", path: "context.ok" } };
 }
 
+// A person-activity leaf — a plugin type, so not in the `WorkflowNode` union; cast as the engine's
+// own tests do. It mints exactly one run per node id (its row flips awaiting→succeeded), so it is a
+// node-grain reuse candidate (resume-from-k.md).
+function person(id: string): WorkflowNode {
+  return { type: "person-activity", id, name: id, description: `do ${id}` } as unknown as WorkflowNode;
+}
+
 describe("planReuse (#170)", () => {
   it("reuses an unchanged node id with succeeded status", () => {
     const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status: "succeeded" })];
@@ -157,6 +164,20 @@ describe("planReuse (#170)", () => {
     ]);
 
     expect(planReuse(originalRuns, loop).has("revise")).toBe(false);
+  });
+
+  it("reuses a succeeded person-activity, so a completed human decision is not re-asked (resume-from-k.md)", () => {
+    const originalRuns = [root(), run({ runId: "gate-run", parentRunId: "root", nodeId: "gate", nodeName: "gate", status: "succeeded" })];
+    const plan = planReuse(originalRuns, tree([person("gate"), prompt("after")]));
+
+    expect(plan.get("gate")).toBe(originalRuns[1]);
+  });
+
+  it("does not reuse a person-activity still parked (awaiting) — it re-runs and re-awaits (resume-from-k.md)", () => {
+    const originalRuns = [root(), run({ runId: "gate-run", parentRunId: "root", nodeId: "gate", nodeName: "gate", status: "awaiting" })];
+    const plan = planReuse(originalRuns, tree([person("gate")]));
+
+    expect(plan.has("gate")).toBe(false);
   });
 
   it("returns an empty plan when the original tree has no root run recorded", () => {
