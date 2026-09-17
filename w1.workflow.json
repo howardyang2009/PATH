@@ -37,6 +37,16 @@
       }
     },
     {
+      "id": "75deeaad-b265-4db1-bc8e-6d0e1b2d6e4d",
+      "name": "check-git-result",
+      "publish": {
+        "person-confirm": "${output}"
+      },
+      "description": "Do something here",
+      "type": "person-activity",
+      "assignee": "Han Yang"
+    },
+    {
       "type": "parallel",
       "id": "1912e274-158c-48a8-81d0-bb8851fc2bcf",
       "name": "summarize",
