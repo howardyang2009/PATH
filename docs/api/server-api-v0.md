@@ -332,6 +332,8 @@ step returns `{ status: "awaiting" }` and the run **suspends** (CONTEXT.md § Aw
 offline activity and calls this route with the output. Valid output moves the leaf to `succeeded` and the
 engine continues; invalid output is refused and the leaf stays `awaiting` for a retry. It is a **named
 action** on an existing run, like Cancel (§4.2) and Resume (§4.3), and async like `POST /v0/runs` (§2).
+The step type and its behavior are specified in [person-activity.md](../spec/person-activity.md); this
+section is the wire shape.
 
 **The path names the leaf, not the root.** Unlike Cancel and Resume — which act on a whole tree and key
 on `:root_run_id` — Complete targets one **awaiting leaf**, identified by its own `step_run_id`. A tree
