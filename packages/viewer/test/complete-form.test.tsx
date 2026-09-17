@@ -90,4 +90,46 @@ describe("CompleteForm", () => {
 
     await waitFor(() => expect(screen.getByTestId("complete-form-error")).toHaveTextContent(/not awaiting/));
   });
+
+  it("draws a free-text output control when the node has no outputSchema", () => {
+    const { client } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={() => {}} />);
+
+    expect(screen.getByTestId("complete-raw-output")).not.toBeNull();
+  });
+
+  it("sends parsed JSON as the output when the raw text is JSON", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={onCompleted} />);
+
+    fireEvent.change(screen.getByTestId("complete-raw-output"), { target: { value: '{ "confirmed": true }' } });
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: { confirmed: true } });
+  });
+
+  it("sends plain text as a JSON string, never rejecting non-JSON", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={onCompleted} />);
+
+    fireEvent.change(screen.getByTestId("complete-raw-output"), { target: { value: "ship it please" } });
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: "ship it please" });
+  });
+
+  it("submits an empty output when the raw control is left blank", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={onCompleted} />);
+
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: {} });
+  });
 });

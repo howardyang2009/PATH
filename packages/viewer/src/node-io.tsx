@@ -1,5 +1,6 @@
 import {
   awaitingNodeForRun,
+  effectiveRunStatus,
   isReuseRow,
   isTerminal,
   nodeLabel,
@@ -15,22 +16,34 @@ import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunBlob, type BlobLoad } from "./use-run-blob.js";
 
+/** A stable empty map for the default `runs`, so the effect-free derivation never allocates per render. */
+const EMPTY_RUNS: ReadonlyMap<string, RunNodeState> = new Map();
+
 export interface NodeIoProps {
   client: PathApiClient;
   /** The run selected in the tree, as the live snapshot holds it — one step's run. */
   run: RunNodeState;
+  /**
+   * The whole run map of the watched tree, so the head pill derives the same display status the rail
+   * and the run-detail head show (`effectiveRunStatus`): a running run with an awaiting run below reads
+   * `awaiting`. Empty by default — the head then shows the run's own record status. Only the pill uses
+   * it; the Complete surface and the blob reads stay keyed on the real `run.status`.
+   */
+  runs?: ReadonlyMap<string, RunNodeState>;
   /**
    * The root run's narrative, so the pane can surface this run's own failure message (the E block).
    * Optional and empty-by-default: before any event is known the pane simply has no error to show.
    */
   narrative?: readonly LogEvent[];
   /**
-   * The watched run's root workflow file, parsed structurally (the app reads it once for the eager
-   * legal-K check). An `awaiting` leaf's `description`/`assignee`/`outputSchema` live here, not on the
-   * run row, so the Complete surface resolves them by node id. `null` while it loads or when the file
-   * could not be read — the awaiting surface then degrades to a schema-less submit.
+   * The watched run's reachable workflow files, parsed structurally: the root file and every file its
+   * `workflow` steps ref, transitively (`loadReachableWorkflowFiles`). An `awaiting` leaf's
+   * `description`/`assignee`/`outputSchema` live on the node in the file that defines it, not on the run
+   * row, so the Complete surface resolves them by node id — and that file can be a nested one, not only
+   * the root (issue #486 follow-up). Empty while it loads or when the files could not be read; the
+   * awaiting surface then degrades to a schema-less submit.
    */
-  rootFile?: WorkflowFile | null;
+  workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
@@ -78,15 +91,20 @@ function contextBlobRef(run: RunNodeState): string {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoProps) {
+export function NodeIo({ client, run, narrative = [], workflowFiles = [], runs }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
+  // The head pill uses the shared display status (a running run with an awaiting run below reads
+  // `awaiting`); everything else on this run — the Complete surface, the blob settling — stays on the
+  // real `run.status`, because a flipped ancestor is not itself awaiting and has no completion to make.
+  const displayStatus = effectiveRunStatus(run, runs ?? EMPTY_RUNS);
   const errorMessage = runErrorMessage(run.runId, narrative);
   // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
-  // from the workflow file by id (they never ride the run row); a leaf in a nested file reads as null
-  // and the surface degrades. The root run stays `running` while a leaf awaits (ADR 0038), so only the
-  // leaf row itself carries this.
-  const awaitingNode = awaitingNodeForRun(rootFile, run);
+  // from the workflow file by id (they never ride the run row); the file may be the root or any nested
+  // one its `workflow` steps ref, so the search spans the whole reachable set (issue #486 follow-up). A
+  // leaf the set cannot resolve reads as null and the surface degrades. The root run stays `running`
+  // while a leaf awaits (ADR 0038), so only the leaf row itself carries this.
+  const awaitingNode = awaitingNodeForRun(workflowFiles, run);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
   const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
@@ -99,7 +117,7 @@ export function NodeIo({ client, run, narrative = [], rootFile = null }: NodeIoP
     <div className="node-io">
       <header className="node-io-head" data-testid="node-io-head">
         <span className="node-name">{run.nodeName ?? nodeLabel(run.nodeId)}</span>
-        <StatusPill status={run.status} />
+        <StatusPill status={displayStatus} />
         <button
           type="button"
           className="card-action"

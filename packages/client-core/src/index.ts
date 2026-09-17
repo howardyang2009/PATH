@@ -73,7 +73,7 @@ export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "
 // with one right answer — which events say a run stopped, and which run spawned which — so a second
 // surface reaching different answers would be showing a different run, not a differently styled one.
 export { eventOutcome } from "./event-outcome.js";
-export { buildRunTree, type RunTreeNode } from "./run-tree.js";
+export { buildRunTree, effectiveRunStatus, type RunTreeNode } from "./run-tree.js";
 
 // The folder tree behind every workflow picker: one grouping of the flat discovery list both the
 // Viewer's launch panel and the Designer's open dialog draw the same way (#359 shared seam).
@@ -104,9 +104,11 @@ export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } f
 // pre-check, and the server `400`→field mapping — so both surfaces draw the same form and read the same
 // errors. The React components keep only their own inputs on the other side (spec § Shared seam).
 export { AWAITING_STEP_TYPE, awaitingNodeForRun, findAwaitingNode, type AwaitingNode } from "./awaiting-node.js";
+export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
 export {
   buildCompleteFields,
   coerceCompleteOutput,
+  coerceRawCompleteOutput,
   mapCompleteErrors,
   validateCompleteOutput,
   type CompleteField,

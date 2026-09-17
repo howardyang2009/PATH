@@ -92,6 +92,16 @@ describe("Narrative", () => {
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
+  it("surfaces a parked run as waiting, not reconnecting, and not an error", () => {
+    render(<Narrative events={[started(1, null)]} stream="waiting" />);
+
+    const indicator = screen.getByTestId("stream-indicator");
+    expect(indicator).toHaveAttribute("data-phase", "waiting");
+    expect(indicator).toHaveTextContent("waiting for completion");
+    expect(indicator).not.toHaveTextContent("reconnecting");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  });
+
   it("reports a stream that will not come back", () => {
     render(<Narrative events={[]} stream="failed" />);
 

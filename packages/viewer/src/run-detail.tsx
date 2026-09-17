@@ -1,4 +1,4 @@
-import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import { effectiveRunStatus, isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { Narrative } from "./narrative.js";
@@ -28,8 +28,11 @@ export interface RunDetailProps {
   /** The run the node-I/O pane is showing, owned above so both panes agree on it. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
-  /** The watched run's root workflow file, for an awaiting leaf's assignee chip in the rail. */
-  rootFile?: WorkflowFile | null;
+  /**
+   * The watched run's reachable workflow files (root + transitively-ref'd sub-files), for an awaiting
+   * leaf's assignee chip in the rail — the node may sit in a nested file, not only the root.
+   */
+  workflowFiles?: readonly WorkflowFile[];
 }
 
 /**
@@ -40,7 +43,7 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, rootFile = null }: RunDetailProps) {
+export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, workflowFiles = [] }: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -108,6 +111,9 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
+  // The head shows the same derived status the rail does: a root whose leaf is parked reads `awaiting`
+  // although its record stays `running` (ADR 0038). One shared derivation, so the panes never disagree.
+  const displayStatus = effectiveRunStatus({ runId: rootRunId, status: state.status }, state.runs);
   // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
   // more than one does, so the operator sees at a glance there is more than the selected one to act on.
   let awaitingCount = 0;
@@ -120,7 +126,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
     <div className="run-detail" ref={detailRef}>
       <header className="run-head" data-testid="run-head">
         <span className="run-workflow-name">{root?.workflowName ?? "—"}</span>
-        <StatusPill status={state.status} />
+        <StatusPill status={displayStatus} />
         {cancellable && <CancelButton client={client} rootRunId={rootRunId} />}
         <dl className="run-meta-grid">
           <dt>workflow id</dt>
@@ -151,7 +157,7 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
           runs={state.runs}
           selectedRunId={selectedRunId}
           onSelectRun={onSelectRun}
-          rootFile={rootFile}
+          workflowFiles={workflowFiles}
         />
       </section>
 

@@ -59,14 +59,28 @@ export function findAwaitingNode(file: WorkflowFile, nodeId: string): AwaitingNo
 
 /**
  * The awaiting node for a run, or `null` — the one guard both the rail (`run-tree`) and the detail
- * panel (`node-io`) apply, so the triple condition (leaf is `awaiting`, the file is loaded, the run
- * names a node) lives in one place. A run that is not `awaiting`, a file not yet read, or a row with no
+ * panel (`node-io`) apply, so the triple condition (leaf is `awaiting`, a file holds the node, the run
+ * names a node) lives in one place. A run that is not `awaiting`, no file loaded, or a row with no
  * node id (the implicit root run) all resolve to `null` without a walk.
+ *
+ * `files` is one file or **the set of reachable files** — the root file and every workflow file its
+ * `workflow` steps ref, transitively (`loadReachableWorkflowFiles`). A `person-activity` leaf can live
+ * in a nested file, not only the root (issue #486 follow-up); node ids are durable GUIDs unique across
+ * the tree (ADR 0007), so the node is found by scanning each file's own body — no cross-file config
+ * descent is needed here, since `description`/`assignee`/`outputSchema` are shown **as authored** (the
+ * server interpolates at Complete time, ADR 0040). The first file whose body holds the id decides it: a
+ * hit of the wrong type reads as `null` (a retyped node degrades to the schema-less submit), and every
+ * other file lacks the id and contributes nothing.
  */
 export function awaitingNodeForRun(
-  file: WorkflowFile | null,
+  files: WorkflowFile | readonly WorkflowFile[] | null,
   run: { status: RunStatus; nodeId: string | null },
 ): AwaitingNode | null {
-  if (run.status !== "awaiting" || file === null || run.nodeId === null) return null;
-  return findAwaitingNode(file, run.nodeId);
+  if (run.status !== "awaiting" || files === null || run.nodeId === null) return null;
+  const list = Array.isArray(files) ? files : [files as WorkflowFile];
+  for (const file of list) {
+    const found = findAwaitingNode(file, run.nodeId);
+    if (found) return found;
+  }
+  return null;
 }

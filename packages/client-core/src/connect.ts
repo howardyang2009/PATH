@@ -19,6 +19,10 @@ export interface ConnectRunOptions {
   rootRunId: string;
   onError?: (error: unknown) => void;
   onClose?: () => void;
+  /** Poll cadence while the run is parked `awaiting` (forwarded to the SSE client; default 3000ms). */
+  idlePollMs?: number;
+  /** Base reconnect backoff after a drop (forwarded to the SSE client; default 200ms). */
+  reconnectDelayMs?: number;
 }
 
 export async function connectRunViewModel(options: ConnectRunOptions): Promise<ConnectedRun> {
@@ -33,24 +37,47 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
   let closed = false;
   const rehydrate = createRehydrator(client, rootRunId, model, () => closed, options.onError);
 
+  // While the run is quiescent (`waiting`), each slow poll re-opens the stream for an instant. Without
+  // this flag that `onOpen` would flip the indicator back to `live` on every poll, so the pane flickers
+  // `waiting → live → waiting`. Hold `waiting` until a real event arrives, which is the honest signal
+  // the run has resumed.
+  let quiescent = false;
+
   const subscription: RunEventSubscription = subscribeRunEvents({
     baseUrl: client.baseUrl,
     rootRunId,
     lastEventId: lastSeq,
+    idlePollMs: options.idlePollMs,
+    reconnectDelayMs: options.reconnectDelayMs,
     onEvent: (event) => {
       // A log event names only the run it happened in — the envelope carries no `parent_run_id`
       // (mvp spec §8.1). So the first event of a child run started after the last tree read would
       // otherwise leave that run parentless, flattening the tree exactly while it is being watched.
       // Re-read the tree to learn where it hangs; `GET /v0/runs/:root_run_id` is the only source of
       // run structure.
+      if (quiescent) {
+        quiescent = false;
+        model.setStreamPhase("live");
+      }
       const isNewRun = !model.getState().runs.has(event.run_id);
       model.applyEvent(event);
       if (isNewRun) rehydrate();
     },
     // Stream liveness is state a viewer renders (a "live · SSE" vs "reconnecting" indicator), so it
     // lands in the view-model snapshot rather than only in these callbacks — issue #48.
-    onOpen: () => model.setStreamPhase("live"),
-    onReconnecting: () => model.setStreamPhase("reconnecting"),
+    onOpen: () => {
+      if (!quiescent) model.setStreamPhase("live");
+    },
+    // A parked leaf ends the stream cleanly (ADR 0038); the core polls for the continuation, so this is
+    // a calm "waiting", not the alarm of a dropped connection.
+    onWaiting: () => {
+      quiescent = true;
+      model.setStreamPhase("waiting");
+    },
+    onReconnecting: () => {
+      quiescent = false;
+      model.setStreamPhase("reconnecting");
+    },
     onError: (error) => {
       model.setStreamPhase("failed");
       options.onError?.(error);

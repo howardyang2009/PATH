@@ -210,21 +210,33 @@ Both the **Viewer** and the **Designer** surface `awaiting`. The Designer reuses
 **Awaiting display (both surfaces).** An `awaiting` leaf shows a `⏳` glyph and a purple
 (`--st-awaiting`) status pill in the run rail; the `assignee` shows as a chip; the interpolable
 `description` shows as a callout in the detail panel. The root and parent stay `running` while a leaf
-awaits (ADR 0038). The rail carries a **count badge** when several leaves await at once (parallel joins,
-ADR 0042).
+awaits (ADR 0038) — that is the record's status in the DB and never changes. Every read surface, however,
+paints a **running run with an awaiting run below it** with the `awaiting` pill too, so a parked leaf is
+visible without expanding the tree. This is a **view-only** derivation (`effectiveRunStatus`), shared by
+all four surfaces — the runs list, the run-detail head, the run tree, and the node I/O head — so they
+never disagree. It repaints the pill, nothing else: the run keeps no assignee chip, gets no Complete form,
+and its record status stays `running`. The runs list holds only summaries for the runs it is not watching,
+so it derives this only for the watched root (whose full tree it has); other rows show their record status.
+The rail carries a **count badge** when several leaves await at once (parallel joins, ADR 0042).
 
-**Complete (variant B — a slide-over, no docked inbox, no modal).** A **Complete button** in the
-awaiting step's detail panel launches a **slide-over** form built from the step's `outputSchema`. Field
-validation is inline; submit calls `POST /v0/runs/:step_run_id/complete`. On `400` the step stays
-`awaiting` for a retry and the server's field errors show inline. On `202` the client watches the root
-SSE stream and the run continues to the next `awaiting` step or to completion.
+**Complete (inline in the node I/O/C/E panel).** The awaiting step's detail panel shows the Complete
+surface **inline**: the `description` callout, the `assignee` chip, the step's `outputSchema` (shown even
+when empty, so the person sees the shape their output is checked against), and the form built from that
+schema. A node with no `outputSchema` draws a single free-text control instead, which takes anything the
+person types: JSON becomes its value, plain prose becomes a JSON string, and blank submits an empty
+output. It never rejects, matching the server's "any JSON accepted" for a schema-less node. Field
+validation is inline; the **Complete this activity** button calls
+`POST /v0/runs/:step_run_id/complete` directly with the panel's output value. On `400` the step stays
+`awaiting` for a retry and the server's field errors show in place. On `202` the client watches the root
+SSE stream and the run continues to the next `awaiting` step or to completion. (An earlier build put this
+form in a right-edge slide-over; it is now inline in the panel.)
 
 **Designer authoring.** The `person-activity` node gets its own canvas identity — a distinct **teal** hue
 and a **person glyph** — so it no longer falls back to the `--k-step` indigo shared with generic steps and
 reads apart from `binary` and `prompt`. The node editor exposes the three fields: `description`
 (interpolable text area), `outputSchema` (JSON Schema / raw JSON), and `assignee` (text input). When a
 `person-activity` step is `awaiting` during a Designer run, the Designer run dock reuses the **same
-slide-over Complete form** as the Viewer.
+inline Complete form** as the Viewer.
 
 ## 8. Audit (#488)
 

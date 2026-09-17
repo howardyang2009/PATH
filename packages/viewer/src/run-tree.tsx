@@ -1,4 +1,13 @@
-import { awaitingNodeForRun, buildRunTree, isIterationRun, nodeLabel, type RunNodeState, type RunTreeNode, type WorkflowFile } from "@path/client-core";
+import {
+  awaitingNodeForRun,
+  buildRunTree,
+  effectiveRunStatus,
+  isIterationRun,
+  nodeLabel,
+  type RunNodeState,
+  type RunTreeNode,
+  type WorkflowFile,
+} from "@path/client-core";
 import { useState } from "react";
 import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
@@ -18,11 +27,14 @@ export interface RunTreeProps {
   /** The run whose I/O the node pane is showing, if any. */
   selectedRunId: string | null;
   onSelectRun: (runId: string) => void;
-  /** The root workflow file, for an awaiting leaf's assignee chip (read from the node by id). */
-  rootFile?: WorkflowFile | null;
+  /**
+   * The reachable workflow files (root + transitively-ref'd sub-files), for an awaiting leaf's assignee
+   * chip — read from the node by id, which may sit in a nested file, not only the root.
+   */
+  workflowFiles?: readonly WorkflowFile[];
 }
 
-export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, rootFile = null }: RunTreeProps) {
+export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, workflowFiles = [] }: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const root = buildRunTree(rootRunId, runs);
@@ -32,7 +44,8 @@ export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, rootFile 
     collapsed,
     selectedRunId,
     onSelectRun,
-    rootFile,
+    workflowFiles,
+    runs,
     onToggle: (runId) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -54,7 +67,9 @@ interface TreeView {
   selectedRunId: string | null;
   onToggle: (runId: string) => void;
   onSelectRun: (runId: string) => void;
-  rootFile: WorkflowFile | null;
+  workflowFiles: readonly WorkflowFile[];
+  /** The whole run map, so each row derives its display status with the shared `effectiveRunStatus`. */
+  runs: ReadonlyMap<string, RunNodeState>;
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
@@ -69,7 +84,12 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // An awaiting leaf shows its assignee as a chip in the rail (CONTEXT.md § Person-activity). The
   // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
   // is not loaded or the node has no assignee.
-  const assignee = awaitingNodeForRun(tree.rootFile, run)?.assignee ?? null;
+  const assignee = awaitingNodeForRun(tree.workflowFiles, run)?.assignee ?? null;
+  // The display status the four surfaces share: the record status, except a running run with an
+  // awaiting run below it shows `awaiting` (view-only, ADR 0038). The chip above stays keyed on the
+  // real status, so only the actual awaiting leaf carries an assignee — a flipped ancestor gets the
+  // pill, not a chip.
+  const displayStatus = effectiveRunStatus(run, tree.runs);
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>
@@ -101,7 +121,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           <span className="node-name">{label}</span>
           {run.nodeId && <span className="tree-ref node-ref">({run.nodeId})</span>}
           <span className="tree-ref run-ref">{run.runId}</span>
-          <StatusPill status={run.status} />
+          <StatusPill status={displayStatus} />
           {assignee !== null && <AssigneeChip assignee={assignee} />}
         </button>
       </div>

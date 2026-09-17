@@ -1,4 +1,4 @@
-import { childrenByParent } from "@path/schema";
+import { childrenByParent, type RunStatus } from "@path/schema";
 import type { RunNodeState } from "./view-model.js";
 
 /**
@@ -46,6 +46,50 @@ export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNod
     children: (byParent.get(run.runId) ?? []).map(nest),
   });
   return nest(root);
+}
+
+/**
+ * The status a run should **display**, which is its record status except that a `running` run with an
+ * `awaiting` run anywhere in its subtree displays `awaiting`. This is the **one** status derivation the
+ * four read surfaces share — the runs list, the run-detail head, the run tree, and the node I/O head —
+ * so a root whose leaf is parked reads `awaiting` the same way in every pane.
+ *
+ * It is **view-only** and touches no status. The root and every intermediate workflow-run stay
+ * `running` in the record while a leaf awaits (ADR 0038) — that is the engine's truth and the DB's.
+ * This only repaints the pill, so a pending completion below is visible without expanding the tree.
+ *
+ * `runs` is the run map of the tree the run lives in; a caller that has no descendants loaded (the runs
+ * list holds only summaries for the runs it is not watching) passes an empty map and gets the record
+ * status back unchanged. A run already `awaiting`, or terminal, or `pending` returns its own status —
+ * only a `running` run is ever repainted.
+ */
+export function effectiveRunStatus(run: { runId: string; status: RunStatus }, runs: ReadonlyMap<string, RunNodeState>): RunStatus {
+  if (run.status !== "running") return run.status;
+  return subtreeHasAwaiting(run.runId, runs) ? "awaiting" : "running";
+}
+
+/** Whether any transitive descendant of `rootId` in `runs` is `awaiting` (the run itself excluded). */
+function subtreeHasAwaiting(rootId: string, runs: ReadonlyMap<string, RunNodeState>): boolean {
+  const byParent = new Map<string, RunNodeState[]>();
+  for (const run of runs.values()) {
+    if (run.parentRunId === null) continue;
+    const siblings = byParent.get(run.parentRunId);
+    if (siblings) siblings.push(run);
+    else byParent.set(run.parentRunId, [run]);
+  }
+  // Iterative DFS from the run's own children so a deep tree cannot overflow the stack.
+  const stack = [...(byParent.get(rootId) ?? [])];
+  const seen = new Set<string>();
+  while (stack.length > 0) {
+    const node = stack.pop()!;
+    if (node.status === "awaiting") return true;
+    // A cycle only hand-built data can hold (every engine run has one parent) must not loop forever.
+    if (seen.has(node.runId)) continue;
+    seen.add(node.runId);
+    const children = byParent.get(node.runId);
+    if (children) stack.push(...children);
+  }
+  return false;
 }
 
 /** Oldest start first; a run that has not started yet sorts last. Run id breaks ties. */

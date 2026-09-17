@@ -74,6 +74,27 @@ export function buildCompleteFields(outputSchema: JsonValue | null): CompleteFie
 }
 
 /**
+ * The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON is
+ * accepted). It never rejects — the person can type anything:
+ *
+ * - blank ⇒ an empty object `{}`, the historical "bare submit" so a node that wants nothing back still
+ *   completes with one click;
+ * - text that parses as JSON ⇒ that JSON value (a number, a boolean, an array, an object), so a
+ *   structured output is still possible;
+ * - anything else ⇒ the text itself, as a JSON string. So `done` submits `"done"`, not a parse error —
+ *   a schema-less step takes plain prose as readily as JSON, which is what `${output}` then carries.
+ */
+export function coerceRawCompleteOutput(text: string): JsonValue {
+  const trimmed = text.trim();
+  if (trimmed === "") return {};
+  try {
+    return JSON.parse(trimmed) as JsonValue;
+  } catch {
+    return trimmed;
+  }
+}
+
+/**
  * The output object a set of control values makes: a boolean field's value verbatim, a number field
  * parsed (blank omitted), any other field trimmed (blank omitted). An omitted field is left off the
  * object rather than sent as `null`/`""`, so a `required` check reads the same as the server's.

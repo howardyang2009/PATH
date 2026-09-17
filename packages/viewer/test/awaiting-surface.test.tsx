@@ -54,12 +54,32 @@ const ROOT_FILE = {
       outputSchema: { type: "object", required: ["approved"], properties: { approved: { type: "boolean", title: "Approved" } } },
     },
     { id: "step-finance", type: "person-activity", name: "finance-approval", description: "Approve the budget.", assignee: "cfo@acme.co" },
+    // A `workflow` step whose ref'd file holds a further person-activity leaf; the run tree carries
+    // only that leaf's node id, so its fields are resolved from the sub-file, not this one.
+    { id: "step-sub", type: "workflow", name: "sub", ref: "sub.workflow.json" },
+  ] as unknown as WorkflowFile["body"],
+} satisfies WorkflowFile;
+
+/** The ref'd sub-workflow file: it defines the nested awaiting node `step-nested`. */
+const SUB_FILE = {
+  format: "path/workflow@3",
+  id: "wf-sub",
+  name: "sub",
+  body: [
+    {
+      id: "step-nested",
+      type: "person-activity",
+      name: "nested-review",
+      description: "Nested review for {{client.name}}.",
+      assignee: "ops@acme.co",
+      outputSchema: { type: "object", required: ["done"], properties: { done: { type: "boolean", title: "Done" } } },
+    },
   ] as unknown as WorkflowFile["body"],
 } satisfies WorkflowFile;
 
 function ConnectedDetail({ client }: { client: PathApiClient }) {
   const load = useRunView(client, ROOT);
-  return <RunDetail client={client} load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={vi.fn()} rootFile={ROOT_FILE} />;
+  return <RunDetail client={client} load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={vi.fn()} workflowFiles={[ROOT_FILE]} />;
 }
 
 /** One run as the tree hands it to the node pane. */
@@ -110,35 +130,61 @@ describe("awaiting rail (RunDetail)", () => {
     await screen.findByTestId("tree-item-run_legal");
     expect(screen.queryByTestId("awaiting-count-badge")).toBeNull();
   });
+
+  it("shows awaiting in the run-detail head when a descendant leaf awaits (root stays running in record)", async () => {
+    render(<ConnectedDetail client={stubClient({ tree: TREE })} />);
+    const head = await screen.findByTestId("run-head");
+    // The root's record status is running (ADR 0038); the head reads awaiting through the shared
+    // derivation, matching the rail's root row.
+    expect(within(head).getByText("awaiting")).toBeInTheDocument();
+  });
 });
 
-describe("awaiting detail panel + Complete slide-over (NodeIo)", () => {
-  it("shows the description callout and a Complete button for an awaiting leaf", async () => {
-    render(<NodeIo client={stubClient()} run={runState()} rootFile={ROOT_FILE} />);
+describe("awaiting detail panel — inline Complete (NodeIo)", () => {
+  it("shows the description callout, the assignee, and the inline Complete form for an awaiting leaf", async () => {
+    render(<NodeIo client={stubClient()} run={runState()} workflowFiles={[ROOT_FILE]} />);
 
     expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Review the contract for {{client.name}}.");
-    expect(screen.getByTestId("awaiting-complete-button")).toBeInTheDocument();
-    // The detail-panel surface is scoped to the leaf; the assignee shows here too.
-    expect(within(screen.getByTestId("awaiting-actions")).getByTestId("assignee-chip")).toHaveTextContent("legal@acme.co");
+    // The form is inline in the panel — no button to open a slide-over first.
+    const actions = within(screen.getByTestId("awaiting-actions"));
+    expect(actions.getByTestId("complete-form")).toBeInTheDocument();
+    expect(actions.getByTestId("complete-field-approved")).toBeInTheDocument();
+    expect(actions.getByTestId("assignee-chip")).toHaveTextContent("legal@acme.co");
+    // The submit button carries the panel's own label.
+    expect(actions.getByTestId("complete-submit")).toHaveTextContent("Complete this activity");
   });
 
-  it("opens the slide-over form built from the outputSchema, and completes on submit", async () => {
+  it("resolves an awaiting leaf living in a nested sub-workflow file, not only the root", async () => {
+    // The leaf's node id (step-nested) is defined in SUB_FILE, reached from the root through a
+    // `workflow` step. The app hands the whole reachable set, so the surface resolves it there — the
+    // same content as a root leaf: description, assignee, output schema, and the Complete form.
+    const nested = runState({ runId: "run_nested", nodeId: "step-nested", nodeName: "nested-review" });
+    render(<NodeIo client={stubClient()} run={nested} workflowFiles={[ROOT_FILE, SUB_FILE]} />);
+
+    expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Nested review for {{client.name}}.");
+    const actions = within(screen.getByTestId("awaiting-actions"));
+    expect(actions.getByTestId("assignee-chip")).toHaveTextContent("ops@acme.co");
+    expect(actions.getByTestId("complete-field-done")).toBeInTheDocument();
+    expect(actions.getByTestId("complete-submit")).toHaveTextContent("Complete this activity");
+    // No "form could not be read" degradation note — the node resolved.
+    expect(screen.queryByTestId("awaiting-unresolved")).toBeNull();
+  });
+
+  it("shows the output schema, and completes inline on submit", async () => {
     const completeBodies: unknown[] = [];
     const client = stubClient({ completeBodies });
-    render(<NodeIo client={client} run={runState()} rootFile={ROOT_FILE} />);
+    render(<NodeIo client={client} run={runState()} workflowFiles={[ROOT_FILE]} />);
 
-    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
-    const panel = screen.getByTestId("complete-slide-over");
-    expect(within(panel).getByTestId("complete-field-approved")).toBeInTheDocument();
+    // The step's outputSchema shows in the panel (the `approved` property is in the rendered JSON).
+    expect(screen.getByTestId("awaiting-output-schema")).toHaveTextContent("approved");
 
-    fireEvent.click(within(panel).getByLabelText(/Approved/));
-    fireEvent.click(within(panel).getByTestId("complete-submit"));
+    fireEvent.click(screen.getByLabelText(/Approved/));
+    fireEvent.click(screen.getByTestId("complete-submit"));
 
-    await waitFor(() => expect(screen.queryByTestId("complete-slide-over")).toBeNull());
-    expect(completeBodies[0]).toEqual({ output: { approved: true } });
+    await waitFor(() => expect(completeBodies[0]).toEqual({ output: { approved: true } }));
   });
 
-  it("keeps the slide-over open with field errors on a 400 (leaf stays awaiting)", async () => {
+  it("keeps the inline form with field errors on a 400 (leaf stays awaiting)", async () => {
     const client = stubClient({
       complete: {
         status: 400,
@@ -150,23 +196,46 @@ describe("awaiting detail panel + Complete slide-over (NodeIo)", () => {
         },
       },
     });
-    render(<NodeIo client={client} run={runState()} rootFile={ROOT_FILE} />);
+    render(<NodeIo client={client} run={runState()} workflowFiles={[ROOT_FILE]} />);
 
-    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
     // Submitting an unchecked box coerces to `approved: false`, which is present client-side but the
-    // server's required check here rejects — the point is the 400 field error renders and the panel stays.
-    fireEvent.click(within(screen.getByTestId("complete-slide-over")).getByTestId("complete-submit"));
+    // server's required check here rejects — the point is the 400 field error renders in place.
+    fireEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
-      expect(within(screen.getByTestId("complete-slide-over")).getByTestId("complete-field-approved")).toHaveTextContent(
-        "must have required property 'approved'",
-      ),
+      expect(screen.getByTestId("complete-field-approved")).toHaveTextContent("must have required property 'approved'"),
     );
   });
 
-  it("degrades to a schema-less submit when the node is not in the file", () => {
-    render(<NodeIo client={stubClient()} run={runState({ nodeId: "step-nested" })} rootFile={ROOT_FILE} />);
+  it("shows an empty output schema and a raw-JSON control for a node with no outputSchema", () => {
+    render(<NodeIo client={stubClient()} run={runState({ runId: "run_finance", nodeId: "step-finance", nodeName: "finance-approval" })} workflowFiles={[ROOT_FILE]} />);
+
+    // The schema block is a fixed slot: it shows even when the node authored none.
+    expect(screen.getByTestId("awaiting-output-schema")).toBeInTheDocument();
+    expect(screen.getByTestId("awaiting-output-schema-empty")).toBeInTheDocument();
+    // With no schema the person still gets somewhere to enter the output.
+    expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
+  });
+
+  it("degrades to a schema-less submit when the node is in no loaded file (the sub-file failed to read)", () => {
+    // step-nested lives in SUB_FILE; with only the root loaded (a since-moved or unreadable ref) the
+    // reachable set cannot resolve it, so the surface degrades rather than inventing a form.
+    render(<NodeIo client={stubClient()} run={runState({ nodeId: "step-nested" })} workflowFiles={[ROOT_FILE]} />);
     expect(screen.getByTestId("awaiting-unresolved")).toBeInTheDocument();
-    expect(screen.getByTestId("awaiting-complete-button")).toBeInTheDocument();
+    expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
+    expect(screen.getByTestId("complete-submit")).toBeInTheDocument();
+  });
+
+  it("shows awaiting in the node I/O head for a running run with an awaiting descendant, but no Complete form", () => {
+    const runs = new Map<string, RunNodeState>([
+      ["run_root", runState({ runId: "run_root", parentRunId: null, nodeId: null, nodeName: null, status: "running" })],
+      ["run_legal", runState()],
+    ]);
+    render(<NodeIo client={stubClient()} run={runs.get("run_root")!} runs={runs} workflowFiles={[ROOT_FILE]} />);
+
+    // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so it
+    // gets no Complete surface — that stays keyed on the real status.
+    expect(within(screen.getByTestId("node-io-head")).getByText("awaiting")).toBeInTheDocument();
+    expect(screen.queryByTestId("awaiting-actions")).toBeNull();
   });
 });

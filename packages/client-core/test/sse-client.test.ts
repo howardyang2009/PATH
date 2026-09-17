@@ -139,6 +139,59 @@ describe("subscribeRunEvents", () => {
     expect(phases).toEqual(["open", "reconnecting", "open", "closed"]);
   });
 
+  it("waits and slow-polls (not reconnects) while a leaf is awaiting, then resumes on completion", async () => {
+    const AWAITING: LogEvent = { type: "step-awaiting", seq: 2, ts: "t2", run_id: "child", node_id: "review", node_name: "review", assignee: null };
+    const FINISHED_CHILD: LogEvent = { type: "step-finished", seq: 3, ts: "t3", run_id: "child", node_id: "review", node_name: "review", status: "succeeded" };
+    const ROOT_TERMINAL = EVENTS[3]!; // seq 4, root step-finished
+
+    let connection = 0;
+    const stub = await startStub((req, res) => {
+      const after = Number(req.headers["last-event-id"] ?? 0);
+      res.writeHead(200, { "Content-Type": "text/event-stream" });
+      const conn = connection++;
+      if (conn === 0) {
+        // Root starts, a leaf parks awaiting, then the server ends the stream (run quiescent).
+        res.write(frame(EVENTS[0]!));
+        res.write(frame(AWAITING));
+        res.end();
+        return;
+      }
+      if (conn === 1) {
+        // First poll: nothing new yet (still parked). Clean end again.
+        res.end();
+        return;
+      }
+      // A completion happened elsewhere: replay after the high-water seq through the terminal.
+      for (const e of [FINISHED_CHILD, ROOT_TERMINAL].filter((ev) => ev.seq > after)) res.write(frame(e));
+      res.end();
+    });
+    server = stub.server;
+
+    const phases: string[] = [];
+    const seen: number[] = [];
+    let closed = false;
+    subscribeRunEvents({
+      baseUrl: stub.url,
+      rootRunId: "root",
+      idlePollMs: 20,
+      onEvent: (e) => seen.push(e.seq),
+      onOpen: () => phases.push("open"),
+      onWaiting: () => phases.push("waiting"),
+      onReconnecting: () => phases.push("reconnecting"),
+      onClose: () => {
+        phases.push("closed");
+        closed = true;
+      },
+    });
+
+    await waitFor(() => closed);
+    expect(seen).toEqual([1, 2, 3, 4]);
+    // The quiescent gap read as "waiting", never "reconnecting" — the run was parked, not dropped.
+    expect(phases).toContain("waiting");
+    expect(phases).not.toContain("reconnecting");
+    expect(phases.at(-1)).toBe("closed");
+  });
+
   it("does not call a stream that ended mid-run complete when reconnect is off", async () => {
     const stub = await startStub((_req, res) => {
       res.writeHead(200, { "Content-Type": "text/event-stream" });

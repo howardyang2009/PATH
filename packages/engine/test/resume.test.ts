@@ -140,6 +140,46 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     expect(observer.all().some((o) => o.type === "step-finished")).toBe(true);
   });
 
+  it("reuses a succeeded person-activity across resume — a marker, no execution, no re-await (resume-from-k.md)", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    // A person-activity gate that succeeded originally, then a later prompt K that failed. Resuming
+    // must reuse the human decision (marker, no step-started) rather than re-park at the gate — the
+    // check-git-result-before-draft-notes scenario, at node grain.
+    const gate = { type: "person-activity", id: "gate", name: "gate", description: "check", publish: { fromGate: "${output}" } } as unknown as WorkflowFile["body"][number];
+    const file = tree([gate, { type: "prompt", id: "b", name: "b", prompt: "b", publish: { fromB: "${output}" } }], {
+      gate: "${context.fromGate}",
+      b: "${context.fromB}",
+    });
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({ runId: "gate-run", parentRunId: "orig-root", nodeId: "gate", nodeName: "gate", status: "succeeded" }),
+          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
+        ],
+        readBlob: reader({ "orig-root/context.json": {}, "gate-run/output.json": "REUSED_GATE" }, reads),
+      },
+    });
+
+    // The gate reused (no re-await, no execution); only b ran. The run reached a terminal status,
+    // not `awaiting` — proof the person was not asked again.
+    expect(ran).toEqual(["b"]);
+    expect(result.status).toBe("succeeded");
+    expect(result.output).toEqual({ gate: "REUSED_GATE", b: "FRESH_B" });
+
+    const m = markers(observer);
+    expect(m).toHaveLength(1);
+    expect(m[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", originalRunId: "gate-run" });
+    // No step-started for the reused gate; no awaiting park anywhere.
+    expect(startedNodeIds(observer)).toEqual(["b"]);
+    expect(observer.all().some((o) => o.type === "step-awaiting")).toBe(false);
+  });
+
   it("threads a reused output into the next node's default input just like a produced one", async () => {
     const ran: string[] = [];
     const reads: string[] = [];

@@ -1078,6 +1078,17 @@ button.workflow-row:focus-visible {
   animation: stream-pulse 0.7s ease-in-out infinite;
 }
 
+/* Quiescent, not dropped: a leaf is parked awaiting a person (ADR 0038). It reads in the awaiting hue
+   with a slow, calm pulse — the run is paused on purpose, nothing is wrong. */
+.stream-indicator[data-phase="waiting"] {
+  color: var(--status-awaiting-fg);
+}
+
+.stream-indicator[data-phase="waiting"] .stream-dot {
+  background: var(--status-awaiting-fg);
+  animation: stream-pulse 2.2s ease-in-out infinite;
+}
+
 .stream-indicator[data-phase="failed"] {
   color: var(--status-failed-fg);
 }
@@ -1415,68 +1426,14 @@ button.workflow-row:focus-visible {
   background: color-mix(in srgb, var(--status-awaiting-bg) 40%, var(--surface));
 }
 
-.awaiting-complete-button {
+/* The inline Complete surface fills the panel width, while the chip and callout stay content-sized. */
+.awaiting-actions > .complete-form,
+.awaiting-actions > .io-block {
+  align-self: stretch;
+}
+
+.awaiting-actions .launch-submit {
   background: var(--status-awaiting-fg);
-}
-
-/* ---------- Complete slide-over ---------- */
-
-.slide-over-scrim {
-  position: fixed;
-  inset: 0;
-  background: rgba(15, 20, 30, 0.38);
-  z-index: 40;
-}
-
-.slide-over {
-  position: fixed;
-  top: 0;
-  right: 0;
-  height: 100%;
-  width: min(440px, 92vw);
-  display: flex;
-  flex-direction: column;
-  background: var(--surface);
-  border-left: 1px solid var(--border);
-  box-shadow: -6px 0 24px rgba(15, 20, 30, 0.18);
-  z-index: 50;
-}
-
-.slide-over:focus-visible {
-  outline: none;
-}
-
-.slide-over-head {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  padding: 12px 14px;
-  border-bottom: 1px solid var(--border);
-}
-
-.slide-over-close {
-  margin-left: auto;
-  font: inherit;
-  font-size: 20px;
-  line-height: 1;
-  color: var(--text-muted);
-  background: none;
-  border: none;
-  cursor: pointer;
-  padding: 0 4px;
-}
-
-.slide-over-close:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.slide-over-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  padding: 14px;
 }
 
 /* ---------- Complete form (schema-driven) ---------- */

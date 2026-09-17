@@ -1,4 +1,4 @@
-import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary } from "@path/client-core";
+import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary, type RunNodeState } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
@@ -60,6 +60,36 @@ const FAILED: RootRunSummary = {
   finished_at: "2026-07-25T09:30:12.000Z",
 };
 
+/**
+ * A run-tree node rooted at run_beta, defaulting every field so a test overrides only what it asserts
+ * on — the same shape the awaiting-pill test builds inline, hoisted so the in-flight tests reuse it.
+ */
+function awaitingNode(over: Partial<RunNodeState> & { runId: string }): RunNodeState {
+  return {
+    rootRunId: "run_beta",
+    parentRunId: "run_beta",
+    nodeId: over.runId,
+    nodeName: over.runId,
+    workerName: null,
+    iteration: null,
+    status: "running",
+    startedAt: null,
+    finishedAt: null,
+    inputRef: null,
+    outputRef: null,
+    usage: null,
+    estimatedCostUsd: null,
+    resumedFromRootRunId: null,
+    rerunFromNodePath: null,
+    reusedFromRunId: null,
+    reusedFromRootRunId: null,
+    workflowId: null,
+    workflowName: null,
+    workflowPath: null,
+    ...over,
+  };
+}
+
 function renderList(client: PathApiClient, overrides: Partial<Parameters<typeof RunsList>[0]> = {}) {
   return render(
     <RunsList
@@ -112,6 +142,23 @@ describe("RunsList", () => {
     expect(pillOf("run_beta")).toHaveTextContent("◐running");
     expect(pillOf("run_beta")).toHaveAttribute("data-status", "running");
     expect(pillOf("run_alpha")).toHaveTextContent("✓succeeded");
+    expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
+  });
+
+  it("paints the watched root awaiting when its tree holds an awaiting leaf (record stays running)", async () => {
+    const { client } = stubClient([RUNNING, SUCCEEDED]);
+    // The app hands the watched root's full tree as `resumeTree`. run_beta (running) has a parked leaf,
+    // so its row reads awaiting through the shared derivation; the summary status stays running.
+    const resumeTree = new Map<string, RunNodeState>([
+      ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
+      ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
+    ]);
+
+    renderList(client, { selectedRootRunId: "run_beta", resumeTree });
+    await screen.findByTestId("run-row-run_beta");
+
+    expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
+    // A row the app is not watching has no tree, so it keeps its record status.
     expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 
@@ -305,11 +352,11 @@ describe("RunsList", () => {
     });
   });
 
-  // Delete (§ DELETE /v0/runs/:id) lives in the same expanded panel as Resume, but is offered on
-  // every row — not just finished-but-unsuccessful ones — and is two-step: an arm, then a confirm
-  // that spells out which run goes.
+  // Delete (§ DELETE /v0/runs/:id) lives in the same expanded panel as Resume. It is offered on every
+  // finished row — succeeded as well as cancelled/failed — but not on a run still in flight, which the
+  // server would 409 anyway. It is two-step: an arm, then a confirm that spells out which run goes.
   describe("delete affordance", () => {
-    it.each([SUCCEEDED, RUNNING, CANCELLED])("offers Delete when a %s row is clicked", async (run) => {
+    it.each([SUCCEEDED, CANCELLED, FAILED])("offers Delete when a %s row is clicked", async (run) => {
       const { client } = stubClient([run]);
       renderList(client);
 
@@ -353,17 +400,53 @@ describe("RunsList", () => {
     });
 
     it("surfaces a delete error rather than claiming it was removed", async () => {
-      const { client } = stubClient([RUNNING]);
-      vi.spyOn(client, "deleteRun").mockRejectedValue(new PathApiError(409, "is still running; cancel it before deleting"));
+      const { client } = stubClient([CANCELLED]);
+      vi.spyOn(client, "deleteRun").mockRejectedValue(new PathApiError(409, "a live successor still reuses its data"));
       const onDeleted = vi.fn();
       renderList(client, { onDeleted });
 
-      fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
+      fireEvent.click(await screen.findByTestId(`run-row-${CANCELLED.run_id}`));
       fireEvent.click(await screen.findByTestId("delete-arm"));
       fireEvent.click(screen.getByTestId("delete-confirm"));
 
-      expect(await screen.findByRole("alert")).toHaveTextContent("still running");
+      expect(await screen.findByRole("alert")).toHaveTextContent("still reuses its data");
       expect(onDeleted).not.toHaveBeenCalled();
+    });
+  });
+
+  // A run still in flight — running, or a running root reading awaiting because a leaf is parked
+  // (ADR 0038) — offers none of the three run actions. The panel says why instead of standing empty.
+  describe("in-flight run actions", () => {
+    it("offers no Resume, Resume from …, or Delete when a running row is clicked", async () => {
+      const { client } = stubClient([RUNNING]);
+      // `resumeTree` present and this row selected is the one case that would otherwise show
+      // `Resume from …`; it must still stay hidden because the run is in flight.
+      renderList(client, { selectedRootRunId: RUNNING.run_id, resumeTree: new Map() });
+
+      fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
+      await screen.findByTestId(`run-actions-${RUNNING.run_id}`);
+
+      expect(screen.queryByTestId("resume-button")).toBeNull();
+      expect(screen.queryByTestId("resume-from-submit")).toBeNull();
+      expect(screen.queryByTestId("delete-arm")).toBeNull();
+      expect(screen.getByTestId(`run-actions-${RUNNING.run_id}`)).toHaveTextContent("still in flight");
+    });
+
+    it("offers no actions when a running root reads awaiting through its parked leaf", async () => {
+      const { client } = stubClient([RUNNING]);
+      const resumeTree = new Map<string, RunNodeState>([
+        ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
+        ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
+      ]);
+      renderList(client, { selectedRootRunId: "run_beta", resumeTree });
+
+      fireEvent.click(await screen.findByTestId(`run-row-run_beta`));
+      await screen.findByTestId("run-actions-run_beta");
+
+      expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
+      expect(screen.queryByTestId("resume-button")).toBeNull();
+      expect(screen.queryByTestId("resume-from-submit")).toBeNull();
+      expect(screen.queryByTestId("delete-arm")).toBeNull();
     });
   });
 });

@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildRunTree } from "../src/run-tree.js";
+import { buildRunTree, effectiveRunStatus } from "../src/run-tree.js";
+import type { RunStatus } from "@path/schema";
 import type { RunNodeState } from "../src/view-model.js";
 
-function run(runId: string, parentRunId: string | null, startedAt: string | null = "2026-07-25T10:00:00.000Z"): RunNodeState {
+function run(
+  runId: string,
+  parentRunId: string | null,
+  startedAt: string | null = "2026-07-25T10:00:00.000Z",
+  status: RunStatus = "running",
+): RunNodeState {
   return {
     runId,
     rootRunId: "root",
@@ -11,7 +17,7 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     nodeName: runId,
     workerName: null,
     iteration: null,
-    status: "running",
+    status,
     startedAt,
     finishedAt: null,
     inputRef: null,
@@ -117,5 +123,48 @@ describe("buildRunTree", () => {
     const tree = buildRunTree("root", mapOf(run("root", null), run("a", "b"), run("b", "a")));
 
     expect(shape(tree)).toEqual({ id: "root", children: [] });
+  });
+});
+
+describe("effectiveRunStatus", () => {
+  const ts = "2026-07-25T10:00:00.000Z";
+
+  it("returns `awaiting` for a running run with an awaiting run anywhere below it", () => {
+    const runs = mapOf(run("root", null), run("mid", "root", ts), run("leaf", "mid", ts, "awaiting"));
+
+    // Both running ancestors read awaiting through the one shared derivation.
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "mid", status: "running" }, runs)).toBe("awaiting");
+  });
+
+  it("returns the record status when no descendant is awaiting", () => {
+    const runs = mapOf(run("root", null), run("mid", "root", ts));
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, runs)).toBe("running");
+  });
+
+  it("returns a run's own status untouched when it is not running", () => {
+    // An awaiting leaf reports awaiting directly; a terminal or pending run is never repainted.
+    const runs = mapOf(run("root", null), run("leaf", "root", ts, "awaiting"));
+    expect(effectiveRunStatus({ runId: "leaf", status: "awaiting" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "root", status: "succeeded" }, runs)).toBe("succeeded");
+    expect(effectiveRunStatus({ runId: "root", status: "pending" }, runs)).toBe("pending");
+  });
+
+  it("derives only from the given map, so an empty map returns the record status", () => {
+    // The runs list holds only summaries for the runs it is not watching: no descendants, no repaint.
+    expect(effectiveRunStatus({ runId: "root", status: "running" }, new Map())).toBe("running");
+  });
+
+  it("flips only the branch that holds the awaiting leaf", () => {
+    const runs = mapOf(
+      run("root", null),
+      run("branch-a", "root", ts),
+      run("leaf-a", "branch-a", ts, "awaiting"),
+      run("branch-b", "root", ts),
+      run("leaf-b", "branch-b", ts, "running"),
+    );
+
+    expect(effectiveRunStatus({ runId: "branch-a", status: "running" }, runs)).toBe("awaiting");
+    expect(effectiveRunStatus({ runId: "branch-b", status: "running" }, runs)).toBe("running");
   });
 });

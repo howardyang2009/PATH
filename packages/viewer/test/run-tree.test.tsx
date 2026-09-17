@@ -96,6 +96,31 @@ describe("RunTree", () => {
     expect(rootRow).toHaveTextContent(ROOT);
   });
 
+  it("paints a running ancestor of an awaiting leaf as awaiting in the rail (view-only)", () => {
+    // root (running) → mid (running) → leaf (awaiting). The two ancestors show `awaiting`; the record
+    // status stays running (ADR 0038) — the pill is the only place this derivation lands.
+    tree(
+      ROOT_RUN,
+      run({ runId: "run_mid", nodeId: "mid", parentRunId: ROOT, startedAt: "2026-07-25T10:00:01.000Z" }),
+      run({ runId: "run_leaf", nodeId: "leaf", parentRunId: "run_mid", status: "awaiting", startedAt: "2026-07-25T10:00:02.000Z" }),
+    );
+
+    expect(within(screen.getByTestId(`tree-row-${ROOT}`)).getByText("awaiting")).toBeInTheDocument();
+    expect(within(screen.getByTestId("tree-row-run_mid")).getByText("awaiting")).toBeInTheDocument();
+    expect(within(screen.getByTestId("tree-row-run_leaf")).getByText("awaiting")).toBeInTheDocument();
+  });
+
+  it("leaves a running run with no awaiting descendant showing running", () => {
+    tree(
+      ROOT_RUN,
+      run({ runId: "run_a", nodeId: "a", parentRunId: ROOT, status: "running" }),
+    );
+
+    expect(within(screen.getByTestId("tree-row-run_a")).getByText("running")).toBeInTheDocument();
+    // The root has no awaiting anywhere below, so it stays running too.
+    expect(within(screen.getByTestId(`tree-row-${ROOT}`)).getByText("running")).toBeInTheDocument();
+  });
+
   it("marks the selected run so the node-I/O pane and the tree agree", () => {
     const map = new Map([
       [ROOT, ROOT_RUN],

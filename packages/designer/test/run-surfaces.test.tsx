@@ -280,7 +280,7 @@ describe("Designer run surfaces (#372)", () => {
 /**
  * #487 / ADR 0031: the Designer run dock reuses the Viewer's awaiting surfaces. The dock feeds the open
  * buffer to `RunDetail`/`NodeIo` as their `rootFile`, so an awaiting `person-activity` leaf reads the
- * same assignee chip in the rail and the same schema-built Complete slide-over the Viewer draws — no
+ * same assignee chip in the rail and the same schema-built inline Complete form the Viewer draws — no
  * Designer fork. This test would fail if the dock stopped threading `rootFile` (the surface would degrade
  * to the schema-less fallback, showing `awaiting-unresolved`).
  */
@@ -351,20 +351,19 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     expect(within(row).getByTestId("assignee-chip")).toHaveTextContent("editor");
   });
 
-  it("mounts the Viewer's Complete slide-over, built from the node's outputSchema (not the schema-less fallback)", async () => {
+  it("mounts the Viewer's inline Complete form, built from the node's outputSchema (not the schema-less fallback)", async () => {
     await renderAwaiting();
     fireEvent.click(await screen.findByTestId("tree-row-r-step"));
 
     // The detail-panel awaiting surface resolves the node from the open buffer (rootFile), so it is the
     // real form, never the degraded "could not read this step's form" note.
-    expect(await screen.findByTestId("awaiting-actions")).toBeInTheDocument();
+    const actions = within(await screen.findByTestId("awaiting-actions"));
     expect(screen.queryByTestId("awaiting-unresolved")).not.toBeInTheDocument();
-    expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Review the draft");
+    expect(actions.getByTestId("awaiting-description")).toHaveTextContent("Review the draft");
 
-    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
-    const panel = await screen.findByTestId("complete-slide-over");
-    expect(panel).toBeInTheDocument();
-    // The `approved` control proves the form was built from `outputSchema`, matching the Viewer.
-    expect(within(panel).getByTestId("complete-field-approved")).toBeInTheDocument();
+    // The form is inline in the panel (no slide-over to open). The `approved` control proves it was
+    // built from `outputSchema`, matching the Viewer.
+    expect(actions.getByTestId("complete-form")).toBeInTheDocument();
+    expect(actions.getByTestId("complete-field-approved")).toBeInTheDocument();
   });
 });

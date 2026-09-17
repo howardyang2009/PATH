@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildCompleteFields,
   coerceCompleteOutput,
+  coerceRawCompleteOutput,
   mapCompleteErrors,
   validateCompleteOutput,
 } from "../src/complete-form.js";
@@ -39,6 +40,28 @@ describe("buildCompleteFields", () => {
 
   it("returns no fields for a null schema (any JSON accepted)", () => {
     expect(buildCompleteFields(null)).toEqual([]);
+  });
+});
+
+describe("coerceRawCompleteOutput", () => {
+  it("treats blank text as an empty output (the historical bare submit)", () => {
+    expect(coerceRawCompleteOutput("")).toEqual({});
+    expect(coerceRawCompleteOutput("   \n ")).toEqual({});
+  });
+
+  it("parses any JSON value: object, quoted string, number, array", () => {
+    expect(coerceRawCompleteOutput('{ "url": "x" }')).toEqual({ url: "x" });
+    expect(coerceRawCompleteOutput('"done"')).toBe("done");
+    expect(coerceRawCompleteOutput("42")).toBe(42);
+    expect(coerceRawCompleteOutput("[1, 2]")).toEqual([1, 2]);
+  });
+
+  it("takes non-JSON text as a plain string, never an error", () => {
+    expect(coerceRawCompleteOutput("done")).toBe("done");
+    expect(coerceRawCompleteOutput("ship it please")).toBe("ship it please");
+    expect(coerceRawCompleteOutput("{ not json")).toBe("{ not json");
+    // Surrounding whitespace is trimmed, as it is for the JSON path.
+    expect(coerceRawCompleteOutput("  hello  ")).toBe("hello");
   });
 });
 

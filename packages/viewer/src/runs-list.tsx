@@ -1,4 +1,5 @@
 import {
+  effectiveRunStatus,
   isTerminal,
   type PathApiClient,
   type RootRunSummary,
@@ -218,20 +219,32 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // Every row expands an action panel under itself — the rail's mirror of the launch form
-              // under a workflow row (#233). The panel always offers Delete. Every finished run also
-              // shows plain Resume: enabled on a `cancelled`/`failed` run (`canResume`), greyed on a
-              // `succeeded` one — kept visible, not hidden, so its pairing with `Resume from …` reads.
-              // A still-running run shows no Resume at all. Rendered as a sibling of the row button,
-              // never inside it (a button cannot nest the panel's own buttons).
+              // The row shows the same derived status the other three surfaces do: a running root whose
+              // leaf is parked reads `awaiting` (view-only, ADR 0038). The list holds only summaries, so
+              // it can derive this only for the watched root, whose full tree the app passes as
+              // `resumeTree`; every other row has no descendants loaded and keeps its record status.
+              const rowRuns = resumeTree !== undefined && run.run_id === selectedRootRunId ? resumeTree : EMPTY_RUNS;
+              const displayStatus = effectiveRunStatus({ runId: run.run_id, status: run.status }, rowRuns);
+              // A run still in flight — `running`, or a `running` root reading `awaiting` because a leaf
+              // is parked (ADR 0038) — offers no run action at all: it cannot be resumed (it never
+              // stopped) and cannot be deleted (the server 409s a live run). This is the same gate plain
+              // Resume already applies; Delete and `Resume from …` follow it, so the whole action panel
+              // is quiet while the run is alive.
+              const inFlight = displayStatus === "running" || displayStatus === "awaiting";
+              // Every finished row expands an action panel under itself — the rail's mirror of the launch
+              // form under a workflow row (#233). It offers Delete, and plain Resume: enabled on a
+              // `cancelled`/`failed` run (`canResume`), greyed on a `succeeded` one — kept visible, not
+              // hidden, so its pairing with `Resume from …` reads. Rendered as a sibling of the row
+              // button, never inside it (a button cannot nest the panel's own buttons).
               const canResume = run.status === "cancelled" || run.status === "failed";
               const showResume = isTerminal(run.status);
               const open = openFor === run.run_id;
               // `Resume from …` (K-selection) shows in the watched run's own panel — the only row with a
               // loaded tree behind it — when the surface opted in by passing `resumeTree`. It sits below
               // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
-              // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033).
-              const showResumeFrom = resumeTree !== undefined && run.run_id === selectedRootRunId;
+              // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033). Suppressed
+              // while the run is in flight, like the other two actions.
+              const showResumeFrom = resumeTree !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
                 <li key={run.run_id}>
                   <button
@@ -249,39 +262,47 @@ export function RunsList({
                     }}
                   >
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
-                    <StatusPill status={run.status} />
+                    <StatusPill status={displayStatus} />
                     <span className="run-id">{run.run_id}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>
                   {open && (
                     <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
-                      {(showResume || showResumeFrom) && (
-                        <ResumeActions
-                          client={client}
-                          rootRunId={run.run_id}
-                          showResume={showResume}
-                          plainResumable={canResume}
-                          showResumeFrom={showResumeFrom}
-                          runs={resumeTree ?? EMPTY_RUNS}
-                          rootFile={resumeRootFile}
-                          selectedRunId={resumeSelectedRunId}
-                          dirty={resumeDirty}
-                          onResumed={(successorRootRunId) => {
-                            // Collapse on success, as the launch form does on launch — then hand the
-                            // successor to the app to select and watch.
-                            setOpenFor(null);
-                            onResumed(successorRootRunId);
-                          }}
-                        />
+                      {inFlight ? (
+                        // A live run has no resume or delete: it never stopped, and the server 409s a
+                        // delete on a running run. The panel says why rather than standing empty.
+                        <p className="pane-note">This run is still in flight. Resume and delete become available once it finishes.</p>
+                      ) : (
+                        <>
+                          {(showResume || showResumeFrom) && (
+                            <ResumeActions
+                              client={client}
+                              rootRunId={run.run_id}
+                              showResume={showResume}
+                              plainResumable={canResume}
+                              showResumeFrom={showResumeFrom}
+                              runs={resumeTree ?? EMPTY_RUNS}
+                              rootFile={resumeRootFile}
+                              selectedRunId={resumeSelectedRunId}
+                              dirty={resumeDirty}
+                              onResumed={(successorRootRunId) => {
+                                // Collapse on success, as the launch form does on launch — then hand the
+                                // successor to the app to select and watch.
+                                setOpenFor(null);
+                                onResumed(successorRootRunId);
+                              }}
+                            />
+                          )}
+                          <DeleteButton
+                            client={client}
+                            run={run}
+                            onDeleted={(deletedRootRunId) => {
+                              setOpenFor(null);
+                              onDeleted(deletedRootRunId);
+                            }}
+                          />
+                        </>
                       )}
-                      <DeleteButton
-                        client={client}
-                        run={run}
-                        onDeleted={(deletedRootRunId) => {
-                          setOpenFor(null);
-                          onDeleted(deletedRootRunId);
-                        }}
-                      />
                     </div>
                   )}
                 </li>

@@ -1,4 +1,4 @@
-import type { PathApiClient, WorkflowFile } from "@path/client-core";
+import { loadReachableWorkflowFiles, type PathApiClient, type WorkflowFile } from "@path/client-core";
 import { useEffect, useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { LaunchPanel } from "./launch-panel.js";
@@ -27,34 +27,36 @@ export function App({ client }: { client: PathApiClient }) {
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
 
-  // The watched run's root workflow file, read for the eager `Resume from …` legal-K check. The
-  // Designer feeds its open editor buffer here; the Viewer authors nothing, so it reads the file from
-  // disk (a GET, no lease — ADR 0017) so the in-body / since-deleted / prefix reasons grey the button
-  // eagerly, exactly as they do in the Designer, rather than waiting for the engine's refusal on click.
-  // `null` while it loads or if the read/parse fails (a nested run's file, a since-moved file): the
-  // check then falls back to the run-tree-derivable reasons and the engine backstops the rest.
-  const [rootFile, setRootFile] = useState<WorkflowFile | null>(null);
+  // The watched run's reachable workflow files: the root file and every file its `workflow` steps ref,
+  // transitively (`loadReachableWorkflowFiles`). Two surfaces read them, both structural only (node
+  // ids/types and control-body nesting, never the plugin-validated leaf shapes — so no step registry):
+  //   - the eager `Resume from …` legal-K check needs the *root* file (`files[0]`) so the in-body /
+  //     since-deleted / prefix reasons grey the button before the engine's refusal on click; and
+  //   - the awaiting surface needs the *whole set*, because a `person-activity` leaf can live in a
+  //     nested file, not only the root (issue #486 follow-up) — its `description`/`assignee` are read
+  //     from the node by id wherever the node sits.
+  // The Viewer authors nothing, so it reads from disk (a GET, no lease — ADR 0017). Empty while it
+  // loads or if the root read/parse fails; the checks then fall back to the run-tree-derivable reasons
+  // and the schema-less submit, and the engine backstops the rest.
+  const [workflowFiles, setWorkflowFiles] = useState<readonly WorkflowFile[]>([]);
+  const rootFile = workflowFiles[0] ?? null;
   const rootWorkflowPath =
     load.phase === "ready" && selectedRootRunId !== null
       ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
       : null;
   useEffect(() => {
     if (rootWorkflowPath === null) {
-      setRootFile(null);
+      setWorkflowFiles([]);
       return;
     }
     let cancelled = false;
-    setRootFile(null);
-    client
-      .getWorkflowFile(rootWorkflowPath)
-      .then((raw) => {
-        if (cancelled) return;
-        // A structural parse is enough for the eager check — it reads only node ids/types and the
-        // control-body nesting, never the plugin-validated leaf shapes — so no step registry is needed.
-        setRootFile(JSON.parse(raw.text) as WorkflowFile);
+    setWorkflowFiles([]);
+    loadReachableWorkflowFiles(client, rootWorkflowPath)
+      .then((files) => {
+        if (!cancelled) setWorkflowFiles(files);
       })
       .catch(() => {
-        if (!cancelled) setRootFile(null);
+        if (!cancelled) setWorkflowFiles([]);
       });
     return () => {
       cancelled = true;
@@ -122,7 +124,7 @@ export function App({ client }: { client: PathApiClient }) {
             rootRunId={selectedRootRunId}
             selectedRunId={selectedRunId}
             onSelectRun={setSelectedRunId}
-            rootFile={rootFile}
+            workflowFiles={workflowFiles}
           />
         )
       }
@@ -133,8 +135,9 @@ export function App({ client }: { client: PathApiClient }) {
           <NodeIo
             client={client}
             run={selectedRun}
+            runs={load.phase === "ready" ? load.value.runs : undefined}
             narrative={load.phase === "ready" ? load.value.narrative : []}
-            rootFile={rootFile}
+            workflowFiles={workflowFiles}
           />
         )
       }

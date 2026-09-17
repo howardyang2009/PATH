@@ -118,6 +118,8 @@ function StreamIndicator({ phase }: { phase: StreamPhase }) {
 const STREAM_LABEL: Record<StreamPhase, string> = {
   connecting: "connecting…",
   live: "live · SSE",
+  // A parked leaf, not a lost stream: the run pauses for a person to complete it (ADR 0038).
+  waiting: "waiting for completion",
   reconnecting: "reconnecting…",
   closed: "complete",
   failed: "stream lost",

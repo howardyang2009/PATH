@@ -23,8 +23,13 @@ import {
  * `reconnecting` is a transient state, not an error; `closed` is the terminal one (the root run
  * finished and the server closed the stream for good), and `failed` means reconnect is off or
  * exhausted and no more events are coming.
+ *
+ * `waiting` is the quiescent state a `person-activity` run reaches: a leaf is parked `awaiting` and the
+ * server has no more events until a `complete`, so it ends the stream although the root run is still
+ * `running` (ADR 0038). That is not a dropped connection — the core slow-polls for the continuation
+ * rather than hot-looping a reconnect — so the viewer shows a calm "waiting" note, not "reconnecting".
  */
-export type StreamPhase = "connecting" | "live" | "reconnecting" | "closed" | "failed";
+export type StreamPhase = "connecting" | "live" | "waiting" | "reconnecting" | "closed" | "failed";
 
 /**
  * One run's live state: the client's mutable projection of a run row, event-updated. It is the domain
@@ -146,6 +151,14 @@ export class RunViewModel {
       if (!isTerminal(node.status)) node.status = "running";
       node.workerName = event.worker_name;
       node.startedAt ??= event.ts;
+    } else if (event.type === "step-awaiting") {
+      // A leaf entered `awaiting` — the worker parked the step for an external `complete` (ADR 0040,
+      // person-activity). It is a distinct event from `step-finished` because the run is still live
+      // (not terminal). Folding it is what makes a full replay after reload land on `awaiting`: the
+      // `step-started` above walks the run to `running`, and without this the later `step-awaiting`
+      // was dropped, leaving the parked row stuck at `running`. Guard the terminal status the same
+      // way `step-started` does — a `complete` already replayed as `step-finished` must not reopen.
+      if (!isTerminal(node.status)) node.status = "awaiting";
     } else if (event.type === "step-finished") {
       node.status = event.status;
       node.finishedAt = event.ts;
