@@ -146,6 +146,14 @@ export class RunViewModel {
       if (!isTerminal(node.status)) node.status = "running";
       node.workerName = event.worker_name;
       node.startedAt ??= event.ts;
+    } else if (event.type === "step-awaiting") {
+      // A leaf entered `awaiting` — the worker parked the step for an external `complete` (ADR 0040,
+      // person-activity). It is a distinct event from `step-finished` because the run is still live
+      // (not terminal). Folding it is what makes a full replay after reload land on `awaiting`: the
+      // `step-started` above walks the run to `running`, and without this the later `step-awaiting`
+      // was dropped, leaving the parked row stuck at `running`. Guard the terminal status the same
+      // way `step-started` does — a `complete` already replayed as `step-finished` must not reopen.
+      if (!isTerminal(node.status)) node.status = "awaiting";
     } else if (event.type === "step-finished") {
       node.status = event.status;
       node.finishedAt = event.ts;

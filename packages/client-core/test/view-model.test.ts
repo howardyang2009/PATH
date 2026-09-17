@@ -13,6 +13,10 @@ function stepFinished(seq: number, runId: string, nodeId: string | null, status:
   return { type: "step-finished", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, status };
 }
 
+function stepAwaiting(seq: number, runId: string, nodeId: string | null, assignee: string | null = null): LogEvent {
+  return { type: "step-awaiting", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, assignee };
+}
+
 function tree(status: RunViewState["status"], output: RunTreeResponse["output"] = null): RunTreeResponse {
   return {
     root_run_id: ROOT,
@@ -110,6 +114,49 @@ describe("RunViewModel", () => {
 
     expect(model.getState().status).toBe("succeeded");
     expect(model.getState().runs.get(ROOT)?.workerName).toBe("spawn");
+  });
+
+  it("folds step-awaiting into a run's status", () => {
+    const model = new RunViewModel(ROOT);
+    model.applyEvent(stepStarted(1, ROOT, null));
+    model.applyEvent(stepStarted(2, CHILD, "check-git-result"));
+    expect(model.getState().runs.get(CHILD)?.status).toBe("running");
+
+    model.applyEvent(stepAwaiting(3, CHILD, "check-git-result", "alice"));
+    expect(model.getState().runs.get(CHILD)?.status).toBe("awaiting");
+  });
+
+  it("lands an awaiting leaf on `awaiting`, not `running`, after a full replay on reload", () => {
+    const model = new RunViewModel(ROOT);
+    // Reload: hydrate reads the server tree, where the parked leaf is already `awaiting`.
+    const t = tree("running");
+    t.runs.push({
+      ...t.runs[0]!,
+      run_id: CHILD,
+      parent_run_id: ROOT,
+      node_id: "check-git-result",
+      node_name: "check-git-result",
+      status: "awaiting",
+    });
+    model.hydrate(t);
+    expect(model.getState().runs.get(CHILD)?.status).toBe("awaiting");
+
+    // No `Last-Event-ID` means the server replays from seq 1: `step-started` walks the leaf to
+    // `running`, then `step-awaiting` must lift it back to the parked status.
+    model.applyEvent(stepStarted(1, ROOT, null));
+    model.applyEvent(stepStarted(2, CHILD, "check-git-result"));
+    model.applyEvent(stepAwaiting(3, CHILD, "check-git-result", "alice"));
+
+    expect(model.getState().runs.get(CHILD)?.status).toBe("awaiting");
+  });
+
+  it("does not reopen a completed run when step-awaiting replays before step-finished", () => {
+    const model = new RunViewModel(ROOT);
+    model.applyEvent(stepStarted(1, CHILD, "check-git-result"));
+    model.applyEvent(stepAwaiting(2, CHILD, "check-git-result"));
+    // The operator completed the leaf; the resolve is a terminal `step-finished`.
+    model.applyEvent(stepFinished(3, CHILD, "check-git-result"));
+    expect(model.getState().runs.get(CHILD)?.status).toBe("succeeded");
   });
 
   it("takes structure from a re-read tree without regressing a run the events already finished", () => {
