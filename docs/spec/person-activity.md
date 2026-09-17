@@ -210,8 +210,11 @@ Both the **Viewer** and the **Designer** surface `awaiting`. The Designer reuses
 **Awaiting display (both surfaces).** An `awaiting` leaf shows a `⏳` glyph and a purple
 (`--st-awaiting`) status pill in the run rail; the `assignee` shows as a chip; the interpolable
 `description` shows as a callout in the detail panel. The root and parent stay `running` while a leaf
-awaits (ADR 0038). The rail carries a **count badge** when several leaves await at once (parallel joins,
-ADR 0042).
+awaits (ADR 0038) — that is the record's status in the DB and never changes. The rail, however, paints
+every **running ancestor** of an awaiting leaf with the `awaiting` pill too, so a parked leaf is visible
+from a collapsed parent. This is a **view-only** derivation (`awaitingAncestorRunIds`): it repaints the
+pill, nothing else — the ancestor keeps no assignee chip, and its record status stays `running`. The rail
+carries a **count badge** when several leaves await at once (parallel joins, ADR 0042).
 
 **Complete (inline in the node I/O/C/E panel).** The awaiting step's detail panel shows the Complete
 surface **inline**: the `description` callout, the `assignee` chip, the step's `outputSchema` (shown even

@@ -1,4 +1,13 @@
-import { awaitingNodeForRun, buildRunTree, isIterationRun, nodeLabel, type RunNodeState, type RunTreeNode, type WorkflowFile } from "@path/client-core";
+import {
+  awaitingAncestorRunIds,
+  awaitingNodeForRun,
+  buildRunTree,
+  isIterationRun,
+  nodeLabel,
+  type RunNodeState,
+  type RunTreeNode,
+  type WorkflowFile,
+} from "@path/client-core";
 import { useState } from "react";
 import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
@@ -28,11 +37,16 @@ export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, rootFile 
   const root = buildRunTree(rootRunId, runs);
   if (!root) return <p className="pane-note">No runs recorded for this root run.</p>;
 
+  // View-only: the running ancestors of an awaiting leaf paint `awaiting` too, so a parked leaf shows
+  // from a collapsed parent. The record keeps them `running` (ADR 0038) — this never leaves the rail.
+  const awaitingAncestors = awaitingAncestorRunIds(root);
+
   const tree: TreeView = {
     collapsed,
     selectedRunId,
     onSelectRun,
     rootFile,
+    awaitingAncestors,
     onToggle: (runId) =>
       setCollapsed((prev) => {
         const next = new Set(prev);
@@ -55,6 +69,8 @@ interface TreeView {
   onToggle: (runId: string) => void;
   onSelectRun: (runId: string) => void;
   rootFile: WorkflowFile | null;
+  /** Running runs that display `awaiting` because an awaiting leaf sits below them (view-only). */
+  awaitingAncestors: ReadonlySet<string>;
 }
 
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
@@ -70,6 +86,10 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
   // is not loaded or the node has no assignee.
   const assignee = awaitingNodeForRun(tree.rootFile, run)?.assignee ?? null;
+  // The record status the run really holds, except a running ancestor of an awaiting leaf shows
+  // `awaiting` in the rail (view-only, ADR 0038). The chip above stays keyed on the real status, so
+  // only the actual awaiting leaf carries an assignee — a flipped ancestor gets the pill, not a chip.
+  const displayStatus = tree.awaitingAncestors.has(run.runId) ? "awaiting" : run.status;
 
   return (
     <li className="tree-item" data-testid={`tree-item-${run.runId}`}>
@@ -101,7 +121,7 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
           <span className="node-name">{label}</span>
           {run.nodeId && <span className="tree-ref node-ref">({run.nodeId})</span>}
           <span className="tree-ref run-ref">{run.runId}</span>
-          <StatusPill status={run.status} />
+          <StatusPill status={displayStatus} />
           {assignee !== null && <AssigneeChip assignee={assignee} />}
         </button>
       </div>

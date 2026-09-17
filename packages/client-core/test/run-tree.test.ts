@@ -1,8 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { buildRunTree } from "../src/run-tree.js";
+import { awaitingAncestorRunIds, buildRunTree } from "../src/run-tree.js";
+import type { RunStatus } from "@path/schema";
 import type { RunNodeState } from "../src/view-model.js";
 
-function run(runId: string, parentRunId: string | null, startedAt: string | null = "2026-07-25T10:00:00.000Z"): RunNodeState {
+function run(
+  runId: string,
+  parentRunId: string | null,
+  startedAt: string | null = "2026-07-25T10:00:00.000Z",
+  status: RunStatus = "running",
+): RunNodeState {
   return {
     runId,
     rootRunId: "root",
@@ -11,7 +17,7 @@ function run(runId: string, parentRunId: string | null, startedAt: string | null
     nodeName: runId,
     workerName: null,
     iteration: null,
-    status: "running",
+    status,
     startedAt,
     finishedAt: null,
     inputRef: null,
@@ -117,5 +123,53 @@ describe("buildRunTree", () => {
     const tree = buildRunTree("root", mapOf(run("root", null), run("a", "b"), run("b", "a")));
 
     expect(shape(tree)).toEqual({ id: "root", children: [] });
+  });
+});
+
+describe("awaitingAncestorRunIds", () => {
+  const ts = "2026-07-25T10:00:00.000Z";
+
+  it("returns the running ancestors of an awaiting leaf, up to the root", () => {
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("mid", "root", ts), run("leaf", "mid", ts, "awaiting")),
+    )!;
+
+    // Both running ancestors flip; the awaiting leaf itself is not in the set (it needs no derivation).
+    expect([...awaitingAncestorRunIds(tree)].sort()).toEqual(["mid", "root"]);
+  });
+
+  it("is empty when no run in the tree is awaiting", () => {
+    const tree = buildRunTree("root", mapOf(run("root", null), run("mid", "root", ts)))!;
+    expect(awaitingAncestorRunIds(tree).size).toBe(0);
+  });
+
+  it("never flips a terminal ancestor, only a running one", () => {
+    // A succeeded parent with an awaiting child (a shape ADR 0038 does not produce, but the derivation
+    // must not invent an awaiting on a finished run regardless).
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("done", "root", ts, "succeeded"), run("leaf", "done", ts, "awaiting")),
+    )!;
+
+    expect([...awaitingAncestorRunIds(tree)]).toEqual(["root"]);
+  });
+
+  it("flips only the branch that holds the awaiting leaf", () => {
+    const tree = buildRunTree(
+      "root",
+      mapOf(
+        run("root", null),
+        run("branch-a", "root", ts),
+        run("leaf-a", "branch-a", ts, "awaiting"),
+        run("branch-b", "root", ts),
+        run("leaf-b", "branch-b", ts, "running"),
+      ),
+    )!;
+
+    const ids = awaitingAncestorRunIds(tree);
+    expect(ids.has("root")).toBe(true);
+    expect(ids.has("branch-a")).toBe(true);
+    expect(ids.has("branch-b")).toBe(false);
   });
 });

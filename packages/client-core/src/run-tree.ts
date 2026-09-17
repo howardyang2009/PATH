@@ -48,6 +48,33 @@ export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNod
   return nest(root);
 }
 
+/**
+ * The run ids that should **display** as `awaiting` although their own record status is `running`: a
+ * running run with an `awaiting` run anywhere in its subtree, and every running run above it.
+ *
+ * This is a **view-only** derivation and touches no status. The root and every intermediate
+ * workflow-run stay `running` in the record while a leaf awaits (ADR 0038) — that is the engine's
+ * truth and the DB's. But a parked leaf is easy to miss when its parent is collapsed, so the rail
+ * paints the running ancestors `awaiting` too, purely as a hint that a completion is pending below. A
+ * run whose own status is already `awaiting` is **not** in this set: it needs no derivation, it renders
+ * its real status directly.
+ */
+export function awaitingAncestorRunIds(root: RunTreeNode): ReadonlySet<string> {
+  const ids = new Set<string>();
+  // Post-order: a node learns whether its subtree holds an awaiting run from its children, then a
+  // running node with one joins the set and reports the awaiting up so its own parents flip too.
+  const visit = (node: RunTreeNode): boolean => {
+    let subtreeAwaiting = node.run.status === "awaiting";
+    for (const child of node.children) {
+      if (visit(child)) subtreeAwaiting = true;
+    }
+    if (subtreeAwaiting && node.run.status === "running") ids.add(node.run.runId);
+    return subtreeAwaiting;
+  };
+  visit(root);
+  return ids;
+}
+
 /** Oldest start first; a run that has not started yet sorts last. Run id breaks ties. */
 function byStartOrder(a: RunNodeState, b: RunNodeState): number {
   if (a.startedAt !== b.startedAt) {
