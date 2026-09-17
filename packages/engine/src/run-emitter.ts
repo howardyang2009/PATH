@@ -60,8 +60,12 @@ export interface StepEmitter {
    * it stood at each step is followable step by step. Emitted only for a step that succeeded.
    */
   context(context: JsonValue): Promise<void>;
-  /** The step entered `awaiting` status (#462): the engine suspends it until a `complete` resolves it. */
-  awaiting(): Promise<void>;
+  /**
+   * The step entered `awaiting` status (#462): the engine suspends it until a `complete` resolves it.
+   * `assignee` (#488) is who the offline activity is for — the worker's echoed informational string,
+   * `null` when the node named none — carried on the `step-awaiting` record.
+   */
+  awaiting(args: { assignee: string | null }): Promise<void>;
   /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled` `step-finished`. */
   cancelled(args: { cause: "sibling-failed" | "sibling-succeeded" | "operator"; causeRunId: string | null }): Promise<void>;
 }
@@ -270,8 +274,8 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         finished(outcome): Promise<void> {
           return emit({ type: "step-finished", runId: stepRunId, rootRunId, ...outcome });
         },
-        awaiting(): Promise<void> {
-          return emit({ type: "step-awaiting", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name });
+        awaiting(args): Promise<void> {
+          return emit({ type: "step-awaiting", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, assignee: args.assignee });
         },
         context(context): Promise<void> {
           return emit({ type: "step-context", runId: stepRunId, rootRunId, context });

@@ -24,7 +24,26 @@ describe("person-activity plugin", () => {
     } as unknown as PersonRequest;
 
     const result = await stepPlugin.workers.person!.run(request);
-    expect(result).toEqual({ status: "awaiting" });
+    // No assignee on the node — the park echoes none (#488).
+    expect(result).toEqual({ status: "awaiting", assignee: undefined });
+  });
+
+  it("echoes the node's assignee on the awaiting result (#488)", async () => {
+    const request = {
+      fields: { description: "Approve the PR", assignee: "alex" },
+      input: {},
+      config: {},
+      cwd: "/tmp",
+      signal: new AbortController().signal,
+    } as unknown as PersonRequest;
+
+    const result = await stepPlugin.workers.person!.run(request);
+    // The interpolated assignee rides the park so the engine can put it on the `step-awaiting` record.
+    expect(result).toEqual({ status: "awaiting", assignee: "alex" });
+  });
+
+  it("declares assignee as an optional field", () => {
+    expect(stepPlugin.fields.assignee).toBeDefined();
   });
 
   it("declares description as a required field", () => {

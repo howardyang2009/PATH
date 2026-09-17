@@ -309,7 +309,9 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   (`branch-taken`, `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`,
   `loop-exited`, `join-applied`, `run-cancelled`). `step-awaiting` marks a step that suspended on an
   external completion (a **person-activity** step, #462); it carries no terminal status, so it is its
-  own log event beside `step-finished`. The shared envelope has `seq` (monotonic per root run, the ordering
+  own log event beside `step-finished`. It also carries the leaf's `assignee` (#488) — who the offline
+  activity is for, `null` when the node named none — so an `awaiting`/Complete cycle reconstructs from
+  the log alone (the Complete's `step-finished` closes it), not only from the mutable workflow file. The shared envelope has `seq` (monotonic per root run, the ordering
   truth), `ts`, `type` (a flat discriminated union), `run_id`, and `node_id`. The projection is not
   one-to-one. A workflow-run's own start and a leaf step's start are both `step-started` (invariant 2).
   The two finishes are alike. One `checkpoint-evaluated` observation becomes `checkpoint-passed` or

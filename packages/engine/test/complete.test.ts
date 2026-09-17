@@ -32,13 +32,14 @@ function open(): Project {
 }
 
 /** A person-activity leaf: parks the run until Completed. `publish` exposes its output downstream. */
-function person(id: string, publish?: { [k: string]: string }): WorkflowFile["body"][number] {
+function person(id: string, opts?: { publish?: { [k: string]: string }; assignee?: string }): WorkflowFile["body"][number] {
   return {
     type: "person-activity",
     id,
     name: id,
     description: `do ${id}`,
-    ...(publish ? { publish } : {}),
+    ...(opts?.assignee ? { assignee: opts.assignee } : {}),
+    ...(opts?.publish ? { publish: opts.publish } : {}),
   } as unknown as WorkflowFile["body"][number];
 }
 
@@ -89,7 +90,7 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
   it("writes the leaf output, reuses the succeeded prefix, and runs the tail once in the same tree", async () => {
     const project = open();
     try {
-      const wf = workflow([person("approve", { decision: "${output}" }), marker("after")], { result: "${context.decision}" });
+      const wf = workflow([person("approve", { publish: { decision: "${output}" } }), marker("after")], { result: "${context.decision}" });
       await project.run(wf, dir);
       const [root] = project.archive.listRoots();
       const rootRunId = root!.runId;
@@ -138,6 +139,38 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
       // The Complete appended events past where the launch stopped, and the tail is narrated.
       expect(seqs.length).toBeGreaterThan(seqsAfterLaunch.length);
       expect(events.some((e) => e.type === "step-started" && e.node_id === "after")).toBe(true);
+    } finally {
+      project.close();
+    }
+  });
+
+  it("reconstructs an awaiting/Complete cycle from the log alone, carrying the leaf's assignee (#488)", async () => {
+    const project = open();
+    try {
+      const wf = workflow([person("approve", { assignee: "alex" })]);
+      await project.run(wf, dir);
+      const rootRunId = project.archive.listRoots()[0]!.runId;
+      const leaf = awaitingLeaf(project, rootRunId);
+
+      // The park is narrated with the leaf's node id and its assignee, before any Complete.
+      const parked = project.archive.tree(rootRunId)!.events();
+      const awaiting = parked.find((e) => e.type === "step-awaiting");
+      expect(awaiting).toMatchObject({ type: "step-awaiting", node_id: "approve", assignee: "alex" });
+
+      await project.complete(wf, leaf.runId, { ok: true }, dir);
+
+      // The whole cycle for the leaf reads off the stream by its run id: started -> awaiting(assignee)
+      // -> finished. The Complete re-invocation's step-finished carries a null node_id (no fresh
+      // step-started re-seeds the per-invocation node map), so the run id is the reconstruction key
+      // and the `step-awaiting` event is what bridges it to the node id + assignee.
+      const forLeaf = project.archive
+        .tree(rootRunId)!
+        .events()
+        .filter((e) => e.run_id === leaf.runId)
+        .map((e) => e.type);
+      expect(forLeaf).toEqual(["step-started", "step-awaiting", "step-finished"]);
+      const finished = project.archive.tree(rootRunId)!.events().find((e) => e.run_id === leaf.runId && e.type === "step-finished");
+      expect(finished).toMatchObject({ type: "step-finished", status: "succeeded" });
     } finally {
       project.close();
     }

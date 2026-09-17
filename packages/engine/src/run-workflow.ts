@@ -660,7 +660,9 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   // parked leaf is resolved later by a Complete replay from the root (ADR 0041), which reaches this
   // same leaf run and writes its output through the CAS, never through this call.
   if (result.status === "awaiting") {
-    await step.awaiting();
+    // The worker's echoed `assignee` (#488) rides the `step-awaiting` record; a park that named none
+    // carries `null`. The engine reads it as an opaque string, masked at the emit choke point.
+    await step.awaiting({ assignee: result.assignee ?? null });
     return { status: "awaiting" };
   }
 

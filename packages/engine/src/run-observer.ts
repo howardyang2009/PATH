@@ -183,8 +183,13 @@ export type Observation =
    * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
    */
   | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; nodeName: string; originalRunId: string }
-  /** A leaf step run entered the `awaiting` status (#462): the engine suspended it. */
-  | { type: "step-awaiting"; runId: string; rootRunId: string; nodeId: string; nodeName: string }
+  /**
+   * A leaf step run entered the `awaiting` status (#462): the engine suspended it. `assignee` (#488)
+   * is who the offline activity is for — an informational string the worker echoed from its node
+   * (`null` when the node named none), on the record so an `awaiting`/Complete cycle reconstructs
+   * from the log alone. It is an interpolated author value, so it is secret-masked like any other.
+   */
+  | { type: "step-awaiting"; runId: string; rootRunId: string; nodeId: string; nodeName: string; assignee: string | null }
   /**
    * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
    * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run
