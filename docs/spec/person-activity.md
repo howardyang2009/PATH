@@ -213,18 +213,22 @@ Both the **Viewer** and the **Designer** surface `awaiting`. The Designer reuses
 awaits (ADR 0038). The rail carries a **count badge** when several leaves await at once (parallel joins,
 ADR 0042).
 
-**Complete (variant B — a slide-over, no docked inbox, no modal).** A **Complete button** in the
-awaiting step's detail panel launches a **slide-over** form built from the step's `outputSchema`. Field
-validation is inline; submit calls `POST /v0/runs/:step_run_id/complete`. On `400` the step stays
-`awaiting` for a retry and the server's field errors show inline. On `202` the client watches the root
-SSE stream and the run continues to the next `awaiting` step or to completion.
+**Complete (inline in the node I/O/C/E panel).** The awaiting step's detail panel shows the Complete
+surface **inline**: the `description` callout, the `assignee` chip, the step's `outputSchema` (shown even
+when empty, so the person sees the shape their output is checked against), and the form built from that
+schema. A node with no `outputSchema` draws a single raw-JSON control instead, so any-JSON output still
+has somewhere to go. Field validation is inline; the **Complete this activity** button calls
+`POST /v0/runs/:step_run_id/complete` directly with the panel's output value. On `400` the step stays
+`awaiting` for a retry and the server's field errors show in place. On `202` the client watches the root
+SSE stream and the run continues to the next `awaiting` step or to completion. (An earlier build put this
+form in a right-edge slide-over; it is now inline in the panel.)
 
 **Designer authoring.** The `person-activity` node gets its own canvas identity — a distinct **teal** hue
 and a **person glyph** — so it no longer falls back to the `--k-step` indigo shared with generic steps and
 reads apart from `binary` and `prompt`. The node editor exposes the three fields: `description`
 (interpolable text area), `outputSchema` (JSON Schema / raw JSON), and `assignee` (text input). When a
 `person-activity` step is `awaiting` during a Designer run, the Designer run dock reuses the **same
-slide-over Complete form** as the Viewer.
+inline Complete form** as the Viewer.
 
 ## 8. Audit (#488)
 

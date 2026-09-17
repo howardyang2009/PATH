@@ -112,33 +112,35 @@ describe("awaiting rail (RunDetail)", () => {
   });
 });
 
-describe("awaiting detail panel + Complete slide-over (NodeIo)", () => {
-  it("shows the description callout and a Complete button for an awaiting leaf", async () => {
+describe("awaiting detail panel — inline Complete (NodeIo)", () => {
+  it("shows the description callout, the assignee, and the inline Complete form for an awaiting leaf", async () => {
     render(<NodeIo client={stubClient()} run={runState()} rootFile={ROOT_FILE} />);
 
     expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Review the contract for {{client.name}}.");
-    expect(screen.getByTestId("awaiting-complete-button")).toBeInTheDocument();
-    // The detail-panel surface is scoped to the leaf; the assignee shows here too.
-    expect(within(screen.getByTestId("awaiting-actions")).getByTestId("assignee-chip")).toHaveTextContent("legal@acme.co");
+    // The form is inline in the panel — no button to open a slide-over first.
+    const actions = within(screen.getByTestId("awaiting-actions"));
+    expect(actions.getByTestId("complete-form")).toBeInTheDocument();
+    expect(actions.getByTestId("complete-field-approved")).toBeInTheDocument();
+    expect(actions.getByTestId("assignee-chip")).toHaveTextContent("legal@acme.co");
+    // The submit button carries the panel's own label.
+    expect(actions.getByTestId("complete-submit")).toHaveTextContent("Complete this activity");
   });
 
-  it("opens the slide-over form built from the outputSchema, and completes on submit", async () => {
+  it("shows the output schema, and completes inline on submit", async () => {
     const completeBodies: unknown[] = [];
     const client = stubClient({ completeBodies });
     render(<NodeIo client={client} run={runState()} rootFile={ROOT_FILE} />);
 
-    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
-    const panel = screen.getByTestId("complete-slide-over");
-    expect(within(panel).getByTestId("complete-field-approved")).toBeInTheDocument();
+    // The step's outputSchema shows in the panel (the `approved` property is in the rendered JSON).
+    expect(screen.getByTestId("awaiting-output-schema")).toHaveTextContent("approved");
 
-    fireEvent.click(within(panel).getByLabelText(/Approved/));
-    fireEvent.click(within(panel).getByTestId("complete-submit"));
+    fireEvent.click(screen.getByLabelText(/Approved/));
+    fireEvent.click(screen.getByTestId("complete-submit"));
 
-    await waitFor(() => expect(screen.queryByTestId("complete-slide-over")).toBeNull());
-    expect(completeBodies[0]).toEqual({ output: { approved: true } });
+    await waitFor(() => expect(completeBodies[0]).toEqual({ output: { approved: true } }));
   });
 
-  it("keeps the slide-over open with field errors on a 400 (leaf stays awaiting)", async () => {
+  it("keeps the inline form with field errors on a 400 (leaf stays awaiting)", async () => {
     const client = stubClient({
       complete: {
         status: 400,
@@ -152,21 +154,29 @@ describe("awaiting detail panel + Complete slide-over (NodeIo)", () => {
     });
     render(<NodeIo client={client} run={runState()} rootFile={ROOT_FILE} />);
 
-    fireEvent.click(screen.getByTestId("awaiting-complete-button"));
     // Submitting an unchecked box coerces to `approved: false`, which is present client-side but the
-    // server's required check here rejects — the point is the 400 field error renders and the panel stays.
-    fireEvent.click(within(screen.getByTestId("complete-slide-over")).getByTestId("complete-submit"));
+    // server's required check here rejects — the point is the 400 field error renders in place.
+    fireEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
-      expect(within(screen.getByTestId("complete-slide-over")).getByTestId("complete-field-approved")).toHaveTextContent(
-        "must have required property 'approved'",
-      ),
+      expect(screen.getByTestId("complete-field-approved")).toHaveTextContent("must have required property 'approved'"),
     );
+  });
+
+  it("shows an empty output schema and a raw-JSON control for a node with no outputSchema", () => {
+    render(<NodeIo client={stubClient()} run={runState({ runId: "run_finance", nodeId: "step-finance", nodeName: "finance-approval" })} rootFile={ROOT_FILE} />);
+
+    // The schema block is a fixed slot: it shows even when the node authored none.
+    expect(screen.getByTestId("awaiting-output-schema")).toBeInTheDocument();
+    expect(screen.getByTestId("awaiting-output-schema-empty")).toBeInTheDocument();
+    // With no schema the person still gets somewhere to enter the output.
+    expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
   });
 
   it("degrades to a schema-less submit when the node is not in the file", () => {
     render(<NodeIo client={stubClient()} run={runState({ nodeId: "step-nested" })} rootFile={ROOT_FILE} />);
     expect(screen.getByTestId("awaiting-unresolved")).toBeInTheDocument();
-    expect(screen.getByTestId("awaiting-complete-button")).toBeInTheDocument();
+    expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
+    expect(screen.getByTestId("complete-submit")).toBeInTheDocument();
   });
 });

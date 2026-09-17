@@ -19,6 +19,8 @@ export interface CompleteFormProps {
   stepRunId: string;
   /** The node's `outputSchema`, or `null` for a node that accepts any JSON (an empty output). */
   outputSchema: JsonValue | null;
+  /** The submit button's label. Defaults to the panel's "Complete this activity". */
+  submitLabel?: string;
   /** Called on a `202` — the leaf is `succeeded` and the root's SSE stream carries the continuation. */
   onCompleted: () => void;
 }
@@ -36,7 +38,7 @@ export interface CompleteFormProps {
  * instead of no fields at all — otherwise the person had nowhere to enter the `${output}` the step
  * publishes. Blank raw text still submits an empty output, the historical bare-submit.
  */
-export function CompleteForm({ client, stepRunId, outputSchema, onCompleted }: CompleteFormProps) {
+export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "Complete this activity", onCompleted }: CompleteFormProps) {
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the raw-JSON control.
   const raw = fields.length === 0;
@@ -126,7 +128,7 @@ export function CompleteForm({ client, stepRunId, outputSchema, onCompleted }: C
 
       <div className="launch-actions">
         <button type="submit" className="launch-submit" data-testid="complete-submit" disabled={phase === "sending"}>
-          {phase === "sending" ? "Submitting…" : "Submit completion"}
+          {phase === "sending" ? "Submitting…" : submitLabel}
         </button>
       </div>
     </form>
