@@ -57,18 +57,26 @@ describe("session-reducer — applyEdit and the undo history (#389)", () => {
     expect(frameDirty(edited.frames[0])).toBe(true);
   });
 
-  it("folds a run of keystrokes under one coalesce key into a single entry", () => {
+  it("folds a run of keystrokes under one edit identity into a single entry", () => {
     let s = sessionOn(openFrame(file("flow")));
-    s = reduceSession(s, { type: "applyEdit", next: file("flow", "h"), coalesce: "prompt:x" });
-    s = reduceSession(s, { type: "applyEdit", next: file("flow", "hi"), coalesce: "prompt:x" });
+    const prompt = { owner: "x", field: "prompt" };
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "h"), key: prompt });
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "hi"), key: prompt });
     // Two keystrokes, one entry — undo jumps back to where the run began, not to the intermediate.
     expect(s.frames[0]!.history.past).toHaveLength(1);
   });
 
-  it("opens a new entry when the coalesce key changes", () => {
+  it("opens a new entry when the edit identity changes", () => {
     let s = sessionOn(openFrame(file("flow")));
-    s = reduceSession(s, { type: "applyEdit", next: file("flow", "h"), coalesce: "prompt:x" });
-    s = reduceSession(s, { type: "applyEdit", next: file("flow", "hi"), coalesce: "name:x" });
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "h"), key: { owner: "x", field: "prompt" } });
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "hi"), key: { owner: "x", field: "name" } });
+    expect(s.frames[0]!.history.past).toHaveLength(2);
+  });
+
+  it("opens a new entry for a structural edit, which carries no identity", () => {
+    let s = sessionOn(openFrame(file("flow")));
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "h"), key: { owner: "x", field: "prompt" } });
+    s = reduceSession(s, { type: "applyEdit", next: file("flow", "hi") });
     expect(s.frames[0]!.history.past).toHaveLength(2);
   });
 });

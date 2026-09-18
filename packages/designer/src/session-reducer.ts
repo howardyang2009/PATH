@@ -1,4 +1,6 @@
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import type { EditKey } from "./edit-key.js";
+import { sameEditKey } from "./edit-key.js";
 import type { OpenResult } from "./open-workflow.js";
 import { findById, replaceNode } from "./edit-tree.js";
 import { basename, relativeRefPath } from "./resolve-ref.js";
@@ -88,10 +90,11 @@ export interface History {
   /** Buffers ahead of the present (redo), next-redo first; cleared by any new edit. */
   future: WorkflowFile[];
   /**
-   * The coalesce key of the in-progress field run, or `undefined` when the last commit closed a run. A field
-   * edit whose key equals this folds into the current entry; any other key, or a structural edit, opens one.
+   * The identity of the in-progress field-edit run (`edit-key.ts`), or `undefined` when the last commit
+   * closed a run. A field edit whose identity matches this folds into the current entry; any other
+   * identity, or a structural edit, opens one.
    */
-  coalesceKey: string | undefined;
+  coalesceKey: EditKey | undefined;
 }
 
 /**
@@ -244,8 +247,8 @@ export type SessionAction =
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   | { type: "goTo"; index: number }
-  /** Commit an edit to the active frame's opened file, folding a coalesced field run to one undo entry (#389). */
-  | { type: "applyEdit"; next: WorkflowFile; coalesce?: string }
+  /** Commit an edit to the active frame's opened file, folding a run of field edits that share an identity (#389). */
+  | { type: "applyEdit"; next: WorkflowFile; key?: EditKey }
   /** Undo the active frame's last edit (#389). A no-op when its past stack is empty. */
   | { type: "undo" }
   /** Redo the active frame's last undo (#389). A no-op when its future stack is empty. */
@@ -309,16 +312,18 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened) return { ...state, saveState: IDLE };
-      // Record an undo entry (#389). A field edit whose key matches the run in progress **folds** — the
-      // present buffer is the run's intermediate, dropped so undo jumps to where the run began. Any other
-      // key, or a structural edit (no key), pushes the present as a new entry. Either way redo is cleared.
-      const fold = action.coalesce !== undefined && action.coalesce === frame.history.coalesceKey;
+      // Record an undo entry (#389). A field edit whose identity matches the run in progress **folds** —
+      // the present buffer is the run's intermediate, dropped so undo jumps to where the run began. Any
+      // other identity, or a structural edit (none), pushes the present as a new entry. Either way redo
+      // is cleared. The identity is a value (`edit-key.ts`), compared structurally — the pane cannot
+      // collide two fields into one entry by minting the same string for both.
+      const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       const frames = state.frames.slice();
       frames[depth] = {
         ...frame,
         state: { phase: "open", result: { ...opened, file: action.next } },
-        history: { past, future: [], coalesceKey: action.coalesce },
+        history: { past, future: [], coalesceKey: action.key },
       };
       return { frames, activeIndex: depth, saveState: IDLE };
     }

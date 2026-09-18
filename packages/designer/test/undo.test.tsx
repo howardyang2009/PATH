@@ -106,19 +106,20 @@ describe("#389 undo/redo — one entry per structural edit, clean re-derived (AD
     const hook = await openSession({ [PATH]: JSON.stringify(file("draft")) });
     const original = buffer(hook);
 
-    // Three edits sharing one coalesce key fold to one entry; a single undo jumps back to the run start.
-    act(() => hook.result.current.applyEdit(rename(original, "d"), "name:step"));
-    act(() => hook.result.current.applyEdit(rename(original, "dr"), "name:step"));
-    act(() => hook.result.current.applyEdit(rename(original, "draft-2"), "name:step"));
+    // Three edits sharing one identity fold to one entry; a single undo jumps back to the run start.
+    const name = { owner: "step", field: "name" };
+    act(() => hook.result.current.applyEdit(rename(original, "d"), name));
+    act(() => hook.result.current.applyEdit(rename(original, "dr"), name));
+    act(() => hook.result.current.applyEdit(rename(original, "draft-2"), name));
     expect(buffer(hook).body[0]!.name).toBe("draft-2");
 
     act(() => hook.result.current.undo());
     expect(buffer(hook).body[0]!.name).toBe("draft");
     expect(frameCanUndo(hook.result.current.frames[0])).toBe(false);
 
-    // A different key opens a new entry, so it does not fold with the previous run.
+    // A different identity opens a new entry, so it does not fold with the previous run.
     act(() => hook.result.current.redo());
-    act(() => hook.result.current.applyEdit(rename(original, "other"), "prompt:step"));
+    act(() => hook.result.current.applyEdit(rename(original, "other"), { owner: "step", field: "prompt" }));
     act(() => hook.result.current.undo());
     expect(buffer(hook).body[0]!.name).toBe("draft-2");
   });

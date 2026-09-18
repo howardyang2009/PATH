@@ -15,6 +15,7 @@ import { ConditionField } from "./condition-builder.js";
 import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./config-inheritance.js";
 import { renderConfigValue } from "./config-value.js";
 import { ConfigValueControl } from "./config-value-control.js";
+import { editKey, type EditCommit, type EditKey } from "./edit-key.js";
 import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
 import {
   applyNodeConfig,
@@ -76,7 +77,7 @@ export interface PropertiesPaneProps {
   /** The selected node's id, or `null` for the file's own properties. */
   selectedId: string | null;
   plugins: WireStepPlugin[];
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
   /** Re-point the selection after a re-key changes a node's id (ADR 0015). */
   onReselect: (id: string) => void;
   /**
@@ -104,14 +105,14 @@ function FileProperties({
 }: {
   file: WorkflowFile;
   plugins: WireStepPlugin[];
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element {
   return (
     <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       <p className="pane-explain">The workflow file — its identity and the body authored on the canvas.</p>
       <hr className="pane-divider" />
-      {/* A keystroke run in one field folds to one undo entry (#389); a per-field key breaks the run. */}
-      <TextField label="name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, "file:name")} />
+      {/* A keystroke run in one field folds to one undo entry (#389); a different field's identity breaks the run. */}
+      <TextField label="name" value={file.name} onChange={(name) => applyEdit({ ...file, name }, editKey(file.id, "name"))} />
       <IdRow id={file.id} onReKey={() => applyEdit({ ...file, id: crypto.randomUUID() })} what="the workflow" />
       <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
@@ -119,7 +120,7 @@ function FileProperties({
       <hr className="pane-divider" />
       <FileWorkerDefaultsRegion key={`file-worker-defaults-${file.id}`} file={file} plugins={plugins} applyEdit={applyEdit} />
       <hr className="pane-divider" />
-      <FileOutputRegion key={`file-output-${file.id}`} file={file} applyEdit={applyEdit} />
+      <FileOutputRegion file={file} applyEdit={applyEdit} />
     </div>
   );
 }
@@ -142,7 +143,7 @@ function FileWorkerDefaultsRegion({
 }: {
   file: WorkflowFile;
   plugins: WireStepPlugin[];
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element | null {
   const candidates = plugins.filter((p) => p.workers.length > 1);
   // No multi-worker type in the registry → no selection to make. Hide the region entirely.
@@ -240,21 +241,21 @@ function outputRowsOf(file: WorkflowFile): KeyedRow[] {
  * output values are shown JSON-stringified and re-saved as strings — a flat string contract is what this
  * editor authors.
  */
-function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
+function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: EditCommit<WorkflowFile> }): JSX.Element {
   // The file's `output` map is a keyed-row field (`useKeyedRows`): an empty map drops the whole `output`
   // key, so an empty `output: {}` never lands. A row edit folds to one undo entry (#389, `file-output:…`).
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
     () => outputRowsOf(file),
     STEP_ROOTS,
-    (map, coalesce) => {
+    editKey(file.id, "output"),
+    (map, key) => {
       if (Object.keys(map).length === 0) {
         const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
-        applyEdit(rest as WorkflowFile, coalesce);
+        applyEdit(rest as WorkflowFile, key);
       } else {
-        applyEdit({ ...file, output: map } as WorkflowFile, coalesce);
+        applyEdit({ ...file, output: map } as WorkflowFile, key);
       }
     },
-    (index) => `file-output:${index}`,
   );
 
   return (
@@ -301,13 +302,13 @@ function NodeProperties({
   file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
   onReselect: (id: string) => void;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
-  // A field edit passes a stable per-field `coalesce` key so a run of keystrokes folds to one undo entry
-  // (#389); a discrete change (a select, a re-key) passes none, so it is its own entry.
-  const commit = (next: WorkflowNode, coalesce?: string): void => applyEdit(replaceNode(file, node.id, next), coalesce);
+  // A field edit passes its identity so a run of keystrokes folds to one undo entry (#389); a discrete
+  // change (a select, a re-key) passes none, so it is its own entry.
+  const commit = (next: WorkflowNode, key?: EditKey): void => applyEdit(replaceNode(file, node.id, next), key);
   const reKey = (): void => {
     const id = crypto.randomUUID();
     applyEdit(replaceNode(file, node.id, { ...node, id }));
@@ -326,7 +327,7 @@ function NodeProperties({
       ) : null}
       <p className="pane-explain">{kindExplanation(node.type)}</p>
       <hr className="pane-divider" />
-      <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, `name:${node.id}`)} />
+      <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, editKey(node.id, "name"))} />
       <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
       {site?.where === "arm" ? (
         <ConditionField
@@ -417,7 +418,7 @@ function KindFields({
   file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
-  commit: (next: WorkflowNode, coalesce?: string) => void;
+  commit: EditCommit<WorkflowNode>;
   condSuggest: string[];
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
@@ -453,9 +454,9 @@ function KindFields({
             onChange={(condition) => commit({ ...node, condition })}
           />
           <MaxIterationsField
-            key={`max-iterations-${node.id}`}
+            identity={editKey(node.id, "max_iterations")}
             value={node.max_iterations}
-            onChange={(v) => commit({ ...node, max_iterations: v }, `max_iterations:${node.id}`)}
+            onChange={(v) => commit({ ...node, max_iterations: v }, editKey(node.id, "max_iterations"))}
           />
         </>
       );
@@ -487,9 +488,9 @@ function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Ele
       <ModelField
         value={configString(node, "model")}
         inherited={inheritedModel}
-        onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)}
+        onChange={(v) => commit(withConfig(node, "model", v), editKey(node.id, "config", "model"))}
       />
-      <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
+      <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, editKey(node.id, "prompt"))} />
       <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
   );
@@ -540,9 +541,9 @@ function BinaryEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Ele
   const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
   return (
     <>
-      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
-      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
-      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
+      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, editKey(node.id, "command"))} />
+      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), editKey(node.id, "args"))} />
+      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), editKey(node.id, "cwd"))} />
       <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
   );
@@ -555,7 +556,7 @@ function WorkflowRefEditor({
   onAddRefTarget,
 }: {
   node: WorkflowNode;
-  commit: (next: WorkflowNode, coalesce?: string) => void;
+  commit: EditCommit<WorkflowNode>;
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   const ref = nodeString(node, "ref");
@@ -573,7 +574,7 @@ function WorkflowRefEditor({
       </div>
     );
   }
-  return <TextField label="referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, `ref:${node.id}`)} />;
+  return <TextField label="referenced file" value={ref} onChange={(v) => commit({ ...node, ref: v } as WorkflowNode, editKey(node.id, "ref"))} />;
 }
 
 /**
@@ -585,7 +586,7 @@ function WorkflowRefEditor({
  * that commits only a valid object and drops the key when cleared. `assignee` is the optional
  * informational label (no enforcement). The step's own worker is fixed (`person`), so no worker selector shows.
  */
-function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   const description = nodeString(node, "description");
   const assignee = nodeString(node, "assignee");
   return (
@@ -593,10 +594,10 @@ function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: (n
       <TextAreaField
         label="description"
         value={description}
-        onChange={(v) => commit(setNodeField(node, "description", v), `description:${node.id}`)}
+        onChange={(v) => commit(setNodeField(node, "description", v), editKey(node.id, "description"))}
       />
-      <OutputSchemaField key={node.id} node={node} commit={commit} />
-      <TextField label="assignee" value={assignee} onChange={(v) => commit(withOptionalString(node, "assignee", v), `assignee:${node.id}`)} />
+      <OutputSchemaField node={node} commit={commit} />
+      <TextField label="assignee" value={assignee} onChange={(v) => commit(withOptionalString(node, "assignee", v), editKey(node.id, "assignee"))} />
     </>
   );
 }
@@ -607,14 +608,15 @@ function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: (n
  * unparseable or non-object draft is shown with its error but never committed, so the node stays
  * strict-valid. Seeded from the node's current schema, pretty-printed.
  */
-function OutputSchemaField({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function OutputSchemaField({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   const { draft, error, onEdit } = useValidatedDraft(
     () => {
       const schema = rec(node).outputSchema;
       return schema === undefined ? "" : JSON.stringify(schema, null, 2);
     },
     (text) => validateOutputSchema(node, text),
-    (next) => commit(next, `outputSchema:${node.id}`),
+    editKey(node.id, "outputSchema"),
+    (next) => commit(next),
   );
 
   return (
@@ -652,7 +654,7 @@ function LeafPayloadEditor({ file, node, plugins, commit }: LeafEditorProps): JS
       {tier === "generic" && plugin ? (
         <GenericForm node={node} fields={plugin.fields} commit={commit} />
       ) : (
-        <RawJsonFloor key={node.id} node={node} plugins={plugins} commit={commit} />
+        <RawJsonFloor node={node} plugins={plugins} commit={commit} />
       )}
       <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
@@ -667,13 +669,13 @@ function GenericForm({
 }: {
   node: WorkflowNode;
   fields: Record<string, WireFieldSpec>;
-  commit: (next: WorkflowNode, coalesce?: string) => void;
+  commit: EditCommit<WorkflowNode>;
 }): JSX.Element {
   const record = rec(node);
   return (
     <>
       {Object.entries(fields).map(([name, spec]) => (
-        <GenericField key={name} name={name} spec={spec} value={record[name]} onChange={(v) => commit(setNodeField(node, name, v), `field:${name}:${node.id}`)} />
+        <GenericField key={name} name={name} spec={spec} value={record[name]} onChange={(v) => commit(setNodeField(node, name, v), editKey(node.id, name))} />
       ))}
     </>
   );
@@ -716,7 +718,8 @@ function RawJsonFloor({ node, plugins, commit }: Omit<LeafEditorProps, "file">):
   const { draft, error, onEdit } = useValidatedDraft(
     () => JSON.stringify(nodePayload(node), null, 2),
     (text) => validateJsonPayload(node, text, plugins),
-    (next) => commit(next, `payload:${node.id}`),
+    editKey(node.id, "payload"),
+    (next) => commit(next),
   );
 
   return (
@@ -792,13 +795,13 @@ function firstClassConfigKeys(type: string): ReadonlySet<string> {
  * and the **publish** / **parse** context-write fields. Control blocks carry none of these, so this renders
  * only for a step-carrying node (`carriesEnvelope`).
  */
-function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   return (
     <>
       <hr className="pane-divider" />
       <ConfigRegion key={`config-${node.id}`} file={file} node={node} commit={commit} />
-      <InputEditor key={`input-${node.id}`} node={node} commit={commit} />
-      <PublishParseFields key={`publish-${node.id}`} node={node} commit={commit} />
+      <InputEditor node={node} commit={commit} />
+      <PublishParseFields node={node} commit={commit} />
     </>
   );
 }
@@ -808,11 +811,11 @@ function StepEnvelopeFields({ file, node, commit }: { file: WorkflowFile; node: 
  * its origin and an **Override**; an overridden key solid with a **revert-to-inherited**; a local key
  * solid. The `type` field never appears here — it edits in the kind-fields region and does not inherit.
  */
-function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   const config = nodeConfigOf(node);
-  // A value edit passes a per-key `coalesce` so a keystroke run in one config value folds to one undo
-  // entry (#389); a discrete write (Override/Revert/×/add-key) passes none, so it is its own entry.
-  const write = (next: ConfigObject | undefined, coalesce?: string): void => commit(applyNodeConfig(node, next), coalesce);
+  // A value edit passes its identity so a keystroke run in one config value folds to one undo entry
+  // (#389); a discrete write (Override/Revert/×/add-key) passes none, so it is its own entry.
+  const write = (next: ConfigObject | undefined, key?: EditKey): void => commit(applyNodeConfig(node, next), key);
   return (
     <ConfigEditor
       parentConfig={file.config}
@@ -829,8 +832,8 @@ function ConfigRegion({ file, node, commit }: { file: WorkflowFile; node: Workfl
  * The shared config editor behind both the step region (`ConfigRegion`, inheritance-aware) and the
  * file's own config (`FileConfigRegion`, no parent so every key is local). `parentConfig` is the
  * inheritance source — the enclosing workflow's config for a step, `undefined` for the file itself,
- * whose config *is* the root every step inherits from. `scopeId` scopes each value's `coalesce` key so
- * two owners' same-named keys never fold their undo runs together (#389).
+ * whose config *is* the root every step inherits from. `scopeId` scopes each value's identity so two
+ * owners' same-named keys never fold their undo runs together (#389).
  */
 function ConfigEditor({
   parentConfig,
@@ -844,7 +847,7 @@ function ConfigEditor({
   config: ConfigObject | undefined;
   hide?: ReadonlySet<string>;
   scopeId: string;
-  write: (next: ConfigObject | undefined, coalesce?: string) => void;
+  write: EditCommit<ConfigObject | undefined>;
   emptyHint: string;
 }): JSX.Element {
   const [newKey, setNewKey] = useState("");
@@ -890,13 +893,13 @@ function ConfigEditor({
  * — so every key renders local (add / edit as literal · `$env` · `$secret` / remove). A cleared config
  * drops the whole `config` field, so an empty `config: {}` never lands in the file.
  */
-function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
-  const write = (next: ConfigObject | undefined, coalesce?: string): void => {
+function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: EditCommit<WorkflowFile> }): JSX.Element {
+  const write = (next: ConfigObject | undefined, key?: EditKey): void => {
     if (next === undefined) {
       const { config: _dropped, ...rest } = file;
-      applyEdit(rest as WorkflowFile, coalesce);
+      applyEdit(rest as WorkflowFile, key);
     } else {
-      applyEdit({ ...file, config: next }, coalesce);
+      applyEdit({ ...file, config: next }, key);
     }
   };
   return (
@@ -919,9 +922,9 @@ function ConfigRowField({
 }: {
   row: ConfigRow;
   config: ConfigObject | undefined;
-  /** The owning node's id — scopes the value's coalesce key so two nodes' same-named keys never fold (#389). */
+  /** The owning node's id — scopes the value's identity so two nodes' same-named keys never fold (#389). */
   nodeId: string;
-  write: (next: ConfigObject | undefined, coalesce?: string) => void;
+  write: EditCommit<ConfigObject | undefined>;
 }): JSX.Element {
   if (row.origin === "inherited") {
     return (
@@ -942,7 +945,7 @@ function ConfigRowField({
       <span className="pane-label">{row.key}</span>
       <span className="pane-config-eq" aria-hidden="true">=</span>
       <div className="pane-config-local">
-        <ConfigValueControl value={row.value} onChange={(v) => write(setConfigKey(config, row.key, v), `config:${row.key}:${nodeId}`)} label={row.key} />
+        <ConfigValueControl value={row.value} onChange={(v) => write(setConfigKey(config, row.key, v), editKey(nodeId, "config", row.key))} label={row.key} />
         {row.origin === "overridden" ? (
           <button type="button" className="pane-btn" onClick={() => write(dropConfigKey(config, row.key))}>
             Revert
@@ -964,14 +967,15 @@ function ConfigRowField({
  * exactly those roots, so the pane accepts only what a load-time parse would; an unclosed or ill-typed
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
-function InputEditor({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function InputEditor({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   const { draft, error, onEdit } = useValidatedDraft(
     () => {
       const input = rec(node).input;
       return input === undefined ? "{}" : JSON.stringify(input, null, 2);
     },
     (text) => validateInputDraft(node, text),
-    (next) => commit(next, `input:${node.id}`),
+    editKey(node.id, "input"),
+    (next) => commit(next),
   );
 
   return (
@@ -1015,19 +1019,20 @@ function publishRowsOf(node: WorkflowNode): KeyedRow[] {
  * never canvas edges. A publish conflict the load-time checks reject surfaces separately, as a node
  * validation marker on the canvas (the publish-set rule in `@path/schema`, projected by `problems.ts`).
  */
-function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
+function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
   const parse = nodeString(node, "parse");
 
   // The node's `publish` map is a keyed-row field (`useKeyedRows`): it commits only when every value's
   // interpolation is valid, so an ill-typed `${…}` publish never reaches the file and the node stays
   // strict-valid (§ Context reads and writes). An empty map drops the `publish` key; a row edit folds to
-  // one undo entry (#389, `publish:…:node.id`, scoped by node so two nodes' rows never fold together).
+  // one undo entry (#389, the field's identity plus the row — scoped by node, so two nodes' rows never
+  // fold together).
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
     () => publishRowsOf(node),
     PUBLISH_ROOTS,
-    (map, coalesce) =>
-      commit(Object.keys(map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), coalesce),
-    (index) => `publish:${index}:${node.id}`,
+    editKey(node.id, "publish"),
+    (map, key) =>
+      commit(Object.keys(map).length === 0 ? dropNodeKey(node, "publish") : ({ ...node, publish: map } as WorkflowNode), key),
   );
 
   return (
@@ -1124,14 +1129,16 @@ function KeyedRowField({
  * flagged and not committed — so the node on the canvas stays strict-valid.
  */
 function MaxIterationsField({
+  identity,
   value,
   onChange,
 }: {
+  identity: EditKey;
   value: number | string;
   onChange: (v: number | string) => void;
 }): JSX.Element {
   const id = useId();
-  const { draft, error, onEdit } = useValidatedDraft(() => String(value), validateMaxIterations, onChange);
+  const { draft, error, onEdit } = useValidatedDraft(() => String(value), validateMaxIterations, identity, onChange);
 
   return (
     <div className="pane-field pane-field-row">
@@ -1162,6 +1169,6 @@ interface LeafEditorProps {
   file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
-  commit: (next: WorkflowNode, coalesce?: string) => void;
+  commit: EditCommit<WorkflowNode>;
 }
 

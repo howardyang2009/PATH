@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
+import type { EditCommit, EditKey } from "./edit-key.js";
 import { openWorkflowFile } from "./open-workflow.js";
 import { resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -87,12 +88,12 @@ export interface OpenSession {
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   goTo: (index: number) => void;
   /**
-   * Commit an edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
-   * undo entry is recorded (#389). A structural edit passes no `coalesce` key (one entry each); a field edit
-   * passes a stable key so a run of keystrokes in that one field folds to a single entry. Any edit clears the
-   * frame's redo stack.
+   * Commit an edit to the active frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
+   * undo entry is recorded (#389). A structural edit passes no identity (one entry each); a field edit
+   * passes its `EditKey` so a run of keystrokes in that one field folds to a single entry. Any edit
+   * clears the frame's redo stack.
    */
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
   /** Undo the active frame's last edit, re-deriving clean (#389). A no-op when its past stack is empty. */
   undo: () => void;
   /** Redo the active frame's last undo, re-deriving clean (#389). A no-op when its future stack is empty. */
@@ -252,8 +253,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     dispatch({ type: "goTo", index });
   }, []);
 
-  const applyEdit = useCallback((next: WorkflowFile, coalesce?: string): void => {
-    dispatch({ type: "applyEdit", next, coalesce });
+  const applyEdit = useCallback((next: WorkflowFile, key?: EditKey): void => {
+    dispatch({ type: "applyEdit", next, key });
   }, []);
 
   const undo = useCallback((): void => {
