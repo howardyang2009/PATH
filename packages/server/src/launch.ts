@@ -1,10 +1,10 @@
 import { existsSync } from "node:fs";
 import { isAbsolute, relative, resolve } from "node:path";
 import { loadWorkflowTree, type LoadedWorkflow } from "@path/engine";
-import { mapEnv, type ConfigObject, type JsonValue } from "@path/schema";
+import { mapEnv, type ConfigObject, type JsonValue, type RunRecord } from "@path/schema";
 
 /**
- * Turning a workflow path into a launchable workflow, once, for both launch surfaces.
+ * Turning a workflow path into a launchable workflow, once, for every surface that needs one.
  *
  * **What this module exists to own.** `POST /v0/runs` (§2) and `POST /v0/runs/:root_run_id/resume`
  * (§4.3) both reach a run the same way: reject operator config that sources from the server
@@ -14,12 +14,15 @@ import { mapEnv, type ConfigObject, type JsonValue } from "@path/schema";
  * `post-runs.ts` carried its own inline `mapEnv` walk of the same rule. A third launch surface would
  * have inherited neither.
  *
+ * On top of that gate sit the actions on a run that already exists — Resume and Complete — which must
+ * first recover the workflow from the run's own row and confirm it is still the same workflow;
+ * {@link prepareRunWorkflow} owns that, one step above {@link prepareWorkflow}.
+ *
  * What stays with a route is what legitimately differs: the request body schema it parses, the
  * *source* of the workflow path (a request field for a fresh launch, the predecessor's recorded row
- * for a resume), and how a missing file reads to that caller — which is why `notFound` is the one
- * hole in {@link prepareWorkflow}. Resume's extra pre-load refusals (the run must be finished,
- * unsuccessful, and still name the same workflow) are resume policy, not launch preparation, so they
- * stay in the route too.
+ * for a run action), and how a refusal reads to that caller — which is why the message hooks are the
+ * one hole through these functions. Resume's extra pre-load policy (the run must be finished and
+ * unsuccessful) stays in the route too.
  */
 
 /** A ready-to-send refusal: `sendError(res, status, message, details)` and return. */
@@ -113,4 +116,47 @@ export async function prepareWorkflow(
     return { ok: false, refusal: { status: 400, message: "workflow validation failed", details: loadResult.errors } };
   }
   return { ok: true, workflow: loadResult.workflow };
+}
+
+/**
+ * The two refusals an action on an existing run owns beyond the path gate: a root row recorded
+ * without a path (pre-#169) has no file to recover, and a file at the recorded path that is no longer
+ * the workflow this run ran is the wrong file to act on (identity is the id, ADR 0006).
+ */
+export interface RunWorkflowMessages extends NotFoundMessages {
+  /** The run's own root row records no workflow path. */
+  noPath(): string;
+  /** The file at the recorded path is no longer the workflow this run ran. */
+  swapped(workflowPath: string): string;
+}
+
+/**
+ * The **current authoring of the workflow an existing run was launched from**: recover the
+ * store-relative path from the run's own root row, run the same escape / not-found / invalid gate a
+ * fresh launch runs ({@link prepareWorkflow}), and confirm the file is still the *same workflow* by
+ * id (ADR 0006) — a different workflow swapped in at that path would otherwise be driven against the
+ * predecessor's restored context, or completed with its node ids alone as the only match.
+ *
+ * Every action on an existing run asks this one question — Resume (§4.3) and Complete (§4.4) today —
+ * and it is the piece that had drifted: `resume-run.ts` checked the workflow id while
+ * `complete-run.ts` did not, so Complete alone would accept a swapped file whose node ids happened to
+ * line up. The route keeps its own policy: the action verb in a refusal, and rendering the status.
+ *
+ * A predecessor that recorded no id (a run from before the column existed) skips the identity check
+ * rather than refusing on `undefined`; every run since #169 records one.
+ */
+export async function prepareRunWorkflow(
+  projectDir: string,
+  root: Pick<RunRecord, "workflowId" | "workflowPath">,
+  messages: RunWorkflowMessages,
+): Promise<PreparedWorkflow> {
+  if (!root.workflowPath) {
+    return { ok: false, refusal: { status: 409, message: messages.noPath() } };
+  }
+  const prepared = await prepareWorkflow(projectDir, root.workflowPath, messages);
+  if (!prepared.ok) return prepared;
+  if (root.workflowId && prepared.workflow.rootFile.id !== root.workflowId) {
+    return { ok: false, refusal: { status: 409, message: messages.swapped(root.workflowPath) } };
+  }
+  return prepared;
 }

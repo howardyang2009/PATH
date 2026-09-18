@@ -210,6 +210,38 @@ describe("error taxonomy", () => {
     expect(res.status).toBe(409);
   });
 
+  it("409 when the file at the recorded path is now a different workflow (id changed)", async () => {
+    const rootRunId = await launch("awaiting-complete.workflow.json");
+    const leafId = await awaitingLeafId(rootRunId);
+    // A parkable leaf with the *same* node id, type and schema, under a different workflow id: the
+    // node lookup alone would match it, so only the run's recorded identity can refuse this file.
+    const swapped = {
+      format: "path/workflow@3",
+      id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
+      name: "awaiting-complete",
+      body: [
+        {
+          type: "person-activity",
+          id: "3408257a-0c34-437b-a93e-041ad4dc52aa",
+          name: "review",
+          description: "a person reviews and submits an approval decision",
+          outputSchema: {
+            type: "object",
+            properties: { approved: { type: "boolean" } },
+            required: ["approved"],
+            additionalProperties: false,
+          },
+        },
+      ],
+    };
+    writeFileSync(join(projectDir, "awaiting-complete.workflow.json"), JSON.stringify(swapped));
+
+    const res = await complete(leafId, { output: { approved: true } });
+
+    expect(res.status).toBe(409);
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("id changed");
+  });
+
   it("403 for a cross-origin browser call", async () => {
     const rootRunId = await launch("awaiting-complete.workflow.json");
     const leafId = await awaitingLeafId(rootRunId);

@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { InterpolationError, interpolateValue, resolveNode } from "@path/engine";
 import type { JsonValue } from "@path/schema";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { prepareWorkflow } from "../launch.js";
+import { prepareRunWorkflow } from "../launch.js";
 import { validateOutputSchema } from "../output-schema.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
@@ -14,8 +14,9 @@ import type { RunsRouteContext } from "./post-runs.js";
  * **Validation runs before the lease** (§4.4). Validation is per-leaf, the lease per-tree, so validating
  * first means a bad submit on one leaf never contends for the lease and so never blocks a valid
  * concurrent Complete on a sibling. The order: resolve the leaf (unknown → `404`; not `awaiting` →
- * `409` naming the status); reload the current workflow file (moved/gone → the same `404`/`400` a launch
- * makes); read *this* node's `outputSchema` by node id, re-interpolate it against the run's config, and
+ * `409` naming the status); recover the current workflow file from the run's own row (`launch.ts`'s
+ * `prepareRunWorkflow`: no recorded path or a swapped file → `409`, gone → `404`, invalid → `400`);
+ * read *this* node's `outputSchema` by node id, re-interpolate it against the run's config, and
  * ajv-validate the output (ADR 0040 — a node with no schema accepts any JSON; invalid → `400` with the
  * ajv issues in `error.details`, leaf untouched). Only then does `Project.complete` take the per-root
  * lease, CAS the leaf `awaiting → succeeded`, write the output blob, and drive the tail in the
@@ -74,16 +75,21 @@ export async function handleCompleteRun(
   }
 
   const root = tree.root;
-  if (!root || !root.workflowPath) {
+  if (!root) {
     sendError(res, 409, `run "${rootRunId}" has no recorded workflow path and cannot be completed`);
     return;
   }
 
-  // Re-read and re-validate the workflow as it stands now — the same escape/not-found/invalid gate a
-  // fresh launch and a resume run (launch.ts). Complete carries Resume's file precedent: a moved file
-  // or relocated store must still resolve for the replay.
-  const prepared = await prepareWorkflow(ctx.project.dir, root.workflowPath, {
+  // Recover and re-validate the workflow as it stands now (`launch.ts`'s `prepareRunWorkflow`, the
+  // same gate a fresh launch and a resume run): no recorded path is a `409`, a moved file is a `404`,
+  // an invalid one a `400`, and a file that is no longer the workflow this run ran (its id changed,
+  // ADR 0006) a `409`. A relocated store must still resolve for the replay, and the node lookup below
+  // must be a lookup in *this run's* file, not merely one that happens to share the node's id.
+  const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+    noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be completed`,
+    swapped: (workflowPath) =>
+      `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot complete`,
   });
   if (!prepared.ok) {
     sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
