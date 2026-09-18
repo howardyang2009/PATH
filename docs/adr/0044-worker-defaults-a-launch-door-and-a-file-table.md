@@ -33,6 +33,30 @@ not a resume. The **file** table is *not* persisted: it is authored data, re-rea
 so an author's edit between launch and resume changes only re-run steps, never the reused rows below K —
 the same file-is-authority stance as person-activity's `outputSchema` (ADR 0040).
 
+## Scope and determinism: nesting, resume, replay
+
+**Nesting.** A **file** worker-default is file-scoped: it never crosses a `workflow`-ref boundary, so a
+parent file's default does not reach a child, and each ref-file authors its own. A **launch**
+worker-default is run-wide: it reaches every un-pinned step of every file in the run, child files
+included. When both apply to a child's step, the tier order decides — **the launch default beats the
+child's file default** (`node.worker` → launch → file → type). This is deliberate: the operator's
+run-wide launch intent outranks an author's per-file *default*. The only thing above a launch default is
+a hard `node.worker` pin on the step; a child author who must force a worker pins the node, not the file.
+There is no per-file opt-out from a launch default, by design.
+
+**Resume.** A resumed run re-reads the workflow file, so the **file** default is live: an edit between
+launch and resume changes only re-run steps (K-and-after). The **launch** default is frozen on the root
+run and restored, so the resume does not change it. A re-run step resolves from the frozen launch default
+plus the live file, exactly as it would at launch.
+
+**Replay / complete.** Determinism below the rerun boundary K comes from read-only reuse, not from
+re-deriving anything: a `succeeded` run row is reused verbatim (`planReuse`), so a completed step keeps
+its recorded `worker_name` and is never re-resolved. Only steps at/after K execute fresh and re-resolve,
+from the frozen launch default and the current file. So a predecessor (reused, below K) and a successor
+(re-run, at/after K) may legitimately resolve to different workers if the file default changed — the
+live-file stance, not a fault. A completed step's worker is a recorded fact; replay reconstructs it per
+row, not as a set.
+
 ## Considered options
 
 - **Reach it through `config` (`--set worker_defaults.prompt=deepseek`).** Rejected: config *inherits*

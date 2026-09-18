@@ -39,8 +39,10 @@ and issues use them exactly.
   top-level `worker_defaults` key on a workflow file; it is **file-scoped** (it never crosses into a
   nested `workflow`-ref file, which carries its own) and is **live**, re-read from the current file on
   resume like every other authored datum. A **launch worker-default** is supplied by the operator at
-  launch; it is **run-wide** across every file of the run and **frozen** with the run, so a resume reuses
-  it verbatim — it is identity-defining like **input**, not re-overridable like operator **config**.
+  launch; it is **run-wide** across every file of the run — so it reaches a nested `workflow`-ref file's
+  un-pinned steps and beats that file's own worker-default there, with only a node's `worker` pin above
+  it — and **frozen** with the run, so a resume reuses it verbatim — it is identity-defining like
+  **input**, not re-overridable like operator **config**.
   Changing it is a new run, never a resume.
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
