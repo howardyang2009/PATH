@@ -39,9 +39,20 @@ export type RunOutcome =
  * happens at the engine's single emit choke point, not in a wrapper a caller might forget to
  * apply. Backends inherit that guarantee (see logging/log-backend.ts).
  *
- * Members mirror the run/step/control-node lifecycle one-for-one; see each field's meaning on the
- * shared envelope below. `runId` is the run the observation belongs to and `rootRunId` its tree's
- * root, so one observer instance serves an entire nested run tree (#22) without per-run state.
+ * Members mirror the run/step/control-node lifecycle one-for-one. **Every** member carries the same
+ * four identity fields:
+ *
+ * - `runId` — the run the observation belongs to (a leaf step's own run for the step tier);
+ * - `rootRunId` — that run's tree root, so one observer instance serves a whole nested run tree (#22);
+ * - `nodeId`/`nodeName` — the node the observation is *about*: the run's own node for a run-tier
+ *   observation (`null` on the root, the `workflow` node on a nested run), the step's node for a leaf,
+ *   the control node for a control-node observation.
+ *
+ * Carrying all four on every member is what makes an observer a **function of one observation**. The
+ * logging observer used to keep `nodeId`/`nodeName` maps, filled from whichever earlier observation
+ * happened to carry them, to label the members that did not — state that made its output depend on the
+ * order and completeness of the stream it was handed. Now the emitter stamps the pair where it is
+ * known, and the log envelope is a rename.
  */
 export type Observation =
   /**
@@ -109,7 +120,7 @@ export type Observation =
       input: JsonValue;
     }
   /** A binary step's captured stderr — never passed downstream (format doc §4.2), audit only. */
-  | { type: "step-stderr"; runId: string; rootRunId: string; stderr: string }
+  | { type: "step-stderr"; runId: string; rootRunId: string; nodeId: string; nodeName: string; stderr: string }
   /**
    * What one LLM step run spent (#25, mvp spec §5.7, §7): `usage` is the worker's real token counts,
    * `estimatedCostUsd` the SDK's client-side estimate at API list prices. Reported **leaf-only**, on
@@ -121,13 +132,15 @@ export type Observation =
       type: "step-usage";
       runId: string;
       rootRunId: string;
+      nodeId: string;
+      nodeName: string;
       usage: JsonValue | null;
       estimatedCostUsd: number | null;
     }
   /** A leaf step run finished. */
-  | ({ type: "step-finished"; runId: string; rootRunId: string } & RunOutcome)
+  | ({ type: "step-finished"; runId: string; rootRunId: string; nodeId: string; nodeName: string } & RunOutcome)
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
-  | { type: "context-changed"; runId: string; rootRunId: string; context: JsonValue }
+  | { type: "context-changed"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null; context: JsonValue }
   /**
    * A leaf step run's snapshot of the enclosing workflow-run's context, taken right after the step
    * finished and its publish (if any) landed — so the step's own directory records the context as it
@@ -135,7 +148,7 @@ export type Observation =
    * the leaf step run's own id (not the workflow-run's), so persistence writes it under that step's
    * directory alongside its `input.json`/`output.json`. Persistence-only, never narrated.
    */
-  | { type: "step-context"; runId: string; rootRunId: string; context: JsonValue }
+  | { type: "step-context"; runId: string; rootRunId: string; nodeId: string; nodeName: string; context: JsonValue }
   /**
    * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
    * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the
@@ -171,7 +184,7 @@ export type Observation =
       causeRunId: string | null;
     }
   /** A workflow-run finished (root or nested). */
-  | ({ type: "run-finished"; runId: string; rootRunId: string } & RunOutcome)
+  | ({ type: "run-finished"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null } & RunOutcome)
   /**
    * A resumed tree reused a node's recorded work instead of re-running it (#172,
    * resume-restore-semantics.md §6). No `step-started`/`step-finished` is emitted for the reused

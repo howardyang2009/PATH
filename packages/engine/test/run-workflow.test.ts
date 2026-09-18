@@ -1239,14 +1239,16 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(stepCall.workerName).toBe("spawn");
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
-    expect(observer["step-stderr"]).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, stderr: "" });
+    expect(observer["step-stderr"]).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, nodeId: "greet", nodeName: "greet", stderr: "" });
     expect(observer["step-finished"]).toHaveBeenCalledWith({
       runId: stepCall.runId,
       rootRunId: runId,
+      nodeId: "greet",
+      nodeName: "greet",
       status: "succeeded",
       output: "hi",
     });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId, rootRunId: runId, status: "succeeded", output: {} });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId, rootRunId: runId, nodeId: null, nodeName: null, status: "succeeded", output: {} });
   });
 
   it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
@@ -1266,12 +1268,16 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(observer["step-finished"]).toHaveBeenCalledWith({
       runId: stepCall.runId,
       rootRunId: runId,
+      nodeId: "boom",
+      nodeName: "boom",
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
     expect(observer["run-finished"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId,
+      nodeId: null,
+      nodeName: null,
       status: "failed",
       error: expect.stringMatching(/exited with code 2/),
     });
@@ -1293,6 +1299,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(observer["run-finished"]).toHaveBeenCalledWith({
       runId,
       rootRunId: runId,
+      nodeId: null,
+      nodeName: null,
       status: "failed",
       error: expect.stringMatching(/unknown step type "telepathy"/),
     });
@@ -1318,7 +1326,7 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     await runWorkflow(stampNames(file), fixturesDir, { observer });
 
     const { runId } = observer["run-started"].mock.calls[0]![0];
-    expect(observer["context-changed"]).toHaveBeenCalledWith({ runId, rootRunId: runId, context: { seen: "v" } });
+    expect(observer["context-changed"]).toHaveBeenCalledWith({ runId, rootRunId: runId, nodeId: null, nodeName: null, context: { seen: "v" } });
   });
 });
 
@@ -1481,7 +1489,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     // The root run ends cancelled — not failed (the workflow did not break), and not left running.
     expect(result.status).toBe("cancelled");
     const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
 
     // The killed step's cancellation names its cause: the operator, with no cause run behind it.
     const sleeper = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper")!;
@@ -1493,7 +1501,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer["step-finished"]).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["step-finished"]).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, nodeId: "sleeper", nodeName: "sleeper", status: "cancelled" });
 
     // Nothing downstream of the abort runs, and the cancelled step's publish never lands (#24).
     expect(observer["step-started"].mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
@@ -1544,7 +1552,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
     expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
@@ -1565,7 +1573,7 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
     expect(observer["run-started"]).toHaveBeenCalledTimes(1);
     const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
     // No step ran, so there is no killed run to narrate.
     expect(observer["step-started"]).not.toHaveBeenCalled();
     expect(observer["run-cancelled"]).not.toHaveBeenCalled();
@@ -1600,8 +1608,8 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       (typeof observer)["run-started"]["mock"]["calls"][number][0],
       (typeof observer)["run-started"]["mock"]["calls"][number][0],
     ];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, status: "cancelled" });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, nodeId: "call-child", nodeName: "call-child", status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
     expect(observer["run-cancelled"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "sleeper", nodeName: "sleeper", cause: "operator", causeRunId: null }));
   });
 

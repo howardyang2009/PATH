@@ -6,7 +6,8 @@ import { collectSecrets, maskObservation } from "../src/secret-mask.js";
 const masker = collectSecrets([{ token: { $secret: "s3cret-value" } }]);
 const TOKEN = "[secret:token]";
 
-const ids = { runId: "r1", rootRunId: "r0" };
+// The shared envelope: every observation carries its run, its tree, and the node it is about.
+const ids = { runId: "r1", rootRunId: "r0", nodeId: "n1", nodeName: "n1" };
 const workerName = "spawn";
 
 /** Every observation type, so a member added without a masking decision fails to compile here. */
@@ -28,7 +29,7 @@ const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> }
   "step-context": { type: "step-context", ...ids, context: { k: "s3cret-value" } },
   "join-applied": { type: "join-applied", ...ids, nodeId: "n1", nodeName: "n1", branches: ["a"], publishedKeys: ["k"] },
   "run-cancelled": { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "n1", cause: "operator", causeRunId: null },
-  "run-finished": { type: "run-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
+  "run-finished": { type: "run-finished", ...ids, nodeId: null, nodeName: null, status: "succeeded", output: { k: "s3cret-value" } },
   "checkpoint-evaluated": {
     type: "checkpoint-evaluated",
     ...ids,

@@ -3,25 +3,26 @@ import { LogEventSchema } from "@path/schema";
 import { toLogEvent } from "../../src/logging/logging-observer.js";
 import type { Observation } from "../../src/run-observer.js";
 
-const ids = { runId: "r1", rootRunId: "r0" };
+// The shared envelope every observation carries: its run, its tree, and the node it is about.
+const ids = { runId: "r1", rootRunId: "r0", nodeId: "n1", nodeName: "n1" };
 const workerName = "spawn";
 const trace = { type: "exists", path: "context.k", outcome: "true" } as const;
 
-type NodeIdentity = { id: string; name: string };
 type Envelope = { seq: number; ts: string; run_id: string; node_id: string | null; node_name: string | null };
 
 /** Records which node the projection asked for — part of what the projection decides. */
 function recordingEnvelope(): {
-  envelope: (runId: string, node?: NodeIdentity) => Envelope;
-  asked: (string | undefined)[];
+  envelope: (o: Observation) => Envelope;
+  asked: (string | null)[];
 } {
-  const asked: (string | undefined)[] = [];
+  const asked: (string | null)[] = [];
   let seq = 0;
   return {
     asked,
-    envelope: (runId, node) => {
-      asked.push(node?.id);
-      return { seq: (seq += 1), ts: "2026-01-01T00:00:00.000Z", run_id: runId, node_id: node?.id ?? null, node_name: node?.name ?? null };
+    // The envelope is a rename of the observation's own identity fields — the observer keeps no state.
+    envelope: (o) => {
+      asked.push(o.nodeId);
+      return { seq: (seq += 1), ts: "2026-01-01T00:00:00.000Z", run_id: o.runId, node_id: o.nodeId, node_name: o.nodeName };
     },
   };
 }
@@ -68,7 +69,7 @@ describe("toLogEvent", () => {
     expect(started).not.toHaveProperty("input");
     expect(started).toMatchObject({ type: "step-started", step_type: "binary" });
 
-    const finished = project({ type: "step-finished", ...ids, status: "succeeded", output: { big: "payload" } }).event;
+    const finished = project({ type: "step-finished", ...ids, nodeId: "n1", nodeName: "step-one", status: "succeeded", output: { big: "payload" } }).event;
     expect(finished).not.toHaveProperty("output");
     expect(finished).toMatchObject({ type: "step-finished", status: "succeeded" });
   });
@@ -80,7 +81,7 @@ describe("toLogEvent", () => {
       status: "failed",
       error: "boom",
     });
-    expect(project({ type: "run-finished", ...ids, ...outcome }).event).toMatchObject({
+    expect(project({ type: "run-finished", ...ids, nodeId: null, nodeName: null, ...outcome }).event).toMatchObject({
       type: "step-finished",
       status: "failed",
       error: "boom",
@@ -88,7 +89,7 @@ describe("toLogEvent", () => {
   });
 
   it("carries no error on a cancelled finish — run-cancelled narrates the cause", () => {
-    const event = project({ type: "run-finished", ...ids, status: "cancelled" }).event;
+    const event = project({ type: "run-finished", ...ids, nodeId: null, nodeName: null, status: "cancelled" }).event;
     expect(event).toMatchObject({ type: "step-finished", status: "cancelled" });
     expect(event).not.toHaveProperty("error");
   });
@@ -99,11 +100,11 @@ describe("toLogEvent", () => {
     expect(project({ ...base, passed: false }).event).toMatchObject({ type: "checkpoint-failed", trace });
   });
 
-  it("attributes control-node events to the control node, lifecycle events to the run", () => {
+  it("takes the node each event is attributed to off the observation itself", () => {
     expect(
       project({ type: "join-applied", ...ids, nodeId: "n7", nodeName: "fan", branches: ["a"], publishedKeys: ["k"] }).asked,
     ).toEqual(["n7"]);
-    expect(project({ type: "step-finished", ...ids, status: "cancelled" }).asked).toEqual([undefined]);
+    expect(project({ type: "step-finished", ...ids, nodeId: "n1", nodeName: "step-one", status: "cancelled" }).asked).toEqual(["n1"]);
   });
 
   it("renames the fields the wire format spells differently", () => {
@@ -138,8 +139,8 @@ describe("toLogEvent", () => {
       { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "step-one", originalRunId: "orig-run" },
       { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: {} },
       { type: "step-started", ...ids, parentRunId: "r0", nodeId: "n1", nodeName: "step-one", stepType: "binary", workerName, input: {} },
-      { type: "step-finished", ...ids, status: "succeeded", output: {} },
-      { type: "run-finished", ...ids, status: "cancelled" },
+      { type: "step-finished", ...ids, nodeId: "n1", nodeName: "step-one", status: "succeeded", output: {} },
+      { type: "run-finished", ...ids, nodeId: null, nodeName: null, status: "cancelled" },
       { type: "checkpoint-evaluated", ...ids, nodeId: "n1", nodeName: "gate", passed: true, trace },
       { type: "branch-taken", ...ids, nodeId: "n1", nodeName: "route", arm: "else", trace: null },
       { type: "branch-no-match", ...ids, nodeId: "n1", nodeName: "route", traces: [trace] },
@@ -149,13 +150,7 @@ describe("toLogEvent", () => {
       { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "step-one", cause: "sibling-failed", causeRunId: "r2" },
     ];
     for (const o of every) {
-      const event = toLogEvent(o, (runId, node) => ({
-        seq: 1,
-        ts: "2026-01-01T00:00:00.000Z",
-        run_id: runId,
-        node_id: node?.id ?? null,
-        node_name: node?.name ?? null,
-      }));
+      const event = toLogEvent(o, (o) => ({ seq: 1, ts: "2026-01-01T00:00:00.000Z", run_id: o.runId, node_id: o.nodeId, node_name: o.nodeName }));
       expect(event, `${o.type} should be narrated`).not.toBeNull();
       expect(() => LogEventSchema.parse(event)).not.toThrow();
     }

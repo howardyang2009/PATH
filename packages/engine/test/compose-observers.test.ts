@@ -9,7 +9,7 @@ const started: Observation = {
   nodeId: null, nodeName: null,
   input: {},
 };
-const finished: Observation = { type: "step-finished", runId: "r", rootRunId: "r", status: "succeeded", output: {} };
+const finished: Observation = { type: "step-finished", runId: "r", rootRunId: "r", nodeId: "n", nodeName: "n", status: "succeeded", output: {} };
 
 describe("composeObservers", () => {
   it("fans every observation out to every observer, in argument order", async () => {
