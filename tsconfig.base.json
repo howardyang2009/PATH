@@ -2,6 +2,12 @@
   "compilerOptions": {
     "target": "ES2022",
     "lib": ["ES2022"],
+    // Load only `@types/node` ambiently. vite 8 / vitest 5 add many `@types/*` packages to the tree,
+    // and TypeScript's default "include every `@types`" no longer resolves `@types/node` for the
+    // backend packages (their tests read `node:fs`, `process`, `import.meta.url`). Naming it here fixes
+    // that at one point. The browser packages (`designer`, `viewer`) override `types` with their own
+    // DOM/vitest/vite-client set; every package imports vitest by name, never as an ambient global.
+    "types": ["node"],
     "module": "NodeNext",
     "moduleResolution": "NodeNext",
     "strict": true,

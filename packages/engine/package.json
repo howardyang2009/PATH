@@ -12,7 +12,7 @@
     "path": "./bin/path.ts"
   },
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/dist/**'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -22,10 +22,10 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
-    "@types/better-sqlite3": "^7.6.12",
+    "@types/better-sqlite3": "^9.6.0",
     "@types/node": "^24.13.3",
     "tsx": "^4.23.13",
     "typescript": "^7.0.2",
-    "vitest": "^2.1.9"
+    "vitest": "^5.0.1"
   }
 }
