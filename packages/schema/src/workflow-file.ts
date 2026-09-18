@@ -3,8 +3,9 @@ import { ConfigObjectSchema } from "./config.js";
 import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
-import { childBodies, walkNodes } from "./node-walk.js";
+import { childBodies } from "./node-walk.js";
 import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
+import { publishSetIssues } from "./publish-set.js";
 import { STEP_ROOTS } from "./roots.js";
 import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
@@ -56,107 +57,6 @@ function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): Nam
   return found;
 }
 
-// The `publish` map of any node that carries one — the three built-in publishing step types and
-// every plugin leaf step (all draw `publish` from `commonStepFields`). Detected by presence, not a
-// built-in-type allowlist, so a plugin step's publishes fall under the same race / do-not-wait guards
-// once the open union admits them (ADR 0018). Control nodes never carry `publish`, so widening from
-// the allowlist to presence changes nothing for the closed union.
-function nodePublish(node: WorkflowNode): Record<string, unknown> | undefined {
-  const publish = (node as { publish?: unknown }).publish;
-  return publish !== null && typeof publish === "object" ? (publish as Record<string, unknown>) : undefined;
-}
-
-// Publish keys are static strings, so a race between sibling parallel branches writing the same
-// context key is detectable — and rejected — at load time (workflow-format-v0.md §10). Walks nested
-// control blocks but not into a `workflow` step's ref'd file: that file has its own isolated
-// context (childBodies does not descend there).
-function collectPublishKeys(nodes: WorkflowNode[]): string[] {
-  const keys: string[] = [];
-  for (const node of walkNodes(nodes)) {
-    const publish = nodePublish(node);
-    if (publish) {
-      keys.push(...Object.keys(publish));
-    }
-  }
-  return keys;
-}
-
-interface PublishKeyCollision {
-  key: string;
-  path: (string | number)[];
-}
-
-function findDuplicatePublishKeys(nodes: WorkflowNode[], basePath: (string | number)[]): PublishKeyCollision[] {
-  const collisions: PublishKeyCollision[] = [];
-
-  nodes.forEach((node, index) => {
-    const nodePath = [...basePath, index];
-
-    // A `wait-one` parallel lands only the winner's publishes, so two branches publishing the same
-    // key is deterministic — and is the headline race-two-sources pattern (wait-one-join.md §4.1).
-    // The same-key ban is correct only for `collect`, where all branches land and two writes to one
-    // key would be a last-writer race. Recursion still descends into a wait-one block's branches.
-    const collisionsAllowed = node.type === "parallel" && node.join === "wait-one";
-
-    // Only *concurrent* siblings can race. Branch arms are alternatives (one runs) and while-do
-    // iterations are sequential, so neither collides with itself — `concurrent` is the rule.
-    const firstSeenIn = new Map<string, number>();
-    childBodies(node).forEach((child, childIndex) => {
-      if (child.concurrent && !collisionsAllowed) {
-        for (const key of new Set(collectPublishKeys(child.nodes))) {
-          if (firstSeenIn.has(key)) {
-            // `child.path` already lands on the branch node itself (`["branches", i]`, `@2` §4.3),
-            // so the collision points at the offending branch directly — no trailing segment to trim.
-            collisions.push({ key, path: [...nodePath, ...child.path] });
-          } else {
-            firstSeenIn.set(key, childIndex);
-          }
-        }
-      }
-      collisions.push(...findDuplicatePublishKeys(child.nodes, [...nodePath, ...child.path]));
-    });
-  });
-
-  return collisions;
-}
-
-interface DoNotWaitPublish {
-  key: string;
-  path: (string | number)[];
-}
-
-// A `do-not-wait` branch is fire-and-forget: it runs past the join and lands after its would-be
-// readers, so a `publish` from it is a nondeterministic write-after-read into shared context. It is a
-// load error, not a silent runtime drop (do-not-wait-join.md §4). This is a separate check from
-// `findDuplicatePublishKeys`, whose join-aware racing-branch collision logic is unchanged. `insideDoNotWait`
-// latches on once a `do-not-wait` block is entered, so a publish anywhere below it — including one nested
-// in a `collect`/`while-do`/`branch` inside the detached branch — is caught (§4 "anywhere inside").
-function findDoNotWaitPublishes(
-  nodes: WorkflowNode[],
-  basePath: (string | number)[],
-  insideDoNotWait: boolean,
-): DoNotWaitPublish[] {
-  const violations: DoNotWaitPublish[] = [];
-
-  nodes.forEach((node, index) => {
-    const nodePath = [...basePath, index];
-
-    const publish = insideDoNotWait ? nodePublish(node) : undefined;
-    if (publish) {
-      for (const key of Object.keys(publish)) {
-        violations.push({ key, path: [...nodePath, "publish", key] });
-      }
-    }
-
-    const detached = insideDoNotWait || (node.type === "parallel" && node.join === "do-not-wait");
-    for (const child of childBodies(node)) {
-      violations.push(...findDoNotWaitPublishes(child.nodes, [...nodePath, ...child.path], detached));
-    }
-  });
-
-  return violations;
-}
-
 // The cross-node invariants zod's per-field parse cannot express: file-unique names, no two
 // concurrent parallel branches publishing one key, and no publish inside a `do-not-wait` branch.
 // Applied by the plugin factory's schema (`makeWorkflowFileSchema`) over its open node set.
@@ -180,20 +80,8 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx): 
     }
   }
 
-  for (const collision of findDuplicatePublishKeys(file.body, ["body"])) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: collision.path,
-      message: `duplicate publish key "${collision.key}": sibling parallel branches must not publish the same context key`,
-    });
-  }
-
-  for (const violation of findDoNotWaitPublishes(file.body, ["body"], false)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      path: violation.path,
-      message: `publish "${violation.key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
-    });
+  for (const issue of publishSetIssues(file)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
   }
 }
 

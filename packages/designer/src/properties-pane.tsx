@@ -1013,7 +1013,7 @@ function publishRowsOf(node: WorkflowNode): KeyedRow[] {
  * The context-**write** fields (§ Context reads and writes): `publish` (a `key → ${…}` map, each value an
  * interpolable string over `config.`/`context.`/`output.`) and `parse`. These are pane fields on the step,
  * never canvas edges. A publish conflict the load-time checks reject surfaces separately, as a node
- * validation marker on the canvas (`publish-conflicts.ts`).
+ * validation marker on the canvas (the publish-set rule in `@path/schema`, projected by `problems.ts`).
  */
 function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: (next: WorkflowNode, coalesce?: string) => void }): JSX.Element {
   const parse = nodeString(node, "parse");

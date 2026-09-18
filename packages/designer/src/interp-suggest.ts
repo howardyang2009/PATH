@@ -1,11 +1,11 @@
 import {
   checkInterpolationSyntax,
+  publishKeysOf,
   walkNodes,
   type InterpolationRoot,
   type JsonValue,
   type WorkflowFile,
 } from "@path/schema";
-import { publishKeysOf } from "./publish-conflicts.js";
 
 /**
  * The pure support for the input-wiring editor (#370, designer-spec § Input/output wiring). A step's one

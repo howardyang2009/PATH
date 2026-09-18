@@ -22,6 +22,15 @@ export {
   type WorkflowFileParseFailure,
 } from "./workflow-file.js";
 
+// The publish set's two load-time rejections, as data (CONTEXT.md § Publish set): the load refinement
+// and the Designer's canvas markers read the same walk, so a rule change cannot leave one silent.
+export {
+  publishKeysOf,
+  publishSetIssues,
+  type PublishSetIssue,
+  type PublishSetIssueRule,
+} from "./publish-set.js";
+
 export {
   buildCoreMembers,
   ENVELOPE_KEYS,
