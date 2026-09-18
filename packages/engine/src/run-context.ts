@@ -55,32 +55,58 @@ export type SeqOutcome =
   | { status: "cancelled" }
   | { status: "awaiting" };
 
-// The shared cancellation of one `parallel` block: its branches all run under `signal`, and either a
-// branch failing (`collect`) or a branch winning the race (`wait-one`) aborts the in-flight siblings
-// best-effort. `cause` records which — `sibling-failed` or `sibling-succeeded` (wait-one-join.md §5)
-// — and is null until one fires (an outside abort, an operator cancelling the root run, leaves it
-// null). For `sibling-failed` the failing step run's id becomes `causeRunId`, which the losers'
-// run-cancelled events point back at; a win has no cause run, so `causeRunId` stays null there too.
+/**
+ * The three causes a cancellation can have (CONTEXT.md § Cancellation). `operator` is a cancel request
+ * against the root run; the two sibling causes are the engine stopping in-flight work because a
+ * `parallel` block resolved — `sibling-failed` for a `collect` branch that failed, `sibling-succeeded`
+ * for a `wait-one` winner that cancelled the losers (mvp spec §5.6).
+ */
+export type CancelCause = "operator" | "sibling-failed" | "sibling-succeeded";
+
+// The shared cancellation of a run tree or one `parallel` block: its work runs under `signal`, and
+// either a branch failing (`collect`) or a branch winning the race (`wait-one`) aborts the in-flight
+// siblings best-effort. `cause` records which, and is null until one fires (an outside abort, an
+// operator cancelling the root run, leaves it null). For `sibling-failed` the failing step run's id
+// becomes `causeRunId`, which the losers' run-cancelled events point back at; a win has no cause run,
+// so `causeRunId` stays null there too. `cancellation.ts` owns the two constructors — the root run's
+// and a block's — so no walker assembles the cause chain itself.
 export interface Cancellation {
   signal: AbortSignal;
   causeRunId: string | null;
-  cause: "sibling-failed" | "sibling-succeeded" | null;
+  cause: CancelCause | null;
   /** A `collect` branch failed: cancel in-flight siblings, `causeRunId` naming the failing run. */
   trigger(causeRunId: string): void;
   /** A `wait-one` branch won the race: cancel the still-running losers (no cause run). */
   triggerWin(): void;
 }
 
+/**
+ * How a construct runs a nested sequence of nodes: the run's own **walk**, handed to it rather than
+ * imported. The walk owns order, the default-input chain and the between-node abort check; a
+ * construct owns only *which* body it hands in — a `parallel` branch, a reused `wait-one` winner, a
+ * `branch` arm, a loop body. Threading it here is also what removed the
+ * `run-parallel.ts → run-workflow.ts → runNode → runParallelNode` function cycle: the parallel block
+ * used to import `runSequence` back from the executor that dispatches it.
+ */
+export type NodeWalk = (
+  run: RunContext,
+  nodes: WorkflowFile["body"],
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+) => Promise<SeqOutcome>;
+
 // What each node in a sequence reads and writes: the `context` it sees (the run's own for the
 // top-level body; a per-branch snapshot copy inside a `parallel` block, so siblings never observe
-// each other's writes — mvp spec §5.3), the `signal`/`cancellation` of any enclosing parallel, and
+// each other's writes — mvp spec §5.3), the `signal`/`cancellation` of any enclosing parallel,
 // `onPublish` — how a landed publish is surfaced (context write-through at the top level; buffered
-// for the join inside a branch).
+// for the join inside a branch) — and the run's `walk`, so no construct reaches back into the
+// executor for one.
 export interface NodeExecContext {
   context: { [key: string]: JsonValue };
   signal?: AbortSignal;
   cancellation?: Cancellation;
   onPublish: (updates: { [key: string]: JsonValue }) => Promise<void>;
+  walk: NodeWalk;
 }
 
 // One workflow-run's identity within the run tree (#22). The root run has `parentRunId: null`

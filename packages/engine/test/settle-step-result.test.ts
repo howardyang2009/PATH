@@ -38,7 +38,7 @@ describe("settleStepResult — success", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { answer: 42 } });
     expect(seen).toEqual([
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", status: "succeeded", output: { answer: 42 } },
+      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", status: "succeeded", output: { answer: 42 } },
     ]);
   });
 
@@ -76,7 +76,7 @@ describe("settleStepResult — failure", () => {
 
     expect(outcome).toEqual({ status: "failed", error: 'step "do-thing": exited with code 2', causeRunId: step.runId });
     expect(seen).toEqual([
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", status: "failed", error: 'step "do-thing": exited with code 2' },
+      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", status: "failed", error: 'step "do-thing": exited with code 2' },
     ]);
   });
 });
@@ -119,7 +119,7 @@ describe("settleStepResult — stderr rides every outcome", () => {
     const { step, seen } = harness();
     await settle({ step, result: { status: "succeeded", output: "ok", stderr: "a warning" } });
 
-    expect(seen[0]).toEqual({ type: "step-stderr", runId: step.runId, rootRunId: "root-run", stderr: "a warning" });
+    expect(seen[0]).toEqual({ type: "step-stderr", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", stderr: "a warning" });
     expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "succeeded" });
   });
 

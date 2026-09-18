@@ -8,6 +8,8 @@ import type { RunNodeState } from "./view-model.js";
  */
 export interface RunTreeNode {
   run: RunNodeState;
+  /** The status every surface shows for this run — see {@link displayStatusByRun}. */
+  displayStatus: RunStatus;
   children: RunTreeNode[];
 }
 
@@ -41,55 +43,52 @@ export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNod
   // Every run has exactly one parent, so this is a forest and the walk down from the root
   // terminates: a run can be reached by at most one path, and a cycle among parents (which no
   // engine-produced tree contains) is unreachable from the root rather than infinite.
+  const display = displayStatusByRun(runs);
   const nest = (run: RunNodeState): RunTreeNode => ({
     run,
+    displayStatus: display.get(run.runId) ?? run.status,
     children: (byParent.get(run.runId) ?? []).map(nest),
   });
   return nest(root);
 }
 
 /**
- * The status a run should **display**, which is its record status except that a `running` run with an
- * `awaiting` run anywhere in its subtree displays `awaiting`. This is the **one** status derivation the
- * four read surfaces share — the runs list, the run-detail head, the run tree, and the node I/O head —
+ * The status each run should **display**, keyed by run id: its record status, except that a `running`
+ * run with an `awaiting` run anywhere below it reads `awaiting`. This is the **one** status derivation
+ * the read surfaces share — the runs list, the run-detail head, the run tree, and the node I/O head —
  * so a root whose leaf is parked reads `awaiting` the same way in every pane.
  *
  * It is **view-only** and touches no status. The root and every intermediate workflow-run stay
  * `running` in the record while a leaf awaits (ADR 0038) — that is the engine's truth and the DB's.
  * This only repaints the pill, so a pending completion below is visible without expanding the tree.
  *
- * `runs` is the run map of the tree the run lives in; a caller that has no descendants loaded (the runs
- * list holds only summaries for the runs it is not watching) passes an empty map and gets the record
- * status back unchanged. A run already `awaiting`, or terminal, or `pending` returns its own status —
- * only a `running` run is ever repainted.
+ * Computed once per snapshot rather than once per row, so a deep tree costs one walk, not one walk per
+ * row. A run already `awaiting`, terminal, or `pending` keeps its own status — only a `running`
+ * ancestor is ever repainted, and the walk up from a parked run stops at the first ancestor that is
+ * not `running` (a finished run has no live descendant). A caller with no descendants loaded passes a
+ * map that holds only the run itself, and gets its record status back unchanged.
  */
-export function effectiveRunStatus(run: { runId: string; status: RunStatus }, runs: ReadonlyMap<string, RunNodeState>): RunStatus {
-  if (run.status !== "running") return run.status;
-  return subtreeHasAwaiting(run.runId, runs) ? "awaiting" : "running";
-}
+export function displayStatusByRun(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
+  const display = new Map<string, RunStatus>();
+  for (const run of runs.values()) display.set(run.runId, run.status);
 
-/** Whether any transitive descendant of `rootId` in `runs` is `awaiting` (the run itself excluded). */
-function subtreeHasAwaiting(rootId: string, runs: ReadonlyMap<string, RunNodeState>): boolean {
-  const byParent = new Map<string, RunNodeState[]>();
   for (const run of runs.values()) {
-    if (run.parentRunId === null) continue;
-    const siblings = byParent.get(run.parentRunId);
-    if (siblings) siblings.push(run);
-    else byParent.set(run.parentRunId, [run]);
+    if (run.status !== "awaiting") continue;
+    // Walk up from the parked run: its still-`running` ancestors read `awaiting` too. A run whose
+    // parent the map does not hold (the stream ran ahead of the last tree read) cannot repaint an
+    // ancestor it cannot name. The seen-set keeps a hand-built cycle from looping; an engine-built
+    // tree cannot hold one (every run has exactly one parent).
+    const seen = new Set<string>([run.runId]);
+    let parentId = run.parentRunId;
+    while (parentId !== null && !seen.has(parentId)) {
+      seen.add(parentId);
+      const parent = runs.get(parentId);
+      if (parent === undefined || parent.status !== "running") break;
+      display.set(parentId, "awaiting");
+      parentId = parent.parentRunId;
+    }
   }
-  // Iterative DFS from the run's own children so a deep tree cannot overflow the stack.
-  const stack = [...(byParent.get(rootId) ?? [])];
-  const seen = new Set<string>();
-  while (stack.length > 0) {
-    const node = stack.pop()!;
-    if (node.status === "awaiting") return true;
-    // A cycle only hand-built data can hold (every engine run has one parent) must not loop forever.
-    if (seen.has(node.runId)) continue;
-    seen.add(node.runId);
-    const children = byParent.get(node.runId);
-    if (children) stack.push(...children);
-  }
-  return false;
+  return display;
 }
 
 /** Oldest start first; a run that has not started yet sorts last. Run id breaks ties. */

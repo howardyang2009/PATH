@@ -1,4 +1,6 @@
 import {
+  publishKeysOf,
+  publishSetIssues,
   tokenizeInterpolation,
   walkNodes,
   type Condition,
@@ -6,7 +8,6 @@ import {
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
-import { publishConflicts, publishKeysOf } from "./publish-conflicts.js";
 import { resolveRefPath } from "./resolve-ref.js";
 
 /**
@@ -15,7 +16,7 @@ import { resolveRefPath } from "./resolve-ref.js";
  * refuses to commit a schema-invalid node edit, so the errors that survive to a whole-file view are
  * dominantly **cross-node** — a fact no single node can see:
  *
- * 1. a **publish conflict** the load-time checks reject (`publish-conflicts.ts`, #370);
+ * 1. a **publish conflict** the load-time checks reject (`@path/schema`'s publish-set rule, #370);
  * 2. a **dangling `${context.…}` read** — an interpolation whose `context` key no step in the file
  *    publishes; and
  * 3. a **dangling condition path** — a `context.…` path in a branch/while/checkpoint condition whose
@@ -170,7 +171,13 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
     for (const key of publishKeysOf(node)) published.add(key);
   }
 
-  const conflicts = publishConflicts(file);
+  // The canvas projection of the load-time publish-set verdict (`@path/schema`'s `publishSetIssues`):
+  // one marker per offending node, first issue wins when a node carries more than one. The rule itself
+  // is not restated here — the canvas and the load refusal read the same walk.
+  const conflicts = new Map<string, string>();
+  for (const issue of publishSetIssues(file)) {
+    if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, issue.message);
+  }
   const problems: Problem[] = [];
 
   for (const node of walkNodes(file.body)) {

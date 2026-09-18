@@ -1,12 +1,12 @@
-import { useEffect, useState } from "react";
-import type { PathApiClient } from "@path/client-core";
+import { useState } from "react";
+import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
 
 /**
  * The target chooser for a new `workflow`-ref (#391, designer-spec § Nested `workflow`-ref creation).
  * Because a ref stores a **path**, adding one offers two ways to fill it:
  *
- * - **Reference an existing workflow** — a picker over the project's discovered workflows; the choice is
- *   the target path.
+ * - **Reference an existing workflow** — a picker over the project's discovered workflows (the App's one
+ *   `discovery.ts` snapshot); the choice is the target path.
  * - **Create a new workflow** — descend at once into a fresh, unwritten, path-less child buffer. No path is
  *   chosen here: the child's first save picks it and back-fills the parent ref from it, so authoring comes
  *   first and the ref follows the save.
@@ -15,13 +15,13 @@ import type { PathApiClient } from "@path/client-core";
  * because those touch the open file and the navigation trail.
  */
 export function RefTargetDialog({
-  client,
+  discovery,
   excludePath,
   onPickExisting,
   onCreateNew,
   onCancel,
 }: {
-  client: PathApiClient;
+  discovery: DiscoveryLoad;
   /** The referring file's own path, dropped from the existing-picker so it cannot reference itself. */
   excludePath: string;
   /** Point the ref at an already-discovered workflow at this project-relative path. */
@@ -34,7 +34,7 @@ export function RefTargetDialog({
   const [mode, setMode] = useState<"choose" | "existing">("choose");
 
   if (mode === "existing") {
-    return <ExistingPicker client={client} excludePath={excludePath} onPick={onPickExisting} onBack={() => setMode("choose")} onCancel={onCancel} />;
+    return <ExistingPicker discovery={discovery} excludePath={excludePath} onPick={onPickExisting} onBack={() => setMode("choose")} onCancel={onCancel} />;
   }
 
   return (
@@ -62,35 +62,22 @@ export function RefTargetDialog({
 
 /** The reference-existing branch: a picker over the project's discovered workflows (`GET /v0/workflows`). */
 function ExistingPicker({
-  client,
+  discovery,
   excludePath,
   onPick,
   onBack,
   onCancel,
 }: {
-  client: PathApiClient;
+  discovery: DiscoveryLoad;
   excludePath: string;
   onPick: (targetPath: string) => void;
   onBack: () => void;
   onCancel: () => void;
 }): JSX.Element {
-  const [paths, setPaths] = useState<string[] | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .listWorkflows()
-      .then((response) => {
-        if (!alive) return;
-        setPaths(response.workflows.map((wf) => wf.relative_path).filter((path) => path !== excludePath).sort());
-      })
-      .catch(() => {
-        if (alive) setPaths([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [client, excludePath]);
+  // `null` until a scan lands: still discovering. A failed scan with nothing behind it reads as empty, so
+  // the picker shows its "no workflows" note rather than an indefinite spinner.
+  const discovered = discoveredWorkflows(discovery);
+  const paths = discovered === null ? null : discovered.map((wf) => wf.relative_path).filter((path) => path !== excludePath).sort();
 
   return (
     <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Reference an existing workflow">

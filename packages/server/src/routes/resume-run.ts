@@ -2,7 +2,7 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { ConfigObjectSchema, formatIssues, isTerminal, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
+import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused } from "../live-runs.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
@@ -79,42 +79,24 @@ export async function handleResumeRun(
     return;
   }
 
-  // A run recorded before #169, or one written without a path, cannot be re-run: the server has no
-  // way to recover which workflow file it was.
-  if (!root.workflowPath) {
-    sendError(res, 409, `run "${rootRunId}" has no recorded workflow path and cannot be resumed`);
-    return;
-  }
-
-  // Re-read and re-validate the workflow as it stands now, the same escape/not-found/invalid gate a
-  // fresh launch runs (launch.ts) — a file that has since become invalid is a `400`, exactly as a
-  // fresh launch of it would be. The path comes from the predecessor's row, so a resume's not-found
-  // message names the run whose recorded file vanished, not a path a caller just sent.
-  // No `escapesRoot`: the path came from a row this server wrote relative to the project root, so an
-  // escape is unreachable and folds into the same "recorded file is gone" 404 the pre-launch-module
-  // route used — one message for both, as before.
-  const prepared = await prepareWorkflow(ctx.project.dir, root.workflowPath, {
+  // Recover and re-validate the workflow as it stands now (`launch.ts`'s `prepareRunWorkflow`): a run
+  // recorded without a path cannot be re-run, a file that is gone is a `404`, a file that has since
+  // become invalid is a `400` exactly as a fresh launch of it would be, and a file that is no longer
+  // the workflow this run ran (its id changed, ADR 0006) is a `409`. The path comes from the
+  // predecessor's row, so the not-found message names the run whose recorded file vanished, not a path
+  // a caller just sent. No `escapesRoot`: the path came from a row this server wrote relative to the
+  // project root, so an escape is unreachable and folds into the same "recorded file is gone" 404.
+  const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
+    noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be resumed`,
+    swapped: (workflowPath) =>
+      `the workflow at "${workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot resume`,
   });
   if (!prepared.ok) {
     sendError(res, prepared.refusal.status, prepared.refusal.message, prepared.refusal.details);
     return;
   }
   const { workflow } = prepared;
-
-  // The file at that path must still be the *same workflow* this run ran (identity is the `id`, ADR
-  // 0006). The path was recovered from the row, not re-confirmed by the operator as it is on `path
-  // run --resume`, so a different workflow swapped in at that path would otherwise be resumed against
-  // the predecessor's restored context — nodes keyed to a structure that may no longer exist. Only
-  // enforced when the predecessor recorded an id (every run since #169 does).
-  if (root.workflowId && workflow.rootFile.id !== root.workflowId) {
-    sendError(
-      res,
-      409,
-      `the workflow at "${root.workflowPath}" is no longer the one run "${rootRunId}" ran (its id changed); cannot resume`,
-    );
-    return;
-  }
 
   let ids;
   try {

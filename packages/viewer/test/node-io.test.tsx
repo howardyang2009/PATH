@@ -1,4 +1,4 @@
-import type { LogEvent, RunNodeState } from "@path/client-core";
+import type { RunNodeState } from "@path/client-core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -260,19 +260,10 @@ describe("NodeIo", () => {
 
   it("surfaces a failed run's error message in the E block", async () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
-    const narrative: LogEvent[] = [
-      {
-        type: "step-finished",
-        seq: 7,
-        ts: "2026-07-25T10:00:02.000Z",
-        run_id: RUN,
-        node_id: "draft-notes",
-        node_name: "draft-notes",
-        status: "failed",
-        error: "worker exited with code 1: boom",
-      },
-    ];
-    render(<NodeIo client={client} run={runState({ status: "failed" })} narrative={narrative} />);
+    // The view folded this run's last failed `step-finished` from the event log; the pane reads the fact
+    // rather than scanning the narrative itself (the fold is covered in client-core's view-model test).
+    const view = { displayStatus: new Map(), lastError: new Map([[RUN, "worker exited with code 1: boom"]]) };
+    render(<NodeIo client={client} run={runState({ status: "failed" })} view={view} />);
 
     const error = await screen.findByTestId("node-io-error");
     expect(error).toHaveTextContent("worker exited with code 1: boom");

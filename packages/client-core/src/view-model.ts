@@ -8,6 +8,8 @@ import {
   type RunStatus,
   type RunTreeResponse,
 } from "@path/schema";
+import { runStatusAfter } from "./event-outcome.js";
+import { displayStatusByRun } from "./run-tree.js";
 
 /**
  * Framework-agnostic view-model for one root run. It assembles the run tree from
@@ -58,7 +60,31 @@ export interface RunViewState {
   narrative: readonly LogEvent[];
   /** Liveness of the event stream feeding `narrative`. */
   stream: StreamPhase;
+  /**
+   * The status each run should display, keyed by `runId` — a `running` run with an `awaiting` run below
+   * it reads `awaiting` (view-only, ADR 0038; `displayStatusByRun` in `run-tree.ts` owns the rule). A
+   * surface reads the fact from here rather than re-deriving it from `runs`, so the four run surfaces
+   * cannot disagree. A run the map does not hold (the root run before its row arrives) falls back to
+   * the record status, which is `status` for the root.
+   */
+  displayStatus: ReadonlyMap<string, RunStatus>;
+  /**
+   * The last failure message each run reached, keyed by `runId`. The error text rides the
+   * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here — beside the
+   * narrative that already holds the events in `seq` order — instead of each surface scanning the
+   * narrative for it. A run with no failed finish is absent.
+   */
+  lastError: ReadonlyMap<string, string>;
+  /** The runs parked `awaiting` in this tree, for a surface that counts or badges them (ADR 0042). */
+  awaitingRunIds: ReadonlySet<string>;
 }
+
+/**
+ * The derived facts a run surface reads off the snapshot: what the view answers about a run, without
+ * the raw events. A pane that only needs one run's display status and error takes this, so it cannot
+ * reach past the view into the event stream.
+ */
+export type RunViewFacts = Pick<RunViewState, "displayStatus" | "lastError">;
 
 export type RunViewListener = (state: RunViewState) => void;
 
@@ -66,6 +92,7 @@ export class RunViewModel {
   private runs = new Map<string, RunNodeState>();
   private narrative: LogEvent[] = [];
   private seenSeqs = new Set<number>();
+  private lastErrorById = new Map<string, string>();
   private output: JsonValue | null = null;
   private rootStatus: RunStatus = "pending";
   private streamPhase: StreamPhase = "connecting";
@@ -131,9 +158,9 @@ export class RunViewModel {
   private applyToRun(event: LogEvent): void {
     const existing = this.runs.get(event.run_id);
     // An event can name a run before its tree row arrives (parentage comes from the row, not the
-    // event). Start it blank — all-null, status `pending` — and let the step-started/finished below
-    // and a later `hydrate` fill it. `blankRunRecord` builds it from the record's own field manifest,
-    // so a new field is never forgotten here.
+    // event). Start it blank — all-null, status `pending` — and let the status fold below and a later
+    // `hydrate` fill it. `blankRunRecord` builds it from the record's own field manifest, so a new
+    // field is never forgotten here.
     const node: RunNodeState =
       existing ??
       blankRunRecord({
@@ -143,25 +170,17 @@ export class RunViewModel {
         nodeName: event.node_name,
       });
 
+    // The status transition rules — including the replay guards on `step-started`/`step-awaiting` —
+    // live in `runStatusAfter` (`event-outcome.ts`), the one owner of what an event means for a run.
+    node.status = runStatusAfter(node.status, event);
     if (event.type === "step-started") {
-      // A run is terminal for good — a loop iteration spawns a *new* run, it never restarts one
-      // (CONTEXT.md: a run is one executing instance of a task). Without this guard a full replay
-      // (the default when there is no `Last-Event-ID` to resume from) walks an already-hydrated
-      // `succeeded` run back to `running` and forward again, flickering the status on every open.
-      if (!isTerminal(node.status)) node.status = "running";
       node.workerName = event.worker_name;
       node.startedAt ??= event.ts;
-    } else if (event.type === "step-awaiting") {
-      // A leaf entered `awaiting` — the worker parked the step for an external `complete` (ADR 0040,
-      // person-activity). It is a distinct event from `step-finished` because the run is still live
-      // (not terminal). Folding it is what makes a full replay after reload land on `awaiting`: the
-      // `step-started` above walks the run to `running`, and without this the later `step-awaiting`
-      // was dropped, leaving the parked row stuck at `running`. Guard the terminal status the same
-      // way `step-started` does — a `complete` already replayed as `step-finished` must not reopen.
-      if (!isTerminal(node.status)) node.status = "awaiting";
     } else if (event.type === "step-finished") {
-      node.status = event.status;
       node.finishedAt = event.ts;
+      // The error text rides the event, not the run row (mvp spec §8.1). The narrative is `seq`-ordered,
+      // so the last such event for a run is that run's final word; a `cancelled` finish carries none.
+      if (event.error !== undefined) this.lastErrorById.set(event.run_id, event.error);
     }
 
     this.runs.set(node.runId, node);
@@ -182,13 +201,21 @@ export class RunViewModel {
   }
 
   private buildSnapshot(): RunViewState {
+    const runs = new Map(this.runs);
+    const awaitingRunIds = new Set<string>();
+    for (const run of runs.values()) if (run.status === "awaiting") awaitingRunIds.add(run.runId);
     return {
       rootRunId: this.rootRunId,
       status: this.rootStatus,
       output: this.output,
-      runs: new Map(this.runs),
+      runs,
       narrative: [...this.narrative],
       stream: this.streamPhase,
+      // Derived once per snapshot, not once per row: a deep tree costs one walk, and every pane reads
+      // the same map instead of re-deciding which rows are loaded.
+      displayStatus: displayStatusByRun(runs),
+      lastError: new Map(this.lastErrorById),
+      awaitingRunIds,
     };
   }
 

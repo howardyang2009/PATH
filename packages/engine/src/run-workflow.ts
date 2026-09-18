@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { findRootRun, formatIssues, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
-import { findNestedCounterpart, planReuse, RUN_PRODUCING_TYPES } from "./plan-reuse.js";
+import { rootCancellation, stopCause } from "./cancellation.js";
+import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
@@ -25,7 +26,7 @@ import type { StepRequest, StepResult, WorkerDescriptor } from "./plugin/seam.js
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
-import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
+import { describeUnsetEnv, type EnvSource, resolveEffectiveConfig, resolveRunEnv } from "./resolve-env.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
 import { collectSecrets, maskObservation, type SecretMasker } from "./secret-mask.js";
 
@@ -229,9 +230,9 @@ interface WorkflowRunParams {
   // Shared by the entire run tree, so the registry and processor cap span nested runs too (mvp spec §5.5).
   runtime: StepRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
-  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). The root run carries the
-  // operator's own `RunOptions.signal` when there is one (#52) — with no `cancellation`, since a run
-  // it kills has no cause run inside the tree.
+  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). A `workflow` step passes its
+  // own execution's authority straight through, so the whole tree shares the chain rooted at the root
+  // run's authority (`cancellation.ts`) — the operator's stop and every sibling cause included.
   signal?: AbortSignal;
   cancellation?: Cancellation;
   // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
@@ -261,21 +262,16 @@ interface WorkflowRunParams {
 }
 
 type WorkflowNode = WorkflowFile["body"][number];
-type ControlNode = Extract<WorkflowNode, { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" }>;
+type ControlNode = Extract<WorkflowNode, { type: ControllerType }>;
 
 // The five engine-evaluated control constructs — everything the node walker owns itself, with no run
 // of its own (CONTEXT invariant 1). `workflow` is *not* here: it runs a nested workflow-run, so it
-// takes the step path beside the leaf types. A `type` that is none of these five is a leaf step —
-// `binary`, `prompt`, or any plugin folder — dispatched through the registry (ADR 0019 sub-10). The
-// closed set is the six reserved names minus `workflow`, so a plugin type can never fall in here.
+// takes the step path beside the leaf types. A `type` that is not a controller is a step — `binary`,
+// `prompt`, `workflow`, or any plugin folder — dispatched through the registry (ADR 0019 sub-10). The
+// controller set is `@path/schema`'s (`isStepType`, derived from the node union), so this guard and
+// the reuse plan's cannot drift: `ControllerType` is exactly what `isStepType` excludes.
 function isControlNode(node: WorkflowNode): node is ControlNode {
-  return (
-    node.type === "parallel" ||
-    node.type === "branch" ||
-    node.type === "while-do" ||
-    node.type === "sequence" ||
-    node.type === "checkpoint"
-  );
+  return !isStepType(node.type);
 }
 
 /**
@@ -357,11 +353,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   let previousOutput: JsonValue = input;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
-  // declared defaults key by key, nearest wins (format doc §8). One of
-  // the two points a run materializes effective config, so one of the two that resolve `$env`
-  // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
-  // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
-  const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
+  // declared defaults key by key, nearest wins (format doc §8). One of the two points a run
+  // materializes effective config, so one of the two that resolve `$env` and unwrap `$secret`
+  // (#116, ADR 0022 sub-4) — what survives the merge is what every reader downstream sees: the
+  // run-start gate, interpolation, conditions and the worker, with no wrapper left in it.
+  // Idempotent, so the already-effective incoming half is untouched.
+  const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), params.env);
   const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, runtime: params.runtime, resume, continue: params.continue?.state, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
     await emitter.runFinished({ status: "failed", error });
@@ -468,6 +465,9 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       onPublish: async () => {
         await emitter.contextChanged(context);
       },
+      // The run's walk, handed to every construct below (a `parallel` branch, a loop body, a branch
+      // arm) instead of each importing it back — see `NodeExecContext.walk`.
+      walk: runSequence,
     });
     // The run reached a person-activity leaf and parked (ADR 0039/0041): it neither succeeded nor
     // failed, so it emits no terminal `run-finished` and this row stays `running`. The tree is
@@ -506,6 +506,13 @@ async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
   ctx: StepContext,
+  /**
+   * The existing row of *this* tree this nested run re-enters in place, when a Complete replay
+   * reached it (ADR 0041) — `resolveNodeDisposition`'s `reenter`. Undefined on a fresh forward run,
+   * which mints its own id. The lookup lives there, not here, so every walker answers "does this node
+   * already have a run" the same way.
+   */
+  existingRun?: RunRecord,
 ): Promise<SeqOutcome> {
   if (!isJsonObject(stepInput)) {
     return {
@@ -522,17 +529,12 @@ async function runWorkflowNode(
     return { status: "failed", error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
-  // Complete-continue (ADR 0041): a nested run still `running` in this tree is re-entered **in place**
-  // — same run id, no `run-started` — so its parked descendants resolve under the identity they
-  // already have. A node with no existing run is a fresh forward run appended past the parked leaf; it
-  // mints an id like any launch run. (A `succeeded` nested run never reaches here — `runNode` reused
-  // it and did not descend.)
-  const continueExisting =
-    ctx.run.continue !== undefined
-      ? findExistingChild(ctx.run.continue.existingRuns, ctx.run.identity.runId, node.id)
-      : undefined;
+  // A nested run still `running` in the tree being Completed is re-entered **in place** (ADR 0041) —
+  // same run id, no `run-started` — so its parked descendants resolve under the identity they already
+  // have. `runNode` passed that row in from `resolveNodeDisposition`; a node with none is a fresh
+  // forward run appended past the parked leaf, minting an id like any launch run.
   const childIdentity: RunIdentity = {
-    runId: continueExisting?.runId ?? randomUUID(),
+    runId: existingRun?.runId ?? randomUUID(),
     rootRunId: ctx.run.identity.rootRunId,
     parentRunId: ctx.run.identity.runId,
     nodeId: node.id,
@@ -555,7 +557,7 @@ async function runWorkflowNode(
     cancellation: ctx.exec.cancellation,
     // Continue this child in place when the tree is being Completed (undefined otherwise): its own
     // existing row (re-enter) or undefined (fresh forward run under the same root).
-    continue: ctx.run.continue ? { state: ctx.run.continue, existing: continueExisting } : undefined,
+    continue: ctx.run.continue ? { state: ctx.run.continue, existing: existingRun } : undefined,
     // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
     // its already-succeeded grandchildren reuse rather than re-running from scratch. Producer B (ADR
@@ -647,9 +649,10 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   // 1. stderr rides every outcome, into the audit blob.
   if (result.status !== "awaiting" && result.stderr !== undefined) await step.stderr(result.stderr);
 
-  // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status.
+  // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status,
+  // and the cause from the cancellation authority (`cancellation.ts`) rather than re-reading it here.
   if (signal?.aborted) {
-    await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
+    await step.cancelled(stopCause(cancellation));
     return { status: "cancelled" };
   }
 
@@ -713,18 +716,6 @@ async function finishSucceeded(
 // non-cancellable run has no enclosing signal. One shared instance — it never fires.
 const NEVER_ABORT = new AbortController().signal;
 
-// Unwrap every `$secret` in an effective config object to its real value, for the worker (ADR 0022
-// sub-4: config reaches `run` already `$env`/`$secret`-resolved). `$env` is resolved upstream at the
-// effective-config merge; this is the `$secret` half. Per config *value*, keyed by the config key, so
-// a config field awkwardly named `$secret` is not mistaken for a wrapper (the `resolve-env.ts` rule).
-function unwrapConfigSecrets(config: ConfigObject): ConfigObject {
-  const resolved: ConfigObject = {};
-  for (const [key, value] of Object.entries(config)) {
-    resolved[key] = mapSecrets(value as unknown as JsonValue, (secret) => secret) as unknown as ConfigValue;
-  }
-  return resolved;
-}
-
 /**
  * A leaf step of any type: dispatch through the frozen registry to the selected worker and map its
  * `StepResult` (ADR 0021 sub-8). Leaf dispatch is one `(type, worker-name)` lookup with no built-in
@@ -771,10 +762,6 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
-  // The worker reads real values: `$env` resolved at the effective-config merge, `$secret` unwrapped
-  // here (ADR 0022 sub-4). Masking stays a persistence-boundary concern only (ADR 0020).
-  const config = unwrapConfigSecrets(ctx.stepConfig);
-
   const release = descriptor.needsProcessorSlot ? await ctx.run.runtime.semaphore.acquire() : undefined;
   try {
     // The step's run id is minted (and its row starts) only once any processor slot is really held.
@@ -785,7 +772,10 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     const request: StepRequest = {
       fields: fields as StepRequest["fields"],
       input: stepInput,
-      config: config as unknown as StepRequest["config"],
+      // The worker reads real values: the effective config is what it is — `$env` resolved and
+      // `$secret` unwrapped where the config was materialized (ADR 0022 sub-4, `resolveEffectiveConfig`).
+      // Masking stays a persistence-boundary concern only (ADR 0020).
+      config: ctx.stepConfig as unknown as StepRequest["config"],
       cwd: ctx.run.fileDir,
       signal: ctx.exec.signal ?? NEVER_ABORT,
     };
@@ -836,7 +826,7 @@ function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<string> | u
   }
   const suppress = new Set<string>();
   for (const node of walkNodes(file.body.slice(i))) {
-    if (RUN_PRODUCING_TYPES.has(node.type)) suppress.add(node.id);
+    if (isStepType(node.type)) suppress.add(node.id);
   }
   return suppress;
 }
@@ -892,6 +882,58 @@ function findExistingChild(
       (iteration === undefined || r.iteration === iteration),
   );
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * What a node's own recorded row says about how the walk should proceed — the **one** answer to
+ * "does this node already have a run here, and what does its status mean", read by the three walkers
+ * that own one: `runNode` (a leaf or `workflow` step), `runWorkflowNode` (a nested workflow-run
+ * re-entered in place) and `runLoopIteration` (a `while-do` iteration container).
+ *
+ * Resume and Complete are different trees with different rules, so the two modes are separate arms,
+ * and are mutually exclusive by construction. A **Resume** consults the reuse plan: a fresh successor
+ * tree whose reused node reads the *original's* recorded output (ADR 0001). A **Complete** consults
+ * this same tree's own rows, read-only (ADR 0041): a succeeded row is its own output, a parked row is
+ * either the leaf being Completed or a still-parked sibling, and a non-terminal row is re-entered in
+ * place.
+ */
+type NodeDisposition =
+  /** Resume: the reuse plan holds a succeeded original run for this node id — reuse its output. */
+  | { kind: "reuse"; original: RunRecord }
+  /** Complete: this tree's row for the node already succeeded — read its output, re-run nothing. */
+  | { kind: "succeeded"; existing: RunRecord }
+  /** Complete: this tree's row is the parked leaf being Completed — transition it in place. */
+  | { kind: "complete"; existing: RunRecord }
+  /** Complete: this tree's row is a still-parked sibling — park the walk again (park-at-join). */
+  | { kind: "park" }
+  /** Complete: an existing non-terminal row this node re-enters in place (a nested run, an iteration). */
+  | { kind: "reenter"; existing: RunRecord }
+  /** Nothing recorded answers this node — run it fresh. */
+  | { kind: "fresh" };
+
+/**
+ * Resolve {@link NodeDisposition} for one node of one workflow-run. `iteration` scopes the lookup to
+ * a `while-do` iteration container's ordinal (`findExistingChild`); every other node leaves it out.
+ *
+ * A non-terminal row is only re-entered in place by a node that owns a re-enterable run — a nested
+ * `workflow` step, or a loop iteration container. A leaf has nothing to re-enter: a Complete replay of
+ * a parked tree never finds a live leaf row (the engine tears down at an awaiting leaf, ADR 0039), and
+ * a cancelled or failed row is not a state to resume — so a leaf with one runs fresh.
+ */
+function resolveNodeDisposition(run: RunContext, node: WorkflowNode, iteration?: number): NodeDisposition {
+  const continuing = run.continue;
+  if (continuing) {
+    const existing = findExistingChild(continuing.existingRuns, run.identity.runId, node.id, iteration);
+    if (!existing) return { kind: "fresh" };
+    if (existing.status === "succeeded") return { kind: "succeeded", existing };
+    if (existing.status === "awaiting") {
+      return existing.runId === continuing.target.stepRunId ? { kind: "complete", existing } : { kind: "park" };
+    }
+    if (node.type === "workflow" || iteration !== undefined) return { kind: "reenter", existing };
+    return { kind: "fresh" };
+  }
+  const original = run.resume?.plan.get(node.id);
+  return original ? { kind: "reuse", original } : { kind: "fresh" };
 }
 
 /**
@@ -967,6 +1009,10 @@ export async function runWorkflow(
   // The tree's one masking sink becomes the root run's emitter here; every descendant run gets its
   // own via `emitter.child`, so `emit` itself never travels past this call.
   const rootIdentity: RunIdentity = { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null };
+  // The tree's root **cancellation authority** (`cancellation.ts`): the operator's signal, and the only
+  // cause an outside stop has. The run's own signal is that authority's, so the operator stop and the
+  // cause a killed leaf narrates come from one object rather than a signal here and a guess at the leaf.
+  const rootAuthority = rootCancellation(options.signal);
   let result: RunResult;
   try {
     result = await executeWorkflowRun({
@@ -979,10 +1025,10 @@ export async function runWorkflow(
       emitter: createEmitter(rootIdentity, emit),
       env,
       runStartFailure,
-      // External abort (#52): the operator's signal is the root run's own, and threads down to every
-      // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
-      // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
-      signal: options.signal,
+      // External abort (#52): the operator's signal is the root run's own, chained into the tree's root
+      // **cancellation authority** (`cancellation.ts`), which every `parallel` block below extends.
+      signal: rootAuthority.signal,
+      cancellation: rootAuthority,
       // One registry and one semaphore for the whole run tree: the cap is engine-wide, spanning
       // nested workflows and nested parallels alike (mvp spec §5.5).
       runtime: {
@@ -1190,21 +1236,23 @@ function validateRunStartConfig(
   const issues: string[] = [];
 
   function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): void {
-    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
       if (node.type === "workflow") {
         // The child file inherits this step's effective config across the boundary (format §8), so it
         // is validated once per (file, incoming-config) it is reached with — the same file under two
         // parents is two validations, each against what actually reaches it.
-        const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+        const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
         const child = files?.get(resolve(dir, node.ref));
         if (child) walk(child, stepConfig, dirname(resolve(dir, node.ref)));
         continue;
       }
       const plugin = registry[node.type];
       if (!plugin) continue; // the schema already rejects a type no registry contributes
-      const stepConfig = unwrapConfigSecrets(resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config);
+      // One resolution for this step, the same call the executor makes, so the gate validates exactly
+      // the object the worker will receive — no per-site unwrap to keep in step (#116, ADR 0022 sub-4).
+      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
       const result = z.object(plugin.config).passthrough().safeParse(stepConfig);
       if (!result.success) {
         for (const issue of formatIssues(result.error)) {
@@ -1228,8 +1276,8 @@ export interface ResolvedNode {
   node: WorkflowNode;
   /**
    * The `config` scope a caller interpolates this node's fields against — the file's config merged
-   * with the node's own, `$env`-resolved, `$secret` still wrapped, exactly the shape `runLeafStep`
-   * hands `configScope` when it interpolates fields at execution time.
+   * with the node's own, `$env`-resolved and `$secret` unwrapped (`resolveEffectiveConfig`), exactly
+   * the object `runLeafStep` hands `configScope` when it interpolates fields at execution time.
    */
   config: ConfigObject;
 }
@@ -1254,10 +1302,10 @@ export function resolveNode(
   const files = options.files;
 
   function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): ResolvedNode | undefined {
-    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
-      const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
       if (node.id === nodeId) return { node, config: stepConfig };
       // A nested `workflow` step's ref'd file has its own body of ids to search, entered with this
       // step's effective config (config crosses the boundary; context does not — format §8).
@@ -1412,17 +1460,19 @@ async function runLoopIteration(
   iterationInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  // Complete-continue (ADR 0041): the existing container for this ordinal in the tree being Completed.
-  // A `succeeded` one is reused read-only — its recorded output threads the loop's default-input chain
-  // and the body is not re-walked. A `running` one is the parked iteration, re-entered in place (same
-  // id, no `run-started`). None means a fresh iteration appended past the parked leaf.
-  const continueExisting =
-    run.continue !== undefined ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id, iteration) : undefined;
-  if (run.continue && continueExisting && continueExisting.status === "succeeded") {
-    return { status: "succeeded", output: readExistingOutput(run.continue, continueExisting) };
+  // Complete-continue (ADR 0041): `resolveNodeDisposition` answers what this iteration's recorded row
+  // means — a `succeeded` container is reused read-only (its recorded output threads the loop's
+  // default-input chain and the body is not re-walked), a `running` one is the parked iteration,
+  // re-entered in place (same id, no `run-started`), and none means a fresh iteration appended past
+  // the parked leaf.
+  const disposition = resolveNodeDisposition(run, node, iteration);
+  const continuing = run.continue;
+  if (continuing && disposition.kind === "succeeded") {
+    return { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
   }
+  const existingContainer = disposition.kind === "reenter" ? disposition.existing : undefined;
   const containerIdentity: RunIdentity = {
-    runId: continueExisting?.runId ?? randomUUID(),
+    runId: existingContainer?.runId ?? randomUUID(),
     rootRunId: run.identity.rootRunId,
     parentRunId: run.identity.runId,
     nodeId: node.id,
@@ -1431,7 +1481,7 @@ async function runLoopIteration(
   };
   const containerEmitter = run.emitter.child(containerIdentity);
   // A re-entered running container already has its row; a fresh iteration starts one.
-  if (continueExisting === undefined) await containerEmitter.runStarted({ input: iterationInput });
+  if (existingContainer === undefined) await containerEmitter.runStarted({ input: iterationInput });
 
   // The container reuses this run's file/config/env/runtime/detached/continue, swapping only its
   // identity, emitter, and resume state; `exec` (the shared context) is passed unchanged so the body
@@ -1558,9 +1608,14 @@ export async function runNode(
 
   // Only steps carry config, an input map and a publish map — the control nodes are transparent to
   // all three, which is why this half of the function has no counterpart above. The second of the
-  // two points effective config is materialized, and so the second that resolves `$env` (#116).
-  const stepConfig = resolveConfigEnv(mergeConfig(run.fileConfig, node.config), run.env).config;
+  // two points effective config is materialized, and so the second that resolves `$env` and unwraps
+  // `$secret` (#116, ADR 0022 sub-4) — the same call the run-start gate validated against.
+  const stepConfig = resolveEffectiveConfig(mergeConfig(run.fileConfig, node.config), run.env);
 
+  // Which of the four dispositions this node takes — reuse (Resume), reuse-this-tree's-output /
+  // re-enter / park (Complete), or run fresh — is `resolveNodeDisposition`'s one answer, so this
+  // walker, `runWorkflowNode` and `runLoopIteration` cannot disagree about what a recorded row means.
+  //
   // Resume reuse (#172): a node whose recorded run this successor tree reuses does not execute at
   // all — its output is the original run's recorded `output.json`, read once from the read-only
   // original tree, and a `reuse-marker` is its whole trace (no step-started/step-finished, no run
@@ -1568,39 +1623,36 @@ export async function runNode(
   // and returning without `runWorkflowNode` means nothing inside it is ever walked — so the marker
   // fires once per reuse decision, never once per descendant. Everything downstream treats the
   // reused output identically to a freshly produced one, so the `publish` block below is shared.
-  const reused = run.resume?.plan.get(node.id);
-  // Complete-continue (ADR 0041): the existing run of *this* tree that answers this node, if any.
-  const existingChild = run.continue ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id) : undefined;
+  const disposition = resolveNodeDisposition(run, node);
   let outcome: SeqOutcome;
   // A leaf runner reports its minted step emitter here (via `onLeafStep`), so the post-publish
   // context snapshot below is attributed to the step's own run id. A reused node and a nested
   // `workflow` node leave this undefined — the former emits no step run, the latter keeps its own
   // context.json — so neither gets a per-step snapshot here.
   let leafStep: StepEmitter | undefined;
-  if (run.continue && existingChild && existingChild.status === "succeeded") {
+  const continuing = run.continue;
+  if (continuing && disposition.kind === "succeeded") {
     // A node already `succeeded` in this tree is reused **read-only from its own row** — no reuse
     // marker and no new row, because unlike Resume this is not a fresh successor tree. Its recorded
     // output threads down the default-input chain, and a `succeeded` `workflow` node collapses its
     // whole subtree here exactly as Resume's reuse does (we never descend into it).
-    outcome = { status: "succeeded", output: readExistingOutput(run.continue, existingChild) };
-  } else if (run.continue && existingChild && existingChild.status === "awaiting") {
-    if (existingChild.runId === run.continue.target.stepRunId) {
-      // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
-      // read-only exception) by re-entering its own step-run id and finishing it with the supplied
-      // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
-      // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
-      // the node's `publish` land just as they would for a freshly produced leaf output.
-      const step = run.emitter.step(node, existingChild.runId);
-      leafStep = step;
-      outcome = await finishSucceeded(step, node, run.continue.target.output);
-    } else {
-      // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
-      // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
-      return { status: "awaiting" };
-    }
-  } else if (run.resume && reused) {
-    const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
-    await run.emitter.reuseMarker(node, { originalRunId: reused.runId });
+    outcome = { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
+  } else if (continuing && disposition.kind === "complete") {
+    // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
+    // read-only exception) by re-entering its own step-run id and finishing it with the supplied
+    // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
+    // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
+    // the node's `publish` land just as they would for a freshly produced leaf output.
+    const step = run.emitter.step(node, disposition.existing.runId);
+    leafStep = step;
+    outcome = await finishSucceeded(step, node, continuing.target.output);
+  } else if (disposition.kind === "park") {
+    // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
+    // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
+    return { status: "awaiting" };
+  } else if (run.resume && disposition.kind === "reuse") {
+    const output = run.resume.input.readBlob(disposition.original, RUN_BLOB_FILE.output);
+    await run.emitter.reuseMarker(node, { originalRunId: disposition.original.runId });
     outcome = { status: "succeeded", output };
   } else {
     const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
@@ -1616,7 +1668,9 @@ export async function runNode(
     // branch (ADR 0021 sub-8). These were two literals side by side, sharing seven fields (#76).
     const step: StepContext = { run, exec, stepConfig, onLeafStep: (emitted) => (leafStep = emitted) };
     if (node.type === "workflow") {
-      outcome = await runWorkflowNode(node, stepInput, step);
+      // A `reenter` disposition (ADR 0041) hands the child its own existing row, so the nested run is
+      // re-driven in place under the same run id instead of mints a second one.
+      outcome = await runWorkflowNode(node, stepInput, step, disposition.kind === "reenter" ? disposition.existing : undefined);
     } else {
       outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
     }
@@ -1659,7 +1713,9 @@ export async function runNode(
  *
  * What one node does is `runNode`'s; what a sequence does is this: order, the chain, and where an
  * abort can be noticed. This one function serves the top-level body, each `parallel` branch, each
- * branch arm and each loop iteration — every block is transparent to one uniform chain (§5.4).
+ * branch arm and each loop iteration — every block is transparent to one uniform chain (§5.4) — and
+ * it is the **run's walk**, handed to every construct through `NodeExecContext.walk` rather than
+ * imported by one (which is what makes it the single owner of how a body is walked).
  */
 export async function runSequence(
   run: RunContext,

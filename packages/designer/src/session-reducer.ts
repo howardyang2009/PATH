@@ -1,7 +1,9 @@
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import type { EditKey } from "./edit-key.js";
+import { sameEditKey } from "./edit-key.js";
 import type { OpenResult } from "./open-workflow.js";
 import { findById, replaceNode } from "./edit-tree.js";
-import { basename, relativeRefPath } from "./resolve-ref.js";
+import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
 /**
@@ -67,6 +69,17 @@ export interface Frame {
    * create-new child (which carries `refParent` instead until its first save binds it).
    */
   descendedVia?: string;
+  /**
+   * The fetch this frame is waiting on, as the monotonic number the hook minted for it — `null` when the
+   * frame is not loading. `loadLanded` patches in **only** when the frame still holds this exact number,
+   * which is the whole staleness verdict: the author may have descended, popped or re-opened while the
+   * fetch was in flight, and a frame that moved on no longer holds the number.
+   *
+   * The hook supplies the number because only it knows a request was made; the **decision** it feeds
+   * (is this result still the one we want?) is here, in the reducer, beside the trail it depends on —
+   * rather than as a wall-clock pre-gate in the hook that the reducer then re-checked.
+   */
+  loadSeq: number | null;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -88,10 +101,11 @@ export interface History {
   /** Buffers ahead of the present (redo), next-redo first; cleared by any new edit. */
   future: WorkflowFile[];
   /**
-   * The coalesce key of the in-progress field run, or `undefined` when the last commit closed a run. A field
-   * edit whose key equals this folds into the current entry; any other key, or a structural edit, opens one.
+   * The identity of the in-progress field-edit run (`edit-key.ts`), or `undefined` when the last commit
+   * closed a run. A field edit whose identity matches this folds into the current entry; any other
+   * identity, or a structural edit, opens one.
    */
-  coalesceKey: string | undefined;
+  coalesceKey: EditKey | undefined;
 }
 
 /**
@@ -125,12 +139,13 @@ const NEW_FILE_DEFAULT_NAME = "untitled";
 /**
  * A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens.
  * `descendedVia` carries the parent `workflow` block id through the load (a descent) and through a reload,
- * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open.
+ * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open. `loadSeq` is the
+ * fetch this frame awaits — see {@link Frame.loadSeq}.
  */
-export function loadingFrame(path: string, descendedVia?: string): Frame {
+export function loadingFrame(path: string, descendedVia: string | undefined, loadSeq: number): Frame {
   // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
   // a still-loading frame is not yet leased regardless.
-  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia };
+  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia, loadSeq };
 }
 
 /**
@@ -152,6 +167,8 @@ export function scratchFrame(path: string | null = null, refParent?: { depth: nu
     openedBytes,
     history: freshHistory(),
     refParent,
+    // A from-scratch buffer fetches nothing, so no in-flight result can ever answer for it.
+    loadSeq: null,
   };
 }
 
@@ -219,44 +236,47 @@ export interface SessionState {
 export const initialSessionState: SessionState = { frames: [], activeIndex: 0, saveState: { phase: "idle" } };
 
 /**
- * Every transition the session makes. The **sync** actions are dispatched straight from a hook callback
- * (`openLoading`, `newFile`, `descendLoading`, `descendReuse`, `descendNewUnbound`, `goTo`, `applyEdit`,
- * `undo`, `redo`, `reloadLoading`); the **async-result** actions (`loadLanded`, `saved`, `newFileSaved`)
- * are dispatched by the hook once a `client` call resolves, carrying the outcome. `saveStarted` /
- * `setSaveState` move the transient save phase. The hook's monotonic load token (a wall-clock pre-gate)
- * decides whether a result action is dispatched at all; the reducer's own depth+path re-check is the pure
- * invariant that drops a landed result whose frame the trail no longer holds.
+ * Every transition the session makes. The reducer owns each **decision** — whether a descent re-enters
+ * the frame ahead or loads fresh, whether a reload applies at all, whether a landed fetch is still the
+ * one wanted, which save door the active frame takes ({@link planSave}) — and the hook performs the I/O
+ * those decisions call for: it dispatches the synchronous action, reads the state it produced, and
+ * fetches when that state asks for a fetch. `loadSeq` is the request's own number, minted by the hook
+ * because only it knows a request was made; the verdict on it is here.
  */
 export type SessionAction =
   /** Open `path` as a fresh root, discarding any current stack — one loading frame, active index 0. */
-  | { type: "openLoading"; path: string }
+  | { type: "openLoading"; path: string; loadSeq: number }
   /** Start a from-scratch buffer as a fresh root (#390), discarding any current stack. */
   | { type: "newFile" }
   /**
-   * Truncate the forward trail and push a loading frame for a fresh `workflow`-ref descent (#367).
-   * `nodeId` is the parent `workflow` block the descent crossed, kept on the child frame for the
-   * breadcrumb's run badge (#372).
+   * Descend across the active file's `workflow`-ref. The reducer decides the whole shape of it: the
+   * target path resolves from the active frame's own path, a frame just ahead that already holds it is
+   * **re-entered** (a live, possibly-dirty child is not reloaded out from under the author), and
+   * anything else truncates the forward trail and pushes a loading frame (#367). A frame with no path
+   * (a from-scratch root) has no ref to resolve, so the action is a no-op.
    */
-  | { type: "descendLoading"; path: string; nodeId: string }
-  /** Re-enter the frame just ahead down the same trail (a re-descent to a live, possibly-dirty child). */
-  | { type: "descendReuse" }
+  | { type: "descend"; ref: string; nodeId: string; loadSeq: number }
   /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId` (#391). */
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   | { type: "goTo"; index: number }
-  /** Commit an edit to the active frame's opened file, folding a coalesced field run to one undo entry (#389). */
-  | { type: "applyEdit"; next: WorkflowFile; coalesce?: string }
+  /** Commit an edit to the active frame's opened file, folding a run of field edits that share an identity (#389). */
+  | { type: "applyEdit"; next: WorkflowFile; key?: EditKey }
   /** Undo the active frame's last edit (#389). A no-op when its past stack is empty. */
   | { type: "undo" }
   /** Redo the active frame's last undo (#389). A no-op when its future stack is empty. */
   | { type: "redo" }
-  /** Re-fetch the active written frame at `depth`/`path` — replace it with a loading frame. */
-  | { type: "reloadLoading"; depth: number; path: string }
   /**
-   * A file fetch-and-open landed. Patched in **only** when the frame at `depth` still holds `path` — the pure
-   * staleness guard that drops a result whose frame the author already left (the token pre-gate is the hook's).
+   * Re-fetch the active frame from disk, discarding its buffer for the on-disk bytes (#371). The reducer
+   * decides whether anything is reloadable — an unwritten buffer has no on-disk bytes, and a fetch for a
+   * 404 would throw the authored buffer away — so the hook only fetches when the state asks.
    */
-  | { type: "loadLanded"; depth: number; path: string; frameState: FrameState; etag: string | null; baseline: string; openedBytes: string }
+  | { type: "reload"; loadSeq: number }
+  /**
+   * A file fetch-and-open landed. Patched in **only** when the frame at `depth` still awaits `loadSeq` —
+   * the pure staleness guard that drops a result whose destination the author already left (or replaced).
+   */
+  | { type: "loadLanded"; depth: number; path: string; loadSeq: number; frameState: FrameState; etag: string | null; baseline: string; openedBytes: string }
   /** A `PUT` is in flight — the transient `saving` phase. */
   | { type: "saveStarted" }
   /**
@@ -279,21 +299,36 @@ const IDLE: SaveState = { phase: "idle" };
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
     case "openLoading":
-      return { frames: [loadingFrame(action.path)], activeIndex: 0, saveState: IDLE };
+      return { frames: [loadingFrame(action.path, undefined, action.loadSeq)], activeIndex: 0, saveState: IDLE };
 
     case "newFile":
       return { frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
 
-    case "descendLoading": {
-      const childDepth = state.activeIndex + 1;
-      return { frames: [...state.frames.slice(0, childDepth), loadingFrame(action.path, action.nodeId)], activeIndex: childDepth, saveState: IDLE };
+    case "descend": {
+      const depth = state.activeIndex;
+      const active = state.frames[depth];
+      // No active frame, or a from-scratch one with no path: there is no file to resolve the ref against.
+      if (!active || active.path === null) return state;
+      const path = resolveRefPath(active.path, action.ref);
+      // Re-entry down the same trail: the frame just ahead already holds this target, so re-enter it —
+      // the author returns to its live buffer (a dirty descended child is not reloaded out from under
+      // them), and the reused frame keeps the `descendedVia` it was first loaded with.
+      const ahead = state.frames[depth + 1];
+      if (ahead && ahead.path === path) {
+        return { ...state, activeIndex: depth + 1, saveState: IDLE };
+      }
+      // Otherwise truncate the forward trail and load the target fresh below the active frame. `nodeId`
+      // is the `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
+      return {
+        frames: [...state.frames.slice(0, depth + 1), loadingFrame(path, action.nodeId, action.loadSeq)],
+        activeIndex: depth + 1,
+        saveState: IDLE,
+      };
     }
-
-    case "descendReuse":
-      return { ...state, activeIndex: state.activeIndex + 1, saveState: IDLE };
 
     case "descendNewUnbound": {
       const depth = state.activeIndex;
+      if (!state.frames[depth]) return state;
       const childDepth = depth + 1;
       const child = scratchFrame(null, { depth, nodeId: action.parentNodeId });
       return { frames: [...state.frames.slice(0, childDepth), child], activeIndex: childDepth, saveState: IDLE };
@@ -309,16 +344,18 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened) return { ...state, saveState: IDLE };
-      // Record an undo entry (#389). A field edit whose key matches the run in progress **folds** — the
-      // present buffer is the run's intermediate, dropped so undo jumps to where the run began. Any other
-      // key, or a structural edit (no key), pushes the present as a new entry. Either way redo is cleared.
-      const fold = action.coalesce !== undefined && action.coalesce === frame.history.coalesceKey;
+      // Record an undo entry (#389). A field edit whose identity matches the run in progress **folds** —
+      // the present buffer is the run's intermediate, dropped so undo jumps to where the run began. Any
+      // other identity, or a structural edit (none), pushes the present as a new entry. Either way redo
+      // is cleared. The identity is a value (`edit-key.ts`), compared structurally — the pane cannot
+      // collide two fields into one entry by minting the same string for both.
+      const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       const frames = state.frames.slice();
       frames[depth] = {
         ...frame,
         state: { phase: "open", result: { ...opened, file: action.next } },
-        history: { past, future: [], coalesceKey: action.coalesce },
+        history: { past, future: [], coalesceKey: action.key },
       };
       return { frames, activeIndex: depth, saveState: IDLE };
     }
@@ -327,7 +364,9 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      if (!frame || !opened || frame.history.past.length === 0) return { ...state, saveState: IDLE };
+      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved."/conflict phase, which
+      // the hook used to guarantee by pre-checking the stack before dispatching.
+      if (!frame || !opened || frame.history.past.length === 0) return state;
       const past = frame.history.past.slice();
       const restored = past.pop()!;
       // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
@@ -346,7 +385,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      if (!frame || !opened || frame.history.future.length === 0) return { ...state, saveState: IDLE };
+      if (!frame || !opened || frame.history.future.length === 0) return state;
       const future = frame.history.future.slice();
       const restored = future.shift()!;
       const frames = state.frames.slice();
@@ -358,21 +397,27 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       return { frames, activeIndex: depth, saveState: IDLE };
     }
 
-    case "reloadLoading": {
+    case "reload": {
+      const depth = state.activeIndex;
+      const frame = state.frames[depth];
+      // An unwritten buffer (a from-scratch root, or a create-new child) has no on-disk bytes to
+      // re-fetch — reload is a no-op for it, and would discard the authored buffer for a 404.
+      if (!frame || !frame.written || frame.path === null) return state;
       const frames = state.frames.slice();
       // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
-      frames[action.depth] = loadingFrame(action.path, frames[action.depth]?.descendedVia);
+      frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq);
       return { ...state, frames, saveState: IDLE };
     }
 
     case "loadLanded": {
-      const { depth, path } = action;
-      // The pure staleness guard: patch in only when the frame at `depth` still holds `path` — the author
-      // may have descended, popped, or re-opened while the fetch was in flight. A loaded frame is `written`.
-      if (depth >= state.frames.length || state.frames[depth]?.path !== path) return state;
+      const { depth, loadSeq } = action;
+      // The pure staleness guard: patch in only when the frame at `depth` still awaits this exact fetch.
+      // A frame the author left, replaced, or that has already landed holds a different number (a landed
+      // or from-scratch frame holds `null`), so its result is dropped rather than patched over newer state.
+      if (state.frames[depth]?.loadSeq !== loadSeq) return state;
       const frames = state.frames.slice();
       frames[depth] = {
-        path,
+        path: action.path,
         written: true,
         state: action.frameState,
         etag: action.etag,
@@ -381,6 +426,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         history: freshHistory(),
         // Carry the descent origin across the fetch, so the opened child keeps its breadcrumb run badge.
         descendedVia: frames[depth]?.descendedVia,
+        loadSeq: null,
       };
       return { ...state, frames };
     }
@@ -426,4 +472,48 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "setSaveState":
       return { ...state, saveState: action.saveState };
   }
+}
+
+// ── The save doors, as decisions the hook performs ──────────────────────────────────────────────────
+
+/**
+ * What the Save button would do with the active frame, or `null` when it does nothing. The door is the
+ * session's own choice, kept here beside the frame fields it reads rather than re-derived in the hook:
+ *
+ * - **overwrite** — a written file saves under its `If-Match` ETag (ADR 0016);
+ * - **create** — an unwritten create-new child creates **exclusively** at its pre-assigned path (ADR
+ *   0016), so the server refuses an existing path rather than clobbering it.
+ *
+ * A from-scratch **root** (unwritten, no path) is `null`: it picks its path in the first-save dialog,
+ * which is {@link planNewFileSave}. The `412` each door earns differs for the same reason: an overwrite
+ * is a stale-write **conflict** to reload from, a create is a path **collision** to retarget.
+ */
+export type SavePlan =
+  | { kind: "overwrite"; depth: number; path: string; file: WorkflowFile; ifMatch: string | undefined }
+  | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined };
+
+export function planSave(state: SessionState): SavePlan | null {
+  const depth = state.activeIndex;
+  const frame = state.frames[depth];
+  const opened = openedResultOf(frame);
+  if (!frame || !opened || frame.path === null) return null;
+  return frame.written
+    ? { kind: "overwrite", depth, path: frame.path, file: opened.file, ifMatch: frame.etag ?? undefined }
+    : { kind: "create", depth, path: frame.path, file: opened.file, ifMatch: undefined };
+}
+
+/** What the first-save dialog's target would do, or `null` when the active frame is not a from-scratch root. */
+export interface NewFileSavePlan {
+  depth: number;
+  file: WorkflowFile;
+}
+
+export function planNewFileSave(state: SessionState): NewFileSavePlan | null {
+  const depth = state.activeIndex;
+  const frame = state.frames[depth];
+  const opened = openedResultOf(frame);
+  // Only a from-scratch **root** buffer (unwritten, no path) picks its path in the dialog; a create-new
+  // child (unwritten, path pre-assigned) and a saved frame both go through `planSave`.
+  if (!frame || !opened || frame.written || frame.path !== null) return null;
+  return { depth, file: opened.file };
 }

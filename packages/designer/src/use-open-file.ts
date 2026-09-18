@@ -1,25 +1,26 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
+import type { EditCommit, EditKey } from "./edit-key.js";
 import { openWorkflowFile } from "./open-workflow.js";
-import { resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
   initialSessionState,
-  openedResultOf,
-  frameCanRedo,
-  frameCanUndo,
+  planNewFileSave,
+  planSave,
   reduceSession,
   type Frame,
   type SaveState,
   type SessionAction,
+  type SessionState,
 } from "./session-reducer.js";
 
 // The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) => state`
 // testable with no React and no stub server. This hook is the thin adapter: it fetches the step-plugin
-// registry, runs the async `client` fetch/PUT, guards a stale completion with a monotonic token, and then
-// dispatches the outcome as an action. Re-export the frame types and predicates so the reducer's split
-// stays invisible to the pane, the canvas, the toolbar, and the tests that import them from here.
+// registry, asks the reducer what an action decides (via `apply`'s returned state), performs the
+// `client` I/O that decision calls for, and dispatches the outcome as an action. Re-export the frame
+// types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
+// the tests that import them from here.
 export { openedResultOf, frameDirty, frameCanUndo, frameCanRedo } from "./session-reducer.js";
 export type { Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction } from "./session-reducer.js";
 
@@ -87,12 +88,12 @@ export interface OpenSession {
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   goTo: (index: number) => void;
   /**
-   * Commit an edit to the active (last) frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
-   * undo entry is recorded (#389). A structural edit passes no `coalesce` key (one entry each); a field edit
-   * passes a stable key so a run of keystrokes in that one field folds to a single entry. Any edit clears the
-   * frame's redo stack.
+   * Commit an edit to the active frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
+   * undo entry is recorded (#389). A structural edit passes no identity (one entry each); a field edit
+   * passes its `EditKey` so a run of keystrokes in that one field folds to a single entry. Any edit
+   * clears the frame's redo stack.
    */
-  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+  applyEdit: EditCommit<WorkflowFile>;
   /** Undo the active frame's last edit, re-deriving clean (#389). A no-op when its past stack is empty. */
   undo: () => void;
   /** Redo the active frame's last undo, re-deriving clean (#389). A no-op when its future stack is empty. */
@@ -149,21 +150,30 @@ const IDLE: SaveState = { phase: "idle" };
 
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
-  const [session, dispatch] = useReducer(reduceSession, initialSessionState);
+  const [session, setSession] = useState<SessionState>(initialSessionState);
   const { frames, activeIndex, saveState } = session;
 
-  // A ref mirror of the reducer state, so the async callbacks read the current trail synchronously without
-  // re-subscribing; and the registry plugins, so an open callback reads them without waiting on a state read.
+  // The current session state, readable synchronously by `apply` and by the I/O callbacks. It advances
+  // with the dispatch rather than a render later, so two actions in one tick cannot read a stale trail.
   const sessionRef = useRef(session);
-  useEffect(() => {
-    sessionRef.current = session;
-  }, [session]);
+  // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
-  // A monotonic token: only the newest in-flight load may dispatch its result. Bumped on every open, descend,
-  // reload, and new-file, so a load whose destination the author already left never reaches the reducer. (The
-  // reducer's own depth+path re-check is the second, pure guard.)
-  const loadToken = useRef(0);
+  /**
+   * Apply one session action and return the state it produced. The reducer decides; the hook reads the
+   * verdict off the returned state — a `descend` that re-entered the frame ahead needs no fetch, one that
+   * pushed a loading frame does — instead of working the same thing out a second time.
+   */
+  const apply = useCallback((action: SessionAction): SessionState => {
+    const next = reduceSession(sessionRef.current, action);
+    sessionRef.current = next;
+    setSession(next);
+    return next;
+  }, []);
+
+  // The number each fetch carries. Minted here because only the hook knows a request was made; what the
+  // number *means* — a landing is stale unless the frame still awaits it — is the reducer's (`Frame.loadSeq`).
+  const loadSeq = useRef(0);
 
   useEffect(() => {
     let alive = true;
@@ -182,105 +192,100 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     };
   }, [client]);
 
-  const runLoad = useCallback(
-    (path: string, depth: number): void => {
+  /** Fetch `path` into the frame at `depth`, which the reducer has just put into its loading state. */
+  const fetchFrame = useCallback(
+    (path: string, depth: number, seq: number): void => {
       const plugins = pluginsRef.current;
       if (!plugins) return;
-      const token = ++loadToken.current;
       void loadFrame(client, path, plugins).then(({ frameState, etag, baseline, openedBytes }) => {
-        if (token !== loadToken.current) return;
-        dispatch({ type: "loadLanded", depth, path, frameState, etag, baseline, openedBytes });
+        apply({ type: "loadLanded", depth, path, loadSeq: seq, frameState, etag, baseline, openedBytes });
       });
     },
-    [client],
+    [apply, client],
   );
+
+  /**
+   * The frame a just-applied loading action put in flight, when it is the one this request is for. The
+   * reducer's verdict read back as I/O intent: a `descend` that re-entered the frame ahead (or a `reload`
+   * that decided nothing was reloadable) leaves no frame awaiting `seq`, so there is nothing to fetch.
+   */
+  const pendingFetch = (state: SessionState, seq: number): { path: string; depth: number } | null => {
+    const depth = state.activeIndex;
+    const frame = state.frames[depth];
+    return frame && frame.loadSeq === seq && frame.path !== null ? { path: frame.path, depth } : null;
+  };
 
   const open = useCallback(
     (path: string): void => {
       if (!pluginsRef.current) return;
-      dispatch({ type: "openLoading", path });
-      runLoad(path, 0);
+      const seq = ++loadSeq.current;
+      const next = apply({ type: "openLoading", path, loadSeq: seq });
+      fetchFrame(path, next.activeIndex, seq);
     },
-    [runLoad],
+    [apply, fetchFrame],
   );
 
   const newFile = useCallback((): void => {
-    // A from-scratch buffer needs no registry fetch to open. Bump the load token so any in-flight fetch
-    // cannot dispatch into the discarded stack.
-    loadToken.current++;
-    dispatch({ type: "newFile" });
-  }, []);
+    // A from-scratch buffer fetches nothing, and its frame holds no fetch number, so any in-flight load
+    // is dropped by the reducer rather than landing in the discarded stack.
+    apply({ type: "newFile" });
+  }, [apply]);
 
   const descend = useCallback(
     (ref: string, nodeId: string): void => {
-      const plugins = pluginsRef.current;
-      const { frames: current, activeIndex: depth } = sessionRef.current;
-      const active = current[depth];
-      // A descent crosses a `workflow`-ref of the active file, so the active frame must carry a path to
-      // resolve the ref against; a from-scratch root buffer (no path) has no ref to descend.
-      if (!plugins || !active || active.path === null) return;
-      const path = resolveRefPath(active.path, ref);
-      // Re-entry down the same trail: if the frame just ahead already holds this target, reuse it — the author
-      // returns to its live buffer (a dirty descended child is not reloaded out from under them). The reused
-      // frame keeps the `descendedVia` it was first loaded with, so its breadcrumb run badge stands.
-      const ahead = current[depth + 1];
-      if (ahead && ahead.path === path) {
-        dispatch({ type: "descendReuse" });
-        return;
-      }
-      // Otherwise truncate the forward trail and load the target fresh below the active frame. `nodeId` is the
-      // `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
-      dispatch({ type: "descendLoading", path, nodeId });
-      runLoad(path, depth + 1);
+      // A descent crosses a `workflow`-ref of the active file, so a file must be open and the registry
+      // ready to parse what comes back; the reducer no-ops for a from-scratch frame with no path.
+      if (!pluginsRef.current) return;
+      const seq = ++loadSeq.current;
+      const next = apply({ type: "descend", ref, nodeId, loadSeq: seq });
+      const pending = pendingFetch(next, seq);
+      if (pending) fetchFrame(pending.path, pending.depth, seq);
     },
-    [runLoad],
+    [apply, fetchFrame],
   );
 
-  const descendNewUnbound = useCallback((parentNodeId: string): void => {
-    const { frames: current, activeIndex: depth } = sessionRef.current;
-    if (!current[depth]) return;
-    // A create-new child is a fresh, unwritten, path-less buffer linked back to the parent node that spawned
-    // it. Bump the load token so no in-flight load dispatches into the truncated trail.
-    loadToken.current++;
-    dispatch({ type: "descendNewUnbound", parentNodeId });
-  }, []);
+  const descendNewUnbound = useCallback(
+    (parentNodeId: string): void => {
+      apply({ type: "descendNewUnbound", parentNodeId });
+    },
+    [apply],
+  );
 
-  const goTo = useCallback((index: number): void => {
-    // An ascend (or forward re-entry) only moves the active frame — no frame is discarded, so a dirty
-    // descended child keeps its buffer and its beating lease. A pending load stays valid (its frame is still
-    // on the trail at the same depth), so the load token is left untouched.
-    dispatch({ type: "goTo", index });
-  }, []);
+  const goTo = useCallback(
+    (index: number): void => {
+      // An ascend (or forward re-entry) only moves the active frame — no frame is discarded, so a dirty
+      // descended child keeps its buffer and its beating lease, and a pending load stays the frame's own.
+      apply({ type: "goTo", index });
+    },
+    [apply],
+  );
 
-  const applyEdit = useCallback((next: WorkflowFile, coalesce?: string): void => {
-    dispatch({ type: "applyEdit", next, coalesce });
-  }, []);
+  const applyEdit = useCallback(
+    (next: WorkflowFile, key?: EditKey): void => {
+      apply({ type: "applyEdit", next, key });
+    },
+    [apply],
+  );
 
+  // A no-op undo/redo is the reducer's to swallow (it returns the same state), so a standing
+  // "Saved."/conflict phase survives one without the hook pre-checking the stack.
   const undo = useCallback((): void => {
-    // Guard on the current stack before dispatching, so a no-op undo (empty past) does not clear a standing
-    // "Saved."/conflict status or spin a redundant re-render.
-    const { frames: current, activeIndex: depth } = sessionRef.current;
-    if (!frameCanUndo(current[depth])) return;
-    dispatch({ type: "undo" });
-  }, []);
+    apply({ type: "undo" });
+  }, [apply]);
 
   const redo = useCallback((): void => {
-    const { frames: current, activeIndex: depth } = sessionRef.current;
-    if (!frameCanRedo(current[depth])) return;
-    dispatch({ type: "redo" });
-  }, []);
+    apply({ type: "redo" });
+  }, [apply]);
 
   const reloadActive = useCallback((): void => {
-    const plugins = pluginsRef.current;
-    const { frames: current, activeIndex: depth } = sessionRef.current;
-    const active = current[depth];
-    // An unwritten buffer (a from-scratch root, or a create-new child) has no on-disk bytes to re-fetch —
-    // reload is a no-op for it, and would discard the authored buffer for a 404.
-    if (!plugins || !active || !active.written || active.path === null) return;
-    const { path } = active;
-    dispatch({ type: "reloadLoading", depth, path });
-    runLoad(path, depth);
-  }, [runLoad]);
+    if (!pluginsRef.current) return;
+    const seq = ++loadSeq.current;
+    const next = apply({ type: "reload", loadSeq: seq });
+    // The reducer decided whether anything was reloadable: an unwritten buffer leaves no frame awaiting
+    // this fetch, so the authored buffer is never thrown away for a 404.
+    const pending = pendingFetch(next, seq);
+    if (pending) fetchFrame(pending.path, pending.depth, seq);
+  }, [apply, fetchFrame]);
 
   /**
    * The one **persist-and-advance-the-save-point** spine behind `save` and `saveNewFile` (ADR 0016, ADR
@@ -296,7 +301,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       ifMatch: string | undefined;
       successAction: (result: PutResult, savedBytes: string) => SessionAction;
     }): Promise<PutResult> => {
-      dispatch({ type: "saveStarted" });
+      apply({ type: "saveStarted" });
       return client
         // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
         .putWorkflow({ workflowPath: args.path, workflow: args.file as unknown as JsonValue, ifMatch: args.ifMatch })
@@ -305,64 +310,57 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           // buffer is clean iff it still equals it, so an author who edited *during* the in-flight save stays
           // dirty against the new baseline, which is correct.
           const savedBytes = canonicalSerialize(args.file);
-          dispatch(args.successAction(result, savedBytes));
+          apply(args.successAction(result, savedBytes));
           return result;
         });
     },
-    [client],
+    [apply, client],
   );
 
   const save = useCallback((): void => {
-    const { frames: current, activeIndex: depth } = sessionRef.current;
-    const active = current[depth];
-    const opened = openedResultOf(active);
-    // A from-scratch **root** (no path) picks its path in the first-save dialog, which calls `saveNewFile`; it
-    // never reaches this door. Every other active frame saves here — an overwrite for a written file, an
-    // exclusive create at the pre-assigned path for an unwritten create-new child (#391).
-    if (!active || !opened || active.path === null) return;
-    const { path, written } = active;
+    // The door is the reducer's choice (`planSave`): `null` for a from-scratch root, which picks its path
+    // in the first-save dialog instead, and otherwise an overwrite under the frame's `If-Match` ETag or an
+    // exclusive create at a create-new child's pre-assigned path (ADR 0016).
+    const plan = planSave(sessionRef.current);
+    if (!plan) return;
     void commitSave({
-      path,
-      file: opened.file,
-      // A written file overwrites under its `If-Match` ETag; an unwritten child creates exclusively (no
-      // precondition, ADR 0016), so the server refuses an existing path rather than clobbering it.
-      ifMatch: written ? (active.etag ?? undefined) : undefined,
-      successAction: (result, savedBytes) => ({ type: "saved", depth, path, etag: result.etag, savedBytes }),
+      path: plan.path,
+      file: plan.file,
+      ifMatch: plan.ifMatch,
+      successAction: (result, savedBytes) => ({ type: "saved", depth: plan.depth, path: plan.path, etag: result.etag, savedBytes }),
     }).catch((error: unknown) => {
       if (error instanceof PathApiError && error.status === 412) {
         // A `412` on a written file's overwrite is the stale-write conflict (someone else wrote it). On an
         // unwritten child's exclusive create it means the path already exists — a create collision, not a
-        // stale write, so it is an error the author resolves by retargeting, not by reloading.
-        dispatch({
+        // stale write, so it is an error the author resolves by retargeting, not by reloading. Which one
+        // this is is the plan's own `kind`, not a re-reading of the frame.
+        apply({
           type: "setSaveState",
-          saveState: written
-            ? { phase: "conflict", message: error.message }
-            : { phase: "error", message: `A workflow already exists at ${path}. Choose a different target for the reference.` },
+          saveState:
+            plan.kind === "overwrite"
+              ? { phase: "conflict", message: error.message }
+              : { phase: "error", message: `A workflow already exists at ${plan.path}. Choose a different target for the reference.` },
         });
       } else {
-        dispatch({ type: "setSaveState", saveState: { phase: "error", message: errorMessage(error) } });
+        apply({ type: "setSaveState", saveState: { phase: "error", message: errorMessage(error) } });
       }
     });
-  }, [commitSave]);
+  }, [apply, commitSave]);
 
   const saveNewFile = useCallback(
     (targetPath: string): Promise<SaveNewFileResult> => {
-      const { frames: current, activeIndex: depth } = sessionRef.current;
-      const active = current[depth];
-      const opened = openedResultOf(active);
-      // Only a from-scratch **root** buffer (unwritten, no path) picks its path here; a create-new child
-      // (unwritten, path pre-assigned) and a saved frame both go through `save`.
-      if (!active || !opened || active.written || active.path !== null) {
-        return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
-      }
+      // Only a from-scratch **root** buffer (unwritten, no path) picks its path here — the reducer's
+      // `planNewFileSave`; a create-new child and a saved frame both go through `save`.
+      const plan = planNewFileSave(sessionRef.current);
+      if (!plan) return Promise.resolve({ status: "error", message: "No new-file buffer to save." });
       // Exclusive create (ADR 0016): no `If-Match`, so the server refuses an existing path with a `412` rather
       // than overwriting another workflow. The server echoes the resolved `relative_path`, which the frame
       // adopts as its path — placement decided at this first save, and the parent ref back-filled from it.
       return commitSave({
         path: targetPath,
-        file: opened.file,
+        file: plan.file,
         ifMatch: undefined,
-        successAction: (result, savedBytes) => ({ type: "newFileSaved", depth, etag: result.etag, savedBytes, relativePath: result.relativePath }),
+        successAction: (result, savedBytes) => ({ type: "newFileSaved", depth: plan.depth, etag: result.etag, savedBytes, relativePath: result.relativePath }),
       })
         .then((result): SaveNewFileResult => ({ status: "created", path: result.relativePath }))
         .catch((error: unknown): SaveNewFileResult => {
@@ -370,15 +368,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           // name", not the stale-write conflict `save` shows. Drop the transient saving phase back to idle:
           // the collision is the dialog's to surface, not the toolbar's.
           if (error instanceof PathApiError && error.status === 412) {
-            dispatch({ type: "setSaveState", saveState: IDLE });
+            apply({ type: "setSaveState", saveState: IDLE });
             return { status: "exists" };
           }
           const message = errorMessage(error);
-          dispatch({ type: "setSaveState", saveState: { phase: "error", message } });
+          apply({ type: "setSaveState", saveState: { phase: "error", message } });
           return { status: "error", message };
         });
     },
-    [commitSave],
+    [apply, commitSave],
   );
 
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every registry

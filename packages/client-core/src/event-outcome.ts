@@ -1,4 +1,38 @@
-import type { LogEvent, RunStatus } from "@path/schema";
+import { isTerminal, type LogEvent, type RunStatus } from "@path/schema";
+
+/**
+ * The status a run moves to when one of its own events arrives, given the status it already held.
+ * This is the fold the run view applies per event, and it is where the two replay rules live:
+ *
+ * - `step-started` walks a run to `running`, **unless it is already terminal**. A run is one executing
+ *   instance (CONTEXT.md § Run), never restarted by a loop — a `while-do` pass mints a *new* run — so
+ *   a full replay on reload must not walk a finished run backward and forward again, which is what
+ *   made the status flicker on every open.
+ * - `step-awaiting` parks a live run on `awaiting` and never reopens a terminal one: a Complete
+ *   already replayed as `step-finished` is final (ADR 0041). Folding it is what makes a reload land on
+ *   `awaiting` rather than leaving the parked row stuck at `running`.
+ *
+ * Every other event either owns no run (the control-node events) or is not this run's own record, so
+ * it leaves the status alone. {@link eventOutcome} beside it answers the different question a
+ * narrative row asks — what outcome does *this event* narrate — which is why it maps control events
+ * too and why the two are not one function.
+ */
+export function runStatusAfter(prior: RunStatus, event: LogEvent): RunStatus {
+  if (event.type === "step-started") return isTerminal(prior) ? prior : "running";
+  if (event.type === "step-awaiting") return isTerminal(prior) ? prior : "awaiting";
+  if (event.type === "step-finished") return event.status;
+  return prior;
+}
+
+/**
+ * Whether this event is the tree's own **root run** finishing — the moment the stream is done for
+ * good (server-api-v0.md §5). The implicit root step is the root run itself, so its event carries no
+ * node id and names the root run; both facts are checked here rather than re-derived from a bare
+ * `node_id === null` at the stream.
+ */
+export function isRootRunFinished(event: LogEvent, rootRunId: string): boolean {
+  return event.type === "step-finished" && event.run_id === rootRunId && event.node_id === null;
+}
 
 /**
  * The run status a log event implies, or `null` when the event only routes and asserts nothing about

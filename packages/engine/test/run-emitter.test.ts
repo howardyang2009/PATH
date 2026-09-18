@@ -99,9 +99,9 @@ describe("createEmitter — run terminal + context", () => {
     await e.runFinished({ status: "cancelled" });
 
     expect(seen).toEqual([
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", status: "succeeded", output: { ok: true } },
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", status: "failed", error: "boom" },
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", status: "cancelled" },
+      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "succeeded", output: { ok: true } },
+      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "failed", error: "boom" },
+      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "cancelled" },
     ]);
   });
 
@@ -109,7 +109,7 @@ describe("createEmitter — run terminal + context", () => {
     const { seen, emit } = sink();
     const ctx: JsonValue = { a: 1 };
     await createEmitter(ROOT, emit).contextChanged(ctx);
-    expect(seen).toEqual([{ type: "context-changed", runId: "root-run", rootRunId: "root-run", context: ctx }]);
+    expect(seen).toEqual([{ type: "context-changed", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, context: ctx }]);
   });
 });
 
@@ -184,7 +184,7 @@ describe("createEmitter — step sub-emitter", () => {
 
     expect(seen).toEqual([
       { type: "run-cancelled", runId: step.runId, rootRunId: "root-run", nodeId: "step-guid", nodeName: "compile", cause: "sibling-failed", causeRunId: "villain-run" },
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", status: "cancelled" },
+      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-guid", nodeName: "compile", status: "cancelled" },
     ]);
   });
 

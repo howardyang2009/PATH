@@ -1,4 +1,4 @@
-import { PathApiClient, PathApiError, type FetchLike, type RootRunSummary, type RunNodeState } from "@path/client-core";
+import { PathApiClient, PathApiError, displayStatusByRun, type FetchLike, type RootRunSummary, type RunNodeState } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
@@ -145,16 +145,17 @@ describe("RunsList", () => {
     expect(pillOf("run_alpha")).toHaveAttribute("data-status", "succeeded");
   });
 
-  it("paints the watched root awaiting when its tree holds an awaiting leaf (record stays running)", async () => {
+  it("paints the watched root awaiting when the view publishes that display status (record stays running)", async () => {
     const { client } = stubClient([RUNNING, SUCCEEDED]);
-    // The app hands the watched root's full tree as `resumeTree`. run_beta (running) has a parked leaf,
-    // so its row reads awaiting through the shared derivation; the summary status stays running.
-    const resumeTree = new Map<string, RunNodeState>([
+    // The app hands the watched run's published display status — the shared derivation run over the
+    // watched tree — so run_beta (running) has a parked leaf and reads awaiting; its summary status
+    // stays running, and a row the view does not hold keeps its summary status.
+    const runs = new Map<string, RunNodeState>([
       ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
       ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
     ]);
 
-    renderList(client, { selectedRootRunId: "run_beta", resumeTree });
+    renderList(client, { selectedRootRunId: "run_beta", displayStatus: displayStatusByRun(runs) });
     await screen.findByTestId("run-row-run_beta");
 
     expect(pillOf("run_beta")).toHaveAttribute("data-status", "awaiting");
@@ -434,11 +435,13 @@ describe("RunsList", () => {
 
     it("offers no actions when a running root reads awaiting through its parked leaf", async () => {
       const { client } = stubClient([RUNNING]);
-      const resumeTree = new Map<string, RunNodeState>([
+      const runs = new Map<string, RunNodeState>([
         ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
         ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
       ]);
-      renderList(client, { selectedRootRunId: "run_beta", resumeTree });
+      // `resumeTree` present and this row selected is the one case that would otherwise offer
+      // `Resume from …`; the published display status is what makes the row read in flight.
+      renderList(client, { selectedRootRunId: "run_beta", resumeTree: runs, displayStatus: displayStatusByRun(runs) });
 
       fireEvent.click(await screen.findByTestId(`run-row-run_beta`));
       await screen.findByTestId("run-actions-run_beta");

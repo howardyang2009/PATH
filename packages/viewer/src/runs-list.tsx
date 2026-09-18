@@ -1,5 +1,4 @@
 import {
-  effectiveRunStatus,
   isTerminal,
   type PathApiClient,
   type RootRunSummary,
@@ -75,6 +74,13 @@ export interface RunsListProps {
    * picked in the detail pane's run tree; the button reads this map to prove K's eligibility eagerly.
    */
   resumeTree?: ReadonlyMap<string, RunNodeState>;
+  /**
+   * The watched run's published display status, keyed by run id — the same fact the detail head, the
+   * run tree and the node pane read off `RunViewState` (`displayStatusByRun`). A row the map holds shows
+   * that status, so the watched root whose leaf is parked reads `awaiting` although its summary stays
+   * `running` (view-only, ADR 0038); every other row has no tree loaded and keeps its summary status.
+   */
+  displayStatus?: ReadonlyMap<string, RunStatus>;
   /** The run selected in the detail pane's tree — K for `Resume from …`. */
   resumeSelectedRunId?: string | null;
   /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
@@ -97,6 +103,7 @@ export function RunsList({
   onDeleted,
   reloadNonce,
   resumeTree,
+  displayStatus,
   resumeSelectedRunId = null,
   resumeRootFile = null,
   resumeDirty = false,
@@ -219,18 +226,17 @@ export function RunsList({
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The row shows the same derived status the other three surfaces do: a running root whose
-              // leaf is parked reads `awaiting` (view-only, ADR 0038). The list holds only summaries, so
-              // it can derive this only for the watched root, whose full tree the app passes as
-              // `resumeTree`; every other row has no descendants loaded and keeps its record status.
-              const rowRuns = resumeTree !== undefined && run.run_id === selectedRootRunId ? resumeTree : EMPTY_RUNS;
-              const displayStatus = effectiveRunStatus({ runId: run.run_id, status: run.status }, rowRuns);
+              // The row shows the published display status when the app is watching that run — a running
+              // root whose leaf is parked reads `awaiting` (view-only, ADR 0038). The list holds only
+              // summaries, so a row the view does not hold (every run but the watched one) keeps its
+              // summary status; the derivation itself lives in `@path/client-core`.
+              const rowStatus = displayStatus?.get(run.run_id) ?? run.status;
               // A run still in flight — `running`, or a `running` root reading `awaiting` because a leaf
               // is parked (ADR 0038) — offers no run action at all: it cannot be resumed (it never
               // stopped) and cannot be deleted (the server 409s a live run). This is the same gate plain
               // Resume already applies; Delete and `Resume from …` follow it, so the whole action panel
               // is quiet while the run is alive.
-              const inFlight = displayStatus === "running" || displayStatus === "awaiting";
+              const inFlight = rowStatus === "running" || rowStatus === "awaiting";
               // Every finished row expands an action panel under itself — the rail's mirror of the launch
               // form under a workflow row (#233). It offers Delete, and plain Resume: enabled on a
               // `cancelled`/`failed` run (`canResume`), greyed on a `succeeded` one — kept visible, not
@@ -262,7 +268,7 @@ export function RunsList({
                     }}
                   >
                     <span className="run-workflow">{run.workflow_name ?? "—"}</span>
-                    <StatusPill status={displayStatus} />
+                    <StatusPill status={rowStatus} />
                     <span className="run-id">{run.run_id}</span>
                     <span className="run-started">{formatTimestamp(run.started_at)}</span>
                   </button>

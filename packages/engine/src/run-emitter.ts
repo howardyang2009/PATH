@@ -25,6 +25,11 @@ import type { Observation, RunOutcome } from "./run-observer.js";
  * **step-scoped** sub-emitter (`step`), so the minted id can't be dropped between `step-started` and
  * `step-finished`.
  *
+ * **Every observation it builds carries the node identity it is about** (`nodeId`/`nodeName`, from
+ * `identity` for the run tier and from the step's `NodeRef` for the leaf tier), so an observer labels a
+ * record from the record alone — no map filled by whichever earlier observation happened to carry the
+ * pair, no output depending on the stream's order.
+ *
  * **It sits above the mask point, not through it.** The emitter composes the record and calls
  * `emit`; `emit` is where masking happens (mvp spec §8.3, `runWorkflow`'s single choke point). The
  * `Observation` union stays the wire type crossing that seam — this only concentrates who *builds* a
@@ -157,10 +162,10 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
       });
     },
     runFinished(outcome): Promise<void> {
-      return emit({ type: "run-finished", runId, rootRunId, ...outcome });
+      return emit({ type: "run-finished", runId, rootRunId, nodeId, nodeName, ...outcome });
     },
     contextChanged(context): Promise<void> {
-      return emit({ type: "context-changed", runId, rootRunId, context });
+      return emit({ type: "context-changed", runId, rootRunId, nodeId, nodeName, context });
     },
     checkpointEvaluated(node, args): Promise<void> {
       return emit({
@@ -264,21 +269,23 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
             type: "step-usage",
             runId: stepRunId,
             rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
             usage: args.usage,
             estimatedCostUsd: args.estimatedCostUsd,
           });
         },
         stderr(stderr): Promise<void> {
-          return emit({ type: "step-stderr", runId: stepRunId, rootRunId, stderr });
+          return emit({ type: "step-stderr", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, stderr });
         },
         finished(outcome): Promise<void> {
-          return emit({ type: "step-finished", runId: stepRunId, rootRunId, ...outcome });
+          return emit({ type: "step-finished", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, ...outcome });
         },
         awaiting(args): Promise<void> {
           return emit({ type: "step-awaiting", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, assignee: args.assignee });
         },
         context(context): Promise<void> {
-          return emit({ type: "step-context", runId: stepRunId, rootRunId, context });
+          return emit({ type: "step-context", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, context });
         },
         async cancelled(args): Promise<void> {
           await emit({
@@ -290,7 +297,7 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
             cause: args.cause,
             causeRunId: args.causeRunId,
           });
-          await emit({ type: "step-finished", runId: stepRunId, rootRunId, status: "cancelled" });
+          await emit({ type: "step-finished", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, status: "cancelled" });
         },
       };
     },

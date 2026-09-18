@@ -64,16 +64,18 @@ export {
   type RunNodeState,
   type RunViewState,
   type RunViewListener,
+  type RunViewFacts,
   type StreamPhase,
 } from "./view-model.js";
 
 export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "./connect.js";
 
 // What a run's events and rows *mean*, as against how a surface draws them. Both answer questions
-// with one right answer — which events say a run stopped, and which run spawned which — so a second
-// surface reaching different answers would be showing a different run, not a differently styled one.
-export { eventOutcome } from "./event-outcome.js";
-export { buildRunTree, effectiveRunStatus, type RunTreeNode } from "./run-tree.js";
+// with one right answer — how an event moves a run's status, whether the root run is finished, and
+// which run spawned which — so a second surface reaching different answers would be showing a
+// different run, not a differently styled one.
+export { eventOutcome, isRootRunFinished, runStatusAfter } from "./event-outcome.js";
+export { buildRunTree, displayStatusByRun, type RunTreeNode } from "./run-tree.js";
 
 // The folder tree behind every workflow picker: one grouping of the flat discovery list both the
 // Viewer's launch panel and the Designer's open dialog draw the same way (#359 shared seam).

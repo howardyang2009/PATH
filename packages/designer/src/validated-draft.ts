@@ -9,6 +9,7 @@ import {
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
+import { sameEditKey, type EditKey } from "./edit-key.js";
 import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { parseInputDraft } from "./interp-suggest.js";
 import { wireToRegistry } from "./open-workflow.js";
@@ -36,29 +37,42 @@ export type DraftResult<T> = { ok: true; value: T } | { ok: false; error: string
 /**
  * Hold a single-text field's draft and error, validating every keystroke and committing only a valid
  * value. `initial` seeds the draft (a value or a lazy initializer); `validate` is the pure per-field
- * rule; `commit` receives the `ok` value (the field closes its own coalesce key over this). The returned
- * `onEdit` is the textarea/input `onChange` handler; `error` drives the field's `aria-invalid` + message.
+ * rule; `identity` is which field this draft belongs to (`edit-key.ts`) — when it changes the draft
+ * re-seeds, so selecting another node never shows the previous node's text; `commit` receives the
+ * `ok` value. The returned `onEdit` is the textarea/input `onChange` handler; `error` drives the
+ * field's `aria-invalid` + message.
+ *
+ * Taking the identity here is what removed the silent React `key` requirement: the field used to
+ * re-seed only because its caller remembered `key={input-${node.id}}`, a second statement of the same
+ * fact that a new call site could forget.
  */
 export function useValidatedDraft<T>(
   initial: string | (() => string),
   validate: (text: string) => DraftResult<T>,
+  identity: EditKey,
   commit: (value: T) => void,
 ): { draft: string; error: string | null; onEdit: (text: string) => void } {
-  const [draft, setDraft] = useState(initial);
-  const [error, setError] = useState<string | null>(null);
+  const seed = (): { identity: EditKey; draft: string; error: string | null } => ({
+    identity,
+    draft: typeof initial === "function" ? initial() : initial,
+    error: null,
+  });
+  const [state, setState] = useState(seed);
+  // Adjusting state during render when the prop-like `identity` changes — React's documented pattern,
+  // and the one reset both folding and re-seeding now read from.
+  if (!sameEditKey(state.identity, identity)) setState(seed());
 
   const onEdit = (text: string): void => {
-    setDraft(text);
     const result = validate(text);
     if (!result.ok) {
-      setError(result.error);
+      setState({ identity, draft: text, error: result.error });
       return;
     }
-    setError(null);
+    setState({ identity, draft: text, error: null });
     commit(result.value);
   };
 
-  return { draft, error, onEdit };
+  return { draft: state.draft, error: state.error, onEdit };
 }
 
 /**
@@ -176,31 +190,35 @@ export interface KeyedRowsEditor {
  * strict-valid. Both fields used to re-spell this dance inline; here it has one home beside the pure guard
  * it wraps.
  *
+ * `identity` is the row list's own field (`edit-key.ts`): the list re-seeds when it changes, so another
+ * node's publishes never show here, and a row edit's key is that identity plus the row index — so a
+ * keystroke run in one row folds to one undo entry (#389) and two rows cannot fold together. Add and
+ * remove pass no key: each is its own entry.
+ *
  * `commit` receives the built map (possibly empty — the caller decides whether an empty map drops the
- * whole key, which differs for a node vs the file) and the row edit's coalesce key, so a keystroke run in
- * one row folds to one undo entry (#389); add/remove pass no key, so each is its own entry.
- * `coalesceKeyFor` names that per-row key, scoped by the caller so two owners' same-indexed rows never
- * fold together.
+ * whole key, which differs for a node vs the file).
  */
 export function useKeyedRows(
   initial: () => KeyedRow[],
   roots: readonly InterpolationRoot[],
-  commit: (map: Record<string, string>, coalesce?: string) => void,
-  coalesceKeyFor: (index: number) => string,
+  identity: EditKey,
+  commit: (map: Record<string, string>, key?: EditKey) => void,
 ): KeyedRowsEditor {
-  const [rows, setRows] = useState<KeyedRow[]>(initial);
+  const seed = (): { identity: EditKey; rows: KeyedRow[] } => ({ identity, rows: initial() });
+  const [state, setState] = useState(seed);
+  if (!sameEditKey(state.identity, identity)) setState(seed());
 
-  const writeRows = (next: KeyedRow[], coalesce?: string): void => {
-    setRows(next);
+  const writeRows = (next: KeyedRow[], row?: number): void => {
+    setState({ identity, rows: next });
     const built = validRowsToMap(next, roots);
     if (!built.ok) return;
-    commit(built.map, coalesce);
+    commit(built.map, row === undefined ? undefined : { ...identity, row });
   };
 
   return {
-    rows,
-    setRow: (index, row) => writeRows(rows.map((r, i) => (i === index ? row : r)), coalesceKeyFor(index)),
-    addRow: () => writeRows([...rows, { key: "", value: "" }]),
-    removeRow: (index) => writeRows(rows.filter((_, i) => i !== index)),
+    rows: state.rows,
+    setRow: (index, row) => writeRows(state.rows.map((r, i) => (i === index ? row : r)), index),
+    addRow: () => writeRows([...state.rows, { key: "", value: "" }]),
+    removeRow: (index) => writeRows(state.rows.filter((_, i) => i !== index)),
   };
 }

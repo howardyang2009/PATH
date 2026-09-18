@@ -1,6 +1,6 @@
 import type { ConfigObject } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { describeUnsetEnv, resolveConfigEnv, resolveRunEnv } from "../src/resolve-env.js";
+import { describeUnsetEnv, resolveConfigEnv, resolveEffectiveConfig, resolveRunEnv } from "../src/resolve-env.js";
 
 describe("resolveConfigEnv", () => {
   it("replaces a wrapper with the variable's value", () => {
@@ -46,6 +46,28 @@ describe("resolveConfigEnv", () => {
   it("leaves values carrying no wrapper untouched", () => {
     const config: ConfigObject = { model: "claude", retries: 3, flags: [true, null] };
     expect(resolveConfigEnv(config, {}).config).toEqual(config);
+  });
+});
+
+describe("resolveEffectiveConfig", () => {
+  it("resolves $env and unwraps $secret in one call — what validation, interpolation and the worker all read", () => {
+    const config: ConfigObject = { token: { $secret: { $env: "TOKEN" } }, model: "claude" };
+    expect(resolveEffectiveConfig(config, { TOKEN: "real-value" })).toEqual({ token: "real-value", model: "claude" });
+  });
+
+  it("unwraps a $secret nested inside objects and arrays, not only at the top level", () => {
+    const config: ConfigObject = { creds: { headers: [{ auth: { $secret: "sk-nested" } }] } };
+    expect(resolveEffectiveConfig(config, {})).toEqual({ creds: { headers: [{ auth: "sk-nested" }] } });
+  });
+
+  it("leaves a config object's own $secret-named field alone", () => {
+    // Same rule as `$env`: a config object's own keys are field names, not wrapper positions (§8.3).
+    expect(resolveEffectiveConfig({ $secret: "literal" }, {})).toEqual({ $secret: "literal" });
+  });
+
+  it("is idempotent, so an already-effective config crossing into a nested run is untouched", () => {
+    const once = resolveEffectiveConfig({ token: { $secret: { $env: "TOKEN" } } }, { TOKEN: "real-value" });
+    expect(resolveEffectiveConfig(once, { TOKEN: "real-value" })).toEqual(once);
   });
 });
 

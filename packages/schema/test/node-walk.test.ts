@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { CONTROL_CHILD_SLOTS, childBodies, mapChildBodies, walkNodes } from "../src/node-walk.js";
+import { CONTROL_CHILD_SLOTS, childBodies, isStepType, mapChildBodies, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -282,5 +282,27 @@ describe("CONTROL_CHILD_SLOTS", () => {
     expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).prompt).toBeUndefined();
     expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).checkpoint).toBeUndefined();
     expect((CONTROL_CHILD_SLOTS as Record<string, unknown>).workflow).toBeUndefined();
+  });
+});
+
+describe("isStepType", () => {
+  it("is false for every controller — the constructs with no run of their own (Invariant 1)", () => {
+    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"]) {
+      expect(isStepType(type)).toBe(false);
+    }
+  });
+
+  it("is true for the built-in steps, `workflow` included", () => {
+    for (const type of ["binary", "prompt", "person-activity", "workflow"]) {
+      expect(isStepType(type)).toBe(true);
+    }
+  });
+
+  it("is true for a step type no built-in list names — a plugin folder's own (ADR 0019/0021)", () => {
+    expect(isStepType("api-call")).toBe(true);
+    // Named after a prototype key: a `Set` would say false, and the plugin's steps would stop
+    // producing runs.
+    expect(isStepType("constructor")).toBe(true);
+    expect(isStepType("toString")).toBe(true);
   });
 });

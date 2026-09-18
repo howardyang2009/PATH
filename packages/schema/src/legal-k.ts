@@ -1,4 +1,4 @@
-import { enclosingControlBlock, RUN_PRODUCING_TYPES, walkNodes, type ControlBlockKind } from "./node-walk.js";
+import { enclosingControlBlock, isStepType, walkNodes, type ControlBlockKind } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
 import type { RunStatus } from "./run-status.js";
 
@@ -86,7 +86,7 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
     rowArray.some((r) => r.parentRunId === scopeRunId && r.nodeId === id && r.status === "succeeded");
   for (const prefixNode of body.slice(0, topLevelIndex)) {
     for (const inner of walkNodes([prefixNode])) {
-      if (!RUN_PRODUCING_TYPES.has(inner.type)) continue;
+      if (!isStepType(inner.type)) continue;
       if (ranInScope(inner.id) && !succeededInScope(inner.id)) return { ok: false, reason: "prefix-unsucceeded" };
     }
   }

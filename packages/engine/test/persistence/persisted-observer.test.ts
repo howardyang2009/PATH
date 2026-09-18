@@ -88,7 +88,7 @@ describe("createPersistedObserver", () => {
       workerName: "spawn",
       input: {},
     });
-    await observer.observe({ type: "step-stderr", runId: "step-1", rootRunId: "root-1", stderr: "warning: x\n" });
+    await observer.observe({ type: "step-stderr", runId: "step-1", rootRunId: "root-1", nodeId: "greet", nodeName: "greet", stderr: "warning: x\n" });
 
     const dir = runBlobDir(projectDir, "root-1", "step-1");
     expect(readFileSync(join(dir, "stderr.txt"), "utf8")).toBe("warning: x\n");
@@ -106,7 +106,7 @@ describe("createPersistedObserver", () => {
       workerName: "spawn",
       input: {},
     });
-    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", status: "succeeded", output: "hi" });
+    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", nodeId: "greet", nodeName: "greet", status: "succeeded", output: "hi" });
 
     const rows = getRunsForRoot(db, "root-1");
     const step = rows.find((r) => r.runId === "step-1");
@@ -130,7 +130,7 @@ describe("createPersistedObserver", () => {
       workerName: "spawn",
       input: {},
     });
-    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", status: "failed" });
+    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", nodeId: "boom", nodeName: "boom", status: "failed" });
 
     const rows = getRunsForRoot(db, "root-1");
     const step = rows.find((r) => r.runId === "step-1");
@@ -141,7 +141,7 @@ describe("createPersistedObserver", () => {
   it("rewrites the root run's context.json on contextChanged", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "context-changed", runId: "root-1", rootRunId: "root-1", context: { greeting: "hi" } });
+    await observer.observe({ type: "context-changed", runId: "root-1", rootRunId: "root-1", nodeId: null, nodeName: null, context: { greeting: "hi" } });
 
     const dir = runBlobDir(projectDir, "root-1", "root-1");
     expect(readJsonBlob(dir, "context.json")).toEqual({ greeting: "hi" });
@@ -159,10 +159,10 @@ describe("createPersistedObserver", () => {
       workerName: "spawn",
       input: {},
     });
-    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", status: "succeeded", output: "HI" });
+    await observer.observe({ type: "step-finished", runId: "step-1", rootRunId: "root-1", nodeId: "greet", nodeName: "greet", status: "succeeded", output: "HI" });
     // The per-step snapshot lands under the step run's own directory (`runId: "step-1"`), not the
     // workflow-run's — so the step's input/output pair gains a context companion of its own.
-    await observer.observe({ type: "step-context", runId: "step-1", rootRunId: "root-1", context: { greeting: "hi", shouted: "HI" } });
+    await observer.observe({ type: "step-context", runId: "step-1", rootRunId: "root-1", nodeId: "greet", nodeName: "greet", context: { greeting: "hi", shouted: "HI" } });
 
     expect(readJsonBlob(runBlobDir(projectDir, "root-1", "step-1"), "context.json")).toEqual({ greeting: "hi", shouted: "HI" });
     // The workflow-run's own context.json (seeded at run-started as `{}`) is untouched by a step's
@@ -173,7 +173,7 @@ describe("createPersistedObserver", () => {
   it("marks the root run succeeded and writes its output blob", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "succeeded", output: { final: "x" } });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", nodeId: null, nodeName: null, status: "succeeded", output: { final: "x" } });
 
     const [row] = getRunsForRoot(db, "root-1");
     expect(row?.status).toBe("succeeded");
@@ -184,7 +184,7 @@ describe("createPersistedObserver", () => {
   it("marks the root run failed without writing an output blob", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "failed" });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", nodeId: null, nodeName: null, status: "failed" });
 
     const [row] = getRunsForRoot(db, "root-1");
     expect(row?.status).toBe("failed");
@@ -210,7 +210,7 @@ describe("createPersistedObserver", () => {
   it("records an output ref that resolves to the file it just wrote", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "succeeded", output: { done: true } });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", nodeId: null, nodeName: null, status: "succeeded", output: { done: true } });
 
     const [row] = getRunsForRoot(db, "root-1");
     expect(JSON.parse(readFileSync(fileForRef(row!.outputRef!), "utf8"))).toEqual({ done: true });
@@ -237,7 +237,7 @@ describe("createPersistedObserver", () => {
   it("writes no output.json for a failed run — not merely a null ref", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", status: "failed", error: "boom" });
+    await observer.observe({ type: "run-finished", runId: "root-1", rootRunId: "root-1", nodeId: null, nodeName: null, status: "failed", error: "boom" });
 
     expect(existsSync(join(runBlobDir(projectDir, "root-1", "root-1"), "output.json"))).toBe(false);
   });
@@ -245,7 +245,7 @@ describe("createPersistedObserver", () => {
   it("captures empty stderr — it is audit, not a payload", async () => {
     const observer = createPersistedObserver(db, projectDir);
     await observer.observe({ type: "run-started", runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, input: {} });
-    await observer.observe({ type: "step-stderr", runId: "root-1", rootRunId: "root-1", stderr: "" });
+    await observer.observe({ type: "step-stderr", runId: "root-1", rootRunId: "root-1", nodeId: "greet", nodeName: "greet", stderr: "" });
 
     expect(readFileSync(join(runBlobDir(projectDir, "root-1", "root-1"), "stderr.txt"), "utf8")).toBe("");
   });
@@ -265,6 +265,7 @@ describe("createPersistedObserver", () => {
     await observer.observe({ type: "step-usage",
       runId: "step-1",
       rootRunId: "root-1",
+      nodeId: "summarize", nodeName: "summarize",
       usage: { input_tokens: 12, output_tokens: 34 },
       estimatedCostUsd: 0.0053,
     });

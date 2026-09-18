@@ -22,6 +22,15 @@ export {
   type WorkflowFileParseFailure,
 } from "./workflow-file.js";
 
+// The publish set's two load-time rejections, as data (CONTEXT.md § Publish set): the load refinement
+// and the Designer's canvas markers read the same walk, so a rule change cannot leave one silent.
+export {
+  publishKeysOf,
+  publishSetIssues,
+  type PublishSetIssue,
+  type PublishSetIssueRule,
+} from "./publish-set.js";
+
 export {
   buildCoreMembers,
   ENVELOPE_KEYS,
@@ -70,13 +79,14 @@ export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathReso
 // be silently skipped by anything that walks a workflow body.
 export {
   CONTROL_CHILD_SLOTS,
-  RUN_PRODUCING_TYPES,
   childBodies,
   enclosingControlBlock,
+  isStepType,
   mapChildBodies,
   walkNodes,
   type ChildSlot,
   type ControlBlockKind,
+  type ControllerType,
   type NodeChildBody,
 } from "./node-walk.js";
 

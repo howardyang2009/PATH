@@ -50,6 +50,32 @@ export type ChildSlot =
 type BranchingType = Extract<WorkflowNode, { body: unknown } | { branches: unknown } | { node: unknown } | { arms: unknown }>["type"];
 
 /**
+ * Every controller type name — the engine-evaluated control constructs (CONTEXT.md § Controller). A
+ * controller has no worker, no task, and no run; the engine of the enclosing workflow evaluates it.
+ * Derived from the node union rather than listed as bare strings, so the set below cannot drift from
+ * the format.
+ */
+export type ControllerType = Extract<
+  WorkflowNode,
+  { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" }
+>["type"];
+
+/**
+ * The five controllers, as a record rather than a set: `ControllerType` is derived from the node
+ * union, so a control construct added to the format fails to compile until it is listed here — the
+ * same exhaustive guard `CONTROL_CHILD_SLOTS`' `satisfies` puts on the descent. A record (rather than
+ * a `Set`) lets the membership test be `Object.hasOwn`, so a plugin type named after a prototype key
+ * (`constructor`, `toString`) is never mistaken for a controller.
+ */
+const CONTROLLER_TYPES = {
+  parallel: true,
+  branch: true,
+  "while-do": true,
+  sequence: true,
+  checkpoint: true,
+} as const satisfies Record<ControllerType, true>;
+
+/**
  * The one shape table. `satisfies Record<BranchingType, …>` binds it to the node union: every control
  * block that nests a child body must appear here, and none may appear that does not. A control block
  * added to the format is forced into `childBodies` by its `never` guard and into this table by the
@@ -125,28 +151,29 @@ export function* walkNodes(nodes: WorkflowNode[]): Generator<WorkflowNode> {
 }
 
 /**
- * The node types whose runs a resume can **reuse at node grain** — one succeeded run per node id under
- * a scope (`prompt`, `binary`, `person-activity`, `workflow`). The membership test is exactly *one
- * succeeded run per node id*, not "is a step": a `person-activity` leaf mints one such run (its row
- * flips `awaiting → succeeded` in place), so a completed human decision reuses like any prompt output
- * — an operator who picks a later K keeps the earlier human gate rather than being re-asked (resume-from-k.md).
+ * Whether a node of this `type` is a **step** — a leaf step type or `workflow` — rather than a
+ * controller. Only steps execute on workers and mint a run of their own (CONTEXT.md Invariant 1), so
+ * this is exactly the node-grain unit a Resume can reuse, a rerun boundary can classify, and the
+ * prefix rule reads.
  *
- * This is the reuse-plan's matching set, not the set of every type that mints a run. `while-do` is
- * **deliberately excluded** even though ADR 0037 makes it mint one iteration-container run *per pass*:
- * a loop id maps to many runs, not one, so it is not a node-grain reuse candidate; its per-iteration
- * reuse is handled at container grain by `loopIterationResume`, whose disposition test (`@path/schema`'s
- * `rerunDisposition`) is index-based and needs no membership here. Control blocks (`parallel`, `branch`,
- * `sequence`, `checkpoint`) own no run of their own, so their success is their run-producing descendants'
- * (a prefix `while-do` passes on any succeeded iteration). Neither class can be added by widening this
- * set: `planReuse`'s `succeeded.length === 1` guard would refuse a loop's many rows, and a control block
- * has no row to reuse — so an allowlist keyed on the one-run-per-id invariant is the safe shape here, not
- * a "reuse every step except a controller blocklist" one.
+ * Derived from the controller set, **not** listed as the built-in step names. A step-type plugin
+ * folder contributes a leaf type the engine discovers at scan time (ADR 0019/0021), so "which types
+ * are steps" is a fact about what is installed, never a fixed list — an allowlist of `prompt`,
+ * `binary`, and `person-activity` silently skipped every other plugin type, in the reuse plan, in the
+ * rerun-boundary suppress set, and in legal-K's prefix rule alike.
  *
- * The **one authority** the engine's reuse plan (`plan-reuse.ts`) and the client's eager legal-K check
- * (`@path/client-core`'s `resume-from-eligibility.ts`) both read — a bare literal copied into each would
- * drift silently when a node-grain-reusable type is added.
+ * `while-do` is a controller, so it is excluded here even though it mints an iteration-container run
+ * per pass (ADR 0037): that is container grain, not node grain, and `planReuse`'s one-succeeded-row-
+ * per-id guard would refuse a loop's many rows anyway. A control block owns no run at all, so neither
+ * class can arrive through this predicate.
+ *
+ * The **one authority** the engine's reuse plan (`plan-reuse.ts`), the executor's suppress set
+ * (`run-workflow.ts`) and the client's eager legal-K check (`legal-k.ts`, `@path/client-core`) all
+ * read — a bare literal copied into each would drift silently.
  */
-export const RUN_PRODUCING_TYPES: ReadonlySet<string> = new Set(["prompt", "binary", "person-activity", "workflow"]);
+export function isStepType(type: string): boolean {
+  return !Object.hasOwn(CONTROLLER_TYPES, type);
+}
 
 /**
  * The operator-facing name of a control block, as the rerun-boundary refusal taxonomy spells it
