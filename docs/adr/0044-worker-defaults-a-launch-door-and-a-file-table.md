@@ -83,6 +83,29 @@ every file of the run yet is still selection, because the operator sets one flat
 whole run, not a value the parent file hands to a child. The breach reading — that #309 was wrong and
 invariant 5 must be rewritten — is rejected.
 
+## Designer surface (v1)
+
+The **file** worker-default is authored data, so the Designer surfaces it. The **launch** worker-default
+is operator-launch-time, authored in no file, so the Designer never shows it (#505).
+
+- **WorkerSelect ghost.** The node worker dropdown shows the *effective* resolution for an un-pinned step,
+  not the raw type default. A leading **"(default)"** option drops `node.worker` (stays un-pinned) and
+  names what that resolves to and from which tier — `(default: <worker> — file)` when the file table pins
+  the type, else `(default: <worker> — type)`. Picking a concrete worker pins `node.worker`; picking
+  "(default)" un-pins. This mirrors the `config.model` inherit ghost (`ModelField`).
+- **File-properties editor.** A `worker_defaults` region on the file properties: rows of `type → worker`,
+  both constrained dropdowns (type from registry types shipping more than one worker; worker from that
+  type's set), so an invalid `{ type, worker }` pair cannot be authored in the pane.
+- **No wire or node-floor change.** `toWireStepPlugins` already ships `workers` + `default_worker`, so it
+  does not change. `ENVELOPE_KEYS` governs *node* field names and is untouched — `worker_defaults` is a
+  *file* top-level key. The only schema change is `workflow-file.ts`, whose strict top-level gains an
+  optional `worker_defaults: { <type>: <name> }` beside `config`. Registry-relative validity (unknown
+  type, or a worker a type does not ship) is checked at **engine load**, not in the registry-agnostic
+  file schema.
+- **Sequencing.** The Designer surface and the file schema key ship first (#505). Until the engine's
+  four-tier resolution lands, an authored `worker_defaults` is **inert**: it validates and round-trips,
+  but the engine still resolves `node.worker ?? plugin.defaultWorker`. The pane must not claim otherwise.
+
 ## Consequences
 
 - The `runs` root row gains a persisted launch-worker-default map; the `POST /v0/runs` body and the CLI
@@ -90,3 +113,5 @@ invariant 5 must be rewritten — is rejected.
 - CONTEXT.md adds **worker-default** (with **file** and **launch** tiers), rewrites **default worker** as
   the bottom of a four-tier resolution, and updates invariant 5.
 - The resume route is unchanged in shape: it still takes only `config` and `rerun_from_run_id`.
+- The Designer gains a `worker_defaults` file-properties region and an effective-default ghost on the
+  worker dropdown; `toWireStepPlugins` and `ENVELOPE_KEYS` are unchanged (#505).
