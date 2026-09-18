@@ -13,18 +13,35 @@ and issues use them exactly.
   result by a different route (a local method, a library, a remote service); "same result" is an
   author-trust contract, not an enforced check. The pair `(type, name)` is a worker's identity, so a
   name is unique only inside its type. You select a worker per step by **name** (`"worker": "sdk"`);
-  when you do not, the step uses its type's **default worker**. There is no worker inheritance: a
+  when you do not, the step falls to a **worker-default** for its type if one is set — a **launch
+  worker-default** first, then a **file worker-default** — and finally to its type's **default
+  worker**. There is no worker inheritance: a
   type-scoped name is meaningless across types, so shared data like `model` travels through config
-  instead. A worker's `run` is in-process TypeScript loaded into the engine, so a worker is
+  instead. A worker-default is a *selection* among a type's already-scanned workers by name, so it is
+  an operator affordance, unlike **workerOverrides**, which *replaces the code* of a `(type, name)`
+  pair and stays host-only (ADR 0021 sub-15). A worker's `run` is in-process TypeScript loaded into the engine, so a worker is
   **author-trusted code** at the level of PATH's own source: it
   holds every **Secret** of the run and not only its own step's, and to add one is to edit the engine
   (ADR 0020). Two rules follow from that trust, and review is what enforces them. A worker reports
   diagnostics by *returning* `stderr`, never by writing to a process stream. And it reads the
   environment only through a resolved **Env-sourced value**, never `process.env` directly, because that
   is the door an operator's config is checked at (ADR 0012).
-- **Default worker** — the worker a step of a given type uses when it names none. Each step type
-  declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use it and write no `worker`
-  field. It is a required key on the type, not a reserved worker name.
+- **Default worker** — the worker a step of a given type uses when it names none and no **worker-default**
+  overrides it. Each step type declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use
+  it and write no `worker` field. It is a required key on the type, not a reserved worker name. It is the
+  bottom of the four-tier resolution: `node.worker` beats a **launch worker-default**, beats a **file
+  worker-default**, beats this.
+- **Worker-default** — a `{ <type>: <worker-name> }` table that sets which worker a type's *un-pinned*
+  steps use, chosen among that type's already-scanned workers by name. It never names or adds code, so it
+  is a selection, not a **workerOverrides**. A table naming an absent type, or a worker a type does not
+  ship, is a hard load error naming both (the replace-only discipline, registry-relative validity). Two
+  tiers exist, and a node's own `worker` still beats both. A **file worker-default** is authored as a
+  top-level `worker_defaults` key on a workflow file; it is **file-scoped** (it never crosses into a
+  nested `workflow`-ref file, which carries its own) and is **live**, re-read from the current file on
+  resume like every other authored datum. A **launch worker-default** is supplied by the operator at
+  launch; it is **run-wide** across every file of the run and **frozen** with the run, so a resume reuses
+  it verbatim — it is identity-defining like **input**, not re-overridable like operator **config**.
+  Changing it is a new run, never a resume.
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
   There is no separate "workflow execution" concept.
@@ -225,8 +242,10 @@ and issues use them exactly.
 4. Config flows in from outside (author or operator). Context is written from inside (steps at
    runtime).
 5. A step inherits config downward from the enclosing workflow, unless the step overrides it. Worker
-   does **not** inherit: a worker name is type-scoped, so a step selects its own by name or takes its
-   type's default (#309).
+   does **not** inherit: a worker name is type-scoped, so a step selects its own by name, else a
+   **worker-default** for its type (launch before file), else its type's **default worker** (#309). A
+   **file worker-default** is file-scoped and never crosses a nested `workflow`-ref boundary, so this
+   stays a per-type selection, not inheritance.
 
 ## Relationships
 
