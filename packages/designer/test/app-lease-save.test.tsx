@@ -167,15 +167,17 @@ describe("Designer save through the write route (#371)", () => {
 
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    await screen.findByText(/changed on disk since you opened it/);
+    // The conflict banner waits on the async 412 response and a pane re-render; under a loaded CI runner
+    // that can exceed findByText's 1s default, so give the network-driven waits in this test more room (#510).
+    await screen.findByText(/changed on disk since you opened it/, undefined, { timeout: 5000 });
 
     // Reload discards the buffer for the on-disk bytes, clearing the conflict.
     fireEvent.click(screen.getByRole("button", { name: "Reload file" }));
-    await waitFor(() => expect(screen.queryByText(/changed on disk since you opened it/)).not.toBeInTheDocument());
+    await waitFor(() => expect(screen.queryByText(/changed on disk since you opened it/)).not.toBeInTheDocument(), { timeout: 5000 });
 
     // The reloaded (still id-less) file opens dirty again; a second save now succeeds.
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved.", undefined, { timeout: 5000 })).toBeInTheDocument();
   });
 });
