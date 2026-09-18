@@ -23,6 +23,10 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
       config: ConfigObjectSchema.optional(),
       body: bodySchema,
       output: z.record(interpolatedJsonValue(STEP_ROOTS)).optional(),
+      // The file worker-default table (ADR 0044): `{ <stepType>: <workerName> }`, a per-type selection
+      // for un-pinned steps. Shape only here — this schema is registry-agnostic, so "is this a real
+      // type shipping that worker" is an engine-load check, not a zod constraint.
+      worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     })
     .strict();
 }

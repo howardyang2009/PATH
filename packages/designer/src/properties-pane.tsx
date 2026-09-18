@@ -90,14 +90,22 @@ export interface PropertiesPaneProps {
 export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselect, onAddRefTarget }: PropertiesPaneProps): JSX.Element {
   const node = selectedId === null ? null : findById(file.body, selectedId);
   if (node === null) {
-    return <FileProperties file={file} applyEdit={applyEdit} />;
+    return <FileProperties file={file} plugins={plugins} applyEdit={applyEdit} />;
   }
   return <NodeProperties file={file} node={node} plugins={plugins} applyEdit={applyEdit} onReselect={onReselect} onAddRefTarget={onAddRefTarget} />;
 }
 
 // ── The file's own properties ──────────────────────────────────────────────────────────────────────
 
-function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (next: WorkflowFile, coalesce?: string) => void }): JSX.Element {
+function FileProperties({
+  file,
+  plugins,
+  applyEdit,
+}: {
+  file: WorkflowFile;
+  plugins: WireStepPlugin[];
+  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+}): JSX.Element {
   return (
     <div className="pane" onKeyDown={fillPlaceholderOnTab}>
       <p className="pane-explain">The workflow file — its identity and the body authored on the canvas.</p>
@@ -109,7 +117,106 @@ function FileProperties({ file, applyEdit }: { file: WorkflowFile; applyEdit: (n
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
       <hr className="pane-divider" />
+      <FileWorkerDefaultsRegion key={`file-worker-defaults-${file.id}`} file={file} plugins={plugins} applyEdit={applyEdit} />
+      <hr className="pane-divider" />
       <FileOutputRegion key={`file-output-${file.id}`} file={file} applyEdit={applyEdit} />
+    </div>
+  );
+}
+
+/**
+ * The **file worker-default** editor (ADR 0044, #505): rows of `type → worker`, both constrained
+ * dropdowns, so an invalid `{ type, worker }` pair — the hard load error ADR 0044 defines — cannot be
+ * authored in the pane. Only types that ship more than one worker are candidates; a single-worker type
+ * has nothing to pick, so it is never offered, and the whole region hides when no such type exists.
+ *
+ * `worker_defaults` is a plain `{ <type>: <name> }` map keyed by type, so a row is unique by its type
+ * and there is nothing to interpolate — unlike `config`/`output`, this is not a keyed-row text field. An
+ * empty map drops the whole key (as an empty `config`/`output` does), so `worker_defaults: {}` never
+ * lands. The launch worker-default has no editor here: it is supplied at launch, not authored in a file.
+ */
+function FileWorkerDefaultsRegion({
+  file,
+  plugins,
+  applyEdit,
+}: {
+  file: WorkflowFile;
+  plugins: WireStepPlugin[];
+  applyEdit: (next: WorkflowFile, coalesce?: string) => void;
+}): JSX.Element | null {
+  const candidates = plugins.filter((p) => p.workers.length > 1);
+  // No multi-worker type in the registry → no selection to make. Hide the region entirely.
+  if (candidates.length === 0) return null;
+
+  const entries = Object.entries(file.worker_defaults ?? {});
+  const usedTypes = new Set(entries.map(([type]) => type));
+
+  const write = (map: { [type: string]: string }): void => {
+    if (Object.keys(map).length === 0) {
+      const { worker_defaults: _dropped, ...rest } = file;
+      applyEdit(rest as WorkflowFile);
+    } else {
+      applyEdit({ ...file, worker_defaults: map });
+    }
+  };
+
+  // Retyping a row moves it to a different type; its worker resets to the new type's default, since a
+  // worker name is meaningless across types (CONTEXT.md invariant 5).
+  const setTypeAt = (oldType: string, newType: string): void => {
+    if (newType === oldType) return;
+    const plugin = pluginFor(newType, plugins);
+    const next: { [type: string]: string } = {};
+    for (const [type, worker] of entries) next[type === oldType ? newType : type] = type === oldType ? plugin?.default_worker ?? worker : worker;
+    write(next);
+  };
+
+  const setWorkerAt = (type: string, worker: string): void => write({ ...Object.fromEntries(entries), [type]: worker });
+  const removeAt = (type: string): void => write(Object.fromEntries(entries.filter(([t]) => t !== type)));
+  const addRow = (): void => {
+    const free = candidates.find((p) => !usedTypes.has(p.name));
+    if (free) write({ ...Object.fromEntries(entries), [free.name]: free.default_worker });
+  };
+  const allUsed = candidates.every((p) => usedTypes.has(p.name));
+
+  return (
+    <div className="pane-section">
+      <span className="pane-section-title">worker defaults</span>
+      <p className="pane-hint">
+        The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still
+        wins, and this never crosses a workflow reference.
+      </p>
+      {entries.map(([type, worker]) => {
+        const plugin = pluginFor(type, plugins);
+        const workerOptions = plugin ? plugin.workers : [worker];
+        // A type appears once: offer this row's own type plus every candidate no other row uses.
+        const typeOptions = [type, ...candidates.map((p) => p.name).filter((name) => name !== type && !usedTypes.has(name))];
+        return (
+          <div key={type} className="pane-worker-default-row">
+            <SelectField label="type" value={type} options={typeOptions} onChange={(t) => setTypeAt(type, t)} />
+            <SelectField
+              label="worker"
+              value={worker}
+              options={workerOptions}
+              optionLabel={(w) => (plugin && w === plugin.default_worker ? `${w} (default)` : w)}
+              onChange={(w) => setWorkerAt(type, w)}
+            />
+            <button
+              type="button"
+              className="pane-btn"
+              onClick={() => removeAt(type)}
+              aria-label="Remove this worker default"
+              title="Remove this worker default"
+            >
+              ✕
+            </button>
+          </div>
+        );
+      })}
+      {allUsed ? null : (
+        <button type="button" className="pane-btn" onClick={addRow}>
+          + add worker default
+        </button>
+      )}
     </div>
   );
 }
@@ -323,7 +430,7 @@ function KindFields({
     case "prompt":
       return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "binary":
-      return <BinaryEditor node={node} plugins={plugins} commit={commit} />;
+      return <BinaryEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "workflow":
       return <WorkflowRefEditor node={node} commit={commit} onAddRefTarget={onAddRefTarget} />;
     case "parallel":
@@ -367,12 +474,12 @@ function KindFields({
         />
       );
     default:
-      return <LeafPayloadEditor node={node} plugins={plugins} commit={commit} />;
+      return <LeafPayloadEditor file={file} node={node} plugins={plugins} commit={commit} />;
   }
 }
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
-function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file: WorkflowFile }): JSX.Element {
+function PromptEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
   const prompt = nodeString(node, "prompt");
   const inheritedModel = configStringOf(file.config, "model");
   return (
@@ -383,7 +490,7 @@ function PromptEditor({ file, node, plugins, commit }: LeafEditorProps & { file:
         onChange={(v) => commit(withConfig(node, "model", v), `config.model:${node.id}`)}
       />
       <TextAreaField label="prompt" value={prompt} onChange={(v) => commit({ ...node, prompt: v } as WorkflowNode, `prompt:${node.id}`)} />
-      <WorkerSelect node={node} plugins={plugins} commit={commit} />
+      <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
   );
 }
@@ -427,7 +534,7 @@ function ModelField({ value, inherited, onChange }: { value: string; inherited: 
 }
 
 /** `binary` — the first-class editor: the `command`, its `args`, its `cwd`, plus the worker. */
-function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
+function BinaryEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
   const command = nodeString(node, "command");
   const cwd = nodeString(node, "cwd");
   const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
@@ -436,7 +543,7 @@ function BinaryEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
       <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, `command:${node.id}`)} />
       <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), `args:${node.id}`)} />
       <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), `cwd:${node.id}`)} />
-      <WorkerSelect node={node} plugins={plugins} commit={commit} />
+      <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
   );
 }
@@ -537,7 +644,7 @@ function OutputSchemaField({ node, commit }: { node: WorkflowNode; commit: (next
  * carry the worker selector. `editorTier` has already decided which tier this type takes; this switch
  * just renders it.
  */
-function LeafPayloadEditor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
+function LeafPayloadEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
   const tier = editorTier(node.type, plugins);
   const plugin = pluginFor(node.type, plugins);
   return (
@@ -547,7 +654,7 @@ function LeafPayloadEditor({ node, plugins, commit }: LeafEditorProps): JSX.Elem
       ) : (
         <RawJsonFloor key={node.id} node={node} plugins={plugins} commit={commit} />
       )}
-      <WorkerSelect node={node} plugins={plugins} commit={commit} />
+      <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
     </>
   );
 }
@@ -605,7 +712,7 @@ function GenericField({
  * (`safeParseWorkflowFile`); an invalid draft shows the error and is **not** committed, so the node on
  * the canvas stays strict-valid and only the editor's fidelity degrades.
  */
-function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
+function RawJsonFloor({ node, plugins, commit }: Omit<LeafEditorProps, "file">): JSX.Element {
   const { draft, error, onEdit } = useValidatedDraft(
     () => JSON.stringify(nodePayload(node), null, 2),
     (text) => validateJsonPayload(node, text, plugins),
@@ -634,23 +741,39 @@ function RawJsonFloor({ node, plugins, commit }: LeafEditorProps): JSX.Element {
   );
 }
 
-/** The worker dropdown — shown only when the type ships more than one worker (§ Worker selection). */
-function WorkerSelect({ node, plugins, commit }: LeafEditorProps): JSX.Element | null {
+/**
+ * The worker dropdown — shown only when the type ships more than one worker (§ Worker selection).
+ *
+ * An un-pinned step (no `worker` field) no longer means "the type's default": with a **file
+ * worker-default** it resolves to the file's pick for the type instead (ADR 0044, four-tier resolution
+ * `node.worker → launch → file → type`). So the dropdown carries an explicit leading `(default)` option
+ * whose value is empty: choosing it drops `worker` (stays un-pinned), and its label names the *effective*
+ * resolution and the tier it came from — `(default: <worker> — file)` when the file table pins the type,
+ * else `(default: <worker> — type)`. Picking a concrete worker pins `node.worker` — a deliberate author
+ * pin, the only thing above a launch/file default. The launch default is operator-launch-time, in no
+ * file, so it is never shown here (#505). This mirrors the `config.model` inherit ghost (`ModelField`).
+ */
+function WorkerSelect({ file, node, plugins, commit }: LeafEditorProps): JSX.Element | null {
   const plugin = pluginFor(node.type, plugins);
   if (!plugin || plugin.workers.length <= 1) return null;
-  const current = nodeString(node, "worker") || plugin.default_worker;
+  const pinned = nodeString(node, "worker");
+  const fileDefault = file.worker_defaults?.[node.type];
+  // What an un-pinned step resolves to *in the Designer's view*: the file default if the file pins this
+  // type, else the type's own default. The launch tier is invisible here, so it is not part of this.
+  const effective = fileDefault ?? plugin.default_worker;
+  const effectiveTier = fileDefault !== undefined ? "file" : "type";
+  // Empty value is the "(default)" option — the un-pinned case, distinct from any real worker name.
+  const UNPINNED = "";
   const onChange = (worker: string): void => {
-    // The default is the omitted case (a step naming no worker takes the type's default), so selecting
-    // it drops the field rather than pinning it (§ Worker selection).
-    if (worker === plugin.default_worker) commit(dropNodeKey(node, "worker"));
+    if (worker === UNPINNED) commit(dropNodeKey(node, "worker"));
     else commit(setNodeField(node, "worker", worker));
   };
   return (
     <SelectField
       label="worker"
-      value={current}
-      options={plugin.workers}
-      optionLabel={(w) => (w === plugin.default_worker ? `${w} (default)` : w)}
+      value={pinned || UNPINNED}
+      options={[UNPINNED, ...plugin.workers]}
+      optionLabel={(w) => (w === UNPINNED ? `(default: ${effective} — ${effectiveTier})` : w)}
       onChange={onChange}
     />
   );
@@ -1036,6 +1159,7 @@ function MaxIterationsField({
 // ── Node payload helpers ─────────────────────────────────────────────────────────────────────────
 
 interface LeafEditorProps {
+  file: WorkflowFile;
   node: WorkflowNode;
   plugins: WireStepPlugin[];
   commit: (next: WorkflowNode, coalesce?: string) => void;
