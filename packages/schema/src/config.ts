@@ -60,7 +60,7 @@ function reservedKeyMessage(key: string): string {
  */
 const PlainConfigObjectSchema = z.lazy(() =>
   z
-    .record(ConfigValueSchema)
+    .record(z.string(), ConfigValueSchema)
     .refine((obj) => !hasOnlySecretKey(obj), {
       message: '"$secret" wrapper value must be a string or an {"$env": "NAME"} wrapper',
     })
@@ -90,7 +90,7 @@ export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
     z.array(ConfigValueSchema),
     PlainConfigObjectSchema,
   ]),
-);
+) as z.ZodType<ConfigValue>;
 
 /**
  * A config object's own keys are field names, not wrapper positions, so the `$`-sole-key
@@ -99,4 +99,4 @@ export const ConfigValueSchema: z.ZodType<ConfigValue> = z.lazy(() =>
  * whole object. Reserving here would make a one-field config mean something different from a
  * two-field one, which is the arbitrary rule the sole-key line exists to avoid.
  */
-export const ConfigObjectSchema = z.record(ConfigValueSchema);
+export const ConfigObjectSchema = z.record(z.string(), ConfigValueSchema);

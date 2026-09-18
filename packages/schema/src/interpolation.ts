@@ -121,8 +121,8 @@ export function interpolatedJsonValue(allowedRoots: readonly InterpolationRoot[]
       z.boolean(),
       z.null(),
       z.array(schema),
-      z.record(schema),
+      z.record(z.string(), schema),
     ]),
-  );
+  ) as z.ZodType<JsonValue>;
   return schema;
 }

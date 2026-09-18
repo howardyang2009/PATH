@@ -2,7 +2,7 @@ import { defineStepPlugin, z } from "@path/engine/plugin";
 
 const fields = {
   description: z.string(),
-  outputSchema: z.record(z.unknown()).optional(),
+  outputSchema: z.record(z.string(), z.unknown()).optional(),
   assignee: z.string().optional(),
 };
 

@@ -19,7 +19,7 @@ import type { RunsRouteContext } from "./post-runs.js";
 const PutWorkflowBodySchema = z
   .object({
     workflow_path: z.string().min(1),
-    workflow: z.record(z.unknown()),
+    workflow: z.record(z.string(), z.unknown()),
   })
   .strict();
 

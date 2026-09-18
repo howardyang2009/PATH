@@ -9,7 +9,7 @@ import type { LiveRuns } from "../live-runs.js";
 const PostRunsBodySchema = z
   .object({
     workflow_path: z.string().min(1),
-    input: z.record(z.unknown()).optional(),
+    input: z.record(z.string(), z.unknown()).optional(),
     config: ConfigObjectSchema.optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
     processor_concurrency: z.number().int().positive().optional(),

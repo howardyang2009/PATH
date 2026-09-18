@@ -24,7 +24,7 @@ describe("describeField", () => {
   });
 
   it("keeps the value kind of a record", () => {
-    expect(describeField(z.record(z.unknown()))).toEqual({
+    expect(describeField(z.record(z.string(), z.unknown()))).toEqual({
       type: "record",
       optional: false,
       values: { type: "unknown", optional: false },

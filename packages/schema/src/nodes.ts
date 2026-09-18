@@ -1,4 +1,4 @@
-import { z, type ZodDiscriminatedUnionOption, type ZodRawShape } from "zod";
+import { z, type ZodRawShape } from "zod";
 import { ConditionSchema } from "./conditions.js";
 import { ConfigObjectSchema } from "./config.js";
 import { IdSchema, NameSchema } from "./ids.js";
@@ -19,7 +19,7 @@ export const commonStepFields = {
   config: ConfigObjectSchema.optional(),
   input: interpolatedJsonValue(STEP_ROOTS).optional(),
   parse: z.enum(["text", "json"]).optional(),
-  publish: z.record(interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
+  publish: z.record(z.string(), interpolatedJsonValue(PUBLISH_ROOTS)).optional(),
 };
 
 // `ref` is a relative path to another workflow file — not an interpolated position
@@ -56,7 +56,7 @@ export interface NodeRecursion {
 export function buildCoreMembers({
   NodeArraySchema,
   SingleNodeSchema,
-}: NodeRecursion): ZodDiscriminatedUnionOption<"type">[] {
+}: NodeRecursion): z.ZodObject[] {
   const WorkflowStepSchema = z
     .object({
       type: z.literal("workflow"),
@@ -203,7 +203,7 @@ export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([...Object.keys(common
  * `z.enum` of this type's worker names. Throws loud at freeze on a field collision or a type that
  * ships no worker.
  */
-function buildPluginMember(typeName: string, entry: RegistryStepType): ZodDiscriminatedUnionOption<"type"> {
+function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObject {
   for (const fieldName of Object.keys(entry.fields)) {
     if (ENVELOPE_KEYS.has(fieldName)) {
       throw new Error(
@@ -229,8 +229,16 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): ZodDiscri
       config: z.object(entry.config).passthrough().optional(),
       // `worker` is a type-scoped name (`@3` §4): a `z.enum` of this type's worker names, optional so
       // an omitted `worker` resolves to the default at run start. An unknown name fails here with the
-      // valid names listed, from zod's own enum error.
-      worker: z.enum(workerNames as [string, ...string[]]).optional(),
+      // offending value and the valid names both listed — zod v4's default enum message drops the
+      // received value, so the custom `error` restores it (the `(type, name)` load error must name the
+      // bad worker, not just the legal set).
+      worker: z
+        .enum(workerNames as [string, ...string[]], {
+          error: (issue) =>
+            `unknown worker "${String((issue as { input?: unknown }).input)}" — ` +
+            `"${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`,
+        })
+        .optional(),
     })
     .strict();
 }
@@ -250,14 +258,18 @@ function describeUnknownStepType(received: unknown, known: (string | number)[]):
   return `unknown step type ${badType} — no plugin contributes it. Known types: ${knownList}. To add it, ${remedy}`;
 }
 
-// Wraps only the discriminator miss; every other issue keeps zod's own message. `ctx.data` is the
-// node object being parsed, so `ctx.data.type` is the offending value the default miss never echoes.
-const unknownStepTypeErrorMap: z.ZodErrorMap = (issue, ctx) => {
-  if (issue.code === z.ZodIssueCode.invalid_union_discriminator) {
-    const received = (ctx.data as { type?: unknown } | undefined)?.type;
-    return { message: describeUnknownStepType(received, issue.options as (string | number)[]) };
+// Wraps only the discriminator miss; every other issue keeps zod's own message. zod v4 folds the
+// discriminated-union miss into the `invalid_union` code, drops the v3 `ctx` second argument, and
+// carries the parsed value on `issue.input` — so `issue.input.type` is the offending value the default
+// miss never echoes, and `issue.options` still lists the legal discriminator values. Returning
+// `undefined` for any other code falls back to zod's own default message.
+const unknownStepTypeErrorMap: z.ZodErrorMap = (issue) => {
+  if (issue.code === "invalid_union") {
+    const received = (issue.input as { type?: unknown } | undefined)?.type;
+    const options = (issue as { options?: (string | number)[] }).options ?? [];
+    return { message: describeUnknownStepType(received, options) };
   }
-  return { message: ctx.defaultError };
+  return undefined;
 };
 
 /**
@@ -288,8 +300,8 @@ export function makeNodeSchema(registry: StepPluginRegistry): z.ZodType<Workflow
 
   NodeSchema = z.discriminatedUnion(
     "type",
-    [...coreMembers, ...pluginMembers] as [ZodDiscriminatedUnionOption<"type">, ...ZodDiscriminatedUnionOption<"type">[]],
-    { errorMap: unknownStepTypeErrorMap },
+    [...coreMembers, ...pluginMembers] as unknown as readonly [z.ZodObject, ...z.ZodObject[]],
+    { error: unknownStepTypeErrorMap },
   ) as unknown as z.ZodType<WorkflowNode>;
 
   return NodeSchema;
