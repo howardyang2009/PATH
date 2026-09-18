@@ -1,14 +1,15 @@
 import type { JsonValue, WorkflowFile } from "@path/schema";
+import { blockCancellation } from "./cancellation.js";
 import { pickReusedWaitOneWinner } from "./plan-reuse.js";
-import type { Cancellation, NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
+import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 import { runSequence } from "./run-workflow.js";
 
 /**
  * The `parallel` block — the engine's densest logic, in one module: three join modes (collect,
- * wait-one, do-not-wait), the block-local cancellation controller that cascades a sibling failure or
- * a race win, and the enclosing-run barrier that drains detached `do-not-wait` branches. Split out of
- * `run-workflow.ts` so the join semantics that carry the spec sit together rather than buried in the
- * executor's leaf-step and sequence code.
+ * wait-one, do-not-wait), the block-local cancellation cascade it drives through the authority from
+ * `cancellation.ts`, and the enclosing-run barrier that drains detached `do-not-wait` branches. Split
+ * out of `run-workflow.ts` so the join semantics that carry the spec sit together rather than buried in
+ * the executor's leaf-step and sequence code.
  *
  * The recursion into `runSequence` (a branch is a single node, run as a one-node sequence) is imported back from the
  * executor: `run-parallel.ts → run-workflow.ts → runNode → runParallelNode` is a function cycle,
@@ -143,40 +144,10 @@ export async function runParallelNode(
     }
   }
 
-  const controller = new AbortController();
-  // A nested parallel inherits its enclosing block's cancellation: if the outer block aborts, this
-  // one aborts too, so this block's own in-flight steps are killed as well.
+  // The enclosing execution's signal, for the two "was this block aborted from outside?" checks below
+  // (a `wait-one` outside abort outranks a local win) — and the signal this block's authority chains to.
   const outerSignal = exec.signal;
-  const onOuterAbort = () => controller.abort();
-  if (outerSignal) {
-    if (outerSignal.aborted) controller.abort();
-    else outerSignal.addEventListener("abort", onOuterAbort, { once: true });
-  }
-
-  let causeRunId: string | null = null;
-  let cause: Cancellation["cause"] = null;
-  const cancellation: Cancellation = {
-    signal: controller.signal,
-    get causeRunId() {
-      // Read through to the enclosing block at read time, not at block entry: an *outer* sibling
-      // may fail after this block started, and its failing run is still this block's cause.
-      return causeRunId ?? exec.cancellation?.causeRunId ?? null;
-    },
-    get cause() {
-      return cause ?? exec.cancellation?.cause ?? null;
-    },
-    trigger(triggerRunId: string) {
-      if (cause === null) {
-        causeRunId = triggerRunId; // first failing sibling wins
-        cause = "sibling-failed";
-      }
-      controller.abort();
-    },
-    triggerWin() {
-      if (cause === null) cause = "sibling-succeeded"; // first winner wins; no cause run
-      controller.abort();
-    },
-  };
+  const { cancellation, dispose } = blockCancellation(exec.cancellation, outerSignal);
 
   // The winner of a `wait-one` race: the first branch to complete `succeeded`. Because the event loop
   // serializes branch completions, the first callback to see `succeeded` here is the lowest-`seq` one
@@ -192,7 +163,7 @@ export async function runParallelNode(
       const buffer: { [key: string]: JsonValue } = {};
       const outcome = await runSequence(run, [branch], seedInput, {
         context: branchContext,
-        signal: controller.signal,
+        signal: cancellation.signal,
         cancellation,
         onPublish: async (updates) => {
           Object.assign(buffer, updates);
@@ -211,7 +182,8 @@ export async function runParallelNode(
     }),
   );
 
-  if (outerSignal) outerSignal.removeEventListener("abort", onOuterAbort);
+  // Done with the enclosing signal: stop chaining this block's controller to it.
+  dispose();
 
   if (node.join === "wait-one") {
     // An outside abort (an enclosing block failing, an operator cancelling the root run) outranks a

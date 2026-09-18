@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
 import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
+import { rootCancellation, stopCause } from "./cancellation.js";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
@@ -229,9 +230,9 @@ interface WorkflowRunParams {
   // Shared by the entire run tree, so the registry and processor cap span nested runs too (mvp spec §5.5).
   runtime: StepRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
-  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). The root run carries the
-  // operator's own `RunOptions.signal` when there is one (#52) — with no `cancellation`, since a run
-  // it kills has no cause run inside the tree.
+  // leaf steps are killed too when a sibling branch fails (mvp spec §5.6). A `workflow` step passes its
+  // own execution's authority straight through, so the whole tree shares the chain rooted at the root
+  // run's authority (`cancellation.ts`) — the operator's stop and every sibling cause included.
   signal?: AbortSignal;
   cancellation?: Cancellation;
   // Resume this workflow-run against the original tree (#172): the whole-tree read inputs plus this
@@ -645,9 +646,10 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   // 1. stderr rides every outcome, into the audit blob.
   if (result.status !== "awaiting" && result.stderr !== undefined) await step.stderr(result.stderr);
 
-  // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status.
+  // 2. The engine owns `cancelled`, derived from the signal rather than the worker's reported status,
+  // and the cause from the cancellation authority (`cancellation.ts`) rather than re-reading it here.
   if (signal?.aborted) {
-    await step.cancelled({ cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null });
+    await step.cancelled(stopCause(cancellation));
     return { status: "cancelled" };
   }
 
@@ -1004,6 +1006,10 @@ export async function runWorkflow(
   // The tree's one masking sink becomes the root run's emitter here; every descendant run gets its
   // own via `emitter.child`, so `emit` itself never travels past this call.
   const rootIdentity: RunIdentity = { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null };
+  // The tree's root **cancellation authority** (`cancellation.ts`): the operator's signal, and the only
+  // cause an outside stop has. The run's own signal is that authority's, so the operator stop and the
+  // cause a killed leaf narrates come from one object rather than a signal here and a guess at the leaf.
+  const rootAuthority = rootCancellation(options.signal);
   let result: RunResult;
   try {
     result = await executeWorkflowRun({
@@ -1016,10 +1022,10 @@ export async function runWorkflow(
       emitter: createEmitter(rootIdentity, emit),
       env,
       runStartFailure,
-      // External abort (#52): the operator's signal is the root run's own, and threads down to every
-      // descendant run and leaf step through `WorkflowRunParams.signal` exactly as a `parallel` block's
-      // does. No `cancellation`: nothing inside the tree failed, so a run it kills has no cause run.
-      signal: options.signal,
+      // External abort (#52): the operator's signal is the root run's own, chained into the tree's root
+      // **cancellation authority** (`cancellation.ts`), which every `parallel` block below extends.
+      signal: rootAuthority.signal,
+      cancellation: rootAuthority,
       // One registry and one semaphore for the whole run tree: the cap is engine-wide, spanning
       // nested workflows and nested parallels alike (mvp spec §5.5).
       runtime: {
