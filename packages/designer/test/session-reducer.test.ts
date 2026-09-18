@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { canonicalSerialize } from "../src/serialize.js";
-import { frameDirty, initialSessionState, openedResultOf, reduceSession, type Frame, type SessionState } from "../src/session-reducer.js";
+import { frameDirty, initialSessionState, openedResultOf, planNewFileSave, planSave, reduceSession, type Frame, type SessionState } from "../src/session-reducer.js";
 
 /**
  * The pure session state machine (`session-reducer.ts`). These tests reach every transition the Designer's
@@ -31,6 +31,7 @@ function openFrame(f: WorkflowFile, overrides: Partial<Frame> = {}): Frame {
     baseline: bytes,
     openedBytes: bytes,
     history: { past: [], future: [], coalesceKey: undefined },
+    loadSeq: null,
     ...overrides,
   };
 }
@@ -116,31 +117,43 @@ describe("session-reducer — loadLanded staleness guard", () => {
     type: "loadLanded" as const,
     depth: 0,
     path: "flow.workflow.json",
+    loadSeq: 7,
     frameState: { phase: "open" as const, result: { status: "opened" as const, file: file("landed"), idsStamped: false } },
     etag: "etag-landed",
     baseline: canonicalSerialize(file("landed")),
     openedBytes: canonicalSerialize(file("landed")),
   };
+  /** A frame at depth 0 awaiting fetch `seq` — what the reducer puts there when the hook starts one. */
+  const loading = (seq: number, over: Partial<Frame> = {}): Frame => ({
+    ...openFrame(file("flow")),
+    state: { phase: "loading" },
+    loadSeq: seq,
+    ...over,
+  });
 
-  it("patches the frame when it still holds the target path", () => {
-    const start: SessionState = { frames: [{ ...openFrame(file("flow")), state: { phase: "loading" } }], activeIndex: 0, saveState: { phase: "idle" } };
-    const s = reduceSession(start, landed);
+  it("patches the frame when it still awaits that exact fetch", () => {
+    const s = reduceSession(sessionOn(loading(7)), landed);
     expect(activeFile(s).name).toBe("landed");
     expect(s.frames[0]!.etag).toBe("etag-landed");
+    expect(s.frames[0]!.loadSeq).toBeNull(); // landed: the frame is no longer waiting on anything
     expect(s.frames[0]!.history.past).toHaveLength(0);
   });
 
-  it("drops a result whose frame the author already left (path mismatch)", () => {
-    // The author descended, so depth 0 now holds a different file than the in-flight load was for.
-    const start = sessionOn(openFrame(file("other"), { path: "other.workflow.json" }));
-    const s = reduceSession(start, landed);
-    expect(s).toBe(start); // no-op — same reference
+  it("drops a result the frame no longer awaits — the author left and came back to the same path", () => {
+    // Same depth, same path, but a *newer* fetch owns the frame. The seq is the whole verdict; a bare
+    // path comparison would have patched this stale result over the newer one.
+    const start = sessionOn(loading(9));
+    expect(reduceSession(start, landed)).toBe(start); // no-op — same reference
+  });
+
+  it("drops a result for a frame that already landed (no fetch awaited)", () => {
+    const start = sessionOn(openFrame(file("other")));
+    expect(reduceSession(start, landed)).toBe(start);
   });
 
   it("drops a result for a depth the trail no longer reaches", () => {
-    const start = sessionOn(openFrame(file("flow")));
-    const s = reduceSession(start, { ...landed, depth: 5 });
-    expect(s).toBe(start);
+    const start = sessionOn(loading(7));
+    expect(reduceSession(start, { ...landed, depth: 5 })).toBe(start);
   });
 });
 
@@ -210,25 +223,37 @@ describe("session-reducer — newFileSaved back-fill (#390, #391)", () => {
 });
 
 describe("session-reducer — the navigation trail (#367, #391)", () => {
-  it("descendLoading truncates the forward trail and pushes a loading child", () => {
+  it("descend truncates the forward trail and pushes a loading child", () => {
     const root = openFrame(file("root"), { path: "root.workflow.json" });
     const stale = openFrame(file("stale"), { path: "stale.workflow.json" });
     const start: SessionState = { frames: [root, stale], activeIndex: 0, saveState: { phase: "idle" } };
-    const s = reduceSession(start, { type: "descendLoading", path: "child.workflow.json", nodeId: "wf-1" });
+    const s = reduceSession(start, { type: "descend", ref: "child.workflow.json", nodeId: "wf-1", loadSeq: 3 });
     expect(s.frames).toHaveLength(2); // the stale forward frame is dropped
     expect(s.activeIndex).toBe(1);
     expect(s.frames[1]!.state.phase).toBe("loading");
-    expect(s.frames[1]!.path).toBe("child.workflow.json");
+    expect(s.frames[1]!.path).toBe("child.workflow.json"); // resolved against the active frame's own directory
     expect(s.frames[1]!.descendedVia).toBe("wf-1"); // the descent remembers the workflow node it crossed
+    expect(s.frames[1]!.loadSeq).toBe(3); // and the fetch it awaits
   });
 
-  it("descendReuse only moves the active index forward", () => {
+  it("descend re-enters the frame just ahead when it already holds the resolved target", () => {
     const root = openFrame(file("root"), { path: "root.workflow.json" });
-    const child = openFrame(file("child"), { path: "child.workflow.json" });
+    const child = openFrame(file("child"), { path: "flows/child.workflow.json" });
     const start: SessionState = { frames: [root, child], activeIndex: 0, saveState: { phase: "idle" } };
-    const s = reduceSession(start, { type: "descendReuse" });
+
+    const s = reduceSession(start, { type: "descend", ref: "flows/child.workflow.json", nodeId: "wf-1", loadSeq: 3 });
+
     expect(s.activeIndex).toBe(1);
-    expect(s.frames[1]).toBe(child); // the live buffer is untouched
+    expect(s.frames[1]).toBe(child); // the live buffer is untouched, not reloaded out from under the author
+    expect(s.frames).toHaveLength(2);
+  });
+
+  it("descend is a no-op with no file open, or from a from-scratch frame with no path to resolve against", () => {
+    expect(reduceSession(initialSessionState, { type: "descend", ref: "child.workflow.json", nodeId: "wf-1", loadSeq: 3 })).toBe(
+      initialSessionState,
+    );
+    const scratch = reduceSession(initialSessionState, { type: "newFile" });
+    expect(reduceSession(scratch, { type: "descend", ref: "child.workflow.json", nodeId: "wf-1", loadSeq: 3 })).toBe(scratch);
   });
 
   it("descendNewUnbound pushes an unwritten, path-less child linked to the parent node", () => {
@@ -249,10 +274,46 @@ describe("session-reducer — the navigation trail (#367, #391)", () => {
   });
 });
 
+describe("session-reducer — reload is a decision, not a hook guard", () => {
+  it("replaces a written frame with a loading one that awaits the reload's own fetch", () => {
+    const start = sessionOn(openFrame(file("flow"), { descendedVia: "wf-1" }));
+    const s = reduceSession(start, { type: "reload", loadSeq: 4 });
+    expect(s.frames[0]!.state.phase).toBe("loading");
+    expect(s.frames[0]!.loadSeq).toBe(4);
+    expect(s.frames[0]!.descendedVia).toBe("wf-1"); // the descent origin survives a refetch
+  });
+
+  it("is a no-op for an unwritten buffer, so an authored buffer is never discarded for a 404", () => {
+    const scratch = reduceSession(initialSessionState, { type: "newFile" });
+    expect(reduceSession(scratch, { type: "reload", loadSeq: 4 })).toBe(scratch);
+  });
+});
+
+describe("session-reducer — the save doors (#390, #391, ADR 0016)", () => {
+  it("plans an overwrite under the frame's ETag for a written file", () => {
+    const plan = planSave(sessionOn(openFrame(file("flow"), { etag: "etag-1" })));
+    expect(plan).toMatchObject({ kind: "overwrite", depth: 0, path: "flow.workflow.json", ifMatch: "etag-1" });
+    expect(plan && plan.kind === "overwrite" && plan.file.name).toBe("flow");
+  });
+
+  it("plans an exclusive create at the pre-assigned path for an unwritten create-new child", () => {
+    const child = { ...openFrame(file("child"), { path: "flows/child.workflow.json" }), written: false, refParent: { depth: 0, nodeId: uuid(9) } };
+    const plan = planSave({ frames: [openFrame(file("parent")), child], activeIndex: 1, saveState: { phase: "idle" } });
+    expect(plan).toMatchObject({ kind: "create", depth: 1, path: "flows/child.workflow.json", ifMatch: undefined });
+  });
+
+  it("plans nothing for a from-scratch root, which the first-save dialog owns instead", () => {
+    const scratch = reduceSession(initialSessionState, { type: "newFile" });
+    expect(planSave(scratch)).toBeNull();
+    expect(planNewFileSave(scratch)).toMatchObject({ depth: 0 });
+    expect(planNewFileSave(sessionOn(openFrame(file("flow"))))).toBeNull();
+  });
+});
+
 describe("session-reducer — fresh opens reset the stack", () => {
   it("openLoading discards the current trail for one loading root", () => {
     const start: SessionState = { frames: [openFrame(file("a")), openFrame(file("b"))], activeIndex: 1, saveState: { phase: "saved" } };
-    const s = reduceSession(start, { type: "openLoading", path: "fresh.workflow.json" });
+    const s = reduceSession(start, { type: "openLoading", path: "fresh.workflow.json", loadSeq: 1 });
     expect(s.frames).toHaveLength(1);
     expect(s.activeIndex).toBe(0);
     expect(s.frames[0]!.state.phase).toBe("loading");
