@@ -98,18 +98,19 @@ describe("#369 selection populates the pane", () => {
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
   });
 
-  it("offers the prompt type's model workers through the worker dropdown, anthropic marked as the default", async () => {
+  it("offers the prompt type's model workers behind a leading effective-default option", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
 
-    // `RICH_PLUGINS` gives `prompt` two workers, so the generic worker selector renders — the same
-    // mechanism that offers `anthropic` and `deepseek`. No vendor-specific field is involved.
+    // `RICH_PLUGINS` gives `prompt` two workers, so the generic worker selector renders. A leading
+    // empty-value option is the un-pinned "(default)" case, naming the effective resolution and its
+    // tier; the concrete workers follow (ADR 0044, #505).
     const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
-    expect(Array.from(select.options).map((o) => o.value)).toEqual(["anthropic", "batch"]);
-    expect(select.options[0]!.textContent).toBe("anthropic (default)");
+    expect(Array.from(select.options).map((o) => o.value)).toEqual(["", "anthropic", "batch"]);
+    expect(select.options[0]!.textContent).toBe("(default: anthropic — type)");
   });
 
-  it("writes `worker` when a non-default model worker is picked, and drops the key on returning to the default", async () => {
+  it("pins `worker` when a worker is picked, and drops the key when the (default) option is chosen", async () => {
     const calls = makeCalls();
     render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
     await screen.findByText("alpha");
@@ -117,8 +118,8 @@ describe("#369 selection populates the pane", () => {
     const pane = screen.getByRole("region", { name: "Properties" });
     selectNode(canvas, "alpha");
 
-    // A step that names no worker renders as the type's default worker.
-    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("anthropic");
+    // A step that names no worker renders as the leading "(default)" option — value empty, not the type default.
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("");
 
     fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
@@ -128,8 +129,8 @@ describe("#369 selection populates the pane", () => {
     const saved = calls.put.at(-1)!.body.workflow as { body: { name: string; worker?: string }[] };
     expect(saved.body.find((n) => n.name === "alpha")!.worker).toBe("batch");
 
-    // Picking the default again drops the key, so the step is identical to one that never named a worker.
-    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "anthropic" } });
+    // Choosing "(default)" (the empty-value option) drops the key, so the step is identical to one that never named a worker.
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "" } });
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.put.length).toBe(2));
@@ -330,16 +331,76 @@ describe("#369 worker selection", () => {
     expect(within(pane).queryByLabelText("worker")).not.toBeInTheDocument();
   });
 
-  it("shows a default-preselected dropdown for a >1-worker type and writes the chosen worker", async () => {
+  it("preselects the (default) option for a >1-worker type and pins the chosen worker", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha"); // prompt ships anthropic + batch
     const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
-    expect(select.value).toBe("anthropic");
+    // Un-pinned: the leading "(default)" option, value empty.
+    expect(select.value).toBe("");
     fireEvent.change(select, { target: { value: "batch" } });
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
-    // Selecting the default again drops the field back to the default.
-    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "anthropic" } });
+    // Choosing "(default)" (empty value) un-pins again.
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "" } });
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("");
+  });
+});
+
+describe("#505 file worker-defaults", () => {
+  it("ghosts the file worker-default as the effective un-pinned resolution", async () => {
+    const file = { ...paneFile(), worker_defaults: { prompt: "batch" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    selectNode(canvas, "alpha");
+
+    // An un-pinned step resolves to the file default now, so the "(default)" option names it and its tier.
+    const select = within(pane).getByLabelText("worker") as HTMLSelectElement;
+    expect(select.value).toBe("");
+    expect(select.options[0]!.textContent).toBe("(default: batch — file)");
+  });
+
+  it("authors a file worker-default from the file properties and writes it on save", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // Empty-canvas click → the file's own properties, which carry the worker-defaults region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    fireEvent.click(within(pane).getByRole("button", { name: "+ add worker default" }));
+
+    // The only multi-worker type is `prompt`, added with its default worker; a constrained retarget to `batch`.
+    expect((within(pane).getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
     expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("anthropic");
+    fireEvent.change(within(pane).getByLabelText("worker"), { target: { value: "batch" } });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put.length).toBe(1));
+    expect(calls.put.at(-1)!.body.workflow.worker_defaults).toEqual({ prompt: "batch" });
+  });
+
+  it("reads an existing worker_defaults row back and drops the key when the last row is removed", async () => {
+    const calls = makeCalls();
+    const file = { ...paneFile(), worker_defaults: { prompt: "batch" } };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+
+    // The stored map reads back into a constrained row.
+    expect((within(pane).getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
+    expect((within(pane).getByLabelText("worker") as HTMLSelectElement).value).toBe("batch");
+
+    // Removing the last row drops the whole key, so `worker_defaults: {}` never lands.
+    fireEvent.click(within(pane).getByRole("button", { name: "Remove this worker default" }));
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put.length).toBe(1));
+    expect(calls.put.at(-1)!.body.workflow).not.toHaveProperty("worker_defaults");
   });
 });
 

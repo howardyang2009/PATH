@@ -36,4 +36,11 @@ export interface WorkflowFile {
   config?: ConfigObject;
   body: WorkflowNode[];
   output?: { [key: string]: JsonValue };
+  /**
+   * The **file worker-default** table (ADR 0044): a `{ <stepType>: <workerName> }` map picking which
+   * worker a type's *un-pinned* steps use in this file. File-scoped — it never crosses a `workflow`-ref
+   * boundary. A *selection* by name, not config inheritance (CONTEXT.md invariant 5). Registry-relative
+   * validity (a real type shipping that worker) is checked at engine load, not by this shape.
+   */
+  worker_defaults?: { [stepType: string]: string };
 }
