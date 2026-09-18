@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { BranchNode, CheckpointNode, JsonValue, WhileDoNode, WorkflowFile } from "@path/schema";
+import type { BranchNode, CheckpointNode, JsonValue, RunRecord, WhileDoNode, WorkflowFile } from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
@@ -100,6 +100,39 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
   return { context, onPublish: async () => {} };
+}
+
+/**
+ * One run row of the tree being Completed (ADR 0041), spanning every field the disposition reads.
+ * `parentRunId` defaults to this fixture's run id, which is what makes it "this node's row".
+ */
+function existingRow(over: Partial<RunRecord> & Pick<RunRecord, "runId" | "nodeId" | "status">): RunRecord {
+  return {
+    rootRunId: "run-1",
+    parentRunId: "run-1",
+    nodeName: over.nodeId,
+    workerName: null,
+    iteration: null,
+    startedAt: "t0",
+    finishedAt: null,
+    inputRef: null,
+    outputRef: null,
+    usage: null,
+    estimatedCostUsd: null,
+    resumedFromRootRunId: null,
+    rerunFromNodePath: null,
+    reusedFromRunId: null,
+    reusedFromRootRunId: null,
+    workflowId: null,
+    workflowName: null,
+    workflowPath: null,
+    ...over,
+  };
+}
+
+/** A `prompt` node with a worker that would run if the node were not reused — the execution detector. */
+function askNode(): Node {
+  return { type: "prompt", id: "ask", name: "ask", prompt: "Hi." };
 }
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
@@ -664,6 +697,108 @@ describe("runNode — workflow step", () => {
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/is not in the loaded tree/);
+  });
+
+  it("re-enters a running nested run in place when the tree is being Completed (ADR 0041)", async () => {
+    const reads: string[] = [];
+    const { run, observed } = makeRun({
+      files: new Map([[childPath(), child]]),
+      continue: {
+        // The parked tree's nested run is still `running` (ADR 0038: awaiting does not propagate), so
+        // the replay re-drives it under the identity its parked descendants already carry.
+        existingRuns: [existingRow({ runId: "child-run", nodeId: "nested", status: "running" })],
+        readBlob: (row, filename): JsonValue => {
+          reads.push(`${row.runId}:${filename}`);
+          // A re-entered run starts from its restored blackboard, not a fresh input seed.
+          return filename === "context.json" ? { name: "world" } : {};
+        },
+        target: { stepRunId: "a-parked-leaf-deeper-down", output: null },
+      },
+    });
+    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: { name: "world" } };
+
+    const outcome = await runNode(run, node, "seed", makeExec());
+
+    expect(outcome).toEqual({ status: "succeeded", output: { greeting: "world" } });
+    // Re-entered, so no second `run-started` row for the child, and its own context was restored.
+    expect(observed.find((o) => o.type === "run-started" && o.runId === "child-run")).toBeUndefined();
+    expect(reads).toContain("child-run:context.json");
+  });
+});
+
+describe("runNode — a node's own recorded row decides the walk (ADR 0041)", () => {
+  it("reuses the recorded output of a succeeded row in the tree being Completed, running nothing", async () => {
+    const requests: StepRequest[] = [];
+    const { run, observed } = makeRun({
+      continue: {
+        existingRuns: [existingRow({ runId: "done-run", nodeId: "ask", status: "succeeded", outputRef: "runs/root/done/output.json" })],
+        readBlob: () => "recorded-output",
+        target: { stepRunId: "some-other-leaf", output: null },
+      },
+      runtime: promptRuntime(recordingWorker(requests)),
+    });
+
+    const outcome = await runNode(run, askNode(), "seed", makeExec());
+
+    expect(outcome).toEqual({ status: "succeeded", output: "recorded-output" });
+    expect(requests).toHaveLength(0);
+    // Reused read-only from its own row: no reuse marker, no step run, no new row.
+    expect(observed).toHaveLength(0);
+  });
+
+  it("transitions the parked leaf being Completed in place, under its own run id", async () => {
+    const { run, observed } = makeRun({
+      continue: {
+        existingRuns: [existingRow({ runId: "parked-run", nodeId: "ask", status: "awaiting" })],
+        readBlob: () => null,
+        target: { stepRunId: "parked-run", output: "the person's answer" },
+      },
+    });
+
+    const outcome = await runNode(run, askNode(), "seed", makeExec());
+
+    expect(outcome).toEqual({ status: "succeeded", output: "the person's answer" });
+    // The terminal observation names the parked leaf's own run, so persistence flips that row.
+    expect(observed.find((o) => o.type === "step-finished")).toMatchObject({
+      runId: "parked-run",
+      status: "succeeded",
+      output: "the person's answer",
+    });
+  });
+
+  it("parks again on a still-parked sibling, re-driving nothing (park-at-join)", async () => {
+    const requests: StepRequest[] = [];
+    const { run, observed } = makeRun({
+      continue: {
+        existingRuns: [existingRow({ runId: "other-parked", nodeId: "ask", status: "awaiting" })],
+        readBlob: () => null,
+        target: { stepRunId: "a-different-leaf", output: null },
+      },
+      runtime: promptRuntime(recordingWorker(requests)),
+    });
+
+    expect(await runNode(run, askNode(), "seed", makeExec())).toEqual({ status: "awaiting" });
+    expect(requests).toHaveLength(0);
+    expect(observed).toHaveLength(0);
+  });
+
+  it("runs fresh when the only recorded row is terminal — a cancelled row is not re-entered", async () => {
+    const requests: StepRequest[] = [];
+    const { run, observed } = makeRun({
+      continue: {
+        existingRuns: [existingRow({ runId: "cancelled-run", nodeId: "ask", status: "cancelled" })],
+        readBlob: () => null,
+        target: { stepRunId: "some-other-leaf", output: null },
+      },
+      runtime: promptRuntime(recordingWorker(requests)),
+    });
+
+    const outcome = await runNode(run, askNode(), "seed", makeExec());
+
+    expect(outcome.status).toBe("succeeded");
+    expect(requests).toHaveLength(1);
+    // A fresh step run, not the terminal row's id.
+    expect(observed.find((o) => o.type === "step-started")?.runId).not.toBe("cancelled-run");
   });
 });
 

@@ -502,6 +502,13 @@ async function runWorkflowNode(
   node: Extract<WorkflowFile["body"][number], { type: "workflow" }>,
   stepInput: JsonValue,
   ctx: StepContext,
+  /**
+   * The existing row of *this* tree this nested run re-enters in place, when a Complete replay
+   * reached it (ADR 0041) — `resolveNodeDisposition`'s `reenter`. Undefined on a fresh forward run,
+   * which mints its own id. The lookup lives there, not here, so every walker answers "does this node
+   * already have a run" the same way.
+   */
+  existingRun?: RunRecord,
 ): Promise<SeqOutcome> {
   if (!isJsonObject(stepInput)) {
     return {
@@ -518,17 +525,12 @@ async function runWorkflowNode(
     return { status: "failed", error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
-  // Complete-continue (ADR 0041): a nested run still `running` in this tree is re-entered **in place**
-  // — same run id, no `run-started` — so its parked descendants resolve under the identity they
-  // already have. A node with no existing run is a fresh forward run appended past the parked leaf; it
-  // mints an id like any launch run. (A `succeeded` nested run never reaches here — `runNode` reused
-  // it and did not descend.)
-  const continueExisting =
-    ctx.run.continue !== undefined
-      ? findExistingChild(ctx.run.continue.existingRuns, ctx.run.identity.runId, node.id)
-      : undefined;
+  // A nested run still `running` in the tree being Completed is re-entered **in place** (ADR 0041) —
+  // same run id, no `run-started` — so its parked descendants resolve under the identity they already
+  // have. `runNode` passed that row in from `resolveNodeDisposition`; a node with none is a fresh
+  // forward run appended past the parked leaf, minting an id like any launch run.
   const childIdentity: RunIdentity = {
-    runId: continueExisting?.runId ?? randomUUID(),
+    runId: existingRun?.runId ?? randomUUID(),
     rootRunId: ctx.run.identity.rootRunId,
     parentRunId: ctx.run.identity.runId,
     nodeId: node.id,
@@ -551,7 +553,7 @@ async function runWorkflowNode(
     cancellation: ctx.exec.cancellation,
     // Continue this child in place when the tree is being Completed (undefined otherwise): its own
     // existing row (re-enter) or undefined (fresh forward run under the same root).
-    continue: ctx.run.continue ? { state: ctx.run.continue, existing: continueExisting } : undefined,
+    continue: ctx.run.continue ? { state: ctx.run.continue, existing: existingRun } : undefined,
     // Resume recurses into every non-succeeded workflow-run, not just the root (#172,
     // resume-restore-semantics.md §2): the child re-enters against its own original counterpart, so
     // its already-succeeded grandchildren reuse rather than re-running from scratch. Producer B (ADR
@@ -875,6 +877,58 @@ function findExistingChild(
       (iteration === undefined || r.iteration === iteration),
   );
   return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * What a node's own recorded row says about how the walk should proceed — the **one** answer to
+ * "does this node already have a run here, and what does its status mean", read by the three walkers
+ * that own one: `runNode` (a leaf or `workflow` step), `runWorkflowNode` (a nested workflow-run
+ * re-entered in place) and `runLoopIteration` (a `while-do` iteration container).
+ *
+ * Resume and Complete are different trees with different rules, so the two modes are separate arms,
+ * and are mutually exclusive by construction. A **Resume** consults the reuse plan: a fresh successor
+ * tree whose reused node reads the *original's* recorded output (ADR 0001). A **Complete** consults
+ * this same tree's own rows, read-only (ADR 0041): a succeeded row is its own output, a parked row is
+ * either the leaf being Completed or a still-parked sibling, and a non-terminal row is re-entered in
+ * place.
+ */
+type NodeDisposition =
+  /** Resume: the reuse plan holds a succeeded original run for this node id — reuse its output. */
+  | { kind: "reuse"; original: RunRecord }
+  /** Complete: this tree's row for the node already succeeded — read its output, re-run nothing. */
+  | { kind: "succeeded"; existing: RunRecord }
+  /** Complete: this tree's row is the parked leaf being Completed — transition it in place. */
+  | { kind: "complete"; existing: RunRecord }
+  /** Complete: this tree's row is a still-parked sibling — park the walk again (park-at-join). */
+  | { kind: "park" }
+  /** Complete: an existing non-terminal row this node re-enters in place (a nested run, an iteration). */
+  | { kind: "reenter"; existing: RunRecord }
+  /** Nothing recorded answers this node — run it fresh. */
+  | { kind: "fresh" };
+
+/**
+ * Resolve {@link NodeDisposition} for one node of one workflow-run. `iteration` scopes the lookup to
+ * a `while-do` iteration container's ordinal (`findExistingChild`); every other node leaves it out.
+ *
+ * A non-terminal row is only re-entered in place by a node that owns a re-enterable run — a nested
+ * `workflow` step, or a loop iteration container. A leaf has nothing to re-enter: a Complete replay of
+ * a parked tree never finds a live leaf row (the engine tears down at an awaiting leaf, ADR 0039), and
+ * a cancelled or failed row is not a state to resume — so a leaf with one runs fresh.
+ */
+function resolveNodeDisposition(run: RunContext, node: WorkflowNode, iteration?: number): NodeDisposition {
+  const continuing = run.continue;
+  if (continuing) {
+    const existing = findExistingChild(continuing.existingRuns, run.identity.runId, node.id, iteration);
+    if (!existing) return { kind: "fresh" };
+    if (existing.status === "succeeded") return { kind: "succeeded", existing };
+    if (existing.status === "awaiting") {
+      return existing.runId === continuing.target.stepRunId ? { kind: "complete", existing } : { kind: "park" };
+    }
+    if (node.type === "workflow" || iteration !== undefined) return { kind: "reenter", existing };
+    return { kind: "fresh" };
+  }
+  const original = run.resume?.plan.get(node.id);
+  return original ? { kind: "reuse", original } : { kind: "fresh" };
 }
 
 /**
@@ -1397,17 +1451,19 @@ async function runLoopIteration(
   iterationInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  // Complete-continue (ADR 0041): the existing container for this ordinal in the tree being Completed.
-  // A `succeeded` one is reused read-only — its recorded output threads the loop's default-input chain
-  // and the body is not re-walked. A `running` one is the parked iteration, re-entered in place (same
-  // id, no `run-started`). None means a fresh iteration appended past the parked leaf.
-  const continueExisting =
-    run.continue !== undefined ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id, iteration) : undefined;
-  if (run.continue && continueExisting && continueExisting.status === "succeeded") {
-    return { status: "succeeded", output: readExistingOutput(run.continue, continueExisting) };
+  // Complete-continue (ADR 0041): `resolveNodeDisposition` answers what this iteration's recorded row
+  // means — a `succeeded` container is reused read-only (its recorded output threads the loop's
+  // default-input chain and the body is not re-walked), a `running` one is the parked iteration,
+  // re-entered in place (same id, no `run-started`), and none means a fresh iteration appended past
+  // the parked leaf.
+  const disposition = resolveNodeDisposition(run, node, iteration);
+  const continuing = run.continue;
+  if (continuing && disposition.kind === "succeeded") {
+    return { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
   }
+  const existingContainer = disposition.kind === "reenter" ? disposition.existing : undefined;
   const containerIdentity: RunIdentity = {
-    runId: continueExisting?.runId ?? randomUUID(),
+    runId: existingContainer?.runId ?? randomUUID(),
     rootRunId: run.identity.rootRunId,
     parentRunId: run.identity.runId,
     nodeId: node.id,
@@ -1416,7 +1472,7 @@ async function runLoopIteration(
   };
   const containerEmitter = run.emitter.child(containerIdentity);
   // A re-entered running container already has its row; a fresh iteration starts one.
-  if (continueExisting === undefined) await containerEmitter.runStarted({ input: iterationInput });
+  if (existingContainer === undefined) await containerEmitter.runStarted({ input: iterationInput });
 
   // The container reuses this run's file/config/env/runtime/detached/continue, swapping only its
   // identity, emitter, and resume state; `exec` (the shared context) is passed unchanged so the body
@@ -1547,6 +1603,10 @@ export async function runNode(
   // `$secret` (#116, ADR 0022 sub-4) — the same call the run-start gate validated against.
   const stepConfig = resolveEffectiveConfig(mergeConfig(run.fileConfig, node.config), run.env);
 
+  // Which of the four dispositions this node takes — reuse (Resume), reuse-this-tree's-output /
+  // re-enter / park (Complete), or run fresh — is `resolveNodeDisposition`'s one answer, so this
+  // walker, `runWorkflowNode` and `runLoopIteration` cannot disagree about what a recorded row means.
+  //
   // Resume reuse (#172): a node whose recorded run this successor tree reuses does not execute at
   // all — its output is the original run's recorded `output.json`, read once from the read-only
   // original tree, and a `reuse-marker` is its whole trace (no step-started/step-finished, no run
@@ -1554,39 +1614,36 @@ export async function runNode(
   // and returning without `runWorkflowNode` means nothing inside it is ever walked — so the marker
   // fires once per reuse decision, never once per descendant. Everything downstream treats the
   // reused output identically to a freshly produced one, so the `publish` block below is shared.
-  const reused = run.resume?.plan.get(node.id);
-  // Complete-continue (ADR 0041): the existing run of *this* tree that answers this node, if any.
-  const existingChild = run.continue ? findExistingChild(run.continue.existingRuns, run.identity.runId, node.id) : undefined;
+  const disposition = resolveNodeDisposition(run, node);
   let outcome: SeqOutcome;
   // A leaf runner reports its minted step emitter here (via `onLeafStep`), so the post-publish
   // context snapshot below is attributed to the step's own run id. A reused node and a nested
   // `workflow` node leave this undefined — the former emits no step run, the latter keeps its own
   // context.json — so neither gets a per-step snapshot here.
   let leafStep: StepEmitter | undefined;
-  if (run.continue && existingChild && existingChild.status === "succeeded") {
+  const continuing = run.continue;
+  if (continuing && disposition.kind === "succeeded") {
     // A node already `succeeded` in this tree is reused **read-only from its own row** — no reuse
     // marker and no new row, because unlike Resume this is not a fresh successor tree. Its recorded
     // output threads down the default-input chain, and a `succeeded` `workflow` node collapses its
     // whole subtree here exactly as Resume's reuse does (we never descend into it).
-    outcome = { status: "succeeded", output: readExistingOutput(run.continue, existingChild) };
-  } else if (run.continue && existingChild && existingChild.status === "awaiting") {
-    if (existingChild.runId === run.continue.target.stepRunId) {
-      // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
-      // read-only exception) by re-entering its own step-run id and finishing it with the supplied
-      // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
-      // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
-      // the node's `publish` land just as they would for a freshly produced leaf output.
-      const step = run.emitter.step(node, existingChild.runId);
-      leafStep = step;
-      outcome = await finishSucceeded(step, node, run.continue.target.output);
-    } else {
-      // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
-      // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
-      return { status: "awaiting" };
-    }
-  } else if (run.resume && reused) {
-    const output = run.resume.input.readBlob(reused, RUN_BLOB_FILE.output);
-    await run.emitter.reuseMarker(node, { originalRunId: reused.runId });
+    outcome = { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
+  } else if (continuing && disposition.kind === "complete") {
+    // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
+    // read-only exception) by re-entering its own step-run id and finishing it with the supplied
+    // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
+    // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
+    // the node's `publish` land just as they would for a freshly produced leaf output.
+    const step = run.emitter.step(node, disposition.existing.runId);
+    leafStep = step;
+    outcome = await finishSucceeded(step, node, continuing.target.output);
+  } else if (disposition.kind === "park") {
+    // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
+    // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
+    return { status: "awaiting" };
+  } else if (run.resume && disposition.kind === "reuse") {
+    const output = run.resume.input.readBlob(disposition.original, RUN_BLOB_FILE.output);
+    await run.emitter.reuseMarker(node, { originalRunId: disposition.original.runId });
     outcome = { status: "succeeded", output };
   } else {
     const scope: InterpolationScope = { config: configScope(stepConfig), context: exec.context };
@@ -1602,7 +1659,9 @@ export async function runNode(
     // branch (ADR 0021 sub-8). These were two literals side by side, sharing seven fields (#76).
     const step: StepContext = { run, exec, stepConfig, onLeafStep: (emitted) => (leafStep = emitted) };
     if (node.type === "workflow") {
-      outcome = await runWorkflowNode(node, stepInput, step);
+      // A `reenter` disposition (ADR 0041) hands the child its own existing row, so the nested run is
+      // re-driven in place under the same run id instead of mints a second one.
+      outcome = await runWorkflowNode(node, stepInput, step, disposition.kind === "reenter" ? disposition.existing : undefined);
     } else {
       outcome = await runLeafStep(node as unknown as LeafStepNode, stepInput, step);
     }
