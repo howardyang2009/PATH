@@ -1,9 +1,4 @@
-import { findRootRun, RUN_PRODUCING_TYPES, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
-
-// The run-producing types now live in `@path/schema` (invariant 1), so the engine's reuse plan and the
-// client's eager legal-K check share one authority. Re-exported here so the engine's own importers keep
-// reading it from the reuse module that uses it.
-export { RUN_PRODUCING_TYPES };
+import { findRootRun, isStepType, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
 
 /** A re-read tree's node ids that reuse, each pointing at the original run whose data it reuses. */
 export type ReusePlan = Map<string, RunRecord>;
@@ -45,7 +40,7 @@ export function planReuse(
 
   const candidates = originalRuns.filter((run) => run.parentRunId === scopeRunId);
   for (const node of walkNodes(tree.body)) {
-    if (!RUN_PRODUCING_TYPES.has(node.type)) continue;
+    if (!isStepType(node.type)) continue;
     if (suppress?.has(node.id)) continue;
     const succeeded = candidates.filter((candidate) => candidate.nodeId === node.id && candidate.status === "succeeded");
     const [only] = succeeded;
@@ -90,7 +85,7 @@ export function findNestedCounterpart(
 function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
   let sawRunProducing = false;
   for (const inner of walkNodes([branch])) {
-    if (RUN_PRODUCING_TYPES.has(inner.type)) {
+    if (isStepType(inner.type)) {
       sawRunProducing = true;
       if (!plan.has(inner.id)) return false;
     }
@@ -104,7 +99,7 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
 function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
   let completedAt: string | null = null;
   for (const inner of walkNodes([branch])) {
-    if (RUN_PRODUCING_TYPES.has(inner.type)) {
+    if (isStepType(inner.type)) {
       const record = plan.get(inner.id);
       const finishedAt = record?.finishedAt ?? null;
       if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;

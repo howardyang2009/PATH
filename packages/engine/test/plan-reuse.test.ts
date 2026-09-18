@@ -173,6 +173,17 @@ describe("planReuse (#170)", () => {
     expect(plan.get("gate")).toBe(originalRuns[1]);
   });
 
+  it("reuses a succeeded leaf of any plugin type, not only the built-ins (ADR 0019/0021)", () => {
+    // The same shape as `person`, one folder over: a plugin type the schema never names. It mints one
+    // run per node id like any step, so a Resume must reuse it; only an allowlist of built-in names
+    // would skip it.
+    const apiCall = { type: "api-call", id: "fetch", name: "fetch", endpoint: "https://example.test" } as unknown as WorkflowNode;
+    const originalRuns = [root(), run({ runId: "fetch-run", parentRunId: "root", nodeId: "fetch", nodeName: "fetch", status: "succeeded" })];
+    const plan = planReuse(originalRuns, tree([apiCall]));
+
+    expect(plan.get("fetch")).toBe(originalRuns[1]);
+  });
+
   it("does not reuse a person-activity still parked (awaiting) — it re-runs and re-awaits (resume-from-k.md)", () => {
     const originalRuns = [root(), run({ runId: "gate-run", parentRunId: "root", nodeId: "gate", nodeName: "gate", status: "awaiting" })];
     const plan = planReuse(originalRuns, tree([person("gate")]));

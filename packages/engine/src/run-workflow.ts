@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { findRootRun, formatIssues, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
-import { findNestedCounterpart, planReuse, RUN_PRODUCING_TYPES } from "./plan-reuse.js";
+import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
@@ -261,21 +261,16 @@ interface WorkflowRunParams {
 }
 
 type WorkflowNode = WorkflowFile["body"][number];
-type ControlNode = Extract<WorkflowNode, { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" }>;
+type ControlNode = Extract<WorkflowNode, { type: ControllerType }>;
 
 // The five engine-evaluated control constructs — everything the node walker owns itself, with no run
 // of its own (CONTEXT invariant 1). `workflow` is *not* here: it runs a nested workflow-run, so it
-// takes the step path beside the leaf types. A `type` that is none of these five is a leaf step —
-// `binary`, `prompt`, or any plugin folder — dispatched through the registry (ADR 0019 sub-10). The
-// closed set is the six reserved names minus `workflow`, so a plugin type can never fall in here.
+// takes the step path beside the leaf types. A `type` that is not a controller is a step — `binary`,
+// `prompt`, `workflow`, or any plugin folder — dispatched through the registry (ADR 0019 sub-10). The
+// controller set is `@path/schema`'s (`isStepType`, derived from the node union), so this guard and
+// the reuse plan's cannot drift: `ControllerType` is exactly what `isStepType` excludes.
 function isControlNode(node: WorkflowNode): node is ControlNode {
-  return (
-    node.type === "parallel" ||
-    node.type === "branch" ||
-    node.type === "while-do" ||
-    node.type === "sequence" ||
-    node.type === "checkpoint"
-  );
+  return !isStepType(node.type);
 }
 
 /**
@@ -836,7 +831,7 @@ function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<string> | u
   }
   const suppress = new Set<string>();
   for (const node of walkNodes(file.body.slice(i))) {
-    if (RUN_PRODUCING_TYPES.has(node.type)) suppress.add(node.id);
+    if (isStepType(node.type)) suppress.add(node.id);
   }
   return suppress;
 }

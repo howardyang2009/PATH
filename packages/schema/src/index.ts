@@ -70,13 +70,14 @@ export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathReso
 // be silently skipped by anything that walks a workflow body.
 export {
   CONTROL_CHILD_SLOTS,
-  RUN_PRODUCING_TYPES,
   childBodies,
   enclosingControlBlock,
+  isStepType,
   mapChildBodies,
   walkNodes,
   type ChildSlot,
   type ControlBlockKind,
+  type ControllerType,
   type NodeChildBody,
 } from "./node-walk.js";
 
