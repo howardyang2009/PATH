@@ -243,9 +243,16 @@ and issues use them exactly.
    runtime).
 5. A step inherits config downward from the enclosing workflow, unless the step overrides it. Worker
    does **not** inherit: a worker name is type-scoped, so a step selects its own by name, else a
-   **worker-default** for its type (launch before file), else its type's **default worker** (#309). A
-   **file worker-default** is file-scoped and never crosses a nested `workflow`-ref boundary, so this
-   stays a per-type selection, not inheritance.
+   **worker-default** for its type (launch before file), else its type's **default worker** (#309). The
+   worker-default tiers **narrow** this invariant, they do not breach it: a default is a **selection** —
+   a type-scoped name picked among a type's already-scanned workers — never an **inheritance**, which
+   flows a *value* from a parent node down to a child by tree position. #309's reason survives: a name
+   stays meaningless across types. A **file worker-default** is file-scoped and never crosses a nested
+   `workflow`-ref boundary (each ref-file authors its own), so it is plainly a per-type selection. A
+   **launch worker-default** is run-wide, so it does reach a nested `workflow`-ref file — not by
+   inheriting from the parent file, but because the operator set one flat per-type table for the whole
+   run, applied the same to every un-pinned step at any depth. Both tiers are selection, for two
+   different reasons.
 
 ## Relationships
 

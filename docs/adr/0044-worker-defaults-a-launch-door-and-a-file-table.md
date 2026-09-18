@@ -47,6 +47,18 @@ the same file-is-authority stance as person-activity's `outputSchema` (ADR 0040)
 - **Freeze the file table on the run too.** Rejected: it needs a second persisted map and makes the file
   lie about what a re-run does; file edits are explicit and git-visible, and touch only re-run steps.
 
+## Invariant 5: reframed, not breached
+
+#309 fixed *no worker inheritance* as a keystone (ADR 0021), and #503 asks whether a run-level default
+breaks it. It does not. Inheritance flows a *value* from an enclosing node to its children by tree
+position; a worker-default is a *selection* — a type-scoped name chosen among a type's already-scanned
+workers, keyed by type, not by position. #309's reason — a worker name is meaningless across types —
+holds unchanged. So invariant 5 is **narrowed** (selection gains tiers: `node.worker` → launch → file →
+type default), not deleted. The file tier shows this by staying file-scoped; the launch tier reaches
+every file of the run yet is still selection, because the operator sets one flat per-type table for the
+whole run, not a value the parent file hands to a child. The breach reading — that #309 was wrong and
+invariant 5 must be rewritten — is rejected.
+
 ## Consequences
 
 - The `runs` root row gains a persisted launch-worker-default map; the `POST /v0/runs` body and the CLI
