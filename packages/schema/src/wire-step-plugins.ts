@@ -56,45 +56,45 @@ export interface StepPluginsResponse {
   step_plugins: WireStepPlugin[];
 }
 
-/** Read a zod schema's kind tag, e.g. `ZodString`, from its def. Undefined for anything not a zod schema. */
+/**
+ * Read a zod schema's kind tag, e.g. `string`, from its def. Undefined for anything not a zod schema.
+ * zod v4 stores the kind as the already-lowercase `_def.type` (`string`, `array`, `optional`, …); the
+ * v3 `_def.typeName` (`ZodString`) is gone, so the tag needs no `Zod`-prefix stripping any more.
+ */
 function typeName(schema: ZodTypeAny): string | undefined {
-  const def = (schema as { _def?: { typeName?: unknown } })._def;
-  return typeof def?.typeName === "string" ? def.typeName : undefined;
-}
-
-/** The lowercase wire `type` for a zod kind tag: `ZodString` → `string`, `ZodRecord` → `record`. */
-function wireKind(name: string): string {
-  return name.replace(/^Zod/, "").toLowerCase();
+  const def = (schema as { _def?: { type?: unknown } })._def;
+  return typeof def?.type === "string" ? def.type : undefined;
 }
 
 /**
  * Project one field's zod schema to its wire descriptor (see `WireFieldSpec`). It unwraps the
  * optional/nullable/default wrappers to a base kind — recording `optional` when it meets `.optional()`
  * — then reads the container inner type for an array or a record. It reads zod internals (`_def`)
- * because zod v3 ships no public schema-to-JSON, and it never throws on an unknown kind: the descriptor
+ * because zod ships no public schema-to-JSON, and it never throws on an unknown kind: the descriptor
  * degrades to the bare `type`, and the editor's raw-JSON floor takes it from there.
  */
 export function describeField(schema: ZodTypeAny, optional = false): WireFieldSpec {
   const name = typeName(schema);
-  const def = (schema as { _def?: Record<string, unknown> })._def ?? {};
+  const def = (schema as unknown as { _def?: Record<string, unknown> })._def ?? {};
 
-  // Unwrap the wrappers that only decorate an inner schema. `ZodOptional` sets `optional`; nullable and
+  // Unwrap the wrappers that only decorate an inner schema. `optional` sets `optional`; nullable and
   // default do not — the descriptor names *whether the key may be omitted*, which only `.optional()` is.
-  if (name === "ZodOptional") {
+  if (name === "optional") {
     return describeField(def.innerType as ZodTypeAny, true);
   }
-  if (name === "ZodNullable" || name === "ZodDefault") {
+  if (name === "nullable" || name === "default") {
     return describeField(def.innerType as ZodTypeAny, optional);
   }
 
-  if (name === "ZodArray") {
-    return { type: "array", optional, element: describeField(def.type as ZodTypeAny) };
+  // zod v4 renames the array element def `type` → `element`; a record's value stays `valueType`.
+  if (name === "array") {
+    return { type: "array", optional, element: describeField(def.element as ZodTypeAny) };
   }
-  if (name === "ZodRecord") {
+  if (name === "record") {
     return { type: "record", optional, values: describeField(def.valueType as ZodTypeAny) };
   }
 
-  return { type: name ? wireKind(name) : "unknown", optional };
+  return { type: name ?? "unknown", optional };
 }
 
 /** Project one `fields` fragment (a `ZodRawShape`) to its wire descriptor map, field name → descriptor. */

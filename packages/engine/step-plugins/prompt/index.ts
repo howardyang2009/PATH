@@ -38,7 +38,7 @@ const fields = {
 // opaque worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets.
 const config = {
   model: z.string(),
-  options: z.record(z.unknown()).optional(),
+  options: z.record(z.string(), z.unknown()).optional(),
 };
 
 /**

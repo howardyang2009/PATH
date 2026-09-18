@@ -141,12 +141,16 @@ function unregisteredTypesMessage(absent: AbsentStepType[]): string {
  * schemas, and this read-only render draws no plugin field value, so field-level validation is neither
  * possible nor needed here; the `.strict()` member still rejects an unknown field key and an unknown
  * worker name. `config` is left empty (passthrough via the member factory).
+ *
+ * Each field is `z.unknown().optional()`: zod v3 made an `unknown` object key implicitly optional,
+ * but zod v4 does not, so the `.optional()` is now explicit — without it every declared field would be
+ * required and a valid file omitting one (`binary` with no `args`/`cwd`) would fail to open.
  */
 export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   const registry: StepPluginRegistry = {};
   for (const plugin of plugins) {
     const fields: Record<string, z.ZodTypeAny> = {};
-    for (const fieldName of Object.keys(plugin.fields)) fields[fieldName] = z.unknown();
+    for (const fieldName of Object.keys(plugin.fields)) fields[fieldName] = z.unknown().optional();
     registry[plugin.name] = {
       fields,
       config: {},
