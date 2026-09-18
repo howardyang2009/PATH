@@ -13,6 +13,7 @@ import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
 import { useRunWatch } from "./run/use-run-watch.js";
 import { useEditLeases } from "./use-edit-leases.js";
+import { useWorkflowDiscovery } from "./discovery.js";
 import { useFileProblems } from "./use-file-problems.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
@@ -70,10 +71,15 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // `onAuthorRef` handle; the chooser renders from `refAuthoring.target`.
   const refAuthoring = useRefAuthoring(session, openedFile, activePath);
 
-  // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it owns the
-  // discovery scan, the dangling-ref lookup, and the whole-file walk, derived once and shared by its two
-  // readers — the canvas markers/panel and the launch button's warning count — so the two cannot disagree.
-  const problems = useFileProblems(client, openedFile, activePath, session.saveState.phase);
+  // Workflow discovery, loaded once for the whole surface (`discovery.ts`): the problems pass, the
+  // open-existing picker, the first-save directory list and the ref-target picker all project this one
+  // snapshot, so a save that writes a file (or a scan that lands mid-dialog) reads the same everywhere.
+  const discovery = useWorkflowDiscovery(client, session.saveState.phase);
+
+  // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it projects
+  // discovery into the dangling-ref lookup and derives the whole-file walk once, shared by its two readers —
+  // the canvas markers/panel and the launch button's warning count — so the two cannot disagree.
+  const problems = useFileProblems(openedFile, activePath, discovery);
   // Launch is **badged, not blocked**: the count rides the launch button so the author runs knowingly (a
   // saved-with-warnings file is clean).
   const warningCount = problems.length;
@@ -227,7 +233,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         author asked to save. It decides the path; a successful create closes it and the frame is saved. */}
     {newFileOpen && openedFile && activePath === undefined ? (
       <NewFileDialog
-        client={client}
+        discovery={discovery}
         workflowName={openedFile.name}
         create={session.saveNewFile}
         onCreated={() => setNewFileOpen(false)}
@@ -237,13 +243,13 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     {/* The open-existing picker (#254): choose a discovered workflow and open it as a fresh root. Shown
         above the shell from either the empty-canvas affordance or the toolbar's Open button. */}
     {openExistingOpen ? (
-      <OpenWorkflowDialog client={client} onOpen={openExisting} onCancel={() => setOpenExistingOpen(false)} />
+      <OpenWorkflowDialog discovery={discovery} onOpen={openExisting} onCancel={() => setOpenExistingOpen(false)} />
     ) : null}
     {/* The ref-target chooser (#391): reference an existing workflow, or create a new one and descend into
         its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
     {refAuthoring.target !== null ? (
       <RefTargetDialog
-        client={client}
+        discovery={discovery}
         excludePath={refAuthoring.target.excludePath}
         onPickExisting={refAuthoring.pickExisting}
         onCreateNew={refAuthoring.createNew}

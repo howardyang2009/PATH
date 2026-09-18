@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type { PathApiClient } from "@path/client-core";
+import { useMemo, useState } from "react";
+import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
 import type { SaveNewFileResult } from "./use-open-file.js";
 
 /**
@@ -8,9 +8,10 @@ import type { SaveNewFileResult } from "./use-open-file.js";
  * confined to the project root and a filename, and the save is an **exclusive create** — an existing path
  * is refused ("choose another name"), never a silent overwrite (ADR 0016).
  *
- * - **Where.** A directory picker over the project's discovered directories (`GET /v0/workflows`), the
- *   **project root** always offered and the default. The server confines the resolved path to the root
- *   (a path that escapes it is a `404`), so every offered choice is in-root by construction.
+ * - **Where.** A directory picker over the project's discovered directories (the App's one
+ *   `discovery.ts` snapshot), the **project root** always offered and the default. The server confines
+ *   the resolved path to the root (a path that escapes it is a `404`), so every offered choice is
+ *   in-root by construction.
  * - **Name.** The filename stem is prefilled from the workflow's `name` and is author-editable, but the
  *   **`.workflow.json` suffix is enforced** — it is a fixed adornment the author cannot edit away, because
  *   discovery lists only that suffix.
@@ -19,13 +20,13 @@ import type { SaveNewFileResult } from "./use-open-file.js";
  *   launch).
  */
 export function NewFileDialog({
-  client,
+  discovery,
   workflowName,
   create,
   onCreated,
   onCancel,
 }: {
-  client: PathApiClient;
+  discovery: DiscoveryLoad;
   /** The buffer's own `name` — the prefilled filename stem (it slugs cleanly, `^[a-z][a-z0-9-]*$`). */
   workflowName: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
@@ -35,31 +36,19 @@ export function NewFileDialog({
   /** Dismiss without saving; the from-scratch buffer stays on the canvas untouched. */
   onCancel: () => void;
 }): JSX.Element {
-  const [directories, setDirectories] = useState<string[]>([""]);
   const [directory, setDirectory] = useState("");
   const [stem, setStem] = useState(workflowName);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Discover the project's directories for the picker — the parent of every known workflow, plus the
-  // root. A discovery failure is not fatal: the root is always offered, so a save can still proceed.
-  useEffect(() => {
-    let alive = true;
-    client
-      .listWorkflows()
-      .then((response) => {
-        if (!alive) return;
-        const dirs = new Set<string>([""]);
-        for (const wf of response.workflows) dirs.add(dirnameOf(wf.relative_path));
-        setDirectories([...dirs].sort());
-      })
-      .catch(() => {
-        // Keep the root-only default; the picker still works, just without discovered subdirectories.
-      });
-    return () => {
-      alive = false;
-    };
-  }, [client]);
+  // The project's directories for the picker — the parent of every discovered workflow, plus the root.
+  // Nothing discovered (still scanning, or a failed scan) is not fatal: the root is always offered, so a
+  // save can still proceed.
+  const directories = useMemo(() => {
+    const dirs = new Set<string>([""]);
+    for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
+    return [...dirs].sort();
+  }, [discovery]);
 
   const cleanStem = normalizeStem(stem);
   const targetPath = useMemo(() => composePath(directory, cleanStem), [directory, cleanStem]);

@@ -1,10 +1,5 @@
-import { useEffect, useMemo, useState } from "react";
-import type {
-  PathApiClient,
-  WorkflowSummary,
-  WorkflowTreeFolder,
-  WorkflowTreeNode,
-} from "@path/client-core";
+import { useMemo, useState } from "react";
+import type { WorkflowTreeFolder, WorkflowTreeNode } from "@path/client-core";
 import {
   buildWorkflowTree,
   countWorkflowLeaves,
@@ -12,6 +7,7 @@ import {
   nextOpenFolder,
   workflowBaseName,
 } from "@path/client-core";
+import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
 
 /**
  * The open-existing-workflow picker (#254, designer-spec § Opening a file). A modal over the
@@ -23,41 +19,26 @@ import {
  * Discovery is presented as the same **folder tree** the Viewer's WORKFLOWS panel draws (the shared
  * `workflow-tree` seam): each level shows only its own children — the workflow files that sit there,
  * plus the folders that hold a workflow below — and a folder opens one-per-level as an accordion. A
- * folder click walks in; a file click opens that workflow. The dialog owns only its own discovery load
- * and the tree's open-state; the App decides what a pick does (discard the current stack and open the
- * chosen file), because that touches the whole session.
+ * folder click walks in; a file click opens that workflow. The dialog owns only the tree's open-state;
+ * the App loads discovery (`discovery.ts`) and decides what a pick does (discard the current stack and
+ * open the chosen file), because that touches the whole session.
  */
 export function OpenWorkflowDialog({
-  client,
+  discovery,
   onOpen,
   onCancel,
 }: {
-  client: PathApiClient;
+  discovery: DiscoveryLoad;
   /** Open this already-discovered workflow at its project-relative path as a fresh root. */
   onOpen: (path: string) => void;
   /** Dismiss without opening anything; the current canvas stays as it was. */
   onCancel: () => void;
 }): JSX.Element {
-  // `null` until the discovery scan lands; an empty array is "none discovered". Best-effort: a failed scan
-  // reads as an empty list here, so the dialog still opens with its "no workflows" note rather than hanging.
-  const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   // The deepest open folder path (accordion, one open folder per level; see `workflow-tree`).
   const [openFolder, setOpenFolder] = useState<string | null>(null);
-
-  useEffect(() => {
-    let alive = true;
-    client
-      .listWorkflows()
-      .then((response) => {
-        if (alive) setWorkflows(response.workflows);
-      })
-      .catch(() => {
-        if (alive) setWorkflows([]);
-      });
-    return () => {
-      alive = false;
-    };
-  }, [client]);
+  // `null` until a scan lands, which reads as "still discovering". A failed scan with nothing behind it
+  // reads as an empty list here, so the dialog still opens with its "no workflows" note.
+  const workflows = discoveredWorkflows(discovery);
 
   const tree = useMemo(() => (workflows ? buildWorkflowTree(workflows) : []), [workflows]);
 
