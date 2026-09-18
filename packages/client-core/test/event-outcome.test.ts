@@ -1,6 +1,6 @@
 import type { LogEvent } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { eventOutcome } from "../src/event-outcome.js";
+import { eventOutcome, isRootRunFinished, runStatusAfter } from "../src/event-outcome.js";
 
 const ENVELOPE = { seq: 1, ts: "2026-07-25T10:00:00.000Z", run_id: "run_a", node_id: "step-a", node_name: "step-a" } as const;
 
@@ -48,5 +48,49 @@ describe("eventOutcome", () => {
 
   it("passes a checkpoint verdict through as a success", () => {
     expect(eventOutcome({ ...ENVELOPE, type: "checkpoint-passed", trace: TRACE })).toBe("succeeded");
+  });
+});
+
+describe("runStatusAfter", () => {
+  it("walks a live run to running on its own step-started", () => {
+    const event: LogEvent = { ...ENVELOPE, type: "step-started", step_type: "binary", worker_name: "spawn" };
+    expect(runStatusAfter("pending", event)).toBe("running");
+  });
+
+  it("does not walk a terminal run backward on a replayed step-started", () => {
+    const event: LogEvent = { ...ENVELOPE, type: "step-started", step_type: "binary", worker_name: "spawn" };
+    expect(runStatusAfter("succeeded", event)).toBe("succeeded");
+    expect(runStatusAfter("failed", event)).toBe("failed");
+    expect(runStatusAfter("cancelled", event)).toBe("cancelled");
+  });
+
+  it("parks a live run on awaiting, and never reopens one a Complete already finished", () => {
+    const event: LogEvent = { ...ENVELOPE, type: "step-awaiting", assignee: null };
+    expect(runStatusAfter("running", event)).toBe("awaiting");
+    expect(runStatusAfter("succeeded", event)).toBe("succeeded");
+  });
+
+  it("takes a step-finished verdict as the run's status, and leaves other events alone", () => {
+    const finished: LogEvent = { ...ENVELOPE, type: "step-finished", status: "failed", error: "boom" };
+    expect(runStatusAfter("running", finished)).toBe("failed");
+    expect(eventOutcome(finished)).toBe("failed");
+    // A control-node event owns no run of its own, so it moves no run's status.
+    expect(runStatusAfter("running", { ...ENVELOPE, type: "branch-taken", arm: 0, trace: TRACE })).toBe("running");
+  });
+});
+
+describe("isRootRunFinished", () => {
+  it("is true only for the root run's own node-less finish", () => {
+    const rootFinish: LogEvent = { ...ENVELOPE, run_id: "root", node_id: null, type: "step-finished", status: "succeeded" };
+    expect(isRootRunFinished(rootFinish, "root")).toBe(true);
+    // A leaf's finish carries the leaf's node id.
+    expect(
+      isRootRunFinished({ ...ENVELOPE, run_id: "root", node_id: "step-a", type: "step-finished", status: "succeeded" }, "root"),
+    ).toBe(false);
+    // A nested workflow-run's finish is not the tree's own.
+    expect(
+      isRootRunFinished({ ...ENVELOPE, run_id: "child", node_id: null, type: "step-finished", status: "succeeded" }, "root"),
+    ).toBe(false);
+    expect(isRootRunFinished({ ...ENVELOPE, run_id: "root", node_id: null, type: "step-awaiting", assignee: null }, "root")).toBe(false);
   });
 });

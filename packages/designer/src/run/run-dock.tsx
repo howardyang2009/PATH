@@ -96,7 +96,6 @@ export function RunDock(props: RunDockProps): JSX.Element {
     props.load.phase === "ready" && props.selectedRunId !== null
       ? props.load.value.runs.get(props.selectedRunId)
       : undefined;
-  const narrative = props.load.phase === "ready" ? props.load.value.narrative : [];
 
   return (
     <section
@@ -151,6 +150,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
               // below plain Resume (ADR 0033). The Designer feeds it its open buffer
               // (`rootFile`/`dirty`) for the eager legal-K check; K is the node selected in the tree.
               resumeTree={props.load.phase === "ready" ? props.load.value.runs : undefined}
+              // The watched run's display status, so its row reads `awaiting` while a leaf is parked
+              // even though the list's summary status stays `running` (ADR 0038).
+              displayStatus={props.load.phase === "ready" ? props.load.value.displayStatus : undefined}
               resumeSelectedRunId={props.selectedRunId}
               resumeRootFile={props.rootFile}
               resumeDirty={props.dirty}
@@ -199,8 +201,9 @@ export function RunDock(props: RunDockProps): JSX.Element {
               <NodeIo
                 client={props.client}
                 run={selectedRun}
-                runs={props.load.phase === "ready" ? props.load.value.runs : undefined}
-                narrative={narrative}
+                // One snapshot feeds the pane: it reads this run's display status and error off the view
+                // rather than scanning the run map and the event narrative itself (ADR 0025/0031).
+                view={props.load.phase === "ready" ? props.load.value : undefined}
                 workflowFiles={props.rootFile ? [props.rootFile] : []}
               />
             )}

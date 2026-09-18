@@ -126,6 +126,35 @@ describe("RunViewModel", () => {
     expect(model.getState().runs.get(CHILD)?.status).toBe("awaiting");
   });
 
+  it("publishes the derived facts a surface reads: display status, awaiting leaves, last error", () => {
+    const model = new RunViewModel(ROOT);
+    const t = tree("running");
+    t.runs.push({
+      ...t.runs[0]!,
+      run_id: CHILD,
+      parent_run_id: ROOT,
+      node_id: "check-git-result",
+      node_name: "check-git-result",
+    });
+    model.hydrate(t);
+
+    model.applyEvent(stepAwaiting(1, CHILD, "check-git-result", "alice"));
+    const parked = model.getState();
+    // The child's record is awaiting; its parent's record stays running (ADR 0038) while the display
+    // status flips, and the parked leaf is published for a surface that counts them.
+    expect(parked.runs.get(ROOT)?.status).toBe("running");
+    expect(parked.displayStatus.get(ROOT)).toBe("awaiting");
+    expect(parked.displayStatus.get(CHILD)).toBe("awaiting");
+    expect([...parked.awaitingRunIds]).toEqual([CHILD]);
+
+    model.applyEvent({ ...stepFinished(2, CHILD, "check-git-result", "failed"), error: "review rejected" } as LogEvent);
+    const failed = model.getState();
+    // The park is over: the root reads `running` again, no leaf awaits, and the failure is published.
+    expect(failed.displayStatus.get(ROOT)).toBe("running");
+    expect(failed.awaitingRunIds.size).toBe(0);
+    expect(failed.lastError.get(CHILD)).toBe("review rejected");
+  });
+
   it("lands an awaiting leaf on `awaiting`, not `running`, after a full replay on reload", () => {
     const model = new RunViewModel(ROOT);
     // Reload: hydrate reads the server tree, where the parked leaf is already `awaiting`.

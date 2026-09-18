@@ -1,12 +1,11 @@
 import {
   awaitingNodeForRun,
-  effectiveRunStatus,
   isReuseRow,
   isTerminal,
   nodeLabel,
-  type LogEvent,
   type PathApiClient,
   type RunNodeState,
+  type RunViewFacts,
   type WorkflowFile,
 } from "@path/client-core";
 import { useState } from "react";
@@ -16,25 +15,19 @@ import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
 import { useRunBlob, type BlobLoad } from "./use-run-blob.js";
 
-/** A stable empty map for the default `runs`, so the effect-free derivation never allocates per render. */
-const EMPTY_RUNS: ReadonlyMap<string, RunNodeState> = new Map();
-
 export interface NodeIoProps {
   client: PathApiClient;
   /** The run selected in the tree, as the live snapshot holds it — one step's run. */
   run: RunNodeState;
   /**
-   * The whole run map of the watched tree, so the head pill derives the same display status the rail
-   * and the run-detail head show (`effectiveRunStatus`): a running run with an awaiting run below reads
-   * `awaiting`. Empty by default — the head then shows the run's own record status. Only the pill uses
-   * it; the Complete surface and the blob reads stay keyed on the real `run.status`.
+   * The watched run's derived facts (`RunViewFacts`): its display status — a running run with an
+   * awaiting run below reads `awaiting`, the same fact the rail and the run-detail head read — and the
+   * failure message it reached. The view owns both, so this pane asks rather than re-deriving them from
+   * the run map and the event narrative; absent before anything is watched, and the pane then shows the
+   * run's own record status and no error. Only the pill and the E block use it; the Complete surface and
+   * the blob reads stay keyed on the real `run.status`.
    */
-  runs?: ReadonlyMap<string, RunNodeState>;
-  /**
-   * The root run's narrative, so the pane can surface this run's own failure message (the E block).
-   * Optional and empty-by-default: before any event is known the pane simply has no error to show.
-   */
-  narrative?: readonly LogEvent[];
+  view?: RunViewFacts;
   /**
    * The watched run's reachable workflow files, parsed structurally: the root file and every file its
    * `workflow` steps ref, transitively (`loadReachableWorkflowFiles`). An `awaiting` leaf's
@@ -44,22 +37,6 @@ export interface NodeIoProps {
    * awaiting surface then degrades to a schema-less submit.
    */
   workflowFiles?: readonly WorkflowFile[];
-}
-
-/**
- * The failure message this run reached, or null. The error text rides the `step-finished` event, not
- * the run record (mvp spec §8.1) — a leaf step's carries its exit code and a stderr tail, a
- * workflow-run's carries the control-node failure that bubbled up. The narrative is `seq`-ordered, so
- * the last such event for the run is its final word; a `cancelled` finish carries no `error`.
- */
-function runErrorMessage(runId: string, narrative: readonly LogEvent[]): string | null {
-  let message: string | null = null;
-  for (const event of narrative) {
-    if (event.type === "step-finished" && event.run_id === runId && event.error !== undefined) {
-      message = event.error;
-    }
-  }
-  return message;
 }
 
 /**
@@ -91,14 +68,16 @@ function contextBlobRef(run: RunNodeState): string {
  * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
  * it after a write-through changes it.
  */
-export function NodeIo({ client, run, narrative = [], workflowFiles = [], runs }: NodeIoProps) {
+export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
   const settled = isTerminal(run.status);
-  // The head pill uses the shared display status (a running run with an awaiting run below reads
-  // `awaiting`); everything else on this run — the Complete surface, the blob settling — stays on the
-  // real `run.status`, because a flipped ancestor is not itself awaiting and has no completion to make.
-  const displayStatus = effectiveRunStatus(run, runs ?? EMPTY_RUNS);
-  const errorMessage = runErrorMessage(run.runId, narrative);
+  // Both head facts come off the view's snapshot (a running run with an awaiting run below reads
+  // `awaiting`; the error is the last failed `step-finished` for this run). Everything else on this run
+  // — the Complete surface, the blob settling — stays on the real `run.status`, because a flipped
+  // ancestor is not itself awaiting and has no completion to make. With nothing watched, the head falls
+  // back to the run's own record status and shows no error.
+  const displayStatus = view?.displayStatus.get(run.runId) ?? run.status;
+  const errorMessage = view?.lastError.get(run.runId) ?? null;
   // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
   // from the workflow file by id (they never ride the run row); the file may be the root or any nested
   // one its `workflow` steps ref, so the search spans the whole reachable set (issue #486 follow-up). A
@@ -192,8 +171,9 @@ export function NodeIo({ client, run, narrative = [], workflowFiles = [], runs }
  * The E block: the run's own failure message. Rendered only when the run actually failed — unlike the
  * I/O/C blocks, which are slots every run legitimately has (so an absent-note there is informative),
  * an error is the exception, not a slot. A success, a still-running or a cancelled run has no error,
- * so the block stays absent rather than announcing "no error" on every healthy run. It reads a plain
- * string off the narrative, so it renders the text verbatim rather than as JSON.
+ * so the block stays absent rather than announcing "no error" on every healthy run. The message is a
+ * plain string the view folded off the run's `step-finished` event, so it renders verbatim, as JSON it
+ * is not.
  */
 function ErrorBlock({ message }: { message: string }) {
   return (

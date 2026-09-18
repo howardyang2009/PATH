@@ -1,4 +1,4 @@
-import type { PathApiClient, RunNodeState, WorkflowFile } from "@path/client-core";
+import { displayStatusByRun, type PathApiClient, type RunNodeState, type WorkflowFile } from "@path/client-core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -231,7 +231,10 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
       ["run_root", runState({ runId: "run_root", parentRunId: null, nodeId: null, nodeName: null, status: "running" })],
       ["run_legal", runState()],
     ]);
-    render(<NodeIo client={stubClient()} run={runs.get("run_root")!} runs={runs} workflowFiles={[ROOT_FILE]} />);
+    // The view publishes the derived fact (the shared derivation, exercised here through the real
+    // function); the pane only renders what it is given.
+    const view = { displayStatus: displayStatusByRun(runs), lastError: new Map<string, string>() };
+    render(<NodeIo client={stubClient()} run={runs.get("run_root")!} view={view} workflowFiles={[ROOT_FILE]} />);
 
     // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so it
     // gets no Complete surface — that stays keyed on the real status.

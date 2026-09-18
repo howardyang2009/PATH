@@ -1,4 +1,4 @@
-import { effectiveRunStatus, isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import { isTerminal, type PathApiClient, type WorkflowFile } from "@path/client-core";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CancelButton } from "./cancel-button.js";
 import { Narrative } from "./narrative.js";
@@ -111,13 +111,13 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
 
   const state = load.value;
   const root = state.runs.get(rootRunId);
-  // The head shows the same derived status the rail does: a root whose leaf is parked reads `awaiting`
-  // although its record stays `running` (ADR 0038). One shared derivation, so the panes never disagree.
-  const displayStatus = effectiveRunStatus({ runId: rootRunId, status: state.status }, state.runs);
+  // The head shows the fact the view published, so it agrees with the rail, the tree and the node
+  // pane: a root whose leaf is parked reads `awaiting` although its record stays `running` (ADR 0038).
+  // A root the map does not hold yet (its row has not arrived) falls back to the snapshot's own status.
+  const displayStatus = state.displayStatus.get(rootRunId) ?? state.status;
   // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
   // more than one does, so the operator sees at a glance there is more than the selected one to act on.
-  let awaitingCount = 0;
-  for (const run of state.runs.values()) if (run.status === "awaiting") awaitingCount += 1;
+  const awaitingCount = state.awaitingRunIds.size;
   // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
   // The finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
   const cancellable = !isTerminal(state.status);

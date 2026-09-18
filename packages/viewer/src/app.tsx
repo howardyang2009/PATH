@@ -110,6 +110,9 @@ export function App({ client }: { client: PathApiClient }) {
           // than only on the engine's refusal. It never edits, so `dirty` stays false. K is the node
           // picked in the detail pane's run tree.
           resumeTree={load.phase === "ready" ? load.value.runs : undefined}
+          // The watched run's display status, so its row reads `awaiting` while a leaf is parked even
+          // though the list's summary status stays `running` (ADR 0038).
+          displayStatus={load.phase === "ready" ? load.value.displayStatus : undefined}
           resumeSelectedRunId={selectedRunId}
           resumeRootFile={rootFile}
         />
@@ -135,8 +138,9 @@ export function App({ client }: { client: PathApiClient }) {
           <NodeIo
             client={client}
             run={selectedRun}
-            runs={load.phase === "ready" ? load.value.runs : undefined}
-            narrative={load.phase === "ready" ? load.value.narrative : []}
+            // One snapshot feeds the pane: it reads this run's display status and error off the view
+            // rather than scanning the run map and the event narrative itself (ADR 0025).
+            view={load.phase === "ready" ? load.value : undefined}
             workflowFiles={workflowFiles}
           />
         )

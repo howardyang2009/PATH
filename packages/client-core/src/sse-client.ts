@@ -1,5 +1,6 @@
 import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 import { defaultFetch, type FetchLike } from "./api-client.js";
+import { isRootRunFinished } from "./event-outcome.js";
 
 /**
  * A pure-TS SSE client for `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5). No DOM, so no
@@ -86,11 +87,6 @@ export interface RunEventSubscription {
   close(): void;
 }
 
-/** The root implicit step finishing (`node_id: null`) marks the whole root run terminal (§5). */
-function isRootTerminal(event: LogEvent): boolean {
-  return event.type === "step-finished" && event.node_id === null;
-}
-
 export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEventSubscription {
   const baseUrl = options.baseUrl.replace(/\/+$/, "");
   const doFetch = options.fetch ?? defaultFetch;
@@ -113,7 +109,7 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
     lastSeq = event.seq;
     if (event.type === "step-awaiting") awaitingRuns.add(event.run_id);
     else if (event.type === "step-finished") awaitingRuns.delete(event.run_id);
-    if (isRootTerminal(event)) terminalSeen = true;
+    if (isRootRunFinished(event, options.rootRunId)) terminalSeen = true;
     options.onEvent(event);
   };
 
