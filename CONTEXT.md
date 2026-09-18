@@ -34,7 +34,15 @@ and issues use them exactly.
 - **Worker-default** — a `{ <type>: <worker-name> }` table that sets which worker a type's *un-pinned*
   steps use, chosen among that type's already-scanned workers by name. It never names or adds code, so it
   is a selection, not a **workerOverrides**. A table naming an absent type, or a worker a type does not
-  ship, is a hard load error naming both (the replace-only discipline, registry-relative validity). Two
+  ship, is rejected registry-relative, and the two tiers fail through **two channels** (#506). A **file
+  worker-default** fails as **file-invalidity**: its check is a registry-fed refinement at engine load, so
+  discovery reports the file invalid and the Designer refuses to open it, beside an unknown `node.worker`
+  or step type (ADR 0026); a bad child table invalidates the child file, not its parent, because the table
+  is file-scoped. A **launch worker-default** fails at the **launch boundary**: the CLI exits non-zero and
+  the server returns `400`, because it is operator input authored in no file and seen by no Designer, so
+  the operator fixes it at launch where an author fixes a file. Both channels **aggregate** — one verdict
+  names every bad entry (like an unset `$env`) — and each error names its source and lists either the
+  installed types (absent type) or the type's shipped worker names (absent worker). Two
   tiers exist, and a node's own `worker` still beats both. A **file worker-default** is authored as a
   top-level `worker_defaults` key on a workflow file; it is **file-scoped** (it never crosses into a
   nested `workflow`-ref file, which carries its own) and is **live**, re-read from the current file on
