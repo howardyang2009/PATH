@@ -8,7 +8,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "test": "vitest run",
+    "test": "vitest run --exclude '**/dist/**'",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -17,6 +17,6 @@
   "devDependencies": {
     "@types/node": "^24.13.3",
     "typescript": "^7.0.2",
-    "vitest": "^2.1.9"
+    "vitest": "^5.0.1"
   }
 }
