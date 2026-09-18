@@ -18,9 +18,9 @@ resume); a **launch worker-default** is supplied by the operator at launch, is *
   and `config`, **not** inside `config`.
 - **Merge**: shallow, per type. `{prompt: deepseek}` at launch leaves every other type's file/type
   resolution untouched.
-- **Validation**: both tables are checked at load, registry-relative. A key naming an absent type, or a
-  worker a type does not ship, is a hard load error naming both — the same replace-only discipline as
-  `workerOverrides` (`run-workflow.ts`).
+- **Validation**: both tables are checked at load, registry-relative — but through **two channels**, one
+  per tier (#506, see "Validation site" below). A key naming an absent type, or a worker a type does not
+  ship, is rejected against the run's one registry.
 
 ## Persistence and resume
 
@@ -57,6 +57,49 @@ from the frozen launch default and the current file. So a predecessor (reused, b
 live-file stance, not a fault. A completed step's worker is a recorded fact; replay reconstructs it per
 row, not as a set.
 
+## Validation site: two channels, one per tier (#506)
+
+Both tables validate registry-relative, but not through one `workerOverrides`-style throw. A
+`workerOverrides` entry names author-trusted code and is host-only, so its unknown-type/unknown-worker
+check throws at registry resolution (`run-workflow.ts`). A worker-default is a *selection*, and its two
+tiers are authored by two different parties in two different places, so they fail in two different places.
+
+- **File table → file-invalidity.** The file `worker_defaults` is authored file data, the same class as a
+  node's `worker` pin. Its registry-relative check is a **registry-fed refinement at engine load**, not a
+  throw and not the registry-agnostic base file schema (`z.record(string,string)` stays shape-only). A bad
+  entry makes the *file* invalid, so **discovery** reports it invalid and the **Designer refuses to open
+  it** (ADR 0026), beside an unknown `node.worker` or an unknown step type. The author sees it at author
+  time. The pane already blocks an invalid `{ type, worker }` pair, but a hand-edited file bypasses the
+  pane, so the load-time net is what catches it. This holds even while the file table is **inert** (the
+  sequencing note below): the check ships with the schema key, so an inert table that names a bad worker
+  still fails to load rather than round-tripping unchecked into a later trap.
+- **Launch table → launch boundary.** The launch `--worker-default` / `POST /v0/runs` field is operator
+  input, authored in no file and seen by no Designer. A bad entry is a **bad request**, not an engine
+  fault: the CLI exits non-zero and the server returns **`400`** before the run starts. The operator fixes
+  their own launch; an author cannot, and need not, fix an operator's flag.
+
+The asymmetry is the point of #506's third question. The file author is caught at author time because the
+file surfaces are the ones that read the file; the operator is caught at launch time because that is the
+only surface their input passes through. Same taxonomy, different site, because the two tiers have
+different authors.
+
+**Nesting.** The registry is one, run-wide. Every discovered file (root and each nested `workflow`-ref
+file) validates its **own** file-scoped table against that one registry, so a bad child table invalidates
+the *child* file, not its parent. The launch table validates **once**, run-wide, at the launch boundary.
+
+**Error taxonomy.** Two failure classes, each channel:
+
+- **Absent type** — echoes the named type, lists the installed types, names the remedy (a plugin folder in
+  the reader's own tree), like the unknown-`type` node error (`run-workflow.ts`). It fires even when no
+  node uses the type: the table names it, so the table is wrong.
+- **Type present, worker absent** — lists the type's shipped worker names, like the `node.worker` enum
+  error (`nodes.ts`).
+
+Each error prefixes its **source** — `worker_defaults in <file>: …` versus `--worker-default: …` — so the
+reader knows where to fix it. Both channels **aggregate**: one verdict names every bad entry across the
+table (the file report folds them in beside a bad `node.worker`/unknown type, like an unset `$env`
+naming every missing variable), never first-entry-only as the `workerOverrides` throw does.
+
 ## Considered options
 
 - **Reach it through `config` (`--set worker_defaults.prompt=deepseek`).** Rejected: config *inherits*
@@ -70,6 +113,10 @@ row, not as a set.
   for the codemod. The launch table fills only steps that named none.
 - **Freeze the file table on the run too.** Rejected: it needs a second persisted map and makes the file
   lie about what a re-run does; file edits are explicit and git-visible, and touch only re-run steps.
+- **One `workerOverrides`-style throw for both tables (#506).** Rejected: it fails the file author only at
+  run/launch, past discovery and past the Designer, though the file table is authored file data that those
+  surfaces read. Splitting the channel by tier catches the file author at author time (file-invalidity)
+  and the operator at launch time (`400`), each at the only surface their input passes through.
 
 ## Invariant 5: reframed, not breached
 
@@ -113,5 +160,8 @@ is operator-launch-time, authored in no file, so the Designer never shows it (#5
 - CONTEXT.md adds **worker-default** (with **file** and **launch** tiers), rewrites **default worker** as
   the bottom of a four-tier resolution, and updates invariant 5.
 - The resume route is unchanged in shape: it still takes only `config` and `rerun_from_run_id`.
+- The file table's registry-relative check is a registry-fed load-time refinement surfaced as
+  file-invalidity (discovery + Designer, ADR 0026); the launch table's is a launch-boundary `400` / CLI
+  non-zero (#506). Both aggregate every bad entry and prefix their source.
 - The Designer gains a `worker_defaults` file-properties region and an effective-default ghost on the
   worker dropdown; `toWireStepPlugins` and `ENVELOPE_KEYS` are unchanged (#505).
