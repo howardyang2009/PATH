@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { findRootRun, formatIssues, isStepType, mapSecrets, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ConfigValue, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
@@ -25,7 +25,7 @@ import type { StepRequest, StepResult, WorkerDescriptor } from "./plugin/seam.js
 import { createProcessorSemaphore, DEFAULT_PROCESSOR_CONCURRENCY } from "./processor-semaphore.js";
 import { mergeConfig } from "./merge-config.js";
 import { OutputParseError, parseStepOutput } from "./parse-output.js";
-import { describeUnsetEnv, type EnvSource, resolveConfigEnv, resolveRunEnv } from "./resolve-env.js";
+import { describeUnsetEnv, type EnvSource, resolveEffectiveConfig, resolveRunEnv } from "./resolve-env.js";
 import { ObserverError, type RunObserver } from "./run-observer.js";
 import { collectSecrets, maskObservation, type SecretMasker } from "./secret-mask.js";
 
@@ -352,11 +352,12 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   let previousOutput: JsonValue = input;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
-  // declared defaults key by key, nearest wins (format doc §8). One of
-  // the two points a run materializes effective config, so one of the two that resolve `$env`
-  // (#116) — what survives the merge is what a worker can read, and it reaches one holding a real
-  // value rather than a wrapper. Idempotent, so the already-resolved incoming half is untouched.
-  const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), params.env).config;
+  // declared defaults key by key, nearest wins (format doc §8). One of the two points a run
+  // materializes effective config, so one of the two that resolve `$env` and unwrap `$secret`
+  // (#116, ADR 0022 sub-4) — what survives the merge is what every reader downstream sees: the
+  // run-start gate, interpolation, conditions and the worker, with no wrapper left in it.
+  // Idempotent, so the already-effective incoming half is untouched.
+  const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), params.env);
   const run: RunContext = { file, fileDir, fileConfig, identity, emitter, files, env: params.env, runtime: params.runtime, resume, continue: params.continue?.state, detached: [] };
   const fail = async (error: string): Promise<RunResult> => {
     await emitter.runFinished({ status: "failed", error });
@@ -708,18 +709,6 @@ async function finishSucceeded(
 // non-cancellable run has no enclosing signal. One shared instance — it never fires.
 const NEVER_ABORT = new AbortController().signal;
 
-// Unwrap every `$secret` in an effective config object to its real value, for the worker (ADR 0022
-// sub-4: config reaches `run` already `$env`/`$secret`-resolved). `$env` is resolved upstream at the
-// effective-config merge; this is the `$secret` half. Per config *value*, keyed by the config key, so
-// a config field awkwardly named `$secret` is not mistaken for a wrapper (the `resolve-env.ts` rule).
-function unwrapConfigSecrets(config: ConfigObject): ConfigObject {
-  const resolved: ConfigObject = {};
-  for (const [key, value] of Object.entries(config)) {
-    resolved[key] = mapSecrets(value as unknown as JsonValue, (secret) => secret) as unknown as ConfigValue;
-  }
-  return resolved;
-}
-
 /**
  * A leaf step of any type: dispatch through the frozen registry to the selected worker and map its
  * `StepResult` (ADR 0021 sub-8). Leaf dispatch is one `(type, worker-name)` lookup with no built-in
@@ -766,10 +755,6 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
-  // The worker reads real values: `$env` resolved at the effective-config merge, `$secret` unwrapped
-  // here (ADR 0022 sub-4). Masking stays a persistence-boundary concern only (ADR 0020).
-  const config = unwrapConfigSecrets(ctx.stepConfig);
-
   const release = descriptor.needsProcessorSlot ? await ctx.run.runtime.semaphore.acquire() : undefined;
   try {
     // The step's run id is minted (and its row starts) only once any processor slot is really held.
@@ -780,7 +765,10 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     const request: StepRequest = {
       fields: fields as StepRequest["fields"],
       input: stepInput,
-      config: config as unknown as StepRequest["config"],
+      // The worker reads real values: the effective config is what it is — `$env` resolved and
+      // `$secret` unwrapped where the config was materialized (ADR 0022 sub-4, `resolveEffectiveConfig`).
+      // Masking stays a persistence-boundary concern only (ADR 0020).
+      config: ctx.stepConfig as unknown as StepRequest["config"],
       cwd: ctx.run.fileDir,
       signal: ctx.exec.signal ?? NEVER_ABORT,
     };
@@ -1185,21 +1173,23 @@ function validateRunStartConfig(
   const issues: string[] = [];
 
   function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): void {
-    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
       if (node.type === "workflow") {
         // The child file inherits this step's effective config across the boundary (format §8), so it
         // is validated once per (file, incoming-config) it is reached with — the same file under two
         // parents is two validations, each against what actually reaches it.
-        const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+        const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
         const child = files?.get(resolve(dir, node.ref));
         if (child) walk(child, stepConfig, dirname(resolve(dir, node.ref)));
         continue;
       }
       const plugin = registry[node.type];
       if (!plugin) continue; // the schema already rejects a type no registry contributes
-      const stepConfig = unwrapConfigSecrets(resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config);
+      // One resolution for this step, the same call the executor makes, so the gate validates exactly
+      // the object the worker will receive — no per-site unwrap to keep in step (#116, ADR 0022 sub-4).
+      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
       const result = z.object(plugin.config).passthrough().safeParse(stepConfig);
       if (!result.success) {
         for (const issue of formatIssues(result.error)) {
@@ -1223,8 +1213,8 @@ export interface ResolvedNode {
   node: WorkflowNode;
   /**
    * The `config` scope a caller interpolates this node's fields against — the file's config merged
-   * with the node's own, `$env`-resolved, `$secret` still wrapped, exactly the shape `runLeafStep`
-   * hands `configScope` when it interpolates fields at execution time.
+   * with the node's own, `$env`-resolved and `$secret` unwrapped (`resolveEffectiveConfig`), exactly
+   * the object `runLeafStep` hands `configScope` when it interpolates fields at execution time.
    */
   config: ConfigObject;
 }
@@ -1249,10 +1239,10 @@ export function resolveNode(
   const files = options.files;
 
   function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): ResolvedNode | undefined {
-    const fileConfig = resolveConfigEnv(mergeConfig(file.config ?? {}, incomingConfig), env).config;
+    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
-      const stepConfig = resolveConfigEnv(mergeConfig(fileConfig, nodeConfig), env).config;
+      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
       if (node.id === nodeId) return { node, config: stepConfig };
       // A nested `workflow` step's ref'd file has its own body of ids to search, entered with this
       // step's effective config (config crosses the boundary; context does not — format §8).
@@ -1553,8 +1543,9 @@ export async function runNode(
 
   // Only steps carry config, an input map and a publish map — the control nodes are transparent to
   // all three, which is why this half of the function has no counterpart above. The second of the
-  // two points effective config is materialized, and so the second that resolves `$env` (#116).
-  const stepConfig = resolveConfigEnv(mergeConfig(run.fileConfig, node.config), run.env).config;
+  // two points effective config is materialized, and so the second that resolves `$env` and unwraps
+  // `$secret` (#116, ADR 0022 sub-4) — the same call the run-start gate validated against.
+  const stepConfig = resolveEffectiveConfig(mergeConfig(run.fileConfig, node.config), run.env);
 
   // Resume reuse (#172): a node whose recorded run this successor tree reuses does not execute at
   // all — its output is the original run's recorded `output.json`, read once from the read-only

@@ -1,24 +1,27 @@
-import { mapEnv, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
+import { mapEnv, mapSecrets, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
 
 /**
- * The engine's read of the environment behind `{"$env": "<NAME>"}` (workflow-format-v0.md §8.3,
- * ticket #116).
+ * The engine's read of the two config wrappers — `{"$env": "<NAME>"}` (workflow-format-v0.md §8.3,
+ * ticket #116) and `{"$secret": …}` (ADR 0022 sub-4).
  *
- * Where a wrapper may sit is @path/schema's answer (`mapEnv`); this module only says what to do on
- * reaching one — look the name up, or record it as unset. The same split `interpolate.ts` and
- * `secret-mask.ts` are to `mapSecrets`, and the reason `@path/schema` stays pure: the shape and the
- * walk are the format's, the read is the engine's.
+ * Where a wrapper may sit is @path/schema's answer (`mapEnv`/`mapSecrets`); this module only says what
+ * to do on reaching one — look the name up, record it as unset, or hand the marked value back. The
+ * same split `interpolate.ts` and `secret-mask.ts` are to `mapSecrets`, and the reason `@path/schema`
+ * stays pure: the shape and the walk are the format's, the read is the engine's.
  *
- * Two callers, one policy (`run-workflow.ts`):
+ * Three callers, two policies:
  *
  * - **Run start** (`resolveRunEnv`), over every config object the run can read: unset names fail the
  *   run before its first step, and the *resolved* values are what the masker collects. That ordering
  *   is forced — masking is by value (mvp spec §8.3), so a `{"$secret": {"$env": "TOKEN"}}` collected
  *   before resolution would have the masker scrubbing the literal string `TOKEN` while the
  *   credential itself reached disk unmasked.
- * - **Effective config assembly**, at the two points a run materializes one (a file's and a step's),
- *   which is what a worker actually receives. Resolution is idempotent — a resolved value is a
- *   string and no longer a wrapper — so passing an already-resolved merge through again is a no-op.
+ * - **Effective config assembly** (`resolveEffectiveConfig`), wherever a run materializes a config: a
+ *   file's and a step's at execution, and the same two at the run-start gate and at `resolveNode`. It
+ *   resolves `$env` and unwraps `$secret` in one call, so validation, interpolation and the worker all
+ *   read the same object rather than each remembering which half it still has to unwrap. Resolution is
+ *   idempotent — a resolved value is a string and no longer a wrapper — so passing an already-effective
+ *   config through again (a step's config crossing into a nested run) is a no-op.
  */
 
 /** A snapshot of the environment: `process.env`'s shape, and anything a test hands over instead. */
@@ -84,6 +87,35 @@ export function resolveConfigEnv(config: ConfigObject, env: EnvSource): EnvResol
   }
 
   return { config: resolved, unset };
+}
+
+/**
+ * The **effective config** for one merge: `$env` looked up in the snapshot and `$secret` handed back
+ * as its real value, in one call. This is what config validation, field interpolation, condition
+ * evaluation, `resolveNode`'s caller and the worker all read (ADR 0022 sub-4), so no reader has to
+ * remember which half is still wrapped.
+ *
+ * The two halves stay separate steps inside because they answer to different owners: `$env` is a
+ * *source*, whose unset names the run-start gate reports, and `resolveConfigEnv` deliberately leaves
+ * a `$secret` marker standing over the resolved value so the masker can still collect it (masking is
+ * by value, and it is built from `resolveRunEnv`'s configs, not from these). Unwrapping the marker is
+ * not a read at all — the value is already there — only the removal of the marker before use, so it
+ * is a value transform applied on top of the resolution rather than a second source.
+ *
+ * Per config *value*, keyed by the config key, so a config field awkwardly named `$secret` is not
+ * mistaken for a wrapper — the rule `resolveConfigEnv` follows for `$env`.
+ */
+export function resolveEffectiveConfig(merged: ConfigObject, env: EnvSource): ConfigObject {
+  return unwrapSecrets(resolveConfigEnv(merged, env).config);
+}
+
+/** Every `$secret` in a config object replaced by the value it marks (format §8.3). */
+function unwrapSecrets(config: ConfigObject): ConfigObject {
+  const resolved: ConfigObject = {};
+  for (const [key, value] of Object.entries(config)) {
+    resolved[key] = mapSecrets(value as unknown as JsonValue, (secret) => secret) as unknown as ConfigValue;
+  }
+  return resolved;
 }
 
 /**
