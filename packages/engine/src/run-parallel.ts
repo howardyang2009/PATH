@@ -2,7 +2,6 @@ import type { JsonValue, WorkflowFile } from "@path/schema";
 import { blockCancellation } from "./cancellation.js";
 import { pickReusedWaitOneWinner } from "./plan-reuse.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
-import { runSequence } from "./run-workflow.js";
 
 /**
  * The `parallel` block — the engine's densest logic, in one module: three join modes (collect,
@@ -11,11 +10,11 @@ import { runSequence } from "./run-workflow.js";
  * out of `run-workflow.ts` so the join semantics that carry the spec sit together rather than buried in
  * the executor's leaf-step and sequence code.
  *
- * The recursion into `runSequence` (a branch is a single node, run as a one-node sequence) is imported back from the
- * executor: `run-parallel.ts → run-workflow.ts → runNode → runParallelNode` is a function cycle,
- * resolved by ESM before either is called, so it is benign — a value is never read at module-eval
- * time. Detached branches cross the split through `RunContext.detached`: `launchDoNotWait` fills it,
- * `settleDetached` (called by the executor at its exit barrier) drains it.
+ * Each branch is a single node run as a one-node sequence **through the run's own walk**
+ * (`NodeExecContext.walk`), handed in rather than imported: this module used to import `runSequence`
+ * back from the executor that dispatches it, a `run-parallel.ts → run-workflow.ts → runNode →
+ * runParallelNode` function cycle. Detached branches cross the split through `RunContext.detached`:
+ * `launchDoNotWait` fills it, `settleDetached` (called by the executor at its exit barrier) drains it.
  */
 
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
@@ -80,10 +79,9 @@ async function launchDoNotWait(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   for (const branch of node.branches) {
-    const branchRun = runSequence(run, [branch], seedInput, {
+    const branchRun = exec.walk(run, [branch], seedInput, {
+      ...exec,
       context: { ...exec.context },
-      signal: exec.signal,
-      cancellation: exec.cancellation,
       onPublish: async () => {},
     }).then(() => {});
     run.detached.push(branchRun);
@@ -133,7 +131,8 @@ export async function runParallelNode(
     const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
     if (reusedWinner) {
       const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, [reusedWinner], seedInput, {
+      const outcome = await exec.walk(run, [reusedWinner], seedInput, {
+        ...exec,
         context: { ...exec.context },
         onPublish: async (updates) => void Object.assign(buffer, updates),
       });
@@ -161,7 +160,8 @@ export async function runParallelNode(
       // parent context until the join lands them.
       const branchContext: { [key: string]: JsonValue } = { ...exec.context };
       const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await runSequence(run, [branch], seedInput, {
+      const outcome = await exec.walk(run, [branch], seedInput, {
+        ...exec,
         context: branchContext,
         signal: cancellation.signal,
         cancellation,

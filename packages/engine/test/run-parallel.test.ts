@@ -9,7 +9,7 @@ import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
-import { runNode } from "../src/run-workflow.js";
+import { runNode, runSequence } from "../src/run-workflow.js";
 
 /**
  * The `parallel` block, driven through the node seam. `runParallelNode` cannot be called in isolation
@@ -78,7 +78,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
 }
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
-  return { context, onPublish: async () => {} };
+  return { context, onPublish: async () => {}, walk: runSequence };
 }
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
@@ -95,6 +95,24 @@ describe("runNode — parallel", () => {
       { type: "sequence", id: "left", name: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
       { type: "sequence", id: "right", name: "right", body: secondBranchBody },
     ],
+  });
+
+  it("walks every branch through the walk it was handed, not one it imports", async () => {
+    const { run } = makeRun();
+    const walked: string[] = [];
+    const exec: NodeExecContext = {
+      ...makeExec(),
+      walk: (r, nodes, seedInput, inner) => {
+        walked.push(...nodes.map((n) => n.name));
+        return runSequence(r, nodes, seedInput, inner);
+      },
+    };
+
+    const outcome = await runNode(run, parallel([echo("r", "R")]), "seed", exec);
+
+    expect(outcome).toEqual({ status: "succeeded", output: { left: "L", right: "R" } });
+    // Both branches (each one node) ran through the handed-in walk, in declaration order.
+    expect(walked).toEqual(["left", "right"]);
   });
 
   it("keys its output by branch id in declaration order, whatever order they finish in", async () => {

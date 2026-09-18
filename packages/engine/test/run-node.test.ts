@@ -99,7 +99,7 @@ function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observ
 }
 
 function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
-  return { context, onPublish: async () => {} };
+  return { context, onPublish: async () => {}, walk: runSequence };
 }
 
 /**

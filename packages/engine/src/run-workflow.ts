@@ -465,6 +465,9 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       onPublish: async () => {
         await emitter.contextChanged(context);
       },
+      // The run's walk, handed to every construct below (a `parallel` branch, a loop body, a branch
+      // arm) instead of each importing it back — see `NodeExecContext.walk`.
+      walk: runSequence,
     });
     // The run reached a person-activity leaf and parked (ADR 0039/0041): it neither succeeded nor
     // failed, so it emits no terminal `run-finished` and this row stays `running`. The tree is
@@ -1710,7 +1713,9 @@ export async function runNode(
  *
  * What one node does is `runNode`'s; what a sequence does is this: order, the chain, and where an
  * abort can be noticed. This one function serves the top-level body, each `parallel` branch, each
- * branch arm and each loop iteration — every block is transparent to one uniform chain (§5.4).
+ * branch arm and each loop iteration — every block is transparent to one uniform chain (§5.4) — and
+ * it is the **run's walk**, handed to every construct through `NodeExecContext.walk` rather than
+ * imported by one (which is what makes it the single owner of how a body is walked).
  */
 export async function runSequence(
   run: RunContext,
