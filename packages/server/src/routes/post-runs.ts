@@ -11,6 +11,13 @@ const PostRunsBodySchema = z
     workflow_path: z.string().min(1),
     input: z.record(z.string(), z.unknown()).optional(),
     config: ConfigObjectSchema.optional(),
+    // The launch worker-default table (ADR 0044, #517): a top-level `{ <type>: <name> }` peer of
+    // `input`/`config`, not folded into `config` (dispatch never reads `config` for worker selection).
+    // Non-empty keys and values, mirroring the file channel's `worker_defaults` grammar
+    // (`@path/schema` workflow-file.ts). Registry-relative validity (an absent type or an unshipped
+    // worker) is a separate net (#506); until it lands a bad table falls through to the engine's loud
+    // "has no worker" run failure, exactly as the CLI `--worker-default` path does.
+    worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
     processor_concurrency: z.number().int().positive().optional(),
   })
@@ -44,8 +51,14 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     sendError(res, 400, "invalid request body", formatIssues(parsed.error));
     return;
   }
-  const { workflow_path: workflowPath, input, config, log_backends: logBackendIds, processor_concurrency: processorConcurrency } =
-    parsed.data;
+  const {
+    workflow_path: workflowPath,
+    input,
+    config,
+    worker_defaults: launchWorkerDefaults,
+    log_backends: logBackendIds,
+    processor_concurrency: processorConcurrency,
+  } = parsed.data;
 
   // ADR 0012 / #231: operator config may carry a literal `{"$secret": "..."}` but not `{"$env":
   // "NAME"}`. Rejected before the filesystem is touched, as a bad config invalidates the request
@@ -80,6 +93,11 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
       input: input as { [key: string]: JsonValue } | undefined,
       operatorConfig: config,
+      // The operator's run-wide launch worker-default table (ADR 0044, #517), forwarded verbatim to the
+      // engine's `RunOptions.launchWorkerDefaults` so an HTTP launch resolves un-pinned steps exactly as
+      // an equivalent `path run --worker-default` launch. Undefined when the field was omitted, so a
+      // request without it resolves through the file/default tiers unchanged.
+      launchWorkerDefaults,
       files: workflow.files,
       // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
       registry: workflow.registry,

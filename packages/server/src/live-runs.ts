@@ -108,6 +108,14 @@ export interface LiveRuns {
 export interface StartRunOptions {
   input?: { [key: string]: JsonValue };
   operatorConfig?: ConfigObject;
+  /**
+   * The operator's run-wide **launch worker-default** table (ADR 0044, #517): `{ <type>: <name> }`,
+   * from `POST /v0/runs`'s top-level `worker_defaults`. Spread straight into `Project.run`'s
+   * `RunOptions.launchWorkerDefaults`, so an HTTP launch fills the same engine launch table a CLI
+   * `--worker-default` launch does. Deliberately *not* on {@link ResumeRunOptions}: a launch
+   * worker-default is frozen with the run, so a resume carries none (changing it is a new run).
+   */
+  launchWorkerDefaults?: { [stepType: string]: string };
   /** The whole validated workflow tree, so nested `workflow` refs resolve without re-reading. */
   files: Map<string, WorkflowFile>;
   /**

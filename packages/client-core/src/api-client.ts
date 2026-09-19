@@ -145,6 +145,13 @@ export interface StartRunOptions {
   input?: JsonValue;
   /** Operator config overrides (`RunOptions.operatorConfig`); server-validated by `ConfigObjectSchema`. */
   config?: ConfigObject;
+  /**
+   * The run-wide **launch worker-default** table (ADR 0044, #517): `{ <type>: <name> }`, the ergonomic
+   * peer of the CLI's repeatable `--worker-default`. Encoded to the wire body's top-level
+   * `worker_defaults` — beside `input`/`config`, never within `config` — so an HTTP launch resolves
+   * un-pinned steps exactly as a CLI launch. Frozen with the run, so `resumeRun` takes none.
+   */
+  workerDefaults?: { [stepType: string]: string };
   /** Which log backends to write (`path run --log-backends`). Omitted: the project's settings, else `["db", "ndjson"]`. */
   logBackends?: LogBackendId[];
   /** Processor concurrency cap (`path run --processor-concurrency`). Omitted: the project's settings, else the engine default. */
@@ -281,6 +288,7 @@ export class PathApiClient {
     const body: StartRunRequest = { workflow_path: options.workflowPath };
     if (options.input !== undefined) body.input = options.input;
     if (options.config !== undefined) body.config = options.config;
+    if (options.workerDefaults !== undefined) body.worker_defaults = options.workerDefaults;
     if (options.logBackends !== undefined) body.log_backends = options.logBackends;
     if (options.processorConcurrency !== undefined) body.processor_concurrency = options.processorConcurrency;
     return this.postJson<StartRunResponse>("/v0/runs", body);
