@@ -16,11 +16,13 @@ import type { PromptFields, PromptConfig } from "./index.js";
  * instruction the author wrote and takes exactly the text back, so this worker's behavior is legible
  * from its own file.
  *
- * Auth and endpoint are read from the environment — `DEEPSEEK_API_KEY`, and `DEEPSEEK_BASE_URL` when a
- * deployment proxies the API. Neither is a workflow-file value: a `config` key would be visible in the
- * file and, if wrong, part of the run's public shape, where a credential belongs to the machine.
- * `process.env` is also the only credential door a plugin has (a worker holds every secret of the run,
- * ADR 0020), so the read happens here, at the one place that needs the key.
+ * The credential is read from `config.DEEPSEEK_API_KEY` first and `process.env.DEEPSEEK_API_KEY`
+ * second (ADR 0045): config first because an operator launching a discovered workflow can supply the
+ * key there without reaching the server's environment, and because a `$secret`-wrapped config value
+ * is the one the masker collects — `process.env` is invisible to it. The environment stays as the
+ * fallback a deployment-level key already used, so nothing that works today stops working. The
+ * endpoint is environment only — `DEEPSEEK_BASE_URL` when a deployment proxies the API — because a
+ * gateway address is deployment topology, not a per-run credential.
  *
  * The worker takes the same `fields` (`prompt`) and `config` (`model`, `options`) as `anthropic` — it is the
  * same step type, asked the same question — so a step switches provider by naming this worker and
@@ -133,11 +135,18 @@ export async function runDeepseekWorker(request: StepRequest<PromptFields, Promp
 
   if (signal.aborted) return { status: "failed", error: "cancelled" };
 
-  const apiKey = process.env.DEEPSEEK_API_KEY;
+  // Config beats the environment; an empty string counts as unset in both, so a `config.DEEPSEEK_API_KEY`
+  // that resolved to "" (an `$env` naming an empty variable, say) falls through to the environment
+  // rather than sending an empty bearer token.
+  const configKey = request.config.DEEPSEEK_API_KEY;
+  const apiKey = configKey !== undefined && configKey !== "" ? configKey : process.env.DEEPSEEK_API_KEY;
   if (apiKey === undefined || apiKey === "") {
     // No request is attempted without a credential, so this is the one failure that spends nothing:
-    // it names the variable to set rather than surfacing the API's 401 as the author's problem.
-    return { status: "failed", error: "DEEPSEEK_API_KEY is not set in the engine's environment" };
+    // it names both doors to set rather than surfacing the API's 401 as the author's problem.
+    return {
+      status: "failed",
+      error: "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
+    };
   }
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");

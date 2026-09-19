@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { RunRecord } from "../src/run-record.js";
 import { blankRunRecord } from "../src/run-record.js";
-import { fromWireRunRecord, toRootRunSummary, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
+import { fromWireLaunchFacts, fromWireRunRecord, toRootRunSummary, toWireLaunchFacts, toWireRunRecord, type WireRunRecord } from "../src/wire-v0.js";
 
 /**
  * The wire shape must carry every field of the domain record, under its snake_case name — checked
@@ -220,10 +220,41 @@ describe("toRootRunSummary", () => {
   });
 
   it("agrees with the full record on every field they share", () => {
-    const summary = toRootRunSummary(record);
-    const wire: WireRunRecord = toWireRunRecord(record);
-    for (const key of Object.keys(summary) as (keyof typeof summary)[]) {
+    const summary = toRootRunSummary(record, ["apiKey"]) as unknown as Record<string, unknown>;
+    const wire = toWireRunRecord(record) as unknown as Record<string, unknown>;
+    for (const key of Object.keys(summary)) {
+      // `launch_secret_keys` is the one summary-only field (ADR 0046): it rides the summary, not the
+      // record, because the masked secret names live in the tree's frozen launch facts.
+      if (key === "launch_secret_keys") continue;
       expect(summary[key]).toEqual(wire[key]);
     }
+  });
+});
+
+describe("launch facts on the wire (ADR 0046)", () => {
+  it("spells them snake_case and omits a field the launch never supplied", () => {
+    const wire = toWireLaunchFacts({
+      input: { ticket: 7 },
+      config: { apiKey: "[secret:apiKey]" },
+      workerDefaults: { prompt: "deepseek" },
+      secretKeys: ["apiKey"],
+    });
+    expect(Object.keys(wire).sort()).toEqual(["config", "input", "secret_keys", "worker_defaults"]);
+
+    const partial = toWireLaunchFacts({ workerDefaults: { binary: "spawn" } });
+    expect(partial).toEqual({ worker_defaults: { binary: "spawn" } });
+    expect(Object.keys(partial)).toEqual(["worker_defaults"]);
+  });
+
+  it("round-trips through the wire and back unchanged", () => {
+    const facts = { config: { a: 1 }, secretKeys: ["a"] };
+    expect(fromWireLaunchFacts(toWireLaunchFacts(facts))).toEqual(facts);
+  });
+
+  it("carries the masked-secret names on a root-run summary, and nothing when there are none", () => {
+    const row = blankRunRecord({ runId: "r", rootRunId: "r" });
+    expect(toRootRunSummary(row, ["apiKey"])).toMatchObject({ launch_secret_keys: ["apiKey"] });
+    expect(toRootRunSummary(row, [])).not.toHaveProperty("launch_secret_keys");
+    expect(toRootRunSummary(row)).not.toHaveProperty("launch_secret_keys");
   });
 });

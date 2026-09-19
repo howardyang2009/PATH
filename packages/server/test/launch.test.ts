@@ -1,7 +1,7 @@
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { operatorConfigEnvError, prepareWorkflow } from "../src/launch.js";
+import { effectiveRootInput, operatorConfigEnvError, prepareWorkflow } from "../src/launch.js";
 
 /**
  * The launch-preparation seam both `POST /v0/runs` and the resume route sit behind, tested through
@@ -28,6 +28,28 @@ describe("operatorConfigEnvError (ADR 0012)", () => {
     expect(message).toContain("$env");
     expect(message).toContain("token");
     expect(message).not.toContain("$secret");
+  });
+});
+
+describe("effectiveRootInput", () => {
+  const fileInput = { ticket: 7 };
+
+  it("uses a non-empty operator override verbatim", () => {
+    expect(effectiveRootInput({ ticket: 9 }, fileInput)).toEqual({ ticket: 9 });
+  });
+
+  it("falls back to the file's own input seed for an absent or empty override", () => {
+    expect(effectiveRootInput(undefined, fileInput)).toEqual({ ticket: 7 });
+    expect(effectiveRootInput({}, fileInput)).toEqual({ ticket: 7 });
+  });
+
+  it("falls back to {} when neither an override nor a file seed is present", () => {
+    expect(effectiveRootInput(undefined, undefined)).toEqual({});
+    expect(effectiveRootInput({}, undefined)).toEqual({});
+  });
+
+  it("keeps an empty file seed empty rather than inventing keys", () => {
+    expect(effectiveRootInput(undefined, {})).toEqual({});
   });
 });
 

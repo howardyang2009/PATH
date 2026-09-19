@@ -1,4 +1,4 @@
-import { mapSecrets, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
+import { mapSecrets, type ConfigObject, type ConfigValue, type JsonValue, type LaunchFacts } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Observation } from "./run-observer.js";
 
@@ -156,6 +156,14 @@ function maskTrace(masker: SecretMasker, trace: Trace): Trace {
 export function maskObservation(masker: SecretMasker, o: Observation): Observation {
   switch (o.type) {
     case "run-started":
+      // The frozen launch facts (ADR 0046) carry the operator's config override, which may hold a
+      // secret — masked by value here, at the same choke point as everything else, so what reaches the
+      // run row and the log holds a `[secret:<key>]` token where the credential was.
+      return {
+        ...o,
+        input: masker.maskValue(o.input),
+        ...(o.launchFacts === undefined ? {} : { launchFacts: masker.maskValue(o.launchFacts as unknown as JsonValue) as LaunchFacts }),
+      };
     case "step-started":
       return { ...o, input: masker.maskValue(o.input) };
     case "step-stderr":

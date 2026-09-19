@@ -107,6 +107,12 @@ export interface LiveRuns {
 /** `Project.run`'s options, minus the audit seam and the extension points this module owns. */
 export interface StartRunOptions {
   input?: { [key: string]: JsonValue };
+  /**
+   * The operator's override input as they sent it (ADR 0046), where `input` is the *effective* seed
+   * (override, else the file's own, else `{}`). Recorded in the run's frozen launch facts so a reader
+   * sees the launch's own input; never re-applied on a continuation.
+   */
+  operatorInput?: JsonValue;
   operatorConfig?: ConfigObject;
   /**
    * The operator's run-wide **launch worker-default** table (ADR 0044, #517): `{ <type>: <name> }`,
@@ -174,6 +180,13 @@ export interface CompleteRunOptions {
   registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
+  /**
+   * An optional config override for the continued run (ADR 0046), the same field a launch and a resume
+   * take. A Complete recovers the launch's frozen config, so this is how an operator supplies again a
+   * value that was a `$secret` (the frozen copy holds a `[secret:<key>]` token) — see `resume`'s
+   * `operatorConfig`. Absent, the frozen config is used as it stands.
+   */
+  operatorConfig?: ConfigObject;
 }
 
 /** Thrown by `resume` when the engine reports the predecessor root run id unknown. */

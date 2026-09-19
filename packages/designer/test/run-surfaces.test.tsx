@@ -112,8 +112,9 @@ describe("Designer run surfaces (#372)", () => {
     fireEvent.click(submit);
     await waitFor(() => expect(calls.startRun).toHaveLength(1));
     expect(calls.startRun[0]!.workflow_path).toBe(ROOT_PATH);
-    // The prefilled `{}` input rides the launch; no config override was set.
-    expect(calls.startRun[0]!.input).toEqual({});
+    // No input override was typed, so the field is omitted — the server falls back to the file's own
+    // `input` seed (else `{}`); no config override was set either.
+    expect(calls.startRun[0]!.input).toBeUndefined();
     expect(calls.startRun[0]!.config).toBeUndefined();
   });
 

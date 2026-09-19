@@ -119,7 +119,10 @@ plug, because a plugin is engine code and carries the trust of PATH's own source
    no wrapper ever appears. ADR 0012 pre-committed to reopen "if that boundary ever moves". This is the
    reopening, and the answer is a rule rather than a mechanism: stripping `process.env` for the duration
    of a `run` call fails for sub-decision 4's reasons. What enforces it is code review of the PATH tree,
-   which is what sub-decision 8 made the boundary.
+   which is what sub-decision 8 made the boundary. **Amended for the shipped `prompt` workers by
+   [ADR 0045](0045-deepseek-credential-config-first-environment-fallback.md):** a provider credential
+   may be read from the environment when no config value names one, with the config door first. The
+   rule stands for every other value, and ADR 0012's `$env` reject is untouched.
 
 ### Record
 
@@ -169,7 +172,8 @@ plug, because a plugin is engine code and carries the trust of PATH's own source
   can land silently, so sub-decision 10's acceptance test must pass **against the relocated built-ins**
   before #319 lands; it exists to survive that move. And the relocated workers must themselves obey
   sub-decisions 4 and 9 — no process-stream writes, no `process.env` reads. `binary` spawning a child is
-  fine; `binary`'s own code reading `process.env` is not. This is the dogfood ADR 0019 sub-10 promised:
+  fine; `binary`'s own code reading `process.env` is not. (The `prompt` workers' provider credentials
+  are the exception ADR 0045 records.) This is the dogfood ADR 0019 sub-10 promised:
   if PATH's own two step types cannot obey the plugin rules, the rules are wrong.
 - **[#320](https://github.com/howardyang2009/PATH/issues/320) receives two constraints**, the way #315
   handed one to #324. Wrappers are config-only (sub-decision 2), and no field may name an environment

@@ -184,6 +184,30 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     await waitFor(() => expect(completeBodies[0]).toEqual({ output: { approved: true } }));
   });
 
+  it("prefills the launch-secret config on an awaiting Complete from the tree's launch facts (ADR 0046)", async () => {
+    const completeBodies: unknown[] = [];
+    const client = stubClient({ completeBodies });
+    // The launch facts are a per-tree fact, so the awaiting leaf reads them off the same snapshot the
+    // root run would — the operator's masked secrets must be supplied again to continue past this leaf.
+    const view = {
+      displayStatus: new Map(),
+      lastError: new Map<string, string>(),
+      launchFacts: { secretKeys: ["github.token"] },
+    };
+    render(<NodeIo client={client} run={runState()} view={view} workflowFiles={[ROOT_FILE]} />);
+
+    const field = screen.getByTestId("complete-config") as HTMLTextAreaElement;
+    expect(JSON.parse(field.value)).toEqual({ github: { token: "" } });
+
+    fireEvent.change(field, { target: { value: '{"github":{"token":"sk-live"}}' } });
+    fireEvent.click(screen.getByLabelText(/Approved/));
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() =>
+      expect(completeBodies[0]).toEqual({ output: { approved: true }, config: { github: { token: "sk-live" } } }),
+    );
+  });
+
   it("keeps the inline form with field errors on a 400 (leaf stays awaiting)", async () => {
     const client = stubClient({
       complete: {

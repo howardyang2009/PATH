@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { isRootRun, type JsonValue, type RerunFromNodePathEntry } from "@path/schema";
+import { isRootRun, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
@@ -93,10 +93,11 @@ export interface Emitter {
     resumedFromRootRunId?: string;
     rerunFromNodePath?: RerunFromNodePathEntry[];
     /**
-     * The operator's frozen launch worker-default table (ADR 0044, #519). Root-only like the
-     * source-workflow trio: a nested run passes none, and persistence writes it to the root row only.
+     * The operator's frozen launch facts (ADR 0046): the input override, the config override, and the
+     * launch worker-default table (ADR 0044, #519). Root-only like the source-workflow trio: a nested
+     * run passes none, and persistence writes them to the root row only.
      */
-    launchWorkerDefaults?: { [stepType: string]: string };
+    launchFacts?: LaunchFacts;
     workflowId?: string;
     workflowName?: string;
     workflowPath?: string;
@@ -160,9 +161,9 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,
         // and the caller supplies it on the root alone, so gating on `isRoot` keeps it there.
         ...(isRoot && args.rerunFromNodePath !== undefined ? { rerunFromNodePath: args.rerunFromNodePath } : {}),
-        // The frozen launch worker-default table is root-only (ADR 0044, #519), gated on `isRoot` for
-        // the same reason: only the root row records it, and only a resume/Complete reads it back.
-        ...(isRoot && args.launchWorkerDefaults !== undefined ? { launchWorkerDefaults: args.launchWorkerDefaults } : {}),
+        // The frozen launch facts are root-only (ADR 0046), gated on `isRoot` for the same reason:
+        // only the root row records them, and only a resume/Complete reads them back.
+        ...(isRoot && args.launchFacts !== undefined ? { launchFacts: args.launchFacts } : {}),
         // Source-workflow identity is root-only (ADR 0006): a nested run's producing node is already
         // named by `nodeId`/`nodeName`, so the trio is dropped for it even when supplied.
         ...(isRoot && args.workflowId !== undefined ? { workflowId: args.workflowId } : {}),

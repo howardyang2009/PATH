@@ -1,5 +1,6 @@
 import type {
   BlobName,
+  CompleteRunRequest,
   CompleteRunResponse,
   ConfigObject,
   JsonValue,
@@ -141,7 +142,11 @@ export interface WorkflowFileRaw {
 export interface StartRunOptions {
   /** Path to the root workflow file, resolved against the server's fixed project root — the launch handle from `listWorkflows`. */
   workflowPath: string;
-  /** Seeds the root run's context (`RunOptions.input`). Raw JSON — the format declares no input schema. */
+  /**
+   * Seeds the root run's context (`RunOptions.input`). An **override**: omitted (or an empty object)
+   * means the server falls back to the workflow file's own top-level `input` seed, then to `{}`. Raw
+   * JSON — the format declares no input schema.
+   */
   input?: JsonValue;
   /** Operator config overrides (`RunOptions.operatorConfig`); server-validated by `ConfigObjectSchema`. */
   config?: ConfigObject;
@@ -270,9 +275,19 @@ export class PathApiClient {
    * the run continues in the background and the caller learns the outcome from the root's SSE stream it
    * is already watching. A `404` (unknown id / file gone) and a `409` (not-`awaiting`, lease held, or a
    * node the author retyped mid-wait) also arrive as `PathApiError`s carrying the status and message.
+   *
+   * `config` is the optional override a continuation may re-supply (ADR 0046): a Complete **recovers**
+   * the launch's frozen config, and a value frozen as its `[secret:<key>]` token cannot continue the
+   * run — the engine refuses before its first step until the operator enters it again. Omitted, the
+   * body is `{ output }` alone, byte-identical to before.
    */
-  async completeStep(stepRunId: string, output: JsonValue): Promise<CompleteRunResponse> {
-    return this.postJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, { output });
+  async completeStep(stepRunId: string, output: JsonValue, config?: ConfigObject): Promise<CompleteRunResponse> {
+    // Same optional-body handling as `resumeRun`: only a supplied config rides the request, so a plain
+    // Complete sends nothing extra for the server to validate. The body is the shared wire type, so its
+    // field set cannot drift from the one the route decodes.
+    const body: CompleteRunRequest = { output };
+    if (config !== undefined) body.config = config;
+    return this.postJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, body);
   }
 
   /**

@@ -163,6 +163,7 @@ export {
   type EventFrameDecoder,
 } from "./event-frame.js";
 export { blankRunRecord, RUN_RECORD_FIELDS, type RerunFromNodePathEntry, type RunRecord } from "./run-record.js";
+export type { LaunchFacts } from "./launch-facts.js";
 export { isIterationRun, isReuseRow, isRootRun, type RunKindFields } from "./run-kind.js";
 export { childrenByParent, findRootRun, pathToRoot, subtree, type RunTreeFields } from "./run-tree.js";
 export {
@@ -175,8 +176,10 @@ export {
 export { rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
+  fromWireLaunchFacts,
   fromWireRunRecord,
   toRootRunSummary,
+  toWireLaunchFacts,
   toWireRunRecord,
   type BlobName,
   type CompleteRunRequest,
@@ -188,6 +191,7 @@ export {
   type StartRunRequest,
   type StartRunResponse,
   type WireError,
+  type WireLaunchFacts,
   type WireRunRecord,
   type WorkflowSummary,
 } from "./wire-v0.js";

@@ -14,6 +14,13 @@ export interface AwaitingActionsProps {
    * says so, rather than inventing a form.
    */
   awaitingNode: AwaitingNode | null;
+  /**
+   * The launch config paths the tree recorded as `$secret`-masked (ADR 0046), as dot-paths. Non-empty,
+   * the Complete form asks for them again: a continuation recovers the frozen config, and a masked
+   * `[secret:<key>]` token cannot run, so the engine refuses before the first step until re-supplied.
+   * Read from the tree's launch facts, so it is the same set wherever the awaiting leaf sits.
+   */
+  launchSecretKeys?: readonly string[];
 }
 
 /** The schema-less fallback when the node cannot be read: an empty output the server accepts (or 400s). */
@@ -30,7 +37,7 @@ const FALLBACK_NODE: AwaitingNode = { description: null, assignee: null, outputS
  * leaf's `awaiting → succeeded` transition folds into the live snapshot, the run's status leaves
  * `awaiting`, and the panel stops mounting this surface on its own.
  */
-export function AwaitingActions({ client, run, awaitingNode }: AwaitingActionsProps) {
+export function AwaitingActions({ client, run, awaitingNode, launchSecretKeys }: AwaitingActionsProps) {
   const node = awaitingNode ?? FALLBACK_NODE;
 
   return (
@@ -61,7 +68,13 @@ export function AwaitingActions({ client, run, awaitingNode }: AwaitingActionsPr
         )}
       </section>
 
-      <CompleteForm client={client} stepRunId={run.runId} outputSchema={node.outputSchema} onCompleted={() => {}} />
+      <CompleteForm
+        client={client}
+        stepRunId={run.runId}
+        outputSchema={node.outputSchema}
+        launchSecretKeys={launchSecretKeys}
+        onCompleted={() => {}}
+      />
     </section>
   );
 }

@@ -337,6 +337,24 @@ describe("RunsList", () => {
       expect(resumeRun).toHaveBeenCalledWith(FAILED.run_id, { output_file: "OUT.md" });
     });
 
+    it("prefills and sends the launch-secret config for a run whose summary carries launch_secret_keys (ADR 0046)", async () => {
+      const withSecrets: RootRunSummary = { ...FAILED, launch_secret_keys: ["github.token"] };
+      const { client } = stubClient([withSecrets]);
+      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
+      renderList(client);
+
+      fireEvent.click(await screen.findByTestId(`run-row-${withSecrets.run_id}`));
+      // Prefilled and open: the masked paths are visible without opening the disclosure first.
+      const field = (await screen.findByTestId("resume-config")) as HTMLTextAreaElement;
+      expect(JSON.parse(field.value)).toEqual({ github: { token: "" } });
+      expect(screen.getByTestId("resume-config-note")).toHaveTextContent(/masked/i);
+
+      fireEvent.change(field, { target: { value: '{"github":{"token":"sk-live"}}' } });
+      fireEvent.click(screen.getByTestId("resume-button"));
+
+      expect(resumeRun).toHaveBeenCalledWith(withSecrets.run_id, { github: { token: "sk-live" } });
+    });
+
     it("surfaces a resume error rather than claiming it was sent", async () => {
       const { client } = stubClient([FAILED]);
       vi.spyOn(client, "resumeRun").mockRejectedValue(new PathApiError(409, "already succeeded"));

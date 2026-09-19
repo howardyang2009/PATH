@@ -1,6 +1,7 @@
 import {
   awaitingNodeForRun,
   isReuseRow,
+  isRootRun,
   isTerminal,
   nodeLabel,
   type PathApiClient,
@@ -25,7 +26,8 @@ export interface NodeIoProps {
    * failure message it reached. The view owns both, so this pane asks rather than re-deriving them from
    * the run map and the event narrative; absent before anything is watched, and the pane then shows the
    * run's own record status and no error. Only the pill and the E block use it; the Complete surface and
-   * the blob reads stay keyed on the real `run.status`.
+   * the blob reads stay keyed on the real `run.status`. It also carries the tree's `launchFacts`
+   * (ADR 0046), which the root run's override sections and the Complete form's masked-secret prefill read.
    */
   view?: RunViewFacts;
   /**
@@ -50,6 +52,31 @@ function contextBlobRef(run: RunNodeState): string {
   const sibling = run.inputRef ?? run.outputRef;
   if (sibling !== null) return sibling.replace(/[^/]+$/, "context.json");
   return `runs/${run.rootRunId}/${run.runId}/context.json`;
+}
+
+/**
+ * Where the Input block reads from, and the predecessor root when it does not read this run's own blob.
+ * A **successor root** — a resumed tree's own root run — writes its own `input.json` as the empty seed a
+ * resume starts from; the input its tree actually started from is the predecessor root's, so the pane
+ * reads that run's object directly, the same direct-to-source reading a reuse row gets (#257), never a
+ * copy into the successor's tree. Every other run reads its own blob.
+ */
+function inputBlobSource(run: RunNodeState): {
+  rootRunId: string;
+  runId: string;
+  ref: string | null;
+  resumedFrom: string | null;
+} {
+  if (isRootRun(run) && typeof run.resumedFromRootRunId === "string") {
+    const predecessor = run.resumedFromRootRunId;
+    return {
+      rootRunId: predecessor,
+      runId: predecessor,
+      ref: `runs/${predecessor}/${predecessor}/input.json`,
+      resumedFrom: predecessor,
+    };
+  }
+  return { rootRunId: run.rootRunId, runId: run.runId, ref: run.inputRef, resumedFrom: null };
 }
 
 /**
@@ -78,6 +105,9 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   // back to the run's own record status and shows no error.
   const displayStatus = view?.displayStatus.get(run.runId) ?? run.status;
   const errorMessage = view?.lastError.get(run.runId) ?? null;
+  // The tree's frozen launch facts (ADR 0046). A per-tree fact, so the override sections render only on
+  // the tree's root run, while `secretKeys` reaches the Complete form wherever the awaiting leaf sits.
+  const launchFacts = view?.launchFacts;
   // An awaiting leaf is the one actionable run: surface its Complete affordance. The node's fields come
   // from the workflow file by id (they never ride the run row); the file may be the root or any nested
   // one its `workflow` steps ref, so the search spans the whole reachable set (issue #486 follow-up). A
@@ -85,7 +115,20 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   // while a leaf awaits (ADR 0038), so only the leaf row itself carries this.
   const awaitingNode = awaitingNodeForRun(workflowFiles, run);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
-  const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
+  // A successor root's Input block shows the predecessor root's object (see `inputBlobSource`). This
+  // run's own ref must not gate that read — the predecessor is terminal, so its 404 is trusted as "that
+  // tree recorded no input" (the `ref: null, settled: true` read) rather than surfaced as an error.
+  const inputSource = inputBlobSource(run);
+  const resumedFrom = inputSource.resumedFrom;
+  const input = useRunBlob({
+    client,
+    rootRunId: inputSource.rootRunId,
+    runId: inputSource.runId,
+    name: "input",
+    ref: resumedFrom === null ? run.inputRef : null,
+    settled: settled || resumedFrom !== null,
+    reloadToken,
+  });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
   // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change.
   // Read unconditionally and trust the 404 (`ref: null, settled: true`): a workflow-run has context,
@@ -115,7 +158,14 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         <span className="run-id">{run.runId}</span>
       </p>
 
-      {run.status === "awaiting" && <AwaitingActions client={client} run={run} awaitingNode={awaitingNode} />}
+      {run.status === "awaiting" && (
+        <AwaitingActions
+          client={client}
+          run={run}
+          awaitingNode={awaitingNode}
+          launchSecretKeys={launchFacts?.secretKeys}
+        />
+      )}
 
       {isReuseRow(run) && (
         <p className="node-io-reused" data-testid="node-io-reused">
@@ -131,12 +181,26 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         </p>
       )}
 
+      {resumedFrom !== null && (
+        <p className="node-io-reused" data-testid="node-io-resumed-input">
+          Resumed from an earlier run — the input below is that run's root input.
+          <span className="reused-ref">
+            <span className="reused-label">resumed-from root run</span>
+            <span className="run-id">{resumedFrom}</span>
+          </span>
+        </p>
+      )}
+
       <BlobBlock
         title="Input"
         load={input}
-        blobRef={run.inputRef}
+        blobRef={inputSource.ref}
         testId="node-io-input"
-        absentNote="No input object recorded for this run."
+        absentNote={
+          resumedFrom === null
+            ? "No input object recorded for this run."
+            : "The resumed-from run recorded no input object."
+        }
       />
       <BlobBlock
         title="Output"
@@ -162,8 +226,47 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         // reached a verdict — not a failure of the pane.
         absentNote="No context recorded for this run."
       />
+      {isRootRun(run) && launchFacts !== undefined && (
+        <>
+          {/* The operator's launch facts (ADR 0046), on the root run alone: they belong to the tree, not
+              to any one node. Each section appears only when the launch actually supplied that fact, so a
+              bare launch adds nothing here. `config` is shown masked — the `[secret:<key>]` token is the
+              truth of what the run stored, not something to hide. */}
+          {launchFacts.input !== undefined && (
+            <FactBlock title="Override Input" testId="node-io-override-input" value={launchFacts.input} />
+          )}
+          {launchFacts.config !== undefined && (
+            <FactBlock title="Override Config" testId="node-io-override-config" value={launchFacts.config} />
+          )}
+          {launchFacts.workerDefaults !== undefined && (
+            <FactBlock
+              title="Launch Worker Defaults"
+              testId="node-io-launch-worker-defaults"
+              value={launchFacts.workerDefaults}
+            />
+          )}
+        </>
+      )}
       {errorMessage !== null && <ErrorBlock message={errorMessage} />}
     </div>
+  );
+}
+
+/**
+ * One launch-fact block on the root run, rendered with the same section markup and heading id as the
+ * I/O/C `BlobBlock`s so the pane reads as one stack. Unlike those blocks it holds a value already in
+ * the snapshot rather than a served blob, so it carries no ref line and no absence note: the caller
+ * renders it only when the fact exists.
+ */
+function FactBlock({ title, testId, value }: { title: string; testId: string; value: unknown }) {
+  const titleId = `${testId}-title`;
+  return (
+    <section className="io-block" data-testid={testId} aria-labelledby={titleId}>
+      <h3 className="io-title" id={titleId}>
+        {title}
+      </h3>
+      <JsonView value={value} />
+    </section>
   );
 }
 

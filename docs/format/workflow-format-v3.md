@@ -214,9 +214,11 @@ honors the subset its HTTP transport can express (`systemPrompt` as a string, `m
 
 `worker` is per-step: there is **no file-level or run-level worker default** (§4, ADR 0021 sub-8), so
 putting a whole workflow on `deepseek` means naming that worker on each of its `prompt` steps. The
-`deepseek` worker's credential and endpoint are **environment**, never file values —
-`DEEPSEEK_API_KEY`, and `DEEPSEEK_BASE_URL` for a gateway — where `anthropic` uses the Agent SDK's own
-`ANTHROPIC_API_KEY` or subscription credential. A `deepseek` step whose `config.model` still names a
+`deepseek` worker's credential may be **environment or config** — `config.DEEPSEEK_API_KEY` first
+(usually `{"$secret": {"$env": "DEEPSEEK_API_KEY"}}`, or a literal `$secret` typed at launch), then
+`DEEPSEEK_API_KEY` in the engine's environment as the fallback (ADR 0045) — while its endpoint is
+**environment only**, `DEEPSEEK_BASE_URL` for a gateway. `anthropic` uses the Agent SDK's own
+`ANTHROPIC_API_KEY` or subscription credential and ignores `config.DEEPSEEK_API_KEY`. A `deepseek` step whose `config.model` still names a
 Claude model has that name mapped onto a DeepSeek model (opus → `deepseek-v4-pro`, sonnet/haiku →
 `deepseek-flash`) and reports the substitution as a step diagnostic rather than failing.
 
@@ -470,7 +472,9 @@ exception** is the sole-key `$` wrapper (§7.3).
 
 A `prompt` step's `model` and `options` are ordinary config keys (`config.model`, `config.options`) — no
 key is special-cased, so `model` inherits and is operator-overridable like any other, and `options`
-becomes maskable with a `$secret` wrapper. Because config is literal, `model` cannot be chosen from a
+becomes maskable with a `$secret` wrapper. `config.DEEPSEEK_API_KEY` is the `deepseek` worker's
+credential key, read before `process.env.DEEPSEEK_API_KEY` (ADR 0045); wrap it in `$secret` or it is a
+plain value the masker does not know about. Because config is literal, `model` cannot be chosen from a
 predecessor's output; the file-top `config.model` is the common case, a step-level `config.model` the
 override.
 
@@ -486,6 +490,10 @@ Operator launch-time values (CLI flags or file) override the top-level file's de
 a workflow-step boundary, the parent's effective config flows into the child file and shadows the
 child's declared defaults key by key. Context is isolated; config deliberately is not. Steps never write
 config.
+
+An **operator's** override is frozen with the run (ADR 0046): recorded on the run's root row resolved
+and `$secret`-masked, recovered by a Resume or a Complete. The file's own config is not frozen — it is
+re-read from disk on every invocation, so an author's edit reaches a step that re-runs.
 
 ### 7.3 Value wrappers and the reserved `$` namespace
 

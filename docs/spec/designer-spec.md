@@ -172,8 +172,8 @@ never folded away — they are how the author knows which node is in view. Below
 of **collapsible sections**, each one's header acting as its own toggle. The kind's own fields are one
 such section and start **expanded**: they fold, but folding is an option for a busy node, never a step
 before an ordinary edit. The named **payload regions** below them — a step's `config`, `input`,
-`context writes`, and `reference`; the file's own `config`, `worker defaults`, and `output` — start
-**collapsed**: the author unfolds only the payload they came for. Expansion is per node, so a new
+`context writes`, and `reference`; the file's own `config`, `input`, `worker defaults`, and `output` —
+start **collapsed**: the author unfolds only the payload they came for. Expansion is per node, so a new
 selection resets every section to its default, and a collapsed section renders no body at all, so its
 fields are neither tabbable nor read out of order.
 

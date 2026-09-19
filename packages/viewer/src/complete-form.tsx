@@ -3,6 +3,7 @@ import {
   coerceCompleteOutput,
   coerceRawCompleteOutput,
   mapCompleteErrors,
+  parseJsonField,
   PathApiError,
   validateCompleteOutput,
   type CompleteField,
@@ -12,6 +13,7 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { errorMessage } from "./load-state.js";
+import { blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface CompleteFormProps {
   client: PathApiClient;
@@ -19,6 +21,13 @@ export interface CompleteFormProps {
   stepRunId: string;
   /** The node's `outputSchema`, or `null` for a node that accepts any JSON (an empty output). */
   outputSchema: JsonValue | null;
+  /**
+   * The launch config dot-paths the tree recorded as `$secret`-masked (ADR 0046). Non-empty, the form
+   * draws an optional config field prefilled with a skeleton of those paths, because a continuation
+   * recovers the frozen config and its `[secret:<key>]` tokens cannot run — the operator supplies the
+   * values again. Empty or absent, no config field renders: there is nothing to re-enter.
+   */
+  launchSecretKeys?: readonly string[];
   /** The submit button's label. Defaults to the panel's "Complete this activity". */
   submitLabel?: string;
   /** Called on a `202` — the leaf is `succeeded` and the root's SSE stream carries the continuation. */
@@ -39,12 +48,24 @@ export interface CompleteFormProps {
  * publishes. That control takes anything: JSON becomes its value, plain prose becomes a JSON string,
  * and blank submits an empty output (the historical bare-submit) — so it never rejects.
  */
-export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "Complete this activity", onCompleted }: CompleteFormProps) {
+export function CompleteForm({
+  client,
+  stepRunId,
+  outputSchema,
+  launchSecretKeys,
+  submitLabel = "Complete this activity",
+  onCompleted,
+}: CompleteFormProps) {
   const fields = useMemo(() => buildCompleteFields(outputSchema), [outputSchema]);
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
+  const secrets = launchSecretKeys ?? [];
+  const showSecrets = secrets.length > 0;
   const [values, setValues] = useState<Partial<Record<string, CompleteFieldValue>>>({});
   const [rawText, setRawText] = useState("");
+  // Prefilled from the tree's recorded secret paths, so the operator fills values rather than retyping
+  // the shape. Lazy init: the skeleton is built once per mount, not on every keystroke elsewhere.
+  const [configText, setConfigText] = useState(() => (showSecrets ? secretSkeletonJson(secrets) : ""));
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "sending">("idle");
@@ -52,6 +73,14 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
   const setValue = (key: string, value: CompleteFieldValue): void => {
     setValues((prev) => ({ ...prev, [key]: value }));
   };
+
+  // A recorded launch secret is a credential the frozen config holds only as a mask token, so the form
+  // refuses to submit one the operator left missing, empty, or whitespace — the engine would otherwise
+  // fall through to the environment and continue with a key the operator did not choose. Derived from
+  // the text, not gated on a keystroke, so the button is disabled (with the reason shown) from the
+  // moment the skeleton is on screen.
+  const configPreview = parseJsonField(configText, { allowEmpty: true });
+  const blankSecrets = configPreview.ok ? blankSecretPaths(secrets, configPreview.value) : [];
 
   const submit = (): void => {
     let output: JsonValue;
@@ -69,8 +98,22 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
       setFieldErrors({});
     }
     setFormErrors([]);
+    // The continuation's config is a separate gate from the output: an unparseable value, or a blank
+    // value at a path the launch recorded as a secret, blocks the submit here, with no request spent,
+    // and the leaf stays awaiting for a corrected resubmit. Blank parses to `undefined`, so a run with
+    // no secrets sends the same `{ output }` body as before.
+    const configResult = parseJsonField(configText, { allowEmpty: true });
+    if (!configResult.ok) {
+      setFormErrors([configResult.message]);
+      return;
+    }
+    const blanks = blankSecretPaths(secrets, configResult.value);
+    if (blanks.length > 0) {
+      setFormErrors([blankSecretMessage(blanks)]);
+      return;
+    }
     setPhase("sending");
-    client.completeStep(stepRunId, output).then(
+    client.completeStep(stepRunId, output, configResult.value).then(
       () => {
         setPhase("idle");
         onCompleted();
@@ -114,6 +157,14 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
         ))
       )}
 
+      {showSecrets && <LaunchSecretsControl value={configText} onChange={setConfigText} />}
+
+      {blankSecrets.length > 0 && (
+        <p className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-secret-error">
+          {blankSecretMessage(blankSecrets)}
+        </p>
+      )}
+
       {formErrors.map((message, index) => (
         <p key={index} className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-form-error">
           {message}
@@ -121,12 +172,25 @@ export function CompleteForm({ client, stepRunId, outputSchema, submitLabel = "C
       ))}
 
       <div className="launch-actions">
-        <button type="submit" className="launch-submit" data-testid="complete-submit" disabled={phase === "sending"}>
+        <button
+          type="submit"
+          className="launch-submit"
+          data-testid="complete-submit"
+          disabled={phase === "sending" || blankSecrets.length > 0}
+        >
           {phase === "sending" ? "Submitting…" : submitLabel}
         </button>
       </div>
     </form>
   );
+}
+
+/** The form-level error for the launch secrets a submit would leave blank, naming each one. */
+function blankSecretMessage(paths: readonly string[]): string {
+  const names = paths.map((path) => `"${path}"`).join(", ");
+  return paths.length === 1
+    ? `Launch secret ${names} is empty — enter a value before completing.`
+    : `Launch secrets ${names} are empty — enter a value for each before completing.`;
 }
 
 interface RawOutputControlProps {
@@ -154,6 +218,40 @@ function RawOutputControl({ value, onChange }: RawOutputControlProps) {
         rows={4}
         value={value}
         data-testid="complete-raw-output"
+        onChange={(event) => onChange(event.target.value)}
+      />
+    </div>
+  );
+}
+
+interface LaunchSecretsControlProps {
+  value: string;
+  onChange: (value: string) => void;
+}
+
+/**
+ * The Complete form's optional config override, drawn only when the launch recorded `$secret` config
+ * (ADR 0046). It is prefilled with the masked paths' skeleton, and the note says why the operator must
+ * fill it: the frozen values are stored masked and the engine refuses to continue with a token.
+ */
+function LaunchSecretsControl({ value, onChange }: LaunchSecretsControlProps) {
+  const id = "complete-fld-__config";
+
+  return (
+    <div className="complete-field" data-testid="complete-field-__config">
+      <label className="field-label complete-label" htmlFor={id}>
+        Launch secrets (config override) · JSON
+      </label>
+      <p className="complete-help" data-testid="complete-config-note">
+        These launch secrets are stored masked and must be supplied again to continue the run.
+      </p>
+      <textarea
+        id={id}
+        className="launch-textarea complete-input"
+        rows={4}
+        value={value}
+        spellCheck={false}
+        data-testid="complete-config"
         onChange={(event) => onChange(event.target.value)}
       />
     </div>

@@ -6,6 +6,7 @@ import {
   checkInterpolationSyntax,
   safeParseWorkflowFile,
   type InterpolationRoot,
+  type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
@@ -109,6 +110,29 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
     parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
   const isEmpty = text.trim() === "" || isEmptyObject;
   return { ok: true, value: isEmpty ? dropNodeKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode) };
+}
+
+/**
+ * The file-level **input** seed rule: the workflow's own default root context seed, sent on launch when
+ * the operator supplies no override. It is a plain JSON **object** — the root context is seeded from its
+ * top-level keys — with no `${…}` interpolation (empty roots: nothing resolves the root seed before it
+ * lands in context). An empty draft or an empty object `{}` means "no seed", so the key is dropped; an
+ * unparseable, array, or scalar draft returns its error and is not committed, so the file stays
+ * strict-valid.
+ */
+export function validateFileInputDraft(file: WorkflowFile, text: string): DraftResult<WorkflowFile> {
+  const dropInput = (): WorkflowFile => {
+    const { input: _dropped, ...rest } = file;
+    return rest as WorkflowFile;
+  };
+  if (text.trim() === "") return { ok: true, value: dropInput() };
+  const parsed = parseInputDraft(text, []);
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  if (parsed.value === null || typeof parsed.value !== "object" || Array.isArray(parsed.value)) {
+    return { ok: false, error: "The workflow input must be a JSON object." };
+  }
+  if (Object.keys(parsed.value).length === 0) return { ok: true, value: dropInput() };
+  return { ok: true, value: { ...file, input: parsed.value as { [key: string]: JsonValue } } };
 }
 
 /**

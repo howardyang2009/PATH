@@ -59,6 +59,67 @@ function context(live: LiveRuns): RunsRouteContext {
 
 const WORKFLOW = "two-binary-steps.workflow.json";
 
+// The file-level input seed (a workflow file's own top-level `input`): `POST /v0/runs` resolves the
+// effective root input here — a non-empty operator override wins, else the file's seed, else `{}` — so
+// every launch door that reaches this route (the Viewer panel, the Designer's run dock) shares one rule.
+describe("POST /v0/runs input resolution", () => {
+  const WITH_INPUT = "file-input.workflow.json";
+  const FILE_SEED = { ticket: 7, labels: ["from-file"] };
+
+  it("falls back to the file's own input seed when the request sends no input", async () => {
+    const { live, started } = recordingLive();
+    const { res, result } = fakeRes();
+
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT }), res, context(live));
+
+    expect(result.status).toBe(202);
+    expect(started[0]!.input).toEqual(FILE_SEED);
+  });
+
+  it("treats an empty override as no override", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: {} }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual(FILE_SEED);
+  });
+
+  it("lets a non-empty override win over the file seed", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: { ticket: 9 } }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual({ ticket: 9 });
+  });
+
+  it("sends {} for a file with no seed and no override", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual({});
+  });
+});
+
+// The *override* is recorded beside the effective seed (ADR 0046): `input` is what the run seeds from,
+// `operatorInput` is what a reader is shown as the launch's own input. The same "empty is no override"
+// rule applies, so a `{}` body never records a launch fact that did not exist.
+describe("POST /v0/runs operatorInput (ADR 0046)", () => {
+  it("forwards a non-empty input override as the recorded launch input", async () => {
+    const { live, started } = recordingLive();
+    const { res, result } = fakeRes();
+
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: { ticket: 9 } }), res, context(live));
+
+    expect(result.status).toBe(202);
+    expect(started[0]!.operatorInput).toEqual({ ticket: 9 });
+  });
+
+  it("records no override for an empty object or an absent field", async () => {
+    const empty = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: {} }), fakeRes().res, context(empty.live));
+    expect(empty.started[0]!.operatorInput).toBeUndefined();
+
+    const absent = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), fakeRes().res, context(absent.live));
+    expect(absent.started[0]!.operatorInput).toBeUndefined();
+  });
+});
+
 describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
   it("folds a top-level worker_defaults into StartRunOptions.launchWorkerDefaults verbatim", async () => {
     const { live, started } = recordingLive();

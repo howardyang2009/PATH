@@ -50,6 +50,7 @@ import { referenceablePaths } from "./interp-suggest.js";
 import {
   useKeyedRows,
   useValidatedDraft,
+  validateFileInputDraft,
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
@@ -69,7 +70,8 @@ import {
  * The pane's anchor is its **identity** — `name`, then `id` — and it never folds away: it is how the
  * author knows which node is in view. Below it, the kind's own fields are a {@link PaneSection} that
  * opens **expanded**, and the payload regions — a step's **config**, **input**, **context writes** and
- * **reference**, and the file's own **config**, **worker defaults** and **output** — are sections that
+ * **reference**, and the file's own **config**, **input**, **worker defaults** and **output** — are
+ * sections that
  * start **collapsed**: selecting a node shows its identity and its kind fields, and the author unfolds
  * only the payload they came for. A section's header is its toggle, so a collapsed region still names
  * itself. Expansion is per node — a section resets to its default when the selection moves (each is
@@ -165,6 +167,8 @@ function FileProperties({
       <ReadOnlyRow label="format" value={file.format} />
       <hr className="pane-divider" />
       <FileConfigRegion key={`file-config-${file.id}`} file={file} applyEdit={applyEdit} />
+      <hr className="pane-divider" />
+      <FileInputRegion file={file} applyEdit={applyEdit} />
       <hr className="pane-divider" />
       <FileWorkerDefaultsRegion key={`file-worker-defaults-${file.id}`} file={file} plugins={plugins} applyEdit={applyEdit} />
       <hr className="pane-divider" />
@@ -910,6 +914,45 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
       write={write}
       emptyHint="No config. Add a key to set a workflow default that every step inherits."
     />
+  );
+}
+
+/**
+ * The file's own **input** seed: the workflow's default root context seed, sent at launch when the
+ * operator supplies no override (the Viewer's `Override input (optional)` field). A live-validated JSON
+ * textarea, like a step's `input` but with no interpolation — nothing resolves the root seed before it
+ * seeds context, so only plain JSON is accepted. An empty box or `{}` drops the whole `input` key, so
+ * an empty `input: {}` never lands. A blank box reads back as `{}`, the field's own empty default.
+ */
+function FileInputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: EditCommit<WorkflowFile> }): JSX.Element {
+  const { draft, error, onEdit } = useValidatedDraft(
+    () => (file.input === undefined ? "{}" : JSON.stringify(file.input, null, 2)),
+    (text) => validateFileInputDraft(file, text),
+    editKey(file.id, "input"),
+    (next) => applyEdit(next, editKey(file.id, "input")),
+  );
+
+  return (
+    <PaneSection title="input">
+      <div className="pane-field">
+        <label className="pane-label" htmlFor={`file-input-${file.id}`}>
+          input (JSON object, the workflow's launch seed)
+        </label>
+        <textarea
+          id={`file-input-${file.id}`}
+          className="pane-input pane-json"
+          value={draft}
+          onChange={(e) => onEdit(e.target.value)}
+          aria-invalid={error !== null}
+          rows={5}
+        />
+        {error ? (
+          <p className="pane-error" role="alert">
+            {error}
+          </p>
+        ) : null}
+      </div>
+    </PaneSection>
   );
 }
 

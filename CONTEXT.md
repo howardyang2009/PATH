@@ -25,7 +25,9 @@ and issues use them exactly.
   (ADR 0020). Two rules follow from that trust, and review is what enforces them. A worker reports
   diagnostics by *returning* `stderr`, never by writing to a process stream. And it reads the
   environment only through a resolved **Env-sourced value**, never `process.env` directly, because that
-  is the door an operator's config is checked at (ADR 0012).
+  is the door an operator's config is checked at (ADR 0012). One recorded exception: a shipped `prompt`
+  worker's **provider credential** — `deepseek` reads `config.DEEPSEEK_API_KEY` first and
+  `process.env.DEEPSEEK_API_KEY` second (ADR 0045).
 - **Default worker** — the worker a step of a given type uses when it names none and no **worker-default**
   overrides it. Each step type declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use
   it and write no `worker` field. It is a required key on the type, not a reserved worker name. It is the
@@ -52,6 +54,16 @@ and issues use them exactly.
   it — and **frozen** with the run, so a resume reuses it verbatim — it is identity-defining like
   **input**, not re-overridable like operator **config**.
   Changing it is a new run, never a resume.
+- **Input** — the root run's starting context seed: one JSON object whose top-level keys become the
+  root context. There are two sources, and the launch-time one wins. An **operator input override** is
+  supplied at launch (the launch form's `Override input (optional)`, the wire `input` field); a **file
+  input** is the workflow file's own optional top-level `input` key, its default seed. An override takes
+  effect when it has at least one top-level key; a blank field, a literal `{}`, or an omitted field
+  falls back to the file input, and to `{}` when the file declares none. The resolved value is what the
+  run records and freezes — like a **launch worker-default**, input is identity-defining, so resume
+  carries none and changing it is a new run. The file input seeds the root run only; a nested
+  `workflow`-ref run's context comes from its parent step's input, never from the child file's own
+  `input`.
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
   There is no separate "workflow execution" concept.
@@ -303,7 +315,17 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
   not the machine. It can carry a literal **Secret**. But it must not name the server's environment
   with an **Env-sourced value**. Otherwise a browser operator who launches a discovered workflow could
   read the server box's environment. A `$env` authored inside a workflow file is not affected: that
-  value is the author's, not the operator's.
+  value is the author's, not the operator's. It is **frozen with the run** as a [[Launch facts]] field,
+  stored resolved and masked (a **Secret** value becomes its token), and restored by a Resume or a
+  Complete — which is why a masked secret must be supplied again on the continuation.
+- **Launch facts** — what an operator supplied at launch beyond the workflow file: an **input** override,
+  an **operator config** override, and a **worker-default** table, frozen on the run tree's root row
+  (ADR 0046). A Resume or a Complete recovers the config and the worker-default table; the input
+  override is recorded and shown, never re-applied, because both continuations restore the **Context**
+  blackboard rather than re-seeding it. A recovered secret value is only its `[secret:<key>]` token, so
+  the continuation must supply it again — otherwise the run ends before its first step naming the key.
+  All three facts are readable on the run-tree response; a root-run summary carries the masked secret
+  *names* alone, so a Resume surface can ask for them before it submits.
 - **Context** — key-value data written *from inside* the run. Steps produce it at runtime. The other
   steps of the same workflow can read it (a computed temp dir, a branch name, accumulated results). It
   is scoped to one workflow-run and isolated. A nested workflow-step starts with a fresh, empty

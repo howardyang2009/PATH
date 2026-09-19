@@ -272,11 +272,126 @@ describe("NodeIo", () => {
     expect(error).toHaveTextContent(/step-finished event/i);
   });
 
+  it("shows the root run's launch facts as override sections (ADR 0046)", async () => {
+    const client = stubClient({ blobs: {} });
+    const view = {
+      displayStatus: new Map(),
+      lastError: new Map<string, string>(),
+      launchFacts: {
+        input: { since_tag: "1.3.0" },
+        config: { github_token: "[secret:github_token]" },
+        workerDefaults: { prompt: "deepseek" },
+        secretKeys: ["github_token"],
+      },
+    };
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ runId: ROOT, parentRunId: null, nodeId: null, nodeName: null })}
+        view={view}
+      />,
+    );
+
+    expect(await screen.findByTestId("node-io-override-input")).toHaveTextContent('"since_tag": "1.3.0"');
+    // The masked token is shown as stored — the reader sees what the run holds, tokens and all.
+    expect(screen.getByTestId("node-io-override-config")).toHaveTextContent('"[secret:github_token]"');
+    expect(screen.getByTestId("node-io-launch-worker-defaults")).toHaveTextContent('"prompt": "deepseek"');
+  });
+
+  it("shows only the launch facts the launch supplied", async () => {
+    const client = stubClient({ blobs: {} });
+    const view = {
+      displayStatus: new Map(),
+      lastError: new Map<string, string>(),
+      launchFacts: { input: { seed: 1 } },
+    };
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ runId: ROOT, parentRunId: null, nodeId: null, nodeName: null })}
+        view={view}
+      />,
+    );
+
+    expect(await screen.findByTestId("node-io-override-input")).toHaveTextContent('"seed": 1');
+    expect(screen.queryByTestId("node-io-override-config")).toBeNull();
+    expect(screen.queryByTestId("node-io-launch-worker-defaults")).toBeNull();
+  });
+
+  it("shows no launch-fact sections on a non-root run, even with facts on the tree", async () => {
+    const client = stubClient({ blobs: {} });
+    const view = {
+      displayStatus: new Map(),
+      lastError: new Map<string, string>(),
+      launchFacts: { input: { seed: 1 } },
+    };
+    render(<NodeIo client={client} run={runState()} view={view} />);
+
+    await screen.findByTestId("node-io-head");
+    expect(screen.queryByTestId("node-io-override-input")).toBeNull();
+    expect(screen.queryByTestId("node-io-override-config")).toBeNull();
+    expect(screen.queryByTestId("node-io-launch-worker-defaults")).toBeNull();
+  });
+
   it("shows no E block for a run that did not fail", async () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
     render(<NodeIo client={client} run={runState()} />);
 
     await screen.findByTestId("node-io-input");
     expect(screen.queryByTestId("node-io-error")).toBeNull();
+  });
+
+  it("shows the resumed-from root's input on a successor root, not the empty seed it wrote", async () => {
+    // A resume writes the successor root's own `input.json` as the empty seed it starts from; the input
+    // the tree actually started from belongs to the predecessor. The pane reads the predecessor's object
+    // directly (the same direct-to-source reading a reuse row gets) rather than a copy on disk.
+    const original = "05c47f7d-a6cb-4720-9b0f-11a8eb301726";
+    const client = stubClient({ blobs: { [`${original}/input`]: { test1: "test3", test4: "test5" } } });
+    render(
+      <NodeIo
+        client={client}
+        run={runState({
+          runId: ROOT,
+          rootRunId: ROOT,
+          parentRunId: null,
+          nodeId: null,
+          nodeName: null,
+          inputRef: `runs/${ROOT}/${ROOT}/input.json`,
+          resumedFromRootRunId: original,
+        })}
+      />,
+    );
+
+    const input = await screen.findByTestId("node-io-input");
+    expect(input).toHaveTextContent('"test1": "test3"');
+    expect(input).toHaveTextContent('"test4": "test5"');
+    expect(input).toHaveTextContent(`runs/${original}/${original}/input.json`);
+
+    const note = screen.getByTestId("node-io-resumed-input");
+    expect(note).toHaveTextContent(/resumed from an earlier run/i);
+    expect(note).toHaveTextContent(original);
+  });
+
+  it("reads an absent resumed-from input as no input, not an error", async () => {
+    const original = "05c47f7d-a6cb-4720-9b0f-11a8eb301726";
+    const client = stubClient({ blobs: {} });
+    render(
+      <NodeIo
+        client={client}
+        run={runState({
+          runId: ROOT,
+          rootRunId: ROOT,
+          parentRunId: null,
+          nodeId: null,
+          nodeName: null,
+          inputRef: `runs/${ROOT}/${ROOT}/input.json`,
+          resumedFromRootRunId: original,
+        })}
+      />,
+    );
+
+    const input = await screen.findByTestId("node-io-input");
+    await waitFor(() => expect(input).toHaveTextContent(/resumed-from run recorded no input/i));
+    expect(within(input).queryByRole("alert")).toBeNull();
   });
 });

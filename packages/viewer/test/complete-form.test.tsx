@@ -132,4 +132,100 @@ describe("CompleteForm", () => {
     await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
     expect(bodies[0]).toEqual({ output: {} });
   });
+
+  it("prefills a launch-secret config skeleton and sends the re-entered values (ADR 0046)", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(
+      <CompleteForm
+        client={client}
+        stepRunId="s1"
+        outputSchema={null}
+        launchSecretKeys={["github.token"]}
+        onCompleted={onCompleted}
+      />,
+    );
+
+    // A dot-path nests: the operator fills values in the shape the engine's config lookup reads.
+    const field = screen.getByTestId("complete-config") as HTMLTextAreaElement;
+    expect(JSON.parse(field.value)).toEqual({ github: { token: "" } });
+    expect(screen.getByTestId("complete-config-note")).toHaveTextContent(/masked/i);
+
+    fireEvent.change(field, { target: { value: '{"github":{"token":"sk-live"}}' } });
+    fireEvent.change(screen.getByTestId("complete-raw-output"), { target: { value: '{"approved":true}' } });
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: { approved: true }, config: { github: { token: "sk-live" } } });
+  });
+
+  it("draws no launch-secret config field when the launch recorded none", () => {
+    const { client } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(<CompleteForm client={client} stepRunId="s1" outputSchema={null} onCompleted={() => {}} />);
+
+    expect(screen.queryByTestId("complete-config")).toBeNull();
+  });
+
+  it("blocks submit on an unparseable launch-secret config, spending no request", () => {
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(
+      <CompleteForm client={client} stepRunId="s1" outputSchema={null} launchSecretKeys={["token"]} onCompleted={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByTestId("complete-config"), { target: { value: "{not json" } });
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    expect(screen.getByTestId("complete-form-error")).toBeInTheDocument();
+    expect(bodies).toEqual([]);
+  });
+
+  it("disables submit and names the blank launch secret while one is unsupplied", () => {
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(
+      <CompleteForm
+        client={client}
+        stepRunId="s1"
+        outputSchema={null}
+        launchSecretKeys={["github.token"]}
+        onCompleted={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("complete-submit")).toBeDisabled();
+    expect(screen.getByTestId("complete-secret-error")).toHaveTextContent('"github.token"');
+
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    expect(bodies).toEqual([]);
+  });
+
+  it("treats a whitespace-only launch secret as blank", () => {
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(
+      <CompleteForm client={client} stepRunId="s1" outputSchema={null} launchSecretKeys={["token"]} onCompleted={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByTestId("complete-config"), { target: { value: '{"token":"   "}' } });
+
+    expect(screen.getByTestId("complete-submit")).toBeDisabled();
+    expect(screen.getByTestId("complete-secret-error")).toHaveTextContent('"token"');
+    expect(bodies).toEqual([]);
+  });
+
+  it("enables submit once every launch secret has a non-blank value", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(
+      <CompleteForm client={client} stepRunId="s1" outputSchema={null} launchSecretKeys={["token"]} onCompleted={onCompleted} />,
+    );
+
+    fireEvent.change(screen.getByTestId("complete-config"), { target: { value: '{"token":"sk-live"}' } });
+
+    expect(screen.queryByTestId("complete-secret-error")).toBeNull();
+    expect(screen.getByTestId("complete-submit")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: {}, config: { token: "sk-live" } });
+  });
 });

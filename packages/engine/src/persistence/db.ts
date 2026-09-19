@@ -68,8 +68,16 @@ import Database from "better-sqlite3";
  * launch resolved. It is engine-internal (read through `getLaunchWorkerDefaults`), not part of
  * `RunRecord`. Same bump-and-break, clean-slate reading: an existing pre-#519 db refuses to open
  * rather than silently lacking the column a launch would then fail to write.
+ *
+ * Bumped to 12 for the frozen **launch facts** (ADR 0046): the single `launch_worker_defaults` column
+ * becomes `launch_facts`, a root-only JSON object holding everything an operator supplied at launch —
+ * the input override, the config override (stored `$env`-resolved and `$secret`-masked), the launch
+ * worker-default table, and the config paths whose values were secrets. A resume/Complete recovers
+ * config and worker-defaults from it, and the run-tree read exposes it so a reader can see what the
+ * run was launched with. Same bump-and-break, clean-slate reading: an existing pre-#519 db refuses to
+ * open rather than silently lacking the column a launch would then fail to write.
  */
-export const SCHEMA_VERSION = 11;
+export const SCHEMA_VERSION = 12;
 
 export class SchemaVersionError extends Error {}
 
@@ -95,7 +103,7 @@ const RUNS_TABLE_DDL = `
     workflow_id TEXT,
     workflow_name TEXT,
     workflow_path TEXT,
-    launch_worker_defaults TEXT
+    launch_facts TEXT
   );
   CREATE INDEX IF NOT EXISTS runs_root_run_id_idx ON runs (root_run_id);
 `;

@@ -6,8 +6,8 @@ import type { parseJsonField } from "@path/client-core";
  * is `parseJsonField` (launch-json.ts) — this only renders one field's text, hint, and invalid state.
  *
  * The visible label is optional: when an existing title already names the field — the launch form's
- * `input · JSON` disclosure, which sits directly above the textarea — pass that element's id as
- * `labelledBy` and omit `label`, so the same words are not printed twice. The textarea keeps its
+ * `Override input (optional)` disclosure, which sits directly above the textarea — pass that element's
+ * id as `labelledBy` and omit `label`, so the same words are not printed twice. The textarea keeps its
  * accessible name either way.
  */
 export function JsonField({

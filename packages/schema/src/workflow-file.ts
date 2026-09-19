@@ -23,6 +23,11 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
       id: IdSchema,
       name: NameSchema,
       config: ConfigObjectSchema.optional(),
+      // The file's own launch seed: the JSON object a launch sends as the root input when the operator
+      // supplies no override. Plain JSON — the empty root set refuses a `${…}` placeholder here, since
+      // nothing interpolates the root input; it goes straight into the root context (format doc §6.3).
+      // Registry-agnostic and shape-only, like `output`/`worker_defaults`.
+      input: z.record(z.string(), interpolatedJsonValue([])).optional(),
       body: bodySchema,
       output: z.record(z.string(), interpolatedJsonValue(STEP_ROOTS)).optional(),
       // The file worker-default table (ADR 0044): `{ <stepType>: <workerName> }`, a per-type selection

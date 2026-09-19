@@ -198,8 +198,8 @@ describe("LaunchPanel", () => {
     expect(input.value).toBe("{}");
     // The disclosure is the field's only visible title — the textarea is named by it, not by a second
     // printed label.
-    expect(screen.getAllByText(/input · JSON/)).toHaveLength(1);
-    expect(screen.getByLabelText(/input · JSON/)).toBe(input);
+    expect(screen.getAllByText(/Override input \(optional\)/)).toHaveLength(1);
+    expect(screen.getByLabelText(/Override input \(optional\)/)).toBe(input);
 
     // Clicking the open disclosure again collapses the field.
     fireEvent.click(screen.getByTestId("launch-input-toggle"));
@@ -265,9 +265,9 @@ describe("LaunchPanel", () => {
 
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     const post = calls.find((c) => c.method === "POST");
+    // No typed override → no `input` field, so the server falls back to the file's own input seed.
     expect(post?.body).toEqual({
       workflow_path: "release-notes.workflow.json",
-      input: {},
       config: { model: "claude" },
     });
   });
@@ -314,6 +314,20 @@ describe("LaunchPanel", () => {
     expect(post?.body).toEqual({ workflow_path: "release-notes.workflow.json" });
   });
 
+  it("omits a literal `{}` override — the file's own input seed applies", async () => {
+    const { client, calls } = stubClient({ workflows: [ROOT] });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
+    fireEvent.change(screen.getByTestId("launch-input"), { target: { value: "{}" } });
+
+    fireEvent.click(screen.getByTestId("launch-submit"));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    const post = calls.find((c) => c.method === "POST");
+    expect(post?.body).not.toHaveProperty("input");
+  });
+
   it("has no launch worker-defaults field when no type ships more than one worker", async () => {
     const { client } = stubClient({ workflows: [ROOT] });
     mount(client);
@@ -341,7 +355,6 @@ describe("LaunchPanel", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     expect(calls.find((c) => c.method === "POST")?.body).toEqual({
       workflow_path: "release-notes.workflow.json",
-      input: {},
       worker_defaults: { prompt: "batch" },
     });
   });

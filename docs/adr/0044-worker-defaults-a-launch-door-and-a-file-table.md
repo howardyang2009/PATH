@@ -57,6 +57,12 @@ from the frozen launch default and the current file. So a predecessor (reused, b
 live-file stance, not a fault. A completed step's worker is a recorded fact; replay reconstructs it per
 row, not as a set.
 
+> **Folded into the frozen launch facts by [ADR 0046](0046-launch-facts-are-frozen-with-the-run.md).**
+> The launch worker-default table this ADR froze is now one field of one `launch_facts` record on the
+> root row, beside the operator's input and config overrides. Everything decided here — the selection,
+> the four-tier order, the freeze-and-restore, the two validation channels — is unchanged; only the
+> column and the `run-started` field carrying it changed name.
+
 ## Validation site: two channels, one per tier (#506)
 
 Both tables validate registry-relative, but not through one `workerOverrides`-style throw. A

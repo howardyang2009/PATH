@@ -1185,3 +1185,56 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(((await res.json()) as { error: { message: string } }).error.message).toContain("id changed");
   });
 });
+
+describe("GET /v0/runs — the frozen launch facts (ADR 0046)", () => {
+  interface TreeWithFacts extends RunTreeBody {
+    launch_facts?: {
+      input?: unknown;
+      config?: unknown;
+      worker_defaults?: unknown;
+      secret_keys?: string[];
+    };
+  }
+
+  it("exposes what the launch supplied, with a $secret config value masked", async () => {
+    const started = (await (
+      await postRun({
+        workflow_path: "two-binary-steps.workflow.json",
+        input: { ticket: 7 },
+        config: { greeting: "hi", apiKey: { $secret: "sk-1" } },
+        worker_defaults: { binary: "spawn" },
+      })
+    ).json()) as { root_run_id: string };
+    await pollUntilTerminal(started.root_run_id);
+
+    const body = (await (await getRun(started.root_run_id)).json()) as TreeWithFacts;
+    expect(body.launch_facts).toEqual({
+      input: { ticket: 7 },
+      config: { greeting: "hi", apiKey: "[secret:apiKey]" },
+      worker_defaults: { binary: "spawn" },
+      secret_keys: ["apiKey"],
+    });
+    // The credential itself never crosses the wire: the frozen copy holds its token.
+    expect(JSON.stringify(body)).not.toContain("sk-1");
+
+    // The list summary carries the masked-secret *names* only, so a Resume surface can ask for them
+    // before it submits.
+    const listed = (await (await listRuns()).json()) as {
+      runs: (RootRunSummary & { launch_secret_keys?: string[] })[];
+    };
+    expect(listed.runs.find((r) => r.run_id === started.root_run_id)!.launch_secret_keys).toEqual(["apiKey"]);
+  });
+
+  it("carries no launch_facts, and no secret names, for a launch that supplied nothing", async () => {
+    const started = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      root_run_id: string;
+    };
+    await pollUntilTerminal(started.root_run_id);
+
+    expect((await (await getRun(started.root_run_id)).json()) as TreeWithFacts).not.toHaveProperty("launch_facts");
+    const listed = (await (await listRuns()).json()) as {
+      runs: (RootRunSummary & { launch_secret_keys?: string[] })[];
+    };
+    expect(listed.runs.find((r) => r.run_id === started.root_run_id)).not.toHaveProperty("launch_secret_keys");
+  });
+});

@@ -42,9 +42,10 @@ export interface LaunchFormProps {
 type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; message: string };
 
 /**
- * The inline launch form: raw JSON `input` (prefilled `{}`, empty allowed — the format declares no
- * input schema) and an optional `config` override, **each behind its own disclosure** — `input · JSON`
- * and `Override config (optional)`, both collapsed on first render — plus, when a registry with a
+ * The inline launch form: an optional raw-JSON `input` **override** (prefilled `{}`, empty allowed —
+ * leaving it empty falls back to the workflow file's own `input` seed, else `{}`) and an optional
+ * `config` override, **each behind its own disclosure** — `Override input (optional)` and
+ * `Override config (optional)`, both collapsed on first render — plus, when a registry with a
  * multi-worker type is supplied, the **launch worker-default** table (ADR 0044). Client-side JSON is
  * gated by {@link parseJsonField} (§ Shared seam); the server is still the validator, and its `400`
  * (schema failure, a rejected `$env` override — ADR 0012, a bad worker-default entry — ADR 0044) lands
@@ -86,6 +87,12 @@ export function LaunchForm({
   // show/hide the fields.
   const inputResult = parseJsonField(input, { allowEmpty: true });
   const configResult = parseJsonField(config, { allowEmpty: true });
+  // An override takes effect only when it has at least one top-level key: a blank field or a literal
+  // `{}` is "no override", so the server falls back to the workflow file's own `input` seed (else `{}`).
+  const inputOverride =
+    inputResult.ok && inputResult.value !== undefined && Object.keys(inputResult.value).length > 0
+      ? inputResult.value
+      : undefined;
   // An invalid value cannot hide behind a collapsed disclosure — that would disable launch with the
   // reason off-screen — so a bad value forces its own field open.
   const inputOpen = showInput || !inputResult.ok;
@@ -106,7 +113,9 @@ export function LaunchForm({
     client
       .startRun({
         workflowPath,
-        input: inputResult.value,
+        // An empty override is omitted, never sent as `{}` — the server then seeds the run from the
+        // workflow file's own `input`, the file's own rule mirrored here.
+        input: inputOverride,
         config: configResult.value,
         // An unset table is omitted, never sent as `{}` — the same "empty drops the key" rule the file
         // channel's `worker_defaults` follows (ADR 0044).
@@ -131,7 +140,8 @@ export function LaunchForm({
         aria-expanded={inputOpen}
         onClick={() => setShowInput((shown) => !shown)}
       >
-        {inputOpen ? "▾" : "▸"} input · JSON
+        {inputOpen ? "▾" : "▸"} Override input (optional)
+        {inputOverride !== undefined && <span className="launch-disclosure-dot"> · set</span>}
       </button>
       {inputOpen && (
         <JsonField
