@@ -84,13 +84,19 @@ export interface Emitter {
   /**
    * This workflow-run begins. `input` is the run's own; the rest are root-only and gated here: the
    * source-workflow trio (`workflowId`/`workflowName`/`workflowPath`, ADR 0006) rides only a root
-   * run's `run-started`, and `resumedFromRootRunId` (ADR 0009 lineage) only when the run is a
-   * successor. A nested run passes them and they are dropped — `isRoot` is read off `identity`.
+   * run's `run-started`, the frozen launch worker-default table (ADR 0044) likewise, and
+   * `resumedFromRootRunId` (ADR 0009 lineage) only when the run is a successor. A nested run passes
+   * them and they are dropped — `isRoot` is read off `identity`.
    */
   runStarted(args: {
     input: JsonValue;
     resumedFromRootRunId?: string;
     rerunFromNodePath?: RerunFromNodePathEntry[];
+    /**
+     * The operator's frozen launch worker-default table (ADR 0044, #519). Root-only like the
+     * source-workflow trio: a nested run passes none, and persistence writes it to the root row only.
+     */
+    launchWorkerDefaults?: { [stepType: string]: string };
     workflowId?: string;
     workflowName?: string;
     workflowPath?: string;
@@ -154,6 +160,9 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,
         // and the caller supplies it on the root alone, so gating on `isRoot` keeps it there.
         ...(isRoot && args.rerunFromNodePath !== undefined ? { rerunFromNodePath: args.rerunFromNodePath } : {}),
+        // The frozen launch worker-default table is root-only (ADR 0044, #519), gated on `isRoot` for
+        // the same reason: only the root row records it, and only a resume/Complete reads it back.
+        ...(isRoot && args.launchWorkerDefaults !== undefined ? { launchWorkerDefaults: args.launchWorkerDefaults } : {}),
         // Source-workflow identity is root-only (ADR 0006): a nested run's producing node is already
         // named by `nodeId`/`nodeName`, so the trio is dropped for it even when supplied.
         ...(isRoot && args.workflowId !== undefined ? { workflowId: args.workflowId } : {}),

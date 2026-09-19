@@ -22,7 +22,7 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { cancelNonTerminalRuns, getRun, getRunsForRoot } from "./persistence/run-store.js";
+import { cancelNonTerminalRuns, getLaunchWorkerDefaults, getRun, getRunsForRoot } from "./persistence/run-store.js";
 import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
@@ -452,7 +452,14 @@ export function openProject(dir: string): OpenProjectResult {
           rerunFromNodePath,
         };
 
-        const result = await execute(rootFile, workflowDir, runOpts, resume, [capture]);
+        // The launch worker-default is identity-defining like `input` (ADR 0044, #519): a resume
+        // restores the table the predecessor recorded on its root row, never one off the request — the
+        // resume route carries no such field, and changing it is a new run. The file tier stays live,
+        // so re-run steps resolve from this frozen launch table plus the reloaded file's own
+        // `worker_defaults`, exactly the order the launch used.
+        const frozenLaunchWorkerDefaults = getLaunchWorkerDefaults(db, rootRunId);
+
+        const result = await execute(rootFile, workflowDir, { ...runOpts, launchWorkerDefaults: frozenLaunchWorkerDefaults }, resume, [capture]);
 
         // `run-started` precedes every other observation of a tree (run-observer.ts), and the root
         // run always starts, so by here the capture has fired — a missing id would be an engine bug,
@@ -566,7 +573,11 @@ export function openProject(dir: string): OpenProjectResult {
           };
 
           const { rerunFromRunId: _ignored, ...runOpts } = opts;
-          const result = await execute(rootFile, workflowDir, runOpts, undefined, [], continueInput);
+          // A Complete is a replay of the same tree (ADR 0041), so it restores the launch
+          // worker-default table that tree's root row recorded (#519, ADR 0044) — the same frozen table
+          // a resume restores — and re-resolves the forward steps from it plus the live file.
+          const frozenLaunchWorkerDefaults = getLaunchWorkerDefaults(db, rootRunId);
+          const result = await execute(rootFile, workflowDir, { ...runOpts, launchWorkerDefaults: frozenLaunchWorkerDefaults }, undefined, [], continueInput);
           return {
             ok: true,
             rootRunId,

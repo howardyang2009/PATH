@@ -95,6 +95,14 @@ export type Observation =
        */
       rerunFromNodePath?: RerunFromNodePathEntry[];
       /**
+       * The operator's frozen **launch worker-default** table (ADR 0044, #519) — `{ <type>: <name> }`,
+       * set only on a **root** run-started whose launch supplied one. It is identity-defining like
+       * `input`: persistence records it on the root row (`getLaunchWorkerDefaults` reads it back), and
+       * `Project.resume`/`complete` restore it so a re-run step resolves to the same worker the launch
+       * chose. Absent for a launch that supplied none and for every nested run.
+       */
+      launchWorkerDefaults?: { [stepType: string]: string };
+      /**
        * The producing workflow's source identity (#202, ADR 0006): its durable GUID `id`, human
        * `name`, and the launcher-supplied path (relative to the store dir). Set **only on the root
        * run's** run-started — a nested workflow-run's own file identity is not recorded, its producing

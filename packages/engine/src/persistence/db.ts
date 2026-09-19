@@ -61,8 +61,15 @@ import Database from "better-sqlite3";
  * status enum (`@path/schema`) already carried it, but the on-disk constraint did not, so a park
  * would have been rejected by SQLite. Same bump-and-break, clean-slate reading: an existing pre-#484
  * db refuses to open rather than rejecting the first `awaiting` transition at write time.
+ *
+ * Bumped to 11 in #519 for the frozen launch worker-default table (ADR 0044): the operator's launch
+ * `{ <type>: <worker-name> }` map is identity-defining like `input`, so the root row records it (a
+ * root-only JSON column) and a resume/Complete restores it, keeping a re-run step on the worker the
+ * launch resolved. It is engine-internal (read through `getLaunchWorkerDefaults`), not part of
+ * `RunRecord`. Same bump-and-break, clean-slate reading: an existing pre-#519 db refuses to open
+ * rather than silently lacking the column a launch would then fail to write.
  */
-export const SCHEMA_VERSION = 10;
+export const SCHEMA_VERSION = 11;
 
 export class SchemaVersionError extends Error {}
 
@@ -87,7 +94,8 @@ const RUNS_TABLE_DDL = `
     reused_from_run_id TEXT,
     workflow_id TEXT,
     workflow_name TEXT,
-    workflow_path TEXT
+    workflow_path TEXT,
+    launch_worker_defaults TEXT
   );
   CREATE INDEX IF NOT EXISTS runs_root_run_id_idx ON runs (root_run_id);
 `;
