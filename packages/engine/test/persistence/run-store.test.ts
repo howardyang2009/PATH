@@ -9,6 +9,7 @@ import {
   deleteRunsForRoot,
   existingRunIds,
   finishRun,
+  getLaunchWorkerDefaults,
   getRunsForRoot,
   insertRun,
   listRootRuns,
@@ -115,6 +116,44 @@ describe("run-store", () => {
   it("insertRun leaves resumedFromRootRunId null when there is none", () => {
     insertRun(db, { runId: "r1", rootRunId: "r1", parentRunId: null, nodeId: null, nodeName: null, workerName: null, status: "running" });
     expect(getRunsForRoot(db, "r1")[0]?.resumedFromRootRunId).toBeNull();
+  });
+
+  // The launch worker-default table is frozen on the root row (ADR 0044, #519) so a resume restores
+  // it; it is engine-internal, so it rides its own accessor rather than the run record.
+  it("insertRun records the launch worker-default table on a root row and reads it back (#519)", () => {
+    insertRun(db, {
+      runId: "root-1",
+      rootRunId: "root-1",
+      parentRunId: null,
+      nodeId: null, nodeName: null,
+      workerName: null,
+      status: "running",
+      launchWorkerDefaults: { prompt: "deepseek", binary: "spawn" },
+    });
+
+    expect(getLaunchWorkerDefaults(db, "root-1")).toEqual({ prompt: "deepseek", binary: "spawn" });
+  });
+
+  it("leaves the launch worker-default table absent when none was supplied (#519)", () => {
+    insertRun(db, { runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, workerName: null, status: "running" });
+
+    expect(getLaunchWorkerDefaults(db, "root-1")).toBeUndefined();
+  });
+
+  it("reads the launch worker-default table off the row named, not the tree (nested rows carry none)", () => {
+    insertRun(db, {
+      runId: "root-1",
+      rootRunId: "root-1",
+      parentRunId: null,
+      nodeId: null, nodeName: null,
+      workerName: null,
+      status: "running",
+      launchWorkerDefaults: { prompt: "deepseek" },
+    });
+    insertRun(db, { runId: "child-1", rootRunId: "root-1", parentRunId: "root-1", nodeId: "a", nodeName: "a", workerName: "spawn", status: "running" });
+
+    expect(getLaunchWorkerDefaults(db, "child-1")).toBeUndefined();
+    expect(getLaunchWorkerDefaults(db, "no-such-run")).toBeUndefined();
   });
 
   it("setRunOutputRef records the output ref once the run has succeeded", () => {

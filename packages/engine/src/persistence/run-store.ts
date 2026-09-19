@@ -33,12 +33,19 @@ export interface NewRunRow {
   workflowName?: string | null;
   /** Root-only (#202): the producing `workflow.json` path, relative to the store dir. */
   workflowPath?: string | null;
+  /**
+   * Root-only (#519, ADR 0044): the operator's frozen **launch worker-default** table
+   * (`{ <stepType>: <workerName> }`), stored as JSON TEXT. Undefined/null on every row but a fresh
+   * launch's root — a resume/Complete reads it back through `getLaunchWorkerDefaults` so a re-run step
+   * resolves to the worker the launch chose. It is engine-internal, so it never joins `RunRecord`.
+   */
+  launchWorkerDefaults?: { [stepType: string]: string } | null;
 }
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, iteration, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @iteration, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, iteration, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path, launch_worker_defaults)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @iteration, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath, @launchWorkerDefaults)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -58,6 +65,8 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     workflowId: row.workflowId ?? null,
     workflowName: row.workflowName ?? null,
     workflowPath: row.workflowPath ?? null,
+    // JSON-encoded launch table, root-only; null on every nested row and a launch that supplied none (#519).
+    launchWorkerDefaults: row.launchWorkerDefaults ? JSON.stringify(row.launchWorkerDefaults) : null,
   });
 }
 
@@ -209,6 +218,22 @@ export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRec
     .prepare(`SELECT * FROM runs WHERE root_run_id = @rootRunId ORDER BY started_at`)
     .all({ rootRunId }) as RunRowDb[];
   return rows.map(fromDbRow);
+}
+
+/**
+ * The frozen **launch worker-default** table a run recorded on its own root row (#519, ADR 0044), or
+ * `undefined` when the run supplied none — or when no row has that id. The operator's launch table is
+ * identity-defining like `input` and never re-overridable, so `Project.resume`/`complete` restore it
+ * from here rather than taking one off the request: a re-run step then resolves through the same
+ * `node.worker → launch → file → type` order the launch did, with the file tier live. It is
+ * engine-internal, so it rides this accessor rather than `RunRecord`/the wire.
+ */
+export function getLaunchWorkerDefaults(db: Database.Database, rootRunId: string): { [stepType: string]: string } | undefined {
+  const row = db
+    .prepare(`SELECT launch_worker_defaults FROM runs WHERE run_id = @rootRunId`)
+    .get({ rootRunId }) as { launch_worker_defaults: string | null } | undefined;
+  if (!row || row.launch_worker_defaults === null) return undefined;
+  return JSON.parse(row.launch_worker_defaults) as { [stepType: string]: string };
 }
 
 /**

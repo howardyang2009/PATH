@@ -7,7 +7,7 @@ import { openDb } from "../../src/persistence/db.js";
 import { readJsonBlob } from "../../src/persistence/blob-store.js";
 import { pathDir, runBlobDir } from "../../src/persistence/paths.js";
 import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
-import { getRunsForRoot } from "../../src/persistence/run-store.js";
+import { getLaunchWorkerDefaults, getRunsForRoot } from "../../src/persistence/run-store.js";
 
 let projectDir: string;
 let db: Database.Database;
@@ -46,6 +46,24 @@ describe("createPersistedObserver", () => {
     const dir = runBlobDir(projectDir, "root-1", "root-1");
     expect(readJsonBlob(dir, "input.json")).toEqual({ seed: 1 });
     expect(readJsonBlob(dir, "context.json")).toEqual({ seed: 1 });
+  });
+
+  // The launch worker-default table is frozen on the root row (ADR 0044, #519): the root run-started
+  // carries it, persistence records it, and a resume reads it back to re-resolve a re-run step.
+  it("records the launch worker-default table carried by a root run-started (#519)", async () => {
+    const observer = createPersistedObserver(db, projectDir);
+    await observer.observe({
+      type: "run-started",
+      runId: "root-1",
+      rootRunId: "root-1",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      input: {},
+      launchWorkerDefaults: { prompt: "deepseek" },
+    });
+
+    expect(getLaunchWorkerDefaults(db, "root-1")).toEqual({ prompt: "deepseek" });
   });
 
   it("records a step run row and its input blob on stepStarted, scoped under the root run", async () => {

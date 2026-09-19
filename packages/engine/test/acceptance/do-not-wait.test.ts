@@ -192,9 +192,10 @@ describe("acceptance: do-not-wait failure isolation (issue #216, spec §5, ADR 0
 /**
  * Runs the probe through the engine's own assembly (`openProject` + `Project.run`, the pieces `path
  * run` composes) and lands a cancellation with the detached branch still in flight: an appended
- * observer fires the operator's `AbortController` the instant the main-path `after` step finishes —
- * by then the branch has fired its side effect and is holding on `branch_delay_ms`, so the abort
- * catches it live. This mirrors `release-notes.test.ts`'s `killMidFirstRevise`: a real operator
+ * observer arms the operator's `AbortController` when the main-path `after` step finishes, and the
+ * abort itself lands once the branch has fired its side effect — announced by the signal file, since
+ * a step event cannot show it — while the branch holds on `branch_delay_ms`, so it is caught live.
+ * This mirrors `release-notes.test.ts`'s `killMidFirstRevise`: a real operator
  * cancel driven deterministically off an observation, without the process-signal plumbing an
  * in-process test cannot use. The branch ends non-`succeeded` (cancelled), which is the `--resume`
  * target's precondition.
@@ -202,12 +203,23 @@ describe("acceptance: do-not-wait failure isolation (issue #216, spec §5, ADR 0
 async function killWithBranchInFlight(): Promise<string> {
   const controller = new AbortController();
   // `step-finished` carries no `nodeName` (run-observer.ts) — only a `runId`. So the main-path step's
-  // run id is captured off its `step-started`, and the abort fires when *that* run finishes.
+  // run id is captured off its `step-started`, and the abort is armed when *that* run finishes.
   let afterRunId: string | undefined;
+  // The branch fires its side effect from its own freshly spawned process, so `after` finishing can
+  // beat that write on a starved runner — and the cancel then lands on a branch that never fired.
+  // Arm the abort on the side effect itself rather than on the instant `after` ends: waiting for the
+  // very line the test counts keeps the cancel inside the `branch_delay_ms` hold that follows it.
+  const abortOnceBranchFired = async (): Promise<void> => {
+    const deadline = Date.now() + 2000;
+    while (firedCount() < 1 && Date.now() < deadline) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    controller.abort();
+  };
   const abortOnAfterFinished: RunObserver = {
     observe(o: Observation) {
       if (o.type === "step-started" && o.nodeName === "after") afterRunId = o.runId;
-      if (o.type === "step-finished" && o.runId === afterRunId) controller.abort();
+      if (o.type === "step-finished" && o.runId === afterRunId) void abortOnceBranchFired();
     },
   };
 

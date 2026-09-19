@@ -437,6 +437,10 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
         // run passing undefined here changes nothing.
         rerunFromNodePath: params.rerunFromNodePath,
+        // The frozen launch worker-default table, root-only too (#519, ADR 0044): recorded on the root
+        // row so a later resume/Complete restores it. The runtime's copy is the run-tree-wide table the
+        // operator launched with; the emitter gates the field on `isRoot`, so a nested run drops it.
+        launchWorkerDefaults: params.runtime.launchWorkerDefaults,
         workflowId: file.id,
         workflowName: file.name,
         workflowPath: params.sourceWorkflowPath,

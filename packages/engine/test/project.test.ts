@@ -5,8 +5,11 @@ import { toWireRunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
-import { blobRef, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
+import { blobRef, dbFilePath, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import type { LogBackend } from "../src/logging/log-backend.js";
+import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import { openDb } from "../src/persistence/db.js";
+import { getLaunchWorkerDefaults } from "../src/persistence/run-store.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
@@ -566,6 +569,102 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
       const t3 = project.archive.tree(r3.rootRunId)!;
       expect(t3.runs.find((r) => r.nodeName === "p")!.reusedFromRunId).toBeNull();
       expect(t3.root!.rerunFromNodePath!.map((e) => e.nodeName)).toEqual(["sub", "p"]);
+    } finally {
+      project.close();
+    }
+  });
+});
+
+describe("Project.resume — launch worker-default determinism (ADR 0044, #519)", () => {
+  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker a step resolved
+  // to is readable off its recorded `worker_name` and its output. `failing` names a node whose stub
+  // fails, so a run can be stopped and resumed past it.
+  function stubs(ran: string[], failing?: string) {
+    const make = (workerName: string): WorkerDescriptor => ({
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request) => {
+        const label = String(request.fields.prompt);
+        ran.push(`${workerName}:${label}`);
+        if (label === failing) return { status: "failed", error: "boom" };
+        return { status: "succeeded", output: `${workerName}-${label}` };
+      },
+    });
+    return { prompt: { anthropic: make("anthropic"), deepseek: make("deepseek") } };
+  }
+
+  function promptStep(id: string): WorkflowFile["body"][number] {
+    return { type: "prompt", id, name: id, prompt: id, publish: { [`from_${id}`]: "${output}" } };
+  }
+
+  function launchFile(body: WorkflowFile["body"], workerDefaults?: { [type: string]: string }): WorkflowFile {
+    return stampNames({
+      format: "path/workflow@4",
+      id: "wf-launch",
+      name: "launch",
+      config: { model: "m" },
+      body,
+      ...(workerDefaults ? { worker_defaults: workerDefaults } : {}),
+    });
+  }
+
+  it("restores the frozen launch default on resume, over a changed live file default", async () => {
+    const project = open();
+    try {
+      const ran: string[] = [];
+      const v1 = launchFile([promptStep("a"), promptStep("b")]);
+      const first = await project.run(v1, dir, {
+        launchWorkerDefaults: { prompt: "deepseek" },
+        workerOverrides: stubs(ran, "b"),
+      });
+      expect(first.status).toBe("failed");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+      // The recorded worker proves the launch tier resolved both un-pinned steps at launch.
+      expect(project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.workerName).toBe("deepseek");
+
+      // Resume against a v2 whose *file* default names the other worker. The launch default is frozen
+      // with the run, so it outranks the live file default for the re-run step — exactly as at launch.
+      ran.length = 0;
+      const v2 = launchFile([promptStep("a"), promptStep("b")], { prompt: "anthropic" });
+      const result = await project.resume(v2, originalRootId, dir, { workerOverrides: stubs(ran) });
+      if (!result.found) throw new Error("expected found:true");
+      expect(result.status).toBe("succeeded");
+
+      const successor = project.archive.tree(result.rootRunId)!;
+      // `a` is below K: reused read-only, so the live file's new default never re-resolves it.
+      expect(successor.runs.find((r) => r.nodeId === "a")!.reusedFromRunId).not.toBeNull();
+      // `b` re-ran at/after K: resolved from the frozen launch table (`deepseek`), not the file's `anthropic`.
+      expect(successor.runs.find((r) => r.nodeId === "b")!.workerName).toBe("deepseek");
+      expect(ran).toEqual(["deepseek:b"]);
+
+      // The successor records the same frozen table on its own root row, so a further resume (or a
+      // Complete) off *this* tree restores it too — the chain carries the launch identity forward.
+      const raw = openDb(dbFilePath(dir));
+      try {
+        expect(getLaunchWorkerDefaults(raw, result.rootRunId)).toEqual({ prompt: "deepseek" });
+      } finally {
+        raw.close();
+      }
+    } finally {
+      project.close();
+    }
+  });
+
+  it("falls through to the live file default when the predecessor recorded no launch default", async () => {
+    const project = open();
+    try {
+      const v1 = launchFile([promptStep("a"), promptStep("b")]);
+      const first = await project.run(v1, dir, { workerOverrides: stubs([], "b") });
+      expect(first.status).toBe("failed");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      // The file default is live: the author's edit reaches the re-run step, because no frozen launch
+      // tier sits above it for this run.
+      const v2 = launchFile([promptStep("a"), promptStep("b")], { prompt: "deepseek" });
+      const result = await project.resume(v2, originalRootId, dir, { workerOverrides: stubs([]) });
+      if (!result.found) throw new Error("expected found:true");
+      expect(result.status).toBe("succeeded");
+      expect(project.archive.tree(result.rootRunId)!.runs.find((r) => r.nodeId === "b")!.workerName).toBe("deepseek");
     } finally {
       project.close();
     }

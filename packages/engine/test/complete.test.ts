@@ -4,6 +4,7 @@ import { join } from "node:path";
 import type { RunRecord, WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { acquireCompleteLease } from "../src/persistence/complete-lease.js";
+import type { WorkerDescriptor } from "../src/plugin/seam.js";
 import { openProject, type Project } from "../src/project.js";
 import { stampNames } from "./stamp-names.js";
 
@@ -312,6 +313,53 @@ describe("Cancel works on a parked awaiting run (ADR 0041)", () => {
       await project.run(wf, dir);
       const rootRunId = project.archive.listRoots()[0]!.runId;
       expect(project.cancel(rootRunId)).toBe(false);
+    } finally {
+      project.close();
+    }
+  });
+});
+
+describe("Complete replays the tail from the frozen launch default (ADR 0044, #519)", () => {
+  // Two `prompt` worker names, each stubbed to a distinguishable output, so the worker the tail step
+  // resolved to is readable off its recorded `worker_name`.
+  function stubs(): { overrides: { prompt: { [name: string]: WorkerDescriptor } }; ran: string[] } {
+    const ran: string[] = [];
+    const make = (workerName: string): WorkerDescriptor => ({
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request) => {
+        ran.push(`${workerName}:${String(request.fields.prompt)}`);
+        return { status: "succeeded", output: `${workerName}-ran` };
+      },
+    });
+    return { overrides: { prompt: { anthropic: make("anthropic"), deepseek: make("deepseek") } }, ran };
+  }
+
+  const after: WorkflowFile["body"][number] = { type: "prompt", id: "after", name: "after", prompt: "after" };
+
+  it("resolves the re-run tail from the frozen launch table, over the live file default", async () => {
+    const project = open();
+    try {
+      const launched = {
+        ...workflow([person("approve", { publish: { decision: "${output}" } }), after]),
+        config: { model: "m" },
+      };
+      const { overrides, ran } = stubs();
+      const first = await project.run(launched, dir, { launchWorkerDefaults: { prompt: "deepseek" }, workerOverrides: overrides });
+      expect(first.status).toBe("awaiting");
+      const rootRunId = project.archive.listRoots()[0]!.runId;
+      const leaf = awaitingLeaf(project, rootRunId);
+
+      // The file handed to Complete carries a *different* live file default; the frozen launch default
+      // must still win for the tail, reconstructing the same worker set the launch resolved (ADR 0044).
+      const changed = { ...launched, worker_defaults: { prompt: "anthropic" } };
+      const done = await project.complete(changed, leaf.runId, { approved: true }, dir, { workerOverrides: overrides });
+      expect(done.ok).toBe(true);
+      if (!done.ok) throw new Error("expected ok");
+      expect(done.status).toBe("succeeded");
+
+      expect(rowByNode(project, rootRunId, "after")!.workerName).toBe("deepseek");
+      expect(ran).toEqual(["deepseek:after"]);
     } finally {
       project.close();
     }
