@@ -78,6 +78,36 @@ describe("LiveRuns — start resolves on run-started, not on finish", () => {
 
     await expect(startFixture("slow-step.workflow.json", createLiveRuns(crashing))).rejects.toThrow("engine bug");
   });
+
+  // The one link `POST /v0/runs`'s own route test cannot cover with a mocked `LiveRuns`: that `start`
+  // forwards its options — including the launch worker-default table (ADR 0044, #517) — straight into
+  // `Project.run`, which is where the engine reads `RunOptions.launchWorkerDefaults`. A capturing
+  // `Project` records the third argument the spread hands `run`.
+  it("forwards launchWorkerDefaults through to Project.run verbatim", async () => {
+    let seen: Parameters<Project["run"]>[2] | undefined;
+    const capturing: Project = {
+      ...project,
+      // Capture the forwarded options, then hang: the run never emits `run-started`, so `start` never
+      // resolves — the assertion reads the captured options after a tick instead of awaiting `start`.
+      run: (_rootFile, _workflowDir, opts) => {
+        seen = opts;
+        return new Promise<never>(() => {});
+      },
+    };
+    const loaded = await loadWorkflowTree(join(projectDir, "slow-step.workflow.json"));
+    if (!loaded.success) throw new Error(loaded.errors.join("\n"));
+    const { workflow } = loaded;
+
+    // Fire-and-forget: `start`'s promise stays pending (no `run-started`), which is why it is not awaited.
+    void createLiveRuns(capturing).start(workflow.rootFile, workflow.workflowDir, {
+      files: workflow.files,
+      registry: workflow.registry,
+      launchWorkerDefaults: { binary: "spawn" },
+    });
+    await tick();
+
+    expect(seen?.launchWorkerDefaults).toEqual({ binary: "spawn" });
+  });
 });
 
 describe("LiveRuns — cancellable while executing, and only while executing", () => {

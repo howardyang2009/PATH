@@ -53,6 +53,7 @@ Request body:
   "workflow_path": "release-notes.workflow.json",
   "input": { "...": "..." },
   "config": { "...": "..." },
+  "worker_defaults": { "prompt": "deepseek" },
   "log_backends": ["db", "ndjson"],
   "processor_concurrency": 4
 }
@@ -63,6 +64,7 @@ Request body:
 | `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
 | `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, validated here by `ConfigObjectSchema`. Accepts a literal `{"$secret": "..."}` wrapper (format doc §8.3; masked on the return path). **Rejects** any `{"$env": "NAME"}` wrapper — including the composed `{"$secret": {"$env": "NAME"}}` form — with a `400`: operator override config may not source from the server process environment ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), server spec §2). An `$env` wrapper authored *inside* a `workflow.json` is unaffected. |
+| `worker_defaults` | no | `RunOptions.launchWorkerDefaults` — the run-wide **launch worker-default** table (ADR 0044, #517), the same `{ <type>: <name> }` map the CLI's repeatable `--worker-default <type>=<name>` fills. A top-level peer of `input`/`config`, **not** nested inside `config` (dispatch never reads `config` for worker selection). It sets which worker each type's *un-pinned* steps run on, run-wide across every file of the run; a step's own `worker` pin still wins, and it outranks a file's own `worker_defaults`. Frozen with the run like `input`, so the resume route (§4.3) carries no such field — changing it is a new run. Keys and values must be non-empty. |
 | `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
 | `processor_concurrency` | no | Same as `path run --processor-concurrency`. Omitted: the project's `.path/settings.json` `"processor.concurrency"`, else the engine default (4). |
 

@@ -88,6 +88,14 @@ export interface StartRunRequest {
   workflow_path: string;
   input?: JsonValue;
   config?: ConfigObject;
+  /**
+   * The operator's run-wide **launch worker-default** table (ADR 0044, #517): `{ <type>: <name> }`,
+   * a peer of `input`/`config` — deliberately **not** inside `config`, which dispatch never reads for
+   * worker selection. Feeds the same engine launch table the CLI `--worker-default` fills, so an
+   * HTTP-launched run resolves un-pinned steps identically to a CLI-launched one. Frozen with the run
+   * like `input`, so the resume route carries no such field (changing it is a new run, not a resume).
+   */
+  worker_defaults?: { [stepType: string]: string };
   log_backends?: LogBackendId[];
   processor_concurrency?: number;
 }
