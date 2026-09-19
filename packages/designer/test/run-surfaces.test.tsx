@@ -90,9 +90,13 @@ async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?:
   return client;
 }
 
-/** A registry whose `prompt` type ships two workers — so a worker-default can select one (ADR 0044). */
+/**
+ * A registry shaped like the shipped one: `prompt` declares **two** workers, `anthropic` (default) and
+ * `deepseek` (`packages/engine/step-plugins/prompt/index.ts`), so a worker-default has one to select
+ * (ADR 0044). `DEFAULT_PLUGINS` is the stub's single-worker stand-in, not the real registry.
+ */
 const MULTI_WORKER_PLUGINS: WireStepPlugin[] = DEFAULT_PLUGINS.map((plugin) =>
-  plugin.name === "prompt" ? { ...plugin, workers: ["anthropic", "batch"] } : plugin,
+  plugin.name === "prompt" ? { ...plugin, workers: ["anthropic", "deepseek"] } : plugin,
 );
 
 describe("Designer run surfaces (#372)", () => {
@@ -122,11 +126,11 @@ describe("Designer run surfaces (#372)", () => {
     fireEvent.click(await screen.findByTestId("run-launch-worker-defaults-toggle"));
     fireEvent.click(screen.getByTestId("worker-default-add"));
     expect((screen.getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
-    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "batch" } });
+    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "deepseek" } });
 
     fireEvent.click(screen.getByTestId("run-launch-submit"));
     await waitFor(() => expect(calls.startRun).toHaveLength(1));
-    expect(calls.startRun[0]!.worker_defaults).toEqual({ prompt: "batch" });
+    expect(calls.startRun[0]!.worker_defaults).toEqual({ prompt: "deepseek" });
   });
 
   it("launch is disabled while the buffer is dirty, and says why", async () => {
