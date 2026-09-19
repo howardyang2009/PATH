@@ -94,25 +94,30 @@ function openSection(pane: HTMLElement, title: string): void {
 }
 
 describe("#369 selection populates the pane", () => {
-  it("opens every named region collapsed, and expands one on its own header", async () => {
+  it("opens the field sections expanded and the payload regions collapsed; each header folds its own", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
 
-    // The identity and the kind fields lead, so the pane opens on what the node *is*.
-    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
+    // Identity and the kind's own fields lead, and open expanded — they are the pane's ordinary business.
+    expect(within(pane).getByLabelText("name")).toHaveValue("alpha");
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
-    // Every region behind them is collapsed: its body is not in the document at all.
+    // The payload regions behind them are collapsed: their bodies are not in the document at all.
     expect(within(pane).queryByLabelText("New config key")).toBeNull();
     expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
     expect(within(pane).queryByRole("button", { name: "+ add publish" })).toBeNull();
 
-    // A header toggles its own region, and only its own.
+    // A header folds its own section, and only its own.
+    openSection(pane, "identity");
+    expect(within(pane).queryByLabelText("name")).toBeNull();
+    expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
     openSection(pane, "config");
     expect(within(pane).getByLabelText("New config key")).toBeInTheDocument();
     expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
 
-    // A new selection opens collapsed again, so no region carries over to the node now in view.
+    // A new selection resets every section to its default: fields open, payload regions collapsed.
     selectNode(canvas, "runner");
+    expect(within(pane).getByLabelText("name")).toHaveValue("runner");
+    expect(within(pane).getByLabelText("command")).toBeInTheDocument();
     expect(within(pane).queryByLabelText("New config key")).toBeNull();
   });
 

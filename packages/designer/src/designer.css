@@ -729,6 +729,12 @@ body {
   gap: 6px;
 }
 
+/* A field section (identity, the kind's own fields) keeps the pane's own 10px rhythm between its rows;
+   only the denser payload regions sit at the section gap. */
+.pane-fields .pane-section-body {
+  gap: 10px;
+}
+
 .pane-section-title {
   font-size: var(--fs-xs);
   font-weight: 700;
