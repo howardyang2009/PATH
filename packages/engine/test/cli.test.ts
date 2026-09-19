@@ -147,6 +147,59 @@ describe("cli main() — operator config flags (ticket #17)", () => {
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--config/));
   });
+
+  // The launch worker-default flag (ADR 0044, #515): a peer of `--set`. The behaviour that a launch
+  // default picks the worker for un-pinned steps is proven at the engine seam (run-node.test.ts); here
+  // the CLI's own contract is checked — the flag parses, is repeatable, names its own type/worker
+  // selection (never folded into config), and a well-formed one runs.
+  it("accepts a well-formed --worker-default and runs (the type's real worker resolves)", async () => {
+    // `binary`'s only shipped worker is `spawn`; naming it explicitly at launch changes nothing but
+    // proves the flag parses, forwards, and reaches a real un-pinned step through the whole stack.
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--worker-default", "binary=spawn"], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "file-default" }));
+  });
+
+  it("is repeatable across step types in one launch", async () => {
+    const io = fakeIo();
+    const code = await main(
+      ["run", configEcho(), "--worker-default", "binary=spawn", "--worker-default", "prompt=anthropic"],
+      io,
+    );
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "file-default" }));
+  });
+
+  it("reports a clear error for a malformed --worker-default argument", async () => {
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--worker-default", "no-equals-sign"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default/));
+  });
+
+  it("reports a clear error for a --worker-default with an empty worker name", async () => {
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--worker-default", "prompt="], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default/));
+  });
+
+  it("lists --worker-default in the run usage text", async () => {
+    const io = fakeIo();
+    const code = await main(["run"], io); // no workflow positional → usage
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default type=name/));
+  });
+
+  it("refuses --worker-default combined with --resume (exit 2)", async () => {
+    // A launch worker-default is fixed at launch (ADR 0044) — a resume does not re-take it. Supplying
+    // it on a resume is silently-discarded operator state, so it is refused, like --set-context.
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--resume", "whatever", "--worker-default", "prompt=anthropic"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default cannot be combined with --resume/));
+  });
 });
 
 describe("cli main() — --context / --set-context (ticket #171)", () => {
@@ -479,6 +532,17 @@ describe("cli main() — --list-eligible (#446)", () => {
     const code = await main(["run", workflow(), "--resume", "whatever", "--list-eligible", "--set", "mode=ok"], io);
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible cannot be combined with --set/));
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("refuses --worker-default on a list-eligible run — caught by the resume guard first (exit 2)", async () => {
+    // `--list-eligible` requires `--resume`, and `--worker-default` is refused with `--resume` outright
+    // (a launch worker-default is fixed at launch, ADR 0044), so that earlier guard catches it before
+    // the launch-only-flag refusal — still exit 2, still nothing launched.
+    const io = fakeIo();
+    const code = await main(["run", workflow(), "--resume", "whatever", "--list-eligible", "--worker-default", "prompt=anthropic"], io);
+    expect(code).toBe(2);
+    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default cannot be combined with --resume/));
     expect(io.log).not.toHaveBeenCalled();
   });
 

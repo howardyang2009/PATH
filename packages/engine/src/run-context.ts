@@ -37,6 +37,17 @@ export type Emit = (o: Observation) => Promise<void>;
 export interface StepRuntime {
   registry: LoadedStepPluginRegistry;
   semaphore: ProcessorSemaphore;
+  /**
+   * The **launch** worker-default table (ADR 0044): a `{ <stepType>: <workerName> }` map the operator
+   * supplies once at launch, picking the worker for a type's un-pinned steps for the whole run. It
+   * lives on the run tree's shared runtime — not on `file` — precisely because it is **run-wide**: it
+   * reaches every un-pinned step of every file in the tree, child `workflow`-ref files included, so a
+   * nested run (which swaps `file` but keeps `runtime`) reads the same table. In dispatch it sits above
+   * the file-scoped `file.worker_defaults` and below an explicit `node.worker` pin. Absent when the
+   * operator supplied none. Registry-relative validity is a launch-boundary concern (#506), not this
+   * runtime's.
+   */
+  launchWorkerDefaults?: { [stepType: string]: string };
 }
 
 // The result of running one node (or a whole node sequence). A step run that a failing sibling

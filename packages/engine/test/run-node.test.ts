@@ -736,6 +736,105 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
   });
 });
 
+describe("runNode — worker resolution (launch worker-default, ADR 0044)", () => {
+  // As in the file-tier block: prompt's `anthropic` and `deepseek` names both map to the same stub, so
+  // a test asserts which NAME dispatch chose without a real provider worker running. `launch` seeds the
+  // run-wide launch table on the shared runtime.
+  function promptWorkersWithLaunch(worker: WorkerDescriptor, launch?: { [type: string]: string }): RunContext["runtime"] {
+    const clone: LoadedStepPluginRegistry = {};
+    for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+    clone.prompt!.workers.anthropic = worker;
+    clone.prompt!.workers.deepseek = worker;
+    return { registry: clone, semaphore: createProcessorSemaphore(1), ...(launch ? { launchWorkerDefaults: launch } : {}) };
+  }
+
+  function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
+    return { format: "path/workflow@4", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
+  }
+
+  function startedWorker(observed: Observation[]): string | undefined {
+    const started = observed.find((o) => o.type === "step-started");
+    return started?.type === "step-started" ? started.workerName : undefined;
+  }
+
+  const unpinned: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" } };
+
+  it("resolves an un-pinned step to the launch default over the file worker_defaults", async () => {
+    // The file names `anthropic`; the launch table names `deepseek`. The launch tier is above the file
+    // tier, so the launch default wins for this run.
+    const { run, observed } = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { prompt: "deepseek" }),
+      file: fileWith({ prompt: "anthropic" }),
+    });
+
+    expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("deepseek");
+  });
+
+  it("resolves per type — a launch entry for one type leaves another type's file default alone", async () => {
+    // The launch table names only `binary`; the un-pinned prompt step still resolves through the file's
+    // own `prompt` entry (`deepseek`). The merge is shallow per type, so one type's launch entry never
+    // reaches another.
+    const { run, observed } = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { binary: "spawn" }),
+      file: fileWith({ prompt: "deepseek" }),
+    });
+
+    expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("deepseek");
+  });
+
+  it("lets an explicit node.worker win over the launch default", async () => {
+    const { run, observed } = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { prompt: "deepseek" }),
+      file: fileWith(),
+    });
+    const pinned: Node = { ...unpinned, worker: "anthropic" };
+
+    expect((await runNode(run, pinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("anthropic");
+  });
+
+  it("falls back to the file default, then the plugin default, for a type absent from the launch table", async () => {
+    // Launch table names an unrelated type; the un-pinned prompt step resolves through the file tier.
+    const withFile = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { binary: "spawn" }),
+      file: fileWith({ prompt: "deepseek" }),
+    });
+    expect((await runNode(withFile.run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(withFile.observed)).toBe("deepseek");
+
+    // No file entry either: the plugin's own defaultWorker (`anthropic`).
+    const noFile = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { binary: "spawn" }),
+      file: fileWith(),
+    });
+    expect((await runNode(noFile.run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(noFile.observed)).toBe("anthropic");
+  });
+
+  it("reaches a nested workflow-ref child, beating the child's own file default", async () => {
+    // The launch table is run-wide: it lives on the shared runtime, which a nested run keeps while it
+    // swaps `file`. So the child's un-pinned prompt step resolves to the launch `deepseek` even though
+    // the child's own file default names `anthropic` — the operator's run-wide intent outranks an
+    // author's per-file default (ADR 0044). Only a `node.worker` pin sits above the launch tier.
+    const childWithFileDefault: WorkflowFile = {
+      format: "path/workflow@4", id: "wf-child", name: "child",
+      worker_defaults: { prompt: "anthropic" },
+      body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
+    };
+    const { run, observed } = makeRun({
+      runtime: promptWorkersWithLaunch(answeringWorker("ok"), { prompt: "deepseek" }),
+      file: fileWith(),
+      files: new Map([[resolve(fileDir, "child.json"), childWithFileDefault]]),
+    });
+    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
+
+    expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("deepseek");
+  });
+});
+
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {

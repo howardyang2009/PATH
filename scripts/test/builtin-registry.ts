@@ -21,7 +21,13 @@ export const builtinRegistry: StepPluginRegistry = {
   prompt: {
     fields: { prompt: z.string() },
     config: { model: z.string(), options: z.record(z.string(), z.unknown()).optional() },
-    workers: { anthropic: { run: doNotRun, meters: true, needsProcessorSlot: true } },
+    // The shipped `prompt` type has two workers, one per model provider: `anthropic` (the default) and
+    // `deepseek`. Both are mirrored here so a codemod fixture may name either and still pass the
+    // registry-relative `worker_defaults` check (ADR 0044 #516) the schema now runs at load.
+    workers: {
+      anthropic: { run: doNotRun, meters: true, needsProcessorSlot: true },
+      deepseek: { run: doNotRun, meters: true, needsProcessorSlot: true },
+    },
     defaultWorker: "anthropic",
   },
 };

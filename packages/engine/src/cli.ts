@@ -60,7 +60,7 @@ const consoleIo: CliIo = {
 const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
-  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id> | --list-eligible]] [--config <config.json>] [--set key=value]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
+  "usage: path run <workflow.json> [-C <dir>] [--resume <root-run-id> [--from <run-id> | --list-eligible]] [--config <config.json>] [--set key=value]... [--worker-default type=name]... [--context <context.json>] [--set-context key=value]... [--log-backends db,ndjson] [--processor-concurrency <n>]";
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
@@ -82,6 +82,13 @@ interface ParsedRunArgs {
   listEligible: boolean;
   configFile?: string;
   setPairs: [string, string][];
+  // `--worker-default <type>=<name>`, repeatable (ADR 0044): the operator's run-wide launch
+  // worker-default table, a peer of `--set` (not folded into config — worker selection does not
+  // inherit, CONTEXT.md invariant 5). Each pair picks the worker a step type's un-pinned steps run on
+  // for this run, over any file `worker_defaults`, under a step's own `worker` pin. A later pair for
+  // the same type wins (shallow per-type merge). Kept as pairs here; folded to a `{type: name}` map
+  // when the launch options are assembled.
+  workerDefaultPairs: [string, string][];
   contextFile?: string;
   setContextPairs: [string, string][];
   logBackends?: LogBackendId[];
@@ -118,6 +125,7 @@ function parseRunArgs(argv: string[]): ParseResult {
   let listEligible = false;
   let configFile: string | undefined;
   const setPairs: [string, string][] = [];
+  const workerDefaultPairs: [string, string][] = [];
   let contextFile: string | undefined;
   const setContextPairs: [string, string][] = [];
   let logBackends: LogBackendId[] | undefined;
@@ -148,6 +156,18 @@ function parseRunArgs(argv: string[]): ParseResult {
       const eq = pair?.indexOf("=") ?? -1;
       if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${RUN_USAGE}` };
       setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+      i += 1;
+    } else if (flag === "--worker-default") {
+      // `<type>=<name>`, both sides non-empty: unlike `--set`, an empty worker name is never a valid
+      // selection, so it is an operator mistake at parse (exit 2) rather than a `has no worker` failure
+      // deep in a run that already spent money. Registry-relative validity — the type/worker actually
+      // existing — is the launch-boundary check (#506), not this shape check.
+      const pair = rest[i + 1];
+      const eq = pair?.indexOf("=") ?? -1;
+      if (!pair || eq <= 0 || eq === pair.length - 1) {
+        return { success: false, error: `--worker-default requires a type=name argument\n${RUN_USAGE}` };
+      }
+      workerDefaultPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
       i += 1;
     } else if (flag === "--context") {
       const taken = takeValue(rest, i, "--context", "a path", RUN_USAGE);
@@ -188,6 +208,19 @@ function parseRunArgs(argv: string[]): ParseResult {
     };
   }
 
+  // A launch worker-default is fixed at the launch it was given on (ADR 0044): it is identity-defining
+  // like `input`, so a resume does not re-take it — the resume route carries no worker-default field at
+  // all, and changing the worker a step runs on is a new run, not a resume. Supplying `--worker-default`
+  // with `--resume` would therefore be silently discarded or, worse, silently repoint a re-run step, so
+  // it is refused outright — the same "no silently-discarded operator state" stance as the context
+  // refusal above.
+  if (resumeRootRunId !== undefined && workerDefaultPairs.length > 0) {
+    return {
+      success: false,
+      error: `--worker-default cannot be combined with --resume: a launch worker-default is fixed at launch (ADR 0044); changing it is a new run, not a resume\n${RUN_USAGE}`,
+    };
+  }
+
   // `--from` names the rerun boundary K *within* a resume (#444, spec §7.2), so it rides the existing
   // resume form and is meaningless without `--resume`. A parse-time misuse — exit 2 — never an engine
   // refusal.
@@ -212,6 +245,9 @@ function parseRunArgs(argv: string[]): ParseResult {
     // The launch-only flags, in flag-name form for the message. `--context`/`--set-context` are already
     // refused with `--resume` above, so a `--list-eligible` run never reaches them here; the rest only
     // configure a launch this mode does not perform.
+    // `--worker-default` is not listed here: it is already refused above whenever `--resume` is set,
+    // and `--list-eligible` requires `--resume`, so a `--worker-default` on a list-eligible run is
+    // caught by that earlier guard before this block — listing it here would be dead.
     const launchFlag =
       configFile !== undefined
         ? "--config"
@@ -229,7 +265,7 @@ function parseRunArgs(argv: string[]): ParseResult {
 
   return {
     success: true,
-    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, listEligible, configFile, setPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
+    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, listEligible, configFile, setPairs, workerDefaultPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
   };
 }
 
@@ -331,6 +367,19 @@ function buildKeyedConfig(
 
 function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
   return buildKeyedConfig("--config", args.configFile, "--set", args.setPairs);
+}
+
+// The launch worker-default table (ADR 0044) folded from the repeatable `--worker-default` pairs into
+// the `{ <type>: <name> }` map `RunOptions.launchWorkerDefaults` takes. A shallow per-type merge — a
+// later pair for a type replaces an earlier one, the same nearest-wins rule `--set` uses — but no JSON
+// parse and no file: a worker name is a plain string selection, not config data. No pairs yields
+// `undefined`, so a run with no flag carries no table and resolves through the file tier exactly as
+// before. Registry-relative validity is the launch-boundary check (#506), not this fold.
+function buildLaunchWorkerDefaults(args: ParsedRunArgs): { [stepType: string]: string } | undefined {
+  if (args.workerDefaultPairs.length === 0) return undefined;
+  const table: { [stepType: string]: string } = {};
+  for (const [type, name] of args.workerDefaultPairs) table[type] = name;
+  return table;
 }
 
 type ContextResult =
@@ -464,6 +513,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // restores its context from the original tree instead, so `resume` never carries an `input`.
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
+    // The operator's run-wide launch worker-default table (ADR 0044), folded from `--worker-default`
+    // pairs. Undefined when the operator passed none, so a flagless run resolves through the file tier
+    // unchanged. Forwarded verbatim to `runWorkflow` (`ProjectRunOptions` extends `RunOptions`).
+    launchWorkerDefaults: buildLaunchWorkerDefaults(parsed.args),
     files: workflow.files,
     // The registry this file was validated against (ADR 0019 sub-15): dispatch reuses it, so the run
     // never re-scans the folder and cannot execute against a different one than the load validated.
