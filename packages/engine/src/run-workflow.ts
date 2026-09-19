@@ -66,6 +66,16 @@ export interface RunOptions {
    */
   workerOverrides?: WorkerOverrides;
   /**
+   * The **launch** worker-default table (ADR 0044): a `{ <stepType>: <workerName> }` map the operator
+   * supplies at launch (the CLI's repeatable `--worker-default <type>=<name>`, the server's top-level
+   * `worker_defaults` body field). It picks the worker for a type's un-pinned steps run-wide — every
+   * file of the tree, child refs included — sitting above the file-scoped `file.worker_defaults` and
+   * below an explicit `node.worker` pin (four-tier dispatch). Frozen for the run: unlike the file
+   * table, it is not re-read per file. Absent when the operator supplied none. Its registry-relative
+   * validity is a launch-boundary concern (#506), checked before the run rather than in this dispatch.
+   */
+  launchWorkerDefaults?: { [stepType: string]: string };
+  /**
    * The frozen step-plugin registry this run dispatches against — the one `loadWorkflowTree` scanned
    * to build the schema that validated the file (ADR 0019 sub-15, `LoadedWorkflow.registry`). Threaded
    * in so the file executes against **exactly** the registry it was validated against: one scan of the
@@ -740,15 +750,22 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     // A hand-constructed node can still reach here, so it fails the run loudly rather than silently.
     return { status: "failed", error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it` };
   }
-  // Three-tier dispatch resolution (ADR 0044): a step's explicit `worker` pin wins; below it, the
-  // owning file's `worker_defaults[type]` picks the worker for un-pinned steps of that type; below
-  // that, the plugin's own `defaultWorker`. `ctx.run.file` is the file that owns this node — a nested
-  // `workflow`-ref run carries its own file here — so the table stays file-scoped for free (it never
-  // crosses a ref boundary). The table is a *selection* by name; its registry-relative validity is a
-  // load-time concern (#506, not yet landed), not this dispatch's. Until that net exists, a table
-  // naming a worker the type does not ship falls through to the `has no worker` failure just below —
-  // loud, not silent.
-  const workerName = node.worker ?? ctx.run.file.worker_defaults?.[node.type] ?? plugin.defaultWorker;
+  // Four-tier dispatch resolution (ADR 0044), first hit wins: a step's explicit `worker` pin; the
+  // operator's run-wide `launchWorkerDefaults[type]`; the owning file's `worker_defaults[type]`; the
+  // plugin's own `defaultWorker`. The two default tiers differ by scope: the **launch** table lives on
+  // the run tree's shared `runtime`, so it reaches every un-pinned step of every file — a nested
+  // `workflow`-ref run swaps `file` but keeps `runtime`, so a launch default beats a *child's* file
+  // default too (the operator's run-wide intent outranks an author's per-file default; only a
+  // `node.worker` pin sits above it). The **file** table lives on `ctx.run.file`, the file that owns
+  // this node, so it stays file-scoped for free (it never crosses a ref boundary). Both are a
+  // *selection* by name; registry-relative validity is checked elsewhere per tier (#506) — until those
+  // nets exist, a table naming a worker the type does not ship falls through to the `has no worker`
+  // failure just below, loud not silent.
+  const workerName =
+    node.worker ??
+    ctx.run.runtime.launchWorkerDefaults?.[node.type] ??
+    ctx.run.file.worker_defaults?.[node.type] ??
+    plugin.defaultWorker;
   const descriptor = plugin.workers[workerName];
   if (!descriptor) {
     return { status: "failed", error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"` };
@@ -1042,6 +1059,9 @@ export async function runWorkflow(
       runtime: {
         registry,
         semaphore: createProcessorSemaphore(options.processorConcurrency ?? DEFAULT_PROCESSOR_CONCURRENCY),
+        // The operator's run-wide launch worker-default table (ADR 0044), shared by the whole tree so a
+        // nested `workflow`-ref run — which keeps `runtime` but swaps `file` — reads the same table.
+        launchWorkerDefaults: options.launchWorkerDefaults,
       },
       // Resume (#172): the root run's original counterpart is the original tree's own root run.
       // From there `executeWorkflowRun` plans reuse and restores context, recursing into every
