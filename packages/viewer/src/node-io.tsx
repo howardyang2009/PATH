@@ -55,6 +55,31 @@ function contextBlobRef(run: RunNodeState): string {
 }
 
 /**
+ * Where the Input block reads from, and the predecessor root when it does not read this run's own blob.
+ * A **successor root** — a resumed tree's own root run — writes its own `input.json` as the empty seed a
+ * resume starts from; the input its tree actually started from is the predecessor root's, so the pane
+ * reads that run's object directly, the same direct-to-source reading a reuse row gets (#257), never a
+ * copy into the successor's tree. Every other run reads its own blob.
+ */
+function inputBlobSource(run: RunNodeState): {
+  rootRunId: string;
+  runId: string;
+  ref: string | null;
+  resumedFrom: string | null;
+} {
+  if (isRootRun(run) && typeof run.resumedFromRootRunId === "string") {
+    const predecessor = run.resumedFromRootRunId;
+    return {
+      rootRunId: predecessor,
+      runId: predecessor,
+      ref: `runs/${predecessor}/${predecessor}/input.json`,
+      resumedFrom: predecessor,
+    };
+  }
+  return { rootRunId: run.rootRunId, runId: run.runId, ref: run.inputRef, resumedFrom: null };
+}
+
+/**
  * The node-I/O/C read surface: the selected run's input, output, and context objects, in the right
  * pane of the pinned console (#44 Variant A). A step has exactly one input object and one output
  * object (CONTEXT.md §Invariants), and now a context object too: a workflow-run keeps its own
@@ -90,7 +115,20 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   // while a leaf awaits (ADR 0038), so only the leaf row itself carries this.
   const awaitingNode = awaitingNodeForRun(workflowFiles, run);
   const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
-  const input = useRunBlob({ ...blob, name: "input", ref: run.inputRef });
+  // A successor root's Input block shows the predecessor root's object (see `inputBlobSource`). This
+  // run's own ref must not gate that read — the predecessor is terminal, so its 404 is trusted as "that
+  // tree recorded no input" (the `ref: null, settled: true` read) rather than surfaced as an error.
+  const inputSource = inputBlobSource(run);
+  const resumedFrom = inputSource.resumedFrom;
+  const input = useRunBlob({
+    client,
+    rootRunId: inputSource.rootRunId,
+    runId: inputSource.runId,
+    name: "input",
+    ref: resumedFrom === null ? run.inputRef : null,
+    settled: settled || resumedFrom !== null,
+    reloadToken,
+  });
   const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
   // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change.
   // Read unconditionally and trust the 404 (`ref: null, settled: true`): a workflow-run has context,
@@ -143,12 +181,26 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         </p>
       )}
 
+      {resumedFrom !== null && (
+        <p className="node-io-reused" data-testid="node-io-resumed-input">
+          Resumed from an earlier run — the input below is that run's root input.
+          <span className="reused-ref">
+            <span className="reused-label">resumed-from root run</span>
+            <span className="run-id">{resumedFrom}</span>
+          </span>
+        </p>
+      )}
+
       <BlobBlock
         title="Input"
         load={input}
-        blobRef={run.inputRef}
+        blobRef={inputSource.ref}
         testId="node-io-input"
-        absentNote="No input object recorded for this run."
+        absentNote={
+          resumedFrom === null
+            ? "No input object recorded for this run."
+            : "The resumed-from run recorded no input object."
+        }
       />
       <BlobBlock
         title="Output"
