@@ -43,8 +43,8 @@
         "person-confirm": "${output}"
       },
       "description": "Do something here",
-      "type": "person-activity",
-      "assignee": "Han Yang"
+      "assignee": "Han Yang",
+      "type": "person-activity"
     },
     {
       "type": "parallel",
@@ -216,5 +216,8 @@
   ],
   "output": {
     "file": "${context.file}"
+  },
+  "worker_defaults": {
+    "prompt": "anthropic"
   }
 }
