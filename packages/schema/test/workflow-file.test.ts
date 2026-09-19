@@ -613,3 +613,52 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     }
   });
 });
+
+// The file channel of ADR 0044's two-channel registry-relative validation (#516). Shape is checked in
+// the registry-agnostic base schema (`z.record(min(1), min(1))`); *registry-relative* validity — the
+// named type exists and ships the named worker — is this whole-file refinement, fed by the registry
+// captured by closure. A bad entry makes the file invalid at load, so discovery reports it and the
+// Designer refuses to open it. The launch channel (`--worker-default`) is a separate boundary (#506).
+describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, #516)", () => {
+  it("accepts a worker_defaults naming a real type and a worker it ships", () => {
+    // `prompt` ships `anthropic`; `binary` ships `spawn` — both are real (type, worker) selections.
+    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { prompt: "anthropic", binary: "spawn" } });
+    expect(result.success).toBe(true);
+  });
+
+  it("fails a worker_defaults key naming an unknown step type, naming the type and the installed list", () => {
+    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { nope: "anthropic" } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const joined = result.errors.join("\n");
+      expect(joined).toMatch(/unknown step type "nope"/);
+      // The installed list, the unknown-`type` node-error shape.
+      expect(joined).toMatch(/binary/);
+      expect(joined).toMatch(/prompt/);
+      // Attributed to the offending table entry, not the whole file.
+      expect(joined).toMatch(/worker_defaults\.nope/);
+    }
+  });
+
+  it("fails a worker_defaults value naming a worker the type does not ship, listing the shipped names", () => {
+    // `prompt` ships only `anthropic`; `deepseek` is not one of its workers.
+    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { prompt: "deepseek" } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const joined = result.errors.join("\n");
+      expect(joined).toMatch(/unknown worker "deepseek"/);
+      expect(joined).toMatch(/"prompt" ships "anthropic"/);
+      expect(joined).toMatch(/worker_defaults\.prompt/);
+    }
+  });
+
+  it("reports every bad entry in one pass (aggregate)", () => {
+    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { nope: "anthropic", prompt: "deepseek" } });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const joined = result.errors.join("\n");
+      expect(joined).toMatch(/unknown step type "nope"/);
+      expect(joined).toMatch(/unknown worker "deepseek"/);
+    }
+  });
+});

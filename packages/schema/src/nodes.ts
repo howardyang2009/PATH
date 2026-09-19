@@ -234,21 +234,30 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
       // bad worker, not just the legal set).
       worker: z
         .enum(workerNames as [string, ...string[]], {
-          error: (issue) =>
-            `unknown worker "${String((issue as { input?: unknown }).input)}" — ` +
-            `"${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`,
+          error: (issue) => describeUnknownWorker(typeName, workerNames, (issue as { input?: unknown }).input),
         })
         .optional(),
     })
     .strict();
 }
 
+// The load error for a `worker` a step type does not ship (`@3` §4): echoes the offending value and
+// lists the type's shipped worker names. Shared by the `node.worker` enum (`buildPluginMember`) and
+// the file `worker_defaults` registry check (ADR 0044 #516), so the two channels report an unshipped
+// worker in exactly one wording. zod v4's default enum message drops the received value; this restores
+// it — the `(type, name)` selection error must name the bad worker, not just the legal set.
+export function describeUnknownWorker(typeName: string, workerNames: string[], received: unknown): string {
+  return `unknown worker "${String(received)}" — "${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`;
+}
+
 // The load error for a `type` no registry entry holds. Echoes the received value, lists every known
 // type, and names the remedy — a plugin folder in the reader's own PATH tree. A workflow file
 // declares no dependency block (its `type` values *are* the list), so this message is the whole of
 // PATH's portability reporting (ADR 0018 sub-decision 5, amended #315). Each unknown node yields one
-// such issue, so a single parse names every missing type at once, not just the first.
-function describeUnknownStepType(received: unknown, known: (string | number)[]): string {
+// such issue, so a single parse names every missing type at once, not just the first. Shared with the
+// file `worker_defaults` registry check (ADR 0044 #516), whose absent-type entry reports in this same
+// unknown-`type` wording.
+export function describeUnknownStepType(received: unknown, known: (string | number)[]): string {
   const badType = typeof received === "string" ? `"${received}"` : received === undefined ? "(none)" : JSON.stringify(received);
   const knownList = known.length > 0 ? known.join(", ") : "(none)";
   const remedy =

@@ -201,3 +201,86 @@ describe("loadWorkflowTree — superseded format versions", () => {
     }
   });
 });
+
+// The file channel of ADR 0044's registry-relative `worker_defaults` validation, at load (#516). The
+// check lives in the schema refinement fed by the scanned registry; here it is exercised through the
+// whole loader, over the real `binary`/`prompt` plugins, to pin the two facts the schema unit test
+// cannot: a bad table fails the *load* (so discovery reports the file invalid), and a bad **child**
+// table names the child file, never the parent — each file is parsed on its own against the one
+// run-wide registry.
+describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #516)", () => {
+  let dir: string;
+
+  beforeAll(() => {
+    dir = mkdtempSync(join(tmpdir(), "path-worker-defaults-load-"));
+
+    // A valid parent (`prompt` really ships `anthropic`) whose nested ref points at a child whose own
+    // `worker_defaults` is bad two ways: an unknown type, and a worker `prompt` does not ship.
+    writeFileSync(
+      join(dir, "wd-parent.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@4",
+        id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
+        name: "wd-parent",
+        worker_defaults: { prompt: "anthropic" },
+        body: [{ type: "workflow", id: "42be13f7-a05c-4986-b7d4-6e1f28903cba", name: "child-step", ref: "./wd-child.workflow.json" }],
+      }),
+    );
+    writeFileSync(
+      join(dir, "wd-child.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@4",
+        id: "e7c4a1d2-3f88-4b16-9c50-24af6d0b83e1",
+        name: "wd-child",
+        worker_defaults: { nope: "spawn", prompt: "openai" },
+        body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "child-body", command: "echo" }],
+      }),
+    );
+
+    // A single bad-table entry file, to pin the load-fails fact on its own.
+    writeFileSync(
+      join(dir, "wd-bad.workflow.json"),
+      JSON.stringify({
+        format: "path/workflow@4",
+        id: "b3184ce9-6d20-4f51-92ac-708be1d3a64f",
+        name: "wd-bad",
+        worker_defaults: { prompt: "openai" },
+        body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "only", command: "echo" }],
+      }),
+    );
+  });
+
+  afterAll(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("fails the load on a bad worker_defaults, listing the type's shipped workers", async () => {
+    const result = await loadWorkflowTree(join(dir, "wd-bad.workflow.json"));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const joined = result.errors.join("\n");
+      expect(joined).toMatch(/unknown worker "openai"/);
+      expect(joined).toMatch(/"prompt" ships/);
+    }
+  });
+
+  it("names the child file, not the parent, for a bad child worker_defaults (aggregating both entries)", async () => {
+    const result = await loadWorkflowTree(join(dir, "wd-parent.workflow.json"));
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const childPath = join(dir, "wd-child.workflow.json");
+      const parentPath = join(dir, "wd-parent.workflow.json");
+      // Every worker_defaults error is attributed to the child's path…
+      const wdErrors = result.errors.filter((e) => /worker_defaults/.test(e));
+      expect(wdErrors.length).toBeGreaterThan(0);
+      for (const e of wdErrors) {
+        expect(e.startsWith(`${childPath}: `)).toBe(true);
+        expect(e.startsWith(`${parentPath}: `)).toBe(false);
+      }
+      // …and both bad entries are reported in the one pass.
+      const joined = result.errors.join("\n");
+      expect(joined).toMatch(/unknown step type "nope"/);
+      expect(joined).toMatch(/unknown worker "openai"/);
+    }
+  });
+});
