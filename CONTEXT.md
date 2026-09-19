@@ -25,7 +25,9 @@ and issues use them exactly.
   (ADR 0020). Two rules follow from that trust, and review is what enforces them. A worker reports
   diagnostics by *returning* `stderr`, never by writing to a process stream. And it reads the
   environment only through a resolved **Env-sourced value**, never `process.env` directly, because that
-  is the door an operator's config is checked at (ADR 0012).
+  is the door an operator's config is checked at (ADR 0012). One recorded exception: a shipped `prompt`
+  worker's **provider credential** — `deepseek` reads `config.DEEPSEEK_API_KEY` first and
+  `process.env.DEEPSEEK_API_KEY` second (ADR 0045).
 - **Default worker** — the worker a step of a given type uses when it names none and no **worker-default**
   overrides it. Each step type declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use
   it and write no `worker` field. It is a required key on the type, not a reserved worker name. It is the

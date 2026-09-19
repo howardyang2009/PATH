@@ -34,11 +34,14 @@ const fields = {
   prompt: z.string(),
 };
 
-// The `prompt` type's injected, inheritable config (ADR 0022 sub-4): the required `model`, and an
-// opaque worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets.
+// The `prompt` type's injected, inheritable config (ADR 0022 sub-4): the required `model`, an opaque
+// worker-side `options` bag (MCP servers, skills, system prompt) no engine code interprets, and the
+// `deepseek` worker's credential key (ADR 0045), which `anthropic` ignores — its credential is the
+// Agent SDK's own environment/subscription path.
 const config = {
   model: z.string(),
   options: z.record(z.string(), z.unknown()).optional(),
+  DEEPSEEK_API_KEY: z.string().optional(),
 };
 
 /**

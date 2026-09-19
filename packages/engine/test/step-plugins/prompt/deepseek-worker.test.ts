@@ -43,10 +43,16 @@ function completion(content: string, usage?: unknown, finishReason = "stop"): st
 }
 
 /** The worker's request, typed by the plugin's own fragments — the same shape the engine builds. */
-function request(overrides: { prompt?: string; model?: string; options?: Record<string, unknown>; input?: JsonValue; signal?: AbortSignal } = {}): StepRequest<PromptFields, PromptConfig> {
+function request(overrides: { prompt?: string; model?: string; options?: Record<string, unknown>; apiKey?: string; input?: JsonValue; signal?: AbortSignal } = {}): StepRequest<PromptFields, PromptConfig> {
   return {
     fields: { prompt: overrides.prompt ?? "Judge the draft." },
-    config: { model: overrides.model ?? "deepseek-flash", options: overrides.options },
+    config: {
+      model: overrides.model ?? "deepseek-flash",
+      options: overrides.options,
+      // Absent, not `undefined`, when unnamed: the engine's resolved config carries only keys that
+      // were actually declared, so a test that leaves it out mirrors the real no-key request.
+      ...(overrides.apiKey === undefined ? {} : { DEEPSEEK_API_KEY: overrides.apiKey }),
+    },
     input: overrides.input ?? "a draft",
     cwd: "/tmp",
     signal: overrides.signal ?? new AbortController().signal,
@@ -269,14 +275,47 @@ describe("the deepseek worker's response handling", () => {
 });
 
 describe("the deepseek worker's credential handling", () => {
-  it("fails with the variable's name when no key is configured, and attempts no request", async () => {
+  it("takes the key from config when the environment carries none", async () => {
+    delete process.env.DEEPSEEK_API_KEY;
+    const { calls } = stubFetch({ body: completion("answer") });
+
+    const result = await runDeepseekWorker(request({ apiKey: "config-key" }));
+
+    expect(result.status).toBe("succeeded");
+    expect(calls[0]!.init.headers).toMatchObject({ authorization: "Bearer config-key" });
+  });
+
+  it("prefers the config key over the environment", async () => {
+    process.env.DEEPSEEK_API_KEY = "env-key";
+    const { calls } = stubFetch({ body: completion("answer") });
+
+    await runDeepseekWorker(request({ apiKey: "config-key" }));
+
+    expect(calls[0]!.init.headers).toMatchObject({ authorization: "Bearer config-key" });
+  });
+
+  it("falls back to the environment when the config key resolved empty", async () => {
+    // An `$env` naming an empty variable resolves to "", which counts as unset rather than as an
+    // empty bearer token.
+    process.env.DEEPSEEK_API_KEY = "env-key";
+    const { calls } = stubFetch({ body: completion("answer") });
+
+    await runDeepseekWorker(request({ apiKey: "" }));
+
+    expect(calls[0]!.init.headers).toMatchObject({ authorization: "Bearer env-key" });
+  });
+
+  it("fails naming both doors when neither has a key, and attempts no request", async () => {
     delete process.env.DEEPSEEK_API_KEY;
     const fetchSpy = vi.fn();
     vi.stubGlobal("fetch", fetchSpy);
 
     const result = await runDeepseekWorker(request());
 
-    expect(result).toMatchObject({ status: "failed", error: "DEEPSEEK_API_KEY is not set in the engine's environment" });
+    expect(result).toMatchObject({
+      status: "failed",
+      error: "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
+    });
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
