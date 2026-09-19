@@ -66,15 +66,15 @@ import {
  * first, then `id` (with a confirmation-gated re-key, because a re-key breaks resume plan-reuse, ADR
  * 0015), then the kind-specific fields.
  *
- * The node's **identity** (`name`, `id`) and the kind's own fields are {@link PaneSection}s that open
- * **expanded** — they are what the pane is for, so folding them away is an option for a busy node, never
- * a step before an ordinary edit. The payload regions below them — a step's **config**, **input**,
- * **context writes** and **reference**, and the file's own **config**, **worker defaults** and
- * **output** — are sections that start **collapsed**: selecting a node shows its identity and its kind
- * fields, and the author unfolds only the payload they came for. A section's header is its toggle, so a
- * collapsed region still names itself. Expansion is per node — a section resets to its default when the
- * selection moves (each is keyed by its owner), so the pane never opens a region the author did not ask
- * for on the node now in view.
+ * The pane's anchor is its **identity** — `name`, then `id` — and it never folds away: it is how the
+ * author knows which node is in view. Below it, the kind's own fields are a {@link PaneSection} that
+ * opens **expanded**, and the payload regions — a step's **config**, **input**, **context writes** and
+ * **reference**, and the file's own **config**, **worker defaults** and **output** — are sections that
+ * start **collapsed**: selecting a node shows its identity and its kind fields, and the author unfolds
+ * only the payload they came for. A section's header is its toggle, so a collapsed region still names
+ * itself. Expansion is per node — a section resets to its default when the selection moves (each is
+ * keyed by its owner), so the pane never opens a region the author did not ask for on the node now in
+ * view.
  *
  * The step editors are the three tiers (§ Editors): hand-built for `prompt` / `binary` / `workflow`, a
  * generated form for any other registry type, and a live-validated raw-JSON floor for a payload no form
@@ -323,12 +323,11 @@ function NodeProperties({
       ) : null}
       <p className="pane-explain">{kindExplanation(node.type)}</p>
       <hr className="pane-divider" />
-      {/* Identity and the kind's own fields are what the pane is for, so their sections open expanded:
-          folding them away is an option for a busy node, never a step before an ordinary edit. */}
-      <PaneSection key={`identity-${node.id}`} title="identity" className="pane-fields" defaultOpen>
-        <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, editKey(node.id, "name"))} />
-        <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
-      </PaneSection>
+      {/* Identity is the pane's anchor — which node is this — so `name` and `id` never fold away. The
+          kind's own fields are a section: they open expanded, and folding them is an option for a busy
+          node, never a step before an ordinary edit. */}
+      <TextField label="name" value={node.name} onChange={(name) => commit({ ...node, name }, editKey(node.id, "name"))} />
+      <IdRow id={node.id} onReKey={reKey} what={`"${node.name}"`} />
       <PaneSection key={`fields-${node.id}`} title={node.type} className="pane-fields" defaultOpen>
         {site?.where === "arm" ? (
           <ConditionField

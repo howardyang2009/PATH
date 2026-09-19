@@ -167,15 +167,15 @@ button on the same row, the change confirmation-gated), then the kind-specific f
 role lead, so the author knows *what they are editing* before the inputs. A plain node with neither
 opens straight at the fields.
 
-Below the explanatory copy the pane is a stack of **collapsible sections**, each one's header acting as
-its own toggle. The first two hold the pane's ordinary business and start **expanded**: `identity` —
-`name` and the `id` with its re-key — and one section titled by the node's own type, holding the
-kind-specific fields. They fold, but folding them is an option for a busy node, never a step before an
-ordinary edit. The named **payload regions** below them — a step's `config`, `input`, `context writes`,
-and `reference`; the file's own `config`, `worker defaults`, and `output` — start **collapsed**: the
-author unfolds only the payload they came for. Expansion is per node, so a new selection resets every
-section to its default, and a collapsed section renders no body at all, so its fields are neither
-tabbable nor read out of order.
+`name` and the `id` (with its re-key) are the pane's **anchor**: the editable fields, always shown,
+never folded away — they are how the author knows which node is in view. Below them the pane is a stack
+of **collapsible sections**, each one's header acting as its own toggle. The kind's own fields are one
+such section and start **expanded**: they fold, but folding is an option for a busy node, never a step
+before an ordinary edit. The named **payload regions** below them — a step's `config`, `input`,
+`context writes`, and `reference`; the file's own `config`, `worker defaults`, and `output` — start
+**collapsed**: the author unfolds only the payload they came for. Expansion is per node, so a new
+selection resets every section to its default, and a collapsed section renders no body at all, so its
+fields are neither tabbable nor read out of order.
 
 ### Per-kind rendering and edit affordances
 

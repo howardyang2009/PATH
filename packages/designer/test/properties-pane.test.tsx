@@ -94,22 +94,25 @@ function openSection(pane: HTMLElement, title: string): void {
 }
 
 describe("#369 selection populates the pane", () => {
-  it("opens the field sections expanded and the payload regions collapsed; each header folds its own", async () => {
+  it("keeps name and id always shown, opens the kind fields expanded, and the payload regions collapsed", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
 
-    // Identity and the kind's own fields lead, and open expanded — they are the pane's ordinary business.
+    // Identity is the anchor: no header to open, and it stays put.
     expect(within(pane).getByLabelText("name")).toHaveValue("alpha");
+    expect(within(pane).getByText(uuid(2))).toBeInTheDocument();
+    expect(within(pane).queryByRole("button", { name: "identity" })).toBeNull();
+    // The kind's own fields open expanded — they are the pane's ordinary business.
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
     // The payload regions behind them are collapsed: their bodies are not in the document at all.
     expect(within(pane).queryByLabelText("New config key")).toBeNull();
     expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
     expect(within(pane).queryByRole("button", { name: "+ add publish" })).toBeNull();
 
-    // A header folds its own section, and only its own.
-    openSection(pane, "identity");
-    expect(within(pane).queryByLabelText("name")).toBeNull();
-    expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
+    // A header folds its own section, and only its own; identity is unaffected.
+    openSection(pane, "prompt");
+    expect(within(pane).queryByLabelText("prompt")).toBeNull();
+    expect(within(pane).getByLabelText("name")).toHaveValue("alpha");
     openSection(pane, "config");
     expect(within(pane).getByLabelText("New config key")).toBeInTheDocument();
     expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
