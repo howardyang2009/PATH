@@ -42,10 +42,16 @@ function selectNode(canvas: HTMLElement, name: string): void {
   fireEvent.click(nameSpan.closest(".node-block") as HTMLElement);
 }
 
+/** Expand one pane section by its header title — every region opens collapsed. */
+function openSection(pane: HTMLElement, title: string): void {
+  fireEvent.click(within(pane).getByRole("button", { name: title }));
+}
+
 describe("#387 config value mode selector", () => {
   it("opens a literal config value in Literal mode with its scalar input", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     expect(within(pane).getByLabelText("region mode")).toHaveValue("literal");
     expect(within(pane).getByLabelText("region")).toHaveValue("us");
   });
@@ -53,6 +59,7 @@ describe("#387 config value mode selector", () => {
   it("wraps a value as $env and shows a reference-only chip, never a resolved value", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     fireEvent.change(within(pane).getByLabelText("region mode"), { target: { value: "env" } });
     const name = within(pane).getByLabelText("region $env variable");
     fireEvent.change(name, { target: { value: "OPENAI_KEY" } });
@@ -62,6 +69,7 @@ describe("#387 config value mode selector", () => {
   it("wraps a value as a literal $secret with a masked input and a masked token", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     fireEvent.change(within(pane).getByLabelText("region mode"), { target: { value: "secret" } });
     expect(within(pane).getByLabelText("region $secret source")).toHaveValue("literal");
     const secret = within(pane).getByLabelText("region $secret value") as HTMLInputElement;
@@ -75,6 +83,7 @@ describe("#387 config value mode selector", () => {
   it("composes {$secret:{$env:…}} through the source sub-selector", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     fireEvent.change(within(pane).getByLabelText("region mode"), { target: { value: "secret" } });
     fireEvent.change(within(pane).getByLabelText("region $secret source"), { target: { value: "env" } });
     fireEvent.change(within(pane).getByLabelText("region $secret $env variable"), { target: { value: "TOKEN" } });
@@ -84,6 +93,7 @@ describe("#387 config value mode selector", () => {
   it("does not render a mode selector on a type field", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     // `prompt` (the prompt text) is a type field; `model` a first-class config field — neither carries the selector.
     expect(within(pane).queryByLabelText("Prompt mode")).not.toBeInTheDocument();
     expect(within(pane).queryByLabelText("Model mode")).not.toBeInTheDocument();
@@ -99,6 +109,7 @@ describe("#387 config value mode selector", () => {
     };
     const { canvas, pane } = await openPane(seed);
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     // `apikey` is inherited from the file; its `$secret` shows as a masked token, not the literal.
     expect(within(pane).getByText("$secret · ••••••")).toBeInTheDocument();
     expect(within(pane).queryByText(/supersecret/)).not.toBeInTheDocument();

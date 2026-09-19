@@ -167,6 +167,13 @@ button on the same row, the change confirmation-gated), then the kind-specific f
 role lead, so the author knows *what they are editing* before the inputs. A plain node with neither
 opens straight at the fields.
 
+Below the fields sit the named **regions** — a step's `config`, `input`, `context writes`, and
+`reference`; the file's own `config`, `worker defaults`, and `output`. Each is a **collapsible
+section** whose header is its toggle, and each starts **collapsed**: a selected node shows its identity
+and its kind fields, and the author unfolds only the region they came for. Expansion is per node — a new
+selection opens collapsed again — and a collapsed region renders no body at all, so its fields are
+neither tabbable nor read out of order.
+
 ### Per-kind rendering and edit affordances
 
 | Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |

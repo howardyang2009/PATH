@@ -10,8 +10,8 @@ import type { WireStepPlugin } from "@path/client-core";
  *
  * Controlled and storage-free: `value`/`onChange` carry the table and the caller decides what an empty
  * one means — the Designer drops the file key, the launch form omits the wire field. The caller also
- * owns the section's framing; `title` is omitted on a surface that already names it (the launch form's
- * disclosure), so the same words are not printed twice.
+ * owns the section's framing: the launch form's disclosure and the Designer's pane section each name
+ * this region, so the editor itself prints no title.
  */
 export interface WorkerDefaultsEditorProps {
   /** The received `GET /v0/step-plugins` registry — the source of both dropdowns' options. */
@@ -20,8 +20,6 @@ export interface WorkerDefaultsEditorProps {
   value: { [type: string]: string };
   /** Handed the whole next table; the current one is never mutated. */
   onChange: (next: { [type: string]: string }) => void;
-  /** The section's visible title. Omit it where an existing title already names the section. */
-  title?: string;
   /** One line saying what the table selects and what it does not override. */
   hint: string;
 }
@@ -39,7 +37,6 @@ export function WorkerDefaultsEditor({
   plugins,
   value,
   onChange,
-  title,
   hint,
 }: WorkerDefaultsEditorProps): JSX.Element | null {
   const candidates = workerDefaultCandidates(plugins);
@@ -74,7 +71,6 @@ export function WorkerDefaultsEditor({
 
   return (
     <div className="worker-defaults" data-testid="worker-defaults">
-      {title !== undefined && <span className="worker-defaults-title">{title}</span>}
       <p className="worker-defaults-hint">{hint}</p>
       {entries.map(([type, worker]) => {
         const plugin = pluginOf(type);

@@ -88,7 +88,34 @@ function selectNode(canvas: HTMLElement, name: string): void {
   fireEvent.click(nameSpan.closest(".node-block") as HTMLElement);
 }
 
+/** Expand one pane section by its header title — every region opens collapsed. */
+function openSection(pane: HTMLElement, title: string): void {
+  fireEvent.click(within(pane).getByRole("button", { name: title }));
+}
+
 describe("#369 selection populates the pane", () => {
+  it("opens every named region collapsed, and expands one on its own header", async () => {
+    const { canvas, pane } = await openPane();
+    selectNode(canvas, "alpha");
+
+    // The identity and the kind fields lead, so the pane opens on what the node *is*.
+    expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("alpha");
+    expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
+    // Every region behind them is collapsed: its body is not in the document at all.
+    expect(within(pane).queryByLabelText("New config key")).toBeNull();
+    expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
+    expect(within(pane).queryByRole("button", { name: "+ add publish" })).toBeNull();
+
+    // A header toggles its own region, and only its own.
+    openSection(pane, "config");
+    expect(within(pane).getByLabelText("New config key")).toBeInTheDocument();
+    expect(within(pane).queryByLabelText(/^input \(/)).toBeNull();
+
+    // A new selection opens collapsed again, so no region carries over to the node now in view.
+    selectNode(canvas, "runner");
+    expect(within(pane).queryByLabelText("New config key")).toBeNull();
+  });
+
   it("shows explanation → name → id → kind fields for a selected step", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -227,6 +254,7 @@ describe("#369 the three editor tiers", () => {
     // Empty-canvas click → the file's own properties, which now carry a Config region.
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
     expect((within(pane).getByLabelText("name") as HTMLInputElement).value).toBe("flow");
+    openSection(pane, "config");
     expect(within(pane).getByText(/Add a key to set a workflow default/)).toBeInTheDocument();
 
     // Add a workflow-level key and give it a value.
@@ -236,6 +264,7 @@ describe("#369 the three editor tiers", () => {
 
     // A step now shows that key as inherited from the file: a ghosted value with an Override button.
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     const regionRow = within(pane).getByText("region").closest(".pane-config-row") as HTMLElement;
     expect(within(regionRow).getByText("eu")).toHaveClass("pane-ghost");
     expect(within(regionRow).getByRole("button", { name: "Override" })).toBeInTheDocument();
@@ -346,6 +375,19 @@ describe("#369 worker selection", () => {
 });
 
 describe("#505 file worker-defaults", () => {
+  it("hides the section when no type ships more than one worker", async () => {
+    // A file whose only step type is `prompt` as the default registry ships it — one worker, nothing to
+    // select, so the section (its header included) is not rendered at all.
+    const file = { format: FORMAT_VERSION, id: uuid(1), name: "flow", body: [{ type: "prompt", id: uuid(2), name: "alpha", prompt: "a" }] };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) } })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+
+    expect(within(pane).queryByRole("button", { name: "worker defaults" })).toBeNull();
+  });
+
   it("ghosts the file worker-default as the effective un-pinned resolution", async () => {
     const file = { ...paneFile(), worker_defaults: { prompt: "batch" } };
     render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
@@ -369,6 +411,7 @@ describe("#505 file worker-defaults", () => {
 
     // Empty-canvas click → the file's own properties, which carry the worker-defaults region.
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "worker defaults");
     fireEvent.click(within(pane).getByRole("button", { name: "+ add worker default" }));
 
     // The only multi-worker type is `prompt`, added with its default worker; a constrained retarget to `batch`.
@@ -390,6 +433,7 @@ describe("#505 file worker-defaults", () => {
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "worker defaults");
 
     // The stored map reads back into a constrained row.
     expect((within(pane).getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
@@ -414,6 +458,7 @@ describe("the workflow-level output object (§6.4)", () => {
 
     // Empty-canvas click → the file's own properties, which carry the output region.
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "output");
     fireEvent.click(within(pane).getByRole("button", { name: "+ add output key" }));
 
     // Before a key is typed the value placeholder falls back to ${context.key}.
@@ -444,6 +489,7 @@ describe("the workflow-level output object (§6.4)", () => {
     const pane = screen.getByRole("region", { name: "Properties" });
 
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "output");
     expect((within(pane).getByLabelText("Output key") as HTMLInputElement).value).toBe("verdict");
     expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe("${context.verdict}");
   });

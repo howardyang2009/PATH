@@ -689,6 +689,46 @@ body {
   gap: 6px;
 }
 
+/* Every named region of the pane is collapsible and starts collapsed, so the title is a toggle rather
+   than a caption. A collapsed region renders no body at all — nothing to tab into, nothing to read. */
+.pane-section-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  font: inherit;
+  color: var(--text);
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+
+.pane-section-toggle:hover .pane-section-title {
+  color: var(--accent);
+}
+
+.pane-section-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* As in the run dock: the caret reads larger than the label, so the affordance is easy to see and hit. */
+.pane-section-caret {
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--text-muted);
+  width: 1em;
+  text-align: center;
+}
+
+/* The open region's own stack, below its header. */
+.pane-section-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .pane-section-title {
   font-size: var(--fs-xs);
   font-weight: 700;

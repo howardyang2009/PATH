@@ -65,6 +65,11 @@ function selectNode(canvas: HTMLElement, name: string): void {
   fireEvent.click(nameSpan.closest(".node-block") as HTMLElement);
 }
 
+/** Expand one pane section by its header title — every region opens collapsed. */
+function openSection(pane: HTMLElement, title: string): void {
+  fireEvent.click(within(pane).getByRole("button", { name: title }));
+}
+
 describe("#370 the typed condition builder", () => {
   it("authors a checkpoint assertion inside a labelled fieldset and commits a valid switch", async () => {
     const { canvas, pane } = await openPane();
@@ -113,6 +118,8 @@ describe("#370 the typed condition builder", () => {
 
     // A checkpoint reads only the condition roots (context / output) — no config in its list.
     selectNode(canvas, "gate");
+    // The section starts collapsed and re-collapses on a new selection, so each node unfolds its own.
+    openSection(pane, "reference");
     expect(referenceText()).toMatch(/context\.x/);
     expect(referenceText()).toMatch(/output\./);
     expect(referenceText()).not.toMatch(/config\./);
@@ -121,12 +128,14 @@ describe("#370 the typed condition builder", () => {
 
     // A while-do adds max_iterations' step roots, so config joins the list.
     selectNode(canvas, "loop");
+    openSection(pane, "reference");
     expect(referenceText()).toMatch(/config\./);
     expect(referenceText()).toMatch(/context\.y/);
     expect(referenceText()).toMatch(/output\./);
 
     // A branch arm's occupant: its `when` roots plus the step's own input/publish roots.
     selectNode(canvas, "arm1");
+    openSection(pane, "reference");
     expect(referenceText()).toMatch(/config\./);
     expect(referenceText()).toMatch(/output\./);
 
@@ -140,6 +149,7 @@ describe("#370 config inheritance display", () => {
   it("shows inherited (ghosted value + Override) and overridden (revert), and Override makes a key local", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "config");
     // `timeout` is inherited from the file (ghosted value + Override); `region` is overridden by the step
     // (Revert); `model` is a first-class field, not here. The inheritance shows as the ghost + Override
     // affordance, not a caption.
@@ -158,6 +168,7 @@ describe("#370 input wiring", () => {
   it("live-checks the input object and rejects an unclosed placeholder", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
+    openSection(pane, "input");
     const input = within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement;
 
     fireEvent.change(input, { target: { value: '{ "q": "${context.a" }' } });
@@ -180,6 +191,7 @@ describe("#370 publish conflict marker", () => {
 
     // Publish the same key `dup` from the second collect branch as the first already does.
     selectNode(canvas, "b2");
+    openSection(pane, "context writes");
     fireEvent.click(within(pane).getByRole("button", { name: "+ add publish" }));
     fireEvent.change(within(pane).getByLabelText("Publish key"), { target: { value: "dup" } });
 

@@ -1,6 +1,6 @@
-import { useId, useState } from "react";
+import { useId, useState, type ReactNode } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
-import { WorkerDefaultsEditor } from "@path/viewer";
+import { WorkerDefaultsEditor, workerDefaultCandidates } from "@path/viewer";
 import {
   CONDITION_ROOTS,
   PUBLISH_ROOTS,
@@ -66,6 +66,14 @@ import {
  * first, then `id` (with a confirmation-gated re-key, because a re-key breaks resume plan-reuse, ADR
  * 0015), then the kind-specific fields.
  *
+ * The named regions below those fields — a step's **config**, **input**, **context writes** and
+ * **reference**, and the file's own **config**, **worker defaults** and **output** — are
+ * {@link PaneSection}s, and every one of them starts **collapsed**: selecting a node shows its identity
+ * and its kind fields, and the author unfolds only the region they came for. A section's header is its
+ * toggle, so a collapsed region still names itself. Expansion is per node — a section resets to
+ * collapsed when the selection moves (each is keyed by its owner), so the pane never opens a region the
+ * author did not ask for on the node now in view.
+ *
  * The step editors are the three tiers (§ Editors): hand-built for `prompt` / `binary` / `workflow`, a
  * generated form for any other registry type, and a live-validated raw-JSON floor for a payload no form
  * can lay out — so every in-registry type always opens. The worker selector is a per-step dropdown shown
@@ -95,6 +103,32 @@ export function PropertiesPane({ file, selectedId, plugins, applyEdit, onReselec
     return <FileProperties file={file} plugins={plugins} applyEdit={applyEdit} />;
   }
   return <NodeProperties file={file} node={node} plugins={plugins} applyEdit={applyEdit} onReselect={onReselect} onAddRefTarget={onAddRefTarget} />;
+}
+
+/**
+ * One collapsible region of the pane: its title is the toggle, and the body mounts only while it is
+ * open. Collapsed is the default, so a region's own contents never cost the pane a first glance — and
+ * an unopened region is not in the DOM at all, so its fields cannot be tabbed into or read out of the
+ * document order they were left out of.
+ */
+function PaneSection({ title, className, children }: { title: string; className?: string; children: ReactNode }): JSX.Element {
+  const [open, setOpen] = useState(false);
+  return (
+    <div className={className === undefined ? "pane-section" : `pane-section ${className}`}>
+      <button
+        type="button"
+        className="pane-section-toggle"
+        aria-expanded={open}
+        onClick={() => setOpen((shown) => !shown)}
+      >
+        <span className="pane-section-caret" aria-hidden="true">
+          {open ? "▾" : "▸"}
+        </span>
+        <span className="pane-section-title">{title}</span>
+      </button>
+      {open ? <div className="pane-section-body">{children}</div> : null}
+    </div>
+  );
 }
 
 // ── The file's own properties ──────────────────────────────────────────────────────────────────────
@@ -135,6 +169,9 @@ function FileProperties({
  *
  * The **launch** tier has no editor here: it is supplied at launch, not authored in a file, and the
  * Viewer's launch form owns it (ADR 0044).
+ *
+ * A registry whose types all ship a single worker offers nothing to select, so the whole section — the
+ * collapsible header included — is not rendered.
  */
 function FileWorkerDefaultsRegion({
   file,
@@ -145,6 +182,9 @@ function FileWorkerDefaultsRegion({
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element | null {
+  // No multi-worker type in the registry → no selection to make. Hide the section entirely.
+  if (workerDefaultCandidates(plugins).length === 0) return null;
+
   const write = (map: { [type: string]: string }): void => {
     if (Object.keys(map).length === 0) {
       const { worker_defaults: _dropped, ...rest } = file;
@@ -155,13 +195,14 @@ function FileWorkerDefaultsRegion({
   };
 
   return (
-    <WorkerDefaultsEditor
-      plugins={plugins}
-      value={file.worker_defaults ?? {}}
-      onChange={write}
-      title="worker defaults"
-      hint="The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still wins, and this never crosses a workflow reference."
-    />
+    <PaneSection title="worker defaults">
+      <WorkerDefaultsEditor
+        plugins={plugins}
+        value={file.worker_defaults ?? {}}
+        onChange={write}
+        hint="The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still wins, and this never crosses a workflow reference."
+      />
+    </PaneSection>
   );
 }
 
@@ -202,8 +243,7 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
   );
 
   return (
-    <div className="pane-section">
-      <span className="pane-section-title">output</span>
+    <PaneSection title="output">
       <p className="pane-hint">The workflow's output object, evaluated at success — what a parent's publish reads back from a workflow reference.</p>
       {rows.length > 0 ? (
         <div className="pane-publish-grid">
@@ -228,7 +268,7 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
       <button type="button" className="pane-btn" onClick={addRow}>
         + add output key
       </button>
-    </div>
+    </PaneSection>
   );
 }
 
@@ -315,10 +355,10 @@ function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: Work
   return (
     <>
       <hr className="pane-divider" />
-      <div className="pane-section pane-reference">
-        <span className="pane-section-title">reference</span>
+      {/* Keyed by the node: a new selection opens its sections collapsed again. */}
+      <PaneSection key={node.id} title="reference" className="pane-reference">
         <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
-      </div>
+      </PaneSection>
     </>
   );
 }
@@ -802,8 +842,7 @@ function ConfigEditor({
     setNewKey("");
   };
   return (
-    <div className="pane-section">
-      <span className="pane-section-title">config</span>
+    <PaneSection key={scopeId} title="config">
       {rows.length === 0 ? <p className="pane-hint">{emptyHint}</p> : null}
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list.
@@ -826,7 +865,7 @@ function ConfigEditor({
           + add config key
         </button>
       </div>
-    </div>
+    </PaneSection>
   );
 }
 
@@ -922,8 +961,7 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: EditCommit<
   );
 
   return (
-    <div className="pane-section">
-      <span className="pane-section-title">input</span>
+    <PaneSection key={node.id} title="input">
       <div className="pane-field">
         <label className="pane-label" htmlFor={`input-${node.id}`}>
           input (any JSON value, ${"{…}"} interpolable)
@@ -942,7 +980,7 @@ function InputEditor({ node, commit }: { node: WorkflowNode; commit: EditCommit<
           </p>
         ) : null}
       </div>
-    </div>
+    </PaneSection>
   );
 }
 
@@ -979,8 +1017,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: Edit
   );
 
   return (
-    <div className="pane-section">
-      <span className="pane-section-title">context writes</span>
+    <PaneSection key={node.id} title="context writes">
       {rows.length > 0 ? (
         // One shared grid so every row's `=` sits in the same column, aligned down the list (§ Config).
         <div className="pane-publish-grid">
@@ -1009,7 +1046,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: Edit
         options={["(none)", "text", "json"]}
         onChange={(v) => commit(v === "(none)" ? dropNodeKey(node, "parse") : (setNodeField(node, "parse", v)))}
       />
-    </div>
+    </PaneSection>
   );
 }
 

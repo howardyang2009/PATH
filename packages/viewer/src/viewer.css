@@ -386,19 +386,12 @@ button.workflow-row:focus-visible {
 
 /* One editor, two surfaces (ADR 0044): the Viewer's launch form styles this from here, and the
    Designer imports this same stylesheet, so the file `worker_defaults` region reads identically
-   without a fork of its own. Label + select per row, with the remove control trailing. */
+   without a fork of its own. Label + select per row, with the remove control trailing. The naming
+   header is the host's (the launch disclosure, the Designer's pane section), not this block's. */
 .worker-defaults {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.worker-defaults-title {
-  font-size: var(--fs-xs);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text);
 }
 
 /* What the table selects and what it does not override — a note, not a warning. */
