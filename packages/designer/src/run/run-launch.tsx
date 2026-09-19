@@ -1,8 +1,14 @@
-import type { PathApiClient } from "@path/client-core";
+import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { LaunchForm } from "@path/viewer";
 
 export interface RunLaunchProps {
   client: PathApiClient;
+  /**
+   * The received step-plugin registry (`GET /v0/step-plugins`), passed straight through to the shared
+   * form's **launch worker-default** field (ADR 0044): the Designer's dock launches a run, so it offers
+   * the same operator door the Viewer's launch panel does.
+   */
+  plugins: readonly WireStepPlugin[];
   /** The file open on the canvas — the launch target. `null` for a brand-new, never-saved buffer. */
   workflowPath: string | null;
   /** The active buffer's dirty flag: a launch runs the bytes on disk, so a dirty buffer gates it (ADR 0025). */
@@ -24,8 +30,11 @@ export interface RunLaunchProps {
  * canvas, and a launch runs the **bytes on disk** (the server loads `workflow_path` through
  * `prepareWorkflow`, never the client's buffer). So a dirty or never-saved buffer gates launch until
  * it is saved; the shared form disables the button and shows the gate reason, and enables once clean.
+ *
+ * The **launch worker-default** field rides along with it (ADR 0044): it is operator input for this
+ * launch, not file data, so it belongs to the launch door — and this dock is one.
  */
-export function RunLaunch({ client, workflowPath, dirty, warningCount, onLaunched }: RunLaunchProps): JSX.Element {
+export function RunLaunch({ client, plugins, workflowPath, dirty, warningCount, onLaunched }: RunLaunchProps): JSX.Element {
   // A launch runs the file on disk, so an unsaved or dirty buffer must save first (#371, ADR 0025). A
   // brand-new buffer has no path for `prepareWorkflow` to load, so its first save creates the target.
   const gate =
@@ -38,6 +47,7 @@ export function RunLaunch({ client, workflowPath, dirty, warningCount, onLaunche
   return (
     <LaunchForm
       client={client}
+      plugins={plugins}
       workflowPath={workflowPath}
       onLaunched={onLaunched}
       submitLabel="Run workflow"

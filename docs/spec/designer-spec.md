@@ -535,8 +535,9 @@ client's in-memory buffer. Therefore:
   behaves as above.
 
 The launch form itself is the raw-JSON `input` (prefilled `{}`, empty allowed) plus an optional
-`config` override, each behind its own collapsed-by-default disclosure, gated client-side by
-`parseJsonField` (now in `@path/client-core`, § Shared seam)
+`config` override, each behind its own collapsed-by-default disclosure, and — when the registry ships a
+multi-worker type — the operator's **launch worker-default** table behind a third (ADR 0044), gated
+client-side by `parseJsonField` (now in `@path/client-core`, § Shared seam)
 and validated server-side — a rejected `$env` override
 ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)) or a schema failure returns a `400`
 the form surfaces without collapsing.

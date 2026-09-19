@@ -90,6 +90,11 @@ async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?:
   return client;
 }
 
+/** A registry whose `prompt` type ships two workers — so a worker-default can select one (ADR 0044). */
+const MULTI_WORKER_PLUGINS: WireStepPlugin[] = DEFAULT_PLUGINS.map((plugin) =>
+  plugin.name === "prompt" ? { ...plugin, workers: ["anthropic", "batch"] } : plugin,
+);
+
 describe("Designer run surfaces (#372)", () => {
   it("launch is enabled on a clean buffer and runs the open file's path", async () => {
     const calls = makeCalls();
@@ -106,6 +111,22 @@ describe("Designer run surfaces (#372)", () => {
     // The prefilled `{}` input rides the launch; no config override was set.
     expect(calls.startRun[0]!.input).toEqual({});
     expect(calls.startRun[0]!.config).toBeUndefined();
+  });
+
+  it("offers the launch worker-default table, and posts it with the run", async () => {
+    const calls = makeCalls();
+    await renderClean({ plugins: MULTI_WORKER_PLUGINS }, calls);
+    openDock();
+
+    // The dock launches a run, so it carries the same operator door the Viewer's launch panel does.
+    fireEvent.click(await screen.findByTestId("run-launch-worker-defaults-toggle"));
+    fireEvent.click(screen.getByTestId("worker-default-add"));
+    expect((screen.getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
+    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "batch" } });
+
+    fireEvent.click(screen.getByTestId("run-launch-submit"));
+    await waitFor(() => expect(calls.startRun).toHaveLength(1));
+    expect(calls.startRun[0]!.worker_defaults).toEqual({ prompt: "batch" });
   });
 
   it("launch is disabled while the buffer is dirty, and says why", async () => {

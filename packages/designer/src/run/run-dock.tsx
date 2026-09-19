@@ -1,4 +1,4 @@
-import type { PathApiClient } from "@path/client-core";
+import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { NodeIo, RunDetail, RunsList, type RunViewLoad } from "@path/viewer";
 import { useRef, useState } from "react";
@@ -29,6 +29,11 @@ export interface RunDockProps {
   workflowPath: string | null;
   /** The open workflow's `id` — the run-list scope key; `null` when nothing is open. */
   workflowId: string | null;
+  /**
+   * The received step-plugin registry (`GET /v0/step-plugins`), handed to the launch form so its
+   * **launch worker-default** field can offer each type's shipped workers (ADR 0044).
+   */
+  plugins: readonly WireStepPlugin[];
   /**
    * The open buffer's parsed file (the root level), or `null` when nothing is open. The
    * `Resume from …` button reads it to locate a top-level K in the file body — the eager legal-K check.
@@ -130,6 +135,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
             <div className="run-dock-launch">
               <RunLaunch
                 client={props.client}
+                plugins={props.plugins}
                 workflowPath={props.workflowPath}
                 dirty={props.dirty}
                 warningCount={props.warningCount}

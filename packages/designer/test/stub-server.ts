@@ -31,7 +31,7 @@ export interface StubCalls {
   /** The `GET /v0/runs` query strings the run list sent (`?...`), for the `workflow_id`-scope assertions (#372). */
   listRuns: string[];
   /** Every `POST /v0/runs` launch body, for the save-first launch assertions (#372). */
-  startRun: { workflow_path: string; input?: unknown; config?: unknown }[];
+  startRun: { workflow_path: string; input?: unknown; config?: unknown; worker_defaults?: unknown }[];
   /** Every `POST /v0/runs/:id/cancel` root run id (#372). */
   cancel: string[];
   /** Every `POST /v0/runs/:id/resume` — the id and the optional config-override body (#372). */
@@ -147,7 +147,7 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       return options.onResumeRun ? options.onResumeRun({ rootRunId, body }) : json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
     }
     if (input === "/v0/runs" && init?.method === "POST") {
-      const b = init?.body ? (JSON.parse(init.body as string) as { workflow_path: string; input?: unknown; config?: unknown }) : { workflow_path: "" };
+      const b = init?.body ? (JSON.parse(init.body as string) as { workflow_path: string; input?: unknown; config?: unknown; worker_defaults?: unknown }) : { workflow_path: "" };
       calls?.startRun.push(b);
       return options.onStartRun ? options.onStartRun(b) : json({ run_id: "new-root", root_run_id: "new-root" }, 202);
     }
