@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { fromWireRunRecord } from "@path/schema";
-import type { JsonValue, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus, WireRunRecord } from "@path/schema";
+import type { JsonValue, LaunchFacts, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus, WireRunRecord } from "@path/schema";
 
 // `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
 // What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
@@ -34,18 +34,20 @@ export interface NewRunRow {
   /** Root-only (#202): the producing `workflow.json` path, relative to the store dir. */
   workflowPath?: string | null;
   /**
-   * Root-only (#519, ADR 0044): the operator's frozen **launch worker-default** table
-   * (`{ <stepType>: <workerName> }`), stored as JSON TEXT. Undefined/null on every row but a fresh
-   * launch's root — a resume/Complete reads it back through `getLaunchWorkerDefaults` so a re-run step
-   * resolves to the worker the launch chose. It is engine-internal, so it never joins `RunRecord`.
+   * Root-only (ADR 0046): the operator's frozen **launch facts** — the input override, the config
+   * override (`$env`-resolved, `$secret`-masked), the launch worker-default table (ADR 0044), and the
+   * config paths that were secrets — stored as JSON TEXT. Undefined/null on every row but a fresh
+   * launch's root: a resume/Complete reads it back through `getLaunchFacts` (and its
+   * `getLaunchWorkerDefaults` projection) so a re-run step resolves the worker and config the launch
+   * chose, and the run-tree read exposes it so a reader sees what the run was launched with.
    */
-  launchWorkerDefaults?: { [stepType: string]: string } | null;
+  launchFacts?: LaunchFacts | null;
 }
 
 export function insertRun(db: Database.Database, row: NewRunRow): void {
   db.prepare(
-    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, iteration, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path, launch_worker_defaults)
-     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @iteration, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath, @launchWorkerDefaults)`,
+    `INSERT INTO runs (run_id, root_run_id, parent_run_id, node_id, node_name, worker_name, iteration, status, started_at, input_ref, resumed_from_root_run_id, rerun_from_node_path, workflow_id, workflow_name, workflow_path, launch_facts)
+     VALUES (@runId, @rootRunId, @parentRunId, @nodeId, @nodeName, @workerName, @iteration, @status, @startedAt, @inputRef, @resumedFromRootRunId, @rerunFromNodePath, @workflowId, @workflowName, @workflowPath, @launchFacts)`,
   ).run({
     runId: row.runId,
     rootRunId: row.rootRunId,
@@ -65,8 +67,9 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
     workflowId: row.workflowId ?? null,
     workflowName: row.workflowName ?? null,
     workflowPath: row.workflowPath ?? null,
-    // JSON-encoded launch table, root-only; null on every nested row and a launch that supplied none (#519).
-    launchWorkerDefaults: row.launchWorkerDefaults ? JSON.stringify(row.launchWorkerDefaults) : null,
+    // JSON-encoded launch facts, root-only; null on every nested row and a launch that supplied
+    // nothing beyond the file (ADR 0046).
+    launchFacts: row.launchFacts ? JSON.stringify(row.launchFacts) : null,
   });
 }
 
@@ -221,19 +224,29 @@ export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRec
 }
 
 /**
+ * The frozen **launch facts** a run recorded on its own root row (ADR 0046), or `undefined` when the
+ * run supplied nothing beyond the file — or when no row has that id. The one read of the JSON column:
+ * `getLaunchWorkerDefaults` projects the dispatch table out of it, `Project.resume`/`complete` recover
+ * the config and the table from it, and the run-tree read exposes it to a reader.
+ */
+export function getLaunchFacts(db: Database.Database, rootRunId: string): LaunchFacts | undefined {
+  const row = db
+    .prepare(`SELECT launch_facts FROM runs WHERE run_id = @rootRunId`)
+    .get({ rootRunId }) as { launch_facts: string | null } | undefined;
+  if (!row || row.launch_facts === null) return undefined;
+  return JSON.parse(row.launch_facts) as LaunchFacts;
+}
+
+/**
  * The frozen **launch worker-default** table a run recorded on its own root row (#519, ADR 0044), or
  * `undefined` when the run supplied none — or when no row has that id. The operator's launch table is
  * identity-defining like `input` and never re-overridable, so `Project.resume`/`complete` restore it
  * from here rather than taking one off the request: a re-run step then resolves through the same
- * `node.worker → launch → file → type` order the launch did, with the file tier live. It is
- * engine-internal, so it rides this accessor rather than `RunRecord`/the wire.
+ * `node.worker → launch → file → type` order the launch did, with the file tier live. A projection of
+ * {@link getLaunchFacts} — the table is one field of the frozen facts now (ADR 0046).
  */
 export function getLaunchWorkerDefaults(db: Database.Database, rootRunId: string): { [stepType: string]: string } | undefined {
-  const row = db
-    .prepare(`SELECT launch_worker_defaults FROM runs WHERE run_id = @rootRunId`)
-    .get({ rootRunId }) as { launch_worker_defaults: string | null } | undefined;
-  if (!row || row.launch_worker_defaults === null) return undefined;
-  return JSON.parse(row.launch_worker_defaults) as { [stepType: string]: string };
+  return getLaunchFacts(db, rootRunId)?.workerDefaults;
 }
 
 /**

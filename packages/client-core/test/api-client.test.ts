@@ -265,6 +265,23 @@ describe("PathApiClient", () => {
     expect(JSON.parse(inits[0]?.body as string)).toEqual({ output: { approved: true, reviewer: "Dana" } });
   });
 
+  it("completeStep accepts an optional config override and sends it in the body (ADR 0046)", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return json({ step_run_id: "leaf1", root_run_id: "root" }, 202);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    // The continuation re-supplies a value the launch froze as its masked token.
+    await client.completeStep("leaf1", { approved: true }, { github_token: "[secret:github_token]" });
+    expect(inits[0]?.method).toBe("POST");
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      output: { approved: true },
+      config: { github_token: "[secret:github_token]" },
+    });
+  });
+
   it("completeStep surfaces a 400 schema rejection as a PathApiError carrying the ajv issues", async () => {
     const issues = [{ instancePath: "/riskLevel", keyword: "enum", message: "must be equal to one of the allowed values" }];
     const stub = stubFetch(() => json({ error: { message: "output does not match the step's outputSchema", details: issues } }, 400));

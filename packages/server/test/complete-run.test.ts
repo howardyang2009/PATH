@@ -158,6 +158,30 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
     expect((await complete(leafId, { output: { level: "high" } })).status).toBe(202);
     expect((await settle(rootRunId)).status).toBe("succeeded");
   });
+
+  it("accepts an optional config override, and applies the same $env reject as a launch (ADR 0012/0046)", async () => {
+    const rootRunId = await launch("awaiting-complete.workflow.json");
+    const leafId = await awaitingLeafId(rootRunId);
+
+    // An `$env` in the override would let a browser operator read the server's environment — the one
+    // divergence ADR 0012 pins, and it holds on this door too.
+    const envRes = await complete(leafId, { output: { approved: true }, config: { token: { $env: "PATH_TOKEN" } } });
+    expect(envRes.status).toBe(400);
+    const refusal = (await envRes.json()) as { error: { message: string } };
+    expect(refusal.error.message).toContain("may not source from the server environment");
+
+    // A literal `$secret` is the sanctioned channel, and the run proceeds.
+    const res = await complete(leafId, { output: { approved: true }, config: { token: { $secret: "t" } } });
+    expect(res.status).toBe(202);
+    expect((await settle(rootRunId)).status).toBe("succeeded");
+  });
+
+  it("rejects an unknown body field rather than ignoring it", async () => {
+    const rootRunId = await launch("awaiting-complete.workflow.json");
+    const leafId = await awaitingLeafId(rootRunId);
+    const res = await complete(leafId, { output: { approved: true }, configg: {} });
+    expect(res.status).toBe(400);
+  });
 });
 
 describe("error taxonomy", () => {

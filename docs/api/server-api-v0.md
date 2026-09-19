@@ -149,6 +149,11 @@ Response `200 OK`:
 Most recent first (`ORDER BY started_at DESC`). This is the root-run summary shape only. It has no
 `output`, `usage`, or full tree; fetch `GET /v0/runs/:root_run_id` for that.
 
+Each summary also carries `launch_secret_keys` (ADR 0046) **when the launch recorded any**: the
+dot-paths of the operator's config override whose values were `$secret`, names only, never values. A
+Resume surface reads them to ask for a masked credential *before* it submits, rather than discovering
+it from a failed run. The field is absent for a run whose launch had no secret-valued config.
+
 ## 4. `GET /v0/runs/:root_run_id` — run status + tree
 
 Response `200 OK`, one row per `RunRecord` in the tree (`getRunsForRoot`, camelCase fields translated to
@@ -210,6 +215,21 @@ snake_case):
   content by a follow of the pointer. If a source tree was since removed by `runs rm`, both
   `reused_from_root_run_id` and the two refs are null; the reused data is genuinely gone.
 - `404 Not Found` if `root_run_id` is unknown.
+- **`launch_facts`** (ADR 0046): what the operator supplied at launch beyond the file — an object
+  present only when the launch supplied something, with any of these fields:
+
+  | field | meaning |
+  | --- | --- |
+  | `input` | the operator's override input, as supplied. Recorded and shown; never re-applied on a Resume or a Complete, which restore the context blackboard instead. |
+  | `config` | the operator's override config, `$env`-resolved and `$secret`-**masked**: a value that was `{"$secret": "sk-…"}` reads as the string `"[secret:<key>]"`. |
+  | `worker_defaults` | the frozen launch worker-default table (§2, ADR 0044). |
+  | `secret_keys` | the config dot-paths whose values were `$secret`, present only when there are any. The token in `config` says a value is missing; this says which value. |
+
+  A Resume or a Complete recovers `config` and `worker_defaults` from this record. A recovered secret
+  is a token, not a credential, so a continuation that does not supply it again (through the `config`
+  field of §4.3/§4.4) **fails before its first step**, naming every key —
+  `run failed before its first step: launch config secret "apiKey" was not supplied again`. The fields
+  are per-tree, so they sit beside `runs` rather than on each row.
 
 ### 4.1 `GET /v0/runs/:root_run_id/blobs/:run_id/:name` — one run's input, output, or context object
 
@@ -292,6 +312,12 @@ fresh input seed would be silently discarded. To omit the body (or send none) re
 workflow's own declared config. The successor records its own `workflow_path` and is therefore itself
 resumable.
 
+A resume also **recovers the predecessor's frozen launch facts** (ADR 0046): the launch config and the
+launch worker-default table come back, with any `config` in this body merged over the frozen config
+(shallow, supplied wins). A predecessor whose launch stored a `$secret` as `[secret:<key>]` needs that
+value supplied here — the successor otherwise ends before its first step naming the key. The frozen
+input override is not recovered: the successor's context is the predecessor's.
+
 **Resume-from-K** (#444, [ADR 0032](../adr/0032-resume-from-k-boundary-representation-and-successor-provenance.md)):
 `rerun_from_run_id` names the rerun boundary **K** by the source node's run id. Nodes serialized before
 K reuse their succeeded results; K and every serialized-later top-level node re-run in the successor.
@@ -346,15 +372,24 @@ would not say which one. The server resolves the row by `run_id`, reads its stat
 `:root_run_id` segment: the leaf id is sufficient and self-locating.
 
 **Request body** — the person's output, no status field (Complete always succeeds; failure is Cancel,
-#461):
+#461), plus an optional config override (ADR 0046):
 
 ```json
-{ "output": <json-value> }
+{ "output": <json-value>, "config": <config-object> }
 ```
 
 `output` is a structured `JsonValue`, not a stdout string, so `parse: "json"` is a no-op for this type
 ([ADR 0040](../adr/0040-output-schema-is-json-schema-validated-with-ajv-from-the-current-file.md)). A
-missing `output` is a `400`.
+missing `output` is a `400`, and an unknown body field is a `400`.
+
+`config` is optional and exists because a Complete **recovers the launch's frozen config** (§4): a
+value the launch stored as a `$secret` is only its `[secret:<key>]` token, so this field is where the
+operator supplies it again — the engine merges it over the frozen config, shallow, supplied wins, and
+re-marks a value at a recorded secret path so the tree's copy stays masked. It carries the same
+ADR 0012 `$env` reject as §2 and §4.3 (an `$env` here would let a browser operator read the server's
+environment), and is irrelevant to a run that recorded no launch config. A frozen secret not supplied
+again does not fail this route: the continuation starts and ends before its first step, naming the
+key.
 
 **Validation runs before the lease.** Validation is per-leaf; the single-writer lease is per-tree. The
 route validates *first* so a bad submit on one leaf never blocks a valid concurrent Complete on a sibling

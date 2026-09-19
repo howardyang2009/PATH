@@ -1,8 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { InterpolationError, interpolateValue, resolveNode } from "@path/engine";
-import type { JsonValue } from "@path/schema";
+import { ConfigObjectSchema, formatIssues, type ConfigObject, type JsonValue } from "@path/schema";
+import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { prepareRunWorkflow } from "../launch.js";
+import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { validateOutputSchema } from "../output-schema.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
@@ -24,13 +25,21 @@ import type { RunsRouteContext } from "./post-runs.js";
  *
  * Taxonomy: `404` unknown id / file gone; `409` not-`awaiting` (double-submit lands here, named by the
  * actual status), lease held, swapped-file / pre-#169 path, or a node an author deleted or retyped
- * mid-wait; `400` malformed body / missing or schema-invalid output; `403` cross-origin (gated centrally
- * in `create-server.ts`).
+ * mid-wait; `400` malformed body / missing or schema-invalid output / an `$env` in the config override;
+ * `403` cross-origin (gated centrally in `create-server.ts`).
  */
 
 // The one awaiting step type v1 ships (ADR 0039). A Complete is only valid against a node still of this
 // type: an author who deleted or retyped the node mid-wait leaves the leaf with no valid exit but Cancel.
 const AWAITING_STEP_TYPE = "person-activity";
+
+/**
+ * The body: the person's `output`, and an optional `config` override. The override exists because a
+ * Complete recovers the launch's frozen config (ADR 0046) and a value that was a `$secret` is stored
+ * only as its token — this is the door an operator supplies it again through. It carries the same
+ * ADR 0012 `$env` reject as §2 and §4.3.
+ */
+const CompleteBodySchema = z.object({ output: z.unknown(), config: ConfigObjectSchema.optional() }).strict();
 
 export async function handleCompleteRun(
   req: IncomingMessage,
@@ -49,10 +58,23 @@ export async function handleCompleteRun(
     return;
   }
 
-  const { output } = body.value as { output?: JsonValue };
+  const parsed = CompleteBodySchema.safeParse(body.value);
+  if (!parsed.success) {
+    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
+    return;
+  }
+  const output = parsed.data.output as JsonValue;
   if (output === undefined) {
     sendError(res, 400, 'missing required field "output"');
     return;
+  }
+  const config = parsed.data.config as ConfigObject | undefined;
+  if (config !== undefined) {
+    const envError = operatorConfigEnvError(config);
+    if (envError) {
+      sendError(res, 400, envError);
+      return;
+    }
   }
 
   // Resolve the leaf and its tree from one read. An unknown id is a `404` before any file work; the
@@ -140,6 +162,9 @@ export async function handleCompleteRun(
     files: workflow.files,
     // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
     registry: workflow.registry,
+    // The override, if any: the engine merges it over the config the launch froze (ADR 0046), which is
+    // how a `$secret` the launch stored as a token gets its value back for the tail.
+    operatorConfig: config,
   });
 
   if (!result.ok) {

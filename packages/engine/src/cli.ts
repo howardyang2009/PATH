@@ -572,6 +572,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
       ...projectOptions,
       input: contextSeed.context,
+      // The operator's own seed, recorded beside the effective input as a launch fact (ADR 0046): `input`
+      // above is what the root context seeds from, this is what a reader is shown as the launch's input.
+      // A seedless run records none, the same "empty is no override" rule the server launch applies.
+      operatorInput: Object.keys(contextSeed.context).length > 0 ? contextSeed.context : undefined,
     });
   } finally {
     sigint.dispose();

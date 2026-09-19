@@ -1,5 +1,6 @@
 import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
+import type { LaunchFacts } from "./launch-facts.js";
 import type { LogBackendId } from "./log-backend-id.js";
 import { RUN_RECORD_FIELDS, type RerunFromNodePathEntry, type RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
@@ -54,12 +55,30 @@ export interface WireRunRecord {
   workflow_path: string | null;
 }
 
+/**
+ * The operator's frozen **launch facts** on the wire (ADR 0046), snake_case. Carried once per tree on
+ * `RunTreeResponse` — they belong to the root run, not to each row — and, as `launch_secret_keys`
+ * alone, on a root-run summary so a Resume surface can ask for a masked secret before it submits.
+ */
+export interface WireLaunchFacts {
+  input?: JsonValue;
+  config?: ConfigObject;
+  worker_defaults?: { [stepType: string]: string };
+  secret_keys?: string[];
+}
+
 /** `GET /v0/runs/:root_run_id` — run status + full tree (server-api-v0.md §4). */
 export interface RunTreeResponse {
   root_run_id: string;
   status: RunStatus;
   output: JsonValue | null;
   runs: WireRunRecord[];
+  /**
+   * What the run was launched with (ADR 0046), absent when the launch supplied nothing beyond the
+   * file. `config` is stored masked, so a `$secret` value reads as its `[secret:<key>]` token and
+   * `secret_keys` names the paths that must be supplied again to continue the run.
+   */
+  launch_facts?: WireLaunchFacts;
 }
 
 /** One entry of `GET /v0/runs` — the root-run summary shape only (server-api-v0.md §3). */
@@ -71,6 +90,12 @@ export interface RootRunSummary {
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;
+  /**
+   * The launch config keys this run recorded as secrets (ADR 0046) — names only, never values. Present
+   * only when the launch had `$secret`-wrapped config, so a Resume surface can ask for them before it
+   * submits rather than discovering them from a refusal.
+   */
+  launch_secret_keys?: string[];
 }
 
 /** `GET /v0/runs` — list of root runs, most recent first (server-api-v0.md §3). */
@@ -107,11 +132,15 @@ export interface StartRunResponse {
 }
 
 /**
- * `POST /v0/runs/:step_run_id/complete` request body (server-api-v0.md §4.4). The person's `output`
- * is the only field — no status flag; the route derives the leaf and its tree from the path id.
+ * `POST /v0/runs/:step_run_id/complete` request body (server-api-v0.md §4.4). The person's `output`,
+ * and an optional `config` override — no status flag; the route derives the leaf and its tree from the
+ * path id. The override exists because a Complete recovers the launch's frozen config (ADR 0046): a
+ * value the launch stored as `$secret` is only its `[secret:<key>]` token, so this is where an operator
+ * supplies it again. It carries the same ADR 0012 `$env` reject as the launch and resume bodies.
  */
 export interface CompleteRunRequest {
   output: JsonValue;
+  config?: ConfigObject;
 }
 
 /**
@@ -192,8 +221,49 @@ export function fromWireRunRecord(wire: WireRunRecord): RunRecord {
   return row as unknown as RunRecord;
 }
 
-/** The root-run summary `GET /v0/runs` returns — a projection of the full record, not a new shape. */
-export function toRootRunSummary(row: RunRecord): RootRunSummary {
+/**
+ * Every `LaunchFacts` field, as a set — the one enumeration the launch-facts codec iterates, the same
+ * discipline `RUN_RECORD_FIELDS` gives the record. Four fields, but a fifth added to the interface is
+ * a compile error here rather than a field that silently never crosses.
+ */
+const LAUNCH_FACT_FIELDS: Record<keyof LaunchFacts, true> = {
+  input: true,
+  config: true,
+  workerDefaults: true,
+  secretKeys: true,
+};
+
+/**
+ * Domain → wire, and back, omitting fields the launch never supplied. `undefined` is left out rather
+ * than copied, so a JSON response carries no null-ish key for a fact that does not exist — only a
+ * launch that actually supplied something has a `launch_facts` to show.
+ */
+export function toWireLaunchFacts(facts: LaunchFacts): WireLaunchFacts {
+  const wire: Record<string, unknown> = {};
+  for (const camel of Object.keys(LAUNCH_FACT_FIELDS)) {
+    const value = (facts as unknown as Record<string, unknown>)[camel];
+    if (value !== undefined) wire[camelToSnake(camel)] = value;
+  }
+  return wire as unknown as WireLaunchFacts;
+}
+
+/** Wire → domain launch facts — the inverse the client decodes with. */
+export function fromWireLaunchFacts(wire: WireLaunchFacts): LaunchFacts {
+  const facts: Record<string, unknown> = {};
+  for (const camel of Object.keys(LAUNCH_FACT_FIELDS)) {
+    const value = (wire as unknown as Record<string, unknown>)[camelToSnake(camel)];
+    if (value !== undefined) facts[camel] = value;
+  }
+  return facts as unknown as LaunchFacts;
+}
+
+/**
+ * The root-run summary `GET /v0/runs` returns — a projection of the full record, not a new shape.
+ * `launchSecretKeys` rides beside it because the summary is what a Resume surface lists: a parked or
+ * failed run's masked secrets have to be asked for before the submit, and the row itself does not
+ * hold them (they live in the tree's `launch_facts`).
+ */
+export function toRootRunSummary(row: RunRecord, launchSecretKeys?: string[]): RootRunSummary {
   return {
     run_id: row.runId,
     workflow_name: row.workflowName,
@@ -202,5 +272,6 @@ export function toRootRunSummary(row: RunRecord): RootRunSummary {
     status: row.status,
     started_at: row.startedAt,
     finished_at: row.finishedAt,
+    ...(launchSecretKeys !== undefined && launchSecretKeys.length > 0 ? { launch_secret_keys: launchSecretKeys } : {}),
   };
 }

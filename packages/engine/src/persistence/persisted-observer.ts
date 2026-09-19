@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { JsonValue, RerunFromNodePathEntry } from "@path/schema";
+import type { JsonValue, LaunchFacts, RerunFromNodePathEntry } from "@path/schema";
 import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeRunBlob } from "./blob-store.js";
@@ -56,9 +56,10 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       // Present only on a Resume-from-K successor's root run-started (#444, ADR 0032): the rerun
       // boundary (K) descent path, recorded root-only as JSON. Absent on plain Resume and nested runs.
       rerunFromNodePath?: RerunFromNodePathEntry[];
-      // Present only on a launch's root run-started that supplied one (#519, ADR 0044): the operator's
-      // frozen launch worker-default table, recorded root-only as JSON. Absent otherwise.
-      launchWorkerDefaults?: { [stepType: string]: string };
+      // Present only on a launch's root run-started that supplied one (ADR 0046): the operator's frozen
+      // launch facts (input override, resolved+masked config override, launch worker-default table),
+      // recorded root-only as JSON. Absent otherwise.
+      launchFacts?: LaunchFacts;
       // Present only on the root run-started (#202); the row records the source-workflow identity
       // trio verbatim. Undefined on every nested run, which leaves those columns null.
       workflowId?: string;
@@ -67,7 +68,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, input, resumedFromRootRunId, rerunFromNodePath, launchWorkerDefaults } = fact;
+    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, input, resumedFromRootRunId, rerunFromNodePath, launchFacts } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
     insertRun(db, {
@@ -82,7 +83,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       inputRef,
       resumedFromRootRunId,
       rerunFromNodePath,
-      launchWorkerDefaults,
+      launchFacts,
       workflowId: fact.workflowId,
       workflowName: fact.workflowName,
       workflowPath: fact.workflowPath,

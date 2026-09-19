@@ -671,6 +671,121 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
   });
 });
 
+describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
+  // As in the block above: prompt workers stubbed to distinguishable outputs, and here also capturing
+  // the *config* each step received, so a test can read what the run actually handed a worker.
+  function capturingStubs(seen: { label: string; config: Record<string, unknown> }[], failing?: string) {
+    const make = (workerName: string): WorkerDescriptor => ({
+      meters: false,
+      needsProcessorSlot: true,
+      run: async (request) => {
+        const label = String(request.fields.prompt);
+        seen.push({ label, config: { ...(request.config as unknown as Record<string, unknown>) } });
+        if (label === failing) return { status: "failed", error: "boom" };
+        return { status: "succeeded", output: `${workerName}:${label}` };
+      },
+    });
+    return { prompt: { anthropic: make("anthropic"), deepseek: make("deepseek") } };
+  }
+
+  function promptStep(id: string): WorkflowFile["body"][number] {
+    return { type: "prompt", id, name: id, prompt: id, publish: { [`from_${id}`]: "${output}" } };
+  }
+
+  function fileWith(body: WorkflowFile["body"]): WorkflowFile {
+    return stampNames({ format: "path/workflow@4", id: "wf-facts", name: "facts", config: { model: "m" }, body });
+  }
+
+  it("freezes the operator's launch facts on the root row, masking a $secret config value", async () => {
+    const project = open();
+    try {
+      const result = await project.run(fileWith([promptStep("a")]), dir, {
+        operatorInput: { topic: "release" },
+        operatorConfig: { model: "m", greeting: "hi", apiKey: { $secret: "sk-1" } },
+        launchWorkerDefaults: { prompt: "deepseek" },
+        workerOverrides: capturingStubs([]),
+      });
+      expect(result.status).toBe("succeeded");
+
+      const rootId = project.archive.listRoots()[0]!.runId;
+      // The input override and the worker table are recorded verbatim; the config is stored resolved,
+      // with the secret value replaced by its token and its path named in `secretKeys`.
+      expect(project.archive.launchFacts(rootId)).toEqual({
+        input: { topic: "release" },
+        config: { model: "m", greeting: "hi", apiKey: "[secret:apiKey]" },
+        workerDefaults: { prompt: "deepseek" },
+        secretKeys: ["apiKey"],
+      });
+    } finally {
+      project.close();
+    }
+  });
+
+  it("recovers the frozen config on resume, and re-masks a secret the caller supplies again", async () => {
+    const project = open();
+    try {
+      const seen: { label: string; config: Record<string, unknown> }[] = [];
+      const wf = fileWith([promptStep("a"), promptStep("b")]);
+      const first = await project.run(wf, dir, {
+        operatorConfig: { model: "m", greeting: "hi", apiKey: { $secret: "sk-1" } },
+        workerOverrides: capturingStubs(seen, "b"),
+      });
+      expect(first.status).toBe("failed");
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      seen.length = 0;
+      // The caller supplies the secret again as a *plain* value, the way a surface that types it does.
+      const resumed = await project.resume(wf, originalRootId, dir, {
+        operatorConfig: { apiKey: "sk-2" },
+        workerOverrides: capturingStubs(seen),
+      });
+      if (!resumed.found) throw new Error("expected found:true");
+      expect(resumed.status).toBe("succeeded");
+
+      // The re-run step saw the recovered non-secret key and the re-entered secret as a real value.
+      expect(seen).toEqual([{ label: "b", config: { model: "m", greeting: "hi", apiKey: "sk-2" } }]);
+
+      // The successor's own frozen copy carries it masked again — the plain re-entry was re-marked
+      // before anything read the config, so the credential never lands on disk in the clear.
+      const successorFacts = project.archive.launchFacts(resumed.rootRunId);
+      expect(successorFacts).toEqual({
+        config: { model: "m", greeting: "hi", apiKey: "[secret:apiKey]" },
+        secretKeys: ["apiKey"],
+      });
+      expect(JSON.stringify(successorFacts)).not.toContain("sk-2");
+      // The input override is not recovered onto the successor: its context is the predecessor's.
+      expect(successorFacts).not.toHaveProperty("input");
+    } finally {
+      project.close();
+    }
+  });
+
+  it("fails the successor before its first step when a frozen secret is not supplied again", async () => {
+    const project = open();
+    try {
+      const seen: { label: string; config: Record<string, unknown> }[] = [];
+      const wf = fileWith([promptStep("a"), promptStep("b")]);
+      await project.run(wf, dir, {
+        operatorConfig: { model: "m", apiKey: { $secret: "sk-1" } },
+        workerOverrides: capturingStubs(seen, "b"),
+      });
+      const originalRootId = project.archive.listRoots()[0]!.runId;
+
+      seen.length = 0;
+      const resumed = await project.resume(wf, originalRootId, dir, { workerOverrides: capturingStubs(seen) });
+      if (!resumed.found) throw new Error("expected found:true");
+
+      // The frozen copy holds a token where the credential was, so the run ends on a named key rather
+      // than handing `[secret:apiKey]` to a provider as a bearer token.
+      expect(resumed.status).toBe("failed");
+      expect(resumed.error).toContain('launch config secret "apiKey" was not supplied again');
+      expect(seen).toEqual([]);
+    } finally {
+      project.close();
+    }
+  });
+});
+
 describe("Project — the projectDir / workflowDir distinction (#59)", () => {
   it("resolves a nested workflow ref against the workflow's own directory, not the project's", async () => {
     // The shape that broke: the workflow lives in a subdirectory, `.path/` at the project root.

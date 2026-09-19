@@ -95,6 +95,31 @@ describe("POST /v0/runs input resolution", () => {
   });
 });
 
+// The *override* is recorded beside the effective seed (ADR 0046): `input` is what the run seeds from,
+// `operatorInput` is what a reader is shown as the launch's own input. The same "empty is no override"
+// rule applies, so a `{}` body never records a launch fact that did not exist.
+describe("POST /v0/runs operatorInput (ADR 0046)", () => {
+  it("forwards a non-empty input override as the recorded launch input", async () => {
+    const { live, started } = recordingLive();
+    const { res, result } = fakeRes();
+
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: { ticket: 9 } }), res, context(live));
+
+    expect(result.status).toBe(202);
+    expect(started[0]!.operatorInput).toEqual({ ticket: 9 });
+  });
+
+  it("records no override for an empty object or an absent field", async () => {
+    const empty = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: {} }), fakeRes().res, context(empty.live));
+    expect(empty.started[0]!.operatorInput).toBeUndefined();
+
+    const absent = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), fakeRes().res, context(absent.live));
+    expect(absent.started[0]!.operatorInput).toBeUndefined();
+  });
+});
+
 describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
   it("folds a top-level worker_defaults into StartRunOptions.launchWorkerDefaults verbatim", async () => {
     const { live, started } = recordingLive();

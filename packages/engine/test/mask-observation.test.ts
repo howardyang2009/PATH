@@ -105,6 +105,29 @@ describe("maskObservation", () => {
     expect(maskObservation(masker, SAMPLES["step-started"])).toMatchObject({ input: { k: TOKEN } });
   });
 
+  it("masks the frozen launch facts on a root run-started, config included (ADR 0046)", () => {
+    // The launch config override can hold a `$secret`; the frozen copy the run row records must carry
+    // the token, not the credential. The field is optional, so the `never` guard cannot force this —
+    // this sample is the guard.
+    const withFacts: Observation = {
+      ...SAMPLES["run-started"],
+      launchFacts: {
+        input: { k: "s3cret-value" },
+        config: { apiKey: "s3cret-value", plain: "visible" },
+        workerDefaults: { prompt: "deepseek" },
+        secretKeys: ["apiKey"],
+      },
+    };
+    expect(maskObservation(masker, withFacts)).toMatchObject({
+      launchFacts: {
+        input: { k: TOKEN },
+        config: { apiKey: TOKEN, plain: "visible" },
+        workerDefaults: { prompt: "deepseek" },
+        secretKeys: ["apiKey"],
+      },
+    });
+  });
+
   it("masks stderr and context", () => {
     expect(maskObservation(masker, SAMPLES["step-stderr"])).toMatchObject({ stderr: `boom ${TOKEN}` });
     expect(maskObservation(masker, SAMPLES["context-changed"])).toMatchObject({ context: { k: TOKEN } });

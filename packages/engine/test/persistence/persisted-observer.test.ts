@@ -60,7 +60,7 @@ describe("createPersistedObserver", () => {
       nodeId: null,
       nodeName: null,
       input: {},
-      launchWorkerDefaults: { prompt: "deepseek" },
+      launchFacts: { workerDefaults: { prompt: "deepseek" } },
     });
 
     expect(getLaunchWorkerDefaults(db, "root-1")).toEqual({ prompt: "deepseek" });

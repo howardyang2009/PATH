@@ -365,3 +365,74 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
     }
   });
 });
+
+describe("Complete — the frozen launch config (ADR 0046)", () => {
+  /** A tail step whose output is the config key it was handed, so a test reads what Complete ran with. */
+  const configEcho: WorkflowFile["body"][number] = {
+    type: "binary",
+    id: "echo",
+    name: "echo",
+    command: "node",
+    args: ["-e", "process.stdout.write(String(process.argv[1]))", "${config.greeting}"],
+    publish: { seen: "${output}" },
+  };
+
+  function echoingWorkflow(): WorkflowFile {
+    return workflow([person("approve"), configEcho], { seen: "${context.seen}" });
+  }
+
+  it("recovers the launch config for the tail, which the launch itself never reached", async () => {
+    const project = open();
+    try {
+      const wf = echoingWorkflow();
+      const first = await project.run(wf, dir, { operatorConfig: { greeting: "launched-with-this" } });
+      expect(first.status).toBe("awaiting");
+      const rootRunId = project.archive.listRoots()[0]!.runId;
+      const leaf = awaitingLeaf(project, rootRunId);
+
+      const done = await project.complete(wf, leaf.runId, {}, dir);
+      expect(done.ok).toBe(true);
+      if (!done.ok) throw new Error("expected ok");
+      expect(done.status).toBe("succeeded");
+      // The tail ran for the first time here, and read the config the launch recorded — not the file
+      // default, and not nothing.
+      expect(project.archive.tree(rootRunId)!.output()).toEqual({ seen: "launched-with-this" });
+    } finally {
+      project.close();
+    }
+  });
+
+  it("fails on a named key when the frozen secret is not supplied again, and runs when it is", async () => {
+    // Two launches, because a Complete consumes its leaf: the first continues without the secret and
+    // ends before the tail, the second re-enters it and reaches the tail.
+    const project = open();
+    try {
+      const wf = workflow([person("approve"), configEcho], { seen: "${context.seen}" });
+      await project.run(wf, dir, { operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } } });
+      const firstRoot = project.archive.listRoots()[0]!.runId;
+
+      // Nothing supplied this time: the frozen credential is a token, so the continuation ends on a
+      // named key rather than replaying a non-credential into the run.
+      const refused = await project.complete(wf, awaitingLeaf(project, firstRoot).runId, {}, dir);
+      expect(refused.ok).toBe(true);
+      if (!refused.ok) throw new Error("expected ok");
+      expect(refused.status).toBe("failed");
+      expect(refused.error).toContain('launch config secret "apiKey" was not supplied again');
+
+      await project.run(wf, dir, { operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } } });
+      const secondRoot = project.archive.listRoots()[0]!.runId;
+      const supplied = await project.complete(wf, awaitingLeaf(project, secondRoot).runId, {}, dir, {
+        operatorConfig: { apiKey: "sk-2" },
+      });
+      expect(supplied.ok).toBe(true);
+      if (!supplied.ok) throw new Error("expected ok");
+      expect(supplied.status).toBe("succeeded");
+      expect(project.archive.tree(secondRoot)!.output()).toEqual({ seen: "hi" });
+      // The re-entered plain value was re-marked before use, so the tree's frozen copy holds a token.
+      expect(project.archive.launchFacts(secondRoot)?.secretKeys).toEqual(["apiKey"]);
+      expect(JSON.stringify(project.archive.launchFacts(secondRoot))).not.toContain("sk-2");
+    } finally {
+      project.close();
+    }
+  });
+});

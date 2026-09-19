@@ -291,6 +291,9 @@ export function RunsList({
                               rootFile={resumeRootFile}
                               selectedRunId={resumeSelectedRunId}
                               dirty={resumeDirty}
+                              // The summary's masked launch secrets (ADR 0046), so the form can ask for
+                              // them before the submit rather than letting the engine refuse the resume.
+                              launchSecretKeys={run.launch_secret_keys}
                               onResumed={(successorRootRunId) => {
                                 // Collapse on success, as the launch form does on launch — then hand the
                                 // successor to the app to select and watch.

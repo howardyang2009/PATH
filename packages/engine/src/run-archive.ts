@@ -1,6 +1,6 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { findRootRun, isReuseRow, subtree, type JsonValue, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
+import { findRootRun, isReuseRow, subtree, type JsonValue, type LaunchFacts, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
 import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
@@ -11,6 +11,7 @@ import {
   deleteAllRuns,
   deleteRunsForRoot,
   existingRunIds,
+  getLaunchFacts,
   getRunsForRoot,
   listRootRuns,
   rootRunIdOf,
@@ -58,6 +59,14 @@ export interface RunArchive {
    * (ADR 0041) — the path lives on the root row, but the caller holds only the parked leaf's id.
    */
   rootRunIdOf(runId: string): string | null;
+  /**
+   * The **launch facts** a tree's root row recorded (ADR 0046) — the operator's input override, their
+   * `$env`-resolved/`$secret`-masked config override, the launch worker-default table, and the config
+   * paths that were secrets — or `undefined` when the launch supplied nothing beyond the file (or the
+   * tree is unknown). The run-tree read exposes them so a reader sees what the run was launched with,
+   * and a Resume surface reads `secretKeys` to ask for a masked credential before it submits.
+   */
+  launchFacts(rootRunId: string): LaunchFacts | undefined;
   /**
    * The live successor trees that would be orphaned by deleting `rootRunId` — every *other* root run
    * still holding a reuse-marker whose `original_run_id` points at a run inside this tree (#175). The
@@ -179,6 +188,10 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
 
     rootRunIdOf(runId: string): string | null {
       return rootRunIdOf(db, runId);
+    },
+
+    launchFacts(rootRunId: string): LaunchFacts | undefined {
+      return getLaunchFacts(db, rootRunId);
     },
 
     blockingSuccessors(rootRunId: string): string[] {

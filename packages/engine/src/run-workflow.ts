@@ -1,8 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { dirname, resolve } from "node:path";
-import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
 import { rootCancellation, stopCause } from "./cancellation.js";
+import { buildLaunchFacts, describeMissingLaunchSecrets } from "./launch-facts.js";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
 import { descendNodePath } from "./descend-node-path.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
@@ -43,6 +44,26 @@ export interface RunOptions {
   input?: { [key: string]: JsonValue };
   /** Operator launch-time config (CLI flags/file), overriding the top-level file's defaults (spec §3). */
   operatorConfig?: ConfigObject;
+  /**
+   * The operator's **override input** as they supplied it (ADR 0046) — the pre-fallback seed, where
+   * `input` is the effective one (override, else the file's own seed, else `{}`). Recorded with the
+   * other launch facts and shown to a reader; never re-applied on a continuation, because Resume and
+   * Complete restore the context blackboard rather than re-seeding from input.
+   */
+  operatorInput?: JsonValue;
+  /**
+   * Frozen launch-config secrets the continuation did **not** supply again (ADR 0046) — dot-paths the
+   * predecessor recorded as `$secret`, whose frozen value is therefore a `[secret:<key>]` token. The
+   * run ends before its first step naming them, the same shape as an unset `$env`. Set by
+   * `Project.resume`/`complete` from the frozen facts; a launch never sets it.
+   */
+  unresolvedLaunchSecrets?: string[];
+  /**
+   * The `secretKeys` a continuation inherited from the frozen facts (ADR 0046). Its recovered config
+   * is already unwrapped, so the wrappers that marked those paths are gone — passing them through here
+   * is what keeps the successor's own frozen copy honest about which of its values are secrets.
+   */
+  inheritedLaunchSecretKeys?: string[];
   /**
    * Every workflow file reachable from the root via `workflow` step refs, keyed by absolute path —
    * `loadWorkflowTree`'s output (#16). A `workflow` step resolves its `ref` against this map to
@@ -234,9 +255,16 @@ interface WorkflowRunParams {
   env: EnvSource;
   /**
    * A run-start config failure the root run is to end on before its first node — currently unset
-   * `$env` variables (#116). The run is still started and recorded; see `runBody`.
+   * `$env` variables (#116) and unrecovered launch secrets (ADR 0046). The run is still started and
+   * recorded; see `runBody`.
    */
   runStartFailure?: string;
+  /**
+   * The frozen launch facts this **root** run records on its `run-started` (ADR 0046): the operator's
+   * input override, resolved+masked config override, and launch worker-default table. Root-only —
+   * a nested workflow-run's params never carry it — and absent when the launch supplied none.
+   */
+  launchFacts?: LaunchFacts;
   // Shared by the entire run tree, so the registry and processor cap span nested runs too (mvp spec §5.5).
   runtime: StepRuntime;
   // A nested workflow-run inside a `parallel` branch inherits the block's cancellation, so its own
@@ -437,10 +465,10 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
         // run passing undefined here changes nothing.
         rerunFromNodePath: params.rerunFromNodePath,
-        // The frozen launch worker-default table, root-only too (#519, ADR 0044): recorded on the root
-        // row so a later resume/Complete restores it. The runtime's copy is the run-tree-wide table the
-        // operator launched with; the emitter gates the field on `isRoot`, so a nested run drops it.
-        launchWorkerDefaults: params.runtime.launchWorkerDefaults,
+        // The frozen launch facts, root-only (ADR 0046): recorded on the root row so a later
+        // resume/Complete recovers the config and worker table, and so the run tree can show what the
+        // launch supplied. The emitter gates the field on `isRoot`, so a nested run drops it.
+        launchFacts: params.launchFacts,
         workflowId: file.id,
         workflowName: file.name,
         workflowPath: params.sourceWorkflowPath,
@@ -1023,6 +1051,15 @@ export async function runWorkflow(
   const { masker, runStartFailure } = analyzeRunStart(file, fileDir, options, env, registry);
   for (const warning of masker.warnings) options.warn?.(warning);
 
+  // What the operator supplied at launch, frozen for this tree (ADR 0046): assembled once, here, from
+  // the same options the run executes with, so the recorded facts and the executed config cannot drift.
+  // `inheritedLaunchSecretKeys` rides along on a continuation, whose config arrived already unwrapped.
+  const launchFacts = buildLaunchFacts(
+    { input: options.operatorInput, config: options.operatorConfig, workerDefaults: options.launchWorkerDefaults },
+    env,
+    options.inheritedLaunchSecretKeys ?? [],
+  );
+
   const { observer } = options;
 
   // The original tree's own root run (`parentRunId === null`), found once: it is both the root run's
@@ -1054,6 +1091,7 @@ export async function runWorkflow(
       emitter: createEmitter(rootIdentity, emit),
       env,
       runStartFailure,
+      launchFacts,
       // External abort (#52): the operator's signal is the root run's own, chained into the tree's root
       // **cancellation authority** (`cancellation.ts`), which every `parallel` block below extends.
       signal: rootAuthority.signal,
@@ -1242,7 +1280,9 @@ export function analyzeRunStart(
   const runStartFailure =
     unset.length > 0
       ? describeUnsetEnv(unset)
-      : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
+      : (options.unresolvedLaunchSecrets?.length ?? 0) > 0
+        ? describeMissingLaunchSecrets(options.unresolvedLaunchSecrets as string[])
+        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
   return { masker, runStartFailure };
 }
 

@@ -1,8 +1,10 @@
 import {
   blankRunRecord,
+  fromWireLaunchFacts,
   fromWireRunRecord,
   isTerminal,
   type JsonValue,
+  type LaunchFacts,
   type LogEvent,
   type RunRecord,
   type RunStatus,
@@ -54,6 +56,13 @@ export interface RunViewState {
   /** Mirrors the root run's status (the run whose id is `rootRunId`). */
   status: RunStatus;
   output: JsonValue | null;
+  /**
+   * What the tree was launched with (ADR 0046), decoded to the domain shape — the operator's override
+   * input/config and the launch worker-default table, plus the dot-paths in `config` whose values were
+   * `$secret`-masked. A per-tree fact, not a per-run one, so it sits on the snapshot beside `output`
+   * rather than on any `runs` row. Absent when the launch supplied nothing beyond the workflow file.
+   */
+  launchFacts?: LaunchFacts;
   /** Every run in the tree, keyed by `runId`. */
   runs: ReadonlyMap<string, RunNodeState>;
   /** The complete chronological narrative, ordered by `seq` (the ordering truth), deduped. */
@@ -81,10 +90,10 @@ export interface RunViewState {
 
 /**
  * The derived facts a run surface reads off the snapshot: what the view answers about a run, without
- * the raw events. A pane that only needs one run's display status and error takes this, so it cannot
- * reach past the view into the event stream.
+ * the raw events. A pane that only needs one run's display status, error and the tree's launch facts
+ * takes this, so it cannot reach past the view into the event stream.
  */
-export type RunViewFacts = Pick<RunViewState, "displayStatus" | "lastError">;
+export type RunViewFacts = Pick<RunViewState, "displayStatus" | "lastError" | "launchFacts">;
 
 export type RunViewListener = (state: RunViewState) => void;
 
@@ -94,6 +103,7 @@ export class RunViewModel {
   private seenSeqs = new Set<number>();
   private lastErrorById = new Map<string, string>();
   private output: JsonValue | null = null;
+  private launchFacts: LaunchFacts | undefined = undefined;
   private rootStatus: RunStatus = "pending";
   private streamPhase: StreamPhase = "connecting";
   private readonly listeners = new Set<RunViewListener>();
@@ -130,6 +140,10 @@ export class RunViewModel {
       this.runs.set(row.run_id, node);
     }
     this.output = tree.output;
+    // Decode through the shared inverse, so the camelCase field set can never drift from the wire's
+    // snake_case one. Kept absent (not an empty object) when the response carries no `launch_facts`,
+    // which is how a launch that supplied nothing reads.
+    this.launchFacts = tree.launch_facts !== undefined ? fromWireLaunchFacts(tree.launch_facts) : undefined;
     const root = this.runs.get(this.rootRunId);
     this.rootStatus = root?.status ?? tree.status;
     this.commit();
@@ -208,6 +222,7 @@ export class RunViewModel {
       rootRunId: this.rootRunId,
       status: this.rootStatus,
       output: this.output,
+      launchFacts: this.launchFacts,
       runs,
       narrative: [...this.narrative],
       stream: this.streamPhase,

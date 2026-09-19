@@ -491,6 +491,10 @@ a workflow-step boundary, the parent's effective config flows into the child fil
 child's declared defaults key by key. Context is isolated; config deliberately is not. Steps never write
 config.
 
+An **operator's** override is frozen with the run (ADR 0046): recorded on the run's root row resolved
+and `$secret`-masked, recovered by a Resume or a Complete. The file's own config is not frozen — it is
+re-read from disk on every invocation, so an author's edit reaches a step that re-runs.
+
 ### 7.3 Value wrappers and the reserved `$` namespace
 
 Two wrappers are the one exception to §7.1's literalness. Both are **sole-key objects** that stand where

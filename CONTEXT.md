@@ -315,7 +315,17 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
   not the machine. It can carry a literal **Secret**. But it must not name the server's environment
   with an **Env-sourced value**. Otherwise a browser operator who launches a discovered workflow could
   read the server box's environment. A `$env` authored inside a workflow file is not affected: that
-  value is the author's, not the operator's.
+  value is the author's, not the operator's. It is **frozen with the run** as a [[Launch facts]] field,
+  stored resolved and masked (a **Secret** value becomes its token), and restored by a Resume or a
+  Complete — which is why a masked secret must be supplied again on the continuation.
+- **Launch facts** — what an operator supplied at launch beyond the workflow file: an **input** override,
+  an **operator config** override, and a **worker-default** table, frozen on the run tree's root row
+  (ADR 0046). A Resume or a Complete recovers the config and the worker-default table; the input
+  override is recorded and shown, never re-applied, because both continuations restore the **Context**
+  blackboard rather than re-seeding it. A recovered secret value is only its `[secret:<key>]` token, so
+  the continuation must supply it again — otherwise the run ends before its first step naming the key.
+  All three facts are readable on the run-tree response; a root-run summary carries the masked secret
+  *names* alone, so a Resume surface can ask for them before it submits.
 - **Context** — key-value data written *from inside* the run. Steps produce it at runtime. The other
   steps of the same workflow can read it (a computed temp dir, a branch name, accumulated results). It
   is scoped to one workflow-run and isolated. A nested workflow-step starts with a fresh, empty

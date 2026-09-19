@@ -9,6 +9,7 @@ import {
   deleteRunsForRoot,
   existingRunIds,
   finishRun,
+  getLaunchFacts,
   getLaunchWorkerDefaults,
   getRunsForRoot,
   insertRun,
@@ -118,9 +119,9 @@ describe("run-store", () => {
     expect(getRunsForRoot(db, "r1")[0]?.resumedFromRootRunId).toBeNull();
   });
 
-  // The launch worker-default table is frozen on the root row (ADR 0044, #519) so a resume restores
-  // it; it is engine-internal, so it rides its own accessor rather than the run record.
-  it("insertRun records the launch worker-default table on a root row and reads it back (#519)", () => {
+  // The launch facts are frozen on the root row (ADR 0046) so a resume/Complete restores them; the
+  // worker-default table is one field of them, read through its own projection accessor.
+  it("insertRun records the launch facts on a root row and reads them back (ADR 0046)", () => {
     insertRun(db, {
       runId: "root-1",
       rootRunId: "root-1",
@@ -128,19 +129,32 @@ describe("run-store", () => {
       nodeId: null, nodeName: null,
       workerName: null,
       status: "running",
-      launchWorkerDefaults: { prompt: "deepseek", binary: "spawn" },
+      launchFacts: {
+        input: { topic: "release" },
+        config: { model: "deepseek-flash", DEEPSEEK_API_KEY: "[secret:DEEPSEEK_API_KEY]" },
+        workerDefaults: { prompt: "deepseek", binary: "spawn" },
+        secretKeys: ["DEEPSEEK_API_KEY"],
+      },
     });
 
+    expect(getLaunchFacts(db, "root-1")).toEqual({
+      input: { topic: "release" },
+      config: { model: "deepseek-flash", DEEPSEEK_API_KEY: "[secret:DEEPSEEK_API_KEY]" },
+      workerDefaults: { prompt: "deepseek", binary: "spawn" },
+      secretKeys: ["DEEPSEEK_API_KEY"],
+    });
+    // The dispatch projection reads the table out of the same column.
     expect(getLaunchWorkerDefaults(db, "root-1")).toEqual({ prompt: "deepseek", binary: "spawn" });
   });
 
-  it("leaves the launch worker-default table absent when none was supplied (#519)", () => {
+  it("leaves the launch facts absent when none were supplied (#519)", () => {
     insertRun(db, { runId: "root-1", rootRunId: "root-1", parentRunId: null, nodeId: null, nodeName: null, workerName: null, status: "running" });
 
+    expect(getLaunchFacts(db, "root-1")).toBeUndefined();
     expect(getLaunchWorkerDefaults(db, "root-1")).toBeUndefined();
   });
 
-  it("reads the launch worker-default table off the row named, not the tree (nested rows carry none)", () => {
+  it("reads the launch facts off the row named, not the tree (nested rows carry none)", () => {
     insertRun(db, {
       runId: "root-1",
       rootRunId: "root-1",
@@ -148,11 +162,11 @@ describe("run-store", () => {
       nodeId: null, nodeName: null,
       workerName: null,
       status: "running",
-      launchWorkerDefaults: { prompt: "deepseek" },
+      launchFacts: { workerDefaults: { prompt: "deepseek" } },
     });
     insertRun(db, { runId: "child-1", rootRunId: "root-1", parentRunId: "root-1", nodeId: "a", nodeName: "a", workerName: "spawn", status: "running" });
 
-    expect(getLaunchWorkerDefaults(db, "child-1")).toBeUndefined();
+    expect(getLaunchFacts(db, "child-1")).toBeUndefined();
     expect(getLaunchWorkerDefaults(db, "no-such-run")).toBeUndefined();
   });
 

@@ -22,7 +22,8 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { cancelNonTerminalRuns, getLaunchWorkerDefaults, getRun, getRunsForRoot } from "./persistence/run-store.js";
+import { cancelNonTerminalRuns, getLaunchFacts, getRun, getRunsForRoot } from "./persistence/run-store.js";
+import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
 import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
@@ -452,14 +453,37 @@ export function openProject(dir: string): OpenProjectResult {
           rerunFromNodePath,
         };
 
-        // The launch worker-default is identity-defining like `input` (ADR 0044, #519): a resume
-        // restores the table the predecessor recorded on its root row, never one off the request — the
-        // resume route carries no such field, and changing it is a new run. The file tier stays live,
-        // so re-run steps resolve from this frozen launch table plus the reloaded file's own
+        // The launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
+        // predecessor's frozen config and launch worker-default table rather than taking either off the
+        // request — the resume route carries no worker table, and changing it is a new run. The file
+        // tier stays live, so re-run steps resolve from this frozen table plus the reloaded file's own
         // `worker_defaults`, exactly the order the launch used.
-        const frozenLaunchWorkerDefaults = getLaunchWorkerDefaults(db, rootRunId);
+        const frozenLaunchFacts = getLaunchFacts(db, rootRunId);
+        // A secret the caller supplied again arrives as a plain value; re-mark it at the recorded path
+        // before anything reads the config, or the successor would record the credential in the clear.
+        const suppliedConfig =
+          runOpts.operatorConfig === undefined
+            ? undefined
+            : wrapSecretsAtPaths(runOpts.operatorConfig, frozenLaunchFacts?.secretKeys ?? []);
+        const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(frozenLaunchFacts, suppliedConfig);
 
-        const result = await execute(rootFile, workflowDir, { ...runOpts, launchWorkerDefaults: frozenLaunchWorkerDefaults }, resume, [capture]);
+        const result = await execute(
+          rootFile,
+          workflowDir,
+          {
+            ...runOpts,
+            operatorConfig: recoveredConfig,
+            // An input override is never re-applied: the successor's context is restored from its
+            // counterpart's blackboard, so a fresh seed would be silently discarded. The frozen input
+            // is shown to a reader, not replayed.
+            operatorInput: undefined,
+            launchWorkerDefaults: frozenLaunchFacts?.workerDefaults,
+            unresolvedLaunchSecrets: missingSecretKeys,
+            inheritedLaunchSecretKeys: frozenLaunchFacts?.secretKeys,
+          },
+          resume,
+          [capture],
+        );
 
         // `run-started` precedes every other observation of a tree (run-observer.ts), and the root
         // run always starts, so by here the capture has fired — a missing id would be an engine bug,
@@ -573,11 +597,33 @@ export function openProject(dir: string): OpenProjectResult {
           };
 
           const { rerunFromRunId: _ignored, ...runOpts } = opts;
-          // A Complete is a replay of the same tree (ADR 0041), so it restores the launch
-          // worker-default table that tree's root row recorded (#519, ADR 0044) — the same frozen table
-          // a resume restores — and re-resolves the forward steps from it plus the live file.
-          const frozenLaunchWorkerDefaults = getLaunchWorkerDefaults(db, rootRunId);
-          const result = await execute(rootFile, workflowDir, { ...runOpts, launchWorkerDefaults: frozenLaunchWorkerDefaults }, undefined, [], continueInput);
+          // A Complete is a replay of the same tree (ADR 0041), so it restores the launch facts that
+          // tree's root row recorded (ADR 0046, #519): the config the launch ran with — recovered, with
+          // any launch secret the caller supplied again merged over it — and the launch worker-default
+          // table, so a forward step resolves exactly as the launch did. The frozen input is not
+          // re-applied: the tree's own contexts and the parked leaf are what this replay resumes from.
+          const frozenLaunchFacts = getLaunchFacts(db, rootRunId);
+          // See `resume`: a re-entered secret is re-marked at its recorded path so it is masked at rest.
+          const suppliedConfig =
+            runOpts.operatorConfig === undefined
+              ? undefined
+              : wrapSecretsAtPaths(runOpts.operatorConfig, frozenLaunchFacts?.secretKeys ?? []);
+          const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(frozenLaunchFacts, suppliedConfig);
+          const result = await execute(
+            rootFile,
+            workflowDir,
+            {
+              ...runOpts,
+              operatorConfig: recoveredConfig,
+              operatorInput: undefined,
+              launchWorkerDefaults: frozenLaunchFacts?.workerDefaults,
+              unresolvedLaunchSecrets: missingSecretKeys,
+              inheritedLaunchSecretKeys: frozenLaunchFacts?.secretKeys,
+            },
+            undefined,
+            [],
+            continueInput,
+          );
           return {
             ok: true,
             rootRunId,

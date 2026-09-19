@@ -36,6 +36,10 @@ export function handleListRuns(res: ServerResponse, ctx: RunsRouteContext, query
   const workflowId = query.get("workflow_id") || undefined;
 
   const rows = ctx.project.archive.listRoots({ limit, status, workflowId });
-  const body: ListRunsResponse = { runs: rows.map(toRootRunSummary) };
+  // Each summary carries the masked-secret *names* its launch recorded (ADR 0046) — never values — so
+  // a Resume surface can ask for them before it submits.
+  const body: ListRunsResponse = {
+    runs: rows.map((row) => toRootRunSummary(row, ctx.project.archive.launchFacts(row.runId)?.secretKeys)),
+  };
   sendJson(res, 200, body);
 }

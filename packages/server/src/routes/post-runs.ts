@@ -109,6 +109,10 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
       // `input` seed, else `{}`. Resolved here, once, so every launch door agrees and the run records
       // the input it actually seeded (not the file default it may have fallen back to).
       input: effectiveRootInput(input as { [key: string]: JsonValue } | undefined, workflow.rootFile.input),
+      // The *override* as the operator sent it, recorded beside the effective seed (ADR 0046): `input`
+      // above is what the run seeds from; this is what a reader is shown as the launch's own input. Only
+      // a non-empty override counts, the same rule `effectiveRootInput` applies.
+      operatorInput: input !== undefined && Object.keys(input).length > 0 ? (input as JsonValue) : undefined,
       operatorConfig: config,
       // The operator's run-wide launch worker-default table (ADR 0044, #517), forwarded verbatim to the
       // engine's `RunOptions.launchWorkerDefaults` so an HTTP launch resolves un-pinned steps exactly as

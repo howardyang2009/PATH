@@ -73,6 +73,30 @@ describe("RunViewModel", () => {
     expect(root?.workflowPath).toBe("release-notes.workflow.json");
   });
 
+  it("decodes the tree's launch facts to the domain shape, absent when the launch supplied none (ADR 0046)", () => {
+    const model = new RunViewModel(ROOT);
+    // A tree with no `launch_facts` reads as absent, not as an empty fact set: "the launch supplied
+    // nothing" is a different thing from "it supplied an empty input".
+    expect(model.getState().launchFacts).toBeUndefined();
+
+    const t = tree("running");
+    t.launch_facts = {
+      input: { since_tag: "1.3.0" },
+      config: { github_token: "[secret:github_token]", model: "sonnet" },
+      worker_defaults: { prompt: "deepseek" },
+      secret_keys: ["github_token"],
+    };
+    model.hydrate(t);
+
+    // CamelCase on the snapshot: the snake_case keys never leak past the shared decode.
+    expect(model.getState().launchFacts).toEqual({
+      input: { since_tag: "1.3.0" },
+      config: { github_token: "[secret:github_token]", model: "sonnet" },
+      workerDefaults: { prompt: "deepseek" },
+      secretKeys: ["github_token"],
+    });
+  });
+
   it("folds step lifecycle events into per-run status and the root status", () => {
     const model = new RunViewModel(ROOT);
     model.applyEvent(stepStarted(1, ROOT, null));

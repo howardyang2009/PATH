@@ -8,6 +8,7 @@ import {
 import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
+import { secretSkeletonJson } from "./secret-config.js";
 
 export interface ResumeActionsProps {
   client: PathApiClient;
@@ -37,6 +38,13 @@ export interface ResumeActionsProps {
   selectedRunId: string | null;
   /** The open buffer's dirty flag — the Designer's save-first gate (ADR 0030). The Viewer passes `false`. */
   dirty: boolean;
+  /**
+   * The launch config dot-paths the root-run summary recorded as `$secret`-masked (`launch_secret_keys`,
+   * ADR 0046). Non-empty, the config field is prefilled with those paths' skeleton and opened: a resume
+   * recovers the frozen config, and a masked `[secret:<key>]` token cannot continue the run, so the
+   * operator must supply the values again. Absent or empty, the field keeps its blank, closed default.
+   */
+  launchSecretKeys?: readonly string[];
   /** Handed the successor's fresh root run id so the app can switch to watching it (as a launch/resume). */
   onResumed: (successorRootRunId: string) => void;
 }
@@ -69,11 +77,18 @@ export function ResumeActions({
   rootFile,
   selectedRunId,
   dirty,
+  launchSecretKeys,
   onResumed,
 }: ResumeActionsProps): JSX.Element {
   const [phase, setPhase] = useState<Phase>("idle");
-  const [config, setConfig] = useState("");
-  const [showConfig, setShowConfig] = useState(false);
+  const secrets = launchSecretKeys ?? [];
+  const showSecrets = secrets.length > 0;
+  // Prefilled from the summary's recorded secret paths, so the operator fills values rather than
+  // retyping the shape. Lazy init: built once per mount, not on every keystroke.
+  const [config, setConfig] = useState(() => (showSecrets ? secretSkeletonJson(secrets) : ""));
+  // A run with masked secrets opens the field by default, so what must be re-entered is visible; a
+  // plain resume keeps the launch form's on-demand disclosure.
+  const [showConfig, setShowConfig] = useState(showSecrets);
   const [error, setError] = useState<ErrorState>(null);
 
   // A new K-selection makes a prior action's result stale: the refusal alert belonged to the node
@@ -148,16 +163,23 @@ export function ResumeActions({
         {config.trim() !== "" && <span className="launch-disclosure-dot"> · set</span>}
       </button>
       {configOpen && (
-        <JsonField
-          id={`resume-config-${rootRunId}`}
-          testId="resume-config"
-          label="config override · JSON"
-          value={config}
-          onChange={setConfig}
-          result={configResult}
-          rows={3}
-          placeholder='{"output_file": "…"}'
-        />
+        <>
+          <JsonField
+            id={`resume-config-${rootRunId}`}
+            testId="resume-config"
+            label={showSecrets ? "Launch secrets (config override) · JSON" : "config override · JSON"}
+            value={config}
+            onChange={setConfig}
+            result={configResult}
+            rows={3}
+            placeholder='{"output_file": "…"}'
+          />
+          {showSecrets && (
+            <p className="pane-note" data-testid="resume-config-note">
+              These launch secrets are stored masked and must be supplied again to resume.
+            </p>
+          )}
+        </>
       )}
 
       {showResume && (
