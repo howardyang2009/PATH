@@ -200,6 +200,49 @@ describe("cli main() — operator config flags (ticket #17)", () => {
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default cannot be combined with --resume/));
   });
+
+  // The launch channel of ADR 0044's registry-relative validation (#518): a launch worker-default
+  // naming an absent type, or a worker a type does not ship, is a bad *request* — refused at the launch
+  // boundary (exit non-zero) before the run starts, the operator's own input to fix. Same taxonomy as
+  // the file channel, checked against the run's registry (the built-in `binary`/`prompt` types).
+  it("refuses a --worker-default naming an absent step type, naming the type and the installed list", async () => {
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--worker-default", "badtype=x"], io);
+    expect(code).toBe(2);
+    const reported = io.error.mock.calls.join("\n");
+    expect(reported).toMatch(/--worker-default:/);
+    expect(reported).toMatch(/unknown step type "badtype"/);
+    // The installed list — the run's real registry ships `binary` and `prompt`.
+    expect(reported).toMatch(/binary/);
+    expect(reported).toMatch(/prompt/);
+    // A bad launch request starts no run.
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("refuses a --worker-default naming a worker the type does not ship, listing its shipped workers", async () => {
+    const io = fakeIo();
+    const code = await main(["run", configEcho(), "--worker-default", "prompt=nosuchworker"], io);
+    expect(code).toBe(2);
+    const reported = io.error.mock.calls.join("\n");
+    expect(reported).toMatch(/unknown worker "nosuchworker"/);
+    // `prompt` ships `anthropic` and `deepseek` in the built-in registry.
+    expect(reported).toMatch(/"prompt" ships .*anthropic/);
+    expect(reported).toMatch(/deepseek/);
+    expect(io.log).not.toHaveBeenCalled();
+  });
+
+  it("reports every bad launch worker-default entry in one pass", async () => {
+    const io = fakeIo();
+    const code = await main(
+      ["run", configEcho(), "--worker-default", "badtype=x", "--worker-default", "prompt=nosuchworker"],
+      io,
+    );
+    expect(code).toBe(2);
+    const reported = io.error.mock.calls.join("\n");
+    expect(reported).toMatch(/unknown step type "badtype"/);
+    expect(reported).toMatch(/unknown worker "nosuchworker"/);
+    expect(io.log).not.toHaveBeenCalled();
+  });
 });
 
 describe("cli main() — --context / --set-context (ticket #171)", () => {

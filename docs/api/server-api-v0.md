@@ -64,7 +64,7 @@ Request body:
 | `workflow_path` | yes | Path to the root workflow file, resolved against the server's fixed project root — same resolution `path run <workflow.json>` does today. |
 | `input` | no | `RunOptions.input` — seeds the root run's context. |
 | `config` | no | `RunOptions.operatorConfig` — same override semantics as `--config`/`--set`, validated here by `ConfigObjectSchema`. Accepts a literal `{"$secret": "..."}` wrapper (format doc §8.3; masked on the return path). **Rejects** any `{"$env": "NAME"}` wrapper — including the composed `{"$secret": {"$env": "NAME"}}` form — with a `400`: operator override config may not source from the server process environment ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md), server spec §2). An `$env` wrapper authored *inside* a `workflow.json` is unaffected. |
-| `worker_defaults` | no | `RunOptions.launchWorkerDefaults` — the run-wide **launch worker-default** table (ADR 0044, #517), the same `{ <type>: <name> }` map the CLI's repeatable `--worker-default <type>=<name>` fills. A top-level peer of `input`/`config`, **not** nested inside `config` (dispatch never reads `config` for worker selection). It sets which worker each type's *un-pinned* steps run on, run-wide across every file of the run; a step's own `worker` pin still wins, and it outranks a file's own `worker_defaults`. Frozen with the run like `input`, so the resume route (§4.3) carries no such field — changing it is a new run. Keys and values must be non-empty. |
+| `worker_defaults` | no | `RunOptions.launchWorkerDefaults` — the run-wide **launch worker-default** table (ADR 0044, #517), the same `{ <type>: <name> }` map the CLI's repeatable `--worker-default <type>=<name>` fills. A top-level peer of `input`/`config`, **not** nested inside `config` (dispatch never reads `config` for worker selection). It sets which worker each type's *un-pinned* steps run on, run-wide across every file of the run; a step's own `worker` pin still wins, and it outranks a file's own `worker_defaults`. Frozen with the run like `input`, so the resume route (§4.3) carries no such field — changing it is a new run. Keys and values must be non-empty, and each entry is checked **registry-relative** at the launch boundary (ADR 0044 two-channel, #518): an entry naming an absent step type, or a worker that type does not ship, is rejected with a `400` before the run starts — the same taxonomy the file channel reports as file-invalidity, sited here because the operator authored it in no file. |
 | `log_backends` | no | Same as `path run --log-backends`. Omitted: the project's `.path/settings.json` `"log.backends"`, else `["db", "ndjson"]`. |
 | `processor_concurrency` | no | Same as `path run --processor-concurrency`. Omitted: the project's `.path/settings.json` `"processor.concurrency"`, else the engine default (4). |
 
@@ -82,8 +82,9 @@ Responses:
   ```
   (`run_id` and `root_run_id` are always equal here. The field is duplicated for shape-parity with
   `GET /v0/runs` and `GET /v0/runs/:id`, which both return the same envelope for non-root run rows.)
-- `400 Bad Request` — `workflow_path` missing or not found, or a `loadWorkflowTree` validation failure.
-  `error.details` carries the validation issues.
+- `400 Bad Request` — `workflow_path` missing or not found, a `loadWorkflowTree` validation failure, or a
+  `worker_defaults` entry that names an absent step type or a worker the type does not ship (ADR 0044
+  launch channel, #518). `error.details` carries the validation issues, one per bad entry.
 - `404 Not Found` — `workflow_path` resolves outside the project root, or the file does not exist.
 - `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1) before the body is read.
 

@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { RUN_STATUSES, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
+import { RUN_STATUSES, validateLaunchWorkerDefaults, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { WorkerOverrides } from "./run-workflow.js";
@@ -472,6 +472,21 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // `workflow` step refs into the rest of the tree (#22) via `runWorkflow`'s `files` option.
   const { workflow } = loadResult;
 
+  // The launch channel of ADR 0044's registry-relative validation (#518). The launch worker-default
+  // table is operator input, authored in no file and seen by no Designer, so a bad entry is a bad
+  // *request*, not an engine fault: refuse it here, before the run starts, exit 2 like any other bad
+  // flag. Same taxonomy as the file channel — an absent type, or a worker a type does not ship — but
+  // checked against the run's one registry (`workflow.registry`), the one the load validated the file
+  // against. Every bad entry is reported in one pass, each prefixed `--worker-default:` so the operator
+  // knows where to fix it. `--worker-default` is already refused with `--resume`, so a table here is a
+  // fresh launch's.
+  const launchWorkerDefaults = buildLaunchWorkerDefaults(parsed.args);
+  const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry);
+  if (workerDefaultErrors.length > 0) {
+    io.error(workerDefaultErrors.map((message) => `--worker-default: ${message}`).join("\n"));
+    return 2;
+  }
+
   // The CLI's project directory defaults to the workflow file's own directory — it runs one file,
   // in place. `-C <dir>` overrides *only* where the `.path/` store lives (#201, ADR 0005): the store
   // is opened at `projectDir`, but `workflow.workflowDir` — what the engine resolves nested
@@ -514,9 +529,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
     // The operator's run-wide launch worker-default table (ADR 0044), folded from `--worker-default`
-    // pairs. Undefined when the operator passed none, so a flagless run resolves through the file tier
-    // unchanged. Forwarded verbatim to `runWorkflow` (`ProjectRunOptions` extends `RunOptions`).
-    launchWorkerDefaults: buildLaunchWorkerDefaults(parsed.args),
+    // pairs and validated registry-relative above (#518). Undefined when the operator passed none, so a
+    // flagless run resolves through the file tier unchanged. Forwarded verbatim to `runWorkflow`
+    // (`ProjectRunOptions` extends `RunOptions`).
+    launchWorkerDefaults,
     files: workflow.files,
     // The registry this file was validated against (ADR 0019 sub-15): dispatch reuses it, so the run
     // never re-scans the folder and cannot execute against a different one than the load validated.
