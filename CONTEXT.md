@@ -52,6 +52,16 @@ and issues use them exactly.
   it — and **frozen** with the run, so a resume reuses it verbatim — it is identity-defining like
   **input**, not re-overridable like operator **config**.
   Changing it is a new run, never a resume.
+- **Input** — the root run's starting context seed: one JSON object whose top-level keys become the
+  root context. There are two sources, and the launch-time one wins. An **operator input override** is
+  supplied at launch (the launch form's `Override input (optional)`, the wire `input` field); a **file
+  input** is the workflow file's own optional top-level `input` key, its default seed. An override takes
+  effect when it has at least one top-level key; a blank field, a literal `{}`, or an omitted field
+  falls back to the file input, and to `{}` when the file declares none. The resolved value is what the
+  run records and freezes — like a **launch worker-default**, input is identity-defining, so resume
+  carries none and changing it is a new run. The file input seeds the root run only; a nested
+  `workflow`-ref run's context comes from its parent step's input, never from the child file's own
+  `input`.
 - **Task** — a step bound to a worker. `task = step + worker`.
 - **Run** — one executing (or executed) instance of a task. It is the only execution term in PATH.
   There is no separate "workflow execution" concept.

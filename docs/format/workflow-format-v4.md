@@ -16,12 +16,17 @@ retained because the CHANGELOG and closed issues link it.
 table. The version bumps because the file envelope's grammar changed, per the format-versioning rule
 (#501): a new envelope key is a format change even when it adds no new required data.
 
+The file may also carry an optional top-level **`input`** object (§1a) — the file's default launch
+seed. It is purely additive and optional, so a `@4` file written before it existed stays valid and the
+format string does not move for it.
+
 ```jsonc
 {
   "format": "path/workflow@4",
   "id": "…",
   "name": "…",
   "worker_defaults": { "prompt": "deepseek" },
+  "input": { "ticket": 7 },
   "body": [ /* … */ ]
 }
 ```
@@ -47,6 +52,30 @@ re-reads the current file, so an edit between launch and resume changes only re-
 
 Its registry-relative validity (a real type shipping that worker) is checked at engine load, not by the
 base file schema, which stays shape-only (`{ <string>: <string> }`).
+
+## 1a. `input`
+
+`input` is an **optional** JSON object: the file's own default seed for the root run's context. Its
+top-level keys become the root context, exactly as a launch's `input` field does (§6.3 of
+[`workflow-format-v0.md`](workflow-format-v0.md)).
+
+```jsonc
+{
+  "input": { "ticket": 7, "labels": ["from-file"] }
+}
+```
+
+It is **plain JSON data** — no `${…}` interpolation and no `$secret`/`$env` wrappers. Nothing resolves
+the root seed before it lands in context, so a placeholder here would survive as literal text; the load
+rejects one. It is a JSON **object**, never an array or a scalar, because its top-level keys are what
+seed context.
+
+Precedence at launch: an operator **input override** with at least one top-level key wins; a blank
+field, a literal `{}`, or an omitted field falls back to this file seed; a file with no `input` falls
+back to `{}`. The resolved value is what the run records.
+
+It seeds the **root run only**. A nested `workflow`-ref run's context comes from its parent step's
+`input`, never from the child file's own `input`.
 
 ## 2. Migration from `@3`
 

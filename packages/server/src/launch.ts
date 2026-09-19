@@ -71,6 +71,22 @@ export function operatorConfigEnvError(config: ConfigObject): string | undefined
   return `operator config may not source from the server environment: $env at ${paths.map((p) => `"${p}"`).join(", ")}`;
 }
 
+/**
+ * The **root input** a launch actually sends: a non-empty operator override wins, else the file's own
+ * top-level `input` seed, else `{}`. An override is empty when it is absent or an empty object, so
+ * `{}` is "no override" too — the server, not the client, resolves the fallback, which keeps every
+ * launch door (`POST /v0/runs`, and through it the Viewer panel and the Designer's run dock) on one
+ * rule. The file seed is the workflow's own default; it is not persisted as identity, because what the
+ * run records is the resolved effective input.
+ */
+export function effectiveRootInput(
+  override: { [key: string]: JsonValue } | undefined,
+  fileInput: { [key: string]: JsonValue } | undefined,
+): { [key: string]: JsonValue } {
+  if (override !== undefined && Object.keys(override).length > 0) return override;
+  return fileInput ?? {};
+}
+
 /** How a route words its two 404s — the only wording that legitimately differs between the surfaces. */
 export interface NotFoundMessages {
   /** A path on disk that isn't there. A fresh launch names the path sent; a resume names the run. */

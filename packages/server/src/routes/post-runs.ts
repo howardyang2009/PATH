@@ -3,7 +3,7 @@ import { LOG_BACKEND_IDS, type LoadedStepPluginRegistry, type Project } from "@p
 import { ConfigObjectSchema, formatIssues, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
+import { effectiveRootInput, operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { LiveRuns } from "../live-runs.js";
 
 const PostRunsBodySchema = z
@@ -105,7 +105,10 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     // nested `workflow` refs and binary `cwd`s against. Distinct from the project directory, which is
     // where `.path/` lives; passing the latter here is what broke nested refs in #59.
     ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
-      input: input as { [key: string]: JsonValue } | undefined,
+      // The effective root input: a non-empty operator override wins, else the file's own top-level
+      // `input` seed, else `{}`. Resolved here, once, so every launch door agrees and the run records
+      // the input it actually seeded (not the file default it may have fallen back to).
+      input: effectiveRootInput(input as { [key: string]: JsonValue } | undefined, workflow.rootFile.input),
       operatorConfig: config,
       // The operator's run-wide launch worker-default table (ADR 0044, #517), forwarded verbatim to the
       // engine's `RunOptions.launchWorkerDefaults` so an HTTP launch resolves un-pinned steps exactly as

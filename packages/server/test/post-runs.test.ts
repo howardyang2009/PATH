@@ -59,6 +59,42 @@ function context(live: LiveRuns): RunsRouteContext {
 
 const WORKFLOW = "two-binary-steps.workflow.json";
 
+// The file-level input seed (a workflow file's own top-level `input`): `POST /v0/runs` resolves the
+// effective root input here — a non-empty operator override wins, else the file's seed, else `{}` — so
+// every launch door that reaches this route (the Viewer panel, the Designer's run dock) shares one rule.
+describe("POST /v0/runs input resolution", () => {
+  const WITH_INPUT = "file-input.workflow.json";
+  const FILE_SEED = { ticket: 7, labels: ["from-file"] };
+
+  it("falls back to the file's own input seed when the request sends no input", async () => {
+    const { live, started } = recordingLive();
+    const { res, result } = fakeRes();
+
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT }), res, context(live));
+
+    expect(result.status).toBe(202);
+    expect(started[0]!.input).toEqual(FILE_SEED);
+  });
+
+  it("treats an empty override as no override", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: {} }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual(FILE_SEED);
+  });
+
+  it("lets a non-empty override win over the file seed", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: { ticket: 9 } }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual({ ticket: 9 });
+  });
+
+  it("sends {} for a file with no seed and no override", async () => {
+    const { live, started } = recordingLive();
+    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW }), fakeRes().res, context(live));
+    expect(started[0]!.input).toEqual({});
+  });
+});
+
 describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
   it("folds a top-level worker_defaults into StartRunOptions.launchWorkerDefaults verbatim", async () => {
     const { live, started } = recordingLive();

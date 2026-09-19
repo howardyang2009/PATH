@@ -37,12 +37,22 @@ export const SUPERSEDED_FORMAT_VERSIONS = {
 // A `@4` file carries no file-level `worker` (ADR 0021 sub-8): a worker is a per-step name now, and
 // `model`/`options` travel through config. The former `worker: Worker` field is gone. `@4` adds the
 // file-level `worker_defaults` table over `@3` (ADR 0044) — an envelope grammar change, hence the bump.
+// A `@4` file also carries the optional file-level `input` seed. It is additive and optional, so a
+// `@4` file written before it existed stays valid and the format string does not move for it.
 export interface WorkflowFile {
   format: typeof FORMAT_VERSION;
   /** Durable machine identity — a UUIDv4, the source-workflow identity #202 persists (ADR 0006). */
   id: string;
   name: string;
   config?: ConfigObject;
+  /**
+   * The file's own **input** object: the default root context seed a launch sends when the operator
+   * supplies no launch-time input override. Plain JSON data — the same shape a launch's `input` field
+   * carries (`RunOptions.input`), with no `$secret`/`$env` wrappers and no `${…}` interpolation,
+   * because nothing resolves it before it seeds context. It seeds the root run only; it never crosses
+   * into a nested `workflow`-ref file, whose context comes from the parent step's input.
+   */
+  input?: { [key: string]: JsonValue };
   body: WorkflowNode[];
   output?: { [key: string]: JsonValue };
   /**

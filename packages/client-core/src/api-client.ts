@@ -141,7 +141,11 @@ export interface WorkflowFileRaw {
 export interface StartRunOptions {
   /** Path to the root workflow file, resolved against the server's fixed project root — the launch handle from `listWorkflows`. */
   workflowPath: string;
-  /** Seeds the root run's context (`RunOptions.input`). Raw JSON — the format declares no input schema. */
+  /**
+   * Seeds the root run's context (`RunOptions.input`). An **override**: omitted (or an empty object)
+   * means the server falls back to the workflow file's own top-level `input` seed, then to `{}`. Raw
+   * JSON — the format declares no input schema.
+   */
   input?: JsonValue;
   /** Operator config overrides (`RunOptions.operatorConfig`); server-validated by `ConfigObjectSchema`. */
   config?: ConfigObject;

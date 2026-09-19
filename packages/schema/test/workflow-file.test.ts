@@ -103,6 +103,33 @@ describe("WorkflowFileSchema — envelope", () => {
   });
 });
 
+// The file-level **input** seed: the JSON object a launch sends as the root context seed when the
+// operator supplies no override. Plain JSON — it carries no `${…}` interpolation, because nothing
+// resolves the root seed before it lands in context.
+describe("WorkflowFileSchema — the file-level input seed", () => {
+  it("accepts an optional top-level input object and returns it parsed", () => {
+    const result = safeParseWorkflowFile({ ...minimal, input: { ticket: 7, labels: ["a"] } });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.input).toEqual({ ticket: 7, labels: ["a"] });
+  });
+
+  it("accepts an absent input (the key is optional)", () => {
+    expect(WorkflowFileSchema.safeParse(minimal).success).toBe(true);
+  });
+
+  it("rejects an input that is not a JSON object", () => {
+    expect(WorkflowFileSchema.safeParse({ ...minimal, input: [1, 2] }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, input: "seed" }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, input: null }).success).toBe(false);
+  });
+
+  it("rejects an interpolated input value (nothing resolves the root seed)", () => {
+    const result = safeParseWorkflowFile({ ...minimal, input: { ticket: "${context.x}" } });
+    expect(result.success).toBe(false);
+    if (!result.success) expect(result.errors.join("\n")).toMatch(/root/i);
+  });
+});
+
 describe("WorkflowFileSchema — file-unique names", () => {
   it("rejects duplicate names across sequential body nodes", () => {
     const result = WorkflowFileSchema.safeParse({

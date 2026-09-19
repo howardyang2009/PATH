@@ -503,6 +503,79 @@ describe("the workflow-level output object (§6.4)", () => {
   });
 });
 
+describe("the workflow-level input seed", () => {
+  it("authors a file input object and writes it on save", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // Empty-canvas click → the file's own properties, which carry the input region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "input");
+
+    // The default is the empty JSON object.
+    const box = within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement;
+    expect(box.value).toBe("{}");
+
+    fireEvent.change(box, { target: { value: '{"ticket": 7}' } });
+    expect(box).toBeValid();
+
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(calls.put[0]!.body.workflow.input).toEqual({ ticket: 7 });
+  });
+
+  it("reads an existing input back, and drops the key when the box is cleared or emptied", async () => {
+    const calls = makeCalls();
+    const file = { ...paneFile(), input: { ticket: 7 } };
+    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "input");
+
+    expect(JSON.parse((within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement).value)).toEqual({ ticket: 7 });
+
+    // Clearing the box drops the whole key, so `input: {}` never lands.
+    fireEvent.change(within(pane).getByLabelText(/^input \(/), { target: { value: "" } });
+    await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(calls.put[0]!.body.workflow).not.toHaveProperty("input");
+  });
+
+  it("never commits an invalid or non-object draft, so the file stays strict-valid", async () => {
+    const calls = makeCalls();
+    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "input");
+    const box = within(pane).getByLabelText(/^input \(/);
+
+    fireEvent.change(box, { target: { value: "{ not json" } });
+    expect(box).toBeInvalid();
+    expect(within(pane).getByRole("alert")).toHaveTextContent(/Not valid JSON/);
+
+    fireEvent.change(box, { target: { value: "[1, 2]" } });
+    expect(box).toBeInvalid();
+    expect(within(pane).getByRole("alert")).toHaveTextContent(/must be a JSON object/);
+
+    // An interpolated value is refused too: nothing resolves the root seed.
+    fireEvent.change(box, { target: { value: '{"ticket": "${context.x}"}' } });
+    expect(box).toBeInvalid();
+
+    // No draft ever committed, so the saved file carries no `input` key.
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(calls.put).toHaveLength(1));
+    expect(calls.put[0]!.body.workflow).not.toHaveProperty("input");
+  });
+});
+
 describe("#487 person-activity first-class editor + canvas identity", () => {
   const PERSON_PLUGINS: WireStepPlugin[] = [
     ...RICH_PLUGINS,
