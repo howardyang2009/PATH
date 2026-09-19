@@ -64,7 +64,7 @@ afterEach(() => {
  */
 function workflowFile(): WorkflowFile {
   return {
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "00000000-0000-4000-8000-0000000000aa",
     name: "plugin-masking",
     config: { secret: { $secret: SECRET } },

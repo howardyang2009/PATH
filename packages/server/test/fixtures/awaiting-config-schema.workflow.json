@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@3",
+  "format": "path/workflow@4",
   "id": "4a08fd8d-ae68-4e38-bf25-a04bdfc62b1b",
   "name": "awaiting-config-schema",
   "config": { "allowed": "high" },

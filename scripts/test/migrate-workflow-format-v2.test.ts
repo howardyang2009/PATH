@@ -58,15 +58,17 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /**
  * The migrated document must be a *loadable* file, not merely a reshaped one. `@2` is superseded now
- * (the schema reads `@3`), so lift a copy the rest of the way with the `@3` codemod first — the check
- * stays "the migrated file loads" without disturbing the `@2` file the test's other assertions read.
+ * (the schema reads `@4`), so lift a copy the rest of the way with the `@3` then `@4` codemods first —
+ * the check stays "the migrated file loads" without disturbing the `@2` file the test's other
+ * assertions read.
  */
 function expectSchemaValid(file: string): void {
   const copy = `${file}.v3.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
   runCodemod([copy], scriptsDir, "migrate-workflow-format-v3.ts");
+  runCodemod([copy], scriptsDir, "migrate-workflow-format-v4.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
-  if (!result.success) throw new Error(`migrated file is not schema-valid @3:\n${result.errors.join("\n")}`);
+  if (!result.success) throw new Error(`migrated file is not schema-valid @4:\n${result.errors.join("\n")}`);
 }
 
 describe("migrate-workflow-format-v2 — parallel branch wrappers", () => {

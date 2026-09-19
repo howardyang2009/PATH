@@ -12,7 +12,7 @@ and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the s
 
 | Package | What it is |
 |---|---|
-| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@3`) and the registry factory that opens its node union to plugin step types. It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
+| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@4`) and the registry factory that opens its node union to plugin step types. It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
 | `@path/engine` | Runs workflows locally. Provides the `path` CLI. It discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam a step-type plugin compiles against. |
 | `@path/server` | An HTTP and SSE API over the engine. Provides the `path-server` CLI. |
 | `@path/client-core` | A pure-TypeScript API client. It has an SSE client, a run view-model, and a run/workflow write surface. It needs no framework and no Node. |

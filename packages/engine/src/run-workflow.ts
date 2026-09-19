@@ -740,7 +740,15 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
     // A hand-constructed node can still reach here, so it fails the run loudly rather than silently.
     return { status: "failed", error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it` };
   }
-  const workerName = node.worker ?? plugin.defaultWorker;
+  // Three-tier dispatch resolution (ADR 0044): a step's explicit `worker` pin wins; below it, the
+  // owning file's `worker_defaults[type]` picks the worker for un-pinned steps of that type; below
+  // that, the plugin's own `defaultWorker`. `ctx.run.file` is the file that owns this node — a nested
+  // `workflow`-ref run carries its own file here — so the table stays file-scoped for free (it never
+  // crosses a ref boundary). The table is a *selection* by name; its registry-relative validity is a
+  // load-time concern (#506, not yet landed), not this dispatch's. Until that net exists, a table
+  // naming a worker the type does not ship falls through to the `has no worker` failure just below —
+  // loud, not silent.
+  const workerName = node.worker ?? ctx.run.file.worker_defaults?.[node.type] ?? plugin.defaultWorker;
   const descriptor = plugin.workers[workerName];
   if (!descriptor) {
     return { status: "failed", error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"` };

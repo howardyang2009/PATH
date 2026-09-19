@@ -22,7 +22,7 @@ import type { NodeExecContext, RunContext } from "../src/run-context.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@3",
+  format: "path/workflow@4",
   id: "wf-id",
   name: "walkers",
   body: [],
@@ -664,10 +664,82 @@ describe("runNode — prompt step", () => {
   });
 });
 
+describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () => {
+  // A runtime whose prompt workers `anthropic` and `deepseek` are both the same stub, so a test can
+  // assert which NAME dispatch resolved to without either real provider worker running.
+  function bothPromptWorkers(worker: WorkerDescriptor): RunContext["runtime"] {
+    const clone: LoadedStepPluginRegistry = {};
+    for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+    clone.prompt!.workers.anthropic = worker;
+    clone.prompt!.workers.deepseek = worker;
+    return { registry: clone, semaphore: createProcessorSemaphore(1) };
+  }
+
+  function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
+    return { format: "path/workflow@4", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
+  }
+
+  function startedWorker(observed: Observation[]): string | undefined {
+    const started = observed.find((o) => o.type === "step-started");
+    return started?.type === "step-started" ? started.workerName : undefined;
+  }
+
+  const unpinned: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" } };
+
+  it("resolves an un-pinned step to worker_defaults[type] when the file names one", async () => {
+    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ prompt: "deepseek" }) });
+
+    expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("deepseek");
+  });
+
+  it("lets an explicit node.worker win over worker_defaults", async () => {
+    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ prompt: "deepseek" }) });
+    const pinned: Node = { ...unpinned, worker: "anthropic" };
+
+    expect((await runNode(run, pinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("anthropic");
+  });
+
+  it("falls back to the plugin defaultWorker for a type absent from worker_defaults", async () => {
+    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ binary: "spawn" }) });
+
+    expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("anthropic"); // prompt's own defaultWorker, untouched by an unrelated row
+  });
+
+  it("resolves to the plugin defaultWorker when the file declares no worker_defaults", async () => {
+    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith() });
+
+    expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("anthropic");
+  });
+
+  it("does not let a parent file's worker_defaults cross into a nested workflow-ref file", async () => {
+    // The child authors no `worker_defaults`, so its own un-pinned prompt step must resolve to the
+    // plugin default (`anthropic`) — the parent's `{prompt: deepseek}` is file-scoped and stays in
+    // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is what
+    // keeps the table from crossing the ref boundary.
+    const childWithPrompt: WorkflowFile = {
+      format: "path/workflow@4", id: "wf-child", name: "child",
+      body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
+    };
+    const { run, observed } = makeRun({
+      runtime: bothPromptWorkers(answeringWorker("ok")),
+      file: fileWith({ prompt: "deepseek" }),
+      files: new Map([[resolve(fileDir, "child.json"), childWithPrompt]]),
+    });
+    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
+
+    expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
+    expect(startedWorker(observed)).toBe("anthropic");
+  });
+});
+
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "wf-id",
     name: "child",
     body: [echo("inner", "done")],

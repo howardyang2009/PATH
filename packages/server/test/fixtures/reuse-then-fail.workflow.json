@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@3",
+  "format": "path/workflow@4",
   "id": "c0ffee00-0000-4000-8000-00000000abcd",
   "name": "reuse-then-fail",
   "body": [
