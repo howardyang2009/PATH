@@ -4,8 +4,9 @@ import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { childBodies } from "./node-walk.js";
-import { describeUnknownStepType, describeUnknownWorker, makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
+import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
 import { publishSetIssues } from "./publish-set.js";
+import { collectWorkerDefaultIssues } from "./worker-defaults.js";
 import { STEP_ROOTS } from "./roots.js";
 import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
@@ -59,34 +60,17 @@ function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): Nam
 
 // The file channel of ADR 0044's registry-relative `worker_defaults` validation (#516). The base
 // schema fixes the *shape* (`{ <non-empty>: <non-empty> }`), registry-agnostically; here — with the
-// registry in hand — each entry is checked for registry-relative validity: the key names an installed
-// step type, and the value names a worker that type ships. A bad entry is file-invalidity (discovery
-// reports it, the Designer refuses the file, ADR 0026), reported against its own `worker_defaults.<type>`
-// path so the reader sees which entry, not the whole table. Every bad entry is reported in one pass
-// (aggregate), and the two failure classes reuse the node channels' wording: an absent type echoes the
-// type + the installed list + the remedy (`describeUnknownStepType`), an absent worker lists the type's
-// shipped names (`describeUnknownWorker`). The registry is one, run-wide, and each file is parsed on its
-// own, so a bad table invalidates *its* file — a child ref's, never its parent's.
+// registry in hand — each entry is checked for registry-relative validity through the per-entry core
+// (`collectWorkerDefaultIssues`) the launch channel shares (#518), so the two channels report a bad
+// selection in one voice. A bad entry is file-invalidity (discovery reports it, the Designer refuses
+// the file, ADR 0026), reported against its own `worker_defaults.<type>` path so the reader sees which
+// entry, not the whole table. Every bad entry is reported in one pass (aggregate). The registry is one,
+// run-wide, and each file is parsed on its own, so a bad table invalidates *its* file — a child ref's,
+// never its parent's.
 function checkWorkerDefaults(file: WorkflowFile, ctx: z.RefinementCtx, registry: StepPluginRegistry): void {
   if (!file.worker_defaults) return;
-  for (const [type, workerName] of Object.entries(file.worker_defaults)) {
-    const entry = registry[type];
-    if (!entry) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["worker_defaults", type],
-        message: describeUnknownStepType(type, Object.keys(registry)),
-      });
-      continue;
-    }
-    const workerNames = Object.keys(entry.workers);
-    if (!workerNames.includes(workerName)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: ["worker_defaults", type],
-        message: describeUnknownWorker(type, workerNames, workerName),
-      });
-    }
+  for (const { type, message } of collectWorkerDefaultIssues(file.worker_defaults, registry)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["worker_defaults", type], message });
   }
 }
 

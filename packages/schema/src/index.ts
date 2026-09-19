@@ -40,6 +40,12 @@ export {
   type RegistryStepType,
   type StepPluginRegistry,
 } from "./nodes.js";
+
+// The launch channel of ADR 0044's registry-relative `worker_defaults` validation (#518): the operator
+// launch surfaces (CLI `--worker-default`, server `POST /v0/runs`) check their table here, at the
+// launch boundary, and prefix their own source onto each returned message. The per-entry core
+// (`collectWorkerDefaultIssues`) stays internal — the file channel imports it directly.
+export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
 export type {
   WorkflowNode,
   PromptStep,

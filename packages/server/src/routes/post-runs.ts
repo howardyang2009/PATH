@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { LOG_BACKEND_IDS, type LoadedStepPluginRegistry, type Project } from "@path/engine";
-import { ConfigObjectSchema, formatIssues, type JsonValue, type StartRunResponse } from "@path/schema";
+import { ConfigObjectSchema, formatIssues, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
@@ -14,9 +14,9 @@ const PostRunsBodySchema = z
     // The launch worker-default table (ADR 0044, #517): a top-level `{ <type>: <name> }` peer of
     // `input`/`config`, not folded into `config` (dispatch never reads `config` for worker selection).
     // Non-empty keys and values, mirroring the file channel's `worker_defaults` grammar
-    // (`@path/schema` workflow-file.ts). Registry-relative validity (an absent type or an unshipped
-    // worker) is a separate net (#506); until it lands a bad table falls through to the engine's loud
-    // "has no worker" run failure, exactly as the CLI `--worker-default` path does.
+    // (`@path/schema` workflow-file.ts). This is the *shape* net only; registry-relative validity (an
+    // absent type or an unshipped worker) is the launch-boundary check below (#518), run once the
+    // workflow's registry is in hand — a bad table `400`s before the run starts.
     worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
     processor_concurrency: z.number().int().positive().optional(),
@@ -84,6 +84,20 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     return;
   }
   const { workflow } = prepared;
+
+  // The launch channel of ADR 0044's registry-relative validation (#518). The launch `worker_defaults`
+  // is operator input, authored in no file and seen by no Designer, so a bad entry — an absent type, or
+  // a worker a type does not ship — is a bad request: `400` before the run starts, checked against the
+  // run's one registry (the one the load validated the file against). Every bad entry is reported in one
+  // pass, prefixed `worker_defaults:` so the operator knows which field to fix — the same taxonomy the
+  // CLI `--worker-default` boundary uses.
+  const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry).map(
+    (message) => `worker_defaults: ${message}`,
+  );
+  if (workerDefaultErrors.length > 0) {
+    sendError(res, 400, "invalid worker_defaults", workerDefaultErrors);
+    return;
+  }
 
   let ids;
   try {
