@@ -382,6 +382,55 @@ button.workflow-row:focus-visible {
   font-weight: 600;
 }
 
+/* ---------- worker defaults (shared editor: launch worker-default + the Designer's file table) ---------- */
+
+/* One editor, two surfaces (ADR 0044): the Viewer's launch form styles this from here, and the
+   Designer imports this same stylesheet, so the file `worker_defaults` region reads identically
+   without a fork of its own. Label + select per row, with the remove control trailing. */
+.worker-defaults {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.worker-defaults-title {
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+/* What the table selects and what it does not override — a note, not a warning. */
+.worker-defaults-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  line-height: 1.45;
+  color: var(--text-muted);
+}
+
+.worker-default-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+/* The two dropdowns share the row and wrap under it when the surface is narrow; the label sits above
+   its control, so a mono worker name never fights the label for width. */
+.worker-default-field {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 44%;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+}
+
+.worker-default-add {
+  align-self: flex-start;
+}
+
 .launch-actions {
   display: flex;
   align-items: center;

@@ -153,6 +153,16 @@ is operator-launch-time, authored in no file, so the Designer never shows it (#5
   four-tier resolution lands, an authored `worker_defaults` is **inert**: it validates and round-trips,
   but the engine still resolves `node.worker ?? plugin.defaultWorker`. The pane must not claim otherwise.
 
+## Viewer surface (v1)
+
+The launch tier's operator door is the **Viewer's launch form**, next to `input` and the config
+override: a collapsed `Launch worker defaults (optional)` field holding the same `type → worker` rows,
+over the step-plugin registry the panel reads from `GET /v0/step-plugins` (ADR 0019). It is the same
+editor component the Designer binds to the file's `worker_defaults` — one implementation, two tiers,
+because the *editing* is identical even though the lifetime and scope are not. The field is absent
+when the registry ships no multi-worker type (nothing to select), and an empty table is omitted from
+the body rather than sent as `{}`, matching the file channel's drop-empty-key rule.
+
 ## Consequences
 
 - The `runs` root row gains a persisted launch-worker-default map; the `POST /v0/runs` body and the CLI
@@ -164,4 +174,6 @@ is operator-launch-time, authored in no file, so the Designer never shows it (#5
   file-invalidity (discovery + Designer, ADR 0026); the launch table's is a launch-boundary `400` / CLI
   non-zero (#506). Both aggregate every bad entry and prefix their source.
 - The Designer gains a `worker_defaults` file-properties region and an effective-default ghost on the
-  worker dropdown; `toWireStepPlugins` and `ENVELOPE_KEYS` are unchanged (#505).
+  worker dropdown; `toWireStepPlugins` and `ENVELOPE_KEYS` are unchanged (#505). The Viewer's launch
+  form gains the **launch** table's editor over the same region component, so each tier has one
+  authoring surface and they share one implementation.

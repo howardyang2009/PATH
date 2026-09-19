@@ -1,5 +1,6 @@
 import { useId, useState } from "react";
 import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
+import { WorkerDefaultsEditor } from "@path/viewer";
 import {
   CONDITION_ROOTS,
   PUBLISH_ROOTS,
@@ -126,15 +127,14 @@ function FileProperties({
 }
 
 /**
- * The **file worker-default** editor (ADR 0044, #505): rows of `type → worker`, both constrained
- * dropdowns, so an invalid `{ type, worker }` pair — the hard load error ADR 0044 defines — cannot be
- * authored in the pane. Only types that ship more than one worker are candidates; a single-worker type
- * has nothing to pick, so it is never offered, and the whole region hides when no such type exists.
+ * The **file worker-default** editor (ADR 0044, #505): the shared {@link WorkerDefaultsEditor} bound to
+ * the open file's `worker_defaults`. The table is a plain `{ <type>: <name> }` map keyed by type, read
+ * and written by constrained dropdowns, so an invalid `{ type, worker }` pair — the hard load error ADR
+ * 0044 defines — cannot be authored in the pane. An empty map drops the whole key (as an empty
+ * `config`/`output` does), so `worker_defaults: {}` never lands.
  *
- * `worker_defaults` is a plain `{ <type>: <name> }` map keyed by type, so a row is unique by its type
- * and there is nothing to interpolate — unlike `config`/`output`, this is not a keyed-row text field. An
- * empty map drops the whole key (as an empty `config`/`output` does), so `worker_defaults: {}` never
- * lands. The launch worker-default has no editor here: it is supplied at launch, not authored in a file.
+ * The **launch** tier has no editor here: it is supplied at launch, not authored in a file, and the
+ * Viewer's launch form owns it (ADR 0044).
  */
 function FileWorkerDefaultsRegion({
   file,
@@ -145,13 +145,6 @@ function FileWorkerDefaultsRegion({
   plugins: WireStepPlugin[];
   applyEdit: EditCommit<WorkflowFile>;
 }): JSX.Element | null {
-  const candidates = plugins.filter((p) => p.workers.length > 1);
-  // No multi-worker type in the registry → no selection to make. Hide the region entirely.
-  if (candidates.length === 0) return null;
-
-  const entries = Object.entries(file.worker_defaults ?? {});
-  const usedTypes = new Set(entries.map(([type]) => type));
-
   const write = (map: { [type: string]: string }): void => {
     if (Object.keys(map).length === 0) {
       const { worker_defaults: _dropped, ...rest } = file;
@@ -161,64 +154,14 @@ function FileWorkerDefaultsRegion({
     }
   };
 
-  // Retyping a row moves it to a different type; its worker resets to the new type's default, since a
-  // worker name is meaningless across types (CONTEXT.md invariant 5).
-  const setTypeAt = (oldType: string, newType: string): void => {
-    if (newType === oldType) return;
-    const plugin = pluginFor(newType, plugins);
-    const next: { [type: string]: string } = {};
-    for (const [type, worker] of entries) next[type === oldType ? newType : type] = type === oldType ? plugin?.default_worker ?? worker : worker;
-    write(next);
-  };
-
-  const setWorkerAt = (type: string, worker: string): void => write({ ...Object.fromEntries(entries), [type]: worker });
-  const removeAt = (type: string): void => write(Object.fromEntries(entries.filter(([t]) => t !== type)));
-  const addRow = (): void => {
-    const free = candidates.find((p) => !usedTypes.has(p.name));
-    if (free) write({ ...Object.fromEntries(entries), [free.name]: free.default_worker });
-  };
-  const allUsed = candidates.every((p) => usedTypes.has(p.name));
-
   return (
-    <div className="pane-section">
-      <span className="pane-section-title">worker defaults</span>
-      <p className="pane-hint">
-        The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still
-        wins, and this never crosses a workflow reference.
-      </p>
-      {entries.map(([type, worker]) => {
-        const plugin = pluginFor(type, plugins);
-        const workerOptions = plugin ? plugin.workers : [worker];
-        // A type appears once: offer this row's own type plus every candidate no other row uses.
-        const typeOptions = [type, ...candidates.map((p) => p.name).filter((name) => name !== type && !usedTypes.has(name))];
-        return (
-          <div key={type} className="pane-worker-default-row">
-            <SelectField label="type" value={type} options={typeOptions} onChange={(t) => setTypeAt(type, t)} />
-            <SelectField
-              label="worker"
-              value={worker}
-              options={workerOptions}
-              optionLabel={(w) => (plugin && w === plugin.default_worker ? `${w} (default)` : w)}
-              onChange={(w) => setWorkerAt(type, w)}
-            />
-            <button
-              type="button"
-              className="pane-btn"
-              onClick={() => removeAt(type)}
-              aria-label="Remove this worker default"
-              title="Remove this worker default"
-            >
-              ✕
-            </button>
-          </div>
-        );
-      })}
-      {allUsed ? null : (
-        <button type="button" className="pane-btn" onClick={addRow}>
-          + add worker default
-        </button>
-      )}
-    </div>
+    <WorkerDefaultsEditor
+      plugins={plugins}
+      value={file.worker_defaults ?? {}}
+      onChange={write}
+      title="worker defaults"
+      hint="The worker each type's un-pinned steps use in this file. A per-type selection, not config: a step's own worker still wins, and this never crosses a workflow reference."
+    />
   );
 }
 

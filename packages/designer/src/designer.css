@@ -873,21 +873,9 @@ body {
   min-width: 0;
 }
 
-/* A file worker-default row: the type and worker dropdowns side by side, with the remove button. Each
-   SelectField is a full-width label row, so they wrap on a narrow pane and the × trails them. */
-.pane-worker-default-row {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-}
-
-.pane-worker-default-row .pane-field {
-  flex: 1 1 44%;
-  margin: 0;
-  min-width: 0;
-}
+/* The file worker-default rows (`.worker-defaults`/`.worker-default-row`) are the shared editor's, so
+   their styling lives in the Viewer's stylesheet this package imports (see `main.tsx`) — one look for
+   the file table and the launch table (ADR 0044). */
 
 /* A row's interpolation error spans the full width, under the controls it belongs to. */
 .pane-publish-row .pane-error {

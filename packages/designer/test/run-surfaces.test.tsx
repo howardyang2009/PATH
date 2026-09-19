@@ -124,6 +124,7 @@ describe("Designer run surfaces (#372)", () => {
     });
     openDock();
 
+    fireEvent.click(screen.getByTestId("run-launch-input-toggle"));
     fireEvent.click(screen.getByTestId("run-launch-submit"));
     const error = await screen.findByTestId("run-launch-error");
     expect(error).toHaveTextContent("rejected $env override");

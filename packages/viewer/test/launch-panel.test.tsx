@@ -28,6 +28,17 @@ const BROKEN: WorkflowSummary = {
   error: { message: "unexpected token } in JSON at position 142" },
 };
 
+/**
+ * A registry whose only multi-worker type is `prompt` — the one type a worker-default can select, since
+ * `binary` ships a single worker. Its shape is the `GET /v0/step-plugins` wire body (§8).
+ */
+const PLUGINS = {
+  step_plugins: [
+    { name: "prompt", fields: {}, workers: ["sdk", "batch"], default_worker: "sdk" },
+    { name: "binary", fields: {}, workers: ["spawn"], default_worker: "spawn" },
+  ],
+};
+
 interface Recorded {
   method: string;
   url: string;
@@ -35,12 +46,15 @@ interface Recorded {
 }
 
 /**
- * A client over a recording `fetch`: `GET /v0/workflows` answers `workflows`, `POST /v0/runs`
- * answers `startResponse` (a 202 body or, with `startStatus`, an error envelope). Every request is
- * captured so the launch body (`workflow_path`, `input`, `config`) is assertable.
+ * A client over a recording `fetch`: `GET /v0/workflows` answers `workflows`, `GET /v0/step-plugins`
+ * answers `stepPlugins` (default: a registry with no types, so no worker-default editor renders), and
+ * `POST /v0/runs` answers `startResponse` (a 202 body or, with `startStatus`, an error envelope). Every
+ * request is captured so the launch body (`workflow_path`, `input`, `config`, `worker_defaults`) is
+ * assertable.
  */
 function stubClient(opts: {
   workflows: WorkflowSummary[];
+  stepPlugins?: unknown;
   startResponse?: unknown;
   startStatus?: number;
 }): { client: PathApiClient; calls: Recorded[] } {
@@ -50,6 +64,12 @@ function stubClient(opts: {
     calls.push({ method, url, body: init?.body ? JSON.parse(init.body as string) : undefined });
     if (url === "/v0/workflows") {
       return new Response(JSON.stringify({ workflows: opts.workflows }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    if (url === "/v0/step-plugins") {
+      return new Response(JSON.stringify(opts.stepPlugins ?? { step_plugins: [] }), {
         status: 200,
         headers: { "Content-Type": "application/json" },
       });
@@ -162,17 +182,28 @@ describe("LaunchPanel", () => {
     expect(screen.queryByTestId("workflow-error-broken.workflow.json")).toBeNull();
   });
 
-  it("expands an inline launch form under a clicked workflow, input prefilled with {}", async () => {
+  it("expands an inline launch form under a clicked workflow, both fields behind disclosures", async () => {
     const { client } = stubClient({ workflows: [ROOT] });
     mount(client);
 
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
 
+    // Input and config each sit behind their own disclosure — neither is shown until asked for.
+    expect(screen.queryByTestId("launch-input")).toBeNull();
+    expect(screen.queryByTestId("launch-config")).toBeNull();
+
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
     const input = screen.getByTestId("launch-input") as HTMLTextAreaElement;
     expect(input).toBeInTheDocument();
     expect(input.value).toBe("{}");
-    // Config is optional and tucked behind a disclosure — not shown until asked for.
-    expect(screen.queryByTestId("launch-config")).toBeNull();
+    // The disclosure is the field's only visible title — the textarea is named by it, not by a second
+    // printed label.
+    expect(screen.getAllByText(/input · JSON/)).toHaveLength(1);
+    expect(screen.getByLabelText(/input · JSON/)).toBe(input);
+
+    // Clicking the open disclosure again collapses the field.
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
+    expect(screen.queryByTestId("launch-input")).toBeNull();
   });
 
   it("reveals the config override textarea behind a disclosure", async () => {
@@ -188,8 +219,13 @@ describe("LaunchPanel", () => {
     const { client, calls } = stubClient({ workflows: [ROOT] });
     mount(client);
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
 
     fireEvent.change(screen.getByTestId("launch-input"), { target: { value: "{ not json" } });
+
+    // A bad input cannot hide behind a collapsed disclosure: it stays open, showing its lint.
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
+    expect(screen.getByTestId("launch-input")).toBeInTheDocument();
 
     expect(screen.getByTestId("launch-submit")).toBeDisabled();
     fireEvent.click(screen.getByTestId("launch-submit"));
@@ -203,6 +239,7 @@ describe("LaunchPanel", () => {
     });
     const { onLaunched } = mount(client);
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
     fireEvent.change(screen.getByTestId("launch-input"), { target: { value: '{"ticket": 7}' } });
 
     fireEvent.click(screen.getByTestId("launch-submit"));
@@ -249,10 +286,25 @@ describe("LaunchPanel", () => {
     expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ config: { model: "claude" } });
   });
 
+  it("does not drop a typed input when the disclosure is collapsed before launch", async () => {
+    const { client, calls } = stubClient({ workflows: [ROOT] });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
+    fireEvent.change(screen.getByTestId("launch-input"), { target: { value: '{"ticket": 7}' } });
+    fireEvent.click(screen.getByTestId("launch-input-toggle")); // collapse again
+    fireEvent.click(screen.getByTestId("launch-submit"));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ input: { ticket: 7 } });
+  });
+
   it("allows an empty input — launches, sending no input field", async () => {
     const { client, calls } = stubClient({ workflows: [ROOT] });
     mount(client);
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
     fireEvent.change(screen.getByTestId("launch-input"), { target: { value: "" } });
 
     fireEvent.click(screen.getByTestId("launch-submit"));
@@ -260,6 +312,51 @@ describe("LaunchPanel", () => {
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
     const post = calls.find((c) => c.method === "POST");
     expect(post?.body).toEqual({ workflow_path: "release-notes.workflow.json" });
+  });
+
+  it("has no launch worker-defaults field when no type ships more than one worker", async () => {
+    const { client } = stubClient({ workflows: [ROOT] });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+
+    // A registry with nothing to select (or none at all) offers no field — there is no choice to make.
+    await waitFor(() => expect(screen.getByTestId("launch-submit")).toBeInTheDocument());
+    expect(screen.queryByTestId("launch-worker-defaults-toggle")).toBeNull();
+  });
+
+  it("posts the launch worker-default table the registry's dropdowns authored", async () => {
+    const { client, calls } = stubClient({ workflows: [ROOT], stepPlugins: PLUGINS });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+
+    fireEvent.click(await screen.findByTestId("launch-worker-defaults-toggle"));
+    // The only multi-worker type is `prompt`, added with its default worker (`binary` ships one, so it
+    // is never offered); retargeting stays inside that type's shipped set.
+    fireEvent.click(screen.getByTestId("worker-default-add"));
+    expect((screen.getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
+    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "batch" } });
+
+    fireEvent.click(screen.getByTestId("launch-submit"));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    expect(calls.find((c) => c.method === "POST")?.body).toEqual({
+      workflow_path: "release-notes.workflow.json",
+      input: {},
+      worker_defaults: { prompt: "batch" },
+    });
+  });
+
+  it("omits worker_defaults when the launch worker-default field is opened but left empty", async () => {
+    const { client, calls } = stubClient({ workflows: [ROOT], stepPlugins: PLUGINS });
+    mount(client);
+    fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+
+    fireEvent.click(await screen.findByTestId("launch-worker-defaults-toggle"));
+    fireEvent.click(screen.getByTestId("launch-submit"));
+
+    await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
+    // An empty table is omitted, never sent as `{}` — the file channel's own rule (ADR 0044).
+    expect(calls.find((c) => c.method === "POST")?.body).not.toHaveProperty("worker_defaults");
   });
 
   it("surfaces a server 400 in the form without collapsing it", async () => {
@@ -270,6 +367,7 @@ describe("LaunchPanel", () => {
     });
     const { onLaunched } = mount(client);
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
+    fireEvent.click(screen.getByTestId("launch-input-toggle"));
 
     fireEvent.click(screen.getByTestId("launch-submit"));
 
