@@ -11,7 +11,7 @@
     "path-server": "./bin/path-server.ts"
   },
   "scripts": {
-    "test": "vitest run --exclude '**/dist/**'",
+    "test": "vitest run --exclude '**/dist/**' --no-isolate --testTimeout=20000",
     "typecheck": "tsc --noEmit",
     "acceptance": "tsx scripts/acceptance-release-notes.mts"
   },

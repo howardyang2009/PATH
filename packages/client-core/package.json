@@ -8,7 +8,7 @@
   },
   "types": "./src/index.ts",
   "scripts": {
-    "test": "vitest run --exclude '**/dist/**'",
+    "test": "vitest run --exclude '**/dist/**' --no-isolate --testTimeout=20000",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

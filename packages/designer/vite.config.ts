@@ -26,6 +26,9 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./test/setup.ts"],
     css: false,
+    // Build one jsdom environment per worker and reuse it across that worker's files, instead of one
+    // per file. Per-file module isolation is kept, so this is not the same trade as `isolate: false`.
+    pool: "vmThreads",
     // Sit above the 5000ms testing-library `asyncUtilTimeout` set in `test/setup.ts`, so a slow async
     // wait on a starved CI runner exhausts its own poll window (and fails with a useful assertion)
     // rather than tripping vitest's default 5000ms test timeout first. Load-only headroom; fast local

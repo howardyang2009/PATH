@@ -25,5 +25,13 @@ export default defineConfig({
     globals: true,
     setupFiles: ["./test/setup.ts"],
     css: false,
+    // Not `vmThreads`: that pool would build one jsdom per worker, but the live-stream tests push
+    // frames through a `ReadableStream` built in `test/stub-server.ts`, and under `node:vm` those
+    // events never reach the component (five failures in `run-detail.test.tsx`). `threads` keeps
+    // them green and starts each worker more cheaply than a child process does.
+    pool: "threads",
+    // The same starved-runner headroom `packages/designer` takes: under `pnpm -r run test` the seven
+    // suites share the machine, which pushes genuinely slow cases past vitest's 5000ms default.
+    testTimeout: 20000,
   },
 });
