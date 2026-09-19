@@ -13,7 +13,7 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { errorMessage } from "./load-state.js";
-import { secretSkeletonJson } from "./secret-config.js";
+import { blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface CompleteFormProps {
   client: PathApiClient;
@@ -74,6 +74,14 @@ export function CompleteForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
+  // A recorded launch secret is a credential the frozen config holds only as a mask token, so the form
+  // refuses to submit one the operator left missing, empty, or whitespace — the engine would otherwise
+  // fall through to the environment and continue with a key the operator did not choose. Derived from
+  // the text, not gated on a keystroke, so the button is disabled (with the reason shown) from the
+  // moment the skeleton is on screen.
+  const configPreview = parseJsonField(configText, { allowEmpty: true });
+  const blankSecrets = configPreview.ok ? blankSecretPaths(secrets, configPreview.value) : [];
+
   const submit = (): void => {
     let output: JsonValue;
     if (raw) {
@@ -90,12 +98,18 @@ export function CompleteForm({
       setFieldErrors({});
     }
     setFormErrors([]);
-    // The continuation's config is a separate gate from the output: an unparseable value blocks the
-    // submit here, with no request spent, and the leaf stays awaiting for a corrected resubmit. Blank
-    // parses to `undefined`, so a run with no secrets sends the same `{ output }` body as before.
+    // The continuation's config is a separate gate from the output: an unparseable value, or a blank
+    // value at a path the launch recorded as a secret, blocks the submit here, with no request spent,
+    // and the leaf stays awaiting for a corrected resubmit. Blank parses to `undefined`, so a run with
+    // no secrets sends the same `{ output }` body as before.
     const configResult = parseJsonField(configText, { allowEmpty: true });
     if (!configResult.ok) {
       setFormErrors([configResult.message]);
+      return;
+    }
+    const blanks = blankSecretPaths(secrets, configResult.value);
+    if (blanks.length > 0) {
+      setFormErrors([blankSecretMessage(blanks)]);
       return;
     }
     setPhase("sending");
@@ -145,6 +159,12 @@ export function CompleteForm({
 
       {showSecrets && <LaunchSecretsControl value={configText} onChange={setConfigText} />}
 
+      {blankSecrets.length > 0 && (
+        <p className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-secret-error">
+          {blankSecretMessage(blankSecrets)}
+        </p>
+      )}
+
       {formErrors.map((message, index) => (
         <p key={index} className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-form-error">
           {message}
@@ -152,12 +172,25 @@ export function CompleteForm({
       ))}
 
       <div className="launch-actions">
-        <button type="submit" className="launch-submit" data-testid="complete-submit" disabled={phase === "sending"}>
+        <button
+          type="submit"
+          className="launch-submit"
+          data-testid="complete-submit"
+          disabled={phase === "sending" || blankSecrets.length > 0}
+        >
           {phase === "sending" ? "Submitting…" : submitLabel}
         </button>
       </div>
     </form>
   );
+}
+
+/** The form-level error for the launch secrets a submit would leave blank, naming each one. */
+function blankSecretMessage(paths: readonly string[]): string {
+  const names = paths.map((path) => `"${path}"`).join(", ");
+  return paths.length === 1
+    ? `Launch secret ${names} is empty — enter a value before completing.`
+    : `Launch secrets ${names} are empty — enter a value for each before completing.`;
 }
 
 interface RawOutputControlProps {

@@ -178,4 +178,54 @@ describe("CompleteForm", () => {
     expect(screen.getByTestId("complete-form-error")).toBeInTheDocument();
     expect(bodies).toEqual([]);
   });
+
+  it("disables submit and names the blank launch secret while one is unsupplied", () => {
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(
+      <CompleteForm
+        client={client}
+        stepRunId="s1"
+        outputSchema={null}
+        launchSecretKeys={["github.token"]}
+        onCompleted={() => {}}
+      />,
+    );
+
+    expect(screen.getByTestId("complete-submit")).toBeDisabled();
+    expect(screen.getByTestId("complete-secret-error")).toHaveTextContent('"github.token"');
+
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    expect(bodies).toEqual([]);
+  });
+
+  it("treats a whitespace-only launch secret as blank", () => {
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s", root_run_id: "r" }, 202));
+    render(
+      <CompleteForm client={client} stepRunId="s1" outputSchema={null} launchSecretKeys={["token"]} onCompleted={() => {}} />,
+    );
+
+    fireEvent.change(screen.getByTestId("complete-config"), { target: { value: '{"token":"   "}' } });
+
+    expect(screen.getByTestId("complete-submit")).toBeDisabled();
+    expect(screen.getByTestId("complete-secret-error")).toHaveTextContent('"token"');
+    expect(bodies).toEqual([]);
+  });
+
+  it("enables submit once every launch secret has a non-blank value", async () => {
+    const onCompleted = vi.fn();
+    const { client, bodies } = makeClient(() => json({ step_run_id: "s1", root_run_id: "r1" }, 202));
+    render(
+      <CompleteForm client={client} stepRunId="s1" outputSchema={null} launchSecretKeys={["token"]} onCompleted={onCompleted} />,
+    );
+
+    fireEvent.change(screen.getByTestId("complete-config"), { target: { value: '{"token":"sk-live"}' } });
+
+    expect(screen.queryByTestId("complete-secret-error")).toBeNull();
+    expect(screen.getByTestId("complete-submit")).not.toBeDisabled();
+    fireEvent.click(screen.getByTestId("complete-submit"));
+
+    await waitFor(() => expect(onCompleted).toHaveBeenCalledOnce());
+    expect(bodies[0]).toEqual({ output: {}, config: { token: "sk-live" } });
+  });
 });

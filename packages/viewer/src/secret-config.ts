@@ -28,3 +28,33 @@ export function secretSkeletonJson(keys: readonly string[]): string {
   }
   return JSON.stringify(skeleton, null, 2);
 }
+
+/**
+ * The recorded secret dot-paths a continuation's supplied config leaves unusable: absent, not a
+ * string, or blank after trimming. A masked `[secret:<key>]` token cannot continue the run, and an
+ * empty or whitespace value is no more a credential — the engine falls back to the environment and
+ * continues, or fails the run before its first step. Asking the operator for a value before the
+ * request is spent is the client-side half of that rule; the server still owns the outcome.
+ * Dot-paths read the same nesting `secretSkeletonJson` writes.
+ */
+export function blankSecretPaths(keys: readonly string[], supplied: { [key: string]: JsonValue } | undefined): string[] {
+  return keys.filter((key) => {
+    const value = valueAtPath(supplied, key);
+    return typeof value !== "string" || value.trim() === "";
+  });
+}
+
+function valueAtPath(config: { [key: string]: JsonValue } | undefined, path: string): JsonValue | undefined {
+  let current: JsonValue | undefined = config;
+  for (const segment of path.split(".")) {
+    if (current === null || typeof current !== "object") return undefined;
+    if (Array.isArray(current)) {
+      const index = Number(segment);
+      current = Number.isInteger(index) ? (current[index] as JsonValue | undefined) : undefined;
+    } else {
+      current = (current as { [key: string]: JsonValue })[segment];
+    }
+    if (current === undefined) return undefined;
+  }
+  return current;
+}
