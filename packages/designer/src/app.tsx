@@ -208,6 +208,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       runDock={
         <RunDock
           client={client}
+          plugins={plugins}
           // An unwritten buffer has no file on disk for the server to load, so it cannot launch (#391 AC:
           // "no launch until its first save"). A create-new child carries a pre-assigned path, so gate the
           // launch handle on `written`, not on the path — an unwritten child reads as unsaved, like a

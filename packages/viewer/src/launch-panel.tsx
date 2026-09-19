@@ -1,5 +1,6 @@
 import type {
   PathApiClient,
+  WireStepPlugin,
   WorkflowSummary,
   WorkflowTreeFolder,
   WorkflowTreeNode,
@@ -32,7 +33,9 @@ export interface LaunchPanelProps {
  *
  * One-shot read, not a refresh loop like the runs list: discovery is a fresh filesystem scan with no
  * live feed behind it, and workflow files change on an author's timescale, not a run's — a reload
- * re-scans. The runs list next to it owns the periodic re-read.
+ * re-scans. The runs list next to it owns the periodic re-read. The panel also makes one
+ * `GET /v0/step-plugins` read, for the launch form's launch worker-default editor: the
+ * registry is what makes its type/worker dropdowns constrained, and it is read once beside discovery.
  */
 /** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or all. */
 type WorkflowFilter = "all" | "root" | "nested" | "invalid";
@@ -65,6 +68,7 @@ function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boole
 
 export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   const [state, setState] = useState<Load<WorkflowSummary[]>>({ phase: "loading" });
+  const [plugins, setPlugins] = useState<readonly WireStepPlugin[]>([]);
   const [expanded, setExpanded] = useState<string | null>(null);
   // The deepest open folder path; a folder is expanded when it is this path or a prefix of it, so
   // opening a sibling collapses the previous one automatically (one open folder per level).
@@ -80,6 +84,17 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
       })
       .catch((error: unknown) => {
         if (!cancelled) setState({ phase: "error", message: errorMessage(error) });
+      });
+    // The step-plugin registry feeds the launch form's launch worker-default editor (ADR 0044).
+    // It is secondary to discovery: a failed read leaves the editor hidden rather than failing the
+    // panel, because launching with no worker-default is the ordinary case.
+    client
+      .getStepPlugins()
+      .then((res) => {
+        if (!cancelled) setPlugins(res.step_plugins);
+      })
+      .catch(() => {
+        if (!cancelled) setPlugins([]);
       });
     return () => {
       cancelled = true;
@@ -136,6 +151,7 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
             nodes={tree}
             depth={0}
             client={client}
+            plugins={plugins}
             expanded={expanded}
             onToggleFile={toggleFile}
             onLaunched={onLaunched}
@@ -162,6 +178,7 @@ function WorkflowTree({
   nodes,
   depth,
   client,
+  plugins,
   expanded,
   onToggleFile,
   onLaunched,
@@ -171,6 +188,7 @@ function WorkflowTree({
   nodes: WorkflowTreeNode[];
   depth: number;
   client: PathApiClient;
+  plugins: readonly WireStepPlugin[];
   expanded: string | null;
   onToggleFile: (path: string) => void;
   onLaunched: (rootRunId: string) => void;
@@ -193,6 +211,7 @@ function WorkflowTree({
                 nodes={node.children}
                 depth={depth + 1}
                 client={client}
+                plugins={plugins}
                 expanded={expanded}
                 onToggleFile={onToggleFile}
                 onLaunched={onLaunched}
@@ -214,6 +233,7 @@ function WorkflowTree({
                 <LaunchForm
                   key={node.workflow.relative_path}
                   client={client}
+                  plugins={plugins}
                   workflowPath={node.workflow.relative_path}
                   submitLabel={`Launch ${node.workflow.name ?? "workflow"}`}
                   idBase={`launch-${node.workflow.relative_path}`}

@@ -167,6 +167,16 @@ button on the same row, the change confirmation-gated), then the kind-specific f
 role lead, so the author knows *what they are editing* before the inputs. A plain node with neither
 opens straight at the fields.
 
+`name` and the `id` (with its re-key) are the pane's **anchor**: the editable fields, always shown,
+never folded away — they are how the author knows which node is in view. Below them the pane is a stack
+of **collapsible sections**, each one's header acting as its own toggle. The kind's own fields are one
+such section and start **expanded**: they fold, but folding is an option for a busy node, never a step
+before an ordinary edit. The named **payload regions** below them — a step's `config`, `input`,
+`context writes`, and `reference`; the file's own `config`, `worker defaults`, and `output` — start
+**collapsed**: the author unfolds only the payload they came for. Expansion is per node, so a new
+selection resets every section to its default, and a collapsed section renders no body at all, so its
+fields are neither tabbable nor read out of order.
+
 ### Per-kind rendering and edit affordances
 
 | Node | Renders on the canvas as | Read-only on the block | Edited in the properties pane |
@@ -525,7 +535,9 @@ client's in-memory buffer. Therefore:
   behaves as above.
 
 The launch form itself is the raw-JSON `input` (prefilled `{}`, empty allowed) plus an optional
-`config` override, gated client-side by `parseJsonField` (now in `@path/client-core`, § Shared seam)
+`config` override, each behind its own collapsed-by-default disclosure, and — when the registry ships a
+multi-worker type — the operator's **launch worker-default** table behind a third (ADR 0044), gated
+client-side by `parseJsonField` (now in `@path/client-core`, § Shared seam)
 and validated server-side — a rejected `$env` override
 ([ADR 0012](../adr/0012-operator-config-rejects-env-wrapper.md)) or a schema failure returns a `400`
 the form surfaces without collapsing.

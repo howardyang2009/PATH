@@ -44,6 +44,11 @@ export interface StubServerOptions {
   runs?: unknown;
   /** Body for `GET /v0/workflows` — the launch panel's discovery list. Defaults to an empty list. */
   workflows?: unknown;
+  /**
+   * Body for `GET /v0/step-plugins` — the registry the launch panel's worker-default editor offers its
+   * types from. Defaults to a registry with no types, so no editor renders unless a test asks for one.
+   */
+  stepPlugins?: unknown;
   /** Body for `GET /v0/runs/:root_run_id` — the run tree. */
   tree?: unknown;
   /** Status for the tree response, for the not-found path. */
@@ -68,7 +73,14 @@ export interface StubServerOptions {
 }
 
 export function stubClient(options: StubServerOptions = {}): PathApiClient {
-  const { runs = { runs: [] }, workflows = { workflows: [] }, tree = { runs: [] }, treeStatus = 200, stream } = options;
+  const {
+    runs = { runs: [] },
+    workflows = { workflows: [] },
+    stepPlugins = { step_plugins: [] },
+    tree = { runs: [] },
+    treeStatus = 200,
+    stream,
+  } = options;
 
   const fetchLike: FetchLike = async (input, init) => {
     if (input.endsWith("/events")) {
@@ -83,6 +95,9 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     }
     if (input === "/v0/workflows") {
       return json(workflows, 200);
+    }
+    if (input === "/v0/step-plugins") {
+      return json(stepPlugins, 200);
     }
     const blobKey = blobKeyOf(input);
     if (blobKey !== null) {

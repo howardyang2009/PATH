@@ -90,6 +90,15 @@ async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?:
   return client;
 }
 
+/**
+ * A registry shaped like the shipped one: `prompt` declares **two** workers, `anthropic` (default) and
+ * `deepseek` (`packages/engine/step-plugins/prompt/index.ts`), so a worker-default has one to select
+ * (ADR 0044). `DEFAULT_PLUGINS` is the stub's single-worker stand-in, not the real registry.
+ */
+const MULTI_WORKER_PLUGINS: WireStepPlugin[] = DEFAULT_PLUGINS.map((plugin) =>
+  plugin.name === "prompt" ? { ...plugin, workers: ["anthropic", "deepseek"] } : plugin,
+);
+
 describe("Designer run surfaces (#372)", () => {
   it("launch is enabled on a clean buffer and runs the open file's path", async () => {
     const calls = makeCalls();
@@ -108,6 +117,22 @@ describe("Designer run surfaces (#372)", () => {
     expect(calls.startRun[0]!.config).toBeUndefined();
   });
 
+  it("offers the launch worker-default table, and posts it with the run", async () => {
+    const calls = makeCalls();
+    await renderClean({ plugins: MULTI_WORKER_PLUGINS }, calls);
+    openDock();
+
+    // The dock launches a run, so it carries the same operator door the Viewer's launch panel does.
+    fireEvent.click(await screen.findByTestId("run-launch-worker-defaults-toggle"));
+    fireEvent.click(screen.getByTestId("worker-default-add"));
+    expect((screen.getByLabelText("type") as HTMLSelectElement).value).toBe("prompt");
+    fireEvent.change(screen.getByLabelText("worker"), { target: { value: "deepseek" } });
+
+    fireEvent.click(screen.getByTestId("run-launch-submit"));
+    await waitFor(() => expect(calls.startRun).toHaveLength(1));
+    expect(calls.startRun[0]!.worker_defaults).toEqual({ prompt: "deepseek" });
+  });
+
   it("launch is disabled while the buffer is dirty, and says why", async () => {
     const client = stubClient({ files: { [ROOT_PATH]: JSON.stringify(dirtyFile()) } });
     render(<App client={client} initialPath={ROOT_PATH} />);
@@ -124,6 +149,7 @@ describe("Designer run surfaces (#372)", () => {
     });
     openDock();
 
+    fireEvent.click(screen.getByTestId("run-launch-input-toggle"));
     fireEvent.click(screen.getByTestId("run-launch-submit"));
     const error = await screen.findByTestId("run-launch-error");
     expect(error).toHaveTextContent("rejected $env override");
