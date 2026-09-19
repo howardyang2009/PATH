@@ -113,9 +113,9 @@ describe("loadWorkflowTree — superseded format versions", () => {
   // names both codemods in order: the `@2` script migrates `@1` and nothing else, so alone it would
   // leave an `@0` file exactly as unreadable as it was.
   const V1_REJECTION =
-    "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3";
+    "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts to migrate this file to path/workflow@4";
   const V0_REJECTION =
-    "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3";
+    "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts to migrate this file to path/workflow@4";
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "path-superseded-format-"));
@@ -162,7 +162,7 @@ describe("loadWorkflowTree — superseded format versions", () => {
     writeFileSync(
       join(dir, "parent.workflow.json"),
       JSON.stringify({
-        format: "path/workflow@3",
+        format: "path/workflow@4",
         id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "parent",
         body: [{ type: "workflow", id: "42be13f7-a05c-4986-b7d4-6e1f28903cba", name: "child-step", ref: "./v1.workflow.json" }],

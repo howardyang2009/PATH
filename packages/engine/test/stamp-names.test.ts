@@ -139,7 +139,7 @@ describe("stampNames — the @2 shapes it is there to stamp", () => {
       ],
     });
 
-    expect(file.format).toBe("path/workflow@3");
+    expect(file.format).toBe("path/workflow@4");
     const parallel = file.body[0]!;
     if (parallel.type !== "parallel") throw new Error("expected a parallel node");
     const branch = parallel.branches[0]!;

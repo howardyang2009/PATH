@@ -70,7 +70,7 @@ describe("cli main()", () => {
     const code = await main(["run", superseded], io);
     expect(code).toBe(1);
     expect(io.error).toHaveBeenCalledWith(
-      `${superseded}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts to migrate this file to path/workflow@3`,
+      `${superseded}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts to migrate this file to path/workflow@4`,
     );
     // No silent upconvert: the load failed, so no step ran and no output was printed.
     expect(io.log).not.toHaveBeenCalled();
@@ -842,7 +842,7 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   let sigintListenersBefore: number;
 
   const ONE_PROMPT_WORKFLOW = stampGuids({
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "wf-id",
     name: "sigint-cancel",
     config: { model: "claude-sonnet-5" },

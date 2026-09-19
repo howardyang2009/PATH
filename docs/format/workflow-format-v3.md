@@ -1,5 +1,11 @@
 # PATH Workflow File Format v3
 
+> **Superseded by [`workflow-format-v4.md`](workflow-format-v4.md).** `path/workflow@3` is no longer
+> read by the engine — `@4` adds the file-level `worker_defaults` table (ADR 0044). This document is
+> retained because the CHANGELOG and closed issues link it, and it remains the full normative reference
+> for everything `@4` did not change; migrate `@3` files with
+> [`scripts/migrate-workflow-format-v4.ts`](../../scripts/migrate-workflow-format-v4.ts).
+
 This is the normative definition of `path/workflow@3`. `@path/schema` implements it as zod schemas. The
 engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
 controller, checkpoint, config vs context, output object, publish).

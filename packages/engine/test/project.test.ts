@@ -33,7 +33,7 @@ function writeSettings(settings: unknown): void {
 }
 
 const oneStep: WorkflowFile = stampNames({
-  format: "path/workflow@3",
+  format: "path/workflow@4",
   id: "wf-id",
   name: "one-step",
   body: [{ type: "binary", id: "only", name: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
@@ -235,7 +235,7 @@ describe("Project.resume (#173)", () => {
   // v1 stops at `b` (exit 1) after `a` succeeds; v2 is the same tree with `b` fixed to succeed. On
   // resume against v2, `a` reuses its recorded output and only `b` re-runs.
   const v1: WorkflowFile = {
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "wf-id",
     name: "resumable",
     body: [emit("a", "A_OUT"), emit("b")],
@@ -332,7 +332,7 @@ describe("Project.resume (#173)", () => {
     // no output blob of its own. R3 must reuse `a` straight from that pointer (never re-execute it),
     // and its marker must reach past R2 to R1 (direct-to-source, ADR 0001).
     const c1: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "chain",
       body: [emit("a", "A_OUT"), emit("b"), emit("c")],
@@ -404,7 +404,7 @@ describe("Project.resume (#173)", () => {
 describe("Project.resume — Resume-from-K (#444)", () => {
   // A three-step workflow that fully succeeds; Resume-from-K re-runs a succeeded region from K.
   const kabc: WorkflowFile = {
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "wf-id",
     name: "resumable-k",
     body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c", "C_OUT")],
@@ -484,7 +484,7 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
     writeFileSync(
       join(dir, "child.workflow.json"),
       JSON.stringify(stampGuids({
-        format: "path/workflow@3",
+        format: "path/workflow@4",
         id: "child-id",
         name: "child",
         body: [emit("p", "P_OUT"), emit("k", "K_OUT"), emit("q", "Q_OUT")],
@@ -494,7 +494,7 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
     writeFileSync(
       join(dir, "parent.workflow.json"),
       JSON.stringify(stampGuids({
-        format: "path/workflow@3",
+        format: "path/workflow@4",
         id: "parent-id",
         name: "parent",
         body: [emit("a", "A_OUT"), { type: "workflow", id: "sub", name: "sub", ref: "./child.workflow.json", input: {} }, emit("d", "D_OUT")],
@@ -580,7 +580,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     writeFileSync(
       join(sub, "child.workflow.json"),
       JSON.stringify(stampGuids({
-        format: "path/workflow@3",
+        format: "path/workflow@4",
         id: "wf-id",
         name: "child",
         body: [{ type: "binary", id: "inner", name: "inner", command: "node", args: ["-e", "process.stdout.write('inner')"] }],
@@ -588,7 +588,7 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
       "utf8",
     );
     const parent: WorkflowFile = stampGuids({
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "parent",
       body: [{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }],

@@ -35,7 +35,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
 }
 
 function tree(body: WorkflowFile["body"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@3", name: "k", config: {}, body });
+  return stampNames({ format: "path/workflow@4", name: "k", config: {}, body });
 }
 
 // Three top-level prompts a,b,c, all succeeded under the root run.

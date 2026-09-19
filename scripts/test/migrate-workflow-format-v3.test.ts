@@ -42,9 +42,16 @@ function write(file: string, doc: unknown): string {
 const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(file, "utf8"));
 const bytes = (file: string): string => readFileSync(file, "utf8");
 
-/** The migrated document must be a *loadable* `@3` file, not merely a reshaped one. */
+/**
+ * The migrated document must be a *loadable* file, not merely a reshaped one. `@3` is superseded now
+ * (the schema reads `@4`), so lift a copy the rest of the way with the `@4` codemod first — the check
+ * stays "the migrated file loads" without disturbing the `@3` file the test's other assertions read.
+ */
 function expectSchemaValid(file: string): void {
-  const result = safeParseWorkflowFile(read(file), builtinRegistry);
+  const copy = `${file}.v4.json`;
+  writeFileSync(copy, readFileSync(file, "utf8"));
+  runCodemod([copy], dir, "migrate-workflow-format-v4.ts");
+  const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
 }
 

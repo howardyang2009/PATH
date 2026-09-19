@@ -36,7 +36,7 @@ afterEach(() => {
 });
 
 const twoStepWorkflow: WorkflowFile = {
-  format: "path/workflow@3",
+  format: "path/workflow@4",
   id: "wf-id",
   name: "two-step",
   body: [
@@ -97,7 +97,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("records the failing step's step-finished with its error, then the failed root step-finished", async () => {
     const failing: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "boom",
       body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }],
@@ -138,7 +138,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a parallel collect join in both backends, with branch ids and published keys (ticket #24)", async () => {
     const parallelWorkflow: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "parallel-join",
       body: [
@@ -169,7 +169,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("narrates a run-cancelled in both backends and marks the cancelled step's row cancelled (ticket #24)", async () => {
     const cancellingWorkflow: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "parallel-cancel",
       body: [
@@ -207,7 +207,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("ends an externally aborted root run cancelled in both backends, the run rows and context.json (#52)", async () => {
     const cancellableWorkflow: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "operator-cancel",
       body: [
@@ -267,7 +267,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
       publish: { [id]: "${output}" },
     });
     const file: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "multi-publish",
       body: [publishingStep("one"), publishingStep("two"), publishingStep("three")],
@@ -312,7 +312,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits checkpoint and branch control events with complete traces to both backends (ticket #21)", async () => {
     const controls: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "controls",
       body: [
@@ -350,7 +350,7 @@ describe("logging — end to end through runWorkflow (ticket #19)", () => {
 
   it("emits while-do iteration-started and loop-exited control events with traces to both backends (ticket #23)", async () => {
     const loop: WorkflowFile = {
-      format: "path/workflow@3",
+      format: "path/workflow@4",
       id: "wf-id",
       name: "while-loop",
       body: [

@@ -22,7 +22,7 @@ import type { NodeExecContext, RunContext } from "../src/run-context.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@3",
+  format: "path/workflow@4",
   id: "wf-id",
   name: "walkers",
   body: [],
@@ -676,7 +676,7 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
   }
 
   function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
-    return { format: "path/workflow@3", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
+    return { format: "path/workflow@4", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
   }
 
   function startedWorker(observed: Observation[]): string | undefined {
@@ -721,7 +721,7 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is what
     // keeps the table from crossing the ref boundary.
     const childWithPrompt: WorkflowFile = {
-      format: "path/workflow@3", id: "wf-child", name: "child",
+      format: "path/workflow@4", id: "wf-child", name: "child",
       body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
     };
     const { run, observed } = makeRun({
@@ -739,7 +739,7 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
 describe("runNode — workflow step", () => {
   const childPath = () => resolve(fileDir, "child.json");
   const child: WorkflowFile = {
-    format: "path/workflow@3",
+    format: "path/workflow@4",
     id: "wf-id",
     name: "child",
     body: [echo("inner", "done")],
