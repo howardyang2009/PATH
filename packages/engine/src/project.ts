@@ -2,8 +2,6 @@ import { resolve } from "node:path";
 import {
   childrenByParent,
   findRootRun,
-  isReuseRow,
-  isRootRun,
   isTerminal,
   type JsonValue,
   type RunRecord,
@@ -11,19 +9,18 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 import type Database from "better-sqlite3";
+import { continuationBlobReader, continuationRunOptions, sourceRuns, successorCapture } from "./continuation.js";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
 import { maxLogSeqForRoot } from "./logging/db-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
 import { readNdjsonLog } from "./logging/ndjson-backend.js";
-import { readJsonBlob } from "./persistence/blob-store.js";
 import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
-import { dbFilePath, pathDir, runBlobDir } from "./persistence/paths.js";
+import { dbFilePath, pathDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
 import { cancelNonTerminalRuns, getLaunchFacts, getRun, getRunsForRoot } from "./persistence/run-store.js";
-import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
 import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
@@ -419,81 +416,33 @@ export function openProject(dir: string): OpenProjectResult {
           rerunFromNodePath = verdict.nodePath;
         }
 
-        // A reuse row (#257) is a pointer, not the data: its `runId`/`rootRunId` are this predecessor
-        // tree's, but the reused output lives under the *source* run named by `reusedFromRunId`. So
-        // before planning reuse, swap each reuse row for that source record — keeping the reuse row's
-        // own `parentRunId` so it still scopes under the predecessor run `planReuse` matches against,
-        // while `runId`/`rootRunId` become the source so the blob read and the successor's new marker
-        // address the source tree directly (ADR 0001, direct-to-source). This is what carries reuse
-        // across a chain: without it, `planReuse` would see the pointer's empty successor-tree blob and
-        // re-execute. A source whose tree was since `rm`'d resolves to nothing and is dropped — that
-        // node re-executes, mirroring the cost query's tolerance of a deleted original.
-        const originalRuns = directRuns.flatMap((r) => {
-          if (!isReuseRow(r)) return [r];
-          const source = getRun(db, r.reusedFromRunId);
-          return source ? [{ ...source, parentRunId: r.parentRunId }] : [];
-        });
-
-        // The successor's own root run id, captured off its `run-started` (the root one — a nested
-        // run's `parentRunId` is non-null). `runWorkflow` mints it internally and returns only a
-        // `RunResult`, so an appended observer is how the caller learns which fresh tree it wrote.
-        let successorRootRunId: string | undefined;
-        const capture: RunObserver = {
-          observe(o) {
-            if (o.type === "run-started" && isRootRun(o)) successorRootRunId = o.runId;
-          },
-        };
-
-        // Read blobs straight out of the original tree, never the successor's: each original run
-        // carries the original `rootRunId`, so `runBlobDir` addresses `.path/runs/<orig-root>/…`.
-        // This is the only door into the original tree, and it is read-only (resume-restore-semantics.md §4).
+        // The continuation recipe Resume and Complete share (`continuation.ts`): the tree's rows with
+        // every reuse row swapped for its source, a read-only blob reader over that tree, and the
+        // Launch facts the tree recorded, recovered with whatever secret the operator supplied again.
+        const originalRuns = sourceRuns(db, directRuns);
+        const capture = successorCapture();
         const resume: ResumeInput = {
           originalRuns,
-          readBlob: (record, filename) => readJsonBlob(runBlobDir(absDir, record.rootRunId, record.runId), filename),
+          readBlob: continuationBlobReader(absDir),
           rerunFromNodePath,
         };
-
-        // The launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
-        // predecessor's frozen config and launch worker-default table rather than taking either off the
-        // request — the resume route carries no worker table, and changing it is a new run. The file
-        // tier stays live, so re-run steps resolve from this frozen table plus the reloaded file's own
-        // `worker_defaults`, exactly the order the launch used.
-        const frozenLaunchFacts = getLaunchFacts(db, rootRunId);
-        // A secret the caller supplied again arrives as a plain value; re-mark it at the recorded path
-        // before anything reads the config, or the successor would record the credential in the clear.
-        const suppliedConfig =
-          runOpts.operatorConfig === undefined
-            ? undefined
-            : wrapSecretsAtPaths(runOpts.operatorConfig, frozenLaunchFacts?.secretKeys ?? []);
-        const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(frozenLaunchFacts, suppliedConfig);
 
         const result = await execute(
           rootFile,
           workflowDir,
-          {
-            ...runOpts,
-            operatorConfig: recoveredConfig,
-            // An input override is never re-applied: the successor's context is restored from its
-            // counterpart's blackboard, so a fresh seed would be silently discarded. The frozen input
-            // is shown to a reader, not replayed.
-            operatorInput: undefined,
-            launchWorkerDefaults: frozenLaunchFacts?.workerDefaults,
-            unresolvedLaunchSecrets: missingSecretKeys,
-            inheritedLaunchSecretKeys: frozenLaunchFacts?.secretKeys,
-          },
+          // The launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
+          // predecessor's frozen config and launch worker-default table rather than taking either off
+          // the request — the resume route carries no worker table, and changing it is a new run. The
+          // file tier stays live, so re-run steps resolve from this frozen table plus the reloaded
+          // file's own `worker_defaults`, exactly the order the launch used.
+          continuationRunOptions(runOpts, getLaunchFacts(db, rootRunId)),
           resume,
-          [capture],
+          [capture.observer],
         );
 
-        // `run-started` precedes every other observation of a tree (run-observer.ts), and the root
-        // run always starts, so by here the capture has fired — a missing id would be an engine bug,
-        // not an operator error, so assert rather than fold it into `found: false`.
-        if (successorRootRunId === undefined) {
-          throw new Error("internal error: resumed run emitted no root run-started");
-        }
         return {
           found: true,
-          rootRunId: successorRootRunId,
+          rootRunId: capture.rootRunId(),
           status: result.status,
           output: result.output,
           ...(result.error !== undefined ? { error: result.error } : {}),
@@ -576,50 +525,27 @@ export function openProject(dir: string): OpenProjectResult {
             return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${fresh?.status ?? "gone"}, not awaiting` };
           }
 
-          // The whole tree's rows, with each reuse row swapped for its source record (direct-to-source,
-          // ADR 0001) exactly as `resume` does — so a `succeeded` row the replay reuses addresses its
-          // own output blob, whether it ran here or was itself reused from an earlier tree. A source
-          // since `rm`'d resolves to nothing and is dropped; that node then re-runs.
+          // The same continuation recipe `resume` uses (`continuation.ts`): the tree's rows with every
+          // reuse row swapped for its source record (direct-to-source, ADR 0001), so a `succeeded` row
+          // the replay reuses addresses its own output blob, whether it ran here or was itself reused
+          // from an earlier tree.
           const directRuns = getRunsForRoot(db, rootRunId);
-          const existingRuns = directRuns.flatMap((r) => {
-            if (!isReuseRow(r)) return [r];
-            const source = getRun(db, r.reusedFromRunId);
-            return source ? [{ ...source, parentRunId: r.parentRunId }] : [];
-          });
-
           const continueInput: ContinueInput = {
             rootRunId,
-            existingRuns,
-            // Read blobs straight out of the run they belong to — this same tree for a re-entered run,
-            // or the source tree for a swapped reuse row (its `rootRunId` is the source's). Read-only.
-            readBlob: (record, filename) => readJsonBlob(runBlobDir(absDir, record.rootRunId, record.runId), filename),
+            existingRuns: sourceRuns(db, directRuns),
+            readBlob: continuationBlobReader(absDir),
             target: { stepRunId, output },
           };
 
-          const { rerunFromRunId: _ignored, ...runOpts } = opts;
-          // A Complete is a replay of the same tree (ADR 0041), so it restores the launch facts that
-          // tree's root row recorded (ADR 0046, #519): the config the launch ran with — recovered, with
-          // any launch secret the caller supplied again merged over it — and the launch worker-default
-          // table, so a forward step resolves exactly as the launch did. The frozen input is not
-          // re-applied: the tree's own contexts and the parked leaf are what this replay resumes from.
-          const frozenLaunchFacts = getLaunchFacts(db, rootRunId);
-          // See `resume`: a re-entered secret is re-marked at its recorded path so it is masked at rest.
-          const suppliedConfig =
-            runOpts.operatorConfig === undefined
-              ? undefined
-              : wrapSecretsAtPaths(runOpts.operatorConfig, frozenLaunchFacts?.secretKeys ?? []);
-          const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(frozenLaunchFacts, suppliedConfig);
           const result = await execute(
             rootFile,
             workflowDir,
-            {
-              ...runOpts,
-              operatorConfig: recoveredConfig,
-              operatorInput: undefined,
-              launchWorkerDefaults: frozenLaunchFacts?.workerDefaults,
-              unresolvedLaunchSecrets: missingSecretKeys,
-              inheritedLaunchSecretKeys: frozenLaunchFacts?.secretKeys,
-            },
+            // A Complete is a replay of the same tree (ADR 0041), so it restores the launch facts that
+            // tree's root row recorded (ADR 0046, #519): the config the launch ran with — recovered, with
+            // any launch secret the caller supplied again merged over it — and the launch worker-default
+            // table, so a forward step resolves exactly as the launch did. The frozen input is not
+            // re-applied: the tree's own contexts and the parked leaf are what this replay resumes from.
+            continuationRunOptions(opts, getLaunchFacts(db, rootRunId)),
             undefined,
             [],
             continueInput,
