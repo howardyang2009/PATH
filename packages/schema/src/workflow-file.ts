@@ -3,8 +3,8 @@ import { ConfigObjectSchema } from "./config.js";
 import { formatIssues } from "./format-issues.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
-import { childBodies } from "./node-walk.js";
 import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
+import { nodeIdentityIssues } from "./node-identity.js";
 import { publishSetIssues } from "./publish-set.js";
 import { collectWorkerDefaultIssues } from "./worker-defaults.js";
 import { STEP_ROOTS } from "./roots.js";
@@ -38,30 +38,11 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
     .strict();
 }
 
-interface NameOccurrence {
-  name: string;
-  path: (string | number)[];
-}
-
 // Every node — steps, controllers, checkpoints, and each `parallel` branch (now itself a node, `@2`
 // §4.3) — carries a required human `name`, unique across the whole file at every nesting level
-// (workflow-format-v2.md §3). The GUID `id` beside it is unique by construction, so only `name` is
-// checked here. Branch nodes are reached by ordinary recursion: `childBodies` exposes each branch as
-// a one-node slot, so its `name` is collected like any other node's.
-function collectNames(nodes: WorkflowNode[], basePath: (string | number)[]): NameOccurrence[] {
-  const found: NameOccurrence[] = [];
-
-  nodes.forEach((node, index) => {
-    const nodePath = [...basePath, index];
-    found.push({ name: node.name, path: [...nodePath, "name"] });
-
-    for (const child of childBodies(node)) {
-      found.push(...collectNames(child.nodes, [...nodePath, ...child.path]));
-    }
-  });
-
-  return found;
-}
+// (workflow-format-v2.md §3). The walk and the rule are `node-identity.ts`'s, shared with the two other
+// doors that enforce an identity rule (the write route's duplicate-`id` check, the Designer's open
+// gate); this refinement only turns the issues into zod issues at the offending `name` field.
 
 // The file channel of ADR 0044's registry-relative `worker_defaults` validation (#516). The base
 // schema fixes the *shape* (`{ <non-empty>: <non-empty> }`), registry-agnostically; here — with the
@@ -84,23 +65,16 @@ function checkWorkerDefaults(file: WorkflowFile, ctx: z.RefinementCtx, registry:
 // registry-relative `worker_defaults` check (ADR 0044). Applied by the plugin factory's schema
 // (`makeWorkflowFileSchema`), which closes the registry over the last argument.
 function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, registry: StepPluginRegistry): void {
-  const occurrences = collectNames(file.body, ["body"]);
-  const byName = new Map<string, NameOccurrence[]>();
-  for (const occurrence of occurrences) {
-    const list = byName.get(occurrence.name) ?? [];
-    list.push(occurrence);
-    byName.set(occurrence.name, list);
-  }
-
-  for (const [name, list] of byName) {
-    if (list.length <= 1) continue;
-    for (const occurrence of list.slice(1)) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        path: occurrence.path,
-        message: `duplicate name "${name}": names must be unique across the whole file`,
-      });
-    }
+  // The identity rule is `node-identity.ts`'s, so this refinement and the write route cannot disagree
+  // about which occurrence offends; only the reader-facing half (a zod issue at the `name` field) is
+  // here. `duplicate-name` is the one rule the load enforces: `id`s are UUID-checked per field, and a
+  // duplicate `id` is refused at the write door and the Designer's open gate (ADR 0015).
+  for (const issue of nodeIdentityIssues(file, ["duplicate-name"])) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: [...issue.path, "name"],
+      message: `duplicate name "${String(issue.value)}": names must be unique across the whole file`,
+    });
   }
 
   for (const issue of publishSetIssues(file)) {

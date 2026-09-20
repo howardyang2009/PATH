@@ -64,43 +64,78 @@ const RUN_USAGE =
 const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
-interface ParsedRunArgs {
+/**
+ * What `path run` was asked to do, as a **value**: the three forms the one command line accepts, each
+ * carrying only the flags its form can use. `path run` used to parse into one flat twelve-field bag
+ * (ten optional) whose compatibility matrix lived in successive `if` blocks at the end of the parser —
+ * so "`--from` without `--resume`", "`--list-eligible` with `--config`" and the rest were rules a
+ * reader had to reconstruct, and every consumer of the bag had to re-decide which fields its form
+ * could trust. Here the arms make the illegal combinations unconstructable, and the refusals that
+ * remain are the parser's own messages.
+ *
+ * Each arm names the fields the *other* forms own as `undefined`/empty, so the run assembly below
+ * reads one shape without re-checking which form it is holding.
+ */
+export interface LaunchInvocation {
+  kind: "launch";
   workflowPath: string;
-  // `-C <dir>`: the project directory whose `.path/` store this run reads and writes, relocating it
-  // away from the workflow file's own directory (#201). Store-only — the workflow file and the
-  // engine's nested-ref/binary-cwd resolution still key off the workflow path, never `<dir>`
-  // (ADR 0005). Undefined means the default: the workflow file's own directory.
+  /** `-C <dir>`: the directory whose `.path/` store this run reads and writes (#201, ADR 0005). */
   storeDir?: string;
-  resumeRootRunId?: string;
-  // `--from <run-id>`: the rerun boundary K on the resume form (#444). The CLI does zero K-logic — it
-  // forwards this source run id to `Project.resume`, which resolves and validates it. Only valid with
-  // `--resume`.
-  rerunFromRunId?: string;
-  // `--list-eligible` (#446): a dry-run of resume that prints one row per source-tree node with an
-  // `eligible?` column, so an operator can find a legal `--from` value. Requires `--resume`, is mutually
-  // exclusive with `--from`, and refuses the launch-only flags — it launches nothing (spec §2).
-  listEligible: boolean;
   configFile?: string;
-  setPairs: [string, string][];
-  // `--worker-default <type>=<name>`, repeatable (ADR 0044): the operator's run-wide launch
-  // worker-default table, a peer of `--set` (not folded into config — worker selection does not
-  // inherit, CONTEXT.md invariant 5). Each pair picks the worker a step type's un-pinned steps run on
-  // for this run, over any file `worker_defaults`, under a step's own `worker` pin. A later pair for
-  // the same type wins (shallow per-type merge). Kept as pairs here; folded to a `{type: name}` map
-  // when the launch options are assembled.
-  workerDefaultPairs: [string, string][];
+  setPairs: readonly (readonly [string, string])[];
+  workerDefaultPairs: readonly (readonly [string, string])[];
   contextFile?: string;
-  setContextPairs: [string, string][];
+  setContextPairs: readonly (readonly [string, string])[];
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
 }
 
-type ParseResult = { success: true; args: ParsedRunArgs } | { success: false; error: string };
+/**
+ * The resume form. A resumed run's starting context is restored from the original tree (ADR 0003) and a
+ * **launch worker-default** is fixed at the launch it was given on (ADR 0044), so both are refused with
+ * `--resume` — hence the `undefined`/empty members this arm carries instead of them.
+ */
+export interface ResumeInvocation {
+  kind: "resume";
+  workflowPath: string;
+  storeDir?: string;
+  resumeRootRunId: string;
+  /** `--from <run-id>`: the rerun boundary K; the CLI does zero K-logic and forwards it to `Project`. */
+  rerunFromRunId?: string;
+  configFile?: string;
+  setPairs: readonly (readonly [string, string])[];
+  logBackends?: LogBackendId[];
+  processorConcurrency?: number;
+  workerDefaultPairs?: undefined;
+  contextFile?: undefined;
+  setContextPairs?: undefined;
+}
+
+/** `--list-eligible` (#446): a dry-run of Resume that lists candidate Ks and launches nothing. */
+export interface ListEligibleInvocation {
+  kind: "list-eligible";
+  workflowPath: string;
+  storeDir?: string;
+  resumeRootRunId: string;
+  configFile?: undefined;
+  /** Never present: `--set` is a launch flag, refused with `--list-eligible`, so no pairs can exist. */
+  setPairs?: undefined;
+  workerDefaultPairs?: undefined;
+  contextFile?: undefined;
+  /** Never present, as `setPairs`: the listing builds no context seed and launches nothing. */
+  setContextPairs?: undefined;
+  logBackends?: undefined;
+  processorConcurrency?: undefined;
+}
+
+export type RunInvocation = LaunchInvocation | ResumeInvocation | ListEligibleInvocation;
+
+export type RunInvocationResult = { success: true; invocation: RunInvocation } | { success: false; error: string };
 
 // Operator launch-time config via CLI flags and/or a config file (spec §3): `--config <file>`
 // loads a whole object, repeatable `--set key=value` overrides individual top-level keys —
 // both merge over the top-level file's config defaults, nearest wins (format doc §8).
-function parseRunArgs(argv: string[]): ParseResult {
+export function parseRunInvocation(argv: string[]): RunInvocationResult {
   // `-C <dir>` can appear anywhere — including ahead of the workflow positional — exactly as it can
   // on `path runs` (extractDirFlag), so it is stripped before the positional is taken rather than
   // pinned to one slot. Absent means the store defaults to the workflow file's own directory.
@@ -263,9 +298,31 @@ function parseRunArgs(argv: string[]): ParseResult {
     }
   }
 
+  // The compatibility guards above have run, so the form is decided by what survived them: the listing
+  // first (it requires a resume source but carries nothing else), then the resume form, then a launch.
+  if (listEligible && resumeRootRunId !== undefined) {
+    return { success: true, invocation: { kind: "list-eligible", workflowPath, storeDir, resumeRootRunId } };
+  }
+  if (resumeRootRunId !== undefined) {
+    return {
+      success: true,
+      invocation: { kind: "resume", workflowPath, storeDir, resumeRootRunId, rerunFromRunId, configFile, setPairs, logBackends, processorConcurrency },
+    };
+  }
   return {
     success: true,
-    args: { workflowPath, storeDir, resumeRootRunId, rerunFromRunId, listEligible, configFile, setPairs, workerDefaultPairs, contextFile, setContextPairs, logBackends, processorConcurrency },
+    invocation: {
+      kind: "launch",
+      workflowPath,
+      storeDir,
+      configFile,
+      setPairs,
+      workerDefaultPairs,
+      contextFile,
+      setContextPairs,
+      logBackends,
+      processorConcurrency,
+    },
   };
 }
 
@@ -332,7 +389,7 @@ function buildKeyedConfig(
   fileFlag: string,
   file: string | undefined,
   pairFlag: string,
-  pairs: [string, string][],
+  pairs: readonly (readonly [string, string])[],
 ): ConfigResult {
   let config: ConfigObject = {};
 
@@ -365,8 +422,8 @@ function buildKeyedConfig(
   return { success: true, config };
 }
 
-function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
-  return buildKeyedConfig("--config", args.configFile, "--set", args.setPairs);
+function buildOperatorConfig(args: { configFile?: string | undefined; setPairs?: readonly (readonly [string, string])[] | undefined }): ConfigResult {
+  return buildKeyedConfig("--config", args.configFile, "--set", args.setPairs ?? []);
 }
 
 // The launch worker-default table (ADR 0044) folded from the repeatable `--worker-default` pairs into
@@ -375,10 +432,11 @@ function buildOperatorConfig(args: ParsedRunArgs): ConfigResult {
 // parse and no file: a worker name is a plain string selection, not config data. No pairs yields
 // `undefined`, so a run with no flag carries no table and resolves through the file tier exactly as
 // before. Registry-relative validity is the launch-boundary check (#506), not this fold.
-function buildLaunchWorkerDefaults(args: ParsedRunArgs): { [stepType: string]: string } | undefined {
-  if (args.workerDefaultPairs.length === 0) return undefined;
+function buildLaunchWorkerDefaults(args: { workerDefaultPairs?: readonly (readonly [string, string])[] }): { [stepType: string]: string } | undefined {
+  const pairs = args.workerDefaultPairs ?? [];
+  if (pairs.length === 0) return undefined;
   const table: { [stepType: string]: string } = {};
-  for (const [type, name] of args.workerDefaultPairs) table[type] = name;
+  for (const [type, name] of pairs) table[type] = name;
   return table;
 }
 
@@ -388,8 +446,8 @@ type ContextResult =
 
 // The starting-context seed for a fresh (non-`--resume`) run (ADR 0003), feeding `RunOptions.input`
 // instead of operator config.
-function buildContextSeed(args: ParsedRunArgs): ContextResult {
-  const result = buildKeyedConfig("--context", args.contextFile, "--set-context", args.setContextPairs);
+function buildContextSeed(args: { contextFile?: string | undefined; setContextPairs?: readonly (readonly [string, string])[] | undefined }): ContextResult {
+  const result = buildKeyedConfig("--context", args.contextFile, "--set-context", args.setContextPairs ?? []);
   if (!result.success) return result;
 
   // A context seed is plain JSON data (format doc §6.3) — never `$secret`/`$env` wrappers, which are
@@ -444,25 +502,26 @@ function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCan
 }
 
 async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides): Promise<number> {
-  const parsed = parseRunArgs(rest);
+  const parsed = parseRunInvocation(rest);
   if (!parsed.success) {
     io.error(parsed.error);
     return 2;
   }
+  const invocation = parsed.invocation;
 
-  const operatorConfig = buildOperatorConfig(parsed.args);
+  const operatorConfig = buildOperatorConfig(invocation);
   if (!operatorConfig.success) {
     io.error(operatorConfig.error);
     return 2;
   }
 
-  const contextSeed = buildContextSeed(parsed.args);
+  const contextSeed = buildContextSeed(invocation);
   if (!contextSeed.success) {
     io.error(contextSeed.error);
     return 2;
   }
 
-  const loadResult = await loadWorkflowTree(parsed.args.workflowPath);
+  const loadResult = await loadWorkflowTree(invocation.workflowPath);
   if (!loadResult.success) {
     io.error(loadResult.errors.join("\n"));
     return 1;
@@ -480,7 +539,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // against. Every bad entry is reported in one pass, each prefixed `--worker-default:` so the operator
   // knows where to fix it. `--worker-default` is already refused with `--resume`, so a table here is a
   // fresh launch's.
-  const launchWorkerDefaults = buildLaunchWorkerDefaults(parsed.args);
+  const launchWorkerDefaults = buildLaunchWorkerDefaults(invocation);
   const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry);
   if (workerDefaultErrors.length > 0) {
     io.error(workerDefaultErrors.map((message) => `--worker-default: ${message}`).join("\n"));
@@ -494,7 +553,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // serving a whole project, must tell the two apart (#59); `Project.run` takes both so neither
   // caller can conflate them, and that same seam is what lets `-C` relocate the store without
   // re-rooting the workflow.
-  const projectDir = parsed.args.storeDir ?? workflow.workflowDir;
+  const projectDir = invocation.storeDir ?? workflow.workflowDir;
   const opened = openProject(projectDir);
   if (!opened.success) {
     io.error(opened.error);
@@ -508,11 +567,11 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   // eligibility, launching nothing — so it runs before the SIGINT handler and the run assembly below,
   // over the same file load and `-C` store resolution `path run` already did. The `files` tree lets the
   // shared legal-K predicate descend a nested K's refs, exactly as `resume` passes it.
-  if (parsed.args.listEligible) {
+  if (invocation.kind === "list-eligible") {
     let listResult: ListEligibleResult;
     try {
-      // `resumeRootRunId` is defined — `parseRunArgs` refuses `--list-eligible` without `--resume`.
-      listResult = project.listEligible(workflow.rootFile, parsed.args.resumeRootRunId!, workflow.workflowDir, workflow.files);
+      // `resumeRootRunId` is present by construction: the form exists only for a source tree.
+      listResult = project.listEligible(workflow.rootFile, invocation.resumeRootRunId, workflow.workflowDir, workflow.files);
     } finally {
       project.close();
     }
@@ -537,8 +596,8 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     // The registry this file was validated against (ADR 0019 sub-15): dispatch reuses it, so the run
     // never re-scans the folder and cannot execute against a different one than the load validated.
     registry: workflow.registry,
-    logBackends: parsed.args.logBackends,
-    processorConcurrency: parsed.args.processorConcurrency,
+    logBackends: invocation.logBackends,
+    processorConcurrency: invocation.processorConcurrency,
     workerOverrides: overrides.workerOverrides,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,
@@ -549,16 +608,16 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     sourceWorkflowPath: workflow.storeRelativePath(projectDir),
   };
 
-  if (parsed.args.resumeRootRunId !== undefined) {
+  if (invocation.kind === "resume") {
     let resumeResult: ResumeResult;
     try {
       resumeResult = await project.resume(
         workflow.rootFile,
-        parsed.args.resumeRootRunId,
+        invocation.resumeRootRunId,
         workflow.workflowDir,
         // `--from` forwarded verbatim (#444): the CLI does zero K-logic, `Project.resume` is the one
         // authority. Absent = plain Resume.
-        { ...projectOptions, rerunFromRunId: parsed.args.rerunFromRunId },
+        { ...projectOptions, rerunFromRunId: invocation.rerunFromRunId },
       );
     } finally {
       sigint.dispose();
@@ -567,6 +626,8 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return reportResume(resumeResult, io);
   }
 
+  // Only the launch form reaches here (`list-eligible` returned above, `resume` above that), and only a
+  // launch carries a context seed.
   let runResult;
   try {
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {

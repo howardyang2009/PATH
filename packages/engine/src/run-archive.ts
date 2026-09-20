@@ -2,8 +2,8 @@ import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { findRootRun, isReuseRow, subtree, type JsonValue, type LaunchFacts, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
 import type Database from "better-sqlite3";
-import { getLogEventsForRoot, reuseMarkerReferences } from "./logging/db-backend.js";
-import { readNdjsonLog } from "./logging/ndjson-backend.js";
+import { reuseMarkerReferences } from "./logging/db-backend.js";
+import { openRunLog } from "./logging/run-log.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { blobRef, dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
@@ -309,19 +309,11 @@ function makeTree(db: Database.Database, projectDir: string, rootRunId: string, 
     output: () => (root?.status === "succeeded" && root.outputRef ? blob(root.runId, "output") : undefined),
     blob,
     events(afterSeq?: number): LogEvent[] {
-      // `run.log` first, `log_events` second. With both backends on (§8.2's default) the two hold
-      // the same narrative, so reading the file keeps every replay in the default configuration
-      // byte-identical to what it was before the table became readable — including acceptance
-      // §5.2, which uses `run.log` on disk as the yardstick the stream must match. The fallback is
-      // reached exactly when the ndjson backend was off, where the alternative is `[]`.
-      //
-      // Emptiness, not the file's existence, is the switch: a run whose `run.log` is still just its
-      // header replays from the table rather than from nothing, and a run with neither backend on
-      // finds both empty and is genuinely empty.
-      const ndjson = readNdjsonLog(projectDir, rootRunId);
-      // Already masked at write (`log_events` rows come only from `write`), so no second pass here.
-      const events = ndjson.length > 0 ? ndjson : getLogEventsForRoot(db, rootRunId);
-      return afterSeq === undefined ? events : events.filter((event) => event.seq > afterSeq);
+      // One owner for "where did this run's narrative go" (`logging/run-log.ts`): the same rule the
+      // Complete path reads its continuation point from, so the two can never disagree about which
+      // store answers.
+      const log = openRunLog(projectDir, db, rootRunId);
+      return afterSeq === undefined ? log.events() : log.read(afterSeq);
     },
   };
 }

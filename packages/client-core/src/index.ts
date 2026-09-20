@@ -2,6 +2,12 @@
 // consumes: a typed client over the `@path/server` v0 API, an SSE client with Last-Event-ID
 // reconnect/replay, and a framework-agnostic run view-model. No React, no DOM.
 // Normative contract: docs/api/server-api-v0.md; vocabulary: CONTEXT.md.
+//
+// This barrel is the convenience default. The package's `exports` map also names the seams a surface
+// can import narrowly — `@path/client-core/api-client` (the typed HTTP client),
+// `/view-model` (the event-folded run state), `/complete-form` (the Complete form model) and
+// `/blob-source` (a run's blob addressing) — so an import says which module owns a name. Each is
+// pinned by `test/subpath.test.ts`, since a package `exports` path is not something tsc alone checks.
 
 // Surfaces name the domain through this one seam rather than reaching past it. Everything below
 // originates in `@path/schema`, which since #66 owns the runtime vocabulary as well as the workflow
@@ -97,6 +103,7 @@ export {
 // missing blob means. The surfaces keep only their own wiring — the launch form's inputs, the run
 // tree's rows, the narrative's list, the blob hook's `useState`/`useEffect` — on the other side.
 export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from "./launch-json.js";
+export { runBlobSource, type RunBlobSource } from "./blob-source.js";
 export { nodeLabel, nodeEventLabel } from "./node-label.js";
 export { eventMessage } from "./event-message.js";
 export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";
@@ -112,7 +119,7 @@ export {
   coerceCompleteOutput,
   coerceRawCompleteOutput,
   mapCompleteErrors,
-  validateCompleteOutput,
+  validateCompleteDraft,
   type CompleteField,
   type CompleteFieldKind,
   type CompleteFieldValue,

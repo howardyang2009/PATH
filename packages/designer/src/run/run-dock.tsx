@@ -153,15 +153,17 @@ export function RunDock(props: RunDockProps): JSX.Element {
               onDeleted={props.onDeleted}
               reloadNonce={props.reloadNonce}
               // The `Resume from …` K-selection action rides in the selected row's action panel,
-              // below plain Resume (ADR 0033). The Designer feeds it its open buffer
-              // (`rootFile`/`dirty`) for the eager legal-K check; K is the node selected in the tree.
-              resumeTree={props.load.phase === "ready" ? props.load.value.runs : undefined}
+              // below plain Resume (ADR 0033). The Designer feeds it the watched tree, the selected
+              // node as K, and its open buffer (`rootFile`/`dirty`) for the eager legal-K check —
+              // one value, absent until the tree lands.
+              resumeFrom={
+                props.load.phase === "ready"
+                  ? { runs: props.load.value.runs, selectedRunId: props.selectedRunId, rootFile: props.rootFile, dirty: props.dirty }
+                  : undefined
+              }
               // The watched run's display status, so its row reads `awaiting` while a leaf is parked
               // even though the list's summary status stays `running` (ADR 0038).
               displayStatus={props.load.phase === "ready" ? props.load.value.displayStatus : undefined}
-              resumeSelectedRunId={props.selectedRunId}
-              resumeRootFile={props.rootFile}
-              resumeDirty={props.dirty}
             />
           </div>
           <div

@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/schema";
+import { validateOutputSchema, type JsonValue } from "@path/schema";
 
 /**
  * The Complete form model (ADR 0040, CONTEXT.md § Person-activity): a `person-activity` node's
@@ -122,32 +122,20 @@ export function coerceCompleteOutput(
 }
 
 /**
- * The client pre-check: required fields present, enum values in range, number fields numeric. Returns
- * per-field messages keyed by field key ({} when clean). Mirrors what ajv refuses at the server
- * (ADR 0040) for the common cases; the server stays the authority for the rest.
+ * The client pre-check: validate the assembled output against the node's **own** `outputSchema` with
+ * the very validator the Complete route runs (ADR 0040) — one owner for the rule, so the form can no
+ * longer accept an output the route will refuse. The issues are mapped onto the form controls by the
+ * same `mapCompleteErrors` that maps the route's `400`, so a failure reads identically whether it was
+ * caught here or there. A node with no schema accepts any JSON, so there is nothing to check.
  */
-export function validateCompleteOutput(
-  fields: CompleteField[],
-  output: { [key: string]: JsonValue },
-): Record<string, string> {
-  const errors: Record<string, string> = {};
-  for (const field of fields) {
-    const value = output[field.key];
-    const present = value !== undefined && value !== "";
-    if (field.required && !present) {
-      errors[field.key] = "This field is required.";
-      continue;
-    }
-    if (!present) continue;
-    if (field.kind === "enum" && field.enum && !field.enum.includes(String(value))) {
-      errors[field.key] = `Must be one of: ${field.enum.join(", ")}.`;
-    } else if ((field.kind === "number" || field.kind === "integer") && !Number.isFinite(value as number)) {
-      errors[field.key] = "Must be a number.";
-    } else if (field.kind === "integer" && !Number.isInteger(value as number)) {
-      errors[field.key] = "Must be a whole number.";
-    }
-  }
-  return errors;
+export function validateCompleteDraft(outputSchema: JsonValue | null, output: JsonValue): MappedCompleteErrors {
+  if (outputSchema === null) return { fieldErrors: {}, formErrors: [] };
+  // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (what
+  // `coerceCompleteOutput` makes of a number field the person typed text into) into `null`, so the
+  // pre-check reaches the verdict the route reaches instead of accepting what the wire cannot carry.
+  const wire = JSON.parse(JSON.stringify(output)) as JsonValue;
+  const validation = validateOutputSchema(outputSchema, wire);
+  return validation.ok ? { fieldErrors: {}, formErrors: [] } : mapCompleteErrors(validation.issues as unknown as JsonValue);
 }
 
 /** The Complete route's `400` decoded onto the form: per-field messages plus any form-level ones. */

@@ -284,6 +284,9 @@ importers:
 
   packages/schema:
     dependencies:
+      ajv:
+        specifier: ^8.20.0
+        version: 8.20.0
       zod:
         specifier: ^4.6.5
         version: 4.6.5
@@ -306,9 +309,6 @@ importers:
       '@path/schema':
         specifier: workspace:*
         version: link:../schema
-      ajv:
-        specifier: ^8.20.0
-        version: 8.20.0
       better-sqlite3:
         specifier: ^13.0.3
         version: 13.0.3

@@ -13,6 +13,12 @@ import type {
   StartRunResponse,
   StepPluginsResponse,
   WireError,
+  WireLeaseOpRequest,
+  WireLockHeldBody,
+  WireLockRequest,
+  WirePutWorkflowRequest,
+  WirePutWorkflowResponse,
+  WireWorkflowLease,
 } from "@path/schema";
 
 /** A minimal `fetch` shape — injectable so browser/React Native/tests can supply their own. */
@@ -60,13 +66,11 @@ export interface ListRunsQuery {
  * timestamps are server-stamped, and `expires_at = heartbeat_at + TTL` is computed by the server, never
  * trusted from the client. The client presents only its opaque `session_id` to heartbeat, release, or
  * take over.
+ *
+ * The shape itself is `@path/schema`'s `WireWorkflowLease` — the very interface the server authors it
+ * from — so a rename on either side is a compile error rather than a browser reading `undefined`.
  */
-export interface WorkflowLease {
-  session_id: string;
-  acquired_at: string;
-  heartbeat_at: string;
-  expires_at: string;
-}
+export type WorkflowLease = WireWorkflowLease;
 
 /** The camelCase input to a lock acquire/takeover (`POST /v0/workflows/lock`, ADR 0017). */
 export interface AcquireLockInput {
@@ -359,14 +363,13 @@ export class PathApiClient {
   async putWorkflow(input: PutWorkflowInput): Promise<PutWorkflowResult> {
     const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
     if (input.ifMatch !== undefined) headers["If-Match"] = input.ifMatch;
-    const res = await this.fetch(this.url("/v0/workflows"), {
-      method: "PUT",
-      headers,
-      body: JSON.stringify({ workflow_path: input.workflowPath, workflow: input.workflow }),
-    });
+    // The camelCase input is renamed inline to the shared wire shape (ADR 0013): one declaration, so a
+    // field the server stops reading is a compile error here rather than a silently dropped write.
+    const body: WirePutWorkflowRequest = { workflow_path: input.workflowPath, workflow: input.workflow as WirePutWorkflowRequest["workflow"] };
+    const res = await this.fetch(this.url("/v0/workflows"), { method: "PUT", headers, body: JSON.stringify(body) });
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);
-    const parsed = JSON.parse(text) as { relative_path: string; id: string; etag: string };
+    const parsed = JSON.parse(text) as WirePutWorkflowResponse;
     return { relativePath: parsed.relative_path, id: parsed.id, etag: parsed.etag };
   }
 
@@ -377,12 +380,12 @@ export class PathApiClient {
    * that escapes the project root) and other non-2xx statuses raise `PathApiError`.
    */
   async acquireLock(input: AcquireLockInput): Promise<AcquireLockResult> {
-    const body: Record<string, unknown> = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const body: WireLockRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
     if (input.takeover !== undefined) body.takeover = input.takeover;
     const { status, text } = await this.postForResult("/v0/workflows/lock", body);
     if (status === 200) return { status: "granted", lease: JSON.parse(text) as WorkflowLease };
     if (status === 409) {
-      const parsed = JSON.parse(text) as { expires_at?: string };
+      const parsed = JSON.parse(text) as WireLockHeldBody;
       return { status: "held-by-other", expiresAt: parsed.expires_at ?? null };
     }
     throw toApiError(status, text);
@@ -394,7 +397,7 @@ export class PathApiClient {
    * stops beating and warns "editing lease lost" with a re-acquire affordance. Other non-2xx throw.
    */
   async heartbeatLock(input: LeaseOpInput): Promise<HeartbeatResult> {
-    const body = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
     const { status, text } = await this.postForResult("/v0/workflows/lock/heartbeat", body);
     if (status === 200) return { status: "renewed", lease: JSON.parse(text) as WorkflowLease };
     if (status === 409) return { status: "lost" };
@@ -408,7 +411,7 @@ export class PathApiClient {
    * uses `navigator.sendBeacon` against `url("/v0/workflows/lock/release")` instead, which is POST-only.
    */
   async releaseLock(input: LeaseOpInput): Promise<void> {
-    const body = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
     const { status, text } = await this.postForResult("/v0/workflows/lock/release", body);
     if (status < 200 || status >= 300) throw toApiError(status, text);
   }

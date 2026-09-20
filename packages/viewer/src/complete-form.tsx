@@ -6,7 +6,7 @@ import {
   mapCompleteErrors,
   PathApiError,
   resupplyGate,
-  validateCompleteOutput,
+  validateCompleteDraft,
   type CompleteField,
   type CompleteFieldValue,
   type JsonValue,
@@ -91,10 +91,12 @@ export function CompleteForm({
       output = coerceRawCompleteOutput(rawText);
     } else {
       output = coerceCompleteOutput(fields, values);
-      const clientErrors = validateCompleteOutput(fields, output);
-      if (Object.keys(clientErrors).length > 0) {
-        setFieldErrors(clientErrors);
-        setFormErrors([]);
+      // The same validator the route runs, over the node's own schema: a `pattern`, a `minimum` or a
+      // nested shape is caught here now rather than coming back as a `400`.
+      const clientErrors = validateCompleteDraft(outputSchema, output);
+      if (Object.keys(clientErrors.fieldErrors).length > 0 || clientErrors.formErrors.length > 0) {
+        setFieldErrors(clientErrors.fieldErrors);
+        setFormErrors(clientErrors.formErrors);
         return;
       }
       setFieldErrors({});

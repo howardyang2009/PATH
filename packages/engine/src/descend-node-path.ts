@@ -1,5 +1,5 @@
-import { dirname, resolve } from "node:path";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { resolveChildRef } from "./ref-tree.js";
 
 /** Why a descent could not reach the next level of a node-id path. */
 export type NodePathMiss =
@@ -64,11 +64,10 @@ export function descendNodePath(
     if (node === undefined) return { levels, miss: { atIndex: index, reason: "node-missing" } };
     if (node.type !== "workflow") return { levels, miss: { atIndex: index, reason: "not-workflow" } };
     if (files === undefined) return { levels, miss: { atIndex: index, reason: "no-file-tree" } };
-    const childPath = resolve(dir, node.ref);
-    const childFile = files.get(childPath);
-    if (childFile === undefined) return { levels, miss: { atIndex: index, reason: "ref-unresolved" } };
-    file = childFile;
-    dir = dirname(childPath);
+    const child = resolveChildRef(dir, node.ref, files);
+    if (child === undefined) return { levels, miss: { atIndex: index, reason: "ref-unresolved" } };
+    file = child.file;
+    dir = child.dir;
   }
   return { levels };
 }

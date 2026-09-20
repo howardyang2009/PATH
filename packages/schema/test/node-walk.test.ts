@@ -167,7 +167,7 @@ describe("validation reaches deeply nested bodies", () => {
     return { format: "path/workflow@4", id: uuid(), name: "deep", body: body.map(guidify) };
   }
 
-  it("catches a duplicate id buried under every block kind", () => {
+  it("catches a duplicate name buried under every block kind", () => {
     const result = safeParseWorkflowFile(file([step("twice"), deeplyNested(step("twice"))]), builtinRegistry);
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");

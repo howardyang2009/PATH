@@ -10,6 +10,12 @@
 // without needing an engine to read one: `@path/client-core` runs in a browser and would otherwise
 // depend on a package carrying SQLite, child processes and the Agent SDK for two type-only names.
 // The line is what a run *is* (here) versus how a run is *stored* or *executed* (@path/engine).
+//
+// This barrel is the convenience default. The package's `exports` map also names the seams a consumer
+// can import narrowly, so an import says which module owns a name rather than "somewhere in schema":
+// `@path/schema/nodes` (the registry-driven node factory), `@path/schema/node-walk` (the block
+// grammar's one descent) and `@path/schema/wire-v0` (the v0 wire codec). Each is pinned by
+// `test/subpath.test.ts`, since a package `exports` path is not something tsc alone checks.
 
 export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";
@@ -31,6 +37,19 @@ export {
   type PublishSetIssueRule,
 } from "./publish-set.js";
 
+// Node identity's one rule, as data (ADR 0006/0015): the load refinement's name check, the write
+// route's duplicate-`id` check and the Designer's pre-parse open gate all read these, so the three
+// doors cannot disagree about which occurrence offends, which one already held the value, and why.
+export {
+  identityIssues,
+  nodeIdentityIssues,
+  nodeIdentityOccurrences,
+  workflowIdentityOccurrence,
+  type IdentityOccurrence,
+  type NodeIdentityIssue,
+  type NodeIdentityRule,
+} from "./node-identity.js";
+
 export {
   buildCoreMembers,
   ENVELOPE_KEYS,
@@ -46,6 +65,10 @@ export {
 // launch boundary, and prefix their own source onto each returned message. The per-entry core
 // (`collectWorkerDefaultIssues`) stays internal — the file channel imports it directly.
 export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
+
+// `outputSchema` validation (ADR 0040), shared by the two adapters that enforce it: the Complete route
+// (which refuses the submit) and the browser's Complete form (which pre-checks the same output).
+export { validateOutputSchema, type OutputValidation } from "./output-schema.js";
 export type {
   WorkflowNode,
   PromptStep,
@@ -173,9 +196,10 @@ export {
   type LegalKLevelResult,
   type LegalKLevelRun,
 } from "./legal-k.js";
-export { rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
+export { rerunBoundaryIndex, rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
+  ROOT_RUN_SUMMARY_FIELDS,
   fromWireLaunchFacts,
   fromWireRunRecord,
   toRootRunSummary,
@@ -192,7 +216,13 @@ export {
   type StartRunResponse,
   type WireError,
   type WireLaunchFacts,
+  type WireLeaseOpRequest,
+  type WireLockHeldBody,
+  type WireLockRequest,
+  type WirePutWorkflowRequest,
+  type WirePutWorkflowResponse,
   type WireRunRecord,
+  type WireWorkflowLease,
   type WorkflowSummary,
 } from "./wire-v0.js";
 export {

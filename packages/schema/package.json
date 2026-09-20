@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./nodes": "./src/nodes.ts",
+    "./node-walk": "./src/node-walk.ts",
+    "./wire-v0": "./src/wire-v0.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
@@ -12,7 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "ajv": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

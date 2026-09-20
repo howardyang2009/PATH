@@ -18,7 +18,6 @@
   "dependencies": {
     "@path/engine": "workspace:*",
     "@path/schema": "workspace:*",
-    "ajv": "^8.20.0",
     "better-sqlite3": "^13.0.3",
     "zod": "^4.6.5"
   },

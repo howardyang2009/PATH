@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./api-client": "./src/api-client.ts",
+    "./view-model": "./src/view-model.ts",
+    "./complete-form": "./src/complete-form.ts",
+    "./blob-source": "./src/blob-source.ts"
   },
   "types": "./src/index.ts",
   "scripts": {

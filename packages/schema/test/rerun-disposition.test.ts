@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { rerunDisposition } from "../src/rerun-disposition.js";
+import { rerunBoundaryIndex, rerunDisposition } from "../src/rerun-disposition.js";
 
 /**
  * The per-node Resume-from-K verdict (ADR 0036). The descent site and the `while-do` loop used to each
@@ -42,5 +42,22 @@ describe("rerunDisposition", () => {
 
   it("throws when the suffix head is not a top-level node (an invariant Project.resume guards)", () => {
     expect(() => rerunDisposition(body, ["nope"], "a")).toThrow(/not a top-level node/);
+  });
+});
+
+describe("rerunBoundaryIndex", () => {
+  it("is the head's index in the body, so both producers read one position", () => {
+    expect(rerunBoundaryIndex(body, ["a"])).toBe(0);
+    expect(rerunBoundaryIndex(body, ["c"])).toBe(2);
+    // An inner boundary is the same question one level down: only the head counts.
+    expect(rerunBoundaryIndex(body, ["b", "inner"])).toBe(1);
+  });
+
+  it("is undefined for an empty suffix — plain Resume has no boundary at this level", () => {
+    expect(rerunBoundaryIndex(body, [])).toBeUndefined();
+  });
+
+  it("throws the one invariant error for a head the body does not hold", () => {
+    expect(() => rerunBoundaryIndex(body, ["nope"])).toThrow('resume: rerun boundary node "nope" is not a top-level node of the workflow');
   });
 });

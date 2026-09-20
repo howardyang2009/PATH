@@ -20,6 +20,9 @@ interface RunTreeBody {
     node_id: string | null;
     node_name: string | null;
     status: string;
+    /** Wall-clock provenance of the row, read back by the concurrency test's overlap assertion. */
+    started_at: string | null;
+    finished_at: string | null;
     reused_from_run_id?: string | null;
     rerun_from_node_path?: { nodeId: string; nodeName: string }[] | null;
   }[];
@@ -122,6 +125,13 @@ async function pollUntilTerminal(rootRunId: string): Promise<RunTreeBody> {
   }
 }
 
+/** The tree's own root row — the one with no parent — for the timing assertions below. */
+function rootRowOf(body: RunTreeBody): RunTreeBody["runs"][number] {
+  const root = body.runs.find((run) => run.run_id === body.root_run_id);
+  if (root === undefined) throw new Error(`no root row for run "${body.root_run_id}"`);
+  return root;
+}
+
 describe("startPathServer", () => {
   it("binds to an ephemeral port by default and reports a usable URL", () => {
     expect(handle.url).toMatch(/^http:\/\/localhost:\d+$/);
@@ -178,19 +188,12 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   });
 
   it("runs multiple concurrent POSTs without queueing", async () => {
-    const start = Date.now();
     const [a, b] = await Promise.all([
-      postRun({ workflow_path: "slow-step.workflow.json" }),
-      postRun({ workflow_path: "slow-step.workflow.json" }),
+      postRun({ workflow_path: "concurrent-step.workflow.json" }),
+      postRun({ workflow_path: "concurrent-step.workflow.json" }),
     ]);
-    const elapsed = Date.now() - start;
     expect(a.status).toBe(202);
     expect(b.status).toBe(202);
-    // Each step alone sleeps 300ms; serialized execution would delay the second accept to ~600ms.
-    // Concurrent accepts return in tens of ms, so the discriminator is the ~600ms queued floor, not
-    // any tight budget: assert comfortably below it. A 250ms bar had no CI headroom (a slow runner
-    // measured 319ms while genuinely concurrent, still nowhere near the 600ms serialized signal).
-    expect(elapsed).toBeLessThan(500);
 
     const idsA = (await a.json()) as { root_run_id: string };
     const idsB = (await b.json()) as { root_run_id: string };
@@ -202,6 +205,19 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     ]);
     expect(finalA.status).toBe("succeeded");
     expect(finalB.status).toBe("succeeded");
+
+    // "Without queueing" asserted as the **overlap**, not as a stopwatch. Each step lingers ~2s, so two
+    // launches accepted concurrently run over each other: the second starts well before the first
+    // finishes. A server that ran one launch to completion before accepting the next would stamp the
+    // second's start at or after the first's finish — the failure this test is for, and a property that
+    // holds at any runner speed.
+    //
+    // This replaces `expect(elapsed).toBeLessThan(500)`, which measured the machine rather than the
+    // server: on CI it failed at 1559ms — past even the ~600ms a *serialized* server would show, so no
+    // bar could distinguish the two there — while the same test measures 132–190ms on a developer box.
+    const rootA = rootRowOf(finalA);
+    const rootB = rootRowOf(finalB);
+    expect(Date.parse(rootB.started_at!)).toBeLessThan(Date.parse(rootA.finished_at!));
   });
 
   it("400s when workflow_path is missing", async () => {

@@ -4,6 +4,7 @@ import {
   isRootRun,
   isTerminal,
   nodeLabel,
+  runBlobSource,
   type PathApiClient,
   type RunNodeState,
   type RunViewFacts,
@@ -42,44 +43,6 @@ export interface NodeIoProps {
 }
 
 /**
- * The on-disk provenance of a run's `context.json`, for the Context block's ref line. The run record
- * carries no `context_ref` column (only `input_ref`/`output_ref`), so it is derived: a context object
- * always sits beside the run's other blobs, so swap the filename on whichever sibling ref the record
- * carries (input first, then output). A run with neither ref is a workflow-run that recorded no blob
- * to derive from, so fall back to the stable `runs/<root>/<run>/context.json` layout (§6, ADR 0006).
- */
-function contextBlobRef(run: RunNodeState): string {
-  const sibling = run.inputRef ?? run.outputRef;
-  if (sibling !== null) return sibling.replace(/[^/]+$/, "context.json");
-  return `runs/${run.rootRunId}/${run.runId}/context.json`;
-}
-
-/**
- * Where the Input block reads from, and the predecessor root when it does not read this run's own blob.
- * A **successor root** — a resumed tree's own root run — writes its own `input.json` as the empty seed a
- * resume starts from; the input its tree actually started from is the predecessor root's, so the pane
- * reads that run's object directly, the same direct-to-source reading a reuse row gets (#257), never a
- * copy into the successor's tree. Every other run reads its own blob.
- */
-function inputBlobSource(run: RunNodeState): {
-  rootRunId: string;
-  runId: string;
-  ref: string | null;
-  resumedFrom: string | null;
-} {
-  if (isRootRun(run) && typeof run.resumedFromRootRunId === "string") {
-    const predecessor = run.resumedFromRootRunId;
-    return {
-      rootRunId: predecessor,
-      runId: predecessor,
-      ref: `runs/${predecessor}/${predecessor}/input.json`,
-      resumedFrom: predecessor,
-    };
-  }
-  return { rootRunId: run.rootRunId, runId: run.runId, ref: run.inputRef, resumedFrom: null };
-}
-
-/**
  * The node-I/O/C read surface: the selected run's input, output, and context objects, in the right
  * pane of the pinned console (#44 Variant A). A step has exactly one input object and one output
  * object (CONTEXT.md §Invariants), and now a context object too: a workflow-run keeps its own
@@ -88,12 +51,17 @@ function inputBlobSource(run: RunNodeState): {
  * step. The bytes arrive already secret-masked — masking happens at the persistence boundary
  * (CONTEXT.md §Secret) — so this pane never masks anything itself; it renders what the server serves.
  *
+ * Which run each object is read from, whether its ref gates the read, and the provenance line beside it
+ * are `@path/client-core`'s `runBlobSource` — the one owner of the blob layout a surface may know
+ * (there is no `context_ref` on a run row, and a **successor root** reads the predecessor's input). This
+ * pane keeps only its wiring: three `useRunBlob` calls and the blocks that draw them.
+ *
  * The pane reads the run from the same live snapshot the tree renders, so when the run finishes and
  * its `output_ref` appears, the output object is re-read on its own: watching a run is not a verb
  * that stops at the pane boundary (map #40). Refresh stays for the one case the refs cannot signal —
  * re-reading an unchanged ref. Context has no ref column of its own, so it is always fetched and its
- * 404 trusted as "no context recorded" (the `ref: null, settled: true` read below); Refresh re-reads
- * it after a write-through changes it.
+ * 404 trusted as "no context recorded" (`runBlobSource`'s null gate); Refresh re-reads it after a
+ * write-through changes it.
  */
 export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   const [reloadToken, setReloadToken] = useState(0);
@@ -114,26 +82,40 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
   // leaf the set cannot resolve reads as null and the surface degrades. The root run stays `running`
   // while a leaf awaits (ADR 0038), so only the leaf row itself carries this.
   const awaitingNode = awaitingNodeForRun(workflowFiles, run);
-  const blob = { client, rootRunId: run.rootRunId, runId: run.runId, settled, reloadToken };
-  // A successor root's Input block shows the predecessor root's object (see `inputBlobSource`). This
-  // run's own ref must not gate that read — the predecessor is terminal, so its 404 is trusted as "that
-  // tree recorded no input" (the `ref: null, settled: true` read) rather than surfaced as an error.
-  const inputSource = inputBlobSource(run);
+  const inputSource = runBlobSource(run, "input");
+  const outputSource = runBlobSource(run, "output");
+  const contextSource = runBlobSource(run, "context");
   const resumedFrom = inputSource.resumedFrom;
   const input = useRunBlob({
     client,
     rootRunId: inputSource.rootRunId,
     runId: inputSource.runId,
     name: "input",
-    ref: resumedFrom === null ? run.inputRef : null,
+    ref: inputSource.gatedBy,
     settled: settled || resumedFrom !== null,
     reloadToken,
   });
-  const output = useRunBlob({ ...blob, name: "output", ref: run.outputRef });
-  // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change.
-  // Read unconditionally and trust the 404 (`ref: null, settled: true`): a workflow-run has context,
-  // a leaf step 404s and reads as absent — the same shape as an output object a run never recorded.
-  const context = useRunBlob({ ...blob, name: "context", ref: null, settled: true });
+  const output = useRunBlob({
+    client,
+    rootRunId: outputSource.rootRunId,
+    runId: outputSource.runId,
+    name: "output",
+    ref: outputSource.gatedBy,
+    settled,
+    reloadToken,
+  });
+  // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change:
+  // read unconditionally and trust the 404 (a workflow-run has context, a leaf step 404s and reads as
+  // absent) — the same shape as an output object a run never recorded.
+  const context = useRunBlob({
+    client,
+    rootRunId: contextSource.rootRunId,
+    runId: contextSource.runId,
+    name: "context",
+    ref: contextSource.gatedBy,
+    settled: true,
+    reloadToken,
+  });
 
   return (
     <div className="node-io">
@@ -205,7 +187,7 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
       <BlobBlock
         title="Output"
         load={output}
-        blobRef={run.outputRef}
+        blobRef={outputSource.ref}
         testId="node-io-output"
         // Two different absences: a run still going has not written its output, a finished one never
         // did. Saying "yet" about a finished run promises something that is not coming.
@@ -220,7 +202,7 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
         load={context}
         // Context has no ref column; its on-disk provenance is derived from a sibling blob's ref so the
         // line reads like Input's and Output's (`runs/<root>/<run>/context.json`).
-        blobRef={contextBlobRef(run)}
+        blobRef={contextSource.ref}
         testId="node-io-context"
         // A succeeded run records a context; an absent one is a run still in flight or one that never
         // reached a verdict — not a failure of the pane.

@@ -5,7 +5,7 @@ import {
   coerceCompleteOutput,
   coerceRawCompleteOutput,
   mapCompleteErrors,
-  validateCompleteOutput,
+  validateCompleteDraft,
 } from "../src/complete-form.js";
 
 const schema: JsonValue = {
@@ -84,20 +84,44 @@ describe("coerceCompleteOutput", () => {
   });
 });
 
-describe("validateCompleteOutput", () => {
-  it("flags missing required fields and a bad enum", () => {
+describe("validateCompleteDraft", () => {
+  it("flags missing required fields and a bad enum, from the route's own validator", () => {
     const fields = buildCompleteFields(schema);
     const out = coerceCompleteOutput(fields, { approved: true, riskLevel: "extreme" });
-    const errs = validateCompleteOutput(fields, out);
-    expect(errs.reviewer).toMatch(/required/i);
-    expect(errs.riskLevel).toMatch(/one of/i);
-    expect(errs.approved).toBeUndefined();
+    const errs = validateCompleteDraft(schema, out);
+
+    expect(errs.fieldErrors.reviewer).toMatch(/required/i);
+    expect(errs.fieldErrors.riskLevel).toMatch(/one of/i);
+    expect(errs.fieldErrors.approved).toBeUndefined();
   });
 
   it("flags a non-numeric number field", () => {
-    const fields = buildCompleteFields({ type: "object", properties: { amount: { type: "number" } } });
-    const out = { amount: Number.NaN } as unknown as Record<string, JsonValue>;
-    expect(validateCompleteOutput(fields, out).amount).toMatch(/number/i);
+    const outputSchema: JsonValue = { type: "object", properties: { amount: { type: "number" } } };
+    const out = { amount: Number.NaN } as unknown as JsonValue;
+
+    expect(validateCompleteDraft(outputSchema, out).fieldErrors.amount).toMatch(/number/i);
+  });
+
+  it("catches a constraint the form could previously not see — the mirror's whole gap", () => {
+    // A `pattern` passed the old pre-check and came back as a `400`; one validator means it cannot.
+    const outputSchema: JsonValue = {
+      type: "object",
+      required: ["code"],
+      properties: { code: { type: "string", pattern: "^[A-Z]{3}$" } },
+    };
+
+    expect(validateCompleteDraft(outputSchema, { code: "nope" }).fieldErrors.code).toMatch(/pattern/i);
+    expect(validateCompleteDraft(outputSchema, { code: "ABC" }).fieldErrors).toEqual({});
+  });
+
+  it("checks nothing for a node with no schema, which accepts any JSON (ADR 0040)", () => {
+    expect(validateCompleteDraft(null, { anything: true })).toEqual({ fieldErrors: {}, formErrors: [] });
+  });
+
+  it("reports an uncompilable schema at the form level rather than throwing", () => {
+    const bad: JsonValue = { type: "object", properties: { x: { type: "nonsense" } } };
+
+    expect(validateCompleteDraft(bad, { x: 1 }).formErrors.join(" ")).toMatch(/not a valid JSON Schema/);
   });
 });
 

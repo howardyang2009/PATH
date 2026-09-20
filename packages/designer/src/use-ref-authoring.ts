@@ -1,6 +1,7 @@
 import { useState } from "react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
-import { editFile, findById, unwrapEdit } from "./edit-tree.js";
+import { findById } from "./edit-tree.js";
+import { replaceNode } from "./edit-target.js";
 import { relativeRefPath } from "./resolve-ref.js";
 import type { OpenSession } from "./use-open-file.js";
 
@@ -40,12 +41,13 @@ export interface RefAuthoring {
  * Set the empty `workflow` node's `ref` to reach `targetPath`. The stored ref is relative to the referring
  * file's directory (`relativeRefPath`), so this needs the parent's path — the chooser is only offered when
  * the active file has one. Returns the edited file, or `null` if the node is gone or not a `workflow`.
+ * The node splice is `replaceNode`'s (`edit-target.ts`), the same one the pane's field commits use.
  */
 function fileWithNodeRef(file: WorkflowFile, activePath: string, nodeId: string, targetPath: string): WorkflowFile | null {
   const node = findById(file.body, nodeId);
   if (!node || node.type !== "workflow") return null;
   const ref = relativeRefPath(activePath, targetPath);
-  return unwrapEdit(editFile(file, { kind: "replace", id: nodeId, node: { ...node, ref } as WorkflowNode }));
+  return replaceNode(file, { ...node, ref } as WorkflowNode);
 }
 
 export function useRefAuthoring(session: OpenSession, openedFile: WorkflowFile | null, activePath: string | undefined): RefAuthoring {

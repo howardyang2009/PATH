@@ -17,6 +17,7 @@ import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./confi
 import { renderConfigValue } from "./config-value.js";
 import { ConfigValueControl } from "./config-value-control.js";
 import { editKey, type EditCommit, type EditKey } from "./edit-key.js";
+import { replaceNode, withOptionalKey } from "./edit-target.js";
 import { editFile, findById, locate, unwrapEdit } from "./edit-tree.js";
 import {
   applyNodeConfig,
@@ -225,12 +226,8 @@ function FileWorkerDefaultsRegion({
   if (workerDefaultCandidates(plugins).length === 0) return null;
 
   const write = (map: { [type: string]: string }): void => {
-    if (Object.keys(map).length === 0) {
-      const { worker_defaults: _dropped, ...rest } = file;
-      applyEdit(rest as WorkflowFile);
-    } else {
-      applyEdit({ ...file, worker_defaults: map });
-    }
+    // An empty table omits the key rather than writing `worker_defaults: {}` (`withOptionalKey`).
+    applyEdit(withOptionalKey(file, "worker_defaults", Object.keys(map).length === 0 ? undefined : map));
   };
 
   return (
@@ -272,12 +269,8 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
     STEP_ROOTS,
     editKey(file.id, "output"),
     (map, key) => {
-      if (Object.keys(map).length === 0) {
-        const { output: _dropped, ...rest } = file as WorkflowFile & { output?: unknown };
-        applyEdit(rest as WorkflowFile, key);
-      } else {
-        applyEdit({ ...file, output: map } as WorkflowFile, key);
-      }
+      // An empty map omits the `output` key rather than writing `output: {}` (`withOptionalKey`).
+      applyEdit(withOptionalKey(file, "output", Object.keys(map).length === 0 ? undefined : map), key);
     },
   );
 
@@ -329,12 +322,13 @@ function NodeProperties({
   onAddRefTarget?: (nodeId: string) => void;
 }): JSX.Element {
   // A field edit passes its identity so a run of keystrokes folds to one undo entry (#389); a discrete
-  // change (a select, a re-key) passes none, so it is its own entry.
-  const commit = (next: WorkflowNode, key?: EditKey): void =>
-    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: next })), key);
+  // change (a select, a re-key) passes none, so it is its own entry. The splice itself is
+  // `replaceNode`'s (`edit-target.ts`), the one node write door.
+  const commit = (next: WorkflowNode, key?: EditKey): void => applyEdit(replaceNode(file, next), key);
   const reKey = (): void => {
     const id = crypto.randomUUID();
-    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: { ...node, id } })));
+    // The one edit found by its *previous* id: the re-key replaces the node that holds `node.id` today.
+    applyEdit(replaceNode(file, { ...node, id }, node.id));
     onReselect(id);
   };
   const site = locate(file, node.id);
@@ -358,10 +352,10 @@ function NodeProperties({
       <PaneSection key={`fields-${node.id}`} title={node.type} className="pane-fields" defaultOpen>
         {site?.where === "arm" ? (
           <ConditionField
-            key={`when-${node.id}`}
             label="when"
             condition={armWhen(file, site.ownerId, site.armIndex)}
             suggestions={condSuggest}
+            identity={editKey(node.id, "when")}
             onChange={(when) =>
               applyEdit(unwrapEdit(editFile(file, { kind: "set-arm-when", branchId: site.ownerId, armIndex: site.armIndex, when })))
             }
@@ -475,10 +469,10 @@ function KindFields({
       return (
         <>
           <ConditionField
-            key={`condition-${node.id}`}
             label="condition"
             condition={node.condition}
             suggestions={condSuggest}
+            identity={editKey(node.id, "condition")}
             onChange={(condition) => commit({ ...node, condition })}
           />
           <MaxIterationsField
@@ -495,10 +489,10 @@ function KindFields({
     case "checkpoint":
       return (
         <ConditionField
-          key={`condition-${node.id}`}
           label="condition"
           condition={node.condition}
           suggestions={condSuggest}
+          identity={editKey(node.id, "condition")}
           onChange={(condition) => commit({ ...node, condition })}
         />
       );
@@ -907,12 +901,8 @@ function ConfigEditor({
  */
 function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: EditCommit<WorkflowFile> }): JSX.Element {
   const write = (next: ConfigObject | undefined, key?: EditKey): void => {
-    if (next === undefined) {
-      const { config: _dropped, ...rest } = file;
-      applyEdit(rest as WorkflowFile, key);
-    } else {
-      applyEdit({ ...file, config: next }, key);
-    }
+    // A cleared config omits the field rather than writing `config: {}` (`withOptionalKey`).
+    applyEdit(withOptionalKey(file, "config", next), key);
   };
   return (
     <ConfigEditor

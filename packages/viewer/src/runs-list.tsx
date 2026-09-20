@@ -11,7 +11,7 @@ import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { DeleteButton } from "./delete-button.js";
-import { ResumeActions } from "./resume-actions.js";
+import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
@@ -35,8 +35,11 @@ export const RUNS_REFRESH_MS = 5000;
 /** The pane's status filter: one `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
-/** A stable empty tree for rows that show no `Resume from …` — spares a new Map each render. */
-const EMPTY_RUNS: ReadonlyMap<string, RunNodeState> = new Map();
+/**
+ * The affordance a row with no tree behind it carries — a stable empty value, so a rail that never
+ * opted in neither allocates per render nor branches at each row.
+ */
+const EMPTY_RESUME_FROM: ResumeFromAffordance = { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false };
 
 export interface RunsListProps {
   client: PathApiClient;
@@ -68,12 +71,12 @@ export interface RunsListProps {
    */
   reloadNonce?: number;
   /**
-   * The watched run's tree (the same live snapshot the detail pane renders), passed only when the
-   * surface wants the `Resume from …` K-selection action in the selected row's action panel. When
-   * omitted, the panel offers only plain Resume/Delete. K is {@link resumeSelectedRunId}, the node
-   * picked in the detail pane's run tree; the button reads this map to prove K's eligibility eagerly.
+   * The `Resume from …` K-selection affordance, passed only when the surface wants that action in the
+   * selected row's panel (`@path/viewer`'s `ResumeFromAffordance`). When omitted, the panel offers only
+   * plain Resume/Delete. One value rather than the four correlated props it replaces: the tree, the K
+   * selected in it, and the open buffer the eager legal-K check reads are only meaningful together.
    */
-  resumeTree?: ReadonlyMap<string, RunNodeState>;
+  resumeFrom?: ResumeFromAffordance;
   /**
    * The watched run's published display status, keyed by run id — the same fact the detail head, the
    * run tree and the node pane read off `RunViewState` (`displayStatusByRun`). A row the map holds shows
@@ -81,12 +84,6 @@ export interface RunsListProps {
    * `running` (view-only, ADR 0038); every other row has no tree loaded and keeps its summary status.
    */
   displayStatus?: ReadonlyMap<string, RunStatus>;
-  /** The run selected in the detail pane's tree — K for `Resume from …`. */
-  resumeSelectedRunId?: string | null;
-  /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
-  resumeRootFile?: WorkflowFile | null;
-  /** The open buffer's dirty flag — the Designer's save-first gate; the Viewer passes `false`. */
-  resumeDirty?: boolean;
 }
 
 /**
@@ -102,11 +99,8 @@ export function RunsList({
   onResumed,
   onDeleted,
   reloadNonce,
-  resumeTree,
+  resumeFrom,
   displayStatus,
-  resumeSelectedRunId = null,
-  resumeRootFile = null,
-  resumeDirty = false,
 }: RunsListProps) {
   // The scope sent to the wire: a string scopes to one workflow, `undefined` leaves the list
   // cross-workflow. `null` (a scoped surface with nothing open) never reaches a query — the effects
@@ -246,11 +240,11 @@ export function RunsList({
               const showResume = isTerminal(run.status);
               const open = openFor === run.run_id;
               // `Resume from …` (K-selection) shows in the watched run's own panel — the only row with a
-              // loaded tree behind it — when the surface opted in by passing `resumeTree`. It sits below
+              // loaded tree behind it — when the surface opted in by passing `resumeFrom`. It sits below
               // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
               // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033). Suppressed
               // while the run is in flight, like the other two actions.
-              const showResumeFrom = resumeTree !== undefined && run.run_id === selectedRootRunId && !inFlight;
+              const showResumeFrom = resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
                 <li key={run.run_id}>
                   <button
@@ -287,10 +281,7 @@ export function RunsList({
                               showResume={showResume}
                               plainResumable={canResume}
                               showResumeFrom={showResumeFrom}
-                              runs={resumeTree ?? EMPTY_RUNS}
-                              rootFile={resumeRootFile}
-                              selectedRunId={resumeSelectedRunId}
-                              dirty={resumeDirty}
+                              resumeFrom={resumeFrom ?? EMPTY_RESUME_FROM}
                               // The summary's masked launch secrets (ADR 0046), so the form can ask for
                               // them before the submit rather than letting the engine refuse the resume.
                               launchSecretKeys={run.launch_secret_keys}

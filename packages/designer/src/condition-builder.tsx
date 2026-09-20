@@ -9,6 +9,8 @@ import {
   validateCondition,
   type ScalarKind,
 } from "./condition-edit.js";
+import type { EditKey } from "./edit-key.js";
+import { useDraft } from "./validated-draft.js";
 
 import type { ReactNode } from "react";
 
@@ -21,31 +23,37 @@ import type { ReactNode } from "react";
  * the border).
  *
  * A sub-condition is committed only when the **whole** condition validates (`validateCondition`): the
- * builder edits a draft and calls `onChange` only for a valid draft, so a half-typed dot-path never
- * reaches the file and the node stays strict-valid, exactly as the raw-JSON floor keeps a leaf strict
- * (#369). Give each field a stable React `key` so selecting another node reseeds the draft.
+ * builder is the pane's one **draft → validate → commit** protocol (`validated-draft.ts`) over the AST
+ * instead of over text, so a half-typed dot-path never reaches the file and the node stays strict-valid.
+ * `identity` is what re-seeds the draft when the selection moves — the same field identity the rest of
+ * the pane uses, which is why this no longer needs a React `key` its caller had to remember.
  */
 export function ConditionField({
   label,
   condition,
   suggestions,
+  identity,
   onChange,
 }: {
   label: string;
   condition: Condition;
   suggestions: string[];
+  identity: EditKey;
   onChange: (next: Condition) => void;
 }): JSX.Element {
-  const [draft, setDraft] = useState<Condition>(condition);
-  const update = (next: Condition): void => {
-    setDraft(next);
-    if (validateCondition(next) === null) onChange(next);
-  };
-  const error = validateCondition(draft);
+  const { draft, error, onEdit } = useDraft<Condition, Condition>(
+    () => condition,
+    (next) => {
+      const message = validateCondition(next);
+      return message === null ? { ok: true, value: next } : { ok: false, error: message };
+    },
+    identity,
+    onChange,
+  );
   return (
     <fieldset className="cond-fieldset">
       <legend className="cond-legend">{label}</legend>
-      <ConditionNode value={draft} suggestions={suggestions} onChange={update} />
+      <ConditionNode value={draft} suggestions={suggestions} onChange={onEdit} />
       {error ? (
         <p className="pane-error" role="alert">
           {error}
