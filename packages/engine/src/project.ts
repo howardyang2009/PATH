@@ -12,9 +12,8 @@ import type Database from "better-sqlite3";
 import { continuationBlobReader, continuationRunOptions, sourceRuns, successorCapture } from "./continuation.js";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
-import { maxLogSeqForRoot } from "./logging/db-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
-import { readNdjsonLog } from "./logging/ndjson-backend.js";
+import { openRunLog } from "./logging/run-log.js";
 import { acquireCompleteLease } from "./persistence/complete-lease.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
@@ -338,16 +337,9 @@ export function openProject(dir: string): OpenProjectResult {
     // A Complete re-invocation continues the existing per-root log stream (ADR 0041): its events keep
     // counting `seq` from where the tree left off (so they never collide with the recorded rows) and
     // append to the existing `run.log` rather than truncating it. A launch or Resume passes neither.
-    // The continuation point is the max recorded `seq` across *both* stores, so it is correct whichever
-    // backend the launch used — the db table is empty for an ndjson-only run, and vice versa.
+    // The continuation point is `RunLog.lastSeq()` — the one owner of that max across both stores.
     const loggingOptions = continueInput
-      ? {
-          startSeq: Math.max(
-            maxLogSeqForRoot(db, continueInput.rootRunId),
-            readNdjsonLog(absDir, continueInput.rootRunId).reduce((max, event) => Math.max(max, event.seq), 0),
-          ),
-          append: true,
-        }
+      ? { startSeq: openRunLog(absDir, db, continueInput.rootRunId).lastSeq(), append: true }
       : {};
 
     // Persistence first, deliberately. A log backend write failure raises `ObserverError`, which
