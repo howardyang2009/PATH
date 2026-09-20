@@ -5,7 +5,11 @@ import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
  * raw-JSON floor). Every in-registry leaf step type opens; the tiers form a total order so the worst
  * case is a validated JSON box, never a blocked node (ADR 0026, ADR 0018).
  *
- * - **first-class** — `prompt`, `binary`, `workflow`, `person-activity`: hand-built editors elsewhere.
+ * - **first-class** — `prompt`, `workflow`, `person-activity`: hand-built editors elsewhere. Each keeps
+ *   a control the wire field-spec cannot express — `prompt`'s `model` config-ghost and multiline text,
+ *   `workflow`'s ref chooser, `person-activity`'s live-validated `outputSchema`. `binary` no longer
+ *   qualifies: its `command`/`args`/`cwd` are plain scalar fields the generic tier lays out from the
+ *   registry, so it drops to generic and the pane stops restating them by hand.
  * - **generic** — any other registry type whose every field a form can lay out: a control per field.
  * - **raw-json** — any type with a field a form cannot lay out: one live-validated JSON textarea.
  *
@@ -14,8 +18,12 @@ import type { WireFieldSpec, WireStepPlugin } from "@path/client-core";
  */
 export type EditorTier = "first-class" | "generic" | "raw-json";
 
-/** The leaf types with a hand-built editor (§ Editors, first row); `person-activity` joins them (#487). */
-const FIRST_CLASS = new Set(["prompt", "binary", "workflow", "person-activity"]);
+/**
+ * The leaf types with a hand-built editor (§ Editors, first row); `person-activity` joins them (#487).
+ * `binary` is deliberately absent — every one of its fields lays out, so the registry-driven generic
+ * form is its editor and no bespoke one duplicates the field knowledge.
+ */
+const FIRST_CLASS = new Set(["prompt", "workflow", "person-activity"]);
 
 /**
  * Can the generic form lay out a control for this field? Scalars (`string`, `number`, `boolean`) and a

@@ -29,7 +29,6 @@ import {
   rec,
   setNodeField,
   withConfig,
-  withOptionalArray,
   withOptionalString,
 } from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
@@ -458,8 +457,6 @@ function KindFields({
   switch (node.type) {
     case "prompt":
       return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
-    case "binary":
-      return <BinaryEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "workflow":
       return <WorkflowRefEditor node={node} commit={commit} onAddRefTarget={onAddRefTarget} />;
     case "parallel":
@@ -559,21 +556,6 @@ function ModelField({ value, inherited, onChange }: { value: string; inherited: 
         ) : null}
       </div>
     </label>
-  );
-}
-
-/** `binary` — the first-class editor: the `command`, its `args`, its `cwd`, plus the worker. */
-function BinaryEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const command = nodeString(node, "command");
-  const cwd = nodeString(node, "cwd");
-  const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
-  return (
-    <>
-      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, editKey(node.id, "command"))} />
-      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), editKey(node.id, "args"))} />
-      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), editKey(node.id, "cwd"))} />
-      <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
-    </>
   );
 }
 
