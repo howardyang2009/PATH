@@ -1,198 +1,369 @@
 # PATH
 
-PATH is a workflow management system. You write a workflow as JSON. A workflow has steps, workers,
-and controllers (sequence, parallel, branch, while-do, checkpoint). A parallel controller uses a
-`wait-one` or `do-not-wait` join. A `person-activity` step suspends its run until an operator completes
-it. You run a workflow on your machine or over HTTP. You watch, launch, resume, and complete runs in a
-web viewer. You author workflow files on a visual canvas in the designer.
+[![CI](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml/badge.svg)](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml)
+[![workflow format](https://img.shields.io/badge/format-path%2Fworkflow%404-blue)](docs/format/workflow-format-v4.md)
+[![latest release](https://img.shields.io/github/v/release/howardyang2009/PATH)](https://github.com/howardyang2009/PATH/releases)
 
-Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, controller, checkpoint,
-and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the specs.
+PATH runs workflows that can stop and start again. You describe a workflow as JSON: **steps** do the
+work, **controllers** route it, and **workers** decide *how* each step runs. Run it on your machine or
+over HTTP. Watch, launch, resume, and complete runs in the browser. Author files on a visual canvas.
+
+The part that makes PATH different is what happens when work stops:
+
+- **Resume with receipts.** A crashed or cancelled tree re-runs as a *successor*. Every node that
+  already succeeded is reused, not repeated — or you pick the boundary yourself with `--from`.
+- **Humans are steps.** A `person-activity` step parks its run in the leaf-only `awaiting` status.
+  Somebody presses **Complete** an hour or a week later, and the run continues from that point.
+
+## Why PATH
+
+- **JSON, not YAML.** One strict schema (`path/workflow@4`) validates a file before anything runs.
+  Unknown fields are errors, not surprises.
+- **Durable by default.** Every run writes structured rows to SQLite and blobs to a per-project
+  `.path/` directory. A crash costs you the unfinished nodes, nothing more.
+- **Swap the *how*, keep the *what*.** A step's `worker` is a name, not a code path. The same `prompt`
+  step runs on `anthropic` or `deepseek`; `binary` runs on `spawn`. Selection is per step, per
+  worker-default, or per launch.
+- **Open step types.** A leaf step type is a folder under `packages/engine/step-plugins/` that imports
+  the public `@path/engine/plugin` seam. `binary`, `prompt`, and `person-activity` are peers, not
+  special cases.
+- **Two consoles over one client.** The **viewer** monitors, launches, resumes, and completes runs.
+  The **designer** authors files on a node canvas. Both sit on the shared `@path/client-core` API.
+
+## Quick start
+
+PATH needs **Node 24 or later** and **pnpm 12** (the repo pins `pnpm@12.5.1` through `packageManager`;
+`corepack enable` is the easy way to get it).
+
+```bash
+pnpm install
+pnpm typecheck
+pnpm test
+```
+
+### Run a workflow
+
+Save the [example below](#a-workflow-file) as `hello.workflow.json`, then run it with the engine CLI:
+
+```bash
+pnpm path run hello.workflow.json
+# {"greeting":"hello world"}
+```
+
+`pnpm path` is a shortcut for `tsx packages/engine/bin/path.ts`. The bin is a TypeScript entry point;
+there is no build step and no linked `path` on your `PATH`.
+
+### Watch it in the browser
+
+```bash
+pnpm serve
+```
+
+This builds both consoles and starts `path-server` on <http://localhost:8080>. The viewer lives at
+`/viewer/` (bare `/` redirects there), and the designer at `/designer/`. For UI work, run
+`pnpm --filter @path/viewer run dev` or `pnpm --filter @path/designer run dev` instead; each dev
+server proxies API calls to a running `path-server`.
+
+## A workflow file
+
+```json
+{
+  "format": "path/workflow@4",
+  "id": "d82c9ac6-7abb-46f7-8849-98eb4c590f8f",
+  "name": "hello",
+  "body": [
+    {
+      "type": "binary",
+      "id": "8e8cbe71-8b7e-48fb-be34-828c07bb503f",
+      "name": "greet",
+      "command": "node",
+      "args": ["-e", "process.stdout.write(JSON.stringify({ greeting: \"hello world\" }))"],
+      "parse": "json",
+      "publish": { "greeting": "${output.greeting}" }
+    },
+    {
+      "type": "checkpoint",
+      "id": "b0355228-5848-43be-8648-d81f7bfe4df0",
+      "name": "greeting-exists",
+      "condition": { "type": "matches", "path": "context.greeting", "pattern": "^hello" }
+    }
+  ],
+  "output": { "greeting": "${context.greeting}" }
+}
+```
+
+A file has a `format`, a durable `id`, a `name`, and a non-empty `body` array of **nodes**. Every node
+carries a durable `id` and a file-unique `name`. Optional top-level keys are `config`, `input`,
+`worker_defaults`, and `output`.
+
+`greet` is a `binary` step: the engine writes the step's input object to the process's stdin and reads
+the output from stdout. `parse: "json"` turns that stdout string into a structured value, and `publish`
+writes it into the run's context under `greeting`. The `checkpoint` then asserts that context key. If
+the assertion fails, the run stops as failed and the failure propagates like any other.
+
+**Input.** A launch seeds the root context. For a launch over HTTP (and from both consoles), a launch
+`input` override with at least one top-level key wins; otherwise the file's own top-level `input` is the
+default seed; otherwise `{}`. The CLI seeds context from `--context <file>` and
+`--set-context key=value`. A nested `workflow` step's run gets its context from the parent step's input,
+never from the child file's `input`.
+
+**Interpolation.** `${dot.path}` reads `config` and `context` in payload fields, `input` values,
+`publish` values, workflow `output` values, and `max_iterations`. A string that is exactly one
+placeholder keeps the referenced value's real type; otherwise values splice into text. Unresolvable
+paths are errors.
+
+## Core concepts
+
+The full glossary is [`CONTEXT.md`](CONTEXT.md). These are the terms every other page uses.
+
+| Term | Meaning |
+| --- | --- |
+| **Step** | The unit of work. One input object, one output object. A step says *what* to do. |
+| **Worker** | *How* a step type produces its output: a named `run` method the type ships. `binary` ships `spawn`; `prompt` ships `anthropic` and `deepseek`; `person-activity` ships `person`. |
+| **Task** | A step bound to a worker. `task = step + worker`. |
+| **Run** | One executing or executed instance of a task. The only execution term in PATH. Statuses: `pending`, `running`, `awaiting`, `succeeded`, `failed`, `cancelled`. |
+| **Controller** | An engine-evaluated construct with no worker and no run: `sequence`, `parallel`, `branch`, `while-do`, `checkpoint`. |
+| **Config vs context** | `config` is authored, inherited, and evaluated before a run (`${config.x}`). `context` is produced by the run itself (`${context.x}`). |
+| **Node** | Any element of a `body` or a single-`node` slot: a step or a controller. |
+
+Every workflow node type is a member of one flat union discriminated by `type`:
+
+| `type` | Kind | Fields |
+| --- | --- | --- |
+| `binary` | step | `command`, `args?`, `cwd?` |
+| `prompt` | step | `prompt` |
+| `person-activity` | step | `description`, `outputSchema?`, `assignee?` |
+| `workflow` | step | `ref` |
+| `sequence` | controller | `body` |
+| `parallel` | controller | `join` (`collect` / `wait-one` / `do-not-wait`), `branches` |
+| `branch` | controller | `arms`, `else?` |
+| `while-do` | controller | `condition`, `max_iterations`, `node` |
+| `checkpoint` | controller | `condition` |
+
+The engine-owned types are reserved. Every other `type` value is a plugin leaf type, so a file is valid
+*against a registry*: the same bytes load in a tree that holds the plugin and fail in one that does not,
+both correctly.
+
+## Model steps
+
+A `prompt` step sends its rendered prompt plus the step's input object to a model:
+
+```json
+{
+  "type": "prompt",
+  "id": "219caa5b-fad8-42cf-8e22-91e17eb99172",
+  "name": "summarize",
+  "prompt": "Summarize this diff in one paragraph.\n\n${context.diff}",
+  "config": { "model": "sonnet" }
+}
+```
+
+- `config.model` is required for a `prompt` step. A step without it fails at run start.
+- The **worker** selects the provider: `anthropic` (default, Anthropic via the Agent SDK) or
+  `deepseek` (one OpenAI-compatible Chat Completions request). Both get the same rendered message.
+- The `deepseek` worker reads its credential from `config.DEEPSEEK_API_KEY` first and
+  `process.env.DEEPSEEK_API_KEY` second. Its endpoint is environment-only: `DEEPSEEK_BASE_URL`.
+
+## Human-in-the-loop steps
+
+A `person-activity` step computes nothing. It parks the run until a person completes the offline work:
+
+```json
+{
+  "type": "person-activity",
+  "id": "5025fae4-3c8c-418b-86fc-d30c6ebc83d1",
+  "name": "approve-release",
+  "description": "Approve the release notes for ${config.repo}",
+  "assignee": "release-ops",
+  "outputSchema": {
+    "type": "object",
+    "required": ["approved"],
+    "properties": { "approved": { "type": "boolean" } }
+  },
+  "publish": { "approval": "${output}" }
+}
+```
+
+The step's `person` worker returns `{ status: "awaiting" }` and the engine tears the run down cleanly.
+The wait is durable: it survives restarts and deploys. When the person is done, Complete submits the
+output. The engine validates it against `outputSchema` (Ajv, from the current file), writes it as the
+leaf's output, moves the leaf to `succeeded`, and continues the run.
+
+`awaiting` is **leaf-only**. A parent run stays `running` while a descendant awaits, and a surface that
+wants to signal "nothing is executing" derives that from the child rows. A person-activity branch inside
+a `parallel` join behaves like any other branch: `wait-one` can cancel it, and its later Complete lands
+`409`.
+
+## Choosing a worker
+
+A step's worker resolves through four tiers, first hit wins:
+
+1. `node.worker` — the step's own pin.
+2. **Launch worker-default** — supplied by the operator, run-wide, and frozen with the run.
+3. **File worker-default** — the file's top-level `worker_defaults` table, file-scoped and live.
+4. The step type's `defaultWorker` — `spawn`, `anthropic`, or `person`.
+
+```jsonc
+{
+  "worker_defaults": { "prompt": "deepseek" }   // this file's prompt steps now run on deepseek
+}
+```
+
+Launch defaults come from `--worker-default <type>=<name>` on the CLI or a top-level `worker_defaults`
+table on `POST /v0/runs`. The Designer run dock and the viewer launch panel both offer an editor. A
+launch default is validated at the launch boundary (the CLI exits non-zero, the server returns `400`); a
+file table is validated against the registry at load, so a bad table makes the file invalid.
+
+Because a launch worker-default is identity-defining like `input`, it is frozen with the run.
+`--worker-default` is refused with `--resume`: changing it is a new run, not a resume.
+
+## Resume, and where it starts
+
+```bash
+pnpm path run hello.workflow.json --resume <root-run-id>
+pnpm path run hello.workflow.json --resume <root-run-id> --list-eligible
+pnpm path run hello.workflow.json --resume <root-run-id> --from <run-id>
+```
+
+- **`--resume`** re-runs a stopped tree as a *successor*. It reuses every node that already succeeded
+  and re-runs the rest.
+- **`--list-eligible`** prints the candidate rerun boundaries and launches nothing.
+- **`--from <run-id>`** picks boundary K: every node before K reuses its result, K and everything after
+  it re-runs. K may be a top-level node or a node inside a nested `workflow` file. Plain `--resume` is
+  just K at the automatic boundary.
+
+> **Resume is at-least-once.** A re-run step can fire an external effect a second time — a `git push`,
+> an API `POST`. The engine cannot detect or prevent the duplicate. Make steps idempotent. See mvp spec
+> §5.6 and [`docs/research/resume-side-effect-contract.md`](docs/research/resume-side-effect-contract.md).
+
+## CLI reference
+
+```bash
+pnpm path run <workflow.json> [flags]
+pnpm path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>]
+pnpm path runs rm [--force] <root-run-id>
+pnpm path runs prune [--yes]
+```
+
+| Flag | Applies to | Meaning |
+| --- | --- | --- |
+| `-C <dir>` | `run`, `runs` | Target another project's `.path/` store, git-style. |
+| `--config <file>` | `run` | Operator config override, merged over the file's `config`. |
+| `--set key=value` | `run` | One config override. Repeatable. |
+| `--context <file>` | `run` | Root context seed for a fresh run. |
+| `--set-context key=value` | `run` | One context seed entry. Repeatable. |
+| `--worker-default type=name` | `run` | Launch worker-default. Repeatable; refused with `--resume`. |
+| `--resume <root-run-id>` | `run` | Re-run a stopped tree as a successor. |
+| `--from <run-id>` / `--list-eligible` | `run` | Choose, or list, the rerun boundary K. Requires `--resume`. |
+| `--log-backends db,ndjson` | `run` | Turn event backends on or off (`none` means all off). |
+| `--processor-concurrency <n>` | `run` | Engine-wide live-worker cap. |
+
+Engine-level defaults also live in `.path/settings.json` (`log.backends`, `processor.concurrency`).
+Nearest wins: CLI flag, then settings file, then the built-in default. The engine writes
+`.path/path.db` (SQLite), `.path/runs/<root-run-id>/` (blobs and `run.log`), and reads `.path/` beside
+the workflow files, like `.git`.
+
+## HTTP API and consoles
+
+`path-server` serves the v0 API, the viewer, and the designer from one process. Its first argument is
+the project directory and defaults to the current directory.
+
+| Route | Purpose |
+| --- | --- |
+| `POST /v0/runs` | Start a run (`workflow_path`, `input`, `config`, `worker_defaults`). |
+| `GET /v0/runs` | List root runs, with `limit`, `status`, and `workflow_id` filters. |
+| `GET /v0/runs/:root_run_id` | One run's status and full run tree, including frozen launch facts. |
+| `GET /v0/runs/:root_run_id/events` | SSE stream: persisted history first, then live events. |
+| `GET /v0/runs/:root_run_id/blobs/:run_id/:name` | A run's `input.json`, `output.json`, or `context.json`. |
+| `POST /v0/runs/:root_run_id/cancel` | Cancel a root run in flight. |
+| `POST /v0/runs/:root_run_id/resume` | Resume, optionally at a chosen boundary K. |
+| `POST /v0/runs/:step_run_id/complete` | Complete an awaiting step with `output`. |
+| `DELETE /v0/runs/:root_run_id` | Remove a run from both stores. |
+| `GET /v0/workflows`, `GET /v0/workflows/file`, `PUT /v0/workflows` | Discover, read, and write workflow files. |
+| `GET /v0/step-plugins` | The step-type registry the designer authors against. |
+
+Every mutating route sits behind a CSRF/origin gate. The server is a no-auth, localhost-bind,
+single-origin tool: do not expose it.
 
 ## Packages
 
 | Package | What it is |
-|---|---|
-| `@path/schema` | The domain. It holds the workflow file format (`path/workflow@4`) and the registry factory that opens its node union to plugin step types. It also holds the runtime vocabulary that execution produces: run status, log events, traces, and the v0 wire shapes. |
-| `@path/engine` | Runs workflows locally. Provides the `path` CLI. It discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam a step-type plugin compiles against. |
-| `@path/server` | An HTTP and SSE API over the engine. Provides the `path-server` CLI. |
-| `@path/client-core` | A pure-TypeScript API client. It has an SSE client, a run view-model, and a run/workflow write surface. It needs no framework and no Node. |
-| `@path/viewer` | A React web console over `client-core`. It monitors runs live. It launches and resumes runs. |
-| `@path/designer` | A React authoring console over `client-core`. It opens, edits, and saves workflow files on a live canvas. `path-server` serves it at `/designer/`. It is a peer of the viewer and never imports it. |
+| --- | --- |
+| [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@4`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
+| [`@path/engine`](packages/engine) | Runs workflows locally and provides the `path` CLI. Discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam. |
+| [`@path/server`](packages/server) | The HTTP and SSE API over the engine, plus the `path-server` CLI that serves both consoles. |
+| [`@path/client-core`](packages/client-core) | A pure-TypeScript API client: SSE client, run view-model, and run/workflow write surface. No framework, no Node. |
+| [`@path/viewer`](packages/viewer) | The React run console. Monitors runs live, and launches, resumes, and completes them. |
+| [`@path/designer`](packages/designer) | The React authoring console. Opens, edits, and saves workflow files on a live canvas. A peer of the viewer, never an importer of it. |
 
-## Getting started
-
-You need Node 24 or later (`engines.node` is `>=24`).
+## Development
 
 ```bash
-pnpm install
-pnpm -r run typecheck
-pnpm -r run test
+pnpm install          # install the workspace
+pnpm typecheck        # tsc --noEmit in every package
+pnpm test             # vitest in every package
+pnpm serve            # build both consoles and serve everything on :8080
+pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 ```
 
-Run a workflow directly with the engine CLI (from the repo root):
+- `main` is protected. Changes land through a pull request whose CI `test` job is green. A local
+  pre-commit hook refuses a direct commit on `main` (`ALLOW_COMMIT_ON_MAIN=1` overrides once).
+- The CI workflow runs `pnpm install --frozen-lockfile`, `pnpm typecheck`, and `pnpm test` on Node 24.
+- Source is TypeScript only; there is no build step for the engine or server bins.
 
-```bash
-npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>] [--set key=value]...
-npx tsx packages/engine/bin/path.ts run <workflow.json> --worker-default <type>=<name>...  # launch default
-npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id>   # re-run a stopped tree
-npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id> --from <run-id>  # from boundary K
-npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id> --list-eligible  # list K candidates
-npx tsx packages/engine/bin/path.ts runs                     # list root runs (--limit, --status, --workflow)
-npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune [--yes] (confirms first)
-npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another project's .path/, git-style
-```
+## Documentation map
 
-`--resume` re-runs a stopped tree as a *successor* run. It reuses every node that already succeeded.
-It re-runs the other nodes.
+| Document | Covers |
+| --- | --- |
+| [`CONTEXT.md`](CONTEXT.md) | The canonical glossary. Read this first. |
+| [`docs/format/workflow-format-v4.md`](docs/format/workflow-format-v4.md) | The normative workflow file format. |
+| [`docs/spec/mvp-spec.md`](docs/spec/mvp-spec.md) | Execution semantics: scheduling, data flow, persistence. |
+| [`docs/spec/person-activity.md`](docs/spec/person-activity.md) | `awaiting`, Complete, and `outputSchema` validation. |
+| [`docs/spec/resume-from-k.md`](docs/spec/resume-from-k.md) | Choosing the rerun boundary K. |
+| [`docs/api/server-api-v0.md`](docs/api/server-api-v0.md) | Every HTTP route and its wire shapes. |
+| [`docs/adr/`](docs/adr) | Architecture decision records. |
+| [`docs/agents/`](docs/agents) | How agents work in this repo. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history through v0.5.4. |
 
-`--from <run-id>` names the rerun boundary K inside that resume. Every node before K reuses its result;
-K and the nodes after it re-run. `--list-eligible` prints the candidate boundaries and launches nothing.
-A launch worker-default is fixed at launch, so `--worker-default` is refused with `--resume`.
+## Status
 
-**Warning:** Resume is **at-least-once**. A re-run step can fire an external effect again, for example
-a `git push` or an API `POST`. The engine cannot detect or prevent the duplicate. The workflow author
-must make steps idempotent (mvp spec §5.6, `docs/research/resume-side-effect-contract.md`).
+The latest release is **v0.6.3** (2026-09-20). The workflow format is `path/workflow@4` and the store
+schema is `SCHEMA_VERSION` 12. `main` is green: `pnpm typecheck` is clean across all packages and
+**2160 tests pass** — schema 350, engine 832, server 238, designer 349, viewer 169, client-core 194,
+scripts 28.
 
-Or serve it over HTTP and watch it in the viewer:
+The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
+product gap is open. Work continues on plugin requests (a person-switch controller #477, a GOTO
+controller #478), authoring reuse (step template #459, workflow template #460), and the
+[#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
 
-```bash
-pnpm --filter @path/viewer run build               # path-server serves dist/, so build it first
-pnpm --filter @path/designer run build             # path-server also serves the designer bundle
-npx tsx packages/server/bin/path-server.ts . --port 8080   # v0 API + the built viewer + /designer/
-pnpm --filter @path/viewer run dev                 # or: viewer dev server, proxies API calls
-pnpm --filter @path/designer run dev               # or: designer dev server, proxies API calls
-```
+| Release | Date | Headline |
+| --- | --- | --- |
+| v0.6.3 | 2026-09-20 | `person-activity` + `awaiting`, durable Complete, four-tier worker defaults, format `@4`. |
+| v0.6.2 | 2026-09-09 | Resume-from-chosen-K (`--from`, `--list-eligible`), per-iteration `while-do` scopes. |
+| v0.6.1 | 2026-09-04 | Designer polish: aligned properties pane, new authoring affordances. |
+| v0.6.0 | 2026-09-03 | The Designer: author workflow files on a live canvas. |
+| v0.5.4 | 2026-08-30 | Leaf step types become plugins; format `@3`; DB break. |
+| v0.5.3 | 2026-08-23 | Reuse rows; run kind; per-step context snapshots. |
+| v0.5.2 | 2026-08-21 | Viewer rail splits into Workflows and Runs; run delete. |
+| v0.5.1 | 2026-08-20 | One uniform node shape; format `@2`. |
+| v0.5.0 | 2026-08-16 | Parallel joins (`wait-one`, `do-not-wait`) and a console that launches. |
+| v0.4.4 | 2026-08-08 | Resume: re-run a stopped tree as a successor. |
+| v0.4.3 | 2026-08-02 | `$env` config sourcing. |
+| v0.4.1 | 2026-07-27 | Interior seams; architecture review pass. |
+| v0.4.0 | 2026-07-26 | Cancellation. |
 
-`path-server` mounts the viewer at `/` and the designer at `/designer/`. An unbuilt bundle serves
-nothing (its routes 404), so build each bundle you want to serve first.
+Full notes live on the [releases page](https://github.com/howardyang2009/PATH/releases); the
+[`CHANGELOG.md`](CHANGELOG.md) covers v0.1.0 through v0.5.4.
 
-The bins are TypeScript entry points. `tsx` runs them. There is no build step. There is no linked
-`path` or `path-server` on your `PATH`. Thus `pnpm exec path-server` cannot find them.
+## Notes for maintainers and agents
 
-The first argument to `path-server` is the project directory. The server reads and writes `.path/`
-there. This argument defaults to the current directory. The engine CLI is different: it finds its
-project directory from the workflow file location.
-
-## Status (2026-09-20)
-
-The latest release is **v0.6.3** (2026-09-20). `CHANGELOG.md` covers the history through v0.5.4; from
-v0.6.0 on, each release's notes live on the GitHub releases page. The **Designer** has shipped, the
-**person-activity** step type shipped in v0.6.3, and the workflow format is `path/workflow@4`. The
-`main` branch is green. `pnpm -r run typecheck` is clean across all packages. 2160 tests pass: schema
-350, engine 832, server 238, designer 349, viewer 169, client-core 194, scripts 28.
-
-The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
-release-notes pipeline passes its acceptance run (mvp spec §11).
-
-The **cancellation** phase shipped as v0.4.0. After it, the codebase took two architecture-review
-passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred doors:
-
-- **v0.4.3** — `$env` config sourcing (map #113). This is the first of #109's deferred doors. A config
-  value can name an environment variable. It composes with `$secret`. Thus the sourced value is both
-  addressable and masked.
-- **v0.4.4** — **resume** (map #158, then #168). This is the second door. A run can stop from a crash
-  or a cancel. It then re-runs as a *successor*. The successor reuses every node whose recorded run
-  already succeeded. It re-runs the other nodes. The command is
-  `path run <workflow.json> --resume <root-run-id>`. Resume is at-least-once. A re-run step can fire an
-  external effect again. Thus the workflow author must make steps idempotent (mvp spec §5.6).
-- **v0.5.0** — two parts grow up. First, the engine learns to fan out and rejoin. `wait-one` races its
-  branches and keeps the first winner (ADR 0004). `do-not-wait` launches a branch. The enclosing run
-  then continues behind a join barrier (ADR 0008 and 0009). Second, the viewer stops being read-only.
-  It discovers the store's workflows. It launches runs. It resumes cancelled or failed runs from the
-  console. A new `client-core` write surface and a server `GET /v0/workflows` discovery endpoint
-  support this. A CSRF/origin gate protects every mutating route. Under both parts, a durable GUID
-  rebuilds workflow and node identity (format `path/workflow@1`). Thus a rename never breaks reuse or
-  resume. Each root run now records its source-workflow identity. `path runs list` gains a `workflow`
-  column and the `--workflow` and `--workflow-id` filters.
-- **v0.5.1** — the workflow format grows up again. The three container slot shapes of
-  `path/workflow@1` collapse into one uniform node shape. A new `sequence` controller carries the
-  multi-step case. That case used to hide in a bare node array (ADR 0014). A parallel branch is now a
-  node. The branch arm, `else`, and `while-do` slots each hold one `node`. The new format is
-  `path/workflow@2`. It is clean-slate and codemod-migrated. The codemod
-  `scripts/migrate-workflow-format-v2.ts` fills once and is idempotent. There is no DB break. Two
-  Opus 5 refactors are included (#290). `loadWorkflowTree` returns a `LoadedWorkflow`. Both launch
-  routes collapse behind one `prepareWorkflow`.
-- **v0.5.2** — the viewer's left rail grows up. One flat file list becomes two panes: Workflows (the
-  catalog you can launch) and Runs (the ledger you have launched), each run stamped with the workflow
-  it came from. The Workflows pane filters by kind (`all` / `root` / `nested` / `invalid`); an invalid
-  file folds its parse error away. A per-run delete affordance lands, backed by a new
-  `DELETE /v0/runs/:root_run_id` that removes the run from both stores, guarded against a running root
-  and a live successor's reuse reference (`409`, `?force=true` to override). No format or DB break.
-- **v0.5.3** — resume keeps its receipts. A resumed run's reused node is now a real **reuse row** — a
-  `succeeded` run row of its own, not just a log marker — so it shows in the run tree and a chained
-  resume can reuse it straight from `runs` (#257). The audit read path gets three named concepts: a run
-  **kind** (`runKind`, `isRootRun`, `isReuseRow`), a shared **run tree** primitive in `@path/schema`,
-  and one domain `RunRecord` the client's live state collapses onto. Each leaf step also snapshots its
-  context, so the NODE I/O/C panel follows the blackboard step by step (#297). No format or DB break.
-- **v0.5.4** — a leaf step type stops being hardcoded. The two built-ins, `binary` and `prompt`, leave
-  the closed node union and become the first two **plugins** under `packages/engine/step-plugins/`,
-  each importing the public `@path/engine/plugin` seam a third-party plugin would use (ADR 0018–0024).
-  The engine discovers, validates, and dispatches every leaf step through one registry scanned once per
-  run. The `engine | llm` worker union is gone: `worker` is now an optional worker-name string, the
-  format is `path/workflow@3` (codemod `scripts/migrate-workflow-format-v3.ts`), and the per-Processor
-  concurrency cap is renamed from `llm` to `processor` (#331). A `prompt` step now fails on an Agent SDK
-  `is_error` result instead of passing the error text downstream as output (#349). This release breaks
-  both the format (`@2` to `@3`) and the DB (`SCHEMA_VERSION` 7, clean-slate).
-- **v0.6.0** — the Designer arrives (map #254, ADR 0027–0031). A new `@path/designer` bundle, served at
-  `/designer/` beside the viewer's `/viewer/`, authors a workflow file on a node canvas: open and render
-  read-only (#367), edit the tree (#368), edit the selected node or the file through a properties pane
-  (#369, #399), author `$env` / `$secret` config values (#387), undo/redo with a clean/dirty baseline
-  (#389), and mark cross-node and dangling-ref problems (#388, #391). Its run dock mounts the viewer's
-  own `RunsList │ RunDetail │ NodeIo` panels over a shared run-logic seam moved into `@path/client-core`
-  (#359, #372), so a run reads identically on both surfaces. Both surfaces drag-resize their panels. The
-  server serves the two bundles from named mounts and adds the authoring routes: raw file read, the
-  `PUT /v0/workflows` write, the `GET /v0/step-plugins` registry, edit-lock leases, and `workflow_id`-
-  filtered runs (#360–#365). The toolchain moves to **Node 24** to match CI. No format or DB break.
-- **v0.6.1** — the authoring surface gets its polish pass. The properties pane lines each datum up on one
-  aligned row against a shared label column, with infix leaf conditions and lowercase labels (#405,
-  #407). New authoring affordances land: a bare whole-string input, nested workflow-refs by double-click,
-  an interpolable while-do max-iterations, Tab to fill a placeholder in, and a prompt's inherited model
-  shown as a ghost with override and revert (#407). The viewer's workflows list becomes a navigable
-  folder tree that the Designer's open picker reuses, and the node I/O panel shows provenance lines for
-  the Context and Error blocks (#406). Rail resize gets robustness fixes (#404), and the properties pane
-  is refactored behind one draft-validate-commit seam and one keyed-row-editor seam (#409, #410). No
-  format or DB break.
-- **v0.6.2** — resume grows from "restart the failed run" into **Resume-from-chosen-K** (ADR 0033–0037).
-  A run id names the rerun boundary K: a top-level node, or a node inside a nested `workflow` file,
-  reached by a per-level descent path. Every node before K reuses its succeeded result; K and the nodes
-  after it re-run. Plain resume is K at the auto-boundary. The CLI gains `--from <run-id>` and the
-  `--list-eligible` dry run, the Designer its "Resume from …" run-tree button, and the viewer one
-  resume-action card with inline reasons. One eager legality predicate keeps the Designer's preview and
-  the engine's verdict in step. A `while-do` iteration now runs in its own run scope, so a completed
-  loop body reuses on resume. No format or DB break.
-- **v0.6.3** — a step can wait for a person. The new **person-activity** step type parks a run in the
-  leaf-only `awaiting` status, and a durable **Complete** re-invokes the engine over the appendable tree,
-  so an offline decision resumes the tree where it stopped (#462–#496, ADR 0038–0043). Worker choice
-  becomes a four-tier resolution — `node.worker`, a launch worker-default, the file's `worker_defaults`
-  table, then the plugin default — and the format cuts over to `path/workflow@4` (codemod
-  `scripts/migrate-workflow-format-v4.ts`). The launch's operator facts (`input`, `config`, and worker
-  defaults) are frozen with the run, a file can seed a default `input`, and the `prompt` step type gains
-  a `deepseek` worker while its Agent SDK worker is renamed `sdk` to `anthropic`. This release breaks the
-  format (`@3` to `@4`) and the DB (`SCHEMA_VERSION` 9 to 12, clean-slate).
-
-### What's next
-
-- No product gap is open. #110, replaying a run's narrative from `log_events` when the `ndjson` backend
-  is off, shipped and is closed. The step surface now grows by plugin folder rather than by engine
-  change, so the open plugin requests are a person-switch controller (#477) and a GOTO controller
-  (#478). A step template (#459) and a workflow template (#460) ask for authoring reuse, and a project
-  web site is tracked as #458.
-- #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. This
-  stays open. Each door moves into its own wayfinder map when its trigger fires. `$env` (v0.4.3) and
-  resume (v0.4.4) have shipped. The step-plugin seam (v0.5.4) is now the vehicle for the deferred step
-  types: an API-endpoint step type can ship as a plugin folder rather than a core union member.
-  Automatic in-run retry is still deferred.
-- The **Designer** has shipped (map #254, ADR 0015–0017, 0027–0031). It cut into a release as v0.6.0 and
-  got its polish pass in v0.6.1 (see the release timeline above). `@path/designer` is a buildable bundle
-  `path-server` serves at `/designer/`. Map #254 is now the vehicle for further authoring work rather
-  than an unreleased track.
-
-## Maintenance notes
-
-- The warmed sandcastle store is a snapshot of today's lockfile. If agents add dependencies,
-  `pnpm install` in the sandbox downloads only the new packages. This is still fine. But the lockfile
-  can drift a lot over time. If it does, rebuild the image to re-warm it:
+- [`CLAUDE.md`](CLAUDE.md) lists the agent skills this repo uses; [`docs/agents/`](docs/agents) explains
+  the issue tracker (`gh`, repo `howardyang2009/PATH`) and the domain-doc layout.
+- Vocabulary in code, specs, and issues follows `CONTEXT.md` exactly. If you introduce a term, define it
+  there first.
+- The warmed sandcastle store is a snapshot of the current lockfile. New dependencies download
+  incrementally, which is fine, but the lockfile drifts over time. Re-warm the image when it does:
   `pnpm exec sandcastle docker build-image --dockerfile .sandcastle/Dockerfile`.
-- The "limit hit mid-merge" failure can happen again on long cycles. If it does, use the same
-  recovery. Check `git status` for a half-finished merge before you run the loop again.
+- A long merge cycle can hit "limit hit mid-merge". Check `git status` for a half-finished merge before
+  restarting the loop.
