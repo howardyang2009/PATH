@@ -44,6 +44,18 @@ export function blankSecretPaths(keys: readonly string[], supplied: { [key: stri
   });
 }
 
+/**
+ * The operator-facing reason a continuation waits while a recorded secret path is blank: names each
+ * one, singular or plural. `action` is the submitting surface's verb, so the sentence reads in place —
+ * the Complete form's "…before completing." and the Resume card's "…before resuming."
+ */
+export function blankSecretMessage(paths: readonly string[], action: "completing" | "resuming"): string {
+  const names = paths.map((path) => `"${path}"`).join(", ");
+  return paths.length === 1
+    ? `Launch secret ${names} is empty — enter a value before ${action}.`
+    : `Launch secrets ${names} are empty — enter a value for each before ${action}.`;
+}
+
 function valueAtPath(config: { [key: string]: JsonValue } | undefined, path: string): JsonValue | undefined {
   let current: JsonValue | undefined = config;
   for (const segment of path.split(".")) {

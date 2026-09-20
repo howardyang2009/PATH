@@ -355,6 +355,35 @@ describe("RunsList", () => {
       expect(resumeRun).toHaveBeenCalledWith(withSecrets.run_id, { github: { token: "sk-live" } });
     });
 
+    it("disables Resume run and names the blank launch secret until it is supplied (ADR 0046)", async () => {
+      const withSecrets: RootRunSummary = { ...FAILED, launch_secret_keys: ["DEEPSEEK_API_KEY"] };
+      const { client } = stubClient([withSecrets]);
+      const resumeRun = vi.spyOn(client, "resumeRun").mockReturnValue(new Promise(() => {}));
+      renderList(client);
+
+      // The skeleton arrives on screen blank, so the verb is greyed with its reason from the start —
+      // the same rule the Complete form applies to the other continuation door.
+      fireEvent.click(await screen.findByTestId(`run-row-${withSecrets.run_id}`));
+      const button = await screen.findByTestId("resume-button");
+      expect(button).toBeDisabled();
+      expect(screen.getByTestId("resume-secret-error")).toHaveTextContent('"DEEPSEEK_API_KEY"');
+
+      fireEvent.click(button);
+      expect(resumeRun).not.toHaveBeenCalled();
+
+      // A whitespace-only value is no more a credential than an empty one.
+      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"   "}' } });
+      expect(screen.getByTestId("resume-button")).toBeDisabled();
+      expect(screen.getByTestId("resume-secret-error")).toHaveTextContent('"DEEPSEEK_API_KEY"');
+
+      // Supplied, the reason clears and the verb is live again.
+      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' } });
+      expect(screen.queryByTestId("resume-secret-error")).toBeNull();
+      fireEvent.click(screen.getByTestId("resume-button"));
+
+      expect(resumeRun).toHaveBeenCalledWith(withSecrets.run_id, { DEEPSEEK_API_KEY: "sk-live" });
+    });
+
     it("surfaces a resume error rather than claiming it was sent", async () => {
       const { client } = stubClient([FAILED]);
       vi.spyOn(client, "resumeRun").mockRejectedValue(new PathApiError(409, "already succeeded"));

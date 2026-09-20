@@ -8,7 +8,7 @@ import {
 import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
-import { secretSkeletonJson } from "./secret-config.js";
+import { blankSecretMessage, blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface ResumeActionsProps {
   client: PathApiClient;
@@ -99,6 +99,14 @@ export function ResumeActions({
 
   const configResult = parseJsonField(config, { allowEmpty: true });
 
+  // A recorded launch secret is a credential the frozen config holds only as a mask token (ADR 0046),
+  // so the card refuses to submit one the operator left missing, empty, or whitespace — the engine
+  // would otherwise fall through to the environment and continue with a key the operator did not
+  // choose. Derived from the text, not gated on a keystroke, so both resume verbs are disabled (with
+  // the reason shown) from the moment the skeleton is on screen. The Complete form's rule, on the
+  // other continuation door.
+  const blankSecrets = configResult.ok ? blankSecretPaths(secrets, configResult.value) : [];
+
   // `Resume from …` legality — computed only when the button is shown (only then is a tree behind it).
   const eligibility = showResumeFrom
     ? resumeFromEligibility({ rootRunId, runs, rootFile, selectedRunId, dirty })
@@ -113,11 +121,20 @@ export function ResumeActions({
   // forced open on an invalid value so the reason is never hidden behind a collapsed disclosure.
   const configOpen = !configDisabled && (showConfig || !configResult.ok);
 
-  const canResume = resumeEnabledByStatus && configResult.ok && phase !== "sending";
-  const canResumeFrom = resumeFromEnabledByStatus && configResult.ok && phase !== "sending";
+  const canResume = resumeEnabledByStatus && configResult.ok && blankSecrets.length === 0 && phase !== "sending";
+  const canResumeFrom = resumeFromEnabledByStatus && configResult.ok && blankSecrets.length === 0 && phase !== "sending";
+
+  // The one reason both verbs share when it is the *secret*, not the run's status or K, that blocks
+  // them. Kept out of the per-button reason lines so a failed run (both verbs visible) does not print
+  // the same sentence twice; a still-illegal K or a succeeded run keeps its own button reason, which
+  // already disables the button with nothing to fill in — hence the status guard.
+  const secretReason =
+    blankSecrets.length > 0 && (resumeEnabledByStatus || resumeFromEnabledByStatus)
+      ? blankSecretMessage(blankSecrets, "resuming")
+      : null;
 
   const sendResume = (): void => {
-    if (!configResult.ok) return;
+    if (!configResult.ok || blankSecrets.length > 0) return;
     setError(null);
     setPhase("sending");
     client.resumeRun(rootRunId, configResult.value).then(
@@ -130,7 +147,7 @@ export function ResumeActions({
   };
 
   const sendResumeFrom = (): void => {
-    if (eligibility === null || !eligibility.ok || !configResult.ok) return;
+    if (eligibility === null || !eligibility.ok || !configResult.ok || blankSecrets.length > 0) return;
     setError(null);
     setPhase("sending");
     client.resumeRun(rootRunId, configResult.value, eligibility.runId).then(
@@ -182,6 +199,12 @@ export function ResumeActions({
         </>
       )}
 
+      {secretReason !== null && (
+        <p className="pane-note pane-error resume-secret-error" role="alert" data-testid="resume-secret-error">
+          {secretReason}
+        </p>
+      )}
+
       {showResume && (
         <div className="resume-line">
           <button
@@ -209,8 +232,13 @@ export function ResumeActions({
             data-testid="resume-from-submit"
             disabled={!canResumeFrom}
             // K's identity (node name + full run id) is the hover title on an enabled K; on a disabled
-            // one the title is the reason, which also shows inline beside the button.
-            title={eligibility.ok ? `Resume from ${eligibility.nodeName} (${eligibility.runId})` : eligibility.message}
+            // one the title is the reason, which also shows inline beside the button — a blank launch
+            // secret is that reason once K itself is legal.
+            title={
+              eligibility.ok
+                ? (secretReason ?? `Resume from ${eligibility.nodeName} (${eligibility.runId})`)
+                : eligibility.message
+            }
             onClick={sendResumeFrom}
           >
             {phase === "sending"
