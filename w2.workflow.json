@@ -36,12 +36,12 @@
     {
       "id": "3ea7fc7b-7346-4b0c-b266-4e547203a1e9",
       "name": "person-check-2",
-      "type": "person-activity",
-      "description": "do some person check here",
       "publish": {
         "person-check": "${output}"
       },
-      "assignee": "Liying Zhu"
+      "description": "do some person check here",
+      "assignee": "Liying Zhu",
+      "type": "person-activity"
     },
     {
       "type": "checkpoint",
