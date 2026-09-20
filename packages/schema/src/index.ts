@@ -189,6 +189,7 @@ export {
 export { rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
+  ROOT_RUN_SUMMARY_FIELDS,
   fromWireLaunchFacts,
   fromWireRunRecord,
   toRootRunSummary,
@@ -205,7 +206,13 @@ export {
   type StartRunResponse,
   type WireError,
   type WireLaunchFacts,
+  type WireLeaseOpRequest,
+  type WireLockHeldBody,
+  type WireLockRequest,
+  type WirePutWorkflowRequest,
+  type WirePutWorkflowResponse,
   type WireRunRecord,
+  type WireWorkflowLease,
   type WorkflowSummary,
 } from "./wire-v0.js";
 export {

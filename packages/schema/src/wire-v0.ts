@@ -153,6 +153,64 @@ export interface CompleteRunResponse {
   root_run_id: string;
 }
 
+/**
+ * The edit lease's JSON (`POST /v0/workflows/lock` and `.../heartbeat` replies, and the `.editing`
+ * marker on disk), server-authored and snake_case (server-api-v0.md §7.2, ADR 0017).
+ *
+ * Shared because it is a body the server **writes** and the client **reads**: `@path/server` used to
+ * declare it as a private `Lease` and `@path/client-core` as `WorkflowLease`, verbatim copies in
+ * packages with no dependency between them — the drift mode this module exists to prevent. The
+ * client's `WorkflowLease` is now an alias of this, so one rename reaches both ends.
+ *
+ * `session_id` is client-minted (a UUIDv4, ADR 0015's client-mints-identity stance) and the only token
+ * a client presents. `acquired_at`/`heartbeat_at` are server-stamped, and `expires_at = heartbeat_at +
+ * TTL` is server-computed — never read from the client (a client-set expiry could pin a lease forever).
+ */
+export interface WireWorkflowLease {
+  session_id: string;
+  acquired_at: string;
+  heartbeat_at: string;
+  expires_at: string;
+}
+
+/** `POST /v0/workflows/lock` request body — acquire or take over (ADR 0017). */
+export interface WireLockRequest {
+  workflow_path: string;
+  session_id: string;
+  /** `true` overwrites a live marker held by another session — gated behind an explicit user confirm. */
+  takeover?: boolean;
+}
+
+/** `POST /v0/workflows/lock/heartbeat` and `.../release` request body — renew or free (ADR 0017). */
+export interface WireLeaseOpRequest {
+  workflow_path: string;
+  session_id: string;
+}
+
+/**
+ * The `409` a lock acquire returns when a **live** marker is held by another session (ADR 0017) — the
+ * shared error envelope plus the holder's expiry and the flag the client branches on. A normal outcome
+ * for the caller, not an error: the UI counts the expiry down and offers a confirmation-gated takeover.
+ */
+export interface WireLockHeldBody extends WireError {
+  held_by_other: true;
+  expires_at: string;
+}
+
+/** `PUT /v0/workflows` request body — the write door (server-api-v0.md §7, ADR 0016). */
+export interface WirePutWorkflowRequest {
+  workflow_path: string;
+  /** The workflow object as authored (snake_case wire); the server preserves its key order. */
+  workflow: { [key: string]: unknown };
+}
+
+/** `PUT /v0/workflows` reply — the written path, its workflow `id`, and the new strong `ETag`. */
+export interface WirePutWorkflowResponse {
+  relative_path: string;
+  id: string;
+  etag: string;
+}
+
 /** The shared error envelope for every non-2xx response (server-api-v0.md §1). */
 export interface WireError {
   error: {
@@ -258,20 +316,34 @@ export function fromWireLaunchFacts(wire: WireLaunchFacts): LaunchFacts {
 }
 
 /**
+ * Which `RunRecord` fields the root-run summary carries, as the record's own key names — the **one**
+ * statement of the projection. `RootRunSummary` stays written out by hand (below), because a derived
+ * wire type would let a domain rename silently rename a field of the published v0 API; this list is
+ * what `toRootRunSummary` iterates, and `wire-v0.test.ts` pins that its snake spelling is exactly the
+ * summary's keys. Before this, the projection hand-listed the same seven names a second time, one
+ * rename away from a summary that silently carried `null`.
+ */
+export const ROOT_RUN_SUMMARY_FIELDS = {
+  runId: true,
+  workflowName: true,
+  workflowId: true,
+  workflowPath: true,
+  status: true,
+  startedAt: true,
+  finishedAt: true,
+} as const satisfies Partial<Record<keyof RunRecord, true>>;
+
+/**
  * The root-run summary `GET /v0/runs` returns — a projection of the full record, not a new shape.
  * `launchSecretKeys` rides beside it because the summary is what a Resume surface lists: a parked or
  * failed run's masked secrets have to be asked for before the submit, and the row itself does not
  * hold them (they live in the tree's `launch_facts`).
  */
 export function toRootRunSummary(row: RunRecord, launchSecretKeys?: string[]): RootRunSummary {
-  return {
-    run_id: row.runId,
-    workflow_name: row.workflowName,
-    workflow_id: row.workflowId,
-    workflow_path: row.workflowPath,
-    status: row.status,
-    started_at: row.startedAt,
-    finished_at: row.finishedAt,
-    ...(launchSecretKeys !== undefined && launchSecretKeys.length > 0 ? { launch_secret_keys: launchSecretKeys } : {}),
-  };
+  const summary: Record<string, unknown> = {};
+  for (const camel of Object.keys(ROOT_RUN_SUMMARY_FIELDS)) {
+    summary[camelToSnake(camel)] = (row as unknown as Record<string, unknown>)[camel];
+  }
+  if (launchSecretKeys !== undefined && launchSecretKeys.length > 0) summary.launch_secret_keys = launchSecretKeys;
+  return summary as unknown as RootRunSummary;
 }

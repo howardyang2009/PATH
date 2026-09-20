@@ -1,7 +1,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, resolve } from "node:path";
-import { formatIssues } from "@path/schema";
+import { formatIssues, type WireLockHeldBody, type WireWorkflowLease } from "@path/schema";
 import { z } from "zod";
 import { confineToProjectRoot } from "../confine.js";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
@@ -26,17 +26,11 @@ const TTL_MS = 30_000;
 const MARKER_SUFFIX = ".editing";
 
 /**
- * The lease JSON the server authors. `session_id` is client-minted (a UUIDv4, ADR 0015's
- * client-mints-identity stance) and the only token a client presents. `acquired_at`/`heartbeat_at` are
- * server-stamped, and `expires_at = heartbeat_at + TTL` is server-computed — never read from the client
- * (a client-set expiry could pin a lease forever, ADR 0017).
+ * The lease JSON this route authors is `@path/schema`'s `WireWorkflowLease` — the very interface the
+ * Designer's client reads it back through — so the marker's shape has one declaration, not the two
+ * verbatim copies (a private `Lease` here, a `WorkflowLease` there) that used to drift in silence.
  */
-interface Lease {
-  session_id: string;
-  acquired_at: string;
-  heartbeat_at: string;
-  expires_at: string;
-}
+type Lease = WireWorkflowLease;
 
 /** `POST /v0/workflows/lock` body — acquire/takeover. */
 const LockBodySchema = z
@@ -132,11 +126,12 @@ export async function handleWorkflowLock(req: IncomingMessage, res: ServerRespon
   if (live && lease!.session_id !== sessionId && takeover !== true) {
     // A live marker held by another session: the lease conflict `409` (not the write door's byte-`412`).
     // Carry the holder's expiry so the UI can offer a timed takeover.
-    sendJson(res, 409, {
+    const held: WireLockHeldBody = {
       error: { message: "workflow is being edited in another session" },
       held_by_other: true,
       expires_at: lease!.expires_at,
-    });
+    };
+    sendJson(res, 409, held);
     return;
   }
 

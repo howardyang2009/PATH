@@ -7,6 +7,7 @@ import {
   identityIssues,
   nodeIdentityOccurrences,
   workflowIdentityOccurrence,
+  type WirePutWorkflowResponse,
   type WorkflowFile,
 } from "@path/schema";
 import { z } from "zod";
@@ -153,6 +154,8 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
 
   const etag = strongEtag(Buffer.from(serialized, "utf8"));
   const relativePath = relative(resolve(ctx.project.dir), absPath);
+  // The reply is the shared wire shape the client decodes, so a renamed field is a compile error here.
+  const reply: WirePutWorkflowResponse = { relative_path: relativePath, id: validation.file.id, etag };
   res.writeHead(existed ? 200 : 201, { "Content-Type": "application/json", ETag: etag });
-  res.end(JSON.stringify({ relative_path: relativePath, id: validation.file.id, etag }));
+  res.end(JSON.stringify(reply));
 }
