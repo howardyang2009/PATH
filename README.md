@@ -1,9 +1,10 @@
 # PATH
 
 PATH is a workflow management system. You write a workflow as JSON. A workflow has steps, workers,
-and blocks (parallel, branch, while-do). A parallel block uses a `wait-one` or `do-not-wait` join. A
-workflow can also have checkpoints. You run a workflow on your machine or over HTTP. You watch,
-launch, and resume runs in a web viewer. You author workflow files on a visual canvas in the designer.
+and controllers (sequence, parallel, branch, while-do, checkpoint). A parallel controller uses a
+`wait-one` or `do-not-wait` join. A `person-activity` step suspends its run until an operator completes
+it. You run a workflow on your machine or over HTTP. You watch, launch, resume, and complete runs in a
+web viewer. You author workflow files on a visual canvas in the designer.
 
 Read `CONTEXT.md` for the domain glossary. It defines step, worker, task, run, controller, checkpoint,
 and more. Read `docs/spec/mvp-spec.md` and `docs/api/server-api-v0.md` for the specs.
@@ -33,7 +34,10 @@ Run a workflow directly with the engine CLI (from the repo root):
 
 ```bash
 npx tsx packages/engine/bin/path.ts run <workflow.json> [--config <config.json>] [--set key=value]...
+npx tsx packages/engine/bin/path.ts run <workflow.json> --worker-default <type>=<name>...  # launch default
 npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id>   # re-run a stopped tree
+npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id> --from <run-id>  # from boundary K
+npx tsx packages/engine/bin/path.ts run <workflow.json> --resume <root-run-id> --list-eligible  # list K candidates
 npx tsx packages/engine/bin/path.ts runs                     # list root runs (--limit, --status, --workflow)
 npx tsx packages/engine/bin/path.ts runs rm <root-run-id>   # or: runs prune [--yes] (confirms first)
 npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another project's .path/, git-style
@@ -41,6 +45,10 @@ npx tsx packages/engine/bin/path.ts runs -C <dir>             # target another p
 
 `--resume` re-runs a stopped tree as a *successor* run. It reuses every node that already succeeded.
 It re-runs the other nodes.
+
+`--from <run-id>` names the rerun boundary K inside that resume. Every node before K reuses its result;
+K and the nodes after it re-run. `--list-eligible` prints the candidate boundaries and launches nothing.
+A launch worker-default is fixed at launch, so `--worker-default` is refused with `--resume`.
 
 **Warning:** Resume is **at-least-once**. A re-run step can fire an external effect again, for example
 a `git push` or an API `POST`. The engine cannot detect or prevent the duplicate. The workflow author
@@ -66,13 +74,13 @@ The first argument to `path-server` is the project directory. The server reads a
 there. This argument defaults to the current directory. The engine CLI is different: it finds its
 project directory from the workflow file location.
 
-## Status (2026-09-04)
+## Status (2026-09-20)
 
-The latest release is **v0.6.1** (2026-09-04). `CHANGELOG.md` covers the history through v0.5.4; from
-v0.6.0 on, each release's notes live on the GitHub releases page. The **Designer** has shipped: v0.6.0
-cut the authoring canvas into a release, and v0.6.1 polished it. The `main` branch is green.
-`pnpm -r run typecheck` is clean across all packages. 1607 tests pass: schema 280, engine 624, server
-199, designer 251, viewer 124, client-core 105, scripts 24.
+The latest release is **v0.6.3** (2026-09-20). `CHANGELOG.md` covers the history through v0.5.4; from
+v0.6.0 on, each release's notes live on the GitHub releases page. The **Designer** has shipped, the
+**person-activity** step type shipped in v0.6.3, and the workflow format is `path/workflow@4`. The
+`main` branch is green. `pnpm -r run typecheck` is clean across all packages. 2160 tests pass: schema
+350, engine 832, server 238, designer 349, viewer 169, client-core 194, scripts 28.
 
 The MVP is done. All three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. The
 release-notes pipeline passes its acceptance run (mvp spec §11).
@@ -145,11 +153,31 @@ passes: v0.4.1 to v0.4.2, then v0.4.3. Then it started to open its deferred door
   the Context and Error blocks (#406). Rail resize gets robustness fixes (#404), and the properties pane
   is refactored behind one draft-validate-commit seam and one keyed-row-editor seam (#409, #410). No
   format or DB break.
+- **v0.6.2** — resume grows from "restart the failed run" into **Resume-from-chosen-K** (ADR 0033–0037).
+  A run id names the rerun boundary K: a top-level node, or a node inside a nested `workflow` file,
+  reached by a per-level descent path. Every node before K reuses its succeeded result; K and the nodes
+  after it re-run. Plain resume is K at the auto-boundary. The CLI gains `--from <run-id>` and the
+  `--list-eligible` dry run, the Designer its "Resume from …" run-tree button, and the viewer one
+  resume-action card with inline reasons. One eager legality predicate keeps the Designer's preview and
+  the engine's verdict in step. A `while-do` iteration now runs in its own run scope, so a completed
+  loop body reuses on resume. No format or DB break.
+- **v0.6.3** — a step can wait for a person. The new **person-activity** step type parks a run in the
+  leaf-only `awaiting` status, and a durable **Complete** re-invokes the engine over the appendable tree,
+  so an offline decision resumes the tree where it stopped (#462–#496, ADR 0038–0043). Worker choice
+  becomes a four-tier resolution — `node.worker`, a launch worker-default, the file's `worker_defaults`
+  table, then the plugin default — and the format cuts over to `path/workflow@4` (codemod
+  `scripts/migrate-workflow-format-v4.ts`). The launch's operator facts (`input`, `config`, and worker
+  defaults) are frozen with the run, a file can seed a default `input`, and the `prompt` step type gains
+  a `deepseek` worker while its Agent SDK worker is renamed `sdk` to `anthropic`. This release breaks the
+  format (`@3` to `@4`) and the DB (`SCHEMA_VERSION` 9 to 12, clean-slate).
 
 ### What's next
 
-- #110 `@path/server` — replay a run's narrative from `log_events` when the `ndjson` backend is off.
-  This is the one known product gap. The audit record is complete. The API cannot serve it yet.
+- No product gap is open. #110, replaying a run's narrative from `log_events` when the `ndjson` backend
+  is off, shipped and is closed. The step surface now grows by plugin folder rather than by engine
+  change, so the open plugin requests are a person-switch controller (#477) and a GOTO controller
+  (#478). A step template (#459) and a workflow template (#460) ask for authoring reuse, and a project
+  web site is tracked as #458.
 - #109 the **v-next register** — a promotion trigger for each deferred door in mvp spec §10. This
   stays open. Each door moves into its own wayfinder map when its trigger fires. `$env` (v0.4.3) and
   resume (v0.4.4) have shipped. The step-plugin seam (v0.5.4) is now the vehicle for the deferred step
