@@ -43,7 +43,13 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
   // The runs feeding the canvas projection, and the watched run's workflow-level (root run) status. The root
   // run has no `nodeId`, so it projects onto no canvas node — the App badges the breadcrumb with it instead.
   const runsForProjection = load.phase === "ready" ? load.value.runs : null;
-  const workflowRunStatus = load.phase === "ready" ? load.value.status : null;
+  // The breadcrumb badge reads the root's **display** status, the same fact the runs list, the run-detail head,
+  // the run tree and the node pane share (`displayStatusByRun`, ADR 0038): a `running` root with an `awaiting`
+  // leaf below reads `awaiting`. Falls back to the raw root status before the root's row lands in the map.
+  const workflowRunStatus =
+    load.phase === "ready" && rootRunId !== null
+      ? load.value.displayStatus.get(rootRunId) ?? load.value.status
+      : null;
 
   // Switching root run drops the node-in-tree selection: a run id from the previous tree names nothing here.
   const selectRootRun = (id: string): void => {

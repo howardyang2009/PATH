@@ -378,6 +378,14 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     expect(within(row).getByTestId("assignee-chip")).toHaveTextContent("editor");
   });
 
+  it("badges the canvas breadcrumb `awaiting`, not `running`, while a leaf is parked (ADR 0038)", async () => {
+    await renderAwaiting();
+    // The root record stays `running`, but the breadcrumb reads the shared display status, so it agrees
+    // with the run rail: a running root with an awaiting leaf below reads `awaiting`.
+    const badge = await screen.findByTestId("workflow-run-badge");
+    expect(badge).toHaveAttribute("data-run-status", "awaiting");
+  });
+
   it("mounts the Viewer's inline Complete form, built from the node's outputSchema (not the schema-less fallback)", async () => {
     await renderAwaiting();
     fireEvent.click(await screen.findByTestId("tree-row-r-step"));

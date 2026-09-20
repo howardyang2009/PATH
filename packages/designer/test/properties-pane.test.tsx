@@ -503,6 +503,31 @@ describe("the workflow-level output object (§6.4)", () => {
   });
 });
 
+describe("the workflow-level reference list", () => {
+  it("gathers the output roots' referenceable paths into one file-level reference section", async () => {
+    // The file's own `output` reads config/context (STEP_ROOTS), so the file reference list carries
+    // those roots' concrete keys plus their bare prefixes — the counterpart of a node's reference list.
+    const file = {
+      ...paneFile(),
+      config: { model: "claude-sonnet-5" },
+      body: [{ type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { draft: "${output.text}" } }],
+    };
+    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    await screen.findByText("alpha");
+    const canvas = screen.getByRole("region", { name: "Workflow canvas" });
+    const pane = screen.getByRole("region", { name: "Properties" });
+
+    // Empty-canvas click → the file's own properties, which now carry a reference region.
+    fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
+    openSection(pane, "reference");
+    const referenceText = pane.querySelector(".pane-reference .pane-suggest")?.textContent ?? "";
+    expect(referenceText).toMatch(/config\.model/);
+    expect(referenceText).toMatch(/context\.draft/);
+    // The output map cannot read `output`, so the list never offers that root.
+    expect(referenceText).not.toMatch(/output\./);
+  });
+});
+
 describe("the workflow-level input seed", () => {
   it("authors a file input object and writes it on save", async () => {
     const calls = makeCalls();
