@@ -2,7 +2,13 @@ import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, relative, resolve } from "node:path";
 import { validateWorkflowFile } from "@path/engine";
-import { childBodies, formatIssues, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import {
+  formatIssues,
+  identityIssues,
+  nodeIdentityOccurrences,
+  workflowIdentityOccurrence,
+  type WorkflowFile,
+} from "@path/schema";
 import { z } from "zod";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
@@ -23,54 +29,25 @@ const PutWorkflowBodySchema = z
   })
   .strict();
 
-interface IdOccurrence {
-  id: string;
-  path: (string | number)[];
-}
-
-/**
- * Every node's `id` and where it sits, mirroring `@path/schema`'s `collectNames` walk (one flat
- * namespace at every nesting level — a `parallel` branch, a branch arm, the `else`, a `while-do` body
- * are all ordinary nodes reached through `childBodies`).
- */
-function collectIds(nodes: WorkflowNode[], basePath: (string | number)[]): IdOccurrence[] {
-  const found: IdOccurrence[] = [];
-  nodes.forEach((node, index) => {
-    const nodePath = [...basePath, index];
-    found.push({ id: node.id, path: [...nodePath, "id"] });
-    for (const child of childBodies(node)) {
-      found.push(...collectIds(child.nodes, [...nodePath, ...child.path]));
-    }
-  });
-  return found;
-}
-
 /**
  * The internally-duplicate-`id` check the write door owns (ADR 0015, ADR 0016): the copy-paste
- * collision the Designer makes reachable. Node `id` uniqueness is *asserted* by `@path/schema`'s name
- * walk ("unique by construction") but not *checked* there, so the write validates it here — over the
- * same flat namespace as `name`, plus the workflow's own `id`. Each duplicate names **both** offending
- * paths, so a Designer can mark the canvas and a hand-rolled client can find the line — never a bare
- * "duplicate id".
+ * collision the Designer makes reachable. The walk and the rule are `@path/schema`'s
+ * (`identityIssues`), shared with the load refinement's name check and the Designer's open gate, so
+ * the three doors cannot disagree about which occurrence offends. This adapter only renders each issue
+ * as the one `error.details` line the route owes: the offending `id` field path first, then the path
+ * that already held it — never a bare "duplicate id".
+ *
+ * The workflow's own `id` is in the namespace beside its nodes (a node that reuses it collides exactly
+ * as two nodes do); a duplicate among nodes alone never reaches here anyway, because the load
+ * refinement refuses a file whose node `id`s are not UUIDs but not one whose `id`s repeat.
  */
 function duplicateIdErrors(file: WorkflowFile): string[] {
-  const occurrences: IdOccurrence[] = [{ id: file.id, path: ["id"] }, ...collectIds(file.body, ["body"])];
-  const byId = new Map<string, (string | number)[][]>();
-  for (const { id, path } of occurrences) {
-    const list = byId.get(id) ?? [];
-    list.push(path);
-    byId.set(id, list);
-  }
-
-  const errors: string[] = [];
-  for (const [id, paths] of byId) {
-    if (paths.length <= 1) continue;
-    const first = paths[0]!.join(".");
-    for (const path of paths.slice(1)) {
-      errors.push(`${path.join(".")}: duplicate id "${id}": id already used at ${first}`);
-    }
-  }
-  return errors;
+  const occurrences = [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)];
+  return identityIssues(occurrences, ["duplicate-id"]).map((issue) => {
+    const path = [...issue.path, "id"].join(".");
+    const first = [...(issue.firstPath ?? []), "id"].join(".");
+    return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
+  });
 }
 
 /**

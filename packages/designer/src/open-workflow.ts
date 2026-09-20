@@ -1,8 +1,8 @@
 import { z } from "zod";
 import {
   CONTROL_CHILD_SLOTS,
-  IdSchema,
   RESERVED_TYPE_NAMES,
+  identityIssues,
   safeParseWorkflowFile,
   type ChildSlot,
   type StepPluginRegistry,
@@ -190,16 +190,16 @@ function isPresent(id: unknown): boolean {
   return id !== undefined;
 }
 
-/** A present `id` that is a valid UUIDv4 (via the schema's own `IdSchema`, so the shape never drifts from the loader's). */
-function isValidId(id: unknown): boolean {
-  return IdSchema.safeParse(id).success;
-}
-
 /**
  * The identity gate (ADR 0015), over the workflow's own `id` and every node's. A present-but-invalid
  * `id` or a duplicate refuses the open, naming the offenders; a merely absent `id` is stamped fresh and
  * flips the buffer dirty. `root` and `nodes` are the same object graph `safeParseWorkflowFile` then
  * reads, so a stamp lands in the parsed model. Returns a refusal, or `{ dirty }` for a clean/repaired file.
+ *
+ * The **rule** is `@path/schema`'s (`identityIssues`), over the occurrences this pre-parse walk can
+ * see — the same rule the load refinement and the write route apply, so the three doors cannot
+ * disagree about which occurrence offends. Only the refusal's presentation is the Designer's: it names
+ * nodes by human label, which needs this raw pass (the file may not even parse yet).
  */
 function resolveIdentity(
   root: Record<string, unknown>,
@@ -208,12 +208,24 @@ function resolveIdentity(
   const rootRef: RawNodeRef = { obj: root, path: ["(workflow)"] };
   const labelFor = (ref: RawNodeRef): string => (ref === rootRef ? "the workflow" : nodeLabel(ref));
   const all = [rootRef, ...nodes];
+  // Paths are the caller's own spelling (`["(workflow)"]` for the root row), so an issue path maps back
+  // to the ref whose label the message prints.
+  const refByPath = new Map(all.map((ref) => [JSON.stringify(ref.path), ref]));
+  const labelAt = (path: (string | number)[]): string => {
+    const ref = refByPath.get(JSON.stringify(path));
+    return ref === undefined ? `at ${path.join(".")}` : labelFor(ref);
+  };
+
+  const issues = identityIssues(
+    all.map((ref) => ({ id: ref.obj.id, path: ref.path })),
+    ["invalid-id", "duplicate-id"],
+  );
 
   // Present-but-invalid ids refuse — an author who hand-typed a non-UUID may be encoding meaning, which
   // the Designer must not clobber. Aggregate, so one open names every offender.
-  const invalid = all.filter((ref) => isPresent(ref.obj.id) && !isValidId(ref.obj.id));
+  const invalid = issues.filter((issue) => issue.rule === "invalid-id");
   if (invalid.length > 0) {
-    const lines = invalid.map((ref) => `  • ${labelFor(ref)} has an id that is not a UUIDv4: ${JSON.stringify(ref.obj.id)}`);
+    const lines = invalid.map((issue) => `  • ${labelAt(issue.path)} has an id that is not a UUIDv4: ${JSON.stringify(issue.value)}`);
     return {
       status: "invalid-ids",
       message: [`Cannot open: ${invalid.length} node id${invalid.length === 1 ? " is" : "s are"} not valid UUIDv4s.`, ...lines].join("\n"),
@@ -221,21 +233,20 @@ function resolveIdentity(
   }
 
   // Duplicate ids refuse — silently re-minting one is exactly the resume-breaking mutation ADR 0015
-  // exists to prevent; a human must choose which node keeps the id.
-  const byId = new Map<string, RawNodeRef[]>();
-  for (const ref of all) {
-    if (!isPresent(ref.obj.id)) continue;
-    const id = ref.obj.id as string;
-    const group = byId.get(id) ?? [];
-    group.push(ref);
-    byId.set(id, group);
+  // exists to prevent; a human must choose which node keeps the id. One bullet per repeated id, naming
+  // every node that shares it: the first holder plus each later one the issues name.
+  const shared = new Map<unknown, (string | number)[][]>();
+  for (const issue of issues.filter((candidate) => candidate.rule === "duplicate-id")) {
+    const paths = shared.get(issue.value) ?? [];
+    if (paths.length === 0 && issue.firstPath !== undefined) paths.push(issue.firstPath);
+    paths.push(issue.path);
+    shared.set(issue.value, paths);
   }
-  const collisions = [...byId.entries()].filter(([, refs]) => refs.length > 1);
-  if (collisions.length > 0) {
-    const lines = collisions.map(([id, refs]) => `  • id ${JSON.stringify(id)} is shared by ${refs.map(labelFor).join(", ")}`);
+  if (shared.size > 0) {
+    const lines = [...shared.entries()].map(([id, paths]) => `  • id ${JSON.stringify(id)} is shared by ${paths.map(labelAt).join(", ")}`);
     return {
       status: "duplicate-ids",
-      message: [`Cannot open: ${collisions.length} node id${collisions.length === 1 ? " is" : "s are"} used more than once.`, ...lines].join("\n"),
+      message: [`Cannot open: ${shared.size} node id${shared.size === 1 ? " is" : "s are"} used more than once.`, ...lines].join("\n"),
     };
   }
 

@@ -31,6 +31,19 @@ export {
   type PublishSetIssueRule,
 } from "./publish-set.js";
 
+// Node identity's one rule, as data (ADR 0006/0015): the load refinement's name check, the write
+// route's duplicate-`id` check and the Designer's pre-parse open gate all read these, so the three
+// doors cannot disagree about which occurrence offends, which one already held the value, and why.
+export {
+  identityIssues,
+  nodeIdentityIssues,
+  nodeIdentityOccurrences,
+  workflowIdentityOccurrence,
+  type IdentityOccurrence,
+  type NodeIdentityIssue,
+  type NodeIdentityRule,
+} from "./node-identity.js";
+
 export {
   buildCoreMembers,
   ENVELOPE_KEYS,
