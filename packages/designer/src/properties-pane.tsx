@@ -70,8 +70,8 @@ import {
  * The pane's anchor is its **identity** — `name`, then `id` — and it never folds away: it is how the
  * author knows which node is in view. Below it, the kind's own fields are a {@link PaneSection} that
  * opens **expanded**, and the payload regions — a step's **config**, **input**, **context writes** and
- * **reference**, and the file's own **config**, **input**, **worker defaults** and **output** — are
- * sections that
+ * **reference**, and the file's own **config**, **input**, **worker defaults**, **output** and
+ * **reference** — are sections that
  * start **collapsed**: selecting a node shows its identity and its kind fields, and the author unfolds
  * only the payload they came for. A section's header is its toggle, so a collapsed region still names
  * itself. Expansion is per node — a section resets to its default when the selection moves (each is
@@ -173,7 +173,30 @@ function FileProperties({
       <FileWorkerDefaultsRegion key={`file-worker-defaults-${file.id}`} file={file} plugins={plugins} applyEdit={applyEdit} />
       <hr className="pane-divider" />
       <FileOutputRegion file={file} applyEdit={applyEdit} />
+      <FileReferenceSection file={file} />
     </div>
+  );
+}
+
+/**
+ * The file-level **Reference** list, the counterpart of a node's {@link ReferenceSection} (§ Input/output
+ * wiring). The file's only interpolable field is its own `output` map, whose values read `config.` /
+ * `context.` (`STEP_ROOTS` — the output map cannot read `output`), so the list gathers exactly those
+ * referenceable dot-paths. It is the shared, always-visible reminder that mirrors the per-row `output`
+ * autocomplete. `STEP_ROOTS` always contributes its bare prefixes, so the list is never empty and the
+ * section always renders.
+ */
+function FileReferenceSection({ file }: { file: WorkflowFile }): JSX.Element | null {
+  const paths = referenceablePaths(file, [...STEP_ROOTS]);
+  if (paths.length === 0) return null;
+  return (
+    <>
+      <hr className="pane-divider" />
+      {/* Keyed by the file: a re-key opens the section collapsed again. */}
+      <PaneSection key={file.id} title="reference" className="pane-reference">
+        <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
+      </PaneSection>
+    </>
   );
 }
 
