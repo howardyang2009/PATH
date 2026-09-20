@@ -2,7 +2,7 @@ import { STEP_ROOTS } from "@path/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { editKey, type EditKey } from "../src/edit-key.js";
-import { useKeyedRows, useValidatedDraft, type DraftResult } from "../src/validated-draft.js";
+import { useDraft, useKeyedRows, useValidatedDraft, type DraftResult } from "../src/validated-draft.js";
 
 /**
  * The draft protocol's own seam: the identity a field passes is what re-seeds it, so a caller can no
@@ -18,6 +18,31 @@ function DraftField({ owner }: { owner: string }): JSX.Element {
     () => {},
   );
   return <input aria-label="draft" value={draft} onChange={(e) => onEdit(e.target.value)} />;
+}
+
+/**
+ * A structured draft — the `ConditionField` shape — over the protocol's core rather than over text: the
+ * draft is what the author typed, the committed value is the validated form of it.
+ */
+function StructuredField({
+  owner,
+  onCommit,
+}: {
+  owner: string;
+  onCommit: (value: string, key?: EditKey) => void;
+}): JSX.Element {
+  const { draft, error, onEdit } = useDraft<string, string>(
+    () => `seeded-${owner}`,
+    (next) => (next.length < 3 ? { ok: false, error: "Too short." } : { ok: true, value: next.toUpperCase() }),
+    editKey(owner, "when"),
+    onCommit,
+  );
+  return (
+    <>
+      <input aria-label="structured" value={draft} onChange={(e) => onEdit(e.target.value, editKey(owner, "when"))} />
+      {error ? <p role="alert">{error}</p> : null}
+    </>
+  );
 }
 
 function RowsField({ owner, onCommit }: { owner: string; onCommit: (map: Record<string, string>, key?: EditKey) => void }): JSX.Element {
@@ -45,6 +70,38 @@ describe("useValidatedDraft — the identity re-seeds the draft", () => {
     // Returning re-seeds from the source too, rather than remembering the abandoned edit.
     rerender(<DraftField owner="a" />);
     expect((screen.getByLabelText("draft") as HTMLInputElement).value).toBe("seeded-a");
+  });
+});
+
+describe("useDraft — the core, over a structured draft", () => {
+  it("holds an invalid draft, shows its message, and commits nothing", () => {
+    const committed: string[] = [];
+    render(<StructuredField owner="a" onCommit={(value) => committed.push(value)} />);
+
+    fireEvent.change(screen.getByLabelText("structured"), { target: { value: "ab" } });
+
+    expect((screen.getByLabelText("structured") as HTMLInputElement).value).toBe("ab");
+    expect(screen.getByRole("alert")).toHaveTextContent("Too short.");
+    expect(committed).toEqual([]);
+  });
+
+  it("commits the validated value, not the draft, and carries the edit's fold key", () => {
+    const committed: { value: string; key?: EditKey }[] = [];
+    render(<StructuredField owner="a" onCommit={(value, key) => committed.push({ value, key })} />);
+
+    fireEvent.change(screen.getByLabelText("structured"), { target: { value: "abc" } });
+
+    expect(committed).toEqual([{ value: "ABC", key: { owner: "a", field: "when" } }]);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
+
+  it("re-seeds the structured draft when the identity changes", () => {
+    const { rerender } = render(<StructuredField owner="a" onCommit={() => {}} />);
+    fireEvent.change(screen.getByLabelText("structured"), { target: { value: "typed" } });
+
+    rerender(<StructuredField owner="b" onCommit={() => {}} />);
+
+    expect((screen.getByLabelText("structured") as HTMLInputElement).value).toBe("seeded-b");
   });
 });
 

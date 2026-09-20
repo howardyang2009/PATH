@@ -20,42 +20,55 @@ import { wireToRegistry } from "./open-workflow.js";
  * (#369/#370, designer-spec § Editors, § Input/output wiring, § Context reads and writes). The rule the
  * pane must never break: an author sees a draft while it is invalid, but an invalid draft is **never
  * committed**, so the node (or file) on the canvas stays strict-valid — only the editor's fidelity
- * degrades. That rule used to be re-spelled in each field. Here it has one home in two shapes:
+ * degrades. That rule used to be re-spelled in each field. Here it has one core and three shapes:
  *
- * - **`useValidatedDraft`** — the hook for a single-text field (the raw-JSON floor, the input object, the
- *   max-iterations line). It holds the draft and the error, runs a pure `validate` on each keystroke, and
- *   commits only the `ok` value.
- * - **`validRowsToMap`** — the pure guard for a key→value row list (the publish map, the file output
- *   map): it builds the map only when every named row's value interpolates, else reports not-ok so the
- *   caller drops the commit.
+ * - **`useDraft`** — the core: hold a draft of any type, run a pure `validate` on each edit, commit only
+ *   the `ok` value, re-seed when the field's **identity** changes (`edit-key.ts`).
+ * - **`useValidatedDraft`** — the single-text field (the raw-JSON floor, the input object, the
+ *   max-iterations line) as that core over a string.
+ * - **`ConditionField`** (`condition-builder.tsx`) — the structured `Condition` builder as the same core
+ *   over an AST, so it no longer hand-rolls the hold-validate-commit dance and no longer depends on a
+ *   React `key` its caller had to remember.
+ * - **`useKeyedRows` / `validRowsToMap`** — the key→value row list (the publish map, the file output
+ *   map): the pure guard says whether the rows *can* commit, and the hook commits through the core.
  *
  * The `validate*` functions are pure and unit-tested directly, off the pane's render path.
  */
 
-/** The outcome of validating one draft: a committable value, or a message to show and not commit. */
-export type DraftResult<T> = { ok: true; value: T } | { ok: false; error: string };
+/**
+ * The outcome of validating one draft: a committable value, or a message to show and not commit. The
+ * message is optional, because a field may hold a draft **silently** — a keyed row mid-edit commits
+ * nothing and shows no error, where the raw-JSON floor names what is wrong.
+ */
+export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: string };
 
 /**
- * Hold a single-text field's draft and error, validating every keystroke and committing only a valid
- * value. `initial` seeds the draft (a value or a lazy initializer); `validate` is the pure per-field
- * rule; `identity` is which field this draft belongs to (`edit-key.ts`) — when it changes the draft
- * re-seeds, so selecting another node never shows the previous node's text; `commit` receives the
- * `ok` value. The returned `onEdit` is the textarea/input `onChange` handler; `error` drives the
- * field's `aria-invalid` + message.
+ * The protocol's core, over a draft of `D` that validates into a committable `C`.
  *
- * Taking the identity here is what removed the silent React `key` requirement: the field used to
- * re-seed only because its caller remembered `key={input-${node.id}}`, a second statement of the same
- * fact that a new call site could forget.
+ * `initial` seeds the draft (lazily, so a re-seed costs nothing until the identity actually changes);
+ * `validate` is the pure per-field rule; `identity` is which field this draft belongs to — when it
+ * changes the draft re-seeds, so selecting another node never shows the previous node's value; `commit`
+ * receives the `ok` value. An `onEdit` may carry its own `key` for the undo fold (a row edit folds by
+ * row index); a field whose whole draft is one edit's subject passes none and lets its `commit` closure
+ * name the key, as the text fields do. Taking the identity here is what removed the silent React `key`
+ * requirement: the field used to re-seed only because its caller remembered `key={…}`, a second
+ * statement of the same fact that a new call site could forget.
  */
-export function useValidatedDraft<T>(
-  initial: string | (() => string),
-  validate: (text: string) => DraftResult<T>,
+export interface DraftField<D> {
+  draft: D;
+  error: string | null;
+  onEdit: (next: D, key?: EditKey) => void;
+}
+
+export function useDraft<D, C>(
+  initial: () => D,
+  validate: (draft: D) => DraftResult<C>,
   identity: EditKey,
-  commit: (value: T) => void,
-): { draft: string; error: string | null; onEdit: (text: string) => void } {
-  const seed = (): { identity: EditKey; draft: string; error: string | null } => ({
+  commit: (value: C, key?: EditKey) => void,
+): DraftField<D> {
+  const seed = (): { identity: EditKey; draft: D; error: string | null } => ({
     identity,
-    draft: typeof initial === "function" ? initial() : initial,
+    draft: initial(),
     error: null,
   });
   const [state, setState] = useState(seed);
@@ -63,17 +76,35 @@ export function useValidatedDraft<T>(
   // and the one reset both folding and re-seeding now read from.
   if (!sameEditKey(state.identity, identity)) setState(seed());
 
-  const onEdit = (text: string): void => {
-    const result = validate(text);
+  const onEdit = (next: D, key?: EditKey): void => {
+    const result = validate(next);
     if (!result.ok) {
-      setState({ identity, draft: text, error: result.error });
+      setState({ identity, draft: next, error: result.error ?? null });
       return;
     }
-    setState({ identity, draft: text, error: null });
-    commit(result.value);
+    setState({ identity, draft: next, error: null });
+    commit(result.value, key);
   };
 
   return { draft: state.draft, error: state.error, onEdit };
+}
+
+/**
+ * Hold a single-text field's draft and error, validating every keystroke and committing only a valid
+ * value. `initial` seeds the draft (a value or a lazy initializer); `validate` is the pure per-field
+ * rule; `identity` is which field this draft belongs to (`edit-key.ts`) — when it changes the draft
+ * re-seeds, so selecting another node never shows the previous node's text; `commit` receives the
+ * `ok` value.
+ */
+export function useValidatedDraft<T>(
+  initial: string | (() => string),
+  validate: (text: string) => DraftResult<T>,
+  identity: EditKey,
+  commit: (value: T) => void,
+): { draft: string; error: string | null; onEdit: (text: string) => void } {
+  const field = useDraft<string, T>(typeof initial === "function" ? initial : () => initial, validate, identity, commit);
+  // The text field's whole draft is the edit's subject, so its `commit` closure names the fold key.
+  return { draft: field.draft, error: field.error, onEdit: (text) => field.onEdit(text) };
 }
 
 /**
@@ -228,21 +259,26 @@ export function useKeyedRows(
   identity: EditKey,
   commit: (map: Record<string, string>, key?: EditKey) => void,
 ): KeyedRowsEditor {
-  const seed = (): { identity: EditKey; rows: KeyedRow[] } => ({ identity, rows: initial() });
-  const [state, setState] = useState(seed);
-  if (!sameEditKey(state.identity, identity)) setState(seed());
+  // The rows are the draft and the built map is the committable value — the protocol's core with a
+  // row-index fold key, and a not-ok build that stays silent (the row is mid-edit, not wrong).
+  const field = useDraft<KeyedRow[], Record<string, string>>(
+    initial,
+    (rows) => {
+      const built = validRowsToMap(rows, roots);
+      return built.ok ? { ok: true, value: built.map } : { ok: false };
+    },
+    identity,
+    commit,
+  );
 
   const writeRows = (next: KeyedRow[], row?: number): void => {
-    setState({ identity, rows: next });
-    const built = validRowsToMap(next, roots);
-    if (!built.ok) return;
-    commit(built.map, row === undefined ? undefined : { ...identity, row });
+    field.onEdit(next, row === undefined ? undefined : { ...identity, row });
   };
 
   return {
-    rows: state.rows,
-    setRow: (index, row) => writeRows(state.rows.map((r, i) => (i === index ? row : r)), index),
-    addRow: () => writeRows([...state.rows, { key: "", value: "" }]),
-    removeRow: (index) => writeRows(state.rows.filter((_, i) => i !== index)),
+    rows: field.draft,
+    setRow: (index, row) => writeRows(field.draft.map((r, i) => (i === index ? row : r)), index),
+    addRow: () => writeRows([...field.draft, { key: "", value: "" }]),
+    removeRow: (index) => writeRows(field.draft.filter((_, i) => i !== index)),
   };
 }

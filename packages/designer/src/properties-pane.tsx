@@ -358,10 +358,10 @@ function NodeProperties({
       <PaneSection key={`fields-${node.id}`} title={node.type} className="pane-fields" defaultOpen>
         {site?.where === "arm" ? (
           <ConditionField
-            key={`when-${node.id}`}
             label="when"
             condition={armWhen(file, site.ownerId, site.armIndex)}
             suggestions={condSuggest}
+            identity={editKey(node.id, "when")}
             onChange={(when) =>
               applyEdit(unwrapEdit(editFile(file, { kind: "set-arm-when", branchId: site.ownerId, armIndex: site.armIndex, when })))
             }
@@ -475,10 +475,10 @@ function KindFields({
       return (
         <>
           <ConditionField
-            key={`condition-${node.id}`}
             label="condition"
             condition={node.condition}
             suggestions={condSuggest}
+            identity={editKey(node.id, "condition")}
             onChange={(condition) => commit({ ...node, condition })}
           />
           <MaxIterationsField
@@ -495,10 +495,10 @@ function KindFields({
     case "checkpoint":
       return (
         <ConditionField
-          key={`condition-${node.id}`}
           label="condition"
           condition={node.condition}
           suggestions={condSuggest}
+          identity={editKey(node.id, "condition")}
           onChange={(condition) => commit({ ...node, condition })}
         />
       );
