@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
-import { findById, replaceNode } from "./edit-tree.js";
+import { editFile, findById, unwrapEdit } from "./edit-tree.js";
 import { relativeRefPath } from "./resolve-ref.js";
 import type { OpenSession } from "./use-open-file.js";
 
@@ -45,7 +45,7 @@ function fileWithNodeRef(file: WorkflowFile, activePath: string, nodeId: string,
   const node = findById(file.body, nodeId);
   if (!node || node.type !== "workflow") return null;
   const ref = relativeRefPath(activePath, targetPath);
-  return replaceNode(file, nodeId, { ...node, ref } as WorkflowNode);
+  return unwrapEdit(editFile(file, { kind: "replace", id: nodeId, node: { ...node, ref } as WorkflowNode }));
 }
 
 export function useRefAuthoring(session: OpenSession, openedFile: WorkflowFile | null, activePath: string | undefined): RefAuthoring {

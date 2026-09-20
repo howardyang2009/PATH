@@ -17,7 +17,7 @@ import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./confi
 import { renderConfigValue } from "./config-value.js";
 import { ConfigValueControl } from "./config-value-control.js";
 import { editKey, type EditCommit, type EditKey } from "./edit-key.js";
-import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
+import { editFile, findById, locate, unwrapEdit } from "./edit-tree.js";
 import {
   applyNodeConfig,
   configString,
@@ -330,10 +330,11 @@ function NodeProperties({
 }): JSX.Element {
   // A field edit passes its identity so a run of keystrokes folds to one undo entry (#389); a discrete
   // change (a select, a re-key) passes none, so it is its own entry.
-  const commit = (next: WorkflowNode, key?: EditKey): void => applyEdit(replaceNode(file, node.id, next), key);
+  const commit = (next: WorkflowNode, key?: EditKey): void =>
+    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: next })), key);
   const reKey = (): void => {
     const id = crypto.randomUUID();
-    applyEdit(replaceNode(file, node.id, { ...node, id }));
+    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: { ...node, id } })));
     onReselect(id);
   };
   const site = locate(file, node.id);
@@ -361,7 +362,9 @@ function NodeProperties({
             label="when"
             condition={armWhen(file, site.ownerId, site.armIndex)}
             suggestions={condSuggest}
-            onChange={(when) => applyEdit(setArmWhen(file, site.ownerId, site.armIndex, when))}
+            onChange={(when) =>
+              applyEdit(unwrapEdit(editFile(file, { kind: "set-arm-when", branchId: site.ownerId, armIndex: site.armIndex, when })))
+            }
           />
         ) : null}
         <KindFields file={file} node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />

@@ -11,7 +11,74 @@ import { childBodies, mapChildBodies, walkNodes, type BranchArm, type Condition,
  * deletes the loop; the last `parallel` branch or branch arm cannot be deleted (must keep ≥1); emptying
  * a `sequence` deletes the sequence; the file-body root is never deleted (removing its last node just
  * empties the canvas). A single-node slot never empties — it **swaps** (`swapSingleSlot`).
+ *
+ * **The mutation interface is one door: `editFile(file, op)`.** The named transforms below are the
+ * private cases it dispatches over; callers name the edit as an `EditOp` and read one `EditResult`
+ * (the delete rules are the only ones that can refuse). Locating and querying stay their own exports
+ * (`locate`, `findById`, `isDuplicable`), because a reader is not a mutation and carries the module's
+ * depth — the recursive tree-walk — on its own.
  */
+
+// ── The one mutation door ─────────────────────────────────────────────────────────────────────────
+
+/**
+ * One structural edit named as data. Each variant carries exactly what its transform needs; the canvas
+ * (`editor-api`) and the properties pane build one of these and hand it to {@link editFile}. `move` and
+ * `insert-after` name a node by id; the arm/else/list ops name their owner. `delete` is the only variant
+ * whose result can refuse (the slot rules).
+ */
+export type EditOp =
+  | { kind: "replace"; id: string; node: WorkflowNode }
+  | { kind: "set-arm-when"; branchId: string; armIndex: number; when: Condition }
+  | { kind: "add-to-list"; ownerId: string | null; node: WorkflowNode }
+  | { kind: "swap-single"; target: SingleSlot; node: WorkflowNode }
+  | { kind: "add-arm"; branchId: string; arm: BranchArm }
+  | { kind: "add-else"; branchId: string; node: WorkflowNode }
+  | { kind: "remove-else"; branchId: string }
+  | { kind: "move"; id: string; delta: -1 | 1 }
+  | { kind: "insert-after"; id: string; clone: WorkflowNode }
+  | { kind: "delete"; id: string };
+
+/**
+ * The single entry point for every structural edit: apply `op` to `file` and return the new file, or a
+ * refusal (only a `delete` that the slot rules forbid). A no-op op (a move off the end, a replace of an
+ * absent id) returns `{ ok: true, file }` with the **same** file reference, so a caller commits only a
+ * genuine change (`result.file !== file`).
+ */
+export function editFile(file: WorkflowFile, op: EditOp): EditResult {
+  switch (op.kind) {
+    case "replace":
+      return { ok: true, file: replaceNode(file, op.id, op.node) };
+    case "set-arm-when":
+      return { ok: true, file: setArmWhen(file, op.branchId, op.armIndex, op.when) };
+    case "add-to-list":
+      return { ok: true, file: addToList(file, op.ownerId, op.node) };
+    case "swap-single":
+      return { ok: true, file: swapSingleSlot(file, op.target, op.node) };
+    case "add-arm":
+      return { ok: true, file: addArm(file, op.branchId, op.arm) };
+    case "add-else":
+      return { ok: true, file: addElse(file, op.branchId, op.node) };
+    case "remove-else":
+      return { ok: true, file: removeElse(file, op.branchId) };
+    case "move":
+      return { ok: true, file: moveNode(file, op.id, op.delta) };
+    case "insert-after":
+      return { ok: true, file: insertAfter(file, op.id, op.clone) };
+    case "delete":
+      return deleteNode(file, op.id);
+  }
+}
+
+/**
+ * Unwrap an {@link editFile} result whose op cannot legitimately refuse (every op but `delete`). A
+ * refusal here is a bug — a total op returned `{ ok: false }` — so it throws rather than silently
+ * dropping the edit. `delete` callers read the `EditResult` directly instead.
+ */
+export function unwrapEdit(result: EditResult): WorkflowFile {
+  if (!result.ok) throw new Error(`edit refused: ${result.reason}`);
+  return result.file;
+}
 
 // ── Locating a node and its container ─────────────────────────────────────────────────────────────
 
@@ -109,7 +176,7 @@ function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
  * confirmation-gated re-key (ADR 0015) passes a `next` carrying a fresh id — so the match is on the
  * *old* `id` and the replacement is whatever `next` carries. A missing `id` is a no-op.
  */
-export function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
+function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
   if (!locate(file, id)) return file;
   return withBody(file, updateNode(file.body, id, () => next));
 }
@@ -121,7 +188,7 @@ export function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode):
  * `arms[armIndex].when`, not on the selected node. A missing branch, a non-branch owner, or an
  * out-of-range arm is a no-op.
  */
-export function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when: Condition): WorkflowFile {
+function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when: Condition): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, branchId, (owner) => {
@@ -139,7 +206,7 @@ export function setArmWhen(file: WorkflowFile, branchId: string, armIndex: numbe
  * branch list (each a `WorkflowNode[]`). The caller has already checked the socket admits the node's
  * kind (`grammar.socketAcceptsKind`); an illegal kind never reaches here.
  */
-export function addToList(file: WorkflowFile, ownerId: string | null, node: WorkflowNode): WorkflowFile {
+function addToList(file: WorkflowFile, ownerId: string | null, node: WorkflowNode): WorkflowFile {
   if (ownerId === null) return withBody(file, [...file.body, node]);
   return withBody(
     file,
@@ -164,7 +231,7 @@ export type SingleSlot =
  * slot). The former occupant is discarded; the slot stays occupied. A checkpoint never reaches here —
  * the grammar refuses it at a single slot (`grammar.socketAcceptsKind`).
  */
-export function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: WorkflowNode): WorkflowFile {
+function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: WorkflowNode): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, target.ownerId, (owner) => {
@@ -182,7 +249,7 @@ export function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: Wor
 // ── Branch arm and else management ────────────────────────────────────────────────────────────────
 
 /** Append a new arm to a `branch` (§ Adding; the arm carries its own `when` and occupant). */
-export function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): WorkflowFile {
+function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, branchId, (owner) => (owner.type === "branch" ? { ...owner, arms: [...owner.arms, arm] } : owner)),
@@ -190,7 +257,7 @@ export function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): Wo
 }
 
 /** Add an `else` to a `branch` that has none (there is at most one `else`); a no-op if one exists. */
-export function addElse(file: WorkflowFile, branchId: string, node: WorkflowNode): WorkflowFile {
+function addElse(file: WorkflowFile, branchId: string, node: WorkflowNode): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, branchId, (owner) => (owner.type === "branch" && !owner.else ? { ...owner, else: node } : owner)),
@@ -198,7 +265,7 @@ export function addElse(file: WorkflowFile, branchId: string, node: WorkflowNode
 }
 
 /** Remove a `branch`'s `else` (the add-`else` affordance returns after). */
-export function removeElse(file: WorkflowFile, branchId: string): WorkflowFile {
+function removeElse(file: WorkflowFile, branchId: string): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, branchId, (owner) => {
@@ -217,7 +284,7 @@ export function removeElse(file: WorkflowFile, branchId: string): WorkflowFile {
  * first-match-wins). A single-node slot (`while-do` body, `else`) has no siblings, so a move there is a
  * no-op that returns the same file. A move off either end is a no-op too.
  */
-export function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): WorkflowFile {
+function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): WorkflowFile {
   const site = locate(file, id);
   if (!site) return file;
 
@@ -265,7 +332,7 @@ function swapAt<T>(list: T[], i: number, j: number): T[] | null {
 // ── Delete, with the slot rules ───────────────────────────────────────────────────────────────────
 
 /** The outcome of a delete: the new file, or a refusal naming why the node cannot go. */
-export type DeleteResult = { ok: true; file: WorkflowFile } | { ok: false; reason: string };
+export type EditResult = { ok: true; file: WorkflowFile } | { ok: false; reason: string };
 
 /**
  * Delete the node `id`, applying the slot rules that keep the tree legal (§ Delete):
@@ -275,7 +342,7 @@ export type DeleteResult = { ok: true; file: WorkflowFile } | { ok: false; reaso
  * - a **`while-do` body** node deletes the whole loop;
  * - a **branch `else`** occupant removes the `else`.
  */
-export function deleteNode(file: WorkflowFile, id: string): DeleteResult {
+function deleteNode(file: WorkflowFile, id: string): EditResult {
   const site = locate(file, id);
   if (!site) return { ok: false, reason: "node not found" };
 
@@ -302,7 +369,7 @@ export function deleteNode(file: WorkflowFile, id: string): DeleteResult {
 }
 
 /** Remove index `i` from a `parallel`/`sequence` owner's list, refusing when it would leave the list empty. */
-function removeFromOwnerList(file: WorkflowFile, ownerId: string, index: number, ownerType: "parallel", reason: string): DeleteResult {
+function removeFromOwnerList(file: WorkflowFile, ownerId: string, index: number, ownerType: "parallel", reason: string): EditResult {
   const owner = findById(file.body, ownerId);
   if (owner?.type === ownerType && owner.branches.length <= 1) return { ok: false, reason };
   return {
@@ -315,7 +382,7 @@ function removeFromOwnerList(file: WorkflowFile, ownerId: string, index: number,
 }
 
 /** Remove index `i` from a `sequence` body; if that empties the sequence, delete the sequence itself (cascade). */
-function removeFromSequence(file: WorkflowFile, sequenceId: string, index: number): DeleteResult {
+function removeFromSequence(file: WorkflowFile, sequenceId: string, index: number): EditResult {
   const owner = findById(file.body, sequenceId);
   if (owner?.type === "sequence" && owner.body.length <= 1) {
     return deleteNode(file, sequenceId);
@@ -330,7 +397,7 @@ function removeFromSequence(file: WorkflowFile, sequenceId: string, index: numbe
 }
 
 /** Remove arm `armIndex` from a `branch`, refusing when it is the last arm (a branch must keep ≥1). */
-function removeArm(file: WorkflowFile, branchId: string, armIndex: number): DeleteResult {
+function removeArm(file: WorkflowFile, branchId: string, armIndex: number): EditResult {
   const owner = findById(file.body, branchId);
   if (owner?.type === "branch" && owner.arms.length <= 1) return { ok: false, reason: "a branch must keep at least one arm" };
   return {
@@ -367,7 +434,7 @@ export function findById(body: WorkflowNode[], id: string): WorkflowNode | null 
  * after the node `id` in its list. Only a list node (file body, `sequence` body, `parallel` branches)
  * can be duplicated — a single-slot occupant has no list to grow — so a non-list `id` is a no-op.
  */
-export function insertAfter(file: WorkflowFile, id: string, clone: WorkflowNode): WorkflowFile {
+function insertAfter(file: WorkflowFile, id: string, clone: WorkflowNode): WorkflowFile {
   const site = locate(file, id);
   if (!site) return file;
   if (site.where === "file-body") return withBody(file, spliceAfter(file.body, site.index, clone));

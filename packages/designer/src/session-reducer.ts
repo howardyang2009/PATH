@@ -2,7 +2,7 @@ import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/sche
 import type { EditKey } from "./edit-key.js";
 import { sameEditKey } from "./edit-key.js";
 import type { OpenResult } from "./open-workflow.js";
-import { findById, replaceNode } from "./edit-tree.js";
+import { editFile, findById, unwrapEdit } from "./edit-tree.js";
 import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
@@ -462,7 +462,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         const node = findById(parentResult.file.body, link.nodeId);
         if (node && node.type === "workflow") {
           const ref = relativeRefPath(parent.path, relativePath);
-          const nextParent = replaceNode(parentResult.file, link.nodeId, { ...node, ref } as WorkflowNode);
+          const nextParent = unwrapEdit(editFile(parentResult.file, { kind: "replace", id: link.nodeId, node: { ...node, ref } as WorkflowNode }));
           frames[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
         }
       }
