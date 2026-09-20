@@ -303,6 +303,29 @@ describe("cli main() — --context / --set-context (ticket #171)", () => {
   });
 });
 
+// The file's own top-level `input` (format @4 §1a) is the root context seed a launch falls back to
+// when the operator supplies none. The CLI is a launch door too, so it resolves the same rule the
+// server does (`effectiveRootInput`): non-empty operator override, else the file seed, else `{}`.
+describe("cli main() — file-level input (format @4 §1a)", () => {
+  function fileInputEcho() {
+    return join(fixtures, "file-input-echo.workflow.json");
+  }
+
+  it("seeds the run's starting context from the workflow file's own input", async () => {
+    const io = fakeIo();
+    const code = await main(["run", fileInputEcho()], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "file-value" }));
+  });
+
+  it("still lets an operator seed win over the file's input", async () => {
+    const io = fakeIo();
+    const code = await main(["run", fileInputEcho(), "--set-context", "greeting=operator-value"], io);
+    expect(code).toBe(0);
+    expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "operator-value" }));
+  });
+});
+
 describe("cli main() — --resume (ticket #177)", () => {
   let projectDir: string;
 

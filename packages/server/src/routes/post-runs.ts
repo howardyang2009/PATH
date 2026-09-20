@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { LOG_BACKEND_IDS, type LoadedStepPluginRegistry, type Project } from "@path/engine";
-import { ConfigObjectSchema, formatIssues, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
+import { ConfigObjectSchema, effectiveRootInput, formatIssues, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import { effectiveRootInput, operatorConfigEnvError, prepareWorkflow } from "../launch.js";
+import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { LiveRuns } from "../live-runs.js";
 
 const PostRunsBodySchema = z

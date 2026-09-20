@@ -1,0 +1,27 @@
+{
+  "format": "path/workflow@4",
+  "id": "54c6b5d4-d0d0-4df4-b42f-bbe20b94dabb",
+  "name": "file-input-echo",
+  "input": {
+    "greeting": "file-value"
+  },
+  "body": [
+    {
+      "type": "binary",
+      "id": "856b0fd5-34ae-44bd-abdb-3e81d511a36c",
+      "name": "echo",
+      "command": "node",
+      "args": [
+        "-e",
+        "process.stdout.write(process.argv[1])",
+        "${context.greeting}"
+      ],
+      "publish": {
+        "seen": "${output}"
+      }
+    }
+  ],
+  "output": {
+    "seen": "${context.seen}"
+  }
+}
