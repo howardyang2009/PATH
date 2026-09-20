@@ -1,6 +1,7 @@
 import {
-  parseJsonField,
+  launchSecretResupply,
   resumeFromEligibility,
+  resupplyGate,
   type PathApiClient,
   type RunNodeState,
   type WorkflowFile,
@@ -8,7 +9,6 @@ import {
 import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
-import { blankSecretMessage, blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface ResumeActionsProps {
   client: PathApiClient;
@@ -82,10 +82,11 @@ export function ResumeActions({
 }: ResumeActionsProps): JSX.Element {
   const [phase, setPhase] = useState<Phase>("idle");
   const secrets = launchSecretKeys ?? [];
-  const showSecrets = secrets.length > 0;
+  const resupply = launchSecretResupply(secrets);
+  const showSecrets = resupply.required;
   // Prefilled from the summary's recorded secret paths, so the operator fills values rather than
   // retyping the shape. Lazy init: built once per mount, not on every keystroke.
-  const [config, setConfig] = useState(() => (showSecrets ? secretSkeletonJson(secrets) : ""));
+  const [config, setConfig] = useState(() => resupply.skeleton);
   // A run with masked secrets opens the field by default, so what must be re-entered is visible; a
   // plain resume keeps the launch form's on-demand disclosure.
   const [showConfig, setShowConfig] = useState(showSecrets);
@@ -97,15 +98,14 @@ export function ResumeActions({
     setError(null);
   }, [selectedRunId]);
 
-  const configResult = parseJsonField(config, { allowEmpty: true });
-
-  // A recorded launch secret is a credential the frozen config holds only as a mask token (ADR 0046),
-  // so the card refuses to submit one the operator left missing, empty, or whitespace — the engine
-  // would otherwise fall through to the environment and continue with a key the operator did not
-  // choose. Derived from the text, not gated on a keystroke, so both resume verbs are disabled (with
-  // the reason shown) from the moment the skeleton is on screen. The Complete form's rule, on the
-  // other continuation door.
-  const blankSecrets = configResult.ok ? blankSecretPaths(secrets, configResult.value) : [];
+  // The shared launch-facts secret-restore gate (ADR 0046, `@path/client-core`): the config parse and
+  // the still-blank recorded secrets, one verdict both continuation doors read. A recorded secret is a
+  // credential the frozen config holds only as a mask token, so both resume verbs stay disabled (with
+  // the reason shown) from the moment the skeleton is on screen. Derived from the text, not gated on a
+  // keystroke. The Complete form reads the same gate on the other door.
+  const gate = resupplyGate(secrets, config, "resuming");
+  const configResult = gate.configResult;
+  const blankSecrets = gate.blankPaths;
 
   // `Resume from …` legality — computed only when the button is shown (only then is a tree behind it).
   const eligibility = showResumeFrom
@@ -129,8 +129,8 @@ export function ResumeActions({
   // the same sentence twice; a still-illegal K or a succeeded run keeps its own button reason, which
   // already disables the button with nothing to fill in — hence the status guard.
   const secretReason =
-    blankSecrets.length > 0 && (resumeEnabledByStatus || resumeFromEnabledByStatus)
-      ? blankSecretMessage(blankSecrets, "resuming")
+    gate.blockMessage !== null && (resumeEnabledByStatus || resumeFromEnabledByStatus)
+      ? gate.blockMessage
       : null;
 
   const sendResume = (): void => {

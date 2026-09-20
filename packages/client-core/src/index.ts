@@ -130,3 +130,17 @@ export {
   type ResumeFromReasonCode,
   type ResumeFromContainer,
 } from "./resume-from-eligibility.js";
+
+// The launch-facts secret-restore contract shared by both continuation surfaces (Resume and Complete,
+// ADR 0046): the config field's show/skeleton state, and the one submit-gate verdict — parse, blank
+// secret paths, whether it may submit, and the block message — so neither surface re-derives it.
+export {
+  launchSecretResupply,
+  resupplyGate,
+  secretSkeletonJson,
+  blankSecretPaths,
+  blankSecretMessage,
+  type ContinuationVerb,
+  type LaunchSecretResupply,
+  type ResupplyGate,
+} from "./launch-secret-resupply.js";
