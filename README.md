@@ -101,11 +101,11 @@ the output from stdout. `parse: "json"` turns that stdout string into a structur
 writes it into the run's context under `greeting`. The `checkpoint` then asserts that context key. If
 the assertion fails, the run stops as failed and the failure propagates like any other.
 
-**Input.** A launch seeds the root context. For a launch over HTTP (and from both consoles), a launch
-`input` override with at least one top-level key wins; otherwise the file's own top-level `input` is the
-default seed; otherwise `{}`. The CLI seeds context from `--context <file>` and
-`--set-context key=value`. A nested `workflow` step's run gets its context from the parent step's input,
-never from the child file's `input`.
+**Input.** A launch seeds the root context. Every launch door resolves one rule: a launch `input`
+override with at least one top-level key wins; otherwise the file's own top-level `input` is the default
+seed; otherwise `{}`. On the CLI the override is `--context <file>` or `--set-context key=value`; over
+HTTP it is the `input` field, which both consoles send. A nested `workflow` step's run gets its context
+from the parent step's input, never from the child file's `input`.
 
 **Interpolation.** `${dot.path}` reads `config` and `context` in payload fields, `input` values,
 `publish` values, workflow `output` values, and `max_iterations`. A string that is exactly one
@@ -250,7 +250,7 @@ pnpm path runs prune [--yes]
 | `-C <dir>` | `run`, `runs` | Target another project's `.path/` store, git-style. |
 | `--config <file>` | `run` | Operator config override, merged over the file's `config`. |
 | `--set key=value` | `run` | One config override. Repeatable. |
-| `--context <file>` | `run` | Root context seed for a fresh run. |
+| `--context <file>` | `run` | Root context seed for a fresh run; overrides the file's `input`. |
 | `--set-context key=value` | `run` | One context seed entry. Repeatable. |
 | `--worker-default type=name` | `run` | Launch worker-default. Repeatable; refused with `--resume`. |
 | `--resume <root-run-id>` | `run` | Re-run a stopped tree as a successor. |
@@ -329,7 +329,7 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 
 The latest release is **v0.6.3** (2026-09-20). The workflow format is `path/workflow@4` and the store
 schema is `SCHEMA_VERSION` 12. `main` is green: `pnpm typecheck` is clean across all packages and
-**2160 tests pass** — schema 350, engine 832, server 238, designer 349, viewer 169, client-core 194,
+**2162 tests pass** — schema 354, engine 834, server 234, designer 349, viewer 169, client-core 194,
 scripts 28.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
