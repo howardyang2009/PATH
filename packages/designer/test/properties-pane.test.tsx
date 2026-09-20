@@ -242,12 +242,14 @@ describe("#369 the id re-key is confirmation-gated", () => {
 });
 
 describe("#369 the three editor tiers", () => {
-  it("uses the hand-built editors for prompt, binary, and workflow-ref", async () => {
+  it("uses the hand-built editors for prompt and workflow-ref, and the generic form for binary", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
     expect(within(pane).getByLabelText("model")).toBeInTheDocument();
     expect(within(pane).getByLabelText("prompt")).toBeInTheDocument();
 
+    // `binary` retired to the generic tier (registry-driven): its command/args/cwd controls are laid
+    // out from the wire field-spec, not a bespoke BinaryEditor.
     selectNode(canvas, "runner");
     expect((within(pane).getByLabelText("command") as HTMLInputElement).value).toBe("ls");
     expect(within(pane).getByLabelText(/args/)).toBeInTheDocument();

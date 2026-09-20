@@ -17,7 +17,7 @@ import { configRows, dropConfigKey, setConfigKey, type ConfigRow } from "./confi
 import { renderConfigValue } from "./config-value.js";
 import { ConfigValueControl } from "./config-value-control.js";
 import { editKey, type EditCommit, type EditKey } from "./edit-key.js";
-import { findById, locate, replaceNode, setArmWhen } from "./edit-tree.js";
+import { editFile, findById, locate, unwrapEdit } from "./edit-tree.js";
 import {
   applyNodeConfig,
   configString,
@@ -29,7 +29,6 @@ import {
   rec,
   setNodeField,
   withConfig,
-  withOptionalArray,
   withOptionalString,
 } from "./node-edit.js";
 import { editorTier, pluginFor } from "./editor-tiers.js";
@@ -331,10 +330,11 @@ function NodeProperties({
 }): JSX.Element {
   // A field edit passes its identity so a run of keystrokes folds to one undo entry (#389); a discrete
   // change (a select, a re-key) passes none, so it is its own entry.
-  const commit = (next: WorkflowNode, key?: EditKey): void => applyEdit(replaceNode(file, node.id, next), key);
+  const commit = (next: WorkflowNode, key?: EditKey): void =>
+    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: next })), key);
   const reKey = (): void => {
     const id = crypto.randomUUID();
-    applyEdit(replaceNode(file, node.id, { ...node, id }));
+    applyEdit(unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: { ...node, id } })));
     onReselect(id);
   };
   const site = locate(file, node.id);
@@ -362,7 +362,9 @@ function NodeProperties({
             label="when"
             condition={armWhen(file, site.ownerId, site.armIndex)}
             suggestions={condSuggest}
-            onChange={(when) => applyEdit(setArmWhen(file, site.ownerId, site.armIndex, when))}
+            onChange={(when) =>
+              applyEdit(unwrapEdit(editFile(file, { kind: "set-arm-when", branchId: site.ownerId, armIndex: site.armIndex, when })))
+            }
           />
         ) : null}
         <KindFields file={file} node={node} plugins={plugins} commit={commit} condSuggest={condSuggest} onAddRefTarget={onAddRefTarget} />
@@ -458,8 +460,6 @@ function KindFields({
   switch (node.type) {
     case "prompt":
       return <PromptEditor file={file} node={node} plugins={plugins} commit={commit} />;
-    case "binary":
-      return <BinaryEditor file={file} node={node} plugins={plugins} commit={commit} />;
     case "workflow":
       return <WorkflowRefEditor node={node} commit={commit} onAddRefTarget={onAddRefTarget} />;
     case "parallel":
@@ -559,21 +559,6 @@ function ModelField({ value, inherited, onChange }: { value: string; inherited: 
         ) : null}
       </div>
     </label>
-  );
-}
-
-/** `binary` — the first-class editor: the `command`, its `args`, its `cwd`, plus the worker. */
-function BinaryEditor({ file, node, plugins, commit }: LeafEditorProps): JSX.Element {
-  const command = nodeString(node, "command");
-  const cwd = nodeString(node, "cwd");
-  const args = Array.isArray(rec(node).args) ? (rec(node).args as unknown[]).map(String) : [];
-  return (
-    <>
-      <TextField label="command" value={command} onChange={(v) => commit({ ...node, command: v } as WorkflowNode, editKey(node.id, "command"))} />
-      <StringListField label="args" values={args} onChange={(list) => commit(withOptionalArray(node, "args", list), editKey(node.id, "args"))} />
-      <TextField label="cwd" value={cwd} onChange={(v) => commit(withOptionalString(node, "cwd", v), editKey(node.id, "cwd"))} />
-      <WorkerSelect file={file} node={node} plugins={plugins} commit={commit} />
-    </>
   );
 }
 

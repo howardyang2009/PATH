@@ -1,20 +1,7 @@
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
 import { socketAcceptsKind, type SocketFlavor } from "./grammar.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node-factory.js";
-import {
-  addArm as addArmOp,
-  addElse as addElseOp,
-  addToList,
-  deleteNode,
-  findById,
-  insertAfter,
-  isDuplicable,
-  locate,
-  moveNode,
-  removeElse as removeElseOp,
-  swapSingleSlot,
-  type SingleSlot,
-} from "./edit-tree.js";
+import { editFile, findById, isDuplicable, locate, unwrapEdit, type SingleSlot } from "./edit-tree.js";
 
 /**
  * The canvas's edit surface (#368): it binds the palette's **armed kind** to the pure `edit-tree` ops
@@ -75,38 +62,38 @@ export function createEditor(
     },
     placeIntoList(ownerId) {
       if (armedKind === null) return;
-      applyEdit(addToList(file, ownerId, mint(armedKind)));
+      applyEdit(unwrapEdit(editFile(file, { kind: "add-to-list", ownerId, node: mint(armedKind) })));
       disarm();
     },
     swapSingle(target) {
       if (armedKind === null) return;
-      applyEdit(swapSingleSlot(file, target, mint(armedKind)));
+      applyEdit(unwrapEdit(editFile(file, { kind: "swap-single", target, node: mint(armedKind) })));
       disarm();
     },
     addArm(branchId) {
-      applyEdit(addArmOp(file, branchId, createArm(usedNames(file.body), defaultLeaf)));
+      applyEdit(unwrapEdit(editFile(file, { kind: "add-arm", branchId, arm: createArm(usedNames(file.body), defaultLeaf) })));
     },
     addElse(branchId) {
-      applyEdit(addElseOp(file, branchId, createNode(defaultLeaf, usedNames(file.body), defaultLeaf)));
+      applyEdit(unwrapEdit(editFile(file, { kind: "add-else", branchId, node: createNode(defaultLeaf, usedNames(file.body), defaultLeaf) })));
     },
     removeElse(branchId) {
-      applyEdit(removeElseOp(file, branchId));
+      applyEdit(unwrapEdit(editFile(file, { kind: "remove-else", branchId })));
     },
     remove(id) {
-      const result = deleteNode(file, id);
+      const result = editFile(file, { kind: "delete", id });
       if (result.ok) applyEdit(result.file);
     },
     move(id, delta) {
-      const next = moveNode(file, id, delta);
+      const next = unwrapEdit(editFile(file, { kind: "move", id, delta }));
       if (next !== file) applyEdit(next);
     },
     duplicate(id) {
       const node = findById(file.body, id);
       if (!node) return;
-      applyEdit(insertAfter(file, id, cloneWithFreshIdentity(node, usedNames(file.body))));
+      applyEdit(unwrapEdit(editFile(file, { kind: "insert-after", id, clone: cloneWithFreshIdentity(node, usedNames(file.body)) })));
     },
     canRemove(id) {
-      return deleteNode(file, id).ok;
+      return editFile(file, { kind: "delete", id }).ok;
     },
     canMove(id) {
       const site = locate(file, id);

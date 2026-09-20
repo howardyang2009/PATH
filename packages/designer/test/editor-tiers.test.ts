@@ -5,6 +5,16 @@ import { editorTier, fieldsLayOut } from "../src/editor-tiers.js";
 const plugins: WireStepPlugin[] = [
   { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
   {
+    name: "binary",
+    fields: {
+      command: { type: "string", optional: false },
+      args: { type: "array", optional: true, element: { type: "string", optional: false } },
+      cwd: { type: "string", optional: true },
+    },
+    workers: ["spawn"],
+    default_worker: "spawn",
+  },
+  {
     name: "api-call",
     fields: { endpoint: { type: "string", optional: false }, retries: { type: "number", optional: true } },
     workers: ["http"],
@@ -20,10 +30,13 @@ const plugins: WireStepPlugin[] = [
 ];
 
 describe("editorTier — the three-tier resolution", () => {
-  it("resolves prompt, binary, and workflow to the hand-built first-class tier", () => {
+  it("resolves prompt and workflow to the hand-built first-class tier", () => {
     expect(editorTier("prompt", plugins)).toBe("first-class");
-    expect(editorTier("binary", plugins)).toBe("first-class");
     expect(editorTier("workflow", plugins)).toBe("first-class");
+  });
+
+  it("resolves binary to the generic tier — its scalar fields need no bespoke editor", () => {
+    expect(editorTier("binary", plugins)).toBe("generic");
   });
 
   it("generates a form for a type whose every field lays out (scalars, flat scalar arrays)", () => {

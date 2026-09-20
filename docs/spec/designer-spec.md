@@ -105,9 +105,10 @@ these points that the UI must honour. Each matches the `@path/schema` types
 ([`node-type.ts`](../../packages/schema/src/node-type.ts)):
 
 - **A `step` leaf is one of the registry's leaf step types.** `prompt` (LLM — a `prompt` against a
-  `model`), `binary` (a `command` plus `args` plus `cwd`), and `workflow` (a sub-workflow `ref`) are
-  the three the Designer ships a hand-built editor for; they are two step-type plugins plus the
-  workflow-ref, not a closed set (CONTEXT.md § Step-type plugins). The palette is **registry-driven** —
+  `model`) and `workflow` (a sub-workflow `ref`) are the two the Designer ships a hand-built editor for,
+  each for a control the wire field-spec cannot express; `binary` (a `command` plus `args` plus `cwd`)
+  is authored through the registry-driven generic form like any other plugin leaf (CONTEXT.md § Step-type
+  plugins). The palette is **registry-driven** —
   it holds one entry per leaf type the received registry describes, and any other type gets a generic
   editor (§ The v1 authoring palette). All leaf types share `id` and `name`. The `type` is a
   **creation-time** discriminant — not a **worker**, which is a per-step selector by name (below). To
@@ -277,8 +278,8 @@ registry type always opens**:
 
 | Tier | Applies to | The editor |
 |---|---|---|
-| First-class | `prompt`, `binary`, `workflow` | The hand-built editors of § Canvas interaction model (`model`+`prompt`; `command`+`args`+`cwd`; the referenced file path). |
-| Generic | any other registry type (e.g. `api-call`) | A typed form **generated from the type's `fields` fragment** — one control per field, typed by the fragment. |
+| First-class | `prompt`, `workflow` | The hand-built editors of § Canvas interaction model, kept only for a control the field-spec cannot express (`prompt`'s `model` config-ghost and multiline text; the referenced file path). |
+| Generic | any other registry type, `binary` included | A typed form **generated from the type's `fields` fragment** — one control per field, typed by the fragment. `binary`'s `command`+`args`+`cwd` lay out from the registry, so it takes this tier rather than a bespoke editor that would restate them. |
 | Raw-JSON floor | any type whose `fields` a form cannot lay out | A single **live-validated JSON textarea** for the node's payload. |
 
 The raw-JSON floor is what makes "registry-driven" a guarantee rather than a hope: the worst case for an

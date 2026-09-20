@@ -2,9 +2,10 @@ import {
   buildCompleteFields,
   coerceCompleteOutput,
   coerceRawCompleteOutput,
+  launchSecretResupply,
   mapCompleteErrors,
-  parseJsonField,
   PathApiError,
+  resupplyGate,
   validateCompleteOutput,
   type CompleteField,
   type CompleteFieldValue,
@@ -13,7 +14,6 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { errorMessage } from "./load-state.js";
-import { blankSecretMessage, blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface CompleteFormProps {
   client: PathApiClient;
@@ -60,12 +60,13 @@ export function CompleteForm({
   // A schema with no drawable fields (none authored) falls back to the free-text control.
   const raw = fields.length === 0;
   const secrets = launchSecretKeys ?? [];
-  const showSecrets = secrets.length > 0;
+  const resupply = launchSecretResupply(secrets);
+  const showSecrets = resupply.required;
   const [values, setValues] = useState<Partial<Record<string, CompleteFieldValue>>>({});
   const [rawText, setRawText] = useState("");
   // Prefilled from the tree's recorded secret paths, so the operator fills values rather than retyping
   // the shape. Lazy init: the skeleton is built once per mount, not on every keystroke elsewhere.
-  const [configText, setConfigText] = useState(() => (showSecrets ? secretSkeletonJson(secrets) : ""));
+  const [configText, setConfigText] = useState(() => resupply.skeleton);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [formErrors, setFormErrors] = useState<string[]>([]);
   const [phase, setPhase] = useState<"idle" | "sending">("idle");
@@ -74,13 +75,14 @@ export function CompleteForm({
     setValues((prev) => ({ ...prev, [key]: value }));
   };
 
-  // A recorded launch secret is a credential the frozen config holds only as a mask token, so the form
-  // refuses to submit one the operator left missing, empty, or whitespace — the engine would otherwise
-  // fall through to the environment and continue with a key the operator did not choose. Derived from
-  // the text, not gated on a keystroke, so the button is disabled (with the reason shown) from the
-  // moment the skeleton is on screen.
-  const configPreview = parseJsonField(configText, { allowEmpty: true });
-  const blankSecrets = configPreview.ok ? blankSecretPaths(secrets, configPreview.value) : [];
+  // The shared launch-facts secret-restore gate (ADR 0046, `@path/client-core`) — the same verdict the
+  // Resume card reads on the other continuation door. A recorded launch secret is a credential the
+  // frozen config holds only as a mask token, so the form refuses to submit one the operator left
+  // missing, empty, or whitespace: the engine would otherwise fall through to the environment and
+  // continue with a key the operator did not choose. Derived from the text, not gated on a keystroke,
+  // so the button is disabled (with the reason shown) from the moment the skeleton is on screen.
+  const gate = resupplyGate(secrets, configText, "completing");
+  const blankSecrets = gate.blankPaths;
 
   const submit = (): void => {
     let output: JsonValue;
@@ -101,19 +103,18 @@ export function CompleteForm({
     // The continuation's config is a separate gate from the output: an unparseable value, or a blank
     // value at a path the launch recorded as a secret, blocks the submit here, with no request spent,
     // and the leaf stays awaiting for a corrected resubmit. Blank parses to `undefined`, so a run with
-    // no secrets sends the same `{ output }` body as before.
-    const configResult = parseJsonField(configText, { allowEmpty: true });
-    if (!configResult.ok) {
-      setFormErrors([configResult.message]);
+    // no secrets sends the same `{ output }` body as before. One shared verdict with the Resume card.
+    const submitGate = resupplyGate(secrets, configText, "completing");
+    if (!submitGate.configResult.ok) {
+      setFormErrors([submitGate.configResult.message]);
       return;
     }
-    const blanks = blankSecretPaths(secrets, configResult.value);
-    if (blanks.length > 0) {
-      setFormErrors([blankSecretMessage(blanks, "completing")]);
+    if (submitGate.blockMessage !== null) {
+      setFormErrors([submitGate.blockMessage]);
       return;
     }
     setPhase("sending");
-    client.completeStep(stepRunId, output, configResult.value).then(
+    client.completeStep(stepRunId, output, submitGate.configResult.value).then(
       () => {
         setPhase("idle");
         onCompleted();
@@ -159,9 +160,9 @@ export function CompleteForm({
 
       {showSecrets && <LaunchSecretsControl value={configText} onChange={setConfigText} />}
 
-      {blankSecrets.length > 0 && (
+      {gate.blockMessage !== null && (
         <p className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-secret-error">
-          {blankSecretMessage(blankSecrets, "completing")}
+          {gate.blockMessage}
         </p>
       )}
 
