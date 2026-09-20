@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, rerunBoundaryIndex, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
 import { resolveChildRef, walkRefTree } from "./ref-tree.js";
 import { rootCancellation, stopCause } from "./cancellation.js";
@@ -867,21 +867,15 @@ async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepCo
  *
  * This is the reuse-plan *mechanism* only. The per-node three-way verdict the descent readers consult —
  * reuse / descend / rerun-entire — lives in `@path/schema`'s `rerunDisposition`, the one authority they
- * share; this stays the flat set `planReuse` needs.
- *
- * A suffix head that is not a top-level node of this body is an internal-invariant violation (throw),
- * not a silent degrade: `Project.resume` validates the whole path against the current file before any
- * successor starts (ADR 0036, spec §5), so this backstop is unreachable after validation.
+ * share; this stays the flat set `planReuse` needs. Which index B sits at, and the invariant throw for a
+ * head this body does not hold, is `rerunBoundaryIndex`'s answer — the same one `rerunDisposition` reads,
+ * so the two producers cannot disagree about where the boundary is.
  */
 function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<string> | undefined {
-  if (suffix.length === 0) return undefined;
-  const head = suffix[0]!;
-  const i = file.body.findIndex((node) => node.id === head);
-  if (i < 0) {
-    throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
-  }
+  const bIndex = rerunBoundaryIndex(file.body, suffix);
+  if (bIndex === undefined) return undefined;
   const suppress = new Set<string>();
-  for (const node of walkNodes(file.body.slice(i))) {
+  for (const node of walkNodes(file.body.slice(bIndex))) {
     if (isStepType(node.type)) suppress.add(node.id);
   }
   return suppress;

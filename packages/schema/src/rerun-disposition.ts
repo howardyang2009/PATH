@@ -23,22 +23,36 @@ import type { WorkflowNode } from "./node-type.js";
 export type RerunDisposition = "reuse" | "descend" | "rerun-entire";
 
 /**
+ * The rerun boundary's position in one body: the index of `suffix`'s head **B**, or `undefined` when
+ * the suffix is empty (plain Resume / off-path, so there is no boundary at this level).
+ *
+ * The one statement of "where is B here", which the verdict below and the engine's `suppress` producer
+ * (ADR 0035's Producer A) both used to compute — each with its own `findIndex` and its own copy of the
+ * invariant throw. The head is **known** to be a top-level node by the time either reader runs:
+ * `Project.resume` validates the whole root→…→K path against the current file before any successor
+ * starts (ADR 0036, spec §5). A head absent here is therefore an internal-invariant violation, thrown
+ * rather than silently degraded — never "no boundary", which would reuse the very work the operator
+ * asked to drop.
+ */
+export function rerunBoundaryIndex(body: WorkflowNode[], suffix: readonly string[]): number | undefined {
+  if (suffix.length === 0) return undefined;
+  const head = suffix[0]!;
+  const index = body.findIndex((node) => node.id === head);
+  if (index < 0) {
+    throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
+  }
+  return index;
+}
+
+/**
  * Classify one top-level node of `body` against this level's `suffix`. An empty suffix is plain Resume
  * / off-path — every node reuses.
  *
- * The suffix head B must be a top-level node of `body`: `Project.resume` validates the whole path
- * against the current file before any successor starts (ADR 0036, spec §5), so a head absent here is an
- * internal-invariant violation, thrown rather than silently degraded — the same backstop the engine's
- * `suppress` producer carries. A `nodeId` that is not a top-level node degrades to `rerun-entire`
- * (re-run, never mis-reuse).
+ * A `nodeId` that is not a top-level node degrades to `rerun-entire` (re-run, never mis-reuse).
  */
 export function rerunDisposition(body: WorkflowNode[], suffix: string[], nodeId: string): RerunDisposition {
-  if (suffix.length === 0) return "reuse";
-  const head = suffix[0]!;
-  const bIndex = body.findIndex((node) => node.id === head);
-  if (bIndex < 0) {
-    throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
-  }
+  const bIndex = rerunBoundaryIndex(body, suffix);
+  if (bIndex === undefined) return "reuse";
   const nodeIndex = body.findIndex((node) => node.id === nodeId);
   if (nodeIndex < 0 || nodeIndex > bIndex) return "rerun-entire"; // after B, or not a top-level node
   if (nodeIndex < bIndex) return "reuse"; // before B

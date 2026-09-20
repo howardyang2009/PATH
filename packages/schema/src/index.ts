@@ -186,7 +186,7 @@ export {
   type LegalKLevelResult,
   type LegalKLevelRun,
 } from "./legal-k.js";
-export { rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
+export { rerunBoundaryIndex, rerunDisposition, type RerunDisposition } from "./rerun-disposition.js";
 export { LOG_BACKEND_IDS, type LogBackendId } from "./log-backend-id.js";
 export {
   ROOT_RUN_SUMMARY_FIELDS,
