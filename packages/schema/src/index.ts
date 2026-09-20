@@ -59,6 +59,10 @@ export {
 // launch boundary, and prefix their own source onto each returned message. The per-entry core
 // (`collectWorkerDefaultIssues`) stays internal — the file channel imports it directly.
 export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
+
+// `outputSchema` validation (ADR 0040), shared by the two adapters that enforce it: the Complete route
+// (which refuses the submit) and the browser's Complete form (which pre-checks the same output).
+export { validateOutputSchema, type OutputValidation } from "./output-schema.js";
 export type {
   WorkflowNode,
   PromptStep,

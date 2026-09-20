@@ -12,7 +12,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "zod": "^4.6.5"
+    "zod": "^4.6.5",
+    "ajv": "^8.20.0"
   },
   "devDependencies": {
     "@types/node": "^24.13.3",

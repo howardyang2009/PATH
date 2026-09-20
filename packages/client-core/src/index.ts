@@ -113,7 +113,7 @@ export {
   coerceCompleteOutput,
   coerceRawCompleteOutput,
   mapCompleteErrors,
-  validateCompleteOutput,
+  validateCompleteDraft,
   type CompleteField,
   type CompleteFieldKind,
   type CompleteFieldValue,
