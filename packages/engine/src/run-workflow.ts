@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
-import { dirname, resolve } from "node:path";
 import { findRootRun, formatIssues, isStepType, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
+import { resolveChildRef, walkRefTree } from "./ref-tree.js";
 import { rootCancellation, stopCause } from "./cancellation.js";
 import { buildLaunchFacts, describeMissingLaunchSecrets } from "./launch-facts.js";
 import { findNestedCounterpart, planReuse } from "./plan-reuse.js";
@@ -565,9 +565,8 @@ async function runWorkflowNode(
   if (!ctx.run.files) {
     return { status: "failed", error: `workflow step "${node.name}": no loaded file tree to resolve ref "${node.ref}"` };
   }
-  const childPath = resolve(ctx.run.fileDir, node.ref);
-  const childFile = ctx.run.files.get(childPath);
-  if (!childFile) {
+  const child = resolveChildRef(ctx.run.fileDir, node.ref, ctx.run.files);
+  if (!child) {
     return { status: "failed", error: `workflow step "${node.name}": referenced file "${node.ref}" is not in the loaded tree` };
   }
 
@@ -583,8 +582,8 @@ async function runWorkflowNode(
     nodeName: node.name,
   };
   const childResult = await executeWorkflowRun({
-    file: childFile,
-    fileDir: dirname(childPath),
+    file: child.file,
+    fileDir: child.dir,
     input: stepInput,
     incomingConfig: ctx.stepConfig, // parent's effective config crosses the file boundary (§8)
     identity: childIdentity,
@@ -1307,34 +1306,20 @@ function validateRunStartConfig(
 ): string | undefined {
   const issues: string[] = [];
 
-  function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): void {
-    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
-    for (const node of walkNodes(file.body)) {
-      const nodeConfig = "config" in node ? node.config : undefined;
-      if (node.type === "workflow") {
-        // The child file inherits this step's effective config across the boundary (format §8), so it
-        // is validated once per (file, incoming-config) it is reached with — the same file under two
-        // parents is two validations, each against what actually reaches it.
-        const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
-        const child = files?.get(resolve(dir, node.ref));
-        if (child) walk(child, stepConfig, dirname(resolve(dir, node.ref)));
-        continue;
-      }
-      const plugin = registry[node.type];
-      if (!plugin) continue; // the schema already rejects a type no registry contributes
-      // One resolution for this step, the same call the executor makes, so the gate validates exactly
-      // the object the worker will receive — no per-site unwrap to keep in step (#116, ADR 0022 sub-4).
-      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
-      const result = z.object(plugin.config).passthrough().safeParse(stepConfig);
-      if (!result.success) {
-        for (const issue of formatIssues(result.error)) {
-          issues.push(`step "${node.name}" (type ${node.type}): ${issue}`);
-        }
+  // One descent of the loaded ref tree (`walkRefTree`), so this gate reads the very `stepConfig` the
+  // executor materializes. A file reached under two parents is validated once per incoming config, each
+  // against what actually reaches it (format §8) — the walk carries that, not this fold.
+  for (const { node, stepConfig } of walkRefTree(rootFile, rootDir, { files, operatorConfig, env })) {
+    if (node.type === "workflow") continue; // grammar-fixed, never a registry leaf; the walk descends it
+    const plugin = registry[node.type];
+    if (!plugin) continue; // the schema already rejects a type no registry contributes
+    const result = z.object(plugin.config).passthrough().safeParse(stepConfig);
+    if (!result.success) {
+      for (const issue of formatIssues(result.error)) {
+        issues.push(`step "${node.name}" (type ${node.type}): ${issue}`);
       }
     }
   }
-
-  walk(rootFile, operatorConfig, rootDir);
 
   if (issues.length === 0) return undefined;
   return `run failed before its first step: ${
@@ -1370,29 +1355,19 @@ export function resolveNode(
   nodeId: string,
   options: { files?: Map<string, WorkflowFile>; operatorConfig?: ConfigObject; env?: EnvSource } = {},
 ): ResolvedNode | undefined {
-  const env: EnvSource = options.env ?? { ...process.env };
-  const files = options.files;
-
-  function walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): ResolvedNode | undefined {
-    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), env);
-    for (const node of walkNodes(file.body)) {
-      const nodeConfig = "config" in node ? node.config : undefined;
-      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), env);
-      if (node.id === nodeId) return { node, config: stepConfig };
-      // A nested `workflow` step's ref'd file has its own body of ids to search, entered with this
-      // step's effective config (config crosses the boundary; context does not — format §8).
-      if (node.type === "workflow") {
-        const child = files?.get(resolve(dir, node.ref));
-        if (child) {
-          const found = walk(child, stepConfig, dirname(resolve(dir, node.ref)));
-          if (found) return found;
-        }
-      }
-    }
-    return undefined;
+  // The one descent of the loaded tree (`walkRefTree`), so the config a caller interpolates this node's
+  // fields against is the object dispatch hands the worker — one rule, not a second copy of it. The
+  // caller owns the environment snapshot (`RunOptions`/`Project`), because a reader that takes its own
+  // `process.env` here would judge the node against config the run never used.
+  const scope = {
+    files: options.files,
+    operatorConfig: options.operatorConfig,
+    env: options.env ?? { ...process.env },
+  };
+  for (const entry of walkRefTree(rootFile, rootDir, scope)) {
+    if (entry.node.id === nodeId) return { node: entry.node, config: entry.stepConfig };
   }
-
-  return walk(rootFile, options.operatorConfig ?? {}, rootDir);
+  return undefined;
 }
 
 /**
