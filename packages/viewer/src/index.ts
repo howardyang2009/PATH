@@ -15,7 +15,7 @@ export { useRunView, type RunViewLoad } from "./use-run-view.js";
 // so a launch/resume reads identically on both surfaces (ADR 0031). `ResumeActions` (the two resume
 // verbs over one shared config field) rides inside `RunsList`, so consumers get it by passing a tree.
 export { LaunchForm, type LaunchFormProps } from "./launch-form.js";
-export { ResumeActions, type ResumeActionsProps } from "./resume-actions.js";
+export { ResumeActions, type ResumeActionsProps, type ResumeFromAffordance } from "./resume-actions.js";
 export { JsonField } from "./json-field.js";
 // The one worker-default editor, shared by the two tiers that author the table (ADR 0044): the
 // Designer's file `worker_defaults` region and the Viewer launch form's launch worker-default.

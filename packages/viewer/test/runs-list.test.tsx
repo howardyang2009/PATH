@@ -467,9 +467,9 @@ describe("RunsList", () => {
   describe("in-flight run actions", () => {
     it("offers no Resume, Resume from …, or Delete when a running row is clicked", async () => {
       const { client } = stubClient([RUNNING]);
-      // `resumeTree` present and this row selected is the one case that would otherwise show
+      // The affordance present and this row selected is the one case that would otherwise show
       // `Resume from …`; it must still stay hidden because the run is in flight.
-      renderList(client, { selectedRootRunId: RUNNING.run_id, resumeTree: new Map() });
+      renderList(client, { selectedRootRunId: RUNNING.run_id, resumeFrom: { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false } });
 
       fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
       await screen.findByTestId(`run-actions-${RUNNING.run_id}`);
@@ -486,9 +486,13 @@ describe("RunsList", () => {
         ["run_beta", awaitingNode({ runId: "run_beta", parentRunId: null, status: "running" })],
         ["leaf", awaitingNode({ runId: "leaf", parentRunId: "run_beta", status: "awaiting" })],
       ]);
-      // `resumeTree` present and this row selected is the one case that would otherwise offer
+      // The affordance present and this row selected is the one case that would otherwise offer
       // `Resume from …`; the published display status is what makes the row read in flight.
-      renderList(client, { selectedRootRunId: "run_beta", resumeTree: runs, displayStatus: displayStatusByRun(runs) });
+      renderList(client, {
+        selectedRootRunId: "run_beta",
+        resumeFrom: { runs, selectedRunId: null, rootFile: null, dirty: false },
+        displayStatus: displayStatusByRun(runs),
+      });
 
       fireEvent.click(await screen.findByTestId(`run-row-run_beta`));
       await screen.findByTestId("run-actions-run_beta");

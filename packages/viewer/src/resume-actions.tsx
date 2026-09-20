@@ -10,6 +10,24 @@ import { useEffect, useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
 
+/**
+ * The `Resume from …` K-selection affordance: **one value** for the four facts the eager legal-K check
+ * needs — the watched run's tree, the K selected in it, and the open buffer's file and dirty flag (the
+ * Designer's save-first gate, ADR 0030; the Viewer never edits, so it passes `null`/`false`). They are
+ * only meaningful together: a tree with no selection has no K, and a file with no selection has nothing
+ * to check it against, so a surface cannot pass a plausible-looking subset.
+ */
+export interface ResumeFromAffordance {
+  /** The watched run's tree, keyed by run id — the same map the run tree renders; K is a row of it. */
+  runs: ReadonlyMap<string, RunNodeState>;
+  /** The run selected in the run tree; K is this run. `null` when nothing (or the root) is selected. */
+  selectedRunId: string | null;
+  /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
+  rootFile: WorkflowFile | null;
+  /** The open buffer's dirty flag — the Designer's save-first gate (ADR 0030). The Viewer passes `false`. */
+  dirty: boolean;
+}
+
 export interface ResumeActionsProps {
   client: PathApiClient;
   /** The selected root run — the run being resumed / reran. */
@@ -27,17 +45,11 @@ export interface ResumeActionsProps {
   plainResumable: boolean;
   /**
    * Show the **`Resume from …`** K-selection button. `true` only in the watched run's own panel — the
-   * one row with a loaded tree behind it — when the surface opted in by passing a tree.
+   * one row with a loaded tree behind it — when the surface opted in by passing {@link resumeFrom}.
    */
   showResumeFrom: boolean;
-  /** The watched run's tree, keyed by run id — the same map the run tree renders; K is a row of it. */
-  runs: ReadonlyMap<string, RunNodeState>;
-  /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
-  rootFile: WorkflowFile | null;
-  /** The run selected in the run tree; K is this run. `null` when nothing (or the root) is selected. */
-  selectedRunId: string | null;
-  /** The open buffer's dirty flag — the Designer's save-first gate (ADR 0030). The Viewer passes `false`. */
-  dirty: boolean;
+  /** Everything the eager legal-K check reads. Required here: the panel is only built with it. */
+  resumeFrom: ResumeFromAffordance;
   /**
    * The launch config dot-paths the root-run summary recorded as `$secret`-masked (`launch_secret_keys`,
    * ADR 0046). Non-empty, the config field is prefilled with those paths' skeleton and opened: a resume
@@ -73,10 +85,7 @@ export function ResumeActions({
   showResume,
   plainResumable,
   showResumeFrom,
-  runs,
-  rootFile,
-  selectedRunId,
-  dirty,
+  resumeFrom,
   launchSecretKeys,
   onResumed,
 }: ResumeActionsProps): JSX.Element {
@@ -96,7 +105,7 @@ export function ResumeActions({
   // that was selected when the button was pressed, not the one now selected. Clear it on change.
   useEffect(() => {
     setError(null);
-  }, [selectedRunId]);
+  }, [resumeFrom.selectedRunId]);
 
   // The shared launch-facts secret-restore gate (ADR 0046, `@path/client-core`): the config parse and
   // the still-blank recorded secrets, one verdict both continuation doors read. A recorded secret is a
@@ -109,7 +118,7 @@ export function ResumeActions({
 
   // `Resume from …` legality — computed only when the button is shown (only then is a tree behind it).
   const eligibility = showResumeFrom
-    ? resumeFromEligibility({ rootRunId, runs, rootFile, selectedRunId, dirty })
+    ? resumeFromEligibility({ rootRunId, ...resumeFrom })
     : null;
 
   // "Enabled" here is by status / K-eligibility alone, not config validity — a bad config must not lock

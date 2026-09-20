@@ -108,13 +108,16 @@ export function App({ client }: { client: PathApiClient }) {
           // The Viewer reads the watched run's root file (above) so the eager legal-K check greys the
           // button for the same reasons the Designer does — in-body, since-deleted, prefix — rather
           // than only on the engine's refusal. It never edits, so `dirty` stays false. K is the node
-          // picked in the detail pane's run tree.
-          resumeTree={load.phase === "ready" ? load.value.runs : undefined}
+          // picked in the detail pane's run tree. Absent until the tree lands: without it there is no
+          // affordance, and the panel offers plain Resume alone.
+          resumeFrom={
+            load.phase === "ready"
+              ? { runs: load.value.runs, selectedRunId, rootFile, dirty: false }
+              : undefined
+          }
           // The watched run's display status, so its row reads `awaiting` while a leaf is parked even
           // though the list's summary status stays `running` (ADR 0038).
           displayStatus={load.phase === "ready" ? load.value.displayStatus : undefined}
-          resumeSelectedRunId={selectedRunId}
-          resumeRootFile={rootFile}
         />
       }
       detail={
