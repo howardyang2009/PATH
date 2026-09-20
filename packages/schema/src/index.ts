@@ -10,6 +10,12 @@
 // without needing an engine to read one: `@path/client-core` runs in a browser and would otherwise
 // depend on a package carrying SQLite, child processes and the Agent SDK for two type-only names.
 // The line is what a run *is* (here) versus how a run is *stored* or *executed* (@path/engine).
+//
+// This barrel is the convenience default. The package's `exports` map also names the seams a consumer
+// can import narrowly, so an import says which module owns a name rather than "somewhere in schema":
+// `@path/schema/nodes` (the registry-driven node factory), `@path/schema/node-walk` (the block
+// grammar's one descent) and `@path/schema/wire-v0` (the v0 wire codec). Each is pinned by
+// `test/subpath.test.ts`, since a package `exports` path is not something tsc alone checks.
 
 export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";

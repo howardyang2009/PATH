@@ -4,7 +4,10 @@
   "private": true,
   "type": "module",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./nodes": "./src/nodes.ts",
+    "./node-walk": "./src/node-walk.ts",
+    "./wire-v0": "./src/wire-v0.ts"
   },
   "types": "./src/index.ts",
   "scripts": {
