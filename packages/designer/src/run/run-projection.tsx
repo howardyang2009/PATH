@@ -1,5 +1,5 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
-import type { RunNodeState, RunStatus } from "@path/client-core";
+import { displayStatusByRun, type RunNodeState, type RunStatus } from "@path/client-core";
 
 /**
  * The canvas projection (surface 6, ADR 0025): live run status folded onto the workflow's nodes. One
@@ -14,8 +14,14 @@ import type { RunNodeState, RunStatus } from "@path/client-core";
  * Only `running` short-circuits — a `pending` (queued) row must not mask a newer terminal verdict, so
  * it is left to the recency fallback. Runs with no `nodeId` — the implicit root run — project onto
  * nothing on the canvas; they live in the inspector tree.
+ *
+ * Each run is read through `displayStatusByRun` (ADR 0038), the one derivation every run surface
+ * shares: a `workflow` step's run is the nested run's root, so it stays `running` in the record while
+ * a leaf in the sub-workflow parks. The projection repaints that node `awaiting` — the same status the
+ * run tree, the runs list and the breadcrumb show — instead of masking it with the record's `running`.
  */
 export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
+  const display = displayStatusByRun(runs);
   const byNode = new Map<string, RunNodeState[]>();
   for (const run of runs.values()) {
     if (run.nodeId === null) continue;
@@ -26,8 +32,9 @@ export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<s
 
   const projected = new Map<string, RunStatus>();
   for (const [nodeId, group] of byNode) {
-    const running = group.find((run) => run.status === "running");
-    projected.set(nodeId, running ? running.status : mostRecent(group).status);
+    const running = group.find((run) => display.get(run.runId) === "running");
+    const latest = mostRecent(group);
+    projected.set(nodeId, running ? "running" : display.get(latest.runId) ?? latest.status);
   }
   return projected;
 }
