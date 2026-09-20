@@ -1,4 +1,5 @@
 import type { ConfigObject, ConfigValue } from "@path/schema";
+import { withoutKey } from "./edit-target.js";
 
 /**
  * The pure model behind the config-inheritance region of the properties pane (#370, designer-spec
@@ -63,6 +64,6 @@ export function setConfigKey(config: ConfigObject | undefined, key: string, valu
  * can drop the whole `config` field (an empty `config: {}` is noise the author never wrote).
  */
 export function dropConfigKey(config: ConfigObject | undefined, key: string): ConfigObject | undefined {
-  const { [key]: _dropped, ...rest } = config ?? {};
+  const rest = withoutKey(config ?? {}, key);
   return Object.keys(rest).length === 0 ? undefined : rest;
 }

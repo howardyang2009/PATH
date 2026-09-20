@@ -1,4 +1,5 @@
 import { ENVELOPE_KEYS, type ConfigObject, type WorkflowNode } from "@path/schema";
+import { withoutKey } from "./edit-target.js";
 
 /**
  * The pure **content** edits the properties pane performs on a single `WorkflowNode` (#369) — the
@@ -49,8 +50,7 @@ export function setNodeField(node: WorkflowNode, key: string, value: unknown): W
 
 /** Drop a key from a node, returning a new node without it. */
 export function dropNodeKey(node: WorkflowNode, key: string): WorkflowNode {
-  const { [key]: _dropped, ...rest } = rec(node);
-  return rest as unknown as WorkflowNode;
+  return withoutKey(node, key);
 }
 
 /** An optional string field: set it when non-empty, drop it when empty. */

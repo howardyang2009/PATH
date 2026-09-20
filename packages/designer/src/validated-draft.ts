@@ -11,6 +11,7 @@ import {
   type WorkflowNode,
 } from "@path/schema";
 import { sameEditKey, type EditKey } from "./edit-key.js";
+import { withoutKey } from "./edit-target.js";
 import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { parseInputDraft } from "./interp-suggest.js";
 import { wireToRegistry } from "./open-workflow.js";
@@ -152,10 +153,7 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
  * strict-valid.
  */
 export function validateFileInputDraft(file: WorkflowFile, text: string): DraftResult<WorkflowFile> {
-  const dropInput = (): WorkflowFile => {
-    const { input: _dropped, ...rest } = file;
-    return rest as WorkflowFile;
-  };
+  const dropInput = (): WorkflowFile => withoutKey(file, "input");
   if (text.trim() === "") return { ok: true, value: dropInput() };
   const parsed = parseInputDraft(text, []);
   if (!parsed.ok) return { ok: false, error: parsed.error };
