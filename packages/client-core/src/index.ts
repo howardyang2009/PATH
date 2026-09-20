@@ -97,6 +97,7 @@ export {
 // missing blob means. The surfaces keep only their own wiring — the launch form's inputs, the run
 // tree's rows, the narrative's list, the blob hook's `useState`/`useEffect` — on the other side.
 export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from "./launch-json.js";
+export { runBlobSource, type RunBlobSource } from "./blob-source.js";
 export { nodeLabel, nodeEventLabel } from "./node-label.js";
 export { eventMessage } from "./event-message.js";
 export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";
