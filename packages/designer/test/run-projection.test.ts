@@ -7,7 +7,7 @@ function run(partial: Partial<RunNodeState> & { runId: string }): RunNodeState {
   return {
     runId: partial.runId,
     rootRunId: "root",
-    parentRunId: null,
+    parentRunId: partial.parentRunId ?? null,
     nodeId: partial.nodeId ?? null,
     nodeName: null,
     workerName: null,
@@ -64,5 +64,18 @@ describe("projectRunStatus (#372 canvas projection)", () => {
       ),
     );
     expect(projected.get("loop")).toBe("failed");
+  });
+
+  it("projects `awaiting` for a running node that holds an awaiting run below it", () => {
+    // A `workflow` step's run is the nested run's root (ADR 0038): it stays `running` while a leaf in the
+    // sub-workflow parks, so the node reads `awaiting` — the same repaint every other run surface shows.
+    const projected = projectRunStatus(
+      mapOf(
+        run({ runId: "sub-root", nodeId: "revise", status: "running" }),
+        run({ runId: "leaf", nodeId: "approve", parentRunId: "sub-root", status: "awaiting" }),
+      ),
+    );
+    expect(projected.get("revise")).toBe("awaiting");
+    expect(projected.get("approve")).toBe("awaiting");
   });
 });
