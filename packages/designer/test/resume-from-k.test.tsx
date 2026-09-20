@@ -60,9 +60,18 @@ function wireRun(p: { run_id: string; status: string; node_id?: string | null; n
   };
 }
 
-/** A root-run summary row for the rail, at the given status. */
-function summary(status: string): Record<string, unknown> {
-  return { run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status, started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" };
+/** A root-run summary row for the rail, at the given status, carrying any recorded launch-secret paths. */
+function summary(status: string, launchSecretKeys?: string[]): Record<string, unknown> {
+  return {
+    run_id: "root-1",
+    workflow_name: "root-flow",
+    workflow_id: WF_ID,
+    workflow_path: ROOT_PATH,
+    status,
+    started_at: "2026-01-01T00:00:00Z",
+    finished_at: "2026-01-01T00:01:00Z",
+    ...(launchSecretKeys ? { launch_secret_keys: launchSecretKeys } : {}),
+  };
 }
 
 function openDock(): void {
@@ -71,12 +80,18 @@ function openDock(): void {
 
 /** Render the App on the two-step file with the given rail + tree, then open the dock and watch root-1. */
 async function renderWatching(
-  opts: { rootStatus: string; treeRuns: Record<string, unknown>[]; onResumeRun?: DesignerStubOptions["onResumeRun"] },
+  opts: {
+    rootStatus: string;
+    treeRuns: Record<string, unknown>[];
+    onResumeRun?: DesignerStubOptions["onResumeRun"];
+    /** The root summary's recorded `$secret` paths (ADR 0046), so the resume card asks for them again. */
+    launchSecretKeys?: string[];
+  },
   calls?: StubCalls,
 ) {
   const client = stubClient({
     files: { [ROOT_PATH]: canonicalBytes(twoStepFile()) },
-    runs: { runs: [summary(opts.rootStatus)] },
+    runs: { runs: [summary(opts.rootStatus, opts.launchSecretKeys)] },
     tree: { root_run_id: "root-1", status: opts.rootStatus, output: null, runs: opts.treeRuns },
     onResumeRun: opts.onResumeRun,
     calls,
@@ -181,5 +196,45 @@ describe("Designer Resume-from-K button (#447)", () => {
     // Selecting a legal K enables it — the succeeded root's one way back in.
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     await waitFor(() => expect(screen.getByTestId("resume-from-submit")).toBeEnabled());
+  });
+
+  it("greys a legal K's Resume from … until the recorded launch secret is supplied (ADR 0046)", async () => {
+    const calls = makeCalls();
+    await renderWatching(
+      {
+        rootStatus: "failed",
+        launchSecretKeys: ["DEEPSEEK_API_KEY"],
+        treeRuns: [
+          wireRun({ run_id: "root-1", status: "failed" }),
+          wireRun({ run_id: "r-step1", status: "succeeded", node_id: STEP1_ID, node_name: "draft" }),
+          wireRun({ run_id: "r-step2", status: "succeeded", node_id: STEP2_ID, node_name: "review" }),
+        ],
+      },
+      calls,
+    );
+
+    fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
+    const submit = await screen.findByTestId("resume-from-submit");
+    // K is legal, so the label carries its identity — but the frozen secret is still blank, so the verb
+    // is greyed and the card names the path the engine would refuse to continue with.
+    await waitFor(() => expect(submit).toBeDisabled());
+    expect(submit).toHaveTextContent("Resume from review(r-step2)");
+    expect(screen.getByTestId("resume-secret-error")).toHaveTextContent('"DEEPSEEK_API_KEY"');
+    expect(submit.getAttribute("title")).toContain("DEEPSEEK_API_KEY");
+
+    fireEvent.click(submit);
+    expect(calls.resume).toHaveLength(0);
+
+    // Supplied, the reason clears and the K rides the resume with the config override.
+    fireEvent.change(await screen.findByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' } });
+    await waitFor(() => expect(submit).toBeEnabled());
+    expect(screen.queryByTestId("resume-secret-error")).toBeNull();
+
+    fireEvent.click(submit);
+    await waitFor(() => expect(calls.resume).toHaveLength(1));
+    expect(calls.resume[0]!.body).toMatchObject({
+      rerun_from_run_id: "r-step2",
+      config: { DEEPSEEK_API_KEY: "sk-live" },
+    });
   });
 });

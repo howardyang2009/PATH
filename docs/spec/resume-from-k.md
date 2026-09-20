@@ -218,7 +218,9 @@ Normative source: [designer-spec.md § Resume from here](designer-spec.md),
 - **Always rendered, two states.** Enabled label `Resume from <node-name> (<short-run-id>)` (full run id
   on wire and hover); or disabled with **one** reason, in precedence: (1) no node selected, (2) illegal K
   (the matching entry of the §5 taxonomy), (3) legal K but a dirty buffer (Launch's save-first "Save to
-  enable").
+  enable"). A run whose launch recorded `$secret` config (ADR 0046) additionally withholds **both**
+  resume verbs — plain `Resume run` shares the one config field — while a recorded secret path is empty
+  or whitespace, naming each blank path (the Complete form's gate, on the resume door).
 - **Legal K computed client-side, refused server-side.** The client greys illegal rows eagerly from the
   run tree it holds; the engine `refusal` (§5) is the backstop for a race where the on-disk file moved.
 - **Clean-buffer gated, no lease.** Resume-from-K matches K's node path against the bytes on disk, so it

@@ -13,7 +13,7 @@ import {
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { errorMessage } from "./load-state.js";
-import { blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
+import { blankSecretMessage, blankSecretPaths, secretSkeletonJson } from "./secret-config.js";
 
 export interface CompleteFormProps {
   client: PathApiClient;
@@ -109,7 +109,7 @@ export function CompleteForm({
     }
     const blanks = blankSecretPaths(secrets, configResult.value);
     if (blanks.length > 0) {
-      setFormErrors([blankSecretMessage(blanks)]);
+      setFormErrors([blankSecretMessage(blanks, "completing")]);
       return;
     }
     setPhase("sending");
@@ -161,7 +161,7 @@ export function CompleteForm({
 
       {blankSecrets.length > 0 && (
         <p className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-secret-error">
-          {blankSecretMessage(blankSecrets)}
+          {blankSecretMessage(blankSecrets, "completing")}
         </p>
       )}
 
@@ -183,14 +183,6 @@ export function CompleteForm({
       </div>
     </form>
   );
-}
-
-/** The form-level error for the launch secrets a submit would leave blank, naming each one. */
-function blankSecretMessage(paths: readonly string[]): string {
-  const names = paths.map((path) => `"${path}"`).join(", ");
-  return paths.length === 1
-    ? `Launch secret ${names} is empty — enter a value before completing.`
-    : `Launch secrets ${names} are empty — enter a value for each before completing.`;
 }
 
 interface RawOutputControlProps {

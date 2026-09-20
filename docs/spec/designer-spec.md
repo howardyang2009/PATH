@@ -601,6 +601,14 @@ button shows **one** reason, in this precedence (first that applies wins):
    the same one save-point Launch uses (§ Launch is save-first, ADR 0030). Resume takes **no** edit-lock
    lease — the lease guards authorship, not a run (§ Edit-lock lease protocol, ADR 0017).
 
+**A recorded launch secret must be re-supplied before either resume verb sends.** When the run's launch
+recorded `$secret` config (ADR 0046), the resume card prefills a skeleton of those paths and withholds
+**both** `Resume run` and `Resume from …` — the two share the one config field — while any recorded path
+is empty or whitespace, naming each blank path once for the card. A resume recovers the frozen config,
+where the secret is only its `[secret:<key>]` mask token: the engine would fall back to the environment
+for a credential the author did not choose, or end the successor before its first step. This is the
+same gate the awaiting Complete form puts on `Complete this activity` (ADR 0046), on the resume door.
+
 **Legal K includes nested nodes and reuse rows.** A legal K is any non-root run-tree row that is
 **succeeded**, **top-level of its own level's body**, and whose **prefix `<K` at that level also
 succeeded**. This admits a **nested workflow-run** row (K re-runs it entire, or it is descended when it
