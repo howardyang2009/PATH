@@ -1,10 +1,31 @@
-import { isReuseRow, isRootRun, type ConfigObject, type JsonValue, type LaunchFacts, type RunRecord } from "@path/schema";
+import {
+  isReuseRow,
+  isRootRun,
+  isStepType,
+  rerunBoundaryIndex,
+  rerunDisposition,
+  walkNodes,
+  type ConfigObject,
+  type JsonValue,
+  type LaunchFacts,
+  type RerunFromNodePathEntry,
+  type RunRecord,
+  type WorkflowFile,
+} from "@path/schema";
 import type Database from "better-sqlite3";
+import { descendNodePath } from "./descend-node-path.js";
 import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
+import { findNestedCounterpart } from "./plan-reuse.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
-import { runBlobDir } from "./persistence/paths.js";
+import { runBlobDir, RUN_BLOB_FILE } from "./persistence/paths.js";
 import { getRun } from "./persistence/run-store.js";
+import type { ContinueState, RunContext } from "./run-context.js";
 import type { RunObserver } from "./run-observer.js";
+import type { ResumeInput } from "./run-workflow.js";
+
+// A node of a workflow body — the same structural alias `run-workflow.ts` uses; a disposition is
+// asked for one node of one file's body.
+type WorkflowNode = WorkflowFile["body"][number];
 
 /**
  * One **continuation** of an existing run tree, assembled in one place.
@@ -127,4 +148,203 @@ export function successorCapture(): SuccessorCapture {
       return rootRunId;
     },
   };
+}
+
+// ── Per-node disposition: the two continuation modes as two adapters ─────────────────────────────
+
+/**
+ * What a node's own recorded row says about how the walk should proceed — the **one** answer to
+ * "does this node already have a run here, and what does its status mean", read by the three walkers
+ * that own one: `runNode` (a leaf or `workflow` step), `runWorkflowNode` (a nested workflow-run
+ * re-entered in place) and `runLoopIteration` (a `while-do` iteration container).
+ *
+ * Resume and Complete are different trees with different rules, so the two modes are two {@link
+ * Continuation} adapters, not two arms of one switch. A **Resume** consults the reuse plan: a fresh
+ * successor tree whose reused node reads the *original's* recorded output (ADR 0001). A **Complete**
+ * consults this same tree's own rows, read-only (ADR 0041): a succeeded row is its own output, a
+ * parked row is either the leaf being Completed or a still-parked sibling, and a non-terminal row is
+ * re-entered in place.
+ */
+export type NodeDisposition =
+  /** Resume: the reuse plan holds a succeeded original run for this node id — reuse its output. */
+  | { kind: "reuse"; original: RunRecord }
+  /** Complete: this tree's row for the node already succeeded — read its output, re-run nothing. */
+  | { kind: "succeeded"; existing: RunRecord }
+  /** Complete: this tree's row is the parked leaf being Completed — transition it in place. */
+  | { kind: "complete"; existing: RunRecord }
+  /** Complete: this tree's row is a still-parked sibling — park the walk again (park-at-join). */
+  | { kind: "park" }
+  /** Complete: an existing non-terminal row this node re-enters in place (a nested run, an iteration). */
+  | { kind: "reenter"; existing: RunRecord }
+  /** Nothing recorded answers this node — run it fresh. */
+  | { kind: "fresh" };
+
+/**
+ * How a continuation directs the walk at one node. Resume and Complete are two trees with two rule
+ * sets — a fresh successor consulting a reuse plan; this same tree replayed in place (ADR 0041) — so
+ * they are two adapters behind this one seam, not two arms of one switch. `continuationOf` picks the
+ * adapter for a run; every walker asks the adapter through this interface and knows neither mode.
+ */
+export interface Continuation {
+  /**
+   * The recorded-row verdict for one node of this workflow-run. `iteration` scopes the lookup to a
+   * `while-do` iteration container's ordinal (Complete only); every other node leaves it out.
+   */
+  disposition(node: WorkflowNode, iteration?: number): NodeDisposition;
+}
+
+/**
+ * The **Resume** adapter (a fresh successor tree): a node reuses when the reuse plan holds a succeeded
+ * original run for its id, else it runs fresh. A forward run past its resumed prefix — and every fresh
+ * (non-resumed) run — carries an undefined plan and so answers `fresh` at every node.
+ */
+function resumeContinuation(resume: RunContext["resume"]): Continuation {
+  return {
+    disposition(node) {
+      const original = resume?.plan.get(node.id);
+      return original ? { kind: "reuse", original } : { kind: "fresh" };
+    },
+  };
+}
+
+/**
+ * The **Complete** adapter (this tree replayed in place, ADR 0041): the one existing row under this
+ * parent whose node id — and, for a `while-do` iteration container, whose `iteration` ordinal —
+ * matches directs the walk. A succeeded row is reused read-only; the parked target leaf is completed
+ * in place; another parked leaf parks the walk again (park-at-join); a non-terminal row is re-entered
+ * only by a node that owns a re-enterable run — a nested `workflow` step or a loop iteration container.
+ * A leaf has nothing to re-enter: a Complete replay of a parked tree never finds a live leaf row (the
+ * engine tears down at an awaiting leaf, ADR 0039), and a cancelled or failed row is not a state to
+ * resume — so a leaf with one runs fresh.
+ */
+function completeContinuation(state: ContinueState, parentRunId: string): Continuation {
+  return {
+    disposition(node, iteration) {
+      const existing = findExistingChild(state.existingRuns, parentRunId, node.id, iteration);
+      if (!existing) return { kind: "fresh" };
+      if (existing.status === "succeeded") return { kind: "succeeded", existing };
+      if (existing.status === "awaiting") {
+        return existing.runId === state.target.stepRunId ? { kind: "complete", existing } : { kind: "park" };
+      }
+      if (node.type === "workflow" || iteration !== undefined) return { kind: "reenter", existing };
+      return { kind: "fresh" };
+    },
+  };
+}
+
+/**
+ * Selects the {@link Continuation} adapter for one workflow-run. `continue` (Complete) and `resume`
+ * (Resume) are mutually exclusive by construction — a run is a Complete replay, a Resume successor, or
+ * neither — and a plain forward run gets the Resume adapter over an undefined plan, which answers
+ * `fresh` for every node.
+ */
+export function continuationOf(run: RunContext): Continuation {
+  return run.continue ? completeContinuation(run.continue, run.identity.runId) : resumeContinuation(run.resume);
+}
+
+/**
+ * The one existing run of the tree being Completed that answers a given node (ADR 0041): the row whose
+ * parent run is this workflow-run and whose `nodeId` matches — plus, for a `while-do` iteration
+ * container, whose `iteration` ordinal matches. Within one tree a node under one parent has exactly one
+ * such row (a loop body one per iteration), so a single match or none is the only outcome; more than
+ * one would be a corrupt tree, so it is treated as none and the node runs fresh rather than guessing.
+ */
+function findExistingChild(
+  existingRuns: RunRecord[],
+  parentRunId: string,
+  nodeId: string,
+  iteration?: number,
+): RunRecord | undefined {
+  const matches = existingRuns.filter(
+    (r) =>
+      r.parentRunId === parentRunId &&
+      r.nodeId === nodeId &&
+      (iteration === undefined || r.iteration === iteration),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
+}
+
+/**
+ * The recorded output of an existing `succeeded` run of the tree being Completed. Reuse rows were
+ * pre-swapped for their source record (`sourceRuns`), so a `succeeded` row always carries its own
+ * `outputRef` addressing its output blob; a `{}` fallback covers the theoretical row with no ref.
+ */
+export function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
+  return run.outputRef ? state.readBlob(run, RUN_BLOB_FILE.output) : {};
+}
+
+// ── Resume-from-K rerun boundary: the two boundary producers and its descent crumbs ──────────────
+
+/**
+ * Producer A (ADR 0035): this on-path level's **suppress** set — the rerun-boundary head B and every
+ * serialized-later run-producing node id, over this file's own nested walk (`body.slice(indexOf(B))`).
+ * `planReuse` drops these from the reuse plan, so B and after-B re-run instead of reusing. `undefined`
+ * off-path / plain Resume (empty suffix).
+ *
+ * This is the reuse-plan *mechanism* only. The per-node three-way verdict the descent readers consult —
+ * reuse / descend / rerun-entire — lives in `@path/schema`'s `rerunDisposition`, the one authority they
+ * share; this stays the flat set `planReuse` needs. Which index B sits at, and the invariant throw for a
+ * head this body does not hold, is `rerunBoundaryIndex`'s answer — the same one `rerunDisposition` reads,
+ * so the two producers cannot disagree about where the boundary is.
+ */
+export function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<string> | undefined {
+  const bIndex = rerunBoundaryIndex(file.body, suffix);
+  if (bIndex === undefined) return undefined;
+  const suppress = new Set<string>();
+  for (const node of walkNodes(file.body.slice(bIndex))) {
+    if (isStepType(node.type)) suppress.add(node.id);
+  }
+  return suppress;
+}
+
+/**
+ * The resume state a child `workflow` run inherits (Producer B, ADR 0036), computed from this run's
+ * own suffix. Undefined when this run is not resuming. For a resuming run one of three dispositions:
+ *
+ * - **descend** — `nodeId` is this level's path-node B and B is intermediate (a longer tail follows):
+ *   re-enter B's original counterpart and hand it `S.slice(1)`, so B reuses its inner prefix and applies
+ *   its own boundary one level down.
+ * - **rerun-entire** — `nodeId` is after B, or is B == K (a leaf `workflow` node): no counterpart, so
+ *   the child seeds fresh and its whole subtree re-runs. Cascade-up is this rule per level.
+ * - **reuse / off-path** — `nodeId` is before B, or this run is off-path (empty suffix): re-enter the
+ *   counterpart exactly as plain Resume, tail `[]`. (A before-B node that reused short-circuits before
+ *   dispatch and never reaches here; one that did not — added since, or unsucceeded — re-enters plain.)
+ */
+export function childResumeState(
+  run: RunContext,
+  nodeId: string,
+): { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] } | undefined {
+  const resume = run.resume;
+  if (!resume) return undefined;
+  const suffix = resume.rerunSuffix;
+  // The one authority for the three-way verdict (`@path/schema/rerunDisposition`): rerun-entire drops
+  // the counterpart so the child's whole subtree re-runs; reuse / descend re-enter it; only descend
+  // carries the tail one level down.
+  const disposition = rerunDisposition(run.file.body, suffix, nodeId);
+  const counterpart =
+    disposition === "rerun-entire"
+      ? undefined
+      : findNestedCounterpart(resume.input.originalRuns, resume.counterpart?.runId, nodeId);
+  return { input: resume.input, counterpart, rerunSuffix: disposition === "descend" ? suffix.slice(1) : [] };
+}
+
+/**
+ * The persisted denormalization of the rerun boundary path (ADR 0032/0036): each node id paired with
+ * its current human name **at its own level**. `undefined` for plain Resume. The descent resolves each
+ * level's name from its own file, following the path-node's `workflow` ref down. Correctness never
+ * reads it — it is for #418's descent crumbs — so a name the file no longer carries (or a ref that no
+ * longer resolves) falls back to the id.
+ */
+export function resolveRerunFromNodePath(
+  rootFile: WorkflowFile,
+  rootDir: string,
+  files: Map<string, WorkflowFile> | undefined,
+  rerunFromNodePath: string[] | undefined,
+): RerunFromNodePathEntry[] | undefined {
+  if (rerunFromNodePath === undefined || rerunFromNodePath.length === 0) return undefined;
+  // One descent of the nested-ref tree (`descendNodePath`); each id paired with its current name at its
+  // own level. A level the descent could not reach (a since-removed ref) has no node, so the id is its
+  // own fallback — best-effort, since correctness never reads this crumb (#418).
+  const { levels } = descendNodePath(rootFile, rootDir, files, rerunFromNodePath);
+  return rerunFromNodePath.map((id, level) => ({ nodeId: id, nodeName: levels[level]?.node?.name ?? id }));
 }

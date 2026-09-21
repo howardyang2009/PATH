@@ -5,7 +5,16 @@ import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { WorkerOverrides } from "./run-workflow.js";
 import { mergeConfig } from "./merge-config.js";
-import { openProject, type EligibilityVerdict, type ListEligibleResult, type ProjectRunOptions, type ResumeResult } from "./project.js";
+import { openProject, type ListEligibleResult, type ProjectRunOptions, type ResumeResult } from "./project.js";
+import {
+  formatRunsTable,
+  renderListEligible,
+  renderResume,
+  renderRunOutcome,
+  SIGINT_EXIT_CODE,
+  type RunReport,
+  type RunsTableRow,
+} from "./run-report.js";
 import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
 
 export interface CliIo {
@@ -456,9 +465,6 @@ function buildContextSeed(args: { contextFile?: string | undefined; setContextPa
   return { success: true, context: result.config as { [key: string]: JsonValue } };
 }
 
-// Death by SIGINT, the shell convention (128 + 2) — a cancelled run is neither a failed one (1)
-// nor a usage error (2), and a forced second `^C` leaves on the same code it interrupted.
-const SIGINT_EXIT_CODE = 130;
 
 interface SigintCancellation {
   /** Handed to `RunOptions.signal`: the operator's way into the engine's own unwind (#52). */
@@ -575,7 +581,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     } finally {
       project.close();
     }
-    return reportListEligible(listResult, io);
+    return emit(renderListEligible(listResult), io);
   }
 
   // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
@@ -623,7 +629,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
       sigint.dispose();
       project.close();
     }
-    return reportResume(resumeResult, io);
+    return emit(renderResume(resumeResult), io);
   }
 
   // Only the launch form reaches here (`list-eligible` returned above, `resume` above that), and only a
@@ -653,98 +659,16 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     io.log(typeof runResult.output === "string" ? runResult.output : JSON.stringify(runResult.output));
     return 0;
   }
-  return reportOutcome(runResult.status, runResult.error, io);
+  return emit(renderRunOutcome(runResult.status, runResult.error), io);
 }
 
-// Maps a settled run's terminal status to its stderr narration and exit code, shared by fresh and
-// resumed runs (#177) so the two can't drift on how a cancel or failure reads. `cancelled` (the
-// unwind the operator's `^C` was owed) and `failed` narrate identically for both; success returns 0
-// and prints nothing, leaving each caller to own its happy-path output — a fresh run prints the
-// workflow output, a resumed run has already printed the successor's root run id.
-function reportOutcome(status: RunStatus, error: string | undefined, io: CliIo): number {
-  if (status === "cancelled") {
-    io.error("run cancelled");
-    return SIGINT_EXIT_CODE;
-  }
-  if (status === "failed") {
-    io.error(`run failed: ${error}`);
-    return 1;
-  }
-  // A run that parked at a person-activity leaf (ADR 0039/0041): it is neither done nor broken, so it
-  // exits 0 with a note rather than a failure. The engine tore down; the parked leaf lives in the
-  // store and is resolved later through Complete (the server's `POST /complete`, not `path run`).
-  if (status === "awaiting") {
-    io.error("run is awaiting completion of a person-activity step");
-    return 0;
-  }
-  return 0;
-}
-
-// A resumed run's CLI outcome (#177). An unknown root run id is an ordinary operator mistake — a
-// typo — so it exits 1 with the engine's own "no run found" message, never silently doing something
-// else. Otherwise the successor's fresh root run id is printed on *every* outcome (succeeded,
-// failed, cancelled alike), so the operator can inspect it or chain a further `--resume` regardless
-// of how it ended; the exit code and any error/cancel message then mirror a fresh run's.
-function reportResume(result: ResumeResult, io: CliIo): number {
-  if (!result.found) {
-    // A Resume-from-K refusal (#444) and an unknown root run both exit 1 (every engine refusal
-    // collapses to 1; the command parsed, the engine refused — spec §7.2). The CLI prints the
-    // engine's `refusal.message` verbatim, so there is one wording authority across route / CLI.
-    io.error("refusal" in result ? result.refusal.message : result.error);
-    return 1;
-  }
-
-  io.log(result.rootRunId);
-  return reportOutcome(result.status, result.error, io);
-}
-
-const ELIGIBLE_TABLE_HEADERS = ["run-id", "node-name", "status", "eligible?"] as const;
-
-// The `eligible?` cell (#446, spec §6): `yes` for a legal K, otherwise one reason rendered 1:1 from the
-// §5 taxonomy the engine's verdict classified it as. This is the one place the taxonomy codes become
-// operator-facing wording, distinct from the verbatim `--from` refusal message; the locus reason names
-// the innermost enclosing controller the verdict carried (`inside a loop body`).
-function eligibilityCell(verdict: EligibilityVerdict): string {
-  if (verdict.eligible) return "yes";
-  switch (verdict.reason) {
-    case "root-run":
-      return "root run (never a boundary)";
-    case "not-in-file":
-      return "not in current file";
-    case "in-body":
-      // The verdict always carries a container for an in-body node; the fallback keeps the cell truthful
-      // if a future locus ever lacks one, rather than printing a bare "inside a  body".
-      return `inside a ${verdict.container ?? "loop, parallel, or branch"} body`;
-    case "not-succeeded":
-      return "not succeeded";
-    case "prefix-unsucceeded":
-      return "prefix not all succeeded";
-    case "not-in-tree":
-      // Unreachable on a listed row — every row is a run of the tree being listed (spec §6) — but the
-      // exhaustive switch must account for it.
-      return "not in the run tree";
-  }
-}
-
-// `--list-eligible`'s outcome (#446, spec §7): an unknown root run or a non-terminal source refuses the
-// whole command with the engine's own message and exits 1 — the same message and code a real resume of
-// this root gives. Otherwise the four-column listing prints and exits 0; it is never empty (the root row
-// is always shown).
-function reportListEligible(result: ListEligibleResult, io: CliIo): number {
-  if (!result.found) {
-    io.error(result.error);
-    return 1;
-  }
-  const rows = result.rows.map((row): readonly string[] => [
-    // The run id is never truncated — the operator copies it into `--from` (spec §5). `node-name` is `-`
-    // when the row records none (the root run).
-    row.runId,
-    row.nodeName ?? "-",
-    row.status,
-    eligibilityCell(row.verdict),
-  ]);
-  io.log(formatTable(ELIGIBLE_TABLE_HEADERS, rows));
-  return 0;
+// The one shell that turns a pure {@link RunReport} into effects: stdout lines, then stderr lines,
+// then the exit code. Every `path run` / `path runs` outcome flows through here, so `run-report.ts`
+// owns *what* an outcome says and this owns *that* it is written — the split candidate 2 introduced.
+function emit(report: RunReport, io: CliIo): number {
+  for (const line of report.stdout) io.log(line);
+  for (const line of report.stderr) io.error(line);
+  return report.exitCode;
 }
 
 // `-C <dir>` (git's own flag for "run as if started in <dir>") can appear anywhere in a `runs`
@@ -812,25 +736,6 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   }
 
   return { success: true, options: { limit, status, workflowName, workflowId } };
-}
-
-const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "finished", "resumed-from"] as const;
-
-// One rendered row of the listing — a cell per header, in header order.
-type RunsTableRow = [string, string, string, string, string, string];
-
-// Space-aligned columns (#174): a header line, then every column but the last padded to its widest
-// cell so the last (and any never-truncated id column) carries no trailing padding. Shared by `path
-// runs` and `--list-eligible` (#446) so the two listings render identically.
-function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
-  const widths = headers.map((header, col) => Math.max(header.length, ...rows.map((row) => row[col]!.length)));
-  const line = (cols: readonly string[]): string =>
-    cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");
-  return [line(headers), ...rows.map(line)].join("\n");
-}
-
-function formatRunsTable(rows: readonly RunsTableRow[]): string {
-  return formatTable(RUNS_TABLE_HEADERS, rows);
 }
 
 // `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`

@@ -4,7 +4,8 @@ import { join } from "node:path";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { LaunchFacts, RunRecord } from "@path/schema";
-import { continuationBlobReader, continuationRunOptions, sourceRuns, successorCapture } from "../src/continuation.js";
+import { continuationBlobReader, continuationOf, continuationRunOptions, sourceRuns, successorCapture } from "../src/continuation.js";
+import type { ContinueState, RunContext } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
 import { openDb } from "../src/persistence/db.js";
 import { runBlobDir } from "../src/persistence/paths.js";
@@ -144,5 +145,72 @@ describe("successorCapture", () => {
 
   it("throws rather than returning an id it never saw", () => {
     expect(() => successorCapture().rootRunId()).toThrow(/emitted no root run-started/);
+  });
+});
+
+/** A node the disposition adapters read: only the two fields they look at, cast to the body-node type. */
+function node(id: string, type = "binary"): Parameters<ReturnType<typeof continuationOf>["disposition"]>[0] {
+  return { id, type } as unknown as Parameters<ReturnType<typeof continuationOf>["disposition"]>[0];
+}
+
+/** A RunContext carrying only what `continuationOf`/`disposition` read: identity, and one of resume/continue. */
+function runCtx(parts: Pick<RunContext, "identity"> & Partial<Pick<RunContext, "resume" | "continue">>): RunContext {
+  return parts as unknown as RunContext;
+}
+
+/** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
+function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
+  return { existingRuns, readBlob: () => ({}), target: { stepRunId: targetStepRunId, output: {} } };
+}
+
+describe("continuationOf — Resume adapter", () => {
+  const identity = { runId: "wf-1" } as RunContext["identity"];
+
+  it("reuses a node the plan holds, and runs every other node fresh", () => {
+    const original = record("orig-1", "wf-1");
+    const resume = { plan: new Map([["a", original]]) } as unknown as RunContext["resume"];
+    const c = continuationOf(runCtx({ identity, resume }));
+
+    expect(c.disposition(node("a"))).toEqual({ kind: "reuse", original });
+    expect(c.disposition(node("b"))).toEqual({ kind: "fresh" });
+  });
+
+  it("answers fresh everywhere for a plain forward run (no resume, no continue)", () => {
+    const c = continuationOf(runCtx({ identity }));
+    expect(c.disposition(node("a"))).toEqual({ kind: "fresh" });
+  });
+});
+
+describe("continuationOf — Complete adapter", () => {
+  const identity = { runId: "parent-1" } as RunContext["identity"];
+  const complete = (rows: RunRecord[], target: string) =>
+    continuationOf(runCtx({ identity, continue: continueState(rows, target) }));
+
+  it("reuses a succeeded row read-only", () => {
+    const existing = record("r1", "parent-1", "root-1", { nodeId: "a", status: "succeeded" });
+    expect(complete([existing], "none").disposition(node("a"))).toEqual({ kind: "succeeded", existing });
+  });
+
+  it("completes the parked target leaf, but parks another parked sibling", () => {
+    const target = record("r-target", "parent-1", "root-1", { nodeId: "a", status: "awaiting" });
+    const sibling = record("r-sib", "parent-1", "root-1", { nodeId: "b", status: "awaiting" });
+    const c = complete([target, sibling], "r-target");
+
+    expect(c.disposition(node("a"))).toEqual({ kind: "complete", existing: target });
+    expect(c.disposition(node("b"))).toEqual({ kind: "park" });
+  });
+
+  it("re-enters a non-terminal workflow-run row, but runs a non-terminal leaf fresh", () => {
+    const wfRow = record("r-wf", "parent-1", "root-1", { nodeId: "a", status: "running" });
+    const leafRow = record("r-leaf", "parent-1", "root-1", { nodeId: "b", status: "running" });
+    const c = complete([wfRow, leafRow], "none");
+
+    expect(c.disposition(node("a", "workflow"))).toEqual({ kind: "reenter", existing: wfRow });
+    expect(c.disposition(node("b", "binary"))).toEqual({ kind: "fresh" });
+  });
+
+  it("runs fresh when no row under this parent answers the node", () => {
+    const elsewhere = record("r1", "other-parent", "root-1", { nodeId: "a", status: "succeeded" });
+    expect(complete([elsewhere], "none").disposition(node("a"))).toEqual({ kind: "fresh" });
   });
 });
