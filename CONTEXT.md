@@ -254,6 +254,32 @@ and issues use them exactly.
   `worker`. It is what lets a relocated **store** segment an otherwise anonymous pile of run-ids by
   workflow.
 
+## Templates
+
+- **Template** — an **authoring artifact** that expands into ordinary nodes *before* any run. It is
+  distinct in kind from a **Step-type plugin**: a plugin is code the engine registers and a step type it
+  executes, while a template contributes no step type, ships no worker, and is never registered or
+  executed. It is **Server-owned and engine-blind**: the Server reads it and the Designer inserts from
+  it, and a run's engine never sees the template — only the ordinary nodes it produced, which are
+  indistinguishable from hand-authored ones. Its file format is
+  [ADR 0048](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md).
+- **Step-Template** — a Template that is a **fragment of a workflow body**: one, two, or more nodes,
+  saved as a unit and insertable into an existing workflow. Its **default property values** are simply
+  the values its own nodes hold — its body is a valid **Workflow body**, never a shape with placeholders
+  for one, so it is always a literal parameterized snippet and never a form to fill in. It can be
+  inserted only where its nodes are grammar-legal, and the author edits an instance's values afterwards
+  like any other node's. It is the artifact behind the Designer's Step-Template palette category. Its
+  name is its file name; its own `id` is its identity.
+- **Workflow-Template** — a Template that is a whole workflow: an ordinary `*.workflow.json` whose name
+  carries a `*.workflow-template.json` suffix. Unlike a Step-Template it is selectable **only** into an
+  empty canvas, and saveable **only** to a workflow. Its identity is its own workflow `id`.
+- **Template instance** — the detached copy a Step-Template produces when inserted. Its nodes keep the
+  template's authored values and its authored **names** verbatim (a name colliding with one already in
+  the file resolves the way any new node's does), but every node **id** is freshly minted, because a GUID
+  is unique by construction and the template's own GUIDs already belong to the template. There is no
+  back-link in either direction: editing the template never propagates to an instance, and editing an
+  instance never propagates back.
+
 ## Invariants
 
 1. Only steps execute on workers. Controllers (including `checkpoint`) are engine constructs: no worker,
