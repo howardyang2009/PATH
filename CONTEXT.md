@@ -313,6 +313,29 @@ and issues use them exactly.
   `id` (two templates must not share identity), and a "Save as workflow" runs Instantiation to a
   `*.workflow.json`. Author-mode save is implemented on the template write-route and palette work
   (#563, #564); this map fixes only the model.
+- **Template API** — the `/v0/templates` routes the Designer reaches a **Template** through, since a
+  template is Server-owned and engine-blind. Unlike a **Workflow**, which the write routes address by
+  *path* because a run is launched by where the file lives (ADR 0016, §7), a template is **addressed by
+  its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a step-template's envelope `id` or a
+  workflow-template's own workflow `id`. A GUID is globally unique (ADR 0006), so one lookup spans both
+  kinds. The Server resolves `:id` through an index it builds from a **four-directory union scan** —
+  `packages/server/template/{step-template,workflow-template}/` (**shipped**, `read_only`) and
+  `.path/template/{step-template,workflow-template}/` (**user**, writable) — typing each file by suffix,
+  never by its bytes. `GET /v0/templates` lists that union **thin** (`id`, `name`, `description`, `kind`,
+  `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=` filter; a duplicate id
+  across origins lists both and flags the user one invalid, and a bad template invalidates only its own
+  entry, never the Server start (ADR 0048). `GET /v0/templates/:id` returns a **parsed envelope** plus an
+  `etag` (sha256 of the on-disk bytes), not the raw bytes the workflow read serves (§7.1), because a
+  template is never id-less. `POST /v0/templates` is **save-as** — create-only, writing a client-minted
+  envelope to `.path/template/` alone, `409` on a name collision. `PUT /v0/templates/:id` is
+  **update-only**, `If-Match`-gated, `403` on a shipped (read-only) target, `404` on an unknown id, and it
+  cannot rename. It is the write door **author-mode save** rides: ADR 0049's "ordinary file editing
+  round-trip" is this precondition-gated write, not a Workflow write. `DELETE /v0/templates/:id` removes a
+  user template (`204`), `403` on shipped, `404` on unknown. The two write doors stay **disjoint**: `PUT
+  /v0/workflows` refuses a `.path/template/` or `*.workflow-template.json` path, so a template is written
+  only through this API and becomes runnable only by **Instantiation**. Fixed by
+  [ADR 0050](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md);
+  the endpoint surface is `docs/api/server-api-v0.md` §10.
 
 ## Invariants
 
