@@ -272,13 +272,47 @@ and issues use them exactly.
   name is its file name; its own `id` is its identity.
 - **Workflow-Template** — a Template that is a whole workflow: an ordinary `*.workflow.json` whose name
   carries a `*.workflow-template.json` suffix. Unlike a Step-Template it is selectable **only** into an
-  empty canvas, and saveable **only** to a workflow. Its identity is its own workflow `id`.
-- **Template instance** — the detached copy a Step-Template produces when inserted. Its nodes keep the
-  template's authored values and its authored **names** verbatim (a name colliding with one already in
-  the file resolves the way any new node's does), but every node **id** is freshly minted, because a GUID
-  is unique by construction and the template's own GUIDs already belong to the template. There is no
-  back-link in either direction: editing the template never propagates to an instance, and editing an
-  instance never propagates back.
+  empty canvas (a Designer buffer whose body holds zero nodes), and the resulting **instance** is
+  saveable **only** to a `*.workflow.json` (#460.3). Its identity is its own workflow `id`. Selecting it
+  is **Instantiation** like a Step-Template's, plus a workflow-level re-mint: the new buffer gets a fresh
+  workflow `id` (two workflows spawned from one template must not share a **source-workflow identity**,
+  ADR 0006) and fresh node ids, while its `input` and `worker_defaults` ride across verbatim and its new
+  name/path come from the save-as dialog (provenance, not identity, ADR 0006).
+- **Instantiation** — the detached-copy transform a Template runs to become ordinary nodes, a pure
+  function of the template body owned by `@path/schema` and called by the Designer client; the engine
+  never sees it (a Template is engine-blind). It deep-copies the `body`, mints a fresh UUIDv4 `id` on
+  **every** node recursively (leaf steps, containers, and every branch arm; ADR 0006), drops the envelope
+  `id` (that GUID is the template's identity, ADR 0048), and keeps every other datum verbatim — values,
+  `config`, `parse`, `publish`, `condition`, and each `workflow`-ref's `ref` string — because a `@2` body
+  fragment holds no GUID cross-references, so a re-stamp needs no rewiring (#559). There is **no defaults
+  pass**: a template's default property values *are* the values its nodes already hold (#561), and
+  step-type field, worker, and config defaults stay the engine's registry-relative run-time job. A 2+-node
+  body dropped into a single-node container slot is wrapped in a fresh `sequence`; a one-node body inserts
+  bare; at the file-body top level or inside an existing `sequence` the nodes splice in directly. The
+  Designer edit-tree checks grammar-legality of the drop target client-side and refuses an illegal drop.
+- **Template instance** — the detached copy **Instantiation** produces. Its nodes keep the template's
+  authored values verbatim and its authored **names** verbatim *until a name collides* with one already
+  used in the target file, which the Designer resolves the way any new node's name does — `uniqueName`
+  reserves `name`, then `name-2`, `name-3`, … (it keeps names file-unique by construction, though the
+  schema imposes no uniqueness, #561). Every node **id** is freshly minted, because a GUID is unique by
+  construction and the template's own GUIDs already belong to the template. There is no back-link in
+  either direction: editing the template never propagates to an instance, and editing an instance never
+  propagates back. **Two stated hazards** ride the verbatim copy. A name that gets uniquified breaks any
+  intra-body **value-level** reference to it — a downstream `context.<name>...` dot-path, or a cross-block
+  read of a renamed branch's `collect`/`wait-one` output key — because Instantiation does not rewire
+  references (#559); insert a name-referential template into a file that already holds a colliding name at
+  your own risk. And a relative `workflow` `ref` re-resolves against the *target* file's directory
+  (#561), so a copied `ref` can point elsewhere when the template and target directories differ.
+- **Template edit mode** — which of two modes the Designer is in decides where a save of template content
+  lands, and the file suffix on open is the discriminator. **Consume mode** (a template selected from the
+  palette into an empty canvas) yields an instance whose default Save writes a `*.workflow.json`; it
+  becomes a template again only through an explicit "Save as template" (#459.6). **Author mode** (the
+  `*.workflow-template.json` file itself opened to edit the template source) is ordinary file editing
+  under the ADR 0015 round-trip, so its default Save writes **back to the original** template file with
+  the workflow `id` preserved; a Save-As to a **new** `*.workflow-template.json` mints a fresh workflow
+  `id` (two templates must not share identity), and a "Save as workflow" runs Instantiation to a
+  `*.workflow.json`. Author-mode save is implemented on the template write-route and palette work
+  (#563, #564); this map fixes only the model.
 
 ## Invariants
 
