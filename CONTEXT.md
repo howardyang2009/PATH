@@ -263,6 +263,9 @@ and issues use them exactly.
   it, and a run's engine never sees the template — only the ordinary nodes it produced, which are
   indistinguishable from hand-authored ones. Its file format is
   [ADR 0048](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md).
+  That it is a **Server authoring artifact** and not a step-plugin at all — the engine never registers
+  or executes it — is
+  [ADR 0051](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md).
 - **Step-Template** — a Template that is a **fragment of a workflow body**: one, two, or more nodes,
   saved as a unit and insertable into an existing workflow. Its **default property values** are simply
   the values its own nodes hold — its body is a valid **Workflow body**, never a shape with placeholders
@@ -313,18 +316,32 @@ and issues use them exactly.
   `id` (two templates must not share identity), and a "Save as workflow" runs Instantiation to a
   `*.workflow.json`. Author-mode save is implemented on the template write-route and palette work
   (#563, #564); this map fixes only the model.
+- **Template store** — where the Server keeps templates and how it resolves one. It is a
+  **four-directory union** over two origins and two kinds:
+  `packages/server/template/{step-template,workflow-template}/` holds the **shipped** templates
+  (`read_only`, portable within a fork lineage) and `.path/template/{step-template,workflow-template}/`
+  holds the **user** templates (writable, project-scoped). Each file's **kind** is read from its suffix
+  (`*.step-template.json` vs `*.workflow-template.json`), never from its bytes. The Server builds one
+  **id-index** across all four directories, so a single `:id` lookup spans both kinds and both origins (a
+  GUID is globally unique,
+  [ADR 0006](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0006-workflow-and-node-identity-guid-plus-name.md)).
+  A duplicate id across origins lists **both** entries and flags the **user** one invalid; a template
+  that fails to parse invalidates **only its own entry**, never Server start
+  ([ADR 0048](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)).
+  Reads serve the union; writes land in `.path/template/` alone. It is the substrate the **Template API**
+  reads and writes, and because a template is Server-owned and engine-blind
+  ([ADR 0051](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md)),
+  no run ever reads it.
 - **Template API** — the `/v0/templates` routes the Designer reaches a **Template** through, since a
   template is Server-owned and engine-blind. Unlike a **Workflow**, which the write routes address by
   *path* because a run is launched by where the file lives (ADR 0016, §7), a template is **addressed by
   its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a step-template's envelope `id` or a
   workflow-template's own workflow `id`. A GUID is globally unique (ADR 0006), so one lookup spans both
-  kinds. The Server resolves `:id` through an index it builds from a **four-directory union scan** —
-  `packages/server/template/{step-template,workflow-template}/` (**shipped**, `read_only`) and
-  `.path/template/{step-template,workflow-template}/` (**user**, writable) — typing each file by suffix,
-  never by its bytes. `GET /v0/templates` lists that union **thin** (`id`, `name`, `description`, `kind`,
-  `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=` filter; a duplicate id
-  across origins lists both and flags the user one invalid, and a bad template invalidates only its own
-  entry, never the Server start (ADR 0048). `GET /v0/templates/:id` returns a **parsed envelope** plus an
+  kinds. The Server resolves `:id` through the **Template store** index (the shipped + user
+  four-directory union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
+  `description`, `kind`, `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=`
+  filter; duplicate-id and per-entry validity are the **Template store**'s (ADR 0048). `GET
+  /v0/templates/:id` returns a **parsed envelope** plus an
   `etag` (sha256 of the on-disk bytes), not the raw bytes the workflow read serves (§7.1), because a
   template is never id-less. `POST /v0/templates` is **save-as** — create-only, writing a client-minted
   envelope to `.path/template/` alone, `409` on a name collision. `PUT /v0/templates/:id` is
