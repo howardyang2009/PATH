@@ -11,7 +11,7 @@ import { stampNames } from "./stamp-names.js";
 /**
  * Complete as a replay-from-root engine invocation over the appendable tree (#484, ADR 0039/0041).
  * These drive a **real** `Project` — the tree must actually exist as rows and blobs for the replay to
- * re-enter it — through the person-activity plugin scanned from `step-plugins/`, which returns
+ * re-enter it — through the person-activity plugin scanned from `plugin/step-plugin/`, which returns
  * `{ status: "awaiting" }`. Each test launches a workflow that parks at a person-activity leaf, then
  * Completes the leaf and asserts on the persisted tree.
  */

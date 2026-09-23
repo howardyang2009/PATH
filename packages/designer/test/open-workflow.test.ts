@@ -72,11 +72,11 @@ describe("openWorkflowFile", () => {
     expect(result.status).toBe("unregistered-types");
     if (result.status !== "unregistered-types") return;
     expect(result.absent).toEqual([
-      { type: "api-call", folder: "packages/engine/step-plugins/api-call/" },
-      { type: "grpc", folder: "packages/engine/step-plugins/grpc/" },
+      { type: "api-call", folder: "packages/engine/plugin/step-plugin/api-call/" },
+      { type: "grpc", folder: "packages/engine/plugin/step-plugin/grpc/" },
     ]);
-    expect(result.message).toContain("packages/engine/step-plugins/api-call/");
-    expect(result.message).toContain("packages/engine/step-plugins/grpc/");
+    expect(result.message).toContain("packages/engine/plugin/step-plugin/api-call/");
+    expect(result.message).toContain("packages/engine/plugin/step-plugin/grpc/");
     expect(result.message).toContain("refresh the registry");
   });
 

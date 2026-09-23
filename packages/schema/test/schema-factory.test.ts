@@ -91,7 +91,7 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
     expect(joined).toContain('"bar"');
     // Known types listed, and the folder remedy named.
     expect(joined).toContain("api-call");
-    expect(joined).toContain("packages/engine/step-plugins/");
+    expect(joined).toContain("packages/engine/plugin/step-plugin/");
   });
 
   it("reports an absent type as (none) and still names the remedy", () => {
@@ -100,7 +100,7 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
     if (result.success) return;
     const joined = result.errors.join("\n");
     expect(joined).toContain("(none)");
-    expect(joined).toContain("packages/engine/step-plugins/");
+    expect(joined).toContain("packages/engine/plugin/step-plugin/");
   });
 });
 

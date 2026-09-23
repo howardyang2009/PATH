@@ -5,7 +5,7 @@ import type { StepPluginRegistry } from "./nodes.js";
 /**
  * The wire shape of `GET /v0/step-plugins` — the server's step-plugin registry served to the browser
  * Designer as data (server-api-v0.md §8, designer-spec.md § The v1 authoring palette, ADR 0018). The
- * Designer is a pure browser consumer: it cannot scan `packages/engine/step-plugins/`, so the grammar
+ * Designer is a pure browser consumer: it cannot scan `packages/engine/plugin/step-plugin/`, so the grammar
  * it may author arrives over the wire and its palette is registry-driven.
  *
  * One entry per registered leaf step type — the built-ins `prompt` and `binary` (ADR 0021) and every

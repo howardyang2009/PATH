@@ -9,7 +9,7 @@ import { scanStepPlugins, STEP_PLUGINS_DIR } from "../../src/plugin/scan.js";
 import type { StepRequest, StepResult } from "../../src/plugin/seam.js";
 
 // The end-to-end dogfood of the public surface (#336, ADR 0019 sub-10): the two shipped built-in leaf
-// step types are loaded through the real scanner (#335) from the real `step-plugins/` directory, and a
+// step types are loaded through the real scanner (#335) from the real `plugin/step-plugin/` directory, and a
 // `binary` and a `prompt` node are validated through the schema factory (#334). Nothing is stubbed —
 // the folders resolve `@path/engine/plugin` exactly as a third-party plugin folder would.
 
@@ -23,7 +23,7 @@ async function loadRegistry() {
 }
 
 describe("the shipped built-ins load through the scanner", () => {
-  it("registers `binary` and `prompt` from the real step-plugins directory", async () => {
+  it("registers `binary` and `prompt` from the real step-plugin directory", async () => {
     const registry = await loadRegistry();
 
     expect(registry.binary).toBeDefined();

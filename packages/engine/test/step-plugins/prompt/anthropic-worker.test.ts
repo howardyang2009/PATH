@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const query = vi.fn();
 vi.mock("@anthropic-ai/claude-agent-sdk", () => ({ query }));
 
-import { stepPlugin } from "../../../step-plugins/prompt/index.js";
+import { stepPlugin } from "../../../plugin/step-plugin/prompt/index.js";
 
 const anthropic = stepPlugin.workers.anthropic;
 if (!anthropic) throw new Error("prompt plugin is missing its anthropic worker");

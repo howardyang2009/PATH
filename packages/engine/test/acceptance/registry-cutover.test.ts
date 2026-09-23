@@ -10,7 +10,7 @@ import { fakeObserver } from "../fake-observer.js";
 /**
  * The required acceptance test of the step-plugin exec cutover (#337, ADR 0021): a `@3` file carrying
  * **no `worker` key anywhere** runs a `binary` step and a `prompt` step end to end through the
- * *scanned* registry — the real `step-plugins/binary` and `step-plugins/prompt` folders, discovered by
+ * *scanned* registry — the real `plugin/step-plugin/binary` and `plugin/step-plugin/prompt` folders, discovered by
  * the same scan a live run uses — with `prompt` overridden to a scripted worker. It covers the four
  * things the migration could break: the folder scan, the default-worker path for both built-in types,
  * `(type, worker-name)` dispatch, and the `workerOverrides` seam.

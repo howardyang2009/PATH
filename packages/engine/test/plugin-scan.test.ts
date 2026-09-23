@@ -30,7 +30,7 @@ function zodEntry(fieldKey: string): string {
 }
 
 // The test directory itself — fixtures live beneath it so bare specifiers walk up to the repo's
-// `node_modules`, exactly as a real `packages/engine/step-plugins/<name>/` folder does.
+// `node_modules`, exactly as a real `packages/engine/plugin/step-plugin/<name>/` folder does.
 const TEST_DIR = fileURLToPath(new URL(".", import.meta.url));
 
 let root: string;
@@ -234,7 +234,7 @@ describe("the scanned registry feeds the schema factory (via the factory)", () =
 
 describe("STEP_PLUGINS_DIR", () => {
   it("resolves the one fixed location relative to import.meta.url, not the cwd", async () => {
-    expect(STEP_PLUGINS_DIR).toMatch(/packages\/engine\/step-plugins\/?$/);
+    expect(STEP_PLUGINS_DIR).toMatch(/packages\/engine\/plugin\/step-plugin\/?$/);
     // Absolute — never a cwd-relative fragment (ADR 0019 sub-8).
     expect(STEP_PLUGINS_DIR.startsWith("/")).toBe(true);
   });
