@@ -178,14 +178,14 @@ and issues use them exactly.
 
 - **Workflow body** — an ordered sequence of **nodes**. A node is a step, a parallel block, a branch
   block, a while-do block, a sequence block, or a checkpoint. Blocks nest without limit (the *nested
-  block grammar*). Under `path/workflow@2`, every container slot holds exactly one node. A `sequence`
+  block grammar*). Under `path/workflow@4`, every container slot holds exactly one node. A `sequence`
   carries the node array where a slot needs several nodes in order. Checkpoints can appear anywhere in
   a sequence.
 - **Controller** — an engine-evaluated control construct that routes and coordinates step execution. The
   block grammar realizes it. collect, wait-one, and do-not-wait are **join modes of the parallel
   block**. branch, while-do, and sequence are **block types**. A controller has no worker, no task, and no
   run. The engine of the enclosing workflow evaluates it. (Spell it *controller*.) The MVP subset has
-  **five controllers** under `path/workflow@2`. The first is parallel (with its collect, wait-one, and
+  **five controllers** under `path/workflow@4`. The first is parallel (with its collect, wait-one, and
   do-not-wait joins). The second is branch. The third is while-do; it needs a mandatory max-iterations
   bound, and the run fails if it exceeds the bound. The fourth is sequence; this block type carries the
   node array wherever a single-node slot needs several nodes in order
@@ -234,7 +234,7 @@ and issues use them exactly.
   identity: unique by construction, assigned once, never regenerated. It is the audit `node_id` that a
   run row and a log event carry. It is the key that **resume** matches on: a successor node reuses a
   predecessor run by shared id (`plan-reuse`). Thus a rename or a move of a node never breaks reuse.
-  The format requires it (`path/workflow@2`). A missing id is a load error, not a silent auto-stamp. A
+  The format requires it (`path/workflow@4`). A missing id is a load error, not a silent auto-stamp. A
   one-time codemod stamped every pre-existing file (Store note, ADR 0006, ADR 0007). Under `@2`, a
   branch **is** a node. The container change collapsed branch-identity into the node. Thus "and branch"
   is gone: every slot occupant carries its own `id` (ADR 0014).
