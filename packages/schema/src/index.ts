@@ -20,13 +20,29 @@
 export { FORMAT_VERSION } from "./workflow-file-type.js";
 export type { WorkflowFile } from "./workflow-file-type.js";
 export {
+  makeBodySchema,
   makeWorkflowFileSchema,
   safeParseWorkflowFile,
   safeParseWorkflowFileWith,
   parseWorkflowFile,
+  supersededFormatError,
   type WorkflowFileParseSuccess,
   type WorkflowFileParseFailure,
 } from "./workflow-file.js";
+
+// The Step-Template schema (ADR 0048): a strict `{ format, id, description, body }` envelope over the
+// shared body validator, so a template's body is checked exactly as a file's body. Validity is
+// per-node and registry-relative only — the file-scoped rules (name uniqueness, publish set,
+// `worker_defaults`) are not run at template load, because a fragment cannot know the file it lands in.
+export type { StepTemplate } from "./step-template-type.js";
+export {
+  makeStepTemplateSchema,
+  safeParseStepTemplate,
+  safeParseStepTemplateWith,
+  parseStepTemplate,
+  type StepTemplateParseSuccess,
+  type StepTemplateParseFailure,
+} from "./step-template.js";
 
 // The publish set's two load-time rejections, as data (CONTEXT.md § Publish set): the load refinement
 // and the Designer's canvas markers read the same walk, so a rule change cannot leave one silent.

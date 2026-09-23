@@ -91,12 +91,26 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, r
  * still passes an empty registry, which describes a grammar with the six control members and no leaf
  * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
  */
-export function makeWorkflowFileSchema(registry: StepPluginRegistry): z.ZodType<WorkflowFile> {
+/**
+ * The **body** validator (ADR 0048 decision 7): `z.array(nodeSchema).min(1)`, and nothing else. It is
+ * the one constraint a workflow file's `body` and a Step-Template's `body` share, so the two cannot
+ * drift — a file body is this plus the file-scoped invariants (`makeWorkflowFileSchema`), a template
+ * body is this alone (`makeStepTemplateSchema`). Registry-relative and per-node only: each element
+ * validates against `makeNodeSchema(registry)` (the node union, each type's `fields`/`config`, its
+ * `worker` enum), controllers are legal at the top level because a controller *is* a `WorkflowNode`,
+ * and the array carries the `@2` minimum of one node. The cross-node file rules — name uniqueness, the
+ * publish set, `worker_defaults` — are deliberately **not** here: they are the file namespace's, not
+ * the body's, and a fragment cannot know the namespace it will land in (decision 5).
+ */
+export function makeBodySchema(registry: StepPluginRegistry): z.ZodType<WorkflowNode[]> {
   const nodeSchema = makeNodeSchema(registry);
-  const bodySchema = z.array(nodeSchema).min(1) as unknown as z.ZodType<WorkflowNode[]>;
+  return z.array(nodeSchema).min(1) as unknown as z.ZodType<WorkflowNode[]>;
+}
+
+export function makeWorkflowFileSchema(registry: StepPluginRegistry): z.ZodType<WorkflowFile> {
   // The registry is closed over the refinement here (ADR 0044 #516): the base schema stays
   // registry-free, and the whole-file check reads the registry to validate `worker_defaults` entries.
-  return buildBaseWorkflowFileSchema(bodySchema).superRefine((file, ctx) =>
+  return buildBaseWorkflowFileSchema(makeBodySchema(registry)).superRefine((file, ctx) =>
     checkWorkflowFileInvariants(file, ctx, registry),
   ) as z.ZodType<WorkflowFile>;
 }
@@ -111,11 +125,13 @@ export interface WorkflowFileParseFailure {
   errors: string[];
 }
 
-// A pre-migration file carrying a superseded `format` string gets a targeted error naming the
-// codemod, not a generic zod "invalid literal": the shape changed (`@2`'s worker union, `@1`'s
-// uniform single-node containers, `@0`'s GUID identity), so the fix is to migrate, not to hand-edit
-// `format` (workflow-format-v3.md §1). The engine reads `@3` only — there is no dual reader.
-function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
+// A pre-migration file — or a Step-Template, which stamps the same body grammar (ADR 0048) — carrying
+// a superseded `format` string gets a targeted error naming the codemod, not a generic zod "invalid
+// literal": the shape changed (`@2`'s worker union, `@1`'s uniform single-node containers, `@0`'s GUID
+// identity), so the fix is to migrate, not to hand-edit `format` (workflow-format-v3.md §1). Both
+// `safeParseWorkflowFileWith` and `safeParseStepTemplateWith` run this pre-check. The engine reads the
+// current format only — there is no dual reader.
+export function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   if (typeof json !== "object" || json === null) return null;
   const format = (json as { format?: unknown }).format;
   if (typeof format !== "string" || !(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
