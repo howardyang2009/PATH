@@ -66,6 +66,13 @@ export {
   type NodeIdentityRule,
 } from "./node-identity.js";
 
+// Instantiation (ADR 0049): the pure detached-copy transform that turns a Step-Template body into
+// ordinary workflow nodes — a deep copy that re-stamps every id, keeps every other datum verbatim,
+// uniquifies a colliding name, and wraps a 2+-node body for a single-node slot. Owned here beside the
+// tree walks it uses (`childBodies`), so the Designer is a thin caller and the transform is unit-
+// testable without a browser.
+export { instantiate, type InstantiateOptions } from "./instantiate.js";
+
 export {
   buildCoreMembers,
   ENVELOPE_KEYS,
