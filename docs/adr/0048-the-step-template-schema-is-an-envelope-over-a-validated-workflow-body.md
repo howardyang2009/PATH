@@ -1,6 +1,7 @@
 # The Step-Template schema is an envelope over a validated workflow body
 
-**Status:** accepted; resolves the schema decision of Wayfinder map
+**Status:** accepted (amended to clarify that `format` versions the body grammar, not the envelope; see
+decision 1 and the rejected `path/step-template@1` option); resolves the schema decision of Wayfinder map
 [#558](https://github.com/howardyang2009/PATH/issues/558), ticket
 [#561](https://github.com/howardyang2009/PATH/issues/561) ("Finalize `.step-template.json` schema"). It
 fixes the artifact format every other ticket in the map reads: instantiation
@@ -28,7 +29,13 @@ does.**
      a flat node array at the file body, `sequence` where several nodes are needed in order); it is not a
      loadable format string, and a file stamped `@2` is today rejected by the superseded-format path with
      a codemod message. The body *is* `@4` grammar, so one version space and the existing
-     superseded-format machinery work unchanged.
+     superseded-format machinery work unchanged. The `format` field therefore versions the **body
+     grammar**, not the envelope: the envelope shape `{ format, id, description, body }` is frozen and
+     carries no version of its own, and the artifact's **kind** is the file suffix's job
+     (`*.step-template.json`), typed by the Template store never by bytes (ADR 0050). That is why the
+     stamp is `path/workflow@N` rather than a step-template-specific string — there is exactly one
+     grammar to gate at load, the body, and it is the workflow body. A distinct `path/step-template@1`
+     was considered and rejected (below).
    - `id` is the template's own GUID (`IdSchema`, UUIDv4) — its identity, written once when the template
      is created. It is never re-stamped, because a template is not instantiated; only its body's nodes
      are copied.
@@ -118,6 +125,13 @@ does.**
   loadable format string. Nothing needs `@2` here: `@3` changed `worker` to a name and moved
   `model`/`options` into `config`; `@4` added the file-level `worker_defaults` and the `input` seed,
   neither of which a fragment uses.
+- **A step-template-specific format string (`path/step-template@1`).** Rejected — it would version the
+  envelope, but the envelope has no grammar of its own to gate; the only thing checked at load is the
+  body, which is a workflow body and must track `path/workflow@N`. The artifact's kind is already the
+  file suffix (`*.step-template.json`), typed by the store never by bytes (ADR 0050), so a kind-naming
+  format string duplicates the suffix, and a separate version ladder would leave the body grammar
+  version untracked — the reverse of what the load-bearing check needs. If the envelope shape ever gains
+  or drops a key, that is a change to `makeStepTemplateSchema`, not a `format` bump.
 - **A hard 1–2 node bound.** Rejected (decision 5).
 - **A template-level `worker_defaults`.** Rejected (decision 5).
 - **Forbidding `workflow` ref nodes in a template body, because a relative `ref` is broken by the copy
@@ -132,8 +146,11 @@ does.**
 ## Consequences
 
 - **The template format is frozen.** Shipped templates and user-saved ones both carry
-  `{format, id, description, body}` at `@4`; a change to that envelope is a format change with a
-  superseded-format path, not a tweak.
+  `{format, id, description, body}`, with `format` stamping the current body grammar (`@4`). Because
+  `format` versions the **body**, a change to the *body grammar* bumps `path/workflow@N` and rides the
+  superseded-format path; the **envelope** shape is frozen and unversioned — a new envelope key is a
+  schema change to `makeStepTemplateSchema`, not a `format` bump — and the artifact kind stays the
+  suffix's, not the format string's.
 - **`@path/schema` gains an exported body validator**, and `makeWorkflowFileSchema` is rebuilt on it.
   This is the refactor that makes "the template's body is validated exactly as a file's body" literally
   true rather than a comment: one `z.array(nodeSchema).min(1)`, one identity walk.
