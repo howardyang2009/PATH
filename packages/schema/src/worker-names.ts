@@ -16,7 +16,7 @@ export const BINARY_DEFAULT_WORKER = "spawn";
 /**
  * `prompt`'s worker names: one per model provider. `anthropic` (the Agent SDK transport) is the
  * default worker; `deepseek` is the OpenAI-compatible one. The plugin folder is the authority — these
- * mirror `packages/engine/step-plugins/prompt/index.ts`, whose registry the load validates against —
+ * mirror `packages/engine/plugin/step-plugin/prompt/index.ts`, whose registry the load validates against —
  * and #309's `cli`/`remote` remain unbuilt.
  */
 export const PROMPT_WORKER_NAMES = ["anthropic", "deepseek"] as const;

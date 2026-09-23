@@ -92,7 +92,7 @@ async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?:
 
 /**
  * A registry shaped like the shipped one: `prompt` declares **two** workers, `anthropic` (default) and
- * `deepseek` (`packages/engine/step-plugins/prompt/index.ts`), so a worker-default has one to select
+ * `deepseek` (`packages/engine/plugin/step-plugin/prompt/index.ts`), so a worker-default has one to select
  * (ADR 0044). `DEFAULT_PLUGINS` is the stub's single-worker stand-in, not the real registry.
  */
 const MULTI_WORKER_PLUGINS: WireStepPlugin[] = DEFAULT_PLUGINS.map((plugin) =>

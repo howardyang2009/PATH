@@ -325,7 +325,7 @@ export class PathApiClient {
 
   /**
    * `GET /v0/step-plugins` — the server's step-plugin registry as data (server-api-v0.md §8), the
-   * grammar the browser Designer may author. The Designer cannot scan `packages/engine/step-plugins/`,
+   * grammar the browser Designer may author. The Designer cannot scan `packages/engine/plugin/step-plugin/`,
    * so its palette and its open-time type check are registry-relative (ADR 0018): one snake_case entry
    * per registered leaf step type. A **bare snapshot with no staleness contract** — the write route
    * re-validates against the live registry, so a stale copy surfaces as a rejected write, never a

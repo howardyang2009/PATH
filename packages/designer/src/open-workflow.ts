@@ -37,7 +37,7 @@ import {
 export interface AbsentStepType {
   /** The unregistered `type` discriminant, echoed verbatim. */
   type: string;
-  /** The `packages/engine/step-plugins/<type>/` folder that would resolve it — the engine's own remedy. */
+  /** The `packages/engine/plugin/step-plugin/<type>/` folder that would resolve it — the engine's own remedy. */
   folder: string;
 }
 
@@ -179,7 +179,7 @@ function findAbsentTypes(nodes: RawNodeRef[], plugins: WireStepPlugin[]): Absent
     const type = obj.type;
     if (typeof type === "string" && !known.has(type) && !seen.has(type)) {
       seen.add(type);
-      absent.push({ type, folder: `packages/engine/step-plugins/${type}/` });
+      absent.push({ type, folder: `packages/engine/plugin/step-plugin/${type}/` });
     }
   }
   return absent;

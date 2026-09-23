@@ -1,6 +1,6 @@
 // A fixture step-type plugin that compiles against the public `@path/engine/plugin` contract exactly
 // as a third-party plugin does (#333 acceptance). It is a *typecheck* fixture: it lives under `test/`,
-// not `packages/engine/step-plugins/`, so the engine's plugin scan never registers it. Its only job is
+// not `packages/engine/plugin/step-plugin/`, so the engine's plugin scan never registers it. Its only job is
 // to prove the seam is expressive enough — two `fields`/`config` fragments, and a worker whose `run`
 // sees `fields`/`config` inferred from this plugin's own zod fragments (acceptance #3, #4).
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { stepPlugin } from "../step-plugins/person-activity/index.js";
+import { stepPlugin } from "../plugin/step-plugin/person-activity/index.js";
 
 type PersonRequest = Parameters<NonNullable<typeof stepPlugin.workers.person>["run"]>[0];
 

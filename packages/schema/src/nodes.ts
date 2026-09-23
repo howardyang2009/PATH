@@ -262,8 +262,8 @@ export function describeUnknownStepType(received: unknown, known: (string | numb
   const knownList = known.length > 0 ? known.join(", ") : "(none)";
   const remedy =
     typeof received === "string"
-      ? `add a step-type plugin folder packages/engine/step-plugins/${received}/ in your PATH tree`
-      : "add the step-type plugin folder for it under packages/engine/step-plugins/ in your PATH tree";
+      ? `add a step-type plugin folder packages/engine/plugin/step-plugin/${received}/ in your PATH tree`
+      : "add the step-type plugin folder for it under packages/engine/plugin/step-plugin/ in your PATH tree";
   return `unknown step type ${badType} — no plugin contributes it. Known types: ${knownList}. To add it, ${remedy}`;
 }
 

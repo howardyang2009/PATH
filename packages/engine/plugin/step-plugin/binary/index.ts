@@ -4,7 +4,7 @@ import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plu
 import type { StepRequest, StepResult } from "@path/engine/plugin";
 
 /**
- * PATH's built-in `binary` leaf step type, shipped as a plugin folder under `step-plugins/` and
+ * PATH's built-in `binary` leaf step type, shipped as a plugin folder under `plugin/step-plugin/` and
  * written against the public `@path/engine/plugin` subpath exactly as a third-party plugin is (ADR
  * 0019 sub-10, #336). It is the load-bearing dogfood of that surface: if the subpath cannot express
  * this worker, the gap surfaces here at author time, not in a third party's tree.

@@ -5,7 +5,7 @@ import { renderPromptMessage } from "./render-prompt-message.js";
 import { runDeepseekWorker } from "./deepseek-worker.js";
 
 /**
- * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `step-plugins/` and
+ * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `plugin/step-plugin/` and
  * written against the public `@path/engine/plugin` subpath exactly as a third-party plugin is (ADR
  * 0019 sub-10, #336).
  *

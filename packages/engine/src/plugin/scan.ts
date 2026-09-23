@@ -29,9 +29,9 @@ export type LoadedStepPluginRegistry = Record<string, StepPlugin>;
 /**
  * The one fixed location, resolved relative to `import.meta.url` and never `process.cwd()` (ADR 0019
  * sub-8): a cwd-relative resolution would make the set of valid step types depend on the operator's
- * shell directory. From `src/plugin/scan.ts`, the plugins root is two directories up.
+ * shell directory. From `src/plugin/scan.ts`, the plugins root is two directories up, under `plugin/step-plugin/`.
  */
-export const STEP_PLUGINS_DIR = fileURLToPath(new URL("../../step-plugins/", import.meta.url));
+export const STEP_PLUGINS_DIR = fileURLToPath(new URL("../../plugin/step-plugin/", import.meta.url));
 
 // The folder name becomes a `z.literal` and a `type` value in author-written JSON, so it must look like
 // a core type name (ADR 0019 sub-13). All eight core names already match this shape.

@@ -227,7 +227,7 @@ describe("Designer open + render (#367)", () => {
     render(<App client={stubClient({ files: filesWith(file) })} initialPath={ROOT_PATH} />);
 
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("packages/engine/step-plugins/api-call/");
+    expect(alert).toHaveTextContent("packages/engine/plugin/step-plugin/api-call/");
     expect(alert).toHaveTextContent("refresh the registry");
     // It refuses — no block tree.
     expect(screen.queryByText("draft")).not.toBeInTheDocument();

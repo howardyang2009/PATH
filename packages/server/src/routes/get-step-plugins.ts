@@ -5,7 +5,7 @@ import type { RunsRouteContext } from "./post-runs.js";
 
 /**
  * `GET /v0/step-plugins` (server-api-v0.md §8): serve the server's step-plugin registry as data, so the
- * browser Designer — which cannot scan `packages/engine/step-plugins/` — reproduces exactly the grammar
+ * browser Designer — which cannot scan `packages/engine/plugin/step-plugin/` — reproduces exactly the grammar
  * it may author (designer-spec.md § The v1 authoring palette, ADR 0018). One snake_case entry per
  * registered leaf step type: `prompt` and `binary` (ADR 0021) alongside any plugin type.
  *

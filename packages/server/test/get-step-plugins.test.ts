@@ -29,7 +29,7 @@ const doNotRun = () => Promise.reject(new Error("run must not be called"));
 
 describe("GET /v0/step-plugins", () => {
   it("serves the real registry: `prompt` and `binary` appear as ordinary snake_case entries", async () => {
-    // No injection — the server scans the real `packages/engine/step-plugins/` folder at start.
+    // No injection — the server scans the real `packages/engine/plugin/step-plugin/` folder at start.
     const res = await getStepPlugins();
     expect(res.status).toBe(200);
     expect(res.headers.get("content-type")).toBe("application/json");
