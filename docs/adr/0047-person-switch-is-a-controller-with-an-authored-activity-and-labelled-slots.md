@@ -1,6 +1,10 @@
 # `person-switch` is a controller holding an authored `person-activity` selection leaf and labelled child slots
 
-**Status:** accepted; resolves the model decision of Wayfinder map
+**Status:** superseded by [ADR 0052](0052-person-switch-is-a-shipped-step-template-not-a-controller.md)
+— `person-switch` is no longer a controller; it is a shipped step-template composing `person-activity`
++ `branch` (origin #477 reframed, map #544). The decision below is kept for the record only.
+
+Originally: accepted; resolved the model decision of Wayfinder map
 [#544](https://github.com/howardyang2009/PATH/issues/544), ticket
 [#545](https://github.com/howardyang2009/PATH/issues/545) ("person-switch: controller or leaf step?"). It
 fixes the frame for every later person-switch ticket: the selection act
