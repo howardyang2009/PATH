@@ -14,6 +14,11 @@ import { handleListRuns } from "./routes/list-runs.js";
 import { handleGetWorkflows } from "./routes/get-workflows.js";
 import { handleGetWorkflowFile } from "./routes/get-workflow-file.js";
 import { handleGetStepPlugins } from "./routes/get-step-plugins.js";
+import { handleGetTemplates } from "./routes/get-templates.js";
+import { handleGetTemplate } from "./routes/get-template.js";
+import { handlePostTemplates } from "./routes/post-templates.js";
+import { handlePutTemplate } from "./routes/put-template.js";
+import { handleDeleteTemplate } from "./routes/delete-template.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
@@ -31,6 +36,7 @@ const RUN_CANCEL_ROUTE = /^\/v0\/runs\/([^/]+)\/cancel$/;
 const RUN_COMPLETE_ROUTE = /^\/v0\/runs\/([^/]+)\/complete$/;
 const RUN_RESUME_ROUTE = /^\/v0\/runs\/([^/]+)\/resume$/;
 const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
+const TEMPLATE_ID_ROUTE = /^\/v0\/templates\/([^/]+)$/;
 
 /**
  * Where `path-server` looks for the built `@path/viewer` bundle when no `staticDir` is passed:
@@ -129,6 +135,36 @@ async function handleRequest(
     if (req.method === "GET" && pathname === "/v0/step-plugins") {
       handleGetStepPlugins(res, ctx);
       return;
+    }
+
+    // The authoring templates (server-api-v0.md §10, ADR 0050): the list and by-id read are ungated
+    // reads; POST/PUT/DELETE are state-changing and already passed the §2.1 origin gate above. The
+    // by-id GUID lookup spans both kinds and origins — no `?kind=` on the by-id routes.
+    if (req.method === "GET" && pathname === "/v0/templates") {
+      handleGetTemplates(res, ctx, url.searchParams.get("kind"));
+      return;
+    }
+
+    if (req.method === "POST" && pathname === "/v0/templates") {
+      await handlePostTemplates(req, res, ctx);
+      return;
+    }
+
+    const templateMatch = TEMPLATE_ID_ROUTE.exec(pathname);
+    if (templateMatch) {
+      const id = decodeURIComponent(templateMatch[1]!);
+      if (req.method === "GET") {
+        handleGetTemplate(res, ctx, id);
+        return;
+      }
+      if (req.method === "PUT") {
+        await handlePutTemplate(req, res, ctx, id);
+        return;
+      }
+      if (req.method === "DELETE") {
+        handleDeleteTemplate(res, ctx, id);
+        return;
+      }
     }
 
     const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
@@ -232,6 +268,7 @@ export async function startPathServer(
   staticDir: string = DEFAULT_STATIC_DIR,
   designerStaticDir: string = DEFAULT_DESIGNER_STATIC_DIR,
   stepPlugins?: LoadedStepPluginRegistry,
+  shippedTemplateDir?: string,
 ): Promise<PathServerHandle> {
   // Fail loud at start on a broken plugin folder (§8), and freeze the palette snapshot for the
   // process. Scanned *before* `openProject` so a broken folder throws without leaving an opened db
@@ -248,7 +285,7 @@ export async function startPathServer(
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
   const live = createLiveRuns(project);
-  const ctx: RunsRouteContext = { project, live, stepPlugins: registry };
+  const ctx: RunsRouteContext = { project, live, stepPlugins: registry, shippedTemplateDir };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

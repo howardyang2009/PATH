@@ -37,6 +37,11 @@ export interface RunsRouteContext {
    * scanned once, never per request, so the palette is fixed for the server's life.
    */
   stepPlugins: LoadedStepPluginRegistry;
+  /**
+   * The shipped (read-only) template root the `/v0/templates` union scans (server-api-v0.md §10, ADR
+   * 0050). Defaults to `packages/server/template` when absent; a test injects a fixture root here.
+   */
+  shippedTemplateDir?: string;
 }
 
 export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
