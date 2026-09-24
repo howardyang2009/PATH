@@ -166,3 +166,32 @@ describe("#388 cross-node problems", () => {
     expect(problemMarks(fileProblems(file)).size).toBe(0);
   });
 });
+
+describe("file input seeds context", () => {
+  it("does not flag a context read of a key the file's own `input` seeds", () => {
+    const file = { ...wrap([step(2, "draft", { input: { topic: "${context.topic}" } })]), input: { topic: "release notes" } };
+    expect(fileProblems(file)).toHaveLength(0);
+  });
+
+  it("does not flag a condition path on a key the file's own `input` seeds", () => {
+    const file = {
+      ...wrap([
+        {
+          type: "branch",
+          id: uuid(2),
+          name: "gate",
+          arms: [{ when: { type: "exists", path: "context.flag" }, node: step(3, "leg", {}) }],
+        } as never,
+      ]),
+      input: { flag: true },
+    };
+    expect(fileProblems(file)).toHaveLength(0);
+  });
+
+  it("still flags a key neither the file input nor any step supplies", () => {
+    const file = { ...wrap([step(2, "draft", { input: { q: "${context.other}" } })]), input: { topic: "x" } };
+    const problems = fileProblems(file);
+    expect(problems).toHaveLength(1);
+    expect(problems[0]!.message).toContain("other");
+  });
+});

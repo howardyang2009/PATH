@@ -855,7 +855,11 @@ The canvas already makes illegal structure **unsnappable** (§ Canvas interactio
 **refuses to commit** a schema-invalid node edit (`safeParseWorkflowFile` in the pane), so the errors that
 survive to a whole-file view are dominantly **cross-node**: a dangling `${context.…}` / `${output.…}`
 interpolation target, a dangling condition path, a dangling `workflow`-ref (above), and the publish
-conflicts already surfaced today (§ Context reads and writes).
+conflicts already surfaced today (§ Context reads and writes). A `context` key counts as supplied when a
+step in the file publishes it **or** the file's own top-level `input` seeds it: the file input is the
+root context's default seed (CONTEXT.md § Input), so a read of one of its keys is not dangling. The pass
+trusts the file as its own default root. It cannot see a launch-time input override, which replaces the
+file input, or a nested `workflow`-ref run, which never reads it.
 
 - **Two coupled surfaces.** A per-node **⚠ marker** on each offending node (the existing publish-conflict
   marker, extended to every cross-node error), **and** an aggregate **problems panel** listing each error
