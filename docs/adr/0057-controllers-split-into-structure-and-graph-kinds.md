@@ -16,7 +16,7 @@ hides the one property a reader must know first: whether the body still executes
 ## Decision
 
 1. **A controller is exactly one of two kinds.**
-   - A **Structure Controller** is realized by the nested block grammar: single-entry, single-exit,
+   - A **Structure Controller** is held by the nested block grammar: single-entry, single-exit,
      output-threaded, each node in its body visited at most once per entry. The five are `parallel`,
      `sequence`, `branch`, `while-do` and `checkpoint`. A `while-do` iteration is a fresh entry, so the
      rule holds per iteration.
@@ -31,22 +31,23 @@ hides the one property a reader must know first: whether the body still executes
    plus a `branch` condition, so it adds nothing a Structure Controller cannot express. It belongs to
    the Templates taxonomy.
 
-3. **A new Graph Controller needs its own ADR.** The bar is that the new control construct routes to a
-   non-successor node, so its execution is not a tree walk. A construct that nests as a block is a
-   Structure Controller and joins the grammar in the usual way.
+3. **A new Graph Controller needs its own ADR** against ADR 0029 and ADR 0053 (for example, a jump into
+   a nested body or across files). A construct that nests as a block is a Structure Controller and
+   joins the grammar in the usual way.
 
 4. **`goto` coexists with ADR 0029 by narrowing it, not by adding a DAG.**
    - The file format stays a **tree**. A goto is an ordinary node in an ordinary slot. Its route is a
-     `target` **name** property ([ADR 0056](0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md)),
-     not an edge, in the same way dataflow is a dot-path interpolation and not a canvas wire.
+     `target` **name** property
+     ([ADR 0056](0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md)), not an
+     edge, in the same way dataflow is a dot-path interpolation and not a canvas wire.
    - The Designer canvas still draws no edges and still authors only the block grammar. It authors a
      goto as a node with a `target` field.
    - The routing is confined: only a file's top-level walk follows it, a target is always a first-level
      node of the same file, and a goto never sits under `while-do` or `parallel` (ADR 0053 §3–4).
      Inside every nested body, Structure Controller semantics are unchanged.
    - ADR 0029's rejection of a **real DAG** (arbitrary dependency edges, multiple predecessors
-     scheduled by the engine, a new body shape) stands. `goto` is the one recorded exception to "the
-     tree is also the execution order", and it applies only at the top level of a file.
+     scheduled by the engine, a new body shape) stands. `goto` is the one recorded case where the
+     execution order is not the tree order, and it applies only at the top level of a file.
 
 ## Considered options
 
@@ -67,5 +68,3 @@ hides the one property a reader must know first: whether the body still executes
   output keys) is a Structure Controller rule. Where `goto` breaks it, the per-pass container run
   ([ADR 0054](0054-a-goto-visit-is-scoped-by-a-per-pass-container-run.md)) restores it inside each
   pass.
-- A request for a second Graph Controller (for example, a jump into a nested body or a cross-file
-  jump) is a new ADR against ADR 0029 and ADR 0053, not a schema feature request.
