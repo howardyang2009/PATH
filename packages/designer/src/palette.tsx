@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import type { WorkflowFile } from "@path/schema";
 import { paletteGroups, templateGroups, type PaletteEntry } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
@@ -23,17 +24,24 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  *
  * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. A
  * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
- * then opens the sockets the grammar admits that body into. A failed read says why instead. A
- * Workflow-Template card does nothing yet (#579), and an invalid template is shown disabled with its error.
+ * then opens the sockets the grammar admits that body into. A Workflow-Template card is selectable only
+ * into an empty canvas and fills it with an instance of the whole workflow (#579). A failed read says why
+ * instead, and an invalid template is shown disabled with its error.
  */
 export function Palette({
   plugins,
   templateList,
   arming,
+  canvasEmpty,
+  placeWorkflowInstance,
 }: {
   plugins: WireStepPlugin[];
   templateList: TemplateListLoad;
   arming: ArmedState;
+  /** Is the canvas empty? A Workflow-Template card is selectable only then (#579). */
+  canvasEmpty: boolean;
+  /** Put a Workflow-Template instance on the empty canvas; `false` when it is no longer empty. */
+  placeWorkflowInstance: (file: WorkflowFile) => boolean;
 }) {
   const [tab, setTab] = useState<PaletteTab>("build");
   return (
@@ -58,7 +66,7 @@ export function Palette({
         {tab === "build" ? (
           <BuildTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
         ) : (
-          <TemplatesTab templateList={templateList} arming={arming} />
+          <TemplatesTab templateList={templateList} arming={arming} canvasEmpty={canvasEmpty} placeWorkflowInstance={placeWorkflowInstance} />
         )}
       </div>
     </>
@@ -107,7 +115,17 @@ function BuildTab({
   );
 }
 
-function TemplatesTab({ templateList, arming }: { templateList: TemplateListLoad; arming: ArmedState }) {
+function TemplatesTab({
+  templateList,
+  arming,
+  canvasEmpty,
+  placeWorkflowInstance,
+}: {
+  templateList: TemplateListLoad;
+  arming: ArmedState;
+  canvasEmpty: boolean;
+  placeWorkflowInstance: (file: WorkflowFile) => boolean;
+}) {
   if (templateList.phase === "loading") return <p className="palette-note">Loading templates…</p>;
   if (templateList.phase === "error") {
     return (
@@ -135,7 +153,10 @@ function TemplatesTab({ templateList, arming }: { templateList: TemplateListLoad
                   key={`${template.origin}:${template.kind}:${template.name}`}
                   template={template}
                   armed={armed?.kind === "step-template" && armed.id === template.id}
-                  onSelect={() => arming.armTemplate(template)}
+                  canvasEmpty={canvasEmpty}
+                  onSelect={() =>
+                    template.kind === "step" ? arming.armTemplate(template) : arming.selectWorkflowTemplate(template, placeWorkflowInstance)
+                  }
                   onDisarm={() => arming.arm(null)}
                 />
               ))}
@@ -176,32 +197,36 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
 /**
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
- * Step-Template card is an arm toggle like a Build card (#578); a Workflow-Template card is inert until
- * #579 wires it.
+ * Step-Template card is an arm toggle like a Build card (#578). A Workflow-Template card is a one-shot
+ * select, enabled only while the canvas is empty (#579).
  */
 function TemplateCard({
   template,
   armed,
+  canvasEmpty,
   onSelect,
   onDisarm,
 }: {
   template: TemplateSummary;
   armed: boolean;
+  canvasEmpty: boolean;
   onSelect: () => void;
   onDisarm: () => void;
 }) {
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
   const armable = template.kind === "step";
+  const blocked = !armable && !canvasEmpty;
   return (
     <li>
       <button
         type="button"
         className="palette-card"
         style={style}
-        disabled={!template.valid}
+        disabled={!template.valid || blocked}
+        title={blocked ? "A Workflow-Template goes only into an empty canvas." : undefined}
         aria-pressed={armable ? armed : undefined}
         data-armed={armed ? "true" : "false"}
-        onClick={armable ? (armed ? onDisarm : onSelect) : undefined}
+        onClick={armed ? onDisarm : onSelect}
       >
         <span className="palette-card-swatch" aria-hidden="true" />
         <span className="palette-card-text">

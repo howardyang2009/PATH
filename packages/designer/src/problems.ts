@@ -166,7 +166,10 @@ function contextKey(path: string): string | null {
  * node per kind, so a key repeated in one node does not spam the panel.
  */
 export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
-  const published = new Set<string>();
+  // The file's own `input` is the root context's default seed (CONTEXT.md § Input), so its top-level keys
+  // are readable before any step publishes. A launch override replaces it, and a nested `workflow`-ref run
+  // never reads it; the pass cannot see either, so it trusts the file as its own default root.
+  const published = new Set<string>(Object.keys(file.input ?? {}));
   for (const node of walkNodes(file.body)) {
     for (const key of publishKeysOf(node)) published.add(key);
   }
