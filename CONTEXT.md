@@ -235,7 +235,13 @@ and issues use them exactly.
   first-level node can run more than once in one workflow-run. **First level** means a file's own
   top-level body, per file: a jump never crosses a `workflow`-ref boundary in either direction. A
   goto sits at the first level or inside a first-level `branch`'s arm (under any `sequence`/`branch`
-  nesting), never under `while-do` or `parallel`, and its target is never an inner node. It jumps by
+  nesting), never under `while-do` or `parallel`, and its target is never an inner node. A goto names
+  its **target** by the target step's `name`, never its `id`. Load refuses a target that names no
+  node in the file, names an inner node, or names the goto itself, and refuses a goto under
+  `while-do` or `parallel`. An unguarded first-level goto with a backward target is legal: another
+  goto can jump past it to leave the loop
+  ([ADR 0056](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md)).
+  It jumps by
   returning a `goto` `SeqOutcome` that nested walkers pass up unchanged and only the top-level walk
   consumes. Its mandatory **`max_jumps`** (default 3, per goto node per workflow-run) bounds it like
   `while-do`'s max-iterations: exhausting it fails the run
