@@ -227,6 +227,19 @@ and issues use them exactly.
   judgment. Any check that needs judgment (human or LLM) is a normal step that outputs a verdict,
   followed by a checkpoint that tests the verdict (the *judge-step pattern*). Compare `assert` and
   `if`: a branch routes, a checkpoint asserts.
+- **Goto** — *(planned, #478)* the one **Graph Controller**. It sets the next step of the
+  **top-level walk** to a named **first-level** step of its own file, backward jumps included, so a
+  first-level node can run more than once in one workflow-run. **First level** means a file's own
+  top-level body, per file: a jump never crosses a `workflow`-ref boundary in either direction. A
+  goto sits at the first level or inside a first-level `branch`'s arm (under any `sequence`/`branch`
+  nesting), never under `while-do` or `parallel`, and its target is never an inner node. It jumps by
+  returning a `goto` `SeqOutcome` that nested walkers pass up unchanged and only the top-level walk
+  consumes. Its mandatory **`max_jumps`** (default 3, per goto node per workflow-run) bounds it like
+  `while-do`'s max-iterations: exhausting it fails the run
+  ([ADR 0053](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0053-goto-is-a-seqoutcome-jump-caught-by-a-per-file-top-level-walk.md)).
+- **Top-level walk** — how a workflow-run walks its file's top-level body: an index loop with a jump
+  register, the only walk a `goto` can re-seek. Every nested body (`sequence`, branch arm, loop
+  iteration, `parallel` branch) is walked by `runSequence` in strict order, one visit per node.
 
 ## Identity
 
