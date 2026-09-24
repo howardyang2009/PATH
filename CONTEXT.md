@@ -181,7 +181,7 @@ and issues use them exactly.
 
 - **Workflow body** — an ordered sequence of **nodes**. A node is a step, a parallel block, a branch
   block, a while-do block, a sequence block, or a checkpoint. Blocks nest without limit (the *nested
-  block grammar*). Under `path/workflow@4`, every container slot holds exactly one node. A `sequence`
+  block grammar*). Under `path/workflow@5`, every container slot holds exactly one node. A `sequence`
   carries the node array where a slot needs several nodes in order. Checkpoints can appear anywhere in
   a sequence.
 - **Controller** — an engine-evaluated control construct that routes and coordinates step execution. It
@@ -190,7 +190,7 @@ and issues use them exactly.
   collect, wait-one, and do-not-wait are **join modes of the parallel block**. branch, while-do, and
   sequence are **block types**. A controller has no worker, no task, and no run. The engine of the
   enclosing workflow evaluates it. (Spell it *controller*.) The MVP subset has **five Structure
-  Controllers** under `path/workflow@4`. The first is parallel (with its collect, wait-one, and
+  Controllers** under `path/workflow@5`. The first is parallel (with its collect, wait-one, and
   do-not-wait joins). The second is branch. The third is while-do; it needs a mandatory max-iterations
   bound, and the run fails if it exceeds the bound. The fourth is sequence; this block type carries the
   node array wherever a single-node slot needs several nodes in order
@@ -249,12 +249,15 @@ and issues use them exactly.
   followed by a checkpoint that tests the verdict (the *judge-step pattern*). Compare `assert` and
   `if`: a branch routes, a checkpoint asserts.
 - **Goto** — *(planned, #478)* the one **Graph Controller**. It sets the next step of the
-  **top-level walk** to a named **first-level** step of its own file, backward jumps included, so a
-  first-level node can run more than once in one workflow-run. **First level** means a file's own
-  top-level body, per file: a jump never crosses a `workflow`-ref boundary in either direction. A
-  goto sits at the first level or inside a first-level `branch`'s arm (under any `sequence`/`branch`
-  nesting), never under `while-do` or `parallel`, and its target is never an inner node. A goto names
-  its **target** by the target step's `name`, never its `id`. Load refuses a target that names no
+  **top-level walk** to a named **first-level node** of its own file, backward jumps included, so a
+  first-level node can run more than once in one workflow-run. A jump never crosses a `workflow`-ref
+  boundary in either direction, so a target is always a first-level node of the goto's own file. A
+  goto sits in any node slot whose ancestor chain holds no `while-do` and no `parallel` — the first
+  level, a first-level `branch`'s arm or `else`, or any `sequence`/`branch` nesting below one — and
+  its target is any other first-level node, never an inner node and never itself
+  ([ADR 0058](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)).
+  A goto names
+  its **target** by the target node's `name`, never its `id`. Load refuses a target that names no
   node in the file, names an inner node, or names the goto itself, and refuses a goto under
   `while-do` or `parallel`. An unguarded first-level goto with a backward target is legal: another
   goto can jump past it to leave the loop
@@ -267,6 +270,10 @@ and issues use them exactly.
   A goto carries no input of its own: the output it received passes through as the target's incoming
   output, forward or backward, and the target's own `input` map still wins
   ([ADR 0055](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md)).
+- **First level** — a file's own top-level body, as a position: the list a **top-level walk** steps
+  through, per file. It is where a `goto` sits or targets, and where the resume prefix rule reads a K.
+  A `while-do` iteration and a `parallel` branch are never first level, however shallow, and a nested
+  `workflow`-ref file has its own. _Avoid_: top level (of a body), root level, depth.
 - **Top-level walk** — how a workflow-run walks its file's top-level body: an index loop with a jump
   register, the only walk a `goto` can re-seek. Every nested body (`sequence`, branch arm, loop
   iteration, `parallel` branch) is walked by `runSequence` in strict order, one visit per node.
@@ -288,7 +295,7 @@ and issues use them exactly.
   identity: unique by construction, assigned once, never regenerated. It is the audit `node_id` that a
   run row and a log event carry. It is the key that **resume** matches on: a successor node reuses a
   predecessor run by shared id (`plan-reuse`). Thus a rename or a move of a node never breaks reuse.
-  The format requires it (`path/workflow@4`). A missing id is a load error, not a silent auto-stamp. A
+  The format requires it (`path/workflow@5`). A missing id is a load error, not a silent auto-stamp. A
   one-time codemod stamped every pre-existing file (Store note, ADR 0006, ADR 0007). Under `@2`, a
   branch **is** a node. The container change collapsed branch-identity into the node. Thus "and branch"
   is gone: every slot occupant carries its own `id` (ADR 0014).
@@ -628,7 +635,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   first child with a genuine-execution row, not a reuse row — so the persisted field is a
   denormalization for read, never load-bearing for correctness. The run-id selection is checked
   before the successor starts: a **legal K** resolves to a node still present in the current file,
-  **succeeded**, at the **top level** of its own level's body, whose whole prefix `<K` also
+  **succeeded**, at the **first level** of its own file's body, whose whole prefix `<K` also
   succeeded. A selection that resolves to no run in the source tree, to a since-deleted node, to a
   node inside a loop/parallel/branch body, to a node that did not succeed, or over a prefix that did
   not fully succeed is **refused** and no successor is created. Plain Resume omits the selection

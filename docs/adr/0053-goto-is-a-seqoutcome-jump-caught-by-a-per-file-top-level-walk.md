@@ -3,7 +3,9 @@
 **Status:** accepted. Resolves the goto execution model for Wayfinder map
 [#544](https://github.com/howardyang2009/PATH/issues/544), ticket
 [#546](https://github.com/howardyang2009/PATH/issues/546); origin
-[#478](https://github.com/howardyang2009/PATH/issues/478). Plan-only: no engine code yet.
+[#478](https://github.com/howardyang2009/PATH/issues/478). Plan-only: no engine code yet. **Amended by
+[ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md) (#597):** "first-level step"
+reads **first-level node**, `max_jumps` is required in the file, and the schema grammar is fixed there.
 
 `goto` (#478) sets the engine's next step to a named **first-level** step of the current workflow
 file, backward jumps (cycles) included. Execution today is one recursive walk, `runSequence`
@@ -17,8 +19,10 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
 1. **Only a file's top-level body gets a program counter.** A new *top-level walk* (an index loop
    with a jump register) replaces `runSequence` for the top-level body in `executeWorkflowRun`'s
    `runBody`. Every nested body (`sequence`, `branch` arm, `while-do` iteration, `parallel` branch)
-   stays on `runSequence`, unchanged. A goto target is always a first-level step (#478), so the
-   top-level body is the only list a jump can land in; Structure Controllers keep their
+   stays on `runSequence`, unchanged. A goto target is always a first-level step (#478) — **amended
+   (#597): "step" reads "node", so a first-level controller or another goto is an eligible target too
+   ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md))** — so the top-level body
+   is the only list a jump can land in; Structure Controllers keep their
    single-entry, single-exit, one-visit-per-node block semantics (ADR 0029).
 
 2. **A jump is a `SeqOutcome` variant: `{ status: "goto"; target: <node GUID>; output: JsonValue }`.**
@@ -35,7 +39,10 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
    the slot, or under any nesting of `sequence` and `branch` below it). Never under `while-do` or
    `parallel`, so a jump never has to close a loop-iteration container (ADR 0037) or cancel running
    siblings. A goto **target** is never an inner node of `branch`, `sequence`, `while-do` or
-   `parallel`. Both rules are load-time validation.
+   `parallel`. Both rules are load-time validation. **Amended (#597):** the placement rule is exactly
+   "no ancestor `while-do` and no ancestor `parallel`" — a first-level `branch`'s `arms[].node` and its
+   `else` are one case — and the target rule is inner-or-self only, so every other first-level **node**
+   is eligible ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)).
 
 4. **"First level" is per file, and a jump never crosses a file boundary.** Every workflow-run's
    `runBody`, root or nested, runs its own top-level walk, so a `workflow`-ref file may use goto
@@ -45,7 +52,9 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
    step and may be a target in its own file.
 
 5. **Non-termination: an authored `max_jumps` on every goto node, default 3.** Like `while-do`'s
-   `max_iterations`, it is a positive integer or a string interpolating to one. The count is **per
+   `max_iterations`, it is a positive integer or a string interpolating to one. **Amended (#597):**
+   required in the file — no engine fallback and no parse-time default; 3 is the authoring default
+   ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)). The count is **per
    goto node, per workflow-run** (a re-run `workflow` step's fresh child run starts at zero). The
    authored *guard* is the enclosing branch arm's `when`; `max_jumps` is the backstop.
 
