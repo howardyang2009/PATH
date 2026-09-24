@@ -1,6 +1,16 @@
 import { useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
-import type { SaveState } from "./use-open-file.js";
+import type { SaveState, TemplateSource } from "./use-open-file.js";
+
+/**
+ * Author mode's extra save doors (#580), present only while the active frame is a `*.workflow-template.json`
+ * source. The plain Save then writes back to `template`; these two save it somewhere new.
+ */
+export interface AuthorModeControls {
+  template: TemplateSource;
+  onSaveAsTemplate: () => void;
+  onSaveAsWorkflow: () => void;
+}
 
 /**
  * The top-bar editing controls (#371): the Save button plus the two edit-lease affordances the lease
@@ -23,6 +33,7 @@ export function EditingToolbar({
   lease,
   onTakeover,
   onReacquire,
+  authorMode,
 }: {
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
@@ -42,6 +53,8 @@ export function EditingToolbar({
   lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
+  /** Present in author mode (#580): the template being edited and its two Save-As doors. */
+  authorMode?: AuthorModeControls;
 }): JSX.Element {
   const saving = saveState.phase === "saving";
   const conflict = saveState.phase === "conflict";
@@ -65,6 +78,22 @@ export function EditingToolbar({
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
         {saving ? "Saving…" : "Save"}
       </button>
+      {authorMode ? (
+        <>
+          {/* Author mode (#580): the opened file is the template source, so Save writes back to it. A
+              shipped one is read-only: its write-back is the API's 403, and the two Save-As doors fork it. */}
+          <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
+            Template source: <code>{authorMode.template.name}.workflow-template.json</code>
+            {authorMode.template.readOnly ? " (shipped, read-only)" : null}
+          </span>
+          <button type="button" className="open-btn" onClick={authorMode.onSaveAsTemplate} disabled={saving}>
+            Save as template…
+          </button>
+          <button type="button" className="open-btn" onClick={authorMode.onSaveAsWorkflow} disabled={saving}>
+            Save as workflow…
+          </button>
+        </>
+      ) : null}
       {saveState.phase === "saved" ? (
         <span className="save-status" role="status">
           Saved.

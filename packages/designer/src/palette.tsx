@@ -25,8 +25,9 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. A
  * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
  * then opens the sockets the grammar admits that body into. A Workflow-Template card is selectable only
- * into an empty canvas and fills it with an instance of the whole workflow (#579). A failed read says why
- * instead, and an invalid template is shown disabled with its error.
+ * into an empty canvas and fills it with an instance of the whole workflow (#579); its Edit button opens
+ * the `*.workflow-template.json` itself in author mode (#580). A failed read says why instead, and an
+ * invalid template is shown disabled with its error.
  */
 export function Palette({
   plugins,
@@ -34,6 +35,7 @@ export function Palette({
   arming,
   canvasEmpty,
   placeWorkflowInstance,
+  onEditTemplate,
 }: {
   plugins: WireStepPlugin[];
   templateList: TemplateListLoad;
@@ -42,6 +44,8 @@ export function Palette({
   canvasEmpty: boolean;
   /** Put a Workflow-Template instance on the empty canvas; `false` when it is no longer empty. */
   placeWorkflowInstance: (file: WorkflowFile) => boolean;
+  /** Open a Workflow-Template's own source file in author mode (#580). */
+  onEditTemplate: (template: TemplateSummary) => void;
 }) {
   const [tab, setTab] = useState<PaletteTab>("build");
   return (
@@ -66,7 +70,13 @@ export function Palette({
         {tab === "build" ? (
           <BuildTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
         ) : (
-          <TemplatesTab templateList={templateList} arming={arming} canvasEmpty={canvasEmpty} placeWorkflowInstance={placeWorkflowInstance} />
+          <TemplatesTab
+            templateList={templateList}
+            arming={arming}
+            canvasEmpty={canvasEmpty}
+            placeWorkflowInstance={placeWorkflowInstance}
+            onEditTemplate={onEditTemplate}
+          />
         )}
       </div>
     </>
@@ -120,11 +130,13 @@ function TemplatesTab({
   arming,
   canvasEmpty,
   placeWorkflowInstance,
+  onEditTemplate,
 }: {
   templateList: TemplateListLoad;
   arming: ArmedState;
   canvasEmpty: boolean;
   placeWorkflowInstance: (file: WorkflowFile) => boolean;
+  onEditTemplate: (template: TemplateSummary) => void;
 }) {
   if (templateList.phase === "loading") return <p className="palette-note">Loading templates…</p>;
   if (templateList.phase === "error") {
@@ -158,6 +170,7 @@ function TemplatesTab({
                     template.kind === "step" ? arming.armTemplate(template) : arming.selectWorkflowTemplate(template, placeWorkflowInstance)
                   }
                   onDisarm={() => arming.arm(null)}
+                  onEdit={() => onEditTemplate(template)}
                 />
               ))}
             </ul>
@@ -198,7 +211,9 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
  * Step-Template card is an arm toggle like a Build card (#578). A Workflow-Template card is a one-shot
- * select, enabled only while the canvas is empty (#579).
+ * select, enabled only while the canvas is empty (#579). A Workflow-Template also carries an Edit button
+ * that opens its `*.workflow-template.json` in author mode (#580). Edit stays enabled for an invalid row,
+ * so an author can open a broken template to repair it (ADR 0050 decision 5).
  */
 function TemplateCard({
   template,
@@ -206,12 +221,14 @@ function TemplateCard({
   canvasEmpty,
   onSelect,
   onDisarm,
+  onEdit,
 }: {
   template: TemplateSummary;
   armed: boolean;
   canvasEmpty: boolean;
   onSelect: () => void;
   onDisarm: () => void;
+  onEdit: () => void;
 }) {
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
   const armable = template.kind === "step";
@@ -236,6 +253,17 @@ function TemplateCard({
         </span>
         {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
       </button>
+      {template.kind === "workflow" && template.id !== null ? (
+        <button
+          type="button"
+          className="palette-card-edit"
+          aria-label={`Edit ${template.name}.workflow-template.json`}
+          title="Open the template source to edit it"
+          onClick={onEdit}
+        >
+          Edit
+        </button>
+      ) : null}
     </li>
   );
 }

@@ -319,6 +319,36 @@ and naming), prefilled from the template's `name`, and creates a `*.workflow.jso
 saves back to the template. One workflow-template ships in `packages/server/template/`: `draft-review`,
 a `prompt` draft followed by a `person-activity` review.
 
+### Editing a Workflow-Template's source (author mode)
+
+A **Workflow-Template** card also has an **Edit** button
+([#580](https://github.com/howardyang2009/PATH/issues/580)). It opens the `*.workflow-template.json`
+itself as a fresh root, discarding the current stack like Open…. The suffix is the discriminator
+([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
+decision 8): a `*.workflow.json` opens in workflow mode, a template card's select is consume mode, and
+the template file opened to edit is **author mode**. The read is `GET /v0/templates/:id`
+(server-api-v0.md §10.2); the template's workflow file opens through the same pipeline as a
+`*.workflow.json`. Edit stays enabled for an invalid template, so an author can open it and see why.
+
+An author-mode frame is id-addressed, not path-addressed
+([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md)). It
+takes no edit lease and cannot launch, since a template runs only after Instantiation. The toolbar
+names the source (`Template source: <name>.workflow-template.json`, and `shipped, read-only` for a
+shipped one) and offers three save doors:
+
+- **Save** writes back to the original through `PUT /v0/templates/:id` under the read's `If-Match`,
+  with the workflow `id` preserved. A `412` is the same stale-write conflict as a workflow's, and Reload
+  re-reads the template. A **shipped** template refuses the write with the API's `403`, shown as the
+  save error.
+- **Save as template…** names a new template (the stem is prefilled `<name>-copy`; the
+  `.workflow-template.json` suffix is fixed) and creates it through `POST /v0/templates` with a fresh
+  workflow `id`, since two templates must not share identity. Node ids are kept: they are unique in the
+  file, and Instantiation re-stamps them on use. A taken name (`409`) asks for another name. The editor
+  then edits the new template, and the palette re-lists it.
+- **Save as workflow…** runs Instantiation plus the workflow-level re-mint (a fresh workflow `id`, fresh
+  node ids) and places the instance with the first-save dialog as an exclusive `PUT /v0/workflows`
+  create. The editor then edits the new `*.workflow.json`; the template file is unchanged.
+
 ### What is authorable: the whole grammar, nothing deferred to JSON
 
 Every node kind is a palette entry. Nothing is v1-deferred to hand-editing the JSON.

@@ -88,7 +88,7 @@ function templatesPanel(): HTMLElement {
 }
 
 async function workflowTemplateCard(): Promise<HTMLElement> {
-  return within(templatesPanel()).findByRole("button", { name: /nightly/ });
+  return within(templatesPanel()).findByRole("button", { name: /^nightly/ });
 }
 
 describe("Instantiate a Workflow-Template into an empty canvas (#579)", () => {

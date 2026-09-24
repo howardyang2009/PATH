@@ -36,6 +36,16 @@ export interface StubCalls {
   cancel: string[];
   /** Every `POST /v0/runs/:id/resume` — the id and the optional config-override body (#372). */
   resume: { rootRunId: string; body: unknown }[];
+  /** Every template write (#580): `POST /v0/templates` (id `null`) or `PUT /v0/templates/:id`. */
+  templateWrites: TemplateWrite[];
+}
+
+/** One recorded template write: the verb, the URL id (`null` for a POST), the JSON body, and `If-Match`. */
+export interface TemplateWrite {
+  method: "POST" | "PUT";
+  id: string | null;
+  body: Record<string, unknown>;
+  ifMatch: string | null;
 }
 
 /** An SSE body that stays open until aborted, like the real one — a stream that ends early spins the
@@ -98,11 +108,16 @@ export interface DesignerStubOptions {
   templatesStatus?: number;
   /** Bodies for `GET /v0/templates/:id`, keyed by template id (#578). A missing id answers 404. */
   templateBodies?: Record<string, unknown>;
+  /**
+   * Override a template write per call (#580). Default: a `POST` creates (`201`); a `PUT` answers `403`
+   * for an id whose `templateBodies` envelope is `read_only`, the server's shipped-template refusal, else `200`.
+   */
+  onTemplateWrite?: (write: TemplateWrite) => Response;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
 export function makeCalls(): StubCalls {
-  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [] };
+  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [] };
 }
 
 /** A granted lease for a session — the default lock response. */
@@ -185,6 +200,19 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       calls?.release.push(body as { workflow_path: string; session_id: string });
       return json({ released: true }, 200);
     }
+    const templateWrite = templateWriteOf(input, init);
+    if (templateWrite !== null) {
+      calls?.templateWrites.push(templateWrite);
+      if (options.onTemplateWrite) return options.onTemplateWrite(templateWrite);
+      if (templateWrite.method === "POST") {
+        const created = templateWrite.body["body"] as { id: string };
+        const name = templateWrite.body["name"] as string;
+        return json({ id: created.id, relative_path: `.path/template/workflow-template/${name}.workflow-template.json`, etag: '"created"' }, 201);
+      }
+      const envelope = (options.templateBodies ?? {})[templateWrite.id!] as { read_only?: boolean } | undefined;
+      if (envelope?.read_only) return json({ error: { message: "template is read-only" } }, 403);
+      return json({ id: templateWrite.id, relative_path: "t.workflow-template.json", etag: '"rewritten"' }, 200);
+    }
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
     }
@@ -214,6 +242,17 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
 
 function json(body: unknown, status: number): Response {
   return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+}
+
+/** A `POST /v0/templates` or `PUT /v0/templates/:id` as a recorded write, or `null` for any other request. */
+function templateWriteOf(url: string, init: RequestInit | undefined): TemplateWrite | null {
+  const method = init?.method;
+  const ifMatch = ((init?.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+  const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
+  if (url === "/v0/templates" && method === "POST") return { method, id: null, body, ifMatch };
+  const match = /^\/v0\/templates\/([^/?]+)$/.exec(url);
+  if (match && method === "PUT") return { method, id: decodeURIComponent(match[1]!), body, ifMatch };
+  return null;
 }
 
 /** `"<run_id>/<name>"` for a blob-route URL, or null for any other path. */

@@ -6,6 +6,7 @@ import {
   makeWorkflowFileSchema,
   safeParseStepTemplateWith,
   safeParseWorkflowFileWith,
+  type WireTemplateWriteResponse,
 } from "@path/schema";
 import { strongEtag } from "../etag.js";
 import { readJsonBody, sendError } from "../http-json.js";
@@ -78,7 +79,7 @@ export async function handlePutTemplate(
   writeFileSync(entry.absPath, serialized);
 
   const etag = strongEtag(Buffer.from(serialized, "utf8"));
-  const reply = { id, relative_path: relative(projectDir, entry.absPath), etag };
+  const reply: WireTemplateWriteResponse = { id, relative_path: relative(projectDir, entry.absPath), etag };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

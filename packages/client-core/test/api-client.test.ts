@@ -360,6 +360,46 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
   });
 
+  it("POST /v0/templates creates a user template and returns its id, path and etag (#580)", async () => {
+    let sent: RequestInit | undefined;
+    const stub = stubFetch((_url, init) => {
+      sent = init;
+      return json({ id: "t2", relative_path: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' }, 201);
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.createTemplate({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
+    expect(res).toEqual({ id: "t2", relativePath: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
+    expect(sent?.method).toBe("POST");
+    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
+  });
+
+  it("PUT /v0/templates/:id writes back under If-Match (#580)", async () => {
+    let sent: RequestInit | undefined;
+    const stub = stubFetch((_url, init) => {
+      sent = init;
+      return json({ id: "t 1", relative_path: ".path/template/workflow-template/x.workflow-template.json", etag: '"next"' });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.putTemplate({ id: "t 1", body: { id: "t 1" }, ifMatch: '"prev"' });
+    expect(res.etag).toBe('"next"');
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
+    expect(sent?.method).toBe("PUT");
+    expect((sent?.headers as Record<string, string>)["If-Match"]).toBe('"prev"');
+    expect(JSON.parse(sent?.body as string)).toEqual({ id: "t 1" });
+  });
+
+  it("PUT /v0/templates/:id raises the API's 403 for a shipped template (#580)", async () => {
+    const stub = stubFetch(() => json({ error: { message: "template is read-only" } }, 403));
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const error = await client.putTemplate({ id: "t1", body: { id: "t1" }, ifMatch: '"e"' }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(PathApiError);
+    expect(error).toMatchObject({ status: 403, message: "template is read-only" });
+  });
+
   it("GET /v0/step-plugins returns the registry snapshot", async () => {
     const stub = stubFetch(() =>
       json({

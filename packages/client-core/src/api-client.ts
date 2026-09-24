@@ -19,7 +19,9 @@ import type {
   WireLockHeldBody,
   WireLockRequest,
   WirePutWorkflowRequest,
+  WirePostTemplateRequest,
   WirePutWorkflowResponse,
+  WireTemplateWriteResponse,
   WireWorkflowLease,
 } from "@path/schema";
 
@@ -122,6 +124,26 @@ export interface PutWorkflowInput {
 export interface PutWorkflowResult {
   relativePath: string;
   id: string;
+  etag: string;
+}
+
+/** The camelCase input to `POST /v0/templates` (server-api-v0.md §10.3): the save-as envelope. */
+export type CreateTemplateInput = WirePostTemplateRequest;
+
+/**
+ * The camelCase input to `PUT /v0/templates/:id` (server-api-v0.md §10.4). `body` is the full template
+ * object, whose `id` must equal `id`; `ifMatch` is the ETag of the last read or write, and is required.
+ */
+export interface PutTemplateInput {
+  id: string;
+  body: JsonValue;
+  ifMatch: string;
+}
+
+/** A template write's reply (server-api-v0.md §10.3, §10.4): the template id, its path, and the new ETag. */
+export interface TemplateWriteResult {
+  id: string;
+  relativePath: string;
   etag: string;
 }
 
@@ -342,6 +364,35 @@ export class PathApiClient {
    */
   async getTemplate(id: string): Promise<GetTemplateResponse> {
     return this.getJson<GetTemplateResponse>(`/v0/templates/${encodeURIComponent(id)}`);
+  }
+
+  /**
+   * `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050 decision 6): create a **user**
+   * template under `.path/template/`. The client mints the `id` inside `body` (ADR 0015). Create-only: a
+   * name that already exists is a `409` `PathApiError`; a bad `name` or body is a `400`.
+   */
+  async createTemplate(input: CreateTemplateInput): Promise<TemplateWriteResult> {
+    return this.writeTemplate("/v0/templates", "POST", input, undefined);
+  }
+
+  /**
+   * `PUT /v0/templates/:id` — update a user template in place (server-api-v0.md §10.4, ADR 0050
+   * decision 7), gated on `If-Match`. A stale token is a `412`, a shipped (read-only) template a `403`,
+   * and an unknown id a `404`, each as a `PathApiError`.
+   */
+  async putTemplate(input: PutTemplateInput): Promise<TemplateWriteResult> {
+    return this.writeTemplate(`/v0/templates/${encodeURIComponent(input.id)}`, "PUT", input.body, input.ifMatch);
+  }
+
+  /** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed reply. */
+  private async writeTemplate(path: string, method: "POST" | "PUT", body: unknown, ifMatch: string | undefined): Promise<TemplateWriteResult> {
+    const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
+    if (ifMatch !== undefined) headers["If-Match"] = ifMatch;
+    const res = await this.fetch(this.url(path), { method, headers, body: JSON.stringify(body) });
+    const text = await res.text();
+    if (!res.ok) throw toApiError(res.status, text);
+    const parsed = JSON.parse(text) as WireTemplateWriteResponse;
+    return { id: parsed.id, relativePath: parsed.relative_path, etag: parsed.etag };
   }
 
   /**

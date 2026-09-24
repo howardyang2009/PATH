@@ -8,6 +8,7 @@ import {
   NameSchema,
   safeParseStepTemplateWith,
   safeParseWorkflowFileWith,
+  type WireTemplateWriteResponse,
 } from "@path/schema";
 import { z } from "zod";
 import { strongEtag } from "../etag.js";
@@ -88,7 +89,7 @@ export async function handlePostTemplates(
   }
 
   const etag = strongEtag(Buffer.from(serialized, "utf8"));
-  const reply = { id: envelopeId, relative_path: relative(projectDir, absPath), etag };
+  const reply: WireTemplateWriteResponse = { id: envelopeId, relative_path: relative(projectDir, absPath), etag };
   res.writeHead(201, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

@@ -80,6 +80,23 @@ export interface Frame {
    * rather than as a wall-clock pre-gate in the hook that the reducer then re-checked.
    */
   loadSeq: number | null;
+  /**
+   * The template this frame edits in **author mode** (#580, ADR 0049 decision 8): set when the author
+   * opened a `*.workflow-template.json` itself, `undefined` for a workflow file. The suffix of the opened
+   * file is the discriminator. A template frame is `written` (it is on disk) but holds no `path`: a
+   * template is id-addressed (ADR 0050), so it takes no lease, cannot launch, and saves through
+   * `PUT /v0/templates/:id` rather than the workflow write door.
+   */
+  template?: TemplateSource;
+}
+
+/** The `*.workflow-template.json` an author-mode frame edits: its id (the route key), file stem, and origin. */
+export interface TemplateSource {
+  id: string;
+  /** The file stem — the template's name, immutable through the write-back door. */
+  name: string;
+  /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
+  readOnly: boolean;
 }
 
 /** A frame is fetching, failed to fetch, or has an open outcome (which may itself be a legible refusal). */
@@ -142,10 +159,10 @@ const NEW_FILE_DEFAULT_NAME = "untitled";
  * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open. `loadSeq` is the
  * fetch this frame awaits — see {@link Frame.loadSeq}.
  */
-export function loadingFrame(path: string, descendedVia: string | undefined, loadSeq: number): Frame {
+export function loadingFrame(path: string | null, descendedVia: string | undefined, loadSeq: number, template?: TemplateSource): Frame {
   // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
-  // a still-loading frame is not yet leased regardless.
-  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia, loadSeq };
+  // a still-loading frame is not yet leased regardless. A template frame has no path, only its `template`.
+  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia, loadSeq, template };
 }
 
 /**
@@ -257,6 +274,11 @@ export const initialSessionState: SessionState = { frames: [], activeIndex: 0, s
 export type SessionAction =
   /** Open `path` as a fresh root, discarding any current stack — one loading frame, active index 0. */
   | { type: "openLoading"; path: string; loadSeq: number }
+  /**
+   * Open a `*.workflow-template.json` itself as a fresh root in **author mode** (#580), discarding any
+   * current stack — one loading template frame. Its read lands through `loadLanded` with a `null` path.
+   */
+  | { type: "openTemplateLoading"; template: TemplateSource; loadSeq: number }
   /** Start a from-scratch buffer as a fresh root (#390), discarding any current stack. */
   | { type: "newFile" }
   /**
@@ -294,7 +316,7 @@ export type SessionAction =
    * A file fetch-and-open landed. Patched in **only** when the frame at `depth` still awaits `loadSeq` —
    * the pure staleness guard that drops a result whose destination the author already left (or replaced).
    */
-  | { type: "loadLanded"; depth: number; path: string; loadSeq: number; frameState: FrameState; etag: string | null; baseline: string; openedBytes: string }
+  | { type: "loadLanded"; depth: number; path: string | null; loadSeq: number; frameState: FrameState; etag: string | null; baseline: string; openedBytes: string }
   /** A `PUT` is in flight — the transient `saving` phase. */
   | { type: "saveStarted" }
   /**
@@ -308,6 +330,23 @@ export type SessionAction =
    * `depth` still being unwritten and path-less. Always sets the `saved` phase.
    */
   | { type: "newFileSaved"; depth: number; etag: string; savedBytes: string; relativePath: string }
+  /**
+   * An author-mode write-back succeeded (#580): advance the save-point of the frame at `depth`, guarded on
+   * it still editing template `id`. Always sets the `saved` phase.
+   */
+  | { type: "templateSaved"; depth: number; id: string; etag: string; savedBytes: string }
+  /**
+   * An author-mode Save-As created a new template (#580): the frame at `depth`, if it still edits
+   * `fromId`, now edits the new `template` and its `file` (the fresh workflow id), clean at `etag`. The
+   * history starts fresh — an undo past the Save-As would restore the old template's id.
+   */
+  | { type: "templateSavedAs"; depth: number; fromId: string; template: TemplateSource; file: WorkflowFile; etag: string }
+  /**
+   * An author-mode Save-as-workflow wrote its instance to `relativePath` (#580): if the frame at `depth`
+   * still edits `fromId`, the session becomes that saved `*.workflow.json` as a fresh root, the way a
+   * Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
+   */
+  | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
   | { type: "setSaveState"; saveState: SaveState };
 
@@ -321,6 +360,9 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "newFile":
       return { frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
+
+    case "openTemplateLoading":
+      return { frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
 
     case "placeWorkflowInstance": {
       if (!canvasEmpty(state)) return state;
@@ -428,11 +470,12 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       // An unwritten buffer (a from-scratch root, or a create-new child) has no on-disk bytes to
-      // re-fetch — reload is a no-op for it, and would discard the authored buffer for a 404.
-      if (!frame || !frame.written || frame.path === null) return state;
+      // re-fetch — reload is a no-op for it, and would discard the authored buffer for a 404. A template
+      // frame has no path but is on disk, so it re-reads by its template id.
+      if (!frame || !frame.written || (frame.path === null && !frame.template)) return state;
       const frames = state.frames.slice();
       // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
-      frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq);
+      frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq, frame.template);
       return { ...state, frames, saveState: IDLE };
     }
 
@@ -451,9 +494,11 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         baseline: action.baseline,
         openedBytes: action.openedBytes,
         history: freshHistory(),
-        // Carry the descent origin across the fetch, so the opened child keeps its breadcrumb run badge.
+        // Carry the descent origin across the fetch, so the opened child keeps its breadcrumb run badge,
+        // and the template an author-mode read was for.
         descendedVia: frames[depth]?.descendedVia,
         loadSeq: null,
+        template: frames[depth]?.template,
       };
       return { ...state, frames };
     }
@@ -496,6 +541,49 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       return { ...state, frames, saveState: { phase: "saved" } };
     }
 
+    case "templateSaved": {
+      const top = state.frames[action.depth];
+      if (!top || !openedResultOf(top) || top.template?.id !== action.id) return { ...state, saveState: { phase: "saved" } };
+      const frames = state.frames.slice();
+      frames[action.depth] = withSavePoint(top, action.etag, action.savedBytes);
+      return { ...state, frames, saveState: { phase: "saved" } };
+    }
+
+    case "templateSavedAs": {
+      const top = state.frames[action.depth];
+      const opened = openedResultOf(top);
+      if (!top || !opened || top.template?.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
+      const bytes = canonicalSerialize(action.file);
+      const frames = state.frames.slice();
+      frames[action.depth] = {
+        ...top,
+        template: action.template,
+        state: { phase: "open", result: { ...opened, file: action.file } },
+        etag: action.etag,
+        baseline: bytes,
+        openedBytes: bytes,
+        history: freshHistory(),
+      };
+      return { ...state, frames, saveState: { phase: "saved" } };
+    }
+
+    case "detachedSaved": {
+      const top = state.frames[action.depth];
+      if (!top || !openedResultOf(top) || top.template?.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
+      const bytes = canonicalSerialize(action.file);
+      const saved: Frame = {
+        path: action.relativePath,
+        written: true,
+        state: { phase: "open", result: { status: "opened", file: action.file, idsStamped: false } },
+        etag: action.etag,
+        baseline: bytes,
+        openedBytes: bytes,
+        history: freshHistory(),
+        loadSeq: null,
+      };
+      return { frames: [saved], activeIndex: 0, saveState: { phase: "saved" } };
+    }
+
     case "setSaveState":
       return { ...state, saveState: action.saveState };
   }
@@ -511,18 +599,26 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
  * - **create** — an unwritten create-new child creates **exclusively** at its pre-assigned path (ADR
  *   0016), so the server refuses an existing path rather than clobbering it.
  *
+ * - **template** — an author-mode frame writes back to its own template by id (`PUT /v0/templates/:id`,
+ *   #580) under the read's `If-Match`; a shipped template answers `403`.
+ *
  * A from-scratch **root** (unwritten, no path) is `null`: it picks its path in the first-save dialog,
  * which is {@link planNewFileSave}. The `412` each door earns differs for the same reason: an overwrite
  * is a stale-write **conflict** to reload from, a create is a path **collision** to retarget.
  */
 export type SavePlan =
   | { kind: "overwrite"; depth: number; path: string; file: WorkflowFile; ifMatch: string | undefined }
-  | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined };
+  | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined }
+  | { kind: "template"; depth: number; id: string; file: WorkflowFile; ifMatch: string };
 
 export function planSave(state: SessionState): SavePlan | null {
   const depth = state.activeIndex;
   const frame = state.frames[depth];
   const opened = openedResultOf(frame);
+  if (frame?.template && opened) {
+    // The read always carries an ETag; an empty token would only earn the honest `412`.
+    return { kind: "template", depth, id: frame.template.id, file: opened.file, ifMatch: frame.etag ?? "" };
+  }
   if (!frame || !opened || frame.path === null) return null;
   return frame.written
     ? { kind: "overwrite", depth, path: frame.path, file: opened.file, ifMatch: frame.etag ?? undefined }
@@ -543,4 +639,23 @@ export function planNewFileSave(state: SessionState): NewFileSavePlan | null {
   // child (unwritten, path pre-assigned) and a saved frame both go through `planSave`.
   if (!frame || !opened || frame.written || frame.path !== null) return null;
   return { depth, file: opened.file };
+}
+
+/**
+ * What the two author-mode Save-As doors (#580) start from: the active template frame's buffer and the
+ * template it came from, or `null` when the active frame is not an opened template source. Save-As
+ * template and Save-as-workflow each derive their own new identity from `file`.
+ */
+export interface TemplateSaveAsPlan {
+  depth: number;
+  template: TemplateSource;
+  file: WorkflowFile;
+}
+
+export function planTemplateSaveAs(state: SessionState): TemplateSaveAsPlan | null {
+  const depth = state.activeIndex;
+  const frame = state.frames[depth];
+  const opened = openedResultOf(frame);
+  if (!frame?.template || !opened) return null;
+  return { depth, template: frame.template, file: opened.file };
 }
