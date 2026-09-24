@@ -96,6 +96,8 @@ export interface DesignerStubOptions {
   templates?: unknown;
   /** Status for the template-list response, for the failure path. */
   templatesStatus?: number;
+  /** Bodies for `GET /v0/templates/:id`, keyed by template id (#578). A missing id answers 404. */
+  templateBodies?: Record<string, unknown>;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
@@ -185,6 +187,13 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     }
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
+    }
+    const templateMatch = /^\/v0\/templates\/([^/?]+)$/.exec(input);
+    if (templateMatch) {
+      const id = decodeURIComponent(templateMatch[1]!);
+      const bodies = options.templateBodies ?? {};
+      if (!(id in bodies)) return json({ error: { message: `not found: template ${id}` } }, 404);
+      return json(bodies[id], 200);
     }
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
       return json(options.workflows ?? { workflows: [] }, 200);

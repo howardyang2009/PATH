@@ -262,6 +262,19 @@ export interface ListTemplatesResponse {
 }
 
 /**
+ * `GET /v0/templates/:id` — one template as a **parsed envelope** (server-api-v0.md §10.2, ADR 0050
+ * decision 5). `body` is a step-template's `WorkflowNode[]` or a workflow-template's whole workflow
+ * file; it is best-effort for an invalid template (`valid: false`), so it stays `unknown` on the wire.
+ * `etag` is the sha256 of the on-disk bytes, the `If-Match` value for a later update.
+ */
+export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
+  id: string;
+  format: string | null;
+  body: unknown;
+  etag: string;
+}
+
+/**
  * A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
  * context. Only a workflow-run seeds a `context.json` (format §6.3); a leaf step has none, so a
  * `context` read for one answers 404 like any other absent object.

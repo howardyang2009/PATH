@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { carriesEnvelope, childSocketFlavor, socketAcceptsKind } from "../src/grammar.js";
+import { carriesEnvelope, childSocketFlavor, socketAcceptsBody, socketAcceptsKind } from "../src/grammar.js";
 import type { WorkflowNode } from "@path/schema";
 
 describe("grammar — which kind snaps into which socket (#368)", () => {
@@ -33,5 +33,22 @@ describe("grammar — which kind snaps into which socket (#368)", () => {
   it("carriesEnvelope is true for a leaf/workflow type, false for every control block", () => {
     for (const type of ["prompt", "binary", "workflow", "api-call"]) expect(carriesEnvelope(type)).toBe(true);
     for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"]) expect(carriesEnvelope(type)).toBe(false);
+  });
+
+  it("admits a template body where its insert form is legal (#578)", () => {
+    const leaf = { type: "prompt" } as WorkflowNode;
+    const checkpoint = { type: "checkpoint" } as WorkflowNode;
+    // A list socket splices the nodes in, so each node must be legal there — every kind is, in a sequence.
+    expect(socketAcceptsBody("sequence", [checkpoint])).toBe(true);
+    expect(socketAcceptsBody("sequence", [leaf, checkpoint])).toBe(true);
+    // A single slot or a parallel branch takes one node: a one-node body inserts bare, so its kind decides.
+    expect(socketAcceptsBody("single", [leaf])).toBe(true);
+    expect(socketAcceptsBody("single", [checkpoint])).toBe(false);
+    expect(socketAcceptsBody("branches", [checkpoint])).toBe(false);
+    // A 2+-node body is wrapped in a fresh sequence, where a checkpoint is legal.
+    expect(socketAcceptsBody("single", [leaf, checkpoint])).toBe(true);
+    expect(socketAcceptsBody("branches", [checkpoint, leaf])).toBe(true);
+    // An empty body places nothing, so no socket opens for it.
+    expect(socketAcceptsBody("sequence", [])).toBe(false);
   });
 });

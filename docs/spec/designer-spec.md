@@ -271,9 +271,31 @@ authoring artifacts: the **Step-Template** and **Workflow-Template** categories,
 dropped: its card shows the server's error and is disabled, so it cannot be selected
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) decision 4).
 A failed list read says so instead of showing an empty category. The Graph-Controller category is out
-of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)). Selecting a valid template is
-wired by the insert ([#578](https://github.com/howardyang2009/PATH/issues/578)) and instantiate
-([#579](https://github.com/howardyang2009/PATH/issues/579)) tickets.
+of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)). Selecting a Workflow-Template
+is wired by the instantiate ticket ([#579](https://github.com/howardyang2009/PATH/issues/579)).
+
+### Inserting a Step-Template
+
+A **Step-Template** card arms like a Build card
+([#578](https://github.com/howardyang2009/PATH/issues/578)). The click reads the template with
+`GET /v0/templates/:id` (server-api-v0.md §10.2) and arms its body; a second click disarms. A read that
+fails, or a template the server now reports invalid, arms nothing and the Templates tab says why. While
+a template is armed, the canvas opens only the sockets the grammar admits its body into, the same
+unsnappable-not-rejected rule as a Build card (§ Canvas interaction model):
+
+- A `sequence`-flavoured list (the file body or a `sequence` body) splices the body's nodes in, in
+  order.
+- A single-node slot (a `while-do` body, a branch arm, an `else`) and a `parallel` branch take one
+  node. A one-node body inserts bare, so a lone `checkpoint` opens no socket there. A 2+-node body is
+  wrapped in a fresh `sequence`; for a `parallel` that makes it one branch, so the body still runs in
+  order.
+
+A place runs Instantiation
+([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)):
+every node gets a fresh id, a name that collides with one in the file becomes `name-2`, and every other
+value is copied verbatim. The inserted nodes are ordinary nodes, edited in the pane like any other, with
+no link back to the template. The place disarms. One template ships in `packages/server/template/`:
+`review-gate`, a `person-activity` review followed by a `branch` on its answer.
 
 ### What is authorable: the whole grammar, nothing deferred to JSON
 

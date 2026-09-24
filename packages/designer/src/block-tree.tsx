@@ -61,7 +61,7 @@ function TailSocket({ socket, editor }: { socket: ListSocket; editor?: EditorApi
   if (!editor || !editor.socketOpen(socket.flavor)) return null;
   return (
     <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(socket.ownerId)}>
-      + add {editor.armedKind} here
+      + add {editor.armedLabel} here
     </button>
   );
 }
@@ -273,7 +273,7 @@ function SlotSwap({ target, editor }: { target: SingleSlot; editor?: EditorApi }
   if (!editor || !editor.socketOpen("single")) return null;
   return (
     <button type="button" className="socket socket-swap" onClick={() => editor.swapSingle(target)}>
-      swap for {editor.armedKind}
+      swap for {editor.armedLabel}
     </button>
   );
 }
@@ -303,7 +303,7 @@ function ParallelBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode
         {branchSocketOpen ? (
           <div className="c-column">
             <button type="button" className="socket socket-tail" onClick={() => editor!.placeIntoList(node.id)}>
-              + add {editor!.armedKind} branch
+              + add {editor!.armedLabel} branch
             </button>
           </div>
         ) : null}

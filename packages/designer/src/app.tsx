@@ -16,6 +16,7 @@ import { useEditLeases } from "./use-edit-leases.js";
 import { useWorkflowDiscovery } from "./discovery.js";
 import { useFileProblems } from "./use-file-problems.js";
 import { useTemplateList } from "./template-list.js";
+import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
@@ -28,12 +29,12 @@ import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } f
  * shell stays Designer-only.
  *
  * `initialPath` is the file to open on load — the deep-link `?path=`. Omitted, the canvas shows its
- * empty affordance. The **armed kind** (the palette selection) and the **selected id** (what the pane
- * edits) both live here, above the canvas and the pane that read them.
+ * empty affordance. The **armed** value (the palette selection, `useArmed`) and the **selected id**
+ * (what the pane edits) both live here, above the canvas and the pane that read them.
  */
 export function App({ client, initialPath }: { client: PathApiClient; initialPath?: string }): JSX.Element {
   const session = useOpenFile(client, initialPath);
-  const [armedKind, setArmedKind] = useState<string | null>(null);
+  const arming = useArmed(client);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   // The first-save dialog for a from-scratch buffer (#390). Opened by the toolbar's Save when the active
   // frame holds no path yet; the dialog decides the path, then closes on a successful create.
@@ -170,15 +171,15 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           />
         ) : undefined
       }
-      palette={<Palette plugins={plugins} templateList={templateList} armedKind={armedKind} onArm={setArmedKind} />}
+      palette={<Palette plugins={plugins} templateList={templateList} arming={arming} />}
       canvas={
         <RunProjectionProvider runs={run.runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
             <Canvas
               session={session}
               plugins={plugins}
-              armedKind={armedKind}
-              onArm={setArmedKind}
+              armed={arming.armed}
+              onArm={arming.arm}
               problems={problems}
               onOpenExisting={() => setOpenExistingOpen(true)}
               // Double-click an unset `workflow` block to author its target — the same chooser the pane's

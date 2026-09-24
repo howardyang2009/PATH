@@ -236,6 +236,7 @@ export {
   type BlobName,
   type CompleteRunRequest,
   type CompleteRunResponse,
+  type GetTemplateResponse,
   type ListRunsResponse,
   type ListTemplatesResponse,
   type ListWorkflowsResponse,
