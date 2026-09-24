@@ -184,18 +184,36 @@ and issues use them exactly.
   block grammar*). Under `path/workflow@4`, every container slot holds exactly one node. A `sequence`
   carries the node array where a slot needs several nodes in order. Checkpoints can appear anywhere in
   a sequence.
-- **Controller** — an engine-evaluated control construct that routes and coordinates step execution. The
-  block grammar realizes it. collect, wait-one, and do-not-wait are **join modes of the parallel
-  block**. branch, while-do, and sequence are **block types**. A controller has no worker, no task, and no
-  run. The engine of the enclosing workflow evaluates it. (Spell it *controller*.) The MVP subset has
-  **five controllers** under `path/workflow@4`. The first is parallel (with its collect, wait-one, and
+- **Controller** — an engine-evaluated control construct that routes and coordinates step execution. It
+  comes in exactly two kinds: a **Structure Controller** or a **Graph Controller**
+  ([ADR 0057](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0057-controllers-split-into-structure-and-graph-kinds.md)).
+  collect, wait-one, and do-not-wait are **join modes of the parallel block**. branch, while-do, and
+  sequence are **block types**. A controller has no worker, no task, and no run. The engine of the
+  enclosing workflow evaluates it. (Spell it *controller*.) The MVP subset has **five Structure
+  Controllers** under `path/workflow@4`. The first is parallel (with its collect, wait-one, and
   do-not-wait joins). The second is branch. The third is while-do; it needs a mandatory max-iterations
   bound, and the run fails if it exceeds the bound. The fourth is sequence; this block type carries the
   node array wherever a single-node slot needs several nodes in order
   ([ADR 0014](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0014-single-node-container-slots-and-sequence-logicer.md)).
   The block-type count grew from three to four when `@2` made every container slot hold one node. The
-  fifth controller is `checkpoint`; it is a controller too, not a block type (below). No "special node"
-  term exists. All three joins have shipped.
+  fifth Structure Controller is `checkpoint`; it is a controller too, not a block type (below). No
+  "special node" term exists. All three joins have shipped.
+- **Structure Controller** — a controller that the nested block grammar holds: single-entry,
+  single-exit, output-threaded, and each node in its body visited at most once per entry. The five are
+  `parallel`, `sequence`, `branch`, `while-do` and `checkpoint` (a grammar node with no body, so the
+  rule holds trivially). A `while-do` repeats its body, but each iteration is a fresh entry into the same
+  block, so the rule holds per iteration. Any structure that Structure Controllers build is a **tree**.
+  _Avoid_: block controller, structural node.
+- **Graph Controller** — a controller that adds routing the tree cannot express: it moves the walk to a
+  node that is not its structural successor. `goto` *(planned, #478)* is the only one. It is an ordinary
+  node in a slot, at the first level or inside a first-level `branch` arm, and its route is a **name**
+  reference, not an edge, so the body stays a tree. Only one file's **top-level walk** follows the route
+  ([ADR 0057](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0057-controllers-split-into-structure-and-graph-kinds.md)).
+  `person-switch` is **not** a Graph Controller, and not a controller at all: it is a shipped
+  **Step-Template** that composes a `person-activity` step and a `branch`, so it belongs to the
+  Templates taxonomy
+  ([ADR 0052](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)).
+  _Avoid_: jump node, edge, DAG node.
 - **Join mode** — how a parallel block resolves its branches. **collect** waits for every branch. It
   lands every branch's buffered publishes at the join. It outputs `{branch-node-name: output}`
   deterministically. **wait-one** races the branches. The **first-to-succeed** branch wins. The engine
@@ -393,8 +411,8 @@ and issues use them exactly.
 
 ## Invariants
 
-1. Only steps execute on workers. Controllers (including `checkpoint`) are engine constructs: no worker,
-   no task, no run.
+1. Only steps execute on workers. Controllers, Structure and Graph alike (including `checkpoint` and
+   `goto`), are engine constructs: no worker, no task, no run.
 2. Every execution is a run of a task. There is no separate "workflow execution" concept
    (workflow-as-step).
 3. One step has exactly one input object and one output object.

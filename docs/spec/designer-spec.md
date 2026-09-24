@@ -86,8 +86,8 @@ prototype (three variants: drill-down, inline-Scratch, hybrid). This section is 
 ### The model: inline within a file, drill-down across a ref boundary
 
 Nesting **inside a single workflow file renders inline and visible**. Every node is a block. The three
-block controllers (`parallel`, `branch`, `while-do`) are C-shaped wrappers. Their arms and body nest in
-the mouth. This **supersedes** the pure level-by-level drill-down of decision 6's 2026-08-19 amendment.
+block-type Structure Controllers (`parallel`, `branch`, `while-do`) are C-shaped wrappers. Their arms
+and body nest in the mouth. This **supersedes** the pure level-by-level drill-down of decision 6's 2026-08-19 amendment.
 The author sees a level's structure without a descent into it. The canvas drills in only one place: a
 **`workflow`-ref crossing to another file**. That boundary already forces a separate write precondition
 ([#257](https://github.com/howardyang2009/PATH/issues/257)) and a separate edit lease (§ Edit-lock
