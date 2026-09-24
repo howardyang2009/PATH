@@ -1,6 +1,6 @@
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, relative, resolve } from "node:path";
+import { dirname, join, relative, resolve, sep } from "node:path";
 import { validateWorkflowFile } from "@path/engine";
 import {
   formatIssues,
@@ -52,6 +52,18 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
 }
 
 /**
+ * Whether `workflowPath` addresses a template, which `PUT /v0/workflows` refuses (§10.6): a
+ * `*.workflow-template.json` file, or anything lexically under `.path/template/`. The prefix test
+ * resolves the path first, so a `../` detour into the template tree is caught as well.
+ */
+function isTemplatePath(projectDir: string, workflowPath: string): boolean {
+  if (workflowPath.endsWith(".workflow-template.json")) return true;
+  const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
+  const templateDir = join(".path", "template");
+  return relFromRoot === templateDir || relFromRoot.startsWith(`${templateDir}${sep}`);
+}
+
+/**
  * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door. One verb for both create and
  * overwrite, the resource path in the body, concurrency via an `If-Match` precondition. It is
  * `@path/server`'s first write path for files.
@@ -78,6 +90,16 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
     return;
   }
   const { workflow_path: workflowPath } = parsed.data;
+
+  // The two write doors are disjoint (server-api-v0.md §10.6, ADR 0050 decision 8): a workflow-template
+  // is written only through `/v0/templates`, so this door refuses a `.path/template/` path or a
+  // `*.workflow-template.json` suffix. `GET /v0/workflows` already ignores both (it scans
+  // `*.workflow.json` only), so a template never surfaces as a launchable workflow either.
+  if (isTemplatePath(resolve(ctx.project.dir), workflowPath)) {
+    sendError(res, 400, "workflow path must not be a template path");
+    return;
+  }
+
   // Serialize the *raw* object from the request, not zod's parsed copy: `WorkflowFileSchema` may emit
   // keys in schema order, which would silently reorder the author's file. The raw object preserves the
   // key order the client sent (ADR 0016). Envelope `.strict()` already guaranteed it is an object.
