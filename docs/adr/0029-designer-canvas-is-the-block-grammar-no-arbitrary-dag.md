@@ -1,6 +1,6 @@
 # The Designer canvas is the block grammar; no arbitrary DAG
 
-**Status:** accepted; resolves the constrained-canvas question of Wayfinder map
+**Status:** accepted; narrowed by [ADR 0057](0057-controllers-split-into-structure-and-graph-kinds.md) (the `goto` Graph Controller routes within a file's top-level walk; the body stays a tree). Resolves the constrained-canvas question of Wayfinder map
 [#254](https://github.com/howardyang2009/PATH/issues/254) (assembled at
 [#263](https://github.com/howardyang2009/PATH/issues/263)). Applies map **decision 6** (a constrained
 node canvas: the author can never express a structure the block grammar cannot) and its **Out of scope**
