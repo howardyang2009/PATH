@@ -71,7 +71,7 @@ export {
 // uniquifies a colliding name, and wraps a 2+-node body for a single-node slot. Owned here beside the
 // tree walks it uses (`childBodies`), so the Designer is a thin caller and the transform is unit-
 // testable without a browser.
-export { instantiate, type InstantiateOptions } from "./instantiate.js";
+export { instantiate, instantiateWorkflow, type InstantiateOptions } from "./instantiate.js";
 
 export {
   buildCoreMembers,

@@ -1,5 +1,6 @@
 import { childBodies } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
+import type { WorkflowFile } from "./workflow-file-type.js";
 
 /**
  * **Instantiation** (ADR 0049): the pure transform that turns a Step-Template body into ordinary
@@ -85,4 +86,18 @@ export function instantiate(body: WorkflowNode[], options: InstantiateOptions = 
     return [{ type: "sequence", id: crypto.randomUUID(), name: uniqueName("sequence", used), body: nodes }];
   }
   return nodes;
+}
+
+/**
+ * **Workflow-Template instantiation** (ADR 0049 decision 7, #579): the same detached copy over the whole
+ * workflow, plus a **workflow-level re-mint**. The template's workflow `id` is its own identity, so the
+ * instance gets a fresh one — two workflows spawned from one template must not share a source-workflow
+ * identity (ADR 0006). Every node id is re-stamped by {@link instantiate}; the target canvas is empty, so
+ * no name collides and every name stays verbatim. Everything else — `name`, `input`, `worker_defaults`,
+ * `config`, `output` — rides across verbatim as a deep copy; the saved name/path come from the save-as
+ * dialog, not from here.
+ */
+export function instantiateWorkflow(template: WorkflowFile): WorkflowFile {
+  const file = structuredClone(template);
+  return { ...file, id: crypto.randomUUID(), body: instantiate(file.body) };
 }

@@ -191,6 +191,17 @@ function withSavePoint(frame: Frame, etag: string, savedBytes: string): Frame {
 }
 
 /**
+ * Is the canvas **empty** — the only place a Workflow-Template may be selected into (ADR 0049 decision 7,
+ * #579)? True with nothing open, or when the active frame is an opened buffer whose body holds zero nodes.
+ * A written file always holds at least one node (the body schema's `min(1)`), so an empty buffer is an
+ * unwritten one: a from-scratch root or a create-new child.
+ */
+export function canvasEmpty(state: SessionState): boolean {
+  if (state.frames.length === 0) return true;
+  return openedResultOf(state.frames[state.activeIndex])?.file.body.length === 0;
+}
+
+/**
  * The opened result of a frame, or `null`. The one predicate — "the frame is open and its open succeeded" —
  * that the canvas, the toolbar, and the save path all ask, kept in one place so the call sites cannot drift.
  */
@@ -256,6 +267,13 @@ export type SessionAction =
    * (a from-scratch root) has no ref to resolve, so the action is a no-op.
    */
   | { type: "descend"; ref: string; nodeId: string; loadSeq: number }
+  /**
+   * Put a Workflow-Template **instance** (built by `@path/schema`'s `instantiateWorkflow`, #579) on an
+   * empty canvas — see {@link canvasEmpty}. With nothing open it starts a from-scratch root holding the
+   * instance; an empty active buffer takes it as one undoable edit. Anything else is refused (the state is
+   * returned as-is).
+   */
+  | { type: "placeWorkflowInstance"; file: WorkflowFile }
   /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId` (#391). */
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
@@ -303,6 +321,15 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "newFile":
       return { frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
+
+    case "placeWorkflowInstance": {
+      if (!canvasEmpty(state)) return state;
+      // A from-scratch root first, so the instance lands as an edit on an empty buffer either way: undo
+      // returns the empty canvas, and the save door stays the frame's own (the first-save dialog for a
+      // root, the pre-assigned `*.workflow.json` for a create-new child) — never the template (#460.3).
+      const base = state.frames.length === 0 ? reduceSession(state, { type: "newFile" }) : state;
+      return reduceSession(base, { type: "applyEdit", next: action.file });
+    }
 
     case "descend": {
       const depth = state.activeIndex;

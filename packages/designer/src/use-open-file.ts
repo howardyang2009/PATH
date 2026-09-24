@@ -5,6 +5,7 @@ import type { EditCommit, EditKey } from "./edit-key.js";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
+  canvasEmpty,
   initialSessionState,
   planNewFileSave,
   planSave,
@@ -73,6 +74,14 @@ export interface OpenSession {
    * `saveNewFile`. Reads dirty from open, so Save is live at once.
    */
   newFile: () => void;
+  /** Is the canvas empty — nothing open, or an active buffer with zero nodes (#579, `canvasEmpty`)? */
+  canvasEmpty: boolean;
+  /**
+   * Put a Workflow-Template instance on the empty canvas (#579): a from-scratch root when nothing is open,
+   * else one undoable edit of the empty active buffer. Returns `false`, changing nothing, when the canvas
+   * is no longer empty.
+   */
+  placeWorkflowInstance: (file: WorkflowFile) => boolean;
   /**
    * Descend across the active file's `workflow`-ref (a relative path), making a child frame active. If the
    * frame just ahead of the active one already holds that resolved target, it is **reused**; otherwise the
@@ -230,6 +239,16 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     // is dropped by the reducer rather than landing in the discarded stack.
     apply({ type: "newFile" });
   }, [apply]);
+
+  const placeWorkflowInstance = useCallback(
+    (file: WorkflowFile): boolean => {
+      // The reducer re-checks emptiness against the current state, so a template read that lands after
+      // the author already built a body is refused rather than overwriting it.
+      const before = sessionRef.current;
+      return apply({ type: "placeWorkflowInstance", file }) !== before;
+    },
+    [apply],
+  );
 
   const descend = useCallback(
     (ref: string, nodeId: string): void => {
@@ -389,5 +408,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, activeIndex, open, newFile, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
+  return { registry, frames, activeIndex, open, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
 }

@@ -272,7 +272,7 @@ dropped: its card shows the server's error and is disabled, so it cannot be sele
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) decision 4).
 A failed list read says so instead of showing an empty category. The Graph-Controller category is out
 of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)). Selecting a Workflow-Template
-is wired by the instantiate ticket ([#579](https://github.com/howardyang2009/PATH/issues/579)).
+is § Starting from a Workflow-Template below.
 
 ### Inserting a Step-Template
 
@@ -296,6 +296,28 @@ every node gets a fresh id, a name that collides with one in the file becomes `n
 value is copied verbatim. The inserted nodes are ordinary nodes, edited in the pane like any other, with
 no link back to the template. The place disarms. One template ships in `packages/server/template/`:
 `review-gate`, a `person-activity` review followed by a `branch` on its answer.
+
+### Starting from a Workflow-Template
+
+A **Workflow-Template** card starts a whole workflow
+([#579](https://github.com/howardyang2009/PATH/issues/579)). It is selectable **only into an empty
+canvas**: nothing open, or an active buffer whose body holds zero nodes (a from-scratch root or an
+unwritten create-new child; a written file always holds at least one node). Otherwise the card is
+disabled. It arms nothing: the click reads the template with `GET /v0/templates/:id` and runs
+Instantiation plus a workflow-level re-mint
+([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
+decision 7): a fresh workflow `id`, a fresh id on every node, and every other datum (`name`, `input`,
+`worker_defaults`, `config`, `output`, the node values) copied verbatim. With nothing open the instance
+becomes a from-scratch root; an empty buffer takes it as one undoable edit. A read that fails, a
+template the server now reports invalid, or a canvas that stopped being empty while the read was in
+flight puts nothing on the canvas and the Templates tab says why.
+
+The instance is in **consume mode**: it is an ordinary unsaved buffer with no link to the template, so
+its Save is the buffer's own door. A from-scratch root opens the first-save dialog (§ New-file placement
+and naming), prefilled from the template's `name`, and creates a `*.workflow.json` through
+`PUT /v0/workflows`; a create-new child creates at its pre-assigned `*.workflow.json` path. Nothing
+saves back to the template. One workflow-template ships in `packages/server/template/`: `draft-review`,
+a `prompt` draft followed by a `person-activity` review.
 
 ### What is authorable: the whole grammar, nothing deferred to JSON
 

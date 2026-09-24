@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { instantiate } from "../src/instantiate.js";
+import { instantiate, instantiateWorkflow } from "../src/instantiate.js";
+import { FORMAT_VERSION, type WorkflowFile } from "../src/workflow-file-type.js";
 import { walkNodes } from "../src/node-walk.js";
 import type { WorkflowNode } from "../src/node-type.js";
 
@@ -155,5 +156,53 @@ describe("instantiate — insert socket", () => {
   it("uniquifies the wrapper sequence name against the target", () => {
     const out = instantiate(acceptanceBody(), { socket: "single", usedNames: ["sequence"] });
     expect((out[0] as WorkflowNode).name).toBe("sequence-2");
+  });
+});
+
+describe("instantiateWorkflow — a Workflow-Template into an empty canvas (#579)", () => {
+  const TEMPLATE_ID = "22222222-2222-4222-8222-222222222222";
+
+  function template(): WorkflowFile {
+    return {
+      format: FORMAT_VERSION,
+      id: TEMPLATE_ID,
+      name: "nightly",
+      input: { ticket: "PATH-1", depth: 2 },
+      worker_defaults: { prompt: "claude" },
+      body: acceptanceBody(),
+    };
+  }
+
+  it("re-mints the workflow id and every node id", () => {
+    const out = instantiateWorkflow(template());
+    expect(out.id).toMatch(UUID_V4);
+    expect(out.id).not.toBe(TEMPLATE_ID);
+    const ids = allIds(out.body);
+    expect(ids).toHaveLength(4);
+    for (const id of ids) {
+      expect(id).toMatch(UUID_V4);
+      expect(id).not.toBe(UUID);
+    }
+    expect(new Set([out.id, ...ids]).size).toBe(5);
+  });
+
+  it("carries input, worker_defaults, name and node content across verbatim", () => {
+    const out = instantiateWorkflow(template());
+    expect(out.format).toBe(FORMAT_VERSION);
+    expect(out.name).toBe("nightly");
+    expect(out.input).toEqual({ ticket: "PATH-1", depth: 2 });
+    expect(out.worker_defaults).toEqual({ prompt: "claude" });
+    expect(allNames(out.body)).toEqual(["activity", "check", "approve", "reject"]);
+    expect((out.body[0] as { prompt: string }).prompt).toBe("Do the thing");
+  });
+
+  it("never mutates or shares structure with the template", () => {
+    const source = template();
+    const before = structuredClone(source);
+    const out = instantiateWorkflow(source);
+    expect(source).toEqual(before);
+    (out.input as { ticket: string }).ticket = "changed";
+    (out.worker_defaults as Record<string, string>)["prompt"] = "changed";
+    expect(source).toEqual(before);
   });
 });

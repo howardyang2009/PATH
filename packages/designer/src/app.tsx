@@ -171,7 +171,15 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           />
         ) : undefined
       }
-      palette={<Palette plugins={plugins} templateList={templateList} arming={arming} />}
+      palette={
+        <Palette
+          plugins={plugins}
+          templateList={templateList}
+          arming={arming}
+          canvasEmpty={session.canvasEmpty}
+          placeWorkflowInstance={session.placeWorkflowInstance}
+        />
+      }
       canvas={
         <RunProjectionProvider runs={run.runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>
