@@ -101,17 +101,20 @@ and issues use them exactly.
   primitive in `@path/schema` builds and walks the tree from the flat rows (`childrenByParent`,
   `subtree`, `findRootRun`). The engine's read-time cost SUM and a client's nested view read the same
   tree. They do not read two hand-rolled trees.
-- **Run kind** — which of five shapes a run row is. `@path/schema` owns the classification as three
-  type-guards — `isRootRun`, `isReuseRow`, `isIterationRun` — each the one reader of its own field. A **root run** has no parent run
+- **Run kind** — which of six shapes a run row is. `@path/schema` owns the classification as four
+  type-guards — `isRootRun`, `isReuseRow`, `isIterationRun`, `isPassRun` — each the one reader of its own field. A **root run** has no parent run
   id. A **nested workflow-run** is the run of a workflow-step; it carries no worker. A **leaf step** is
   the run of any leaf step type — `binary`, `prompt`, or any plugin folder; it is the only kind bound to
   a worker. `binary` and `prompt` are two such folders, not a privileged pair. A **reuse row** is part
-  of Resume (below). An **iteration** is one pass of a `while-do` loop (ADR 0037): a container run minted
+  of Resume (below). An **iteration** is one repetition of a `while-do` loop (ADR 0037): a container run minted
   per iteration so the loop body's runs get a unique parent scope, told apart by its 1-based `iteration`
   ordinal. It is worker-less like a workflow-run but does **not** isolate context — the loop's shared
-  blackboard stays the enclosing run's. The `runs` table is one flat row shape across all five kinds.
-  The three guards name the distinctions the readers need. Scattered null-checks (`parentRunId ===
-  null`, `reusedFromRunId !== null`, `iteration !== null`) used to re-derive them at each reader.
+  blackboard stays the enclosing run's. A **pass** (Composition, ADR 0054) is the `goto` analogue: a
+  container run per **Pass** of a top-level walk, told apart by its 1-based `pass` ordinal and named
+  after the goto that opened it (no node for pass 1). The `runs` table is one flat row shape across all
+  six kinds. The four guards name the distinctions the readers need. Scattered null-checks
+  (`parentRunId === null`, `reusedFromRunId !== null`, `iteration !== null`) used to re-derive them at
+  each reader.
 
 ## Step-type plugins
 
@@ -240,6 +243,17 @@ and issues use them exactly.
 - **Top-level walk** — how a workflow-run walks its file's top-level body: an index loop with a jump
   register, the only walk a `goto` can re-seek. Every nested body (`sequence`, branch arm, loop
   iteration, `parallel` branch) is walked by `runSequence` in strict order, one visit per node.
+- **Pass** — one forward stretch of a **top-level walk**: from the start of the body, or from a jump
+  target, up to the next jump taken or the end of the body. Within a pass the walk only moves forward,
+  so each first-level node runs at most once. Only a workflow-run whose file holds a `goto` has passes,
+  from pass 1 on, whether or not a jump is taken. Each pass is a container run with a 1-based ordinal,
+  and every run made during that pass (first-level nodes and everything nested in them) hangs under
+  it. It is the `goto` analogue of a `while-do` **iteration**: a run-identity and reuse scope that
+  shares the workflow-run's context, not a context boundary. A Resume pairs a pass with the
+  predecessor's pass of the same ordinal opened by the same goto, whatever its status; a mismatch runs
+  that pass and every later one fresh
+  ([ADR 0054](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0054-a-goto-visit-is-scoped-by-a-per-pass-container-run.md)).
+  _Avoid_: visit, round (a visit is one node's run; a pass is the whole stretch).
 
 ## Identity
 
@@ -479,7 +493,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set
   covers step lifecycle (`step-started`, `step-awaiting`, `step-finished`) and control-node activity
   (`branch-taken`, `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`,
-  `loop-exited`, `join-applied`, `run-cancelled`). `step-awaiting` marks a step that suspended on an
+  `loop-exited`, `pass-started`, `join-applied`, `run-cancelled`). `step-awaiting` marks a step that suspended on an
   external completion (a **person-activity** step, #462); it carries no terminal status, so it is its
   own log event beside `step-finished`. It also carries the leaf's `assignee` (#488) — who the offline
   activity is for, `null` when the node named none — so an `awaiting`/Complete cycle reconstructs from
@@ -591,7 +605,9 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   succeeded. A selection that resolves to no run in the source tree, to a since-deleted node, to a
   node inside a loop/parallel/branch body, to a node that did not succeed, or over a prefix that did
   not fully succeed is **refused** and no successor is created. Plain Resume omits the selection
-  entirely.
+  entirely. In a file with passes, K may be a first-level node inside pass N: passes before N reuse,
+  pass N reuses the nodes before K, and K, the rest of pass N and every later pass re-run; the path
+  entry for that level carries the pass ordinal (ADR 0054).
 - **Reuse-marker** — a log event on a successor run's stream. For one reused node, it names the original
   run that holds that node's real data. It is direct-to-source: it skips any predecessor tree that never
   held that node. Thus every reuse-marker is a single, always-true hop, independent of how long the
