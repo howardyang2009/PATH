@@ -275,6 +275,28 @@ export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
 }
 
 /**
+ * `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050 decision 6). `body` is the full
+ * template object (a step-template envelope or a whole workflow file) carrying the client-minted `id`;
+ * `name` is the file stem and `kind` picks the suffix, so neither lives in the written bytes.
+ */
+export interface WirePostTemplateRequest {
+  kind: "step" | "workflow";
+  name: string;
+  description: string;
+  body: Record<string, unknown>;
+}
+
+/**
+ * The `POST /v0/templates` (`201`) and `PUT /v0/templates/:id` (`200`) reply (server-api-v0.md §10.3,
+ * §10.4): the template id, the written path under the project root, and the new ETag.
+ */
+export interface WireTemplateWriteResponse {
+  id: string;
+  relative_path: string;
+  etag: string;
+}
+
+/**
  * A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
  * context. Only a workflow-run seeds a `context.json` (format §6.3); a leaf step has none, so a
  * `context` read for one answers 404 like any other absent object.

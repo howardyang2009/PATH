@@ -60,6 +60,9 @@ export {
   type HeartbeatResult,
   type PutWorkflowInput,
   type PutWorkflowResult,
+  type CreateTemplateInput,
+  type PutTemplateInput,
+  type TemplateWriteResult,
 } from "./api-client.js";
 
 export {

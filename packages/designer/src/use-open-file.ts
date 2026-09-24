@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
+import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import type { EditCommit, EditKey } from "./edit-key.js";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -9,11 +9,13 @@ import {
   initialSessionState,
   planNewFileSave,
   planSave,
+  planTemplateSaveAs,
   reduceSession,
   type Frame,
   type SaveState,
   type SessionAction,
   type SessionState,
+  type TemplateSource,
 } from "./session-reducer.js";
 
 // The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) => state`
@@ -23,7 +25,7 @@ import {
 // types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
 // the tests that import them from here.
 export { openedResultOf, frameDirty, frameCanUndo, frameCanRedo } from "./session-reducer.js";
-export type { Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction } from "./session-reducer.js";
+export type { Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
 
 /**
  * The Designer's open-and-navigate session (#367): fetch the step-plugin registry once, open a file against
@@ -55,6 +57,15 @@ export type SaveNewFileResult =
   | { status: "exists" }
   | { status: "error"; message: string };
 
+/**
+ * The outcome of an author-mode **Save as template** (#580): `created` names the new template, `exists`
+ * is the `409` "that name is taken", and `error` is any other failure (a bad name is a `400`).
+ */
+export type SaveAsTemplateResult =
+  | { status: "created"; name: string }
+  | { status: "exists" }
+  | { status: "error"; message: string };
+
 export interface OpenSession {
   registry: RegistryLoad;
   /**
@@ -68,6 +79,11 @@ export interface OpenSession {
   activeIndex: number;
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
+  /**
+   * Open a `*.workflow-template.json` itself as a fresh root in **author mode** (#580), discarding any
+   * current stack. It reads `GET /v0/templates/:id`; the frame's Save then writes back to that template.
+   */
+  openTemplate: (template: TemplateSource) => void;
   /**
    * Start a **from-scratch** buffer as a fresh root, discarding any current stack (#390). The frame holds
    * **no path and no lease**: an empty, editable workflow whose placement is decided at its first
@@ -121,6 +137,18 @@ export interface OpenSession {
    */
   saveNewFile: (targetPath: string) => Promise<SaveNewFileResult>;
   /**
+   * Author mode's **Save as template** (#580): create a new user `*.workflow-template.json` named `name`
+   * through `POST /v0/templates`, with a fresh workflow `id` (two templates must not share identity). On
+   * `created` the frame edits the new template. An `error` when the active frame is not a template source.
+   */
+  saveAsTemplate: (name: string) => Promise<SaveAsTemplateResult>;
+  /**
+   * Author mode's **Save as workflow** (#580): run Instantiation (a fresh workflow id and fresh node ids)
+   * and create the instance at `targetPath` as an exclusive `PUT /v0/workflows`. On `created` the session
+   * edits the new `*.workflow.json`. An `error` when the active frame is not a template source.
+   */
+  saveAsWorkflow: (targetPath: string) => Promise<SaveNewFileResult>;
+  /**
    * Re-fetch the active frame from disk, discarding its unsaved buffer for the on-disk bytes and a fresh
    * ETag. The stale-write recovery (#371). A no-op with no file open.
    */
@@ -147,6 +175,30 @@ async function loadFrame(
     // write different bytes. `openedBytes` is the buffer's own canonical form at open, for the badge wording.
     const openedBytes = result.status === "opened" ? canonicalSerialize(result.file) : "";
     return { frameState: { phase: "open", result }, etag: raw.etag, baseline: raw.text, openedBytes };
+  } catch (error) {
+    return { frameState: { phase: "fetch-error", message: errorMessage(error) }, etag: null, baseline: "", openedBytes: "" };
+  }
+}
+
+/**
+ * Read a template source (`GET /v0/templates/:id`) and run the open pipeline over its workflow file (#580).
+ * A workflow-template's `body` is its whole workflow file, so it opens exactly like a `*.workflow.json`
+ * (an invalid one still reads, so the refusal names why). The envelope carries no raw bytes, so the
+ * baseline is the canonical serialization of the served body: the bytes the template write route itself
+ * writes. A file the open parse re-orders therefore opens dirty, as a hand-authored workflow does (ADR 0030).
+ */
+async function loadTemplateFrame(
+  client: PathApiClient,
+  id: string,
+  plugins: WireStepPlugin[],
+): Promise<{ frameState: Frame["state"]; etag: string | null; baseline: string; openedBytes: string }> {
+  try {
+    const envelope = await client.getTemplate(id);
+    if (envelope.kind !== "workflow") throw new Error(`"${envelope.name}" is not a workflow-template`);
+    const text = canonicalSerialize(envelope.body as WorkflowFile);
+    const result = openWorkflowFile(text, plugins);
+    const openedBytes = result.status === "opened" ? canonicalSerialize(result.file) : "";
+    return { frameState: { phase: "open", result }, etag: envelope.etag, baseline: text, openedBytes };
   } catch (error) {
     return { frameState: { phase: "fetch-error", message: errorMessage(error) }, etag: null, baseline: "", openedBytes: "" };
   }
@@ -201,12 +253,17 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     };
   }, [client]);
 
-  /** Fetch `path` into the frame at `depth`, which the reducer has just put into its loading state. */
+  /**
+   * Fetch the frame at `depth`, which the reducer has just put into its loading state: a workflow file by
+   * its path, or an author-mode template source by its id.
+   */
   const fetchFrame = useCallback(
-    (path: string, depth: number, seq: number): void => {
+    (frame: Frame, depth: number, seq: number): void => {
       const plugins = pluginsRef.current;
       if (!plugins) return;
-      void loadFrame(client, path, plugins).then(({ frameState, etag, baseline, openedBytes }) => {
+      const { path, template } = frame;
+      const read = template ? loadTemplateFrame(client, template.id, plugins) : path !== null ? loadFrame(client, path, plugins) : null;
+      void read?.then(({ frameState, etag, baseline, openedBytes }) => {
         apply({ type: "loadLanded", depth, path, loadSeq: seq, frameState, etag, baseline, openedBytes });
       });
     },
@@ -218,10 +275,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
    * reducer's verdict read back as I/O intent: a `descend` that re-entered the frame ahead (or a `reload`
    * that decided nothing was reloadable) leaves no frame awaiting `seq`, so there is nothing to fetch.
    */
-  const pendingFetch = (state: SessionState, seq: number): { path: string; depth: number } | null => {
+  const pendingFetch = (state: SessionState, seq: number): { frame: Frame; depth: number } | null => {
     const depth = state.activeIndex;
     const frame = state.frames[depth];
-    return frame && frame.loadSeq === seq && frame.path !== null ? { path: frame.path, depth } : null;
+    return frame && frame.loadSeq === seq ? { frame, depth } : null;
   };
 
   const open = useCallback(
@@ -229,7 +286,17 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!pluginsRef.current) return;
       const seq = ++loadSeq.current;
       const next = apply({ type: "openLoading", path, loadSeq: seq });
-      fetchFrame(path, next.activeIndex, seq);
+      fetchFrame(next.frames[next.activeIndex]!, next.activeIndex, seq);
+    },
+    [apply, fetchFrame],
+  );
+
+  const openTemplate = useCallback(
+    (template: TemplateSource): void => {
+      if (!pluginsRef.current) return;
+      const seq = ++loadSeq.current;
+      const next = apply({ type: "openTemplateLoading", template, loadSeq: seq });
+      fetchFrame(next.frames[next.activeIndex]!, next.activeIndex, seq);
     },
     [apply, fetchFrame],
   );
@@ -258,7 +325,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       const seq = ++loadSeq.current;
       const next = apply({ type: "descend", ref, nodeId, loadSeq: seq });
       const pending = pendingFetch(next, seq);
-      if (pending) fetchFrame(pending.path, pending.depth, seq);
+      if (pending) fetchFrame(pending.frame, pending.depth, seq);
     },
     [apply, fetchFrame],
   );
@@ -303,7 +370,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     // The reducer decided whether anything was reloadable: an unwritten buffer leaves no frame awaiting
     // this fetch, so the authored buffer is never thrown away for a 404.
     const pending = pendingFetch(next, seq);
-    if (pending) fetchFrame(pending.path, pending.depth, seq);
+    if (pending) fetchFrame(pending.frame, pending.depth, seq);
   }, [apply, fetchFrame]);
 
   /**
@@ -314,16 +381,16 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
    * `.catch`es the rejection and maps a `412` to its own outcome, so this spine never swallows a failure.
    */
   const commitSave = useCallback(
-    (args: {
-      path: string;
+    <R extends { etag: string }>(args: {
       file: WorkflowFile;
-      ifMatch: string | undefined;
-      successAction: (result: PutResult, savedBytes: string) => SessionAction;
-    }): Promise<PutResult> => {
+      /** The write itself: `PUT /v0/workflows`, or a template write in author mode (#580). */
+      write: (file: JsonValue) => Promise<R>;
+      successAction: (result: R, savedBytes: string) => SessionAction;
+    }): Promise<R> => {
       apply({ type: "saveStarted" });
-      return client
+      return args
         // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
-        .putWorkflow({ workflowPath: args.path, workflow: args.file as unknown as JsonValue, ifMatch: args.ifMatch })
+        .write(args.file as unknown as JsonValue)
         .then((result) => {
           // `savedBytes` is the canonical serialization of the exact buffer the server wrote and hashed; the
           // buffer is clean iff it still equals it, so an author who edited *during* the in-flight save stays
@@ -333,7 +400,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           return result;
         });
     },
-    [apply, client],
+    [apply],
+  );
+
+  /** The `PUT /v0/workflows` write for `commitSave`: `path`, under `ifMatch` (absent = exclusive create). */
+  const putWorkflowAt = useCallback(
+    (path: string, ifMatch: string | undefined) =>
+      (workflow: JsonValue): Promise<PutResult> =>
+        client.putWorkflow({ workflowPath: path, workflow, ifMatch }),
+    [client],
   );
 
   const save = useCallback((): void => {
@@ -342,10 +417,28 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     // exclusive create at a create-new child's pre-assigned path (ADR 0016).
     const plan = planSave(sessionRef.current);
     if (!plan) return;
+    if (plan.kind === "template") {
+      // Author mode's write-back (#580): the original template, by id, under the read's `If-Match`. A
+      // `412` is the same stale-write conflict as a workflow's; a shipped template's `403` is the API's
+      // refusal, shown as the save error it is.
+      void commitSave({
+        file: plan.file,
+        write: (body) => client.putTemplate({ id: plan.id, body, ifMatch: plan.ifMatch }),
+        successAction: (result, savedBytes) => ({ type: "templateSaved", depth: plan.depth, id: plan.id, etag: result.etag, savedBytes }),
+      }).catch((error: unknown) => {
+        apply({
+          type: "setSaveState",
+          saveState:
+            error instanceof PathApiError && error.status === 412
+              ? { phase: "conflict", message: error.message }
+              : { phase: "error", message: errorMessage(error) },
+        });
+      });
+      return;
+    }
     void commitSave({
-      path: plan.path,
       file: plan.file,
-      ifMatch: plan.ifMatch,
+      write: putWorkflowAt(plan.path, plan.ifMatch),
       successAction: (result, savedBytes) => ({ type: "saved", depth: plan.depth, path: plan.path, etag: result.etag, savedBytes }),
     }).catch((error: unknown) => {
       if (error instanceof PathApiError && error.status === 412) {
@@ -364,7 +457,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         apply({ type: "setSaveState", saveState: { phase: "error", message: errorMessage(error) } });
       }
     });
-  }, [apply, commitSave]);
+  }, [apply, client, commitSave, putWorkflowAt]);
 
   const saveNewFile = useCallback(
     (targetPath: string): Promise<SaveNewFileResult> => {
@@ -376,9 +469,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       // than overwriting another workflow. The server echoes the resolved `relative_path`, which the frame
       // adopts as its path — placement decided at this first save, and the parent ref back-filled from it.
       return commitSave({
-        path: targetPath,
         file: plan.file,
-        ifMatch: undefined,
+        write: putWorkflowAt(targetPath, undefined),
         successAction: (result, savedBytes) => ({ type: "newFileSaved", depth: plan.depth, etag: result.etag, savedBytes, relativePath: result.relativePath }),
       })
         .then((result): SaveNewFileResult => ({ status: "created", path: result.relativePath }))
@@ -395,7 +487,59 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           return { status: "error", message };
         });
     },
-    [apply, commitSave],
+    [apply, commitSave, putWorkflowAt],
+  );
+
+  const saveAsTemplate = useCallback(
+    (name: string): Promise<SaveAsTemplateResult> => {
+      const plan = planTemplateSaveAs(sessionRef.current);
+      if (!plan) return Promise.resolve({ status: "error", message: "No template source to save." });
+      // A new template is a new identity (ADR 0049 decision 8): only the workflow `id` is re-minted.
+      // Node ids stay, since they are unique within the file and Instantiation re-stamps them on use.
+      const file: WorkflowFile = { ...plan.file, id: crypto.randomUUID() };
+      return commitSave({
+        file,
+        write: (body) => client.createTemplate({ kind: "workflow", name, description: "", body: body as Record<string, unknown> }),
+        successAction: (result) => ({
+          type: "templateSavedAs",
+          depth: plan.depth,
+          fromId: plan.template.id,
+          template: { id: result.id, name, readOnly: false },
+          file,
+          etag: result.etag,
+        }),
+      })
+        .then((): SaveAsTemplateResult => ({ status: "created", name }))
+        .catch((error: unknown): SaveAsTemplateResult => {
+          // Like the first-save dialog, a name collision is the dialog's to show, not the toolbar's.
+          apply({ type: "setSaveState", saveState: IDLE });
+          if (error instanceof PathApiError && error.status === 409) return { status: "exists" };
+          return { status: "error", message: errorMessage(error) };
+        });
+    },
+    [apply, client, commitSave],
+  );
+
+  const saveAsWorkflow = useCallback(
+    (targetPath: string): Promise<SaveNewFileResult> => {
+      const plan = planTemplateSaveAs(sessionRef.current);
+      if (!plan) return Promise.resolve({ status: "error", message: "No template source to save." });
+      // Detach (ADR 0049 decision 7): the same Instantiation a consume-mode select runs, so the workflow
+      // shares no id with its template. Exclusive create — no `If-Match` — so an existing path is `exists`.
+      const file = instantiateWorkflow(plan.file);
+      return commitSave({
+        file,
+        write: putWorkflowAt(targetPath, undefined),
+        successAction: (result) => ({ type: "detachedSaved", depth: plan.depth, fromId: plan.template.id, file, relativePath: result.relativePath, etag: result.etag }),
+      })
+        .then((result): SaveNewFileResult => ({ status: "created", path: result.relativePath }))
+        .catch((error: unknown): SaveNewFileResult => {
+          apply({ type: "setSaveState", saveState: IDLE });
+          if (error instanceof PathApiError && error.status === 412) return { status: "exists" };
+          return { status: "error", message: errorMessage(error) };
+        });
+    },
+    [apply, commitSave, putWorkflowAt],
   );
 
   // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every registry
@@ -408,5 +552,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, activeIndex, open, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, reloadActive, saveState };
+  return { registry, frames, activeIndex, open, openTemplate, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, saveAsTemplate, saveAsWorkflow, reloadActive, saveState };
 }

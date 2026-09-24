@@ -258,6 +258,24 @@ body {
   padding: 0 6px;
 }
 
+/* A Workflow-Template card's Edit button (#580): opens the template source in author mode. */
+.palette-list li:has(.palette-card-edit) {
+  display: flex;
+  gap: 4px;
+}
+
+.palette-card-edit {
+  flex: none;
+  font: inherit;
+  font-size: var(--fs-xs);
+  padding: 0 8px;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  cursor: pointer;
+}
+
 .palette-note {
   margin: 0;
   font-size: var(--fs-xs);
@@ -1283,6 +1301,12 @@ body {
 .redo-btn:disabled {
   opacity: 0.5;
   cursor: default;
+}
+
+/* Author mode (#580): names the template source the plain Save writes back to. */
+.author-mode-tag {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
 }
 
 .save-status {

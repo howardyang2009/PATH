@@ -8,6 +8,7 @@ import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
+import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
 import { RunProjectionProvider } from "./run/run-projection.js";
@@ -42,6 +43,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The open-existing picker (#254). Opened from the empty-canvas affordance or the toolbar; a choice
   // opens that discovered workflow as a fresh root through `session.open`, then closes the dialog.
   const [openExistingOpen, setOpenExistingOpen] = useState(false);
+  // Author mode's two Save-As dialogs (#580): a new template, or a detached `*.workflow.json`.
+  const [saveAsDialog, setSaveAsDialog] = useState<"template" | "workflow" | null>(null);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.activeIndex];
@@ -49,6 +52,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // (no frame, or a never-saved buffer) reads uniformly here — the toolbar, lease, launch, and the
   // first-save dialog all branch on the single `activePath === undefined`.
   const activePath = active?.path ?? undefined;
+  // Author mode (#580): the active frame is a `*.workflow-template.json` source, saved by template id.
+  const activeTemplate = active?.template;
   const depth = session.activeIndex;
   // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
   // node ids mean nothing here. The *first* population (no file → the initial file) is not a switch:
@@ -77,7 +82,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // open-existing picker, the first-save directory list and the ref-target picker all project this one
   // snapshot, so a save that writes a file (or a scan that lands mid-dialog) reads the same everywhere.
   const discovery = useWorkflowDiscovery(client, session.saveState.phase);
-  const templateList = useTemplateList(client);
+  // Re-listed after each save, so a Save-As template shows up in the palette (#580).
+  const templateList = useTemplateList(client, session.saveState.phase);
 
   // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it projects
   // discovery into the dangling-ref lookup and derives the whole-file walk once, shared by its two readers —
@@ -161,13 +167,19 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             onUndo={undo}
             onRedo={redo}
             // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
-            // instead of overwriting. A saved frame saves in place through the write route.
-            onSave={activePath ? session.save : () => setNewFileOpen(true)}
+            // instead of overwriting. A saved frame saves in place through the write route, and a template
+            // source (#580) writes back to its template by id.
+            onSave={activePath || activeTemplate ? session.save : () => setNewFileOpen(true)}
             onOpenExisting={() => setOpenExistingOpen(true)}
             onReload={session.reloadActive}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
             onReacquire={() => activePath && reacquire(activePath)}
+            authorMode={
+              activeTemplate
+                ? { template: activeTemplate, onSaveAsTemplate: () => setSaveAsDialog("template"), onSaveAsWorkflow: () => setSaveAsDialog("workflow") }
+                : undefined
+            }
           />
         ) : undefined
       }
@@ -178,6 +190,10 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           arming={arming}
           canvasEmpty={session.canvasEmpty}
           placeWorkflowInstance={session.placeWorkflowInstance}
+          onEditTemplate={(template) => {
+            // Opening the template source discards the current stack, like Open… (#254).
+            if (template.id !== null) session.openTemplate({ id: template.id, name: template.name, readOnly: template.read_only });
+          }}
         />
       }
       canvas={
@@ -243,13 +259,32 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     />
     {/* The first-save dialog rides above the shell, shown only for a from-scratch buffer (no path) whose
         author asked to save. It decides the path; a successful create closes it and the frame is saved. */}
-    {newFileOpen && openedFile && activePath === undefined ? (
+    {newFileOpen && openedFile && activePath === undefined && !activeTemplate ? (
       <NewFileDialog
         discovery={discovery}
         workflowName={openedFile.name}
         create={session.saveNewFile}
         onCreated={() => setNewFileOpen(false)}
         onCancel={() => setNewFileOpen(false)}
+      />
+    ) : null}
+    {/* Author mode's Save-As doors (#580). Save as template names a new `*.workflow-template.json`; Save as
+        workflow reuses the first-save dialog to place the detached `*.workflow.json` instance. */}
+    {saveAsDialog === "template" && activeTemplate ? (
+      <SaveTemplateAsDialog
+        templateName={activeTemplate.name}
+        create={session.saveAsTemplate}
+        onCreated={() => setSaveAsDialog(null)}
+        onCancel={() => setSaveAsDialog(null)}
+      />
+    ) : null}
+    {saveAsDialog === "workflow" && activeTemplate && openedFile ? (
+      <NewFileDialog
+        discovery={discovery}
+        workflowName={openedFile.name}
+        create={session.saveAsWorkflow}
+        onCreated={() => setSaveAsDialog(null)}
+        onCancel={() => setSaveAsDialog(null)}
       />
     ) : null}
     {/* The open-existing picker (#254): choose a discovered workflow and open it as a fresh root. Shown

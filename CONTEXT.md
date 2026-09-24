@@ -314,8 +314,9 @@ and issues use them exactly.
   under the ADR 0015 round-trip, so its default Save writes **back to the original** template file with
   the workflow `id` preserved; a Save-As to a **new** `*.workflow-template.json` mints a fresh workflow
   `id` (two templates must not share identity), and a "Save as workflow" runs Instantiation to a
-  `*.workflow.json`. Author-mode save is implemented on the template write-route and palette work
-  (#563, #564); this map fixes only the model.
+  `*.workflow.json`. Author-mode save rides the template write-route (#563); the Designer opens a
+  template source from its palette card's Edit button (#580, designer-spec § Editing a
+  Workflow-Template's source).
 - **Template store** — where the Server keeps templates and how it resolves one. It is a
   **four-directory union** over two origins and two kinds:
   `packages/server/template/{step-template,workflow-template}/` holds the **shipped** templates

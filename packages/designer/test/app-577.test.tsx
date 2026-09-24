@@ -76,10 +76,10 @@ describe("Designer palette lists templates (#577)", () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const panel = await openTemplatesTab();
 
-    const broken = await within(panel).findByRole("button", { name: /broken-flow/ });
+    const broken = await within(panel).findByRole("button", { name: /^broken-flow/ });
     expect(broken).toBeDisabled();
     expect(within(broken).getByText('unregistered step type "api-call"')).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /nightly/ })).toBeEnabled();
+    expect(within(panel).getByRole("button", { name: /^nightly/ })).toBeEnabled();
   });
 
   it("says so when there are no templates of a kind", async () => {
