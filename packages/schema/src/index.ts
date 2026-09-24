@@ -237,6 +237,7 @@ export {
   type CompleteRunRequest,
   type CompleteRunResponse,
   type ListRunsResponse,
+  type ListTemplatesResponse,
   type ListWorkflowsResponse,
   type RootRunSummary,
   type RunTreeResponse,
@@ -250,6 +251,7 @@ export {
   type WirePutWorkflowRequest,
   type WirePutWorkflowResponse,
   type WireRunRecord,
+  type TemplateSummary,
   type WireWorkflowLease,
   type WorkflowSummary,
 } from "./wire-v0.js";

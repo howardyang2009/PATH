@@ -37,6 +37,8 @@
   --k-sequence-bg: #eaeef2;
   --k-checkpoint: #9a6700;
   --k-checkpoint-bg: #fff8c5;
+  --k-template: #6639ba;
+  --k-template-bg: #f1ecff;
 
   /* Run status (#372) — colour + glyph, never hue alone. Foreground + soft background per status. */
   --run-running: #1f6feb;
@@ -93,6 +95,8 @@
   --k-sequence-bg: #21262d;
   --k-checkpoint: #d29922;
   --k-checkpoint-bg: #2a2213;
+  --k-template: #b083f0;
+  --k-template-bg: #1e1633;
 
   --run-running: #58a6ff;
   --run-running-bg: #12283f;
@@ -136,6 +140,8 @@
     --k-sequence-bg: #21262d;
     --k-checkpoint: #d29922;
     --k-checkpoint-bg: #2a2213;
+    --k-template: #b083f0;
+    --k-template-bg: #1e1633;
 
     --run-running: #58a6ff;
     --run-running-bg: #12283f;

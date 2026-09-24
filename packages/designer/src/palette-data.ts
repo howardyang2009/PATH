@@ -1,17 +1,19 @@
-import type { WireStepPlugin } from "@path/client-core";
+import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 
 /**
- * The palette's two groups (#368, designer-spec § The v1 authoring palette): **Steps** — one entry per
- * leaf step type — and **Blocks** — the five controllers (`checkpoint` included), fixed by the grammar.
+ * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
+ * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
+ * **Controller** — the five controllers (`checkpoint` included), fixed by the grammar. The **Templates**
+ * tab: **Step-Template** and **Workflow-Template**, one row per entry of `GET /v0/templates`.
  *
- * The Steps half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
+ * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
  * leaf type the received `GET /v0/step-plugins` snapshot describes (`prompt`, `binary`, and any plugin
  * such as `api-call`), plus `workflow` — the sub-workflow ref, core grammar rather than a plugin, but a
- * leaf-step entry in the palette all the same. The Blocks half is grammar-fixed.
+ * leaf-step entry in the palette all the same. The Controller group is grammar-fixed.
  *
  * Each entry's `kind` is the node `type` a place mints and the CSS hue token (`--k-<kind>`); `hue` is
  * the hue key when it differs from `kind` (a `while-do` block paints the `while` hue; the `workflow`
- * ref keeps its own). No entry is a closed constant any more — the Steps list is a function of the
+ * ref keeps its own). No entry is a closed constant any more — the Step list is a function of the
  * registry the session received.
  */
 export interface PaletteEntry {
@@ -43,8 +45,8 @@ function leafBlurb(name: string): string {
   return `A ${name} step`;
 }
 
-/** The Steps group for a received registry: one card per plugin leaf type, plus the `workflow` ref. */
-function stepsGroup(plugins: WireStepPlugin[]): PaletteGroup {
+/** The Step group for a received registry: one card per plugin leaf type, plus the `workflow` ref. */
+function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   const fromRegistry: PaletteEntry[] = plugins.map((plugin) => ({
     kind: plugin.name,
     label: titleCase(plugin.name),
@@ -52,12 +54,12 @@ function stepsGroup(plugins: WireStepPlugin[]): PaletteGroup {
     hue: "step",
   }));
   const workflowRef: PaletteEntry = { kind: "workflow", label: "Workflow", blurb: "A sub-workflow reference", hue: "workflow" };
-  return { title: "Steps", entries: [...fromRegistry, workflowRef] };
+  return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 
 /** Controllers — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
 const CONTROLLERS: PaletteGroup = {
-  title: "Controllers",
+  title: "Controller",
   entries: [
     { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
     { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
@@ -67,12 +69,31 @@ const CONTROLLERS: PaletteGroup = {
   ],
 };
 
-/** The palette's groups for a received registry snapshot: registry-driven Steps, then grammar-fixed Controllers. */
+/** The Build tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
 export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[] {
-  return [stepsGroup(plugins), CONTROLLERS];
+  return [stepGroup(plugins), CONTROLLERS];
 }
 
-/** The leaf step type a block's auto-filled occupants take — the first Steps entry, else `prompt`. */
+/** One Templates-tab category: the templates of one kind, and what to say when there are none. */
+export interface TemplateGroup {
+  readonly title: string;
+  readonly emptyText: string;
+  readonly templates: readonly TemplateSummary[];
+}
+
+/**
+ * The Templates tab's groups: the received list split by `kind` into Step-Template then
+ * Workflow-Template, server order kept (shipped before user). Invalid rows stay in — the palette shows
+ * them unselectable with their error, never hides them (ADR 0050 decision 4).
+ */
+export function templateGroups(templates: readonly TemplateSummary[]): readonly TemplateGroup[] {
+  return [
+    { title: "Step-Template", emptyText: "No step templates", templates: templates.filter((t) => t.kind === "step") },
+    { title: "Workflow-Template", emptyText: "No workflow templates", templates: templates.filter((t) => t.kind === "workflow") },
+  ];
+}
+
+/** The leaf step type a block's auto-filled occupants take — the first Step entry, else `prompt`. */
 export function defaultLeafKind(plugins: WireStepPlugin[]): string {
   return plugins[0]?.name ?? "prompt";
 }

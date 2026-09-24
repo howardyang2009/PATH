@@ -5,6 +5,7 @@ import type {
   ConfigObject,
   JsonValue,
   ListRunsResponse,
+  ListTemplatesResponse,
   ListWorkflowsResponse,
   LogBackendId,
   RunStatus,
@@ -321,6 +322,16 @@ export class PathApiClient {
    */
   async listWorkflows(): Promise<ListWorkflowsResponse> {
     return this.getJson<ListWorkflowsResponse>("/v0/workflows");
+  }
+
+  /**
+   * `GET /v0/templates` — the shipped∪user authoring-template union (server-api-v0.md §10.1, ADR 0050).
+   * A fresh scan each call; the list is **thin** (no `body`) and every entry carries its
+   * registry-relative `valid`/`error`, so a broken template lists rather than vanishing. Both kinds;
+   * the palette splits them by `kind`. Returns the raw wire `ListTemplatesResponse`.
+   */
+  async listTemplates(): Promise<ListTemplatesResponse> {
+    return this.getJson<ListTemplatesResponse>("/v0/templates");
   }
 
   /**

@@ -92,6 +92,10 @@ export interface DesignerStubOptions {
   onResumeRun?: (call: { rootRunId: string; body: unknown }) => Response;
   /** Body for `GET /v0/workflows` — discovery, the new-file dialog's directory source (#390). Default: empty. */
   workflows?: unknown;
+  /** Body for `GET /v0/templates` — the palette's template list (#577). Default: empty. */
+  templates?: unknown;
+  /** Status for the template-list response, for the failure path. */
+  templatesStatus?: number;
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
@@ -178,6 +182,9 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     if (input === "/v0/workflows/lock/release") {
       calls?.release.push(body as { workflow_path: string; session_id: string });
       return json({ released: true }, 200);
+    }
+    if (input === "/v0/templates") {
+      return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
     }
     if (input === "/v0/workflows" && (init?.method ?? "GET") === "GET") {
       return json(options.workflows ?? { workflows: [] }, 200);

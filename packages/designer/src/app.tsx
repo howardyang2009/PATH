@@ -15,6 +15,7 @@ import { useRunWatch } from "./run/use-run-watch.js";
 import { useEditLeases } from "./use-edit-leases.js";
 import { useWorkflowDiscovery } from "./discovery.js";
 import { useFileProblems } from "./use-file-problems.js";
+import { useTemplateList } from "./template-list.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
 
@@ -75,6 +76,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // open-existing picker, the first-save directory list and the ref-target picker all project this one
   // snapshot, so a save that writes a file (or a scan that lands mid-dialog) reads the same everywhere.
   const discovery = useWorkflowDiscovery(client, session.saveState.phase);
+  const templateList = useTemplateList(client);
 
   // The active file's cross-node problem pass (#388, #392), behind one seam (`useFileProblems`): it projects
   // discovery into the dangling-ref lookup and derives the whole-file walk once, shared by its two readers —
@@ -168,7 +170,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           />
         ) : undefined
       }
-      palette={<Palette plugins={plugins} armedKind={armedKind} onArm={setArmedKind} />}
+      palette={<Palette plugins={plugins} templateList={templateList} armedKind={armedKind} onArm={setArmedKind} />}
       canvas={
         <RunProjectionProvider runs={run.runsForProjection}>
           <SelectionProvider value={{ selectedId, onSelect: setSelectedId }}>

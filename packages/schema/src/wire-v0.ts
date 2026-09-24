@@ -241,6 +241,27 @@ export interface ListWorkflowsResponse {
 }
 
 /**
+ * One discovered authoring template (`GET /v0/templates`, server-api-v0.md §10.1, ADR 0050 decision 4):
+ * the **thin** summary, no `body`. `name` is the file stem and the palette label; `description` is the
+ * palette blurb. `valid`/`error` are registry-relative per entry, so a broken template still lists.
+ */
+export interface TemplateSummary {
+  id: string | null;
+  name: string;
+  description: string;
+  kind: "step" | "workflow";
+  origin: "shipped" | "user";
+  read_only: boolean;
+  valid: boolean;
+  error: WireError["error"] | null;
+}
+
+/** `GET /v0/templates` — the shipped∪user template union, both kinds unless `?kind=` narrows it. */
+export interface ListTemplatesResponse {
+  templates: TemplateSummary[];
+}
+
+/**
  * A blob name addressable via the blob route (server-api-v0.md §4.3): a run's input, output, or
  * context. Only a workflow-run seeds a `context.json` (format §6.3); a leaf step has none, so a
  * `context` read for one answers 404 like any other absent object.

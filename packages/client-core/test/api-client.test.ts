@@ -319,6 +319,23 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
   });
 
+  it("GET /v0/templates returns the thin template list, invalid rows included", async () => {
+    const stub = stubFetch(() =>
+      json({
+        templates: [
+          { id: "t1", name: "review", description: "A review gate", kind: "step", origin: "shipped", read_only: true, valid: true, error: null },
+          { id: "t2", name: "nightly", description: "nightly", kind: "workflow", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
+        ],
+      }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.listTemplates();
+    expect(res.templates[0]).toMatchObject({ name: "review", kind: "step", origin: "shipped", read_only: true });
+    expect(res.templates[1]).toMatchObject({ kind: "workflow", valid: false, error: { message: "bad" } });
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
+  });
+
   it("GET /v0/step-plugins returns the registry snapshot", async () => {
     const stub = stubFetch(() =>
       json({
