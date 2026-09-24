@@ -5,7 +5,10 @@
 [#551](https://github.com/howardyang2009/PATH/issues/551); origin
 [#478](https://github.com/howardyang2009/PATH/issues/478). Builds on
 [ADR 0053](0053-goto-is-a-seqoutcome-jump-caught-by-a-per-file-top-level-walk.md) (goto execution
-model). Plan-only: no schema or engine code yet.
+model). Plan-only: no schema or engine code yet. **Amended by
+[ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md) (#597):** a target may be any
+other first-level **node**, `target` and `max_jumps` are both required, the format bumps to
+`path/workflow@5`, and one rule module carries the placement and target checks.
 
 #478 gives `goto` one field: the step it jumps to, which must be a first-level step of the current
 file. ADR 0053 fixed the runtime side: the jump is a `SeqOutcome` whose `target` is the target node's
@@ -30,6 +33,11 @@ and the Designer open gate do, ADR 0015).
    - c. `target` names the goto itself (possible only for a first-level goto);
    - d. a goto sits under `while-do` or `parallel` (the placement rule of ADR 0053 §3).
 
+   **Amended (#597).** Cases a–d are the whole list: a target that is a first-level controller or
+   another first-level goto is legal, and "inner" means under `branch`, `sequence`, `while-do` or
+   `parallel` at any depth
+   ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)).
+
 3. **An unguarded first-level goto with a backward target is legal.** It is a loop whose exit is a
    different goto, one that jumps forward past it. `max_jumps` (ADR 0053 §5) stays the backstop: if
    nothing jumps past it, the run fails when the jumps are spent. A first-level forward goto (a skip)
@@ -38,7 +46,9 @@ and the Designer open gate do, ADR 0015).
 4. **The verdict is one zod issue per offender, in one failed parse.** Cases a to c put the issue at
    the goto's `target` field. Case d puts it at the goto node. Each message names the goto and the
    target, e.g. `goto target "retry" not found in this file`, `goto target "check" is not a
-   first-level step`, `goto "loop" targets itself`, `goto "x" may not sit under while-do "poll"`.
+   first-level node`, `goto "loop" targets itself`, `goto "x" may not sit under while-do "poll"`.
+   **Amended (#597):** the second message reads "first-level **node**", because a first-level
+   controller is a legal target ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)).
    The zod `superRefine` already collects every issue, so there is no separate aggregator like the
    one for unset `$env`.
 
@@ -78,7 +88,8 @@ and the Designer open gate do, ADR 0015).
 ## Consequences
 
 - The goto node schema gets `target: string` with the `name` pattern (`^[a-z][a-z0-9-]*$`), next to
-  `max_jumps`.
+  `max_jumps`. Both are required, and `max_jumps` reuses `max_iterations`' union
+  ([ADR 0058](0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md)).
 - The top-level walk maps `name` to GUID once per workflow-run, from the parsed file.
 - A Designer rename touches every goto that names the renamed node, as part of the same edit.
 - ADR 0049's hazard list gains the goto target. Nothing refuses the hazard at insert time; the
