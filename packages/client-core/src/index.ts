@@ -20,6 +20,7 @@ export {
   isTerminal,
   type BlobName,
   type ConfigObject,
+  type GetTemplateResponse,
   type JsonValue,
   type ListRunsResponse,
   type ListTemplatesResponse,

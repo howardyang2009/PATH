@@ -1,0 +1,48 @@
+{
+  "format": "path/workflow@4",
+  "id": "11415fb9-7952-4222-bdeb-b5368ec68f92",
+  "description": "A person reviews the work and answers approve or reject; the flow branches on the answer.",
+  "body": [
+    {
+      "type": "person-activity",
+      "id": "f30b8c0d-c09e-494b-b7de-0154140cd8b6",
+      "name": "review",
+      "description": "Review the work so far. Answer \"approve\" to continue, or anything else to stop.",
+      "publish": {
+        "review": "${output}"
+      }
+    },
+    {
+      "type": "branch",
+      "id": "1e0e87fe-f7c8-4507-b1c1-87478814626d",
+      "name": "on-review",
+      "arms": [
+        {
+          "when": {
+            "type": "equals",
+            "path": "context.review",
+            "value": "approve"
+          },
+          "node": {
+            "type": "binary",
+            "id": "376c2c7e-7cbc-43e7-a108-8a55afd3dc66",
+            "name": "approved",
+            "command": "echo",
+            "args": [
+              "approved"
+            ]
+          }
+        }
+      ],
+      "else": {
+        "type": "binary",
+        "id": "8c4cf3b8-c18f-43fb-afc3-101e9b5f8a49",
+        "name": "rejected",
+        "command": "echo",
+        "args": [
+          "rejected"
+        ]
+      }
+    }
+  ]
+}

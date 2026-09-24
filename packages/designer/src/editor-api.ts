@@ -1,23 +1,27 @@
-import type { WorkflowFile, WorkflowNode } from "@path/schema";
-import { socketAcceptsKind, type SocketFlavor } from "./grammar.js";
+import { instantiate, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { bodyInsertSocket, childSocketFlavor, socketAcceptsBody, socketAcceptsKind, type SocketFlavor } from "./grammar.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node-factory.js";
 import { editFile, findById, isDuplicable, locate, unwrapEdit, type SingleSlot } from "./edit-tree.js";
+import type { Armed } from "./use-armed.js";
 
 /**
- * The canvas's edit surface (#368): it binds the palette's **armed kind** to the pure `edit-tree` ops
- * over the active file. The block tree calls these; where the grammar refuses the armed kind, the tree
+ * The canvas's edit surface (#368): it binds the palette's **armed** value to the pure `edit-tree` ops
+ * over the active file. The block tree calls these; where the grammar refuses the armed value, the tree
  * never renders a socket, so an illegal drop is unreachable rather than rejected on save (spec § Adding).
  *
- * "Placing" reads the armed kind, mints a node (`node-factory`, a fresh client id — ADR 0015), applies
- * the edit, and disarms. Structural affordances that carry no kind — add-arm, add-`else`, delete,
+ * "Placing" reads the armed value, makes the arriving node(s), applies the edit, and disarms. An armed
+ * node kind mints one node (`node-factory`, a fresh client id — ADR 0015); an armed Step-Template runs
+ * Instantiation over its body (#578, ADR 0049) — fresh ids, names uniquified against the file — shaped
+ * for the socket (`grammar.bodyInsertSocket`: a 2+-node body at a single node slot is wrapped in a fresh
+ * `sequence`). Structural affordances that carry no kind — add-arm, add-`else`, delete,
  * reorder, duplicate — do not need an armed kind and never disarm.
  */
 export interface EditorApi {
-  /** The palette kind waiting to be placed, or `null`. Drives which sockets the tree opens. */
-  armedKind: string | null;
-  /** Is a socket of `flavor` an open drop target right now (a kind is armed and the grammar admits it)? */
+  /** What a socket says it adds — the armed node kind or the armed template's name — or `null` when unarmed. */
+  armedLabel: string | null;
+  /** Is a socket of `flavor` an open drop target right now (something is armed and the grammar admits it)? */
   socketOpen(flavor: SocketFlavor): boolean;
-  /** Place the armed node at the tail of a list socket: the file body (`null`), a `sequence`, or a `parallel`. */
+  /** Place the armed node(s) at the tail of a list socket: the file body (`null`), a `sequence`, or a `parallel`. */
   placeIntoList(ownerId: string | null): void;
   /** Swap a single-node slot's occupant for the armed node (never emptying the slot). */
   swapSingle(target: SingleSlot): void;
@@ -49,25 +53,43 @@ export interface EditorApi {
 export function createEditor(
   file: WorkflowFile,
   applyEdit: (next: WorkflowFile) => void,
-  armedKind: string | null,
+  armed: Armed | null,
   disarm: () => void,
   defaultLeaf: string,
 ): EditorApi {
   const mint = (kind: string): WorkflowNode => createNode(kind, usedNames(file.body), defaultLeaf);
 
+  /** The node(s) the armed value lands as in a socket of `flavor`. A single slot always gets exactly one. */
+  const arrivals = (armed: Armed, flavor: SocketFlavor): WorkflowNode[] =>
+    armed.kind === "node"
+      ? [mint(armed.type)]
+      : instantiate(armed.body, { usedNames: usedNames(file.body), socket: bodyInsertSocket(flavor) });
+
+  /** The flavour of a list socket: the file body (`null`) is a sequence; an owner reports its own. */
+  const listFlavor = (ownerId: string | null): SocketFlavor => {
+    const owner = ownerId === null ? null : findById(file.body, ownerId);
+    return (owner && childSocketFlavor(owner)) ?? "sequence";
+  };
+
   return {
-    armedKind,
+    armedLabel: armed === null ? null : armed.kind === "node" ? armed.type : armed.name,
     socketOpen(flavor) {
-      return armedKind !== null && socketAcceptsKind(flavor, armedKind);
+      if (armed === null) return false;
+      return armed.kind === "node" ? socketAcceptsKind(flavor, armed.type) : socketAcceptsBody(flavor, armed.body);
     },
     placeIntoList(ownerId) {
-      if (armedKind === null) return;
-      applyEdit(unwrapEdit(editFile(file, { kind: "add-to-list", ownerId, node: mint(armedKind) })));
+      if (armed === null) return;
+      const next = arrivals(armed, listFlavor(ownerId)).reduce(
+        (acc, node) => unwrapEdit(editFile(acc, { kind: "add-to-list", ownerId, node })),
+        file,
+      );
+      applyEdit(next);
       disarm();
     },
     swapSingle(target) {
-      if (armedKind === null) return;
-      applyEdit(unwrapEdit(editFile(file, { kind: "swap-single", target, node: mint(armedKind) })));
+      if (armed === null) return;
+      const [node] = arrivals(armed, "single");
+      applyEdit(unwrapEdit(editFile(file, { kind: "swap-single", target, node: node! })));
       disarm();
     },
     addArm(branchId) {

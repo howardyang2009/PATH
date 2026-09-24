@@ -2,6 +2,7 @@ import { useState } from "react";
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 import { paletteGroups, templateGroups, type PaletteEntry } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
+import type { Armed, ArmedState } from "./use-armed.js";
 
 type PaletteTab = "build" | "templates";
 
@@ -20,20 +21,19 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * describes, plus the `workflow` ref. Until the registry lands the Step list is just `workflow`; the
  * Controller group is fixed by the grammar and always shown.
  *
- * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. Listing
- * only: selecting a template does nothing yet (insert is #578, instantiate is #579), and an invalid
- * template is shown disabled with its error.
+ * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. A
+ * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
+ * then opens the sockets the grammar admits that body into. A failed read says why instead. A
+ * Workflow-Template card does nothing yet (#579), and an invalid template is shown disabled with its error.
  */
 export function Palette({
   plugins,
   templateList,
-  armedKind,
-  onArm,
+  arming,
 }: {
   plugins: WireStepPlugin[];
   templateList: TemplateListLoad;
-  armedKind: string | null;
-  onArm: (kind: string | null) => void;
+  arming: ArmedState;
 }) {
   const [tab, setTab] = useState<PaletteTab>("build");
   return (
@@ -56,9 +56,9 @@ export function Palette({
       </div>
       <div className="palette" role="tabpanel" id={`palette-panel-${tab}`} aria-labelledby={`palette-tab-${tab}`}>
         {tab === "build" ? (
-          <BuildTab plugins={plugins} armedKind={armedKind} onArm={onArm} />
+          <BuildTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
         ) : (
-          <TemplatesTab templateList={templateList} />
+          <TemplatesTab templateList={templateList} arming={arming} />
         )}
       </div>
     </>
@@ -80,12 +80,12 @@ function PaletteGroupSection({ title, children }: { title: string; children: Rea
 
 function BuildTab({
   plugins,
-  armedKind,
+  armed,
   onArm,
 }: {
   plugins: WireStepPlugin[];
-  armedKind: string | null;
-  onArm: (kind: string | null) => void;
+  armed: Armed | null;
+  onArm: (armed: Armed | null) => void;
 }) {
   return (
     <>
@@ -93,7 +93,12 @@ function BuildTab({
         <PaletteGroupSection key={group.title} title={group.title}>
           <ul className="palette-list">
             {group.entries.map((entry) => (
-              <PaletteCard key={entry.kind} entry={entry} armed={armedKind === entry.kind} onArm={onArm} />
+              <PaletteCard
+                key={entry.kind}
+                entry={entry}
+                armed={armed?.kind === "node" && armed.type === entry.kind}
+                onArm={(kind) => onArm(kind === null ? null : { kind: "node", type: kind })}
+              />
             ))}
           </ul>
         </PaletteGroupSection>
@@ -102,7 +107,7 @@ function BuildTab({
   );
 }
 
-function TemplatesTab({ templateList }: { templateList: TemplateListLoad }) {
+function TemplatesTab({ templateList, arming }: { templateList: TemplateListLoad; arming: ArmedState }) {
   if (templateList.phase === "loading") return <p className="palette-note">Loading templates…</p>;
   if (templateList.phase === "error") {
     return (
@@ -111,8 +116,14 @@ function TemplatesTab({ templateList }: { templateList: TemplateListLoad }) {
       </p>
     );
   }
+  const { armed } = arming;
   return (
     <>
+      {arming.templateError !== null ? (
+        <p className="palette-note palette-note-error" role="alert">
+          {arming.templateError}
+        </p>
+      ) : null}
       {templateGroups(templateList.templates).map((group) => (
         <PaletteGroupSection key={group.title} title={group.title}>
           {group.templates.length === 0 ? (
@@ -120,7 +131,13 @@ function TemplatesTab({ templateList }: { templateList: TemplateListLoad }) {
           ) : (
             <ul className="palette-list">
               {group.templates.map((template) => (
-                <TemplateCard key={`${template.origin}:${template.kind}:${template.name}`} template={template} />
+                <TemplateCard
+                  key={`${template.origin}:${template.kind}:${template.name}`}
+                  template={template}
+                  armed={armed?.kind === "step-template" && armed.id === template.id}
+                  onSelect={() => arming.armTemplate(template)}
+                  onDisarm={() => arming.arm(null)}
+                />
               ))}
             </ul>
           )}
@@ -158,13 +175,34 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
 
 /**
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
- * for an invalid row — the server's error, with the card disabled so it cannot be selected.
+ * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
+ * Step-Template card is an arm toggle like a Build card (#578); a Workflow-Template card is inert until
+ * #579 wires it.
  */
-function TemplateCard({ template }: { template: TemplateSummary }) {
+function TemplateCard({
+  template,
+  armed,
+  onSelect,
+  onDisarm,
+}: {
+  template: TemplateSummary;
+  armed: boolean;
+  onSelect: () => void;
+  onDisarm: () => void;
+}) {
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
+  const armable = template.kind === "step";
   return (
     <li>
-      <button type="button" className="palette-card" style={style} disabled={!template.valid}>
+      <button
+        type="button"
+        className="palette-card"
+        style={style}
+        disabled={!template.valid}
+        aria-pressed={armable ? armed : undefined}
+        data-armed={armed ? "true" : "false"}
+        onClick={armable ? (armed ? onDisarm : onSelect) : undefined}
+      >
         <span className="palette-card-swatch" aria-hidden="true" />
         <span className="palette-card-text">
           <span className="palette-card-label">{template.name}</span>

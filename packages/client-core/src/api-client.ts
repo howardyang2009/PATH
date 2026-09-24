@@ -3,6 +3,7 @@ import type {
   CompleteRunRequest,
   CompleteRunResponse,
   ConfigObject,
+  GetTemplateResponse,
   JsonValue,
   ListRunsResponse,
   ListTemplatesResponse,
@@ -332,6 +333,15 @@ export class PathApiClient {
    */
   async listTemplates(): Promise<ListTemplatesResponse> {
     return this.getJson<ListTemplatesResponse>("/v0/templates");
+  }
+
+  /**
+   * `GET /v0/templates/:id` — one template as a parsed envelope (server-api-v0.md §10.2, ADR 0050),
+   * body included. An invalid template still answers `200` with `valid: false` and its best-effort
+   * `body`, so the caller decides whether to use it; an unknown id arrives as a `404` `PathApiError`.
+   */
+  async getTemplate(id: string): Promise<GetTemplateResponse> {
+    return this.getJson<GetTemplateResponse>(`/v0/templates/${encodeURIComponent(id)}`);
   }
 
   /**

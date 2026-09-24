@@ -336,6 +336,30 @@ describe("PathApiClient", () => {
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
   });
 
+  it("GET /v0/templates/:id returns the parsed envelope with its body", async () => {
+    const stub = stubFetch(() =>
+      json({
+        id: "t 1",
+        name: "review",
+        kind: "step",
+        origin: "shipped",
+        read_only: true,
+        format: "path/workflow@4",
+        description: "a review step",
+        body: [{ type: "binary", id: "n1", name: "step-one", command: "echo" }],
+        valid: true,
+        error: null,
+        etag: '"abc"',
+      }),
+    );
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    const res = await client.getTemplate("t 1");
+    expect(res).toMatchObject({ name: "review", kind: "step", valid: true, etag: '"abc"' });
+    expect(res.body).toEqual([{ type: "binary", id: "n1", name: "step-one", command: "echo" }]);
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
+  });
+
   it("GET /v0/step-plugins returns the registry snapshot", async () => {
     const stub = stubFetch(() =>
       json({

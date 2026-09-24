@@ -12,19 +12,20 @@ import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
 import { useSelection } from "./selection-context.js";
+import type { Armed } from "./use-armed.js";
 import { frameDirty, type Frame, type OpenSession } from "./use-open-file.js";
 
 /**
  * The canvas region: the centre surface a `path/workflow` body renders on. Read-only in #367;
  * **editable** in #368 (designer-spec § Canvas interaction model). It shows one of: the empty affordance
  * when nothing is open, a registry/fetch problem, a legible refusal (ADR 0026 / ADR 0015), or the
- * block-grammar render under a breadcrumb — now with the palette's armed kind driving which sockets
+ * block-grammar render under a breadcrumb — now with the palette's armed value driving which sockets
  * open, and structure edits committed through the session's `applyEdit`.
  */
 export function Canvas({
   session,
   plugins,
-  armedKind,
+  armed,
   onArm,
   problems,
   onOpenExisting,
@@ -33,8 +34,8 @@ export function Canvas({
 }: {
   session: OpenSession;
   plugins: WireStepPlugin[];
-  armedKind: string | null;
-  onArm: (kind: string | null) => void;
+  armed: Armed | null;
+  onArm: (armed: Armed | null) => void;
   /** The active file's cross-node problems (#388, #392), derived once by the App and shared with the
    *  launch button's warning count — the canvas renders them as per-node markers and the problems panel. */
   problems: Problem[];
@@ -97,7 +98,7 @@ export function Canvas({
         workflowRunStatus={workflowRunStatus}
       />
       <CanvasBody>
-        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armedKind={armedKind} onArm={onArm} problems={problems} />
+        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armed={armed} onArm={onArm} problems={problems} />
       </CanvasBody>
     </div>
   );
@@ -221,7 +222,7 @@ function FrameView({
   onDescend,
   applyEdit,
   plugins,
-  armedKind,
+  armed,
   onArm,
   problems,
 }: {
@@ -229,8 +230,8 @@ function FrameView({
   onDescend: DescendHandler;
   applyEdit: (next: WorkflowFile) => void;
   plugins: WireStepPlugin[];
-  armedKind: string | null;
-  onArm: (kind: string | null) => void;
+  armed: Armed | null;
+  onArm: (armed: Armed | null) => void;
   problems: Problem[];
 }): JSX.Element {
   const { state } = frame;
@@ -244,7 +245,7 @@ function FrameView({
   const { result } = state;
   switch (result.status) {
     case "opened": {
-      const editor = createEditor(result.file, applyEdit, armedKind, () => onArm(null), defaultLeafKind(plugins));
+      const editor = createEditor(result.file, applyEdit, armed, () => onArm(null), defaultLeafKind(plugins));
       // Dirty is content-equality against the baseline (ADR 0030), read through the one shared relation so
       // the badge cannot drift from launch/Save. `pristine` (the buffer still equals its bytes at the last
       // save-point) separates an id-stamp-only dirty from an authored edit, so the badge names the reason a
@@ -294,7 +295,7 @@ function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
       <p className="start-body-hint">Empty body. Pick a step or block from the palette to start it.</p>
       {editor.socketOpen("sequence") ? (
         <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(null)}>
-          + add {editor.armedKind} here
+          + add {editor.armedLabel} here
         </button>
       ) : null}
     </div>

@@ -39,6 +39,28 @@ export function socketAcceptsKind(flavor: SocketFlavor, kind: string): boolean {
 }
 
 /**
+ * How a Step-Template body lands in a socket of `flavor` (#578, ADR 0049 decision 6), as the
+ * `instantiate` socket option. A `sequence`-flavoured list splices the nodes in directly. A single slot
+ * and a `parallel` branch each take one node, so a 2+-node body is wrapped in a fresh `sequence` there:
+ * a template body is an ordered run, and splicing it as several branches would run it concurrently.
+ */
+export function bodyInsertSocket(flavor: SocketFlavor): "list" | "single" {
+  return flavor === "sequence" ? "list" : "single";
+}
+
+/**
+ * Is a Step-Template `body` legal in a socket of `flavor`? The same rule as {@link socketAcceptsKind},
+ * applied to what actually lands: every node when the list splices them, the lone node when a one-node
+ * body inserts bare, and a fresh `sequence` (legal everywhere) when a 2+-node body is wrapped. An empty
+ * body places nothing, so it opens no socket.
+ */
+export function socketAcceptsBody(flavor: SocketFlavor, body: readonly WorkflowNode[]): boolean {
+  if (body.length === 0) return false;
+  if (bodyInsertSocket(flavor) === "list") return body.every((node) => socketAcceptsKind(flavor, node.type));
+  return body.length >= 2 || socketAcceptsKind(flavor, body[0]!.type);
+}
+
+/**
  * Does a node of `type` carry the step envelope (`config` / `input` / `parse` / `publish`)? Every leaf
  * step type and `workflow` does; the five controllers (`CONTROLLER_KINDS`) do not — they are engine
  * constructs with no worker and no task (CONTEXT.md § Composition). So the predicate is exactly "not a
