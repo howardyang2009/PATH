@@ -17,8 +17,8 @@ export interface ArmedState {
   /** Arm a value directly (a Build card) or disarm (`null`). Supersedes an in-flight template read. */
   arm: (armed: Armed | null) => void;
   /**
-   * Arm a Step-Template: read its envelope (`GET /v0/templates/:id`), then arm its body. A failed read
-   * or a template the server reports invalid arms nothing and sets `templateError` instead.
+   * Arm a Step-Template: disarm at once, read its envelope (`GET /v0/templates/:id`), then arm its body.
+   * A failed read or a template the server reports invalid arms nothing and sets `templateError` instead.
    */
   armTemplate: (template: TemplateSummary) => void;
   /** Why the last template select armed nothing, or `null`. Cleared by the next arm. */
@@ -42,13 +42,18 @@ export function useArmed(client: PathApiClient): ArmedState {
     (template: TemplateSummary) => {
       const request = ++latest.current;
       setTemplateError(null);
+      // Disarm while the read is in flight: the previous selection must not stay placeable behind a
+      // select that may yet fail.
+      setArmed(null);
       const id = template.id;
       if (id === null) return; // an id-less row is invalid, and the palette never offers it
       client
         .getTemplate(id)
         .then((envelope) => {
           if (request !== latest.current) return;
-          if (!envelope.valid || !Array.isArray(envelope.body)) {
+          // `valid` is the server's registry-relative check, so a valid step-template body is a
+          // `WorkflowNode[]`; `kind` guards a file that changed kind between the list and this read.
+          if (!envelope.valid || envelope.kind !== "step" || !Array.isArray(envelope.body)) {
             setTemplateError(`Cannot insert "${template.name}": ${envelope.error?.message ?? "invalid template"}`);
             return;
           }

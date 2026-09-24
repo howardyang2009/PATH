@@ -187,6 +187,21 @@ describe("Insert a Step-Template into a workflow (#578)", () => {
     expect(within(canvas).queryByRole("button", { name: /draft-judge/ })).not.toBeInTheDocument();
   });
 
+  it("a template select disarms what was armed before, so a failed read leaves nothing armed", async () => {
+    const { canvas } = await openApp({});
+    const tabs = screen.getByRole("region", { name: "Palette" });
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Build" }));
+    fireEvent.click(screen.getByText("Prompt"));
+    expect(within(canvas).getByRole("button", { name: /add prompt here/ })).toBeInTheDocument();
+
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Templates" }));
+    const panel = within(tabs).getByRole("tabpanel", { name: "Templates" });
+    fireEvent.click(await within(panel).findByRole("button", { name: /draft-judge/ }));
+
+    expect(await within(panel).findByRole("alert")).toHaveTextContent(/draft-judge/);
+    expect(within(canvas).queryByRole("button", { name: /add prompt here/ })).not.toBeInTheDocument();
+  });
+
   it("reports a failed template read", async () => {
     const { palette } = await openApp({});
     fireEvent.click(await within(palette).findByRole("button", { name: /draft-judge/ }));
