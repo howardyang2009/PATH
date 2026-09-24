@@ -240,6 +240,9 @@ and issues use them exactly.
   consumes. Its mandatory **`max_jumps`** (default 3, per goto node per workflow-run) bounds it like
   `while-do`'s max-iterations: exhausting it fails the run
   ([ADR 0053](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0053-goto-is-a-seqoutcome-jump-caught-by-a-per-file-top-level-walk.md)).
+  A goto carries no input of its own: the output it received passes through as the target's incoming
+  output, forward or backward, and the target's own `input` map still wins
+  ([ADR 0055](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md)).
 - **Top-level walk** — how a workflow-run walks its file's top-level body: an index loop with a jump
   register, the only walk a `goto` can re-seek. Every nested body (`sequence`, branch arm, loop
   iteration, `parallel` branch) is walked by `runSequence` in strict order, one visit per node.
