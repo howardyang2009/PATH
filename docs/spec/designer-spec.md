@@ -294,8 +294,11 @@ A place runs Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)):
 every node gets a fresh id, a name that collides with one in the file becomes `name-2`, and every other
 value is copied verbatim. The inserted nodes are ordinary nodes, edited in the pane like any other, with
-no link back to the template. The place disarms. One template ships in `packages/server/template/`:
-`review-gate`, a `person-activity` review followed by a `branch` on its answer.
+no link back to the template. The place disarms. Two step-templates ship in
+`packages/server/template/`: `review-gate`, a `person-activity` review followed by a `branch` on its
+answer; and `person-switch` ([ADR 0052](../adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)),
+one `sequence` of a `person-activity` ask whose `outputSchema` is a string enum of labels and a
+`branch` with one arm per label, routed on the ask's `output.choice`.
 
 ### Starting from a Workflow-Template
 
