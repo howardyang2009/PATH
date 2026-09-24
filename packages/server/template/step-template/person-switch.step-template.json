@@ -1,0 +1,77 @@
+{
+  "format": "path/workflow@4",
+  "id": "0e6be717-1546-4ae9-828b-f4b4a8415ab6",
+  "description": "A person picks which of several options runs next; the flow branches on the chosen label (ADR 0052).",
+  "body": [
+    {
+      "type": "sequence",
+      "id": "1fed3a20-4128-4a2e-b189-8f447a7fd275",
+      "name": "person-switch",
+      "body": [
+        {
+          "type": "person-activity",
+          "id": "cc6a8e62-d739-4e17-8a63-b0ed9d8fab3e",
+          "name": "choose",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "option-a",
+                  "option-b"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          }
+        },
+        {
+          "type": "branch",
+          "id": "8c13a71c-d502-40f1-98de-36b31f616f89",
+          "name": "on-choice",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "option-a"
+              },
+              "node": {
+                "type": "binary",
+                "id": "5c347a16-6774-4927-a2b4-0631b8f55e18",
+                "name": "option-a",
+                "command": "echo",
+                "args": [
+                  "option-a"
+                ]
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "option-b"
+              },
+              "node": {
+                "type": "binary",
+                "id": "5d84996e-3b27-40cd-8222-c90f3719c968",
+                "name": "option-b",
+                "command": "echo",
+                "args": [
+                  "option-b"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
