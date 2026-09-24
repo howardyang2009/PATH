@@ -75,17 +75,17 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
     expect(screen.getByText("designer · authoring")).toBeInTheDocument();
   });
 
-  it("shows the palette shell split into registry-driven Steps and grammar-fixed Controllers", async () => {
+  it("shows the palette shell split into registry-driven Step and grammar-fixed Controller", async () => {
     render(<App client={stubClient()} />);
     const palette = screen.getByRole("region", { name: "Palette" });
-    const steps = within(palette).getByRole("region", { name: "Steps" });
+    const steps = within(palette).getByRole("region", { name: "Step" });
     // Steps are registry-driven (#368): the stub ships `binary` + `prompt`, and `workflow` is always
     // offered as a leaf-step entry. They land once `GET /v0/step-plugins` resolves.
     expect(await within(steps).findByText("Prompt")).toBeInTheDocument();
     for (const label of ["Binary", "Workflow"]) {
       expect(within(steps).getByText(label)).toBeInTheDocument();
     }
-    const controllers = within(palette).getByRole("region", { name: "Controllers" });
+    const controllers = within(palette).getByRole("region", { name: "Controller" });
     for (const label of ["Parallel", "Branch", "While-do", "Sequence", "Checkpoint"]) {
       expect(within(controllers).getByText(label)).toBeInTheDocument();
     }

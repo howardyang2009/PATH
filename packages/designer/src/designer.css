@@ -212,6 +212,62 @@ body {
   color: var(--text-muted);
 }
 
+/* Palette tabs: Build | Templates (#564 variant C, #577). */
+.palette-tabs {
+  display: flex;
+  gap: 4px;
+  padding: 8px 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-tab {
+  flex: 1;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 7px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+}
+
+.palette-tab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.palette-card:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.palette-card-error {
+  font-size: var(--fs-xs);
+  color: var(--run-failed);
+}
+
+.palette-card-tag {
+  margin-left: auto;
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 0 6px;
+}
+
+.palette-note {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
+}
+
+.palette-note-error {
+  color: var(--run-failed);
+}
+
 /* Canvas. */
 .canvas {
   flex: 1;

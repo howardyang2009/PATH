@@ -259,6 +259,22 @@ that shape. The received registry is a **bare snapshot with no staleness contrac
 sub-decision 3): the write route re-validates every save against the server's **live** registry, so a
 stale snapshot surfaces as a rejected write, never a corrupt file.
 
+### The palette's Build and Templates tabs
+
+The palette rail is two tabs ([#564](https://github.com/howardyang2009/PATH/issues/564) variant C,
+built in [#577](https://github.com/howardyang2009/PATH/issues/577)). **Build** holds the primitives:
+the **Step** category (the registry-driven leaf types above) and the **Controller** category
+(`checkpoint`, `parallel`, `sequence`, `while-do`, `branch`). **Templates** holds the reusable
+authoring artifacts: the **Step-Template** and **Workflow-Template** categories, one card per entry of
+`GET /v0/templates` (server-api-v0.md §10.1), shipped and user rows alike, a shipped row tagged
+`shipped`. The list is loaded once and is thin (no bodies). An **invalid** template is listed, not
+dropped: its card shows the server's error and is disabled, so it cannot be selected
+([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) decision 4).
+A failed list read says so instead of showing an empty category. The Graph-Controller category is out
+of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)). Selecting a valid template is
+wired by the insert ([#578](https://github.com/howardyang2009/PATH/issues/578)) and instantiate
+([#579](https://github.com/howardyang2009/PATH/issues/579)) tickets.
+
 ### What is authorable: the whole grammar, nothing deferred to JSON
 
 Every node kind is a palette entry. Nothing is v1-deferred to hand-editing the JSON.

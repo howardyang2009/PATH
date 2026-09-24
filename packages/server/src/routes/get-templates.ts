@@ -1,5 +1,6 @@
 import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
+import type { TemplateSummary } from "@path/schema";
 import { sendJson } from "../http-json.js";
 import { discoverTemplates, type TemplateKind } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
@@ -18,7 +19,7 @@ export function handleGetTemplates(res: ServerResponse, ctx: RunsRouteContext, k
   const filter: TemplateKind | undefined =
     kindParam === "step" || kindParam === "workflow" ? kindParam : undefined;
 
-  const templates = entries
+  const templates: TemplateSummary[] = entries
     .filter((e) => filter === undefined || e.kind === filter)
     .map((e) => ({
       id: e.id,
