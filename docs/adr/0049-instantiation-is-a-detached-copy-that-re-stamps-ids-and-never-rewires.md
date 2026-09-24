@@ -62,9 +62,11 @@ editing an instance never propagates back.
 6. **Insert socket.** The body is `WorkflowNode[]`, minimum length 1 (ADR 0048). A 2+-node body dropped
    into a `@2` single-node container slot (ADR 0014) is wrapped in a fresh `sequence`; a one-node body
    inserts bare; at the file-body top level or inside an existing `sequence` the nodes splice in
-   directly. The Designer edit-tree checks the drop target's grammar-legality client-side and refuses an
-   illegal drop; the block grammar (ADR 0029) is the only placement authority, so no run-time check
-   exists.
+   directly. A `parallel` branch counts as a single-node slot: each entry of `branches` is one node, one
+   branch, so a 2+-node body lands as one `sequence` branch and still runs in order, never as several
+   concurrent branches (#578). The Designer edit-tree checks the drop target's grammar-legality
+   client-side and refuses an illegal drop; the block grammar (ADR 0029) is the only placement
+   authority, so no run-time check exists.
 
 7. **Workflow-Template instantiation is the same transform plus a workflow-level re-mint.** Selecting a
    `*.workflow-template.json` into an empty canvas (a buffer whose body holds zero nodes) runs the
