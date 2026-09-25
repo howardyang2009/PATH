@@ -118,6 +118,10 @@ export interface Emitter {
     node: NodeRef,
     args: { branches: string[]; publishedKeys: string[]; winner?: string },
   ): Promise<void>;
+  /** A goto pass opened (ADR 0054): `opener` is the goto that opened it, `null` for pass 1. */
+  passStarted(opener: NodeRef | null, args: { pass: number }): Promise<void>;
+  gotoTaken(node: NodeRef, args: { target: NodeRef; jump: number; maxJumps: number; pass: number }): Promise<void>;
+  gotoExhausted(node: NodeRef, args: { target: NodeRef; maxJumps: number; pass: number }): Promise<void>;
   reuseMarker(node: NodeRef, args: { originalRunId: string }): Promise<void>;
   /**
    * Open a step-scoped sub-emitter for one leaf step run. Mints a fresh run id normally; a Complete
@@ -244,6 +248,43 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         branches: args.branches,
         publishedKeys: args.publishedKeys,
         ...(args.winner !== undefined ? { winner: args.winner } : {}),
+      });
+    },
+    passStarted(opener, args): Promise<void> {
+      return emit({
+        type: "pass-started",
+        runId,
+        rootRunId,
+        nodeId: opener?.id ?? null,
+        nodeName: opener?.name ?? null,
+        pass: args.pass,
+      });
+    },
+    gotoTaken(node, args): Promise<void> {
+      return emit({
+        type: "goto-taken",
+        runId,
+        rootRunId,
+        nodeId: node.id,
+        nodeName: node.name,
+        targetNodeId: args.target.id,
+        targetNodeName: args.target.name,
+        jump: args.jump,
+        maxJumps: args.maxJumps,
+        pass: args.pass,
+      });
+    },
+    gotoExhausted(node, args): Promise<void> {
+      return emit({
+        type: "goto-exhausted",
+        runId,
+        rootRunId,
+        nodeId: node.id,
+        nodeName: node.name,
+        targetNodeId: args.target.id,
+        targetNodeName: args.target.name,
+        maxJumps: args.maxJumps,
+        pass: args.pass,
       });
     },
     reuseMarker(node, args): Promise<void> {

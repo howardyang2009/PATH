@@ -42,6 +42,13 @@ describe("eventOutcome", () => {
     ).toBeNull();
   });
 
+  it("routes an exhausted goto to failed, and a pass or a jump to no outcome (G-V-02)", () => {
+    const target = { target_node_id: "n2", target_node_name: "b" };
+    expect(eventOutcome({ ...ENVELOPE, type: "goto-exhausted", ...target, max_jumps: 3, pass: 4 })).toBe("failed");
+    expect(eventOutcome({ ...ENVELOPE, type: "goto-taken", ...target, jump: 1, max_jumps: 3, pass: 2 })).toBeNull();
+    expect(eventOutcome({ ...ENVELOPE, type: "pass-started", pass: 2 })).toBeNull();
+  });
+
   it("reports a cancelled run as cancelled, not failed", () => {
     expect(eventOutcome({ ...ENVELOPE, type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run_b" })).toBe("cancelled");
   });

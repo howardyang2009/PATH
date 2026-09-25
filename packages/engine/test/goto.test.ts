@@ -256,6 +256,163 @@ describe("goto — the top-level walk and its passes", () => {
   });
 });
 
+describe("goto — audit events (spec §7, ADR 0061)", () => {
+  type GotoEvent = Extract<Observation, { type: "pass-started" | "goto-taken" | "goto-exhausted" }>;
+  const gotoEvents = (all: Observation[]) =>
+    all.filter((o): o is GotoEvent => o.type === "pass-started" || o.type === "goto-taken" || o.type === "goto-exhausted");
+
+  /**
+   * The observations in arrival order — the order the logging observer stamps `seq` in — as short
+   * labels, with pass runs named `pass N` and node runs by their node name.
+   */
+  function narrative(r: Awaited<ReturnType<typeof run>>): string[] {
+    const passOf = new Map(r.passes().map((p) => [p.runId, p.pass!]));
+    const who = (runId: string, nodeName: string | null) =>
+      passOf.has(runId) ? `pass ${passOf.get(runId)}` : runId === r.root.runId ? "workflow" : nodeName;
+    return r.all.flatMap((o) => {
+      switch (o.type) {
+        case "run-started":
+        case "step-started":
+          return o.parentRunId === null ? [] : [`started ${who(o.runId, o.nodeName)}`];
+        case "run-finished":
+        case "step-finished":
+          return [`finished ${who(o.runId, o.nodeName)} ${o.status}`];
+        case "pass-started":
+          return [`pass-started ${o.pass}`];
+        case "goto-taken":
+          return [`goto-taken ${o.nodeName}→${o.targetNodeName} ${o.jump}/${o.maxJumps} pass ${o.pass}`];
+        case "goto-exhausted":
+          return [`goto-exhausted ${o.nodeName}→${o.targetNodeName} ${o.maxJumps} pass ${o.pass}`];
+        default:
+          return [];
+      }
+    });
+  }
+
+  const backwardLoop = (maxJumps: number | string, values = ["b-1", "b-2"]) => [
+    step("a"),
+    step("b", { publish: { last: "${output}" } }),
+    guardedGoto("guard", values, { id: "check", target: "b", max_jumps: maxJumps }),
+  ];
+
+  it("G-E-01: a goto-free file emits no goto event", async () => {
+    const r = await run(file([step("a"), step("b")]));
+    expect(gotoEvents(r.all)).toEqual([]);
+  });
+
+  it("G-E-02: a guarded goto never taken gives one pass-started and no goto-taken", async () => {
+    const r = await run(file(backwardLoop(3, ["never"])));
+    expect(gotoEvents(r.all)).toEqual([
+      { type: "pass-started", runId: r.root.runId, rootRunId: r.root.rootRunId, nodeId: null, nodeName: null, pass: 1 },
+    ]);
+  });
+
+  it("G-E-03: a forward jump's goto-taken names the target, jump 1 and the pass it opens", async () => {
+    const r = await run(file([step("a"), { type: "goto", id: "check", target: "c", max_jumps: 1 }, step("b"), step("c")]));
+    const taken = gotoEvents(r.all).filter((o) => o.type === "goto-taken");
+    expect(taken).toEqual([
+      {
+        type: "goto-taken",
+        runId: r.root.runId,
+        rootRunId: r.root.rootRunId,
+        nodeId: "check",
+        nodeName: "check",
+        targetNodeId: "c",
+        targetNodeName: "c",
+        jump: 1,
+        maxJumps: 1,
+        pass: 2,
+      },
+    ]);
+  });
+
+  it("G-E-04 / G-E-06: a backward loop narrates each jump in the §7 order", async () => {
+    const r = await run(file(backwardLoop(3)));
+    expect(r.result).toMatchObject({ status: "succeeded" });
+    // Every goto event is attributed to the workflow-run, never a pass container.
+    expect(gotoEvents(r.all).every((o) => o.runId === r.root.runId)).toBe(true);
+    expect(gotoEvents(r.all).filter((o) => o.type === "pass-started").map((o) => [o.pass, o.nodeName])).toEqual([
+      [1, null],
+      [2, "check"],
+      [3, "check"],
+    ]);
+    expect(narrative(r)).toEqual([
+      "started pass 1",
+      "pass-started 1",
+      "started a",
+      "finished a succeeded",
+      "started b",
+      "finished b succeeded",
+      "goto-taken check→b 1/3 pass 2",
+      "finished pass 1 succeeded",
+      "started pass 2",
+      "pass-started 2",
+      "started b",
+      "finished b succeeded",
+      "goto-taken check→b 2/3 pass 3",
+      "finished pass 2 succeeded",
+      "started pass 3",
+      "pass-started 3",
+      "started b",
+      "finished b succeeded",
+      "started guard-else",
+      "finished guard-else succeeded",
+      "finished pass 3 succeeded",
+      "finished workflow succeeded",
+    ]);
+  });
+
+  it("G-E-05 / G-E-06: an exhausted loop gives 2 goto-taken, then goto-exhausted before the failures", async () => {
+    const r = await run(
+      file([
+        step("a"),
+        step("b", { publish: { last: "${output}" } }),
+        { type: "branch", id: "guard", arms: [{ when: { type: "exists", path: "context.last" }, node: { type: "goto", id: "check", target: "b", max_jumps: 2 } }] },
+      ]),
+    );
+    const events = gotoEvents(r.all).filter((o) => o.type !== "pass-started");
+    expect(events.map((o) => o.type)).toEqual(["goto-taken", "goto-taken", "goto-exhausted"]);
+    expect(events[2]).toEqual({
+      type: "goto-exhausted",
+      runId: r.root.runId,
+      rootRunId: r.root.rootRunId,
+      nodeId: "check",
+      nodeName: "check",
+      targetNodeId: "b",
+      targetNodeName: "b",
+      maxJumps: 2,
+      pass: 3,
+    });
+    expect(narrative(r).slice(-4)).toEqual([
+      "finished b succeeded",
+      "goto-exhausted check→b 2 pass 3",
+      "finished pass 3 failed",
+      "finished workflow failed",
+    ]);
+  });
+
+  it("G-E-11: goto-taken carries the resolved max_jumps of an interpolated bound", async () => {
+    const r = await run(file(backwardLoop("${config.n}"), { config: { model: "claude-sonnet-5", n: 4 } }));
+    const taken = gotoEvents(r.all).filter((o) => o.type === "goto-taken");
+    expect(taken.map((o) => [o.jump, o.maxJumps, o.pass])).toEqual([
+      [1, 4, 2],
+      [2, 4, 3],
+    ]);
+  });
+
+  it("G-E-19: a Cancel emits no goto event beyond pass 1's pass-started", async () => {
+    const controller = new AbortController();
+    const running = run(
+      file([step("a", { publish: { last: "${output}" } }), step("slow"), guardedGoto("guard", ["a-1"], { id: "check", target: "a", max_jumps: 3 })]),
+      { signal: controller.signal },
+    );
+    setTimeout(() => controller.abort(), 20);
+    const r = await running;
+    expect(r.result).toMatchObject({ status: "cancelled" });
+    expect(gotoEvents(r.all).map((o) => o.type)).toEqual(["pass-started"]);
+  });
+});
+
 /** A first-level `branch` whose one arm holds a goto, taken when `path` is one of `values`; else a plain step. */
 function guardedGoto(id: string, values: string[], goto: { id: string; target: string; max_jumps: number | string }, path = "context.last") {
   return { type: "branch", id, arms: [{ when: { type: "one-of", path, values }, node: { type: "goto", ...goto } }], else: step(`${id}-else`) };

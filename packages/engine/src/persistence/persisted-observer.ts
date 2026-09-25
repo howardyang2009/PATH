@@ -179,6 +179,10 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
         case "branch-no-match":
         case "iteration-started":
         case "loop-exited":
+        // The goto events too: the pass itself has a row, written by its own run-started.
+        case "pass-started":
+        case "goto-taken":
+        case "goto-exhausted":
           return;
 
         default: {

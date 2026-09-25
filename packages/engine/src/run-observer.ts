@@ -265,6 +265,42 @@ export type Observation =
       reason: "condition-false" | "max-iterations-exceeded";
       iterations: number;
       trace: Trace;
+    }
+  /**
+   * A goto pass opened (ADR 0054, spec docs/spec/goto.md §7): `pass` is its 1-based ordinal. `runId`
+   * is the workflow-run; `nodeId`/`nodeName` name the goto that opened it, both null for pass 1.
+   */
+  | { type: "pass-started"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null; pass: number }
+  /**
+   * A goto jumped (ADR 0061): `jump` is this goto's 1-based count in the workflow-run, this one
+   * included; `maxJumps` the resolved bound; `pass` the ordinal of the pass the jump opens.
+   */
+  | {
+      type: "goto-taken";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      targetNodeId: string;
+      targetNodeName: string;
+      jump: number;
+      maxJumps: number;
+      pass: number;
+    }
+  /**
+   * A goto was reached with its `max_jumps` already spent (ADR 0061) — this fails the pass and the
+   * workflow-run. `pass` is the ordinal of the pass that fails.
+   */
+  | {
+      type: "goto-exhausted";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      targetNodeId: string;
+      targetNodeName: string;
+      maxJumps: number;
+      pass: number;
     };
 
 /**

@@ -56,6 +56,8 @@ export function eventOutcome(event: LogEvent): RunStatus | null {
       return "succeeded";
     case "checkpoint-failed":
     case "branch-no-match":
+    // A goto reached with its max_jumps spent fails its pass and the workflow-run (ADR 0061).
+    case "goto-exhausted":
       return "failed";
     case "run-cancelled":
       return "cancelled";
@@ -66,6 +68,8 @@ export function eventOutcome(event: LogEvent): RunStatus | null {
     case "branch-taken":
     case "join-applied":
     case "iteration-started":
+    case "pass-started":
+    case "goto-taken":
       return null;
     case "reuse-marker":
       // A reused node's recorded run succeeded originally, but the marker only points at where the

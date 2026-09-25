@@ -107,6 +107,28 @@ describe("LogEventSchema", () => {
     expect(parsed).toMatchObject({ type: "step-awaiting", assignee: null });
   });
 
+  it("accepts the goto events (spec docs/spec/goto.md §7)", () => {
+    const goto = { ...envelope, node_id: "g1", node_name: "check" };
+    expect(LogEventSchema.parse({ type: "pass-started", ...envelope, node_id: null, node_name: null, pass: 1 })).toMatchObject({ pass: 1 });
+    expect(LogEventSchema.parse({ type: "pass-started", ...goto, pass: 2 })).toMatchObject({ node_name: "check", pass: 2 });
+    const target = { target_node_id: "n2", target_node_name: "b" };
+    expect(LogEventSchema.parse({ type: "goto-taken", ...goto, ...target, jump: 2, max_jumps: 3, pass: 3 })).toMatchObject({ jump: 2 });
+    expect(LogEventSchema.parse({ type: "goto-exhausted", ...goto, ...target, max_jumps: 3, pass: 4 })).toMatchObject({ pass: 4 });
+    // No jump happens on exhaustion, so the payload has no `jump`.
+    expect(() => LogEventSchema.parse({ type: "goto-exhausted", ...goto, ...target, jump: 4, max_jumps: 3, pass: 4 })).toThrow();
+  });
+
+  it("G-V-03: reads a pre-goto run.log, holding none of the goto events, unchanged", () => {
+    const lines = [
+      { type: "step-started", ...envelope, seq: 1, node_id: null, node_name: null, step_type: "workflow", worker_name: "workflow" },
+      { type: "step-started", ...envelope, seq: 2, step_type: "prompt", worker_name: "anthropic" },
+      { type: "step-finished", ...envelope, seq: 3, status: "succeeded" },
+      { type: "branch-taken", ...envelope, seq: 4, arm: "else", trace: null },
+      { type: "step-finished", ...envelope, seq: 5, node_id: null, node_name: null, status: "succeeded" },
+    ];
+    expect(lines.map((line) => LogEventSchema.parse(JSON.parse(JSON.stringify(line))))).toEqual(lines);
+  });
+
   it("rejects an unknown event type", () => {
     expect(() => LogEventSchema.parse({ type: "branch-taken", ...envelope })).toThrow();
   });

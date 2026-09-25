@@ -1517,6 +1517,7 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
     const passEmitter = run.emitter.child(passIdentity);
     // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
     await passEmitter.runStarted({ input: carried });
+    await run.emitter.passStarted(opener, { pass });
     const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter };
 
     const outcome = await runSequence(passRun, body.slice(start), carried, exec);
@@ -1533,19 +1534,24 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
       await passEmitter.runFinished(maxJumps);
       return maxJumps;
     }
+    // `runGotoNode` names a first-level node of this same file, so the target is always indexed.
+    const targetIndex = indexById.get(outcome.target)!;
+    const target = body[targetIndex]!;
     const spent = jumpsSpent.get(goto.id) ?? 0;
+    // Cause first (ADR 0061 §5): the goto event, then the closing pass's step-finished.
     if (spent >= maxJumps) {
+      await run.emitter.gotoExhausted(goto, { target, maxJumps, pass });
       const exhausted: SeqOutcome = { status: "failed", error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted` };
       await passEmitter.runFinished(exhausted);
       return exhausted;
     }
     jumpsSpent.set(goto.id, spent + 1);
+    await run.emitter.gotoTaken(goto, { target, jump: spent + 1, maxJumps, pass: pass + 1 });
     await passEmitter.runFinished({ status: "succeeded", output: outcome.output });
 
     pass += 1;
     opener = goto;
-    // `runGotoNode` names a first-level node of this same file, so the target is always indexed.
-    start = indexById.get(outcome.target)!;
+    start = targetIndex;
     carried = outcome.output;
   }
 }

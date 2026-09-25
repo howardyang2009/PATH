@@ -108,3 +108,24 @@ describe("eventMessage", () => {
     ).toBe("while-do revise (n5) exited after 3 iterations · max-iterations-exceeded");
   });
 });
+
+describe("eventMessage — goto (spec docs/spec/goto.md §7, G-V-02)", () => {
+  const GOTO = { ...ENVELOPE, node_id: null, node_name: "check" } as const;
+
+  it("narrates a jump with its count, bound and the pass it opens", () => {
+    expect(
+      eventMessage({ ...GOTO, type: "goto-taken", target_node_id: "n2", target_node_name: "B", jump: 2, max_jumps: 3, pass: 3 }),
+    ).toBe("goto check jumped to B · jump 2/3 · pass 3");
+  });
+
+  it("narrates an exhausted goto with its bound and target", () => {
+    expect(
+      eventMessage({ ...GOTO, type: "goto-exhausted", target_node_id: "n2", target_node_name: "B", max_jumps: 3, pass: 4 }),
+    ).toBe("goto check exhausted · max_jumps 3 · target B");
+  });
+
+  it("names the goto that opened a pass, and pass 1 by its ordinal alone", () => {
+    expect(eventMessage({ ...GOTO, node_id: "g1", type: "pass-started", pass: 2 })).toBe("pass 2 opened by goto check (g1)");
+    expect(eventMessage({ ...ENVELOPE, node_id: null, node_name: null, type: "pass-started", pass: 1 })).toBe("pass 1");
+  });
+});

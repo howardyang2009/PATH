@@ -26,6 +26,9 @@ export const OBSERVATION_TYPES = [
   "branch-no-match",
   "iteration-started",
   "loop-exited",
+  "pass-started",
+  "goto-taken",
+  "goto-exhausted",
   "reuse-marker",
 ] as const satisfies readonly Observation["type"][];
 

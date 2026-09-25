@@ -41,6 +41,13 @@ export function eventMessage(event: LogEvent): string {
       return `while-do ${label} iteration ${event.iteration}`;
     case "loop-exited":
       return `while-do ${label} exited after ${event.iterations} iterations · ${event.reason}`;
+    case "pass-started":
+      // Pass 1 has no opening goto, so it names only its ordinal.
+      return event.node_id === null ? `pass ${event.pass}` : `pass ${event.pass} opened by goto ${label}`;
+    case "goto-taken":
+      return `goto ${label} jumped to ${event.target_node_name} · jump ${event.jump}/${event.max_jumps} · pass ${event.pass}`;
+    case "goto-exhausted":
+      return `goto ${label} exhausted · max_jumps ${event.max_jumps} · target ${event.target_node_name}`;
     case "reuse-marker":
       // A resumed run reused this node's recorded work (#172); the pointer is where the real record
       // lives, so a watcher can follow it rather than hit a silent gap in the narrative.

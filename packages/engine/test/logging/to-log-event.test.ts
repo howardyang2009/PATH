@@ -134,6 +134,45 @@ describe("toLogEvent", () => {
     expect(asked).toEqual(["n9"]); // attributed to the reused node's own id
   });
 
+  it("projects the goto events onto their snake_case payloads", () => {
+    const taken = project({
+      type: "goto-taken",
+      ...ids,
+      nodeId: "g1",
+      nodeName: "check",
+      targetNodeId: "n2",
+      targetNodeName: "b",
+      jump: 2,
+      maxJumps: 3,
+      pass: 3,
+    });
+    expect(taken.event).toMatchObject({
+      type: "goto-taken",
+      run_id: "r1",
+      node_id: "g1",
+      node_name: "check",
+      target_node_id: "n2",
+      target_node_name: "b",
+      jump: 2,
+      max_jumps: 3,
+      pass: 3,
+    });
+    const exhausted = project({
+      type: "goto-exhausted",
+      ...ids,
+      nodeId: "g1",
+      nodeName: "check",
+      targetNodeId: "n2",
+      targetNodeName: "b",
+      maxJumps: 3,
+      pass: 4,
+    });
+    expect(exhausted.event).toMatchObject({ type: "goto-exhausted", target_node_name: "b", max_jumps: 3, pass: 4 });
+    expect(exhausted.event).not.toHaveProperty("jump");
+    const opened = project({ type: "pass-started", ...ids, nodeId: null, nodeName: null, pass: 1 });
+    expect(opened.event).toMatchObject({ type: "pass-started", node_id: null, node_name: null, pass: 1 });
+  });
+
   it("emits only events that validate against the log-event schema", () => {
     const every: Observation[] = [
       { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "step-one", originalRunId: "orig-run" },
@@ -148,6 +187,10 @@ describe("toLogEvent", () => {
       { type: "loop-exited", ...ids, nodeId: "n1", nodeName: "loop", reason: "condition-false", iterations: 2, trace },
       { type: "join-applied", ...ids, nodeId: "n1", nodeName: "fan", branches: ["a"], publishedKeys: ["k"] },
       { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "step-one", cause: "sibling-failed", causeRunId: "r2" },
+      { type: "pass-started", ...ids, nodeId: null, nodeName: null, pass: 1 },
+      { type: "pass-started", ...ids, nodeId: "g1", nodeName: "check", pass: 2 },
+      { type: "goto-taken", ...ids, nodeId: "g1", nodeName: "check", targetNodeId: "n2", targetNodeName: "b", jump: 1, maxJumps: 3, pass: 2 },
+      { type: "goto-exhausted", ...ids, nodeId: "g1", nodeName: "check", targetNodeId: "n2", targetNodeName: "b", maxJumps: 3, pass: 4 },
     ];
     for (const o of every) {
       const event = toLogEvent(o, (o) => ({ seq: 1, ts: "2026-01-01T00:00:00.000Z", run_id: o.runId, node_id: o.nodeId, node_name: o.nodeName }));
