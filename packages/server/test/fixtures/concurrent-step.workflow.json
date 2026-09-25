@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@4",
+  "format": "path/workflow@5",
   "id": "7c53e2a7-8023-48a7-bebb-3b2cad3c4c65",
   "name": "concurrent-step",
   "body": [

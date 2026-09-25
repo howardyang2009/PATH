@@ -38,7 +38,7 @@ describe("GET /v0/workflows/file", () => {
   it("returns the file's raw bytes verbatim with a strong ETag and JSON content-type", async () => {
     // Odd whitespace and an unknown top-level field: the route must preserve both byte-for-byte
     // (it never parses or re-serializes — server-api-v0.md §7.1).
-    const raw = '{\n  "format": "path/workflow@4",\n  "id": "x",\n  "keep_me": [1,2,3],\n  "name":"solo"\n}\n';
+    const raw = '{\n  "format": "path/workflow@5",\n  "id": "x",\n  "keep_me": [1,2,3],\n  "name":"solo"\n}\n';
     write("solo.workflow.json", raw);
 
     const res = await readFile("solo.workflow.json");
@@ -49,7 +49,7 @@ describe("GET /v0/workflows/file", () => {
   });
 
   it("resolves a `/`-bearing nested path", async () => {
-    const raw = '{"format":"path/workflow@4","id":"y","name":"nested"}';
+    const raw = '{"format":"path/workflow@5","id":"y","name":"nested"}';
     write("lib/deep/flow.workflow.json", raw);
 
     const res = await readFile("lib/deep/flow.workflow.json");
@@ -60,7 +60,7 @@ describe("GET /v0/workflows/file", () => {
   it("serves an id-less-but-otherwise-valid file rather than rejecting it (ADR 0015)", async () => {
     // No `id` field. The read route never runs the loader, so it hands back the bytes untouched;
     // stamp-on-import is the client's job.
-    const raw = '{"format":"path/workflow@4","name":"draft","body":[{"type":"binary","name":"s","command":"echo"}]}';
+    const raw = '{"format":"path/workflow@5","name":"draft","body":[{"type":"binary","name":"s","command":"echo"}]}';
     write("draft.workflow.json", raw);
 
     const res = await readFile("draft.workflow.json");

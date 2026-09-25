@@ -50,7 +50,7 @@ function marker(id: string): WorkflowFile["body"][number] {
 }
 
 function workflow(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@4", id: "wf-complete", name: "complete-wf", body, ...(output ? { output } : {}) });
+  return stampNames({ format: "path/workflow@5", id: "wf-complete", name: "complete-wf", body, ...(output ? { output } : {}) });
 }
 
 /** The one `awaiting` leaf of a tree — the parked person-activity step run. */

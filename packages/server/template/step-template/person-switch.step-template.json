@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@4",
+  "format": "path/workflow@5",
   "id": "0e6be717-1546-4ae9-828b-f4b4a8415ab6",
   "description": "A person picks which of several options runs next; the flow branches on the chosen label (ADR 0052).",
   "body": [

@@ -41,7 +41,7 @@ const TREE = {
 };
 
 const ROOT_FILE = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf",
   name: "onboarding",
   body: [
@@ -62,7 +62,7 @@ const ROOT_FILE = {
 
 /** The ref'd sub-workflow file: it defines the nested awaiting node `step-nested`. */
 const SUB_FILE = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-sub",
   name: "sub",
   body: [

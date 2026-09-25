@@ -866,7 +866,7 @@ unchanged.
 | `kind` | `"step" \| "workflow"` | The file's kind. |
 | `origin` | `"shipped" \| "user"` | Scan root. |
 | `read_only` | boolean | `true` for shipped. |
-| `format` | string | The envelope `format` stamp (`"path/workflow@4"`). |
+| `format` | string | The envelope `format` stamp (`"path/workflow@5"`). |
 | `description` | string | The envelope description. |
 | `body` | array \| object | A step-template's `WorkflowNode[]` body, or a workflow-template's whole workflow file. |
 | `valid` | boolean | Registry-relative validity. |

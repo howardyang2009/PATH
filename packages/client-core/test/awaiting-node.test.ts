@@ -9,7 +9,7 @@ import { awaitingNodeForRun, findAwaitingNode } from "../src/awaiting-node.js";
  */
 function file(body: unknown[]): WorkflowFile {
   return {
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: "wf-1",
     name: "wf",
     body: body as WorkflowFile["body"],

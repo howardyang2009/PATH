@@ -344,7 +344,7 @@ describe("PathApiClient", () => {
         kind: "step",
         origin: "shipped",
         read_only: true,
-        format: "path/workflow@4",
+        format: "path/workflow@5",
         description: "a review step",
         body: [{ type: "binary", id: "n1", name: "step-one", command: "echo" }],
         valid: true,
@@ -419,7 +419,7 @@ describe("PathApiClient", () => {
   it("GET /v0/workflows/file returns the raw text plus the ETag and encodes the path query", async () => {
     const stub = stubFetch(
       () =>
-        new Response('{"format":"path/workflow@4"}', {
+        new Response('{"format":"path/workflow@5"}', {
           status: 200,
           headers: { "Content-Type": "application/json", ETag: '"abc123"' },
         }),
@@ -427,7 +427,7 @@ describe("PathApiClient", () => {
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     const raw = await client.getWorkflowFile("flows/main.workflow.json");
-    expect(raw.text).toBe('{"format":"path/workflow@4"}');
+    expect(raw.text).toBe('{"format":"path/workflow@5"}');
     expect(raw.etag).toBe('"abc123"');
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fmain.workflow.json");
   });
@@ -456,7 +456,7 @@ describe("PathApiClient", () => {
 
     const res = await client.putWorkflow({
       workflowPath: "flows/main.workflow.json",
-      workflow: { format: "path/workflow@4", id: "w1", name: "main", body: [] },
+      workflow: { format: "path/workflow@5", id: "w1", name: "main", body: [] },
       ifMatch: '"old"',
     });
 
@@ -466,7 +466,7 @@ describe("PathApiClient", () => {
     expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"old"');
     expect(JSON.parse(inits[0]?.body as string)).toEqual({
       workflow_path: "flows/main.workflow.json",
-      workflow: { format: "path/workflow@4", id: "w1", name: "main", body: [] },
+      workflow: { format: "path/workflow@5", id: "w1", name: "main", body: [] },
     });
   });
 

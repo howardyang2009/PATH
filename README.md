@@ -1,7 +1,7 @@
 # PATH
 
 [![CI](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml/badge.svg)](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml)
-[![workflow format](https://img.shields.io/badge/format-path%2Fworkflow%404-blue)](docs/format/workflow-format-v4.md)
+[![workflow format](https://img.shields.io/badge/format-path%2Fworkflow%405-blue)](docs/format/workflow-format-v5.md)
 [![latest release](https://img.shields.io/github/v/release/howardyang2009/PATH)](https://github.com/howardyang2009/PATH/releases)
 
 PATH runs workflows that can stop and start again. You describe a workflow as JSON: **steps** do the
@@ -17,7 +17,7 @@ The part that makes PATH different is what happens when work stops:
 
 ## Why PATH
 
-- **JSON, not YAML.** One strict schema (`path/workflow@4`) validates a file before anything runs.
+- **JSON, not YAML.** One strict schema (`path/workflow@5`) validates a file before anything runs.
   Unknown fields are errors, not surprises.
 - **Durable by default.** Every run writes structured rows to SQLite and blobs to a per-project
   `.path/` directory. A crash costs you the unfinished nodes, nothing more.
@@ -68,7 +68,7 @@ server proxies API calls to a running `path-server`.
 
 ```json
 {
-  "format": "path/workflow@4",
+  "format": "path/workflow@5",
   "id": "d82c9ac6-7abb-46f7-8849-98eb4c590f8f",
   "name": "hello",
   "body": [
@@ -289,7 +289,7 @@ single-origin tool: do not expose it.
 
 | Package | What it is |
 | --- | --- |
-| [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@4`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
+| [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@5`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
 | [`@path/engine`](packages/engine) | Runs workflows locally and provides the `path` CLI. Discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam. |
 | [`@path/server`](packages/server) | The HTTP and SSE API over the engine, plus the `path-server` CLI that serves both consoles. |
 | [`@path/client-core`](packages/client-core) | A pure-TypeScript API client: SSE client, run view-model, and run/workflow write surface. No framework, no Node. |
@@ -316,7 +316,7 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 | Document | Covers |
 | --- | --- |
 | [`CONTEXT.md`](CONTEXT.md) | The canonical glossary. Read this first. |
-| [`docs/format/workflow-format-v4.md`](docs/format/workflow-format-v4.md) | The normative workflow file format. |
+| [`docs/format/workflow-format-v5.md`](docs/format/workflow-format-v5.md) | The normative workflow file format (a delta over v4 and v3). |
 | [`docs/spec/mvp-spec.md`](docs/spec/mvp-spec.md) | Execution semantics: scheduling, data flow, persistence. |
 | [`docs/spec/person-activity.md`](docs/spec/person-activity.md) | `awaiting`, Complete, and `outputSchema` validation. |
 | [`docs/spec/resume-from-k.md`](docs/spec/resume-from-k.md) | Choosing the rerun boundary K. |

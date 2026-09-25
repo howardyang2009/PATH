@@ -49,7 +49,7 @@ function echoToken(id: string): WorkflowFile["body"][number] {
 
 /** checkpoint-evaluated, branch-taken, context-changed. */
 const controls: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "controls",
   body: [
@@ -74,7 +74,7 @@ const controls: WorkflowFile = {
 
 /** iteration-started, loop-exited. */
 const loop: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "loop",
   body: [
@@ -105,7 +105,7 @@ const loop: WorkflowFile = {
 
 /** join-applied — every branch succeeds, so the collect join applies at block end. */
 const parallelJoin: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "parallel-join",
   body: [
@@ -145,7 +145,7 @@ const parallelJoin: WorkflowFile = {
 
 /** run-cancelled with cause `sibling-failed` — one branch fails, its in-flight sibling is killed. */
 const parallelCancel: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "parallel-cancel",
   body: [
@@ -169,7 +169,7 @@ const parallelCancel: WorkflowFile = {
 
 /** branch-no-match — no arm matches and there is no `else`, which fails the run (§5.2). */
 const noMatch: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "branch-no-match",
   body: [
@@ -190,7 +190,7 @@ const noMatch: WorkflowFile = {
 
 /** step-usage — the prompt step is where tokens are spent, on the scripted worker. */
 const prompt: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "prompt-usage",
   config: { model: "test-model" },

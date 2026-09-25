@@ -15,7 +15,7 @@ function node(id: string, name: string): WorkflowNode {
 }
 
 const file: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "workflow-id",
   name: "wf",
   body: [node(UUID, "first"), node("bbbbbbbb-2222-4222-8222-222222222222", "second")],

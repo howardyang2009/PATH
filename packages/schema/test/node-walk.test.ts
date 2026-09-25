@@ -164,7 +164,7 @@ describe("validation reaches deeply nested bodies", () => {
     return n as T;
   }
   function file(body: WorkflowNode[]) {
-    return { format: "path/workflow@4", id: uuid(), name: "deep", body: body.map(guidify) };
+    return { format: "path/workflow@5", id: uuid(), name: "deep", body: body.map(guidify) };
   }
 
   it("catches a duplicate name buried under every block kind", () => {

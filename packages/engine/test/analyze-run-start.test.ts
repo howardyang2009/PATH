@@ -19,7 +19,7 @@ beforeAll(async () => {
 // the `$env`/`$secret` passes from the config-fragment check.
 function binaryFile(config?: ConfigObject): WorkflowFile {
   return stampNames({
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: "wf-id",
     name: "bin",
     ...(config ? { config } : {}),
@@ -31,7 +31,7 @@ function binaryFile(config?: ConfigObject): WorkflowFile {
 // fails the config gate — the lever for the validation-vs-`$env` ordering.
 function promptFile(config?: ConfigObject): WorkflowFile {
   return stampNames({
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: "wf-id",
     name: "ask",
     ...(config ? { config } : {}),

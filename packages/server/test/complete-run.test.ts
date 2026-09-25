@@ -216,7 +216,7 @@ describe("error taxonomy", () => {
     const leafId = await awaitingLeafId(rootRunId);
     // Same node id, different type: the parked leaf can never validly complete against this file.
     const retyped = {
-      format: "path/workflow@4",
+      format: "path/workflow@5",
       id: "84c0b1d1-9372-4e9c-9fce-5db6f10b4865",
       name: "awaiting-complete",
       body: [
@@ -240,7 +240,7 @@ describe("error taxonomy", () => {
     // A parkable leaf with the *same* node id, type and schema, under a different workflow id: the
     // node lookup alone would match it, so only the run's recorded identity can refuse this file.
     const swapped = {
-      format: "path/workflow@4",
+      format: "path/workflow@5",
       id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
       name: "awaiting-complete",
       body: [

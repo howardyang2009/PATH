@@ -131,10 +131,22 @@ export interface WorkflowFileParseFailure {
 // identity), so the fix is to migrate, not to hand-edit `format` (workflow-format-v3.md §1). Both
 // `safeParseWorkflowFileWith` and `safeParseStepTemplateWith` run this pre-check. The engine reads the
 // current format only — there is no dual reader.
+//
+// The pre-check is symmetric (ADR 0058 §6): a well-formed version *newer* than `FORMAT_VERSION` gets
+// "upgrade PATH", not a bare invalid-literal, so a file written by a newer PATH is legible on an older
+// engine. A malformed version string still falls through to zod's literal mismatch.
 export function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   if (typeof json !== "object" || json === null) return null;
   const format = (json as { format?: unknown }).format;
-  if (typeof format !== "string" || !(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
+  if (typeof format !== "string") return null;
+  const version = formatVersionNumber(format);
+  if (version !== null && version > (formatVersionNumber(FORMAT_VERSION) ?? 0)) {
+    return {
+      success: false,
+      errors: [`${format} is newer than this engine reads (${FORMAT_VERSION}) — upgrade PATH to read it`],
+    };
+  }
+  if (!(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
   // Per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never a generic
   // zod "invalid literal" on `format`. Each older string names its whole codemod chain in the order
   // the scripts must run, because a single codemod migrates one step only and would not move a file
@@ -146,6 +158,12 @@ export function supersededFormatError(json: unknown): WorkflowFileParseFailure |
       `${format} is no longer read — run ${codemods.join(" then ")} to migrate this file to ${FORMAT_VERSION}`,
     ],
   };
+}
+
+// `path/workflow@<n>` → n; null for anything malformed (digits only, no leading zeros).
+function formatVersionNumber(format: string): number | null {
+  const match = /^path\/workflow@(0|[1-9]\d*)$/.exec(format);
+  return match ? Number(match[1]) : null;
 }
 
 // The superseded-format pre-check and the success/failure shaping both doors share: parse a file

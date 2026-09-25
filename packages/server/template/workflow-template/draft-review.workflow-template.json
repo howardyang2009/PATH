@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@4",
+  "format": "path/workflow@5",
   "id": "3da8534b-f9a8-4b14-a270-e43f8b650571",
   "name": "draft-review",
   "input": {

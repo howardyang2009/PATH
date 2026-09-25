@@ -72,7 +72,7 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@4", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
+  return stampNames({ format: "path/workflow@5", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
 }
 
 function contextsOf(observer: FakeObserver, runId: string): JsonValue[] {

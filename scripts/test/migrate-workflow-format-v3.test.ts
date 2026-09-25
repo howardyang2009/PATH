@@ -44,13 +44,14 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 
 /**
  * The migrated document must be a *loadable* file, not merely a reshaped one. `@3` is superseded now
- * (the schema reads `@4`), so lift a copy the rest of the way with the `@4` codemod first — the check
+ * (the schema reads `@5`), so lift a copy the rest of the way with the `@4` and `@5` codemods first — the check
  * stays "the migrated file loads" without disturbing the `@3` file the test's other assertions read.
  */
 function expectSchemaValid(file: string): void {
-  const copy = `${file}.v4.json`;
+  const copy = `${file}.lifted.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
   runCodemod([copy], dir, "migrate-workflow-format-v4.ts");
+  runCodemod([copy], dir, "migrate-workflow-format-v5.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
 }
