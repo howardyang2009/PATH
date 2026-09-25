@@ -206,7 +206,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       title={
         <>
           {inTemplateMode && openedResult ? <TemplateFileName template={activeTemplate ?? null} /> : null}
-          <FileStatus frame={active} saveState={session.saveState} />
+          <FileStatus frame={active} saveState={session.saveState} onReload={session.reloadActive} />
         </>
       }
       toolbar={
@@ -234,7 +234,6 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             }
             // Save as…: a copy to a new workflow file, or a copy to a new template.
             onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-copy")}
-            onReload={session.reloadActive}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
             onReacquire={() => activePath && reacquire(activePath)}

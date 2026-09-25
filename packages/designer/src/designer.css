@@ -1394,13 +1394,26 @@ body {
   color: var(--k-checkpoint);
 }
 
+.file-status-failed {
+  color: var(--status-failed-fg);
+}
+
+.file-status-action {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
 .author-mode-tag + .file-status {
   margin-left: 10px;
 }
 
-/* Save conflict/error and a lost lease read as a failure; a held-by-other reads as a caution. */
-.save-conflict,
-.save-error,
+/* A lost lease reads as a failure; a held-by-other reads as a caution. */
 .lease-lost,
 .lease-error {
   max-width: 420px;
@@ -1410,24 +1423,6 @@ body {
   background: var(--status-failed-bg);
   border: 1px solid var(--status-failed-fg);
   border-radius: 6px;
-}
-
-.save-conflict {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.save-conflict button {
-  padding: 3px 10px;
-  font: inherit;
-  font-size: var(--fs-sm);
-  color: inherit;
-  background: transparent;
-  border: 1px solid currentColor;
-  border-radius: 5px;
-  cursor: pointer;
 }
 
 .lease-banner {

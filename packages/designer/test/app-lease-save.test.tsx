@@ -140,7 +140,8 @@ describe("Designer save through the write route (#371)", () => {
     // could time out under a loaded CI runner.
     await waitFor(() => expect(calls.put).toHaveLength(1));
     const alert = await screen.findByText(/changed on disk since you opened it/);
-    expect(alert).toBeInTheDocument();
+    // It replaces the file status in the top bar's centre slot, not a banner after the buttons.
+    expect(alert.closest(".topbar-title")).not.toBeNull();
     // The buffer is not discarded — the canvas still holds the file.
     expect(screen.getByText("draft")).toBeInTheDocument();
     // Save is blocked while in conflict: re-sending the same stale ETag would only 412 again.

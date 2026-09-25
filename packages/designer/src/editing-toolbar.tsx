@@ -28,11 +28,38 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 
 /**
  * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
- * never shift when it changes: "Unsaved edits" for a buffer with unsaved work, or "Saved" after a save
- * lands. An id-less file opens dirty with no edit (ids stamped on import, ADR 0015), so that reason is
+ * never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
+ * recovery) or any other save error. Else "Unsaved edits" for a buffer with unsaved work, or "Saved"
+ * after a save lands. An id-less file opens dirty with no edit (ids stamped on import, ADR 0015), so that reason is
  * named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
-export function FileStatus({ frame, saveState }: { frame: Frame | undefined; saveState: SaveState }): JSX.Element | null {
+export function FileStatus({
+  frame,
+  saveState,
+  onReload,
+}: {
+  frame: Frame | undefined;
+  saveState: SaveState;
+  /** Re-fetch the active file from disk — the stale-write conflict recovery. */
+  onReload: () => void;
+}): JSX.Element | null {
+  if (saveState.phase === "conflict") {
+    return (
+      <span className="file-status file-status-failed" role="alert" title="This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits.">
+        Save refused: this file changed on disk since you opened it
+        <button type="button" className="file-status-action" onClick={onReload}>
+          Reload file
+        </button>
+      </span>
+    );
+  }
+  if (saveState.phase === "error") {
+    return (
+      <span className="file-status file-status-failed" role="alert" title={saveState.message}>
+        Could not save: {saveState.message}
+      </span>
+    );
+  }
   const opened = openedResultOf(frame);
   if (opened && frameHasUnsavedWork(frame)) {
     // `pristine`: the buffer still equals its bytes at the last save-point, so only the id stamp dirties it.
@@ -55,7 +82,7 @@ export function FileStatus({ frame, saveState }: { frame: Frame | undefined; sav
  * The top-bar editing controls (#371). The **Workflow | Template** switch ({@link ModeSwitch}) picks the
  * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save and
  * Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
- * conflict is shown, not swallowed. The lease affordances are an acquire `409` (someone else holds the
+ * conflict is shown ({@link FileStatus}, centred in the top bar), not swallowed. The lease affordances are an acquire `409` (someone else holds the
  * file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was lost
  * mid-edit: a warning and a re-acquire). Both leave the buffer intact — the lease is politeness, the
  * `If-Match` precondition is what actually guards the bytes (ADR 0017).
@@ -92,7 +119,6 @@ export function EditingToolbar({
   onRedo,
   onSave,
   onSaveAs,
-  onReload,
   lease,
   onTakeover,
   onReacquire,
@@ -115,8 +141,6 @@ export function EditingToolbar({
   onSave: () => void;
   /** Save a copy under a new name: a new workflow file in workflow mode, a new template in template mode. */
   onSaveAs: () => void;
-  /** Re-fetch the active file from disk — the stale-write conflict recovery. */
-  onReload: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
@@ -149,22 +173,6 @@ export function EditingToolbar({
       <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
         Save as…
       </button>
-      {conflict ? (
-        <div className="save-conflict" role="alert">
-          <span>
-            This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get
-            the latest, then re-apply your edits.
-          </span>
-          <button type="button" onClick={onReload}>
-            Reload file
-          </button>
-        </div>
-      ) : null}
-      {saveState.phase === "error" ? (
-        <div className="save-error" role="alert">
-          Could not save: {saveState.message}
-        </div>
-      ) : null}
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>
   );
