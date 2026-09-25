@@ -86,9 +86,16 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
       expect(within(steps).getByText(label)).toBeInTheDocument();
     }
     const controllers = within(palette).getByRole("region", { name: "Controller" });
+    expect(within(controllers).getByRole("tab", { name: "Structure" })).toHaveAttribute("aria-selected", "true");
+    const structure = within(controllers).getByRole("tabpanel", { name: "Structure" });
     for (const label of ["Parallel", "Branch", "While-do", "Sequence", "Checkpoint"]) {
-      expect(within(controllers).getByText(label)).toBeInTheDocument();
+      expect(within(structure).getByText(label)).toBeInTheDocument();
     }
+    expect(within(controllers).queryByText("Goto")).not.toBeInTheDocument();
+    fireEvent.click(within(controllers).getByRole("tab", { name: "Graph" }));
+    const graph = within(controllers).getByRole("tabpanel", { name: "Graph" });
+    expect(within(graph).getByText("Goto")).toBeInTheDocument();
+    expect(within(graph).queryByText("Parallel")).not.toBeInTheDocument();
   });
 
   it("shows an empty canvas when no file is opened", async () => {

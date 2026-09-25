@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
-import { paletteGroups, templateGroups, type PaletteEntry } from "./palette-data.js";
+import { paletteGroups, templateGroups, type PaletteEntry, type PaletteSubTab } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
 
@@ -14,7 +14,8 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
 
 /**
  * The palette rail (#368, #577): a **Build** | **Templates** tab pair (#564 variant C). Build holds the
- * primitives the author places from — Step + Controller. A click **arms** an entry's kind; the canvas
+ * primitives the author places from — Step + Controller; Controller splits into a
+ * **Structure** | **Graph** sub-tab pair, with `goto` on Graph. A click **arms** an entry's kind; the canvas
  * then opens every socket the grammar admits it into (§ Adding — an illegal socket never opens, so an
  * illegal drop is unreachable). A second click on the armed card disarms it.
  *
@@ -109,18 +110,76 @@ function BuildTab({
     <>
       {paletteGroups(plugins).map((group) => (
         <PaletteGroupSection key={group.title} title={group.title}>
-          <ul className="palette-list">
-            {group.entries.map((entry) => (
-              <PaletteCard
-                key={entry.kind}
-                entry={entry}
-                armed={armed?.kind === "node" && armed.type === entry.kind}
-                onArm={(kind) => onArm(kind === null ? null : { kind: "node", type: kind })}
-              />
-            ))}
-          </ul>
+          {group.tabs === undefined ? (
+            <PaletteCardList entries={group.entries} armed={armed} onArm={onArm} />
+          ) : (
+            <PaletteSubTabs group={group.title} tabs={group.tabs} armed={armed} onArm={onArm} />
+          )}
         </PaletteGroupSection>
       ))}
+    </>
+  );
+}
+
+function PaletteCardList({
+  entries,
+  armed,
+  onArm,
+}: {
+  entries: readonly PaletteEntry[];
+  armed: Armed | null;
+  onArm: (armed: Armed | null) => void;
+}) {
+  return (
+    <ul className="palette-list">
+      {entries.map((entry) => (
+        <PaletteCard
+          key={entry.kind}
+          entry={entry}
+          armed={armed?.kind === "node" && armed.type === entry.kind}
+          onArm={(kind) => onArm(kind === null ? null : { kind: "node", type: kind })}
+        />
+      ))}
+    </ul>
+  );
+}
+
+/** A group's sub-tabs (the Controller group: Structure | Graph). The first tab is selected by default. */
+function PaletteSubTabs({
+  group,
+  tabs,
+  armed,
+  onArm,
+}: {
+  group: string;
+  tabs: readonly PaletteSubTab[];
+  armed: Armed | null;
+  onArm: (armed: Armed | null) => void;
+}) {
+  const [selected, setSelected] = useState(tabs[0]!.key);
+  const current = tabs.find((tab) => tab.key === selected) ?? tabs[0]!;
+  const prefix = `palette-${group.toLowerCase().replace(/\s+/g, "-")}`;
+  return (
+    <>
+      <div className="palette-subtabs" role="tablist" aria-label={`${group} sections`}>
+        {tabs.map(({ key, label }) => (
+          <button
+            key={key}
+            type="button"
+            role="tab"
+            id={`${prefix}-tab-${key}`}
+            className="palette-subtab"
+            aria-selected={current.key === key}
+            aria-controls={`${prefix}-panel-${key}`}
+            onClick={() => setSelected(key)}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+      <div role="tabpanel" id={`${prefix}-panel-${current.key}`} aria-labelledby={`${prefix}-tab-${current.key}`}>
+        <PaletteCardList entries={current.entries} armed={armed} onArm={onArm} />
+      </div>
     </>
   );
 }

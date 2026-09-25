@@ -90,6 +90,11 @@ describe("#619 palette and mint", () => {
   it("offers goto in the Controller group", () => {
     const controllers = paletteGroups([]).find((group) => group.title === "Controller")!;
     expect(controllers.entries.map((entry) => entry.kind)).toContain("goto");
+    const tabs = controllers.tabs!.map((tab) => [tab.label, tab.entries.map((entry) => entry.kind)]);
+    expect(tabs).toEqual([
+      ["Structure", ["parallel", "branch", "while-do", "sequence", "checkpoint"]],
+      ["Graph", ["goto"]],
+    ]);
   });
 
   it("mints a goto with an empty target and max_jumps 3", () => {

@@ -3,7 +3,8 @@ import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 /**
  * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
  * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
- * **Controller** — the five Structure Controllers (`checkpoint` included) and the Graph Controller `goto`, fixed by the grammar. The **Templates**
+ * **Controller** — fixed by the grammar, split into a **Structure** sub-tab (the five Structure Controllers,
+ * `checkpoint` included) and a **Graph** sub-tab (the Graph Controller `goto`). The **Templates**
  * tab: **Step-Template** and **Workflow-Template**, one row per entry of `GET /v0/templates`.
  *
  * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
@@ -29,6 +30,16 @@ export interface PaletteEntry {
 
 export interface PaletteGroup {
   readonly title: string;
+  /** Every entry of the group, in order. */
+  readonly entries: readonly PaletteEntry[];
+  /** Sub-tabs that split `entries` for display, when the group has them (the Controller group: Structure | Graph). */
+  readonly tabs?: readonly PaletteSubTab[];
+}
+
+/** One sub-tab of a palette group: a label and the entries it shows. */
+export interface PaletteSubTab {
+  readonly key: string;
+  readonly label: string;
   readonly entries: readonly PaletteEntry[];
 }
 
@@ -57,16 +68,27 @@ function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 
-/** Controllers — the five Structure Controllers (checkpoint included) and the one Graph Controller, goto, fixed by the grammar (§ What is authorable). */
+/** The five Structure Controllers, checkpoint included, fixed by the grammar (§ What is authorable). */
+const STRUCTURE_CONTROLLERS: readonly PaletteEntry[] = [
+  { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
+  { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
+  { kind: "while-do", label: "While-do", blurb: "A bounded loop over one body", hue: "while" },
+  { kind: "sequence", label: "Sequence", blurb: "An ordered stack of nodes", hue: "sequence" },
+  { kind: "checkpoint", label: "Checkpoint", blurb: "An assertion on the run", hue: "checkpoint" },
+];
+
+/** The one Graph Controller, goto, fixed by the grammar. */
+const GRAPH_CONTROLLERS: readonly PaletteEntry[] = [
+  { kind: "goto", label: "Goto", blurb: "A bounded jump to a first-level node", hue: "goto" },
+];
+
+/** Controllers, split into a Structure tab and a Graph tab. */
 const CONTROLLERS: PaletteGroup = {
   title: "Controller",
-  entries: [
-    { kind: "parallel", label: "Parallel", blurb: "Branches with a join mode", hue: "parallel" },
-    { kind: "branch", label: "Branch", blurb: "First-match arms with an else", hue: "branch" },
-    { kind: "while-do", label: "While-do", blurb: "A bounded loop over one body", hue: "while" },
-    { kind: "sequence", label: "Sequence", blurb: "An ordered stack of nodes", hue: "sequence" },
-    { kind: "checkpoint", label: "Checkpoint", blurb: "An assertion on the run", hue: "checkpoint" },
-    { kind: "goto", label: "Goto", blurb: "A bounded jump to a first-level node", hue: "goto" },
+  entries: [...STRUCTURE_CONTROLLERS, ...GRAPH_CONTROLLERS],
+  tabs: [
+    { key: "structure", label: "Structure", entries: STRUCTURE_CONTROLLERS },
+    { key: "graph", label: "Graph", entries: GRAPH_CONTROLLERS },
   ],
 };
 

@@ -238,6 +238,32 @@ body {
   border-bottom-color: var(--accent);
 }
 
+/* Controller sub-tabs: Structure | Graph, styled like the Build | Templates tabs. */
+.palette-subtabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.palette-subtab {
+  flex: 1;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  padding: 7px;
+  cursor: pointer;
+  background: none;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  color: var(--text-muted);
+}
+
+.palette-subtab[aria-selected="true"] {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
 .palette-card:disabled {
   cursor: not-allowed;
   opacity: 0.6;
