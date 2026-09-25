@@ -9,13 +9,20 @@ const MODES: readonly { key: EditMode; label: string }[] = [
 ];
 
 /**
- * Template mode's controls. `template` is the opened template source, or `null` for a new template not
- * saved yet. Save writes back to `template` (or, for a new one, opens the first-save dialog); Save as
- * workflow… applies to a workflow-template only.
+ * Template mode's file name, centred in the top bar (#580): the opened template source, whose Save writes
+ * back to it, or — for a new template not saved yet (`template` `null`) — a note that it has no file yet.
+ * A shipped template is read-only: its write-back is the API's 403, and Save as… forks it.
  */
-export interface TemplateModeControls {
-  template: TemplateSource | null;
-  onSaveAsWorkflow: () => void;
+export function TemplateFileName({ template }: { template: TemplateSource | null }): JSX.Element {
+  if (!template) {
+    return <span className="author-mode-tag">New template (not saved)</span>;
+  }
+  return (
+    <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
+      <code>{template.name}{templateSuffix(template.kind)}</code>
+      {template.readOnly ? " (shipped, read-only)" : null}
+    </span>
+  );
 }
 
 /**
@@ -63,7 +70,6 @@ export function EditingToolbar({
   lease,
   onTakeover,
   onReacquire,
-  templateMode,
 }: {
   /** Start a new workflow or a new template, by mode. */
   onNew: () => void;
@@ -89,22 +95,11 @@ export function EditingToolbar({
   lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
-  /** Present in template mode: the template being edited and its Save-As doors. */
-  templateMode?: TemplateModeControls;
 }): JSX.Element {
   const saving = saveState.phase === "saving";
   const conflict = saveState.phase === "conflict";
-  const template = templateMode?.template ?? null;
   return (
     <div className="editing-toolbar">
-      {/* Template mode (#580): the opened file is the template source, so Save writes back to it. A
-          shipped one is read-only: its write-back is the API's 403, and Save as… forks it. */}
-      {template ? (
-        <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
-          Template source: <code>{template.name}{templateSuffix(template.kind)}</code>
-          {template.readOnly ? " (shipped, read-only)" : null}
-        </span>
-      ) : null}
       {/* New and Open… discard the current stack, so they sit apart from the edit controls. */}
       <button type="button" className="open-btn" onClick={onNew}>
         New
@@ -128,11 +123,6 @@ export function EditingToolbar({
       <button type="button" className="save-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
         Save as…
       </button>
-      {template?.kind === "workflow" && templateMode ? (
-        <button type="button" className="open-btn" onClick={templateMode.onSaveAsWorkflow} disabled={saving}>
-          Save as workflow…
-        </button>
-      ) : null}
       {saveState.phase === "saved" ? (
         <span className="save-status" role="status">
           Saved.

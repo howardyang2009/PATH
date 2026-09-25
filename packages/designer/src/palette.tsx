@@ -279,7 +279,8 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
  * Step-Template card is an arm toggle like a Build card (#578). A Workflow-Template card is a one-shot
  * select, enabled only while the canvas is empty (#579). In template mode (`canEdit`), a double-click on
- * any card opens its template file in author mode (#580). The card is only `aria-disabled`, so the double-click still reaches a
+ * any card opens its template file in author mode (#580), and a Workflow-Template card does nothing on a
+ * single click. The card is only `aria-disabled`, so the double-click still reaches a
  * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
  */
 function TemplateCard({
@@ -301,7 +302,10 @@ function TemplateCard({
 }) {
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
   const armable = template.kind === "step";
-  const blocked = !armable && !canvasEmpty;
+  // In template mode a Workflow-Template card is an edit target only: a single click places nothing, so
+  // the two clicks of a double-click cannot fill the canvas before the double-click opens the template.
+  const editOnly = canEdit && !armable;
+  const blocked = !armable && !editOnly && !canvasEmpty;
   const disabled = !template.valid || blocked;
   const editable = canEdit && template.id !== null;
   const editHint = canEdit ? "Double-click to edit the template." : "Switch to Template mode to edit this template.";
@@ -317,7 +321,7 @@ function TemplateCard({
           .join("\n") || undefined}
         aria-pressed={armable ? armed : undefined}
         data-armed={armed ? "true" : "false"}
-        onClick={disabled ? undefined : armed ? onDisarm : onSelect}
+        onClick={disabled || editOnly ? undefined : armed ? onDisarm : onSelect}
         onDoubleClick={editable ? onEdit : undefined}
       >
         <span className="palette-card-swatch" aria-hidden="true" />

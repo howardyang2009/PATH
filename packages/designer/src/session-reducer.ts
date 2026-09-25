@@ -370,10 +370,9 @@ export type SessionAction =
    */
   | { type: "templateSavedAs"; depth: number; fromId: string | null; template: TemplateSource; file: WorkflowFile; etag: string }
   /**
-   * A Save-As wrote a new `*.workflow.json` at `relativePath`: an author-mode Save as workflow (#580), or a
-   * workflow-mode Save as…. If the frame at `depth` still edits `fromId` (its template's id, or for a
-   * workflow frame its file's id), the session becomes that saved file as a fresh root, the way a Save-As
-   * moves the editor onto the file it wrote. Always sets the `saved` phase.
+   * A workflow-mode Save as… wrote a copy to a new `*.workflow.json` at `relativePath`. If the frame at
+   * `depth` still edits the file with id `fromId`, the session becomes that saved file as a fresh root,
+   * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
    */
   | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
@@ -609,7 +608,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "detachedSaved": {
       const top = state.frames[action.depth];
       const opened = openedResultOf(top);
-      if (!top || !opened || (top.template?.id ?? opened.file.id) !== action.fromId) return { ...state, saveState: { phase: "saved" } };
+      if (!top || !opened || opened.file.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
       const bytes = canonicalSerialize(action.file);
       const saved: Frame = {
         path: action.relativePath,

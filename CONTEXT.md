@@ -379,8 +379,8 @@ and issues use them exactly.
   `*.workflow-template.json` file itself opened to edit the template source) is ordinary file editing
   under the ADR 0015 round-trip, so its default Save writes **back to the original** template file with
   the workflow `id` preserved; a Save-As to a **new** `*.workflow-template.json` mints a fresh workflow
-  `id` (two templates must not share identity), and a "Save as workflow" runs Instantiation to a
-  `*.workflow.json`. Author-mode save rides the template write-route (#563); the Designer opens a
+  `id` (two templates must not share identity). Author mode has no "Save as workflow": a template
+  saves only as a template, and a workflow is made from one in consume mode. Author-mode save rides the template write-route (#563); the Designer opens a
   template source, a `*.workflow-template.json` or a `*.step-template.json`, with (in template mode)
   a double-click on its palette card or Open… (#580, designer-spec § Edit mode: Workflow | Template).
   The Designer's toolbar **Workflow | Template** switch picks which of the two kinds of file the

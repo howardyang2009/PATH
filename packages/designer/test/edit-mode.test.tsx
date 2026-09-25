@@ -92,6 +92,7 @@ describe("Workflow | Template edit-mode switch", () => {
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.getByText("New template (not saved)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
@@ -112,6 +113,7 @@ describe("Workflow | Template edit-mode switch", () => {
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
     expect(within(dialog).getByLabelText("Step-template")).toBeChecked();
+    expect(within(dialog).getByLabelText("Template description").tagName).toBe("TEXTAREA");
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "gate" } });
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
 
@@ -202,5 +204,23 @@ describe("Workflow | Template edit-mode switch", () => {
 
     await switchTo("Workflow");
     expect(toggle).toBeEnabled();
+  });
+
+  it("a real double-click on a Workflow-Template in template mode opens it, placing nothing first", async () => {
+    renderApp();
+    await switchTo("Template");
+    const palette = screen.getByRole("region", { name: "Palette" });
+    fireEvent.click(within(palette).getByRole("tab", { name: "Templates" }));
+    const card = await within(palette).findByRole("button", { name: /^nightly/ });
+    const confirm = vi.spyOn(window, "confirm");
+
+    // A browser double-click fires two clicks, then the dblclick. Let the first click's read land.
+    fireEvent.click(card);
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    fireEvent.click(card);
+    fireEvent.doubleClick(card);
+
+    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json"));
+    expect(confirm).not.toHaveBeenCalled();
   });
 });

@@ -19,6 +19,8 @@ export interface AppShellProps {
   pane: ReactNode;
   /** The Workflow | Template edit-mode switch, shown right after the brand. */
   modeSwitch?: ReactNode;
+  /** Centred in the top bar: template mode's file name. */
+  title?: ReactNode;
   /** The top-bar actions: save, and the edit-lease status/banners (#371). */
   toolbar?: ReactNode;
   /** The bottom-docked run surfaces: launch, run list, and the run inspector (#372). */
@@ -35,7 +37,7 @@ export interface AppShellProps {
  * The brand strip says `designer`, then the Workflow | Template edit-mode switch, so the author sees the
  * surface and the mode at a glance.
  */
-export function AppShell({ palette, canvas, pane, modeSwitch, toolbar, runDock }: AppShellProps) {
+export function AppShell({ palette, canvas, pane, modeSwitch, title, toolbar, runDock }: AppShellProps) {
   const panesRef = useRef<HTMLDivElement | null>(null);
   // Palette (handle on its right edge, grow +1) and properties (handle on its left edge, grow -1); the
   // canvas stage between them takes the remainder — the same model as the run dock's three panes.
@@ -55,6 +57,8 @@ export function AppShell({ palette, canvas, pane, modeSwitch, toolbar, runDock }
         <span className="brand">PATH</span>
         <span className="brand-sub">designer</span>
         {modeSwitch ?? null}
+        {/* The centre slot always renders, so the toolbar keeps the right end with or without a title. */}
+        <div className="topbar-title">{title ?? null}</div>
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>
       <div className="panes" ref={panesRef}>

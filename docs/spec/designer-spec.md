@@ -368,15 +368,15 @@ The top bar shows a **Workflow | Template** switch right after the `PATH designe
 files; **Template** mode edits template sources (`*.step-template.json`, `*.workflow-template.json`) and
 new templates. The toolbar buttons keep the same plain labels in both modes, because the switch names
 the mode: **New** and **Open…** act in the current mode (a new workflow or template; the workflow picker
-or the template picker), then Undo, Redo, **Save** and **Save as…** (and in template mode **Save as
-workflow…** for a workflow-template). In workflow mode, Save as… writes a copy of the open workflow to
+or the template picker), then Undo, Redo, **Save** and **Save as…**. A template saves only as a template:
+template mode has no Save as workflow door, and a workflow is made from a workflow-template in workflow
+mode, by selecting its card into an empty canvas (consume mode, above). In workflow mode, Save as… writes a copy of the open workflow to
 a new `*.workflow.json` through the first-save dialog (titled "Save workflow as", prefilled
 `<name>-copy` in the source file's directory) as an exclusive create. The copy is a new workflow:
 Instantiation gives it a fresh workflow `id` and fresh node ids (two workflows must not share identity,
 ADR 0006), and its `name` is the new file's stem. The editor then edits the copy; the original file is
 unchanged on disk. A switch clears the canvas. Template mode's Open… and a template-card
-double-click (template mode only) open a template; Save as workflow… or opening a workflow enters
-workflow mode. In workflow mode the Templates tab only inserts: a double-click never leaves the open
+double-click (template mode only) open a template; opening a workflow enters workflow mode. In workflow mode the Templates tab only inserts: a double-click never leaves the open
 workflow, and the card's hover text says "Switch to Template mode to edit this template." Every door that replaces the stack (New, Open…, a switch, a template double-click) asks
 "Discard unsaved changes?" first when any frame on the stack is dirty. The Runs dock is disabled in template mode (its
 toggle greys out, and a note says "Templates do not run"), because a template is engine-blind
@@ -395,7 +395,9 @@ In template mode, a **double-click** on a Step-Template or Workflow-Template car
 ([#580](https://github.com/howardyang2009/PATH/issues/580)) opens the `*.step-template.json` or
 `*.workflow-template.json` itself as a fresh root in template mode, discarding the current stack like
 Open…. Template mode's Open… picker opens the same way. The
-double-click disarms the card first, so its own single clicks leave nothing armed or placed. The suffix is the discriminator
+double-click disarms the card first, so its own single clicks leave nothing armed or placed. In
+template mode a Workflow-Template card does nothing on a single click (it is an edit target only), so
+its double-click never first fills an empty canvas with an instance. The suffix is the discriminator
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
 decision 8): a `*.workflow.json` opens in workflow mode, a template card's select is consume mode, and
 the template file opened to edit is **author mode**. The read is `GET /v0/templates/:id`
@@ -407,23 +409,29 @@ canvas holds nodes), so an author can open an invalid template and see why.
 
 An author-mode frame is id-addressed, not path-addressed
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md)). It
-takes no edit lease and cannot launch, since a template runs only after Instantiation. The toolbar
-names the source (`Template source: <name>.workflow-template.json` or `<name>.step-template.json`, and
-`shipped, read-only` for a shipped one) and offers three save doors (a step-template has the first two):
+takes no edit lease and cannot launch, since a template runs only after Instantiation. The top bar
+names the source file in its centre (`<name>.workflow-template.json` or `<name>.step-template.json`,
+and `shipped, read-only` for a shipped one; `New template (not saved)` before a new template's first
+save) and offers two save doors:
 
 - **Save** writes back to the original through `PUT /v0/templates/:id` under the read's `If-Match`,
   with the workflow `id` preserved. For a step-template it writes the envelope: `format`, `id`,
   `description`, and the edited `body`. A `412` is the same stale-write conflict as a workflow's, and Reload
   re-reads the template. A **shipped** template refuses the write with the API's `403`, shown as the
   save error.
-- **Save as…** names a new template of the same kind (the stem is prefilled `<name>-copy`;
-  the `.workflow-template.json` or `.step-template.json` suffix is fixed) and creates it through
+- **Save as…** names a new template (the stem is prefilled `<name>-copy`; the suffix follows the
+  chosen kind) and creates it through
   `POST /v0/templates` with a fresh `id`, since two templates must not share identity. Node ids are kept: they are unique in the
   file, and Instantiation re-stamps them on use. A taken name (`409`) asks for another name. The editor
   then edits the new template, and the palette re-lists it.
-- **Save as workflow…** runs Instantiation plus the workflow-level re-mint (a fresh workflow `id`, fresh
-  node ids) and places the instance with the first-save dialog as an exclusive `PUT /v0/workflows`
-  create. The editor then edits the new `*.workflow.json`; the template file is unchanged.
+  The dialog's **Kind** is preselected to the source's kind and can be changed. A step-template saved
+  as a workflow-template gets a workflow file around its body, named by the new template, with no
+  `input`, `output`, `config` or `worker_defaults`. A workflow-template saved as a step-template keeps
+  only its body; the dialog notes that, and lists the workflow-level fields that hold a value and will
+  be dropped. A step-template needs a description (the palette blurb), prefilled from the source's.
+
+Author mode has no **Save as workflow** door (it was removed with the Workflow | Template switch, which
+supersedes that part of ADR 0049 decision 8): a template saves only as a template.
 
 ### What is authorable: the whole grammar, nothing deferred to JSON
 

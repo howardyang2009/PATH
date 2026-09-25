@@ -18,22 +18,28 @@ export interface TemplateSaveInput {
  * Template mode's save dialog. A new user template always lands in `.path/template/<kind>-template/`
  * (`POST /v0/templates` picks the place), so the author chooses only what the file needs:
  *
- * - **Save as…** of an opened template (`source` set, #580): the name only. The kind and description are
- *   the source's, and the suffix is fixed by the kind.
+ * - **Save as…** of an opened template (`source` set, #580): the kind (preselected to the source's), the
+ *   name, and the description (prefilled from the source's). Saving a workflow-template as a
+ *   step-template keeps only its body, so the dialog lists the workflow-level fields it drops.
  * - First **Save** of a new template (`source` `null`): the kind (Step-template or Workflow-template),
- *   the name, and a description (a step-template requires one; it is the palette blurb).
+ *   the name, and a description.
+ *
+ * A step-template requires a description: it is the palette blurb.
  *
  * The create is create-only: a taken name is refused ("choose another name"), never an overwrite, and
  * only a `created` closes the dialog.
  */
 export function SaveTemplateAsDialog({
   source,
+  droppedFields = [],
   create,
   onCreated,
   onCancel,
 }: {
   /** The opened template this saves a copy of, or `null` for a new template's first save. */
   source: TemplateSource | null;
+  /** The source workflow's non-empty workflow-level fields a save as step-template would drop. */
+  droppedFields?: readonly string[];
   create: (input: TemplateSaveInput) => Promise<SaveAsTemplateResult>;
   onCreated: () => void;
   onCancel: () => void;
@@ -49,7 +55,8 @@ export function SaveTemplateAsDialog({
   const trimmed = name.trim();
   const clean = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
   const legal = NAME_PATTERN.test(clean);
-  const described = source !== null || kind === "workflow" || description.trim() !== "";
+  const described = kind === "workflow" || description.trim() !== "";
+  const dropping = source?.kind === "workflow" && kind === "step" ? droppedFields : [];
   const canSubmit = legal && described && !submitting;
   const title = source ? "Save as new template" : "Save new template";
 
@@ -75,19 +82,17 @@ export function SaveTemplateAsDialog({
             : "The template is saved with this project's templates."}
         </p>
 
-        {source ? null : (
-          <fieldset className="dialog-field template-kind">
-            <legend className="dialog-label">Kind</legend>
-            <label>
-              <input type="radio" name="template-kind" checked={kind === "step"} onChange={() => setKind("step")} />
-              Step-template
-            </label>
-            <label>
-              <input type="radio" name="template-kind" checked={kind === "workflow"} onChange={() => setKind("workflow")} />
-              Workflow-template
-            </label>
-          </fieldset>
-        )}
+        <fieldset className="dialog-field template-kind">
+          <legend className="dialog-label">Kind</legend>
+          <label>
+            <input type="radio" name="template-kind" checked={kind === "step"} onChange={() => setKind("step")} />
+            Step-template
+          </label>
+          <label>
+            <input type="radio" name="template-kind" checked={kind === "workflow"} onChange={() => setKind("workflow")} />
+            Workflow-template
+          </label>
+        </fieldset>
 
         <label className="dialog-field">
           <span className="dialog-label">Name</span>
@@ -107,22 +112,28 @@ export function SaveTemplateAsDialog({
           </span>
         </label>
 
-        {source ? null : (
-          <label className="dialog-field">
-            <span className="dialog-label">Description</span>
-            <input
-              className="new-file-stem"
-              aria-label="Template description"
-              value={description}
-              onChange={(event) => setDescription(event.target.value)}
-            />
-          </label>
-        )}
+        <label className="dialog-field">
+          <span className="dialog-label">Description</span>
+          <textarea
+            className="template-description"
+            aria-label="Template description"
+            rows={3}
+            placeholder="What this template does. It is shown on the palette card."
+            value={description}
+            onChange={(event) => setDescription(event.target.value)}
+          />
+        </label>
 
         {!legal && clean !== "" ? (
           <p className="new-file-error">Use lowercase letters, digits, and hyphens, starting with a letter.</p>
         ) : null}
         {!described ? <p className="dialog-hint">A step-template needs a description.</p> : null}
+        {source?.kind === "workflow" && kind === "step" ? (
+          <p className="dialog-hint" role="note">
+            A step-template keeps only the body.
+            {dropping.length > 0 ? ` ${formatList(dropping)} will be dropped.` : null}
+          </p>
+        ) : null}
         {error !== null ? (
           <p className="new-file-error" role="alert">
             {error}
@@ -140,4 +151,9 @@ export function SaveTemplateAsDialog({
       </div>
     </div>
   );
+}
+
+/** `a`, `a and b`, `a, b and c`. */
+function formatList(items: readonly string[]): string {
+  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

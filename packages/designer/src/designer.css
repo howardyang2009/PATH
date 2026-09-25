@@ -1379,9 +1379,19 @@ body {
 }
 
 /* Author mode (#580): names the template source the plain Save writes back to. */
+/* Template mode's file name, centred in the top bar between the mode switch and the toolbar. */
+.topbar-title {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .author-mode-tag {
   font-size: var(--fs-sm);
-  color: var(--text-muted);
+  color: var(--text);
 }
 
 .save-status {
@@ -1894,6 +1904,25 @@ body {
   align-items: center;
   gap: 6px;
   font-size: var(--fs-sm);
+}
+
+/* The template dialog's description: a bordered, multi-line box, so it reads as editable at a glance. */
+.template-description {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font: inherit;
+  color: var(--text);
+  background: var(--ground);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  resize: vertical;
+}
+
+.template-description:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
 }
 
 /* The open-template picker: one row per template, grouped by kind. */

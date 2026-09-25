@@ -444,9 +444,10 @@ describe("session-reducer — author mode on a *.workflow-template.json (#580)",
     expect(planSave(s)).toMatchObject({ kind: "template", id: uuid(7), ifMatch: "etag-c" });
   });
 
-  it("after a Save-as-workflow the session edits the new *.workflow.json, clean and written", () => {
+  it("after a workflow Save as… the session edits the new *.workflow.json, clean and written", () => {
+    const source = file("flow");
     const instance = { ...file("nightly"), id: uuid(8) };
-    const s = reduceSession(authoring(), { type: "detachedSaved", depth: 0, fromId: uuid(1), file: instance, relativePath: "nightly.workflow.json", etag: "etag-w" });
+    const s = reduceSession(sessionOn(openFrame(source)), { type: "detachedSaved", depth: 0, fromId: source.id, file: instance, relativePath: "nightly.workflow.json", etag: "etag-w" });
     expect(s.frames).toHaveLength(1);
     expect(s.frames[0]).toMatchObject({ path: "nightly.workflow.json", written: true, etag: "etag-w" });
     expect(s.frames[0]!.template).toBeUndefined();
