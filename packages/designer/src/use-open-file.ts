@@ -9,8 +9,12 @@ import {
   initialSessionState,
   planNewFileSave,
   planSave,
+  planNewTemplateSave,
   planTemplateSaveAs,
+  planWorkflowSaveAs,
   reduceSession,
+  stemName,
+  type EditMode,
   type Frame,
   type SaveState,
   type SessionAction,
@@ -25,7 +29,7 @@ import {
 // types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
 // the tests that import them from here.
 export { openedResultOf, frameDirty, frameCanUndo, frameCanRedo } from "./session-reducer.js";
-export type { Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
+export type { EditMode, Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
 
 /**
  * The Designer's open-and-navigate session (#367): fetch the step-plugin registry once, open a file against
@@ -91,6 +95,24 @@ export interface OpenSession {
    * `saveNewFile`. Reads dirty from open, so Save is live at once.
    */
   newFile: () => void;
+  /** The edit mode (Workflow | Template). */
+  mode: EditMode;
+  /** Switch the edit mode, discarding any current stack. The canvas is empty in the new mode. */
+  switchMode: (mode: EditMode) => void;
+  /** Start a new, unsaved template in template mode, discarding any current stack. */
+  newTemplate: () => void;
+  /**
+   * Workflow mode's **Save as…**: write a copy of the active buffer to a new `*.workflow.json` at
+   * `targetPath` as an exclusive create. The copy is a new workflow: Instantiation gives it a fresh
+   * workflow id and fresh node ids (two workflows must not share identity, ADR 0006), and its `name` is
+   * the new file's stem. On `created` the session edits the new file; the original file is unchanged.
+   */
+  saveWorkflowAs: (targetPath: string) => Promise<SaveNewFileResult>;
+  /**
+   * First-save a new template (template mode): create it through `POST /v0/templates` as `kind`, with a
+   * fresh id. On `created` the frame edits the new template.
+   */
+  saveNewTemplate: (kind: TemplateSource["kind"], name: string, description: string) => Promise<SaveAsTemplateResult>;
   /** Is the canvas empty — nothing open, or an active buffer with zero nodes (#579, `canvasEmpty`)? */
   canvasEmpty: boolean;
   /**
@@ -322,6 +344,14 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     apply({ type: "newFile" });
   }, [apply]);
 
+  const switchMode = useCallback((mode: EditMode): void => {
+    apply({ type: "switchMode", mode });
+  }, [apply]);
+
+  const newTemplate = useCallback((): void => {
+    apply({ type: "newTemplate" });
+  }, [apply]);
+
   const placeWorkflowInstance = useCallback(
     (file: WorkflowFile): boolean => {
       // The reducer re-checks emptiness against the current state, so a template read that lands after
@@ -536,6 +566,55 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply, client, commitSave],
   );
 
+  const saveWorkflowAs = useCallback(
+    (targetPath: string): Promise<SaveNewFileResult> => {
+      const plan = planWorkflowSaveAs(sessionRef.current);
+      if (!plan) return Promise.resolve({ status: "error", message: "No workflow to save." });
+      const file: WorkflowFile = { ...instantiateWorkflow(plan.file), name: stemName(targetPath) };
+      return commitSave({
+        file,
+        write: putWorkflowAt(targetPath, undefined),
+        successAction: (result) => ({ type: "detachedSaved", depth: plan.depth, fromId: plan.file.id, file, relativePath: result.relativePath, etag: result.etag }),
+      })
+        .then((result): SaveNewFileResult => ({ status: "created", path: result.relativePath }))
+        .catch((error: unknown): SaveNewFileResult => {
+          apply({ type: "setSaveState", saveState: IDLE });
+          if (error instanceof PathApiError && error.status === 412) return { status: "exists" };
+          return { status: "error", message: errorMessage(error) };
+        });
+    },
+    [apply, commitSave, putWorkflowAt],
+  );
+
+  const saveNewTemplate = useCallback(
+    (kind: TemplateSource["kind"], name: string, description: string): Promise<SaveAsTemplateResult> => {
+      const plan = planNewTemplateSave(sessionRef.current);
+      if (!plan) return Promise.resolve({ status: "error", message: "No new template to save." });
+      // A workflow-template's file carries its name; a step-template keeps only the body.
+      const file: WorkflowFile = { ...plan.file, id: crypto.randomUUID(), ...(kind === "workflow" ? { name } : {}) };
+      const template: TemplateSource = { id: file.id, kind, name, description, readOnly: false };
+      return commitSave({
+        file,
+        write: () => client.createTemplate({ kind, name, description, body: templateBody(template, file) }),
+        successAction: (result) => ({
+          type: "templateSavedAs",
+          depth: plan.depth,
+          fromId: null,
+          template: { ...template, id: result.id },
+          file,
+          etag: result.etag,
+        }),
+      })
+        .then((): SaveAsTemplateResult => ({ status: "created", name }))
+        .catch((error: unknown): SaveAsTemplateResult => {
+          apply({ type: "setSaveState", saveState: IDLE });
+          if (error instanceof PathApiError && error.status === 409) return { status: "exists" };
+          return { status: "error", message: errorMessage(error) };
+        });
+    },
+    [apply, client, commitSave],
+  );
+
   const saveAsWorkflow = useCallback(
     (targetPath: string): Promise<SaveNewFileResult> => {
       const plan = planTemplateSaveAs(sessionRef.current);
@@ -569,5 +648,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, frames, activeIndex, open, openTemplate, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, saveAsTemplate, saveAsWorkflow, reloadActive, saveState };
+  return { registry, mode: session.mode, switchMode, newTemplate, saveNewTemplate, saveWorkflowAs, frames, activeIndex, open, openTemplate, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, saveAsTemplate, saveAsWorkflow, reloadActive, saveState };
 }

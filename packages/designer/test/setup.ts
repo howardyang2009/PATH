@@ -16,3 +16,7 @@ configure({ asyncUtilTimeout: 5000 });
 afterEach(() => {
   cleanup();
 });
+
+// jsdom does not implement `window.confirm`. The Designer asks it before discarding unsaved edits (New,
+// Open…, a mode switch); default every test to "yes", and let a test that needs "no" spy on it.
+window.confirm = () => true;

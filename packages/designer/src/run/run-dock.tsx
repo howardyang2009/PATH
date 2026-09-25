@@ -25,6 +25,11 @@ const VRESIZER_SPAN = 12;
 
 export interface RunDockProps {
   client: PathApiClient;
+  /**
+   * Why the dock is disabled, or omitted when it is live. Set in template mode: a template never runs
+   * (it is engine-blind, ADR 0051), so the dock stays closed and its toggle is disabled with this note.
+   */
+  disabledReason?: string;
   /** The file open on the canvas — the launch target; `null` for a never-saved buffer. */
   workflowPath: string | null;
   /** The open workflow's `id` — the run-list scope key; `null` when nothing is open. */
@@ -69,7 +74,9 @@ export interface RunDockProps {
  * toggle is remembered only within the session (no persistence needed for a drawer).
  */
 export function RunDock(props: RunDockProps): JSX.Element {
-  const [open, setOpen] = useState(false);
+  const [expanded, setOpen] = useState(false);
+  // A disabled dock stays closed, and re-opens as it was when it is live again.
+  const open = expanded && props.disabledReason === undefined;
   const bodyRef = useRef<HTMLDivElement | null>(null);
 
   // The dock's own height: one drag-set dimension (handle on the top edge, drag up grows). The width
@@ -124,10 +131,12 @@ export function RunDock(props: RunDockProps): JSX.Element {
           className="run-dock-toggle"
           data-testid="run-dock-toggle"
           aria-expanded={open}
+          disabled={props.disabledReason !== undefined}
           onClick={() => setOpen((shown) => !shown)}
         >
           <span className="run-dock-caret" aria-hidden="true">{open ? "▾" : "▸"}</span> Runs
         </button>
+        {props.disabledReason !== undefined ? <span className="run-dock-note">{props.disabledReason}</span> : null}
       </header>
       {open && (
         <div className="run-dock-body" ref={bodyRef}>

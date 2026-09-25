@@ -43,7 +43,7 @@ body {
 /* Top bar — brand + surface tag, the counterpart to the Viewer's read-only strip. */
 .topbar {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   gap: 8px;
   padding: 8px 14px;
   background: var(--surface);
@@ -1317,6 +1317,33 @@ body {
   justify-content: flex-end;
 }
 
+/* The Workflow | Template edit-mode switch: a segmented control in the top bar, after the brand. */
+.mode-switch {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.mode-switch-option {
+  padding: 4px 12px;
+  font: inherit;
+  font-weight: 600;
+  color: var(--text-muted);
+  background: var(--surface);
+  border: 0;
+  cursor: pointer;
+}
+
+.mode-switch-option + .mode-switch-option {
+  border-left: 1px solid var(--border);
+}
+
+.mode-switch-option[aria-checked="true"] {
+  color: var(--surface);
+  background: var(--accent);
+}
+
 .save-btn {
   padding: 5px 14px;
   font: inherit;
@@ -1478,6 +1505,18 @@ body {
   display: flex;
   align-items: center;
   padding: 4px 10px;
+}
+
+/* Template mode disables the dock: the toggle greys out and a note says why. */
+.run-dock-toggle:disabled {
+  color: var(--text-muted);
+  cursor: default;
+}
+
+.run-dock-note {
+  margin-left: 8px;
+  font-size: var(--fs-xs);
+  color: var(--text-muted);
 }
 
 .run-dock-toggle {
@@ -1833,6 +1872,39 @@ body {
   font-size: var(--fs-sm);
   font-weight: 600;
   color: var(--text);
+}
+
+/* The new-template dialog's kind choice: two radios on one line. */
+.template-kind {
+  border: 0;
+  padding: 0;
+  margin-inline: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.template-kind .dialog-label {
+  width: 100%;
+  padding: 0;
+}
+
+.template-kind label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--fs-sm);
+}
+
+/* The open-template picker: one row per template, grouped by kind. */
+.template-picker-group + .template-picker-group {
+  margin-top: 12px;
+}
+
+.template-picker-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
 }
 
 .new-file-directory {

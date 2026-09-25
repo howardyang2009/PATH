@@ -29,6 +29,7 @@ export function Canvas({
   armed,
   onArm,
   problems,
+  onNew,
   onOpenExisting,
   onAuthorRef,
   workflowRunStatus,
@@ -40,7 +41,9 @@ export function Canvas({
   /** The active file's cross-node problems (#388, #392), derived once by the App and shared with the
    *  launch button's warning count — the canvas renders them as per-node markers and the problems panel. */
   problems: Problem[];
-  /** Open the pick-an-existing-workflow dialog (#254) — the empty canvas's second entry point beside "New". */
+  /** Start a new workflow or a new template, by the session's mode — the empty canvas's first entry point. */
+  onNew: () => void;
+  /** Open the pick-an-existing dialog for the mode (a workflow, #254, or a template) — the second entry point. */
   onOpenExisting: () => void;
   /** Open the ref-target chooser for an unset `workflow` block, keyed by its node id (#391) — the
    *  double-click entry that mirrors the pane's "Add a workflow reference". Absent for a from-scratch root
@@ -70,17 +73,18 @@ export function Canvas({
     return <CanvasNote title="Registry unavailable" hint={registry.message} />;
   }
   if (frames.length === 0) {
+    const noun = session.mode === "template" ? "template" : "workflow";
     return (
       <CanvasNote
         title="Empty canvas"
-        hint="No workflow open. Start a new one, or open an existing workflow to edit it."
+        hint={`No ${noun} open. Start a new one, or open an existing ${noun} to edit it.`}
         action={
           <div className="canvas-empty-actions">
-            <button type="button" className="new-file-start" onClick={session.newFile}>
-              New workflow
+            <button type="button" className="new-file-start" onClick={onNew}>
+              New {noun}
             </button>
             <button type="button" className="open-file-start" onClick={onOpenExisting}>
-              Open workflow
+              Open {noun}
             </button>
           </div>
         }

@@ -1,28 +1,56 @@
 import { useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
 import { templateSuffix } from "./session-reducer.js";
-import type { SaveState, TemplateSource } from "./use-open-file.js";
+import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
+
+const MODES: readonly { key: EditMode; label: string }[] = [
+  { key: "workflow", label: "Workflow" },
+  { key: "template", label: "Template" },
+];
 
 /**
- * Author mode's extra save doors (#580), present only while the active frame is a template source
- * (`*.workflow-template.json` or `*.step-template.json`). The plain Save then writes back to `template`;
- * these save it somewhere new. Save as workflow applies to a workflow-template only.
+ * Template mode's controls. `template` is the opened template source, or `null` for a new template not
+ * saved yet. Save writes back to `template` (or, for a new one, opens the first-save dialog); Save as
+ * workflow… applies to a workflow-template only.
  */
-export interface AuthorModeControls {
-  template: TemplateSource;
-  onSaveAsTemplate: () => void;
+export interface TemplateModeControls {
+  template: TemplateSource | null;
   onSaveAsWorkflow: () => void;
 }
 
 /**
- * The top-bar editing controls (#371): the Save button plus the two edit-lease affordances the lease
- * client raises. Save writes the active buffer through `PUT /v0/workflows` under its `If-Match`; a `412`
- * stale-write conflict is shown, not swallowed. The lease affordances are an acquire `409` (someone else
- * holds the file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was
- * lost mid-edit: a warning and a re-acquire). Both leave the buffer intact — the lease is politeness, the
+ * The top-bar editing controls (#371). The **Workflow | Template** switch ({@link ModeSwitch}) picks the
+ * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save and
+ * Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
+ * conflict is shown, not swallowed. The lease affordances are an acquire `409` (someone else holds the
+ * file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was lost
+ * mid-edit: a warning and a re-acquire). Both leave the buffer intact — the lease is politeness, the
  * `If-Match` precondition is what actually guards the bytes (ADR 0017).
  */
+/** The **Workflow | Template** edit-mode switch: a segmented radio group in the top bar, after the brand. */
+export function ModeSwitch({ mode, onSwitch }: { mode: EditMode; onSwitch: (mode: EditMode) => void }): JSX.Element {
+  return (
+    <div className="mode-switch" role="radiogroup" aria-label="Edit mode">
+      {MODES.map(({ key, label }) => (
+        <button
+          key={key}
+          type="button"
+          role="radio"
+          className="mode-switch-option"
+          aria-checked={mode === key}
+          onClick={() => mode !== key && onSwitch(key)}
+        >
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function EditingToolbar({
+  onNew,
+  onOpen,
+  hasFile,
   saveState,
   dirty,
   canUndo,
@@ -30,13 +58,19 @@ export function EditingToolbar({
   onUndo,
   onRedo,
   onSave,
-  onOpenExisting,
+  onSaveAs,
   onReload,
   lease,
   onTakeover,
   onReacquire,
-  authorMode,
+  templateMode,
 }: {
+  /** Start a new workflow or a new template, by mode. */
+  onNew: () => void;
+  /** Open the pick-an-existing dialog for the mode: a workflow (#254) or a template. */
+  onOpen: () => void;
+  /** Is a file open on the canvas? Save as… needs one. */
+  hasFile: boolean;
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
   dirty: boolean;
@@ -47,33 +81,35 @@ export function EditingToolbar({
   onUndo: () => void;
   onRedo: () => void;
   onSave: () => void;
-  /** Open the pick-an-existing-workflow dialog (#254) — switch to another workflow without leaving the app. */
-  onOpenExisting: () => void;
+  /** Save a copy under a new name: a new workflow file in workflow mode, a new template in template mode. */
+  onSaveAs: () => void;
   /** Re-fetch the active file from disk — the stale-write conflict recovery. */
   onReload: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
-  /** Present in author mode (#580): the template being edited and its two Save-As doors. */
-  authorMode?: AuthorModeControls;
+  /** Present in template mode: the template being edited and its Save-As doors. */
+  templateMode?: TemplateModeControls;
 }): JSX.Element {
   const saving = saveState.phase === "saving";
   const conflict = saveState.phase === "conflict";
+  const template = templateMode?.template ?? null;
   return (
     <div className="editing-toolbar">
-      {/* Author mode (#580): the opened file is the template source, so Save writes back to it. A shipped
-          one is read-only: its write-back is the API's 403, and the Save-As doors fork it. The tag leads
-          the toolbar, left of every button, so the author sees which file they edit first. */}
-      {authorMode ? (
+      {/* Template mode (#580): the opened file is the template source, so Save writes back to it. A
+          shipped one is read-only: its write-back is the API's 403, and Save as… forks it. */}
+      {template ? (
         <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
-          Template source: <code>{authorMode.template.name}{templateSuffix(authorMode.template.kind)}</code>
-          {authorMode.template.readOnly ? " (shipped, read-only)" : null}
+          Template source: <code>{template.name}{templateSuffix(template.kind)}</code>
+          {template.readOnly ? " (shipped, read-only)" : null}
         </span>
       ) : null}
-      {/* Open another workflow without leaving the app (#254). It discards the current stack, so it sits
-          apart from the edit controls; a dirty buffer is the author's to Save first. */}
-      <button type="button" className="open-btn" onClick={onOpenExisting}>
+      {/* New and Open… discard the current stack, so they sit apart from the edit controls. */}
+      <button type="button" className="open-btn" onClick={onNew}>
+        New
+      </button>
+      <button type="button" className="open-btn" onClick={onOpen}>
         Open…
       </button>
       {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
@@ -87,19 +123,15 @@ export function EditingToolbar({
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
-        {saving ? "Saving…" : authorMode ? "Save template" : "Save"}
+        {saving ? "Saving…" : "Save"}
       </button>
-      {authorMode ? (
-        <>
-          <button type="button" className="save-btn" onClick={authorMode.onSaveAsTemplate} disabled={saving}>
-            Save template as…
-          </button>
-          {authorMode.template.kind === "workflow" ? (
-            <button type="button" className="open-btn" onClick={authorMode.onSaveAsWorkflow} disabled={saving}>
-              Save as workflow…
-            </button>
-          ) : null}
-        </>
+      <button type="button" className="save-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
+        Save as…
+      </button>
+      {template?.kind === "workflow" && templateMode ? (
+        <button type="button" className="open-btn" onClick={templateMode.onSaveAsWorkflow} disabled={saving}>
+          Save as workflow…
+        </button>
       ) : null}
       {saveState.phase === "saved" ? (
         <span className="save-status" role="status">

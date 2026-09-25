@@ -42,7 +42,7 @@ async function openParentAndSelectRef(client = stubClient({ files: { [PARENT_PAT
   render(<App client={client} initialPath={PARENT_PATH} />);
   await screen.findByText("seed");
   // Arm the Workflow palette entry and drop it into the parent body's tail socket — a fresh, empty ref.
-  fireEvent.click(screen.getByText("Workflow"));
+  fireEvent.click(within(screen.getByRole("region", { name: "Palette" })).getByText("Workflow"));
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   fireEvent.click(within(canvas).getByRole("button", { name: /add workflow here/ }));
   fireEvent.click((await within(canvas).findByText("workflow")).closest(".node-block") as HTMLElement);

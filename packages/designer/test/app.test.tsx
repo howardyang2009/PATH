@@ -72,7 +72,9 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
   it("renders the authoring shell, not the read-only Viewer", () => {
     render(<App client={stubClient()} />);
     expect(screen.getByText("PATH")).toBeInTheDocument();
-    expect(screen.getByText("designer · authoring")).toBeInTheDocument();
+    expect(screen.getByText("designer")).toBeInTheDocument();
+    expect(screen.queryByText(/authoring/)).not.toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Edit mode" })).toBeInTheDocument();
   });
 
   it("shows the palette shell split into registry-driven Step and grammar-fixed Controller", async () => {

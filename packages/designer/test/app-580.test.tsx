@@ -113,6 +113,9 @@ function templatesPanel(): HTMLElement {
 
 /** Open a template source in author mode with a double-click on its card, and wait for its nodes. */
 async function editTemplate(stem: string): Promise<HTMLElement> {
+  // A double-click edits only in template mode; switching from an empty workflow canvas asks nothing.
+  const mode = await screen.findByRole("radiogroup", { name: "Edit mode" });
+  fireEvent.click(within(mode).getByRole("radio", { name: "Template" }));
   fireEvent.doubleClick(await within(templatesPanel()).findByRole("button", { name: new RegExp(`^${stem}`) }));
   const canvas = await screen.findByRole("region", { name: "Workflow canvas" });
   await within(canvas).findByText("draft");
@@ -125,7 +128,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     await editTemplate("nightly");
 
     expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json");
-    expect(screen.getByRole("button", { name: "Save template as…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Save as workflow…" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
   });
@@ -142,7 +145,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     await screen.findByText("alpha");
 
     expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save template as…" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
   });
 
   it("Save writes back to the original template, id preserved, under If-Match", async () => {
@@ -150,7 +153,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     const canvas = await editTemplate("nightly");
 
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByText("Saved.");
     expect(calls.templateWrites).toHaveLength(1);
@@ -165,7 +168,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     const calls = renderApp();
     const canvas = await editTemplate("nightly");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save template as…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
@@ -179,7 +182,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
 
     // The editor now writes back to the new template, under the create's ETag.
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.templateWrites).toHaveLength(2));
     expect(calls.templateWrites[1]).toMatchObject({ method: "PUT", id: created.id, ifMatch: '"created"' });
   });
@@ -212,7 +215,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     expect(screen.getByTestId("author-mode")).toHaveTextContent("read-only");
 
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText(/template is read-only/)).toBeInTheDocument();
     expect(calls.templateWrites).toEqual([expect.objectContaining({ method: "PUT", id: SHIPPED_ID })]);
@@ -225,7 +228,7 @@ describe("Author mode on a *.step-template.json", () => {
     await editTemplate("draft-judge");
 
     expect(screen.getByTestId("author-mode")).toHaveTextContent("draft-judge.step-template.json");
-    expect(screen.getByRole("button", { name: "Save template as…" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
   });
 
@@ -234,7 +237,7 @@ describe("Author mode on a *.step-template.json", () => {
     const canvas = await editTemplate("draft-judge");
 
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
-    fireEvent.click(screen.getByRole("button", { name: "Save template" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     await screen.findByText("Saved.");
     const write = calls.templateWrites[0]!;
@@ -248,7 +251,7 @@ describe("Author mode on a *.step-template.json", () => {
     const calls = renderApp();
     await editTemplate("draft-judge");
 
-    fireEvent.click(screen.getByRole("button", { name: "Save template as…" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-judge-v2" } });

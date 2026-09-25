@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import type { PathApiClient, WireStepPlugin } from "@path/client-core";
+import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
-import { EditingToolbar } from "./editing-toolbar.js";
-import { NewFileDialog } from "./new-file-dialog.js";
+import { EditingToolbar, ModeSwitch } from "./editing-toolbar.js";
+import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
+import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
@@ -20,7 +21,6 @@ import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
-import { templateSuffix } from "./session-reducer.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -44,8 +44,12 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The open-existing picker (#254). Opened from the empty-canvas affordance or the toolbar; a choice
   // opens that discovered workflow as a fresh root through `session.open`, then closes the dialog.
   const [openExistingOpen, setOpenExistingOpen] = useState(false);
-  // Author mode's two Save-As dialogs (#580): a new template, or a detached `*.workflow.json`.
-  const [saveAsDialog, setSaveAsDialog] = useState<"template" | "workflow" | null>(null);
+  // Template mode's save dialogs: a new template's first save, a Save as… copy of an opened template
+  // (#580), or a Save as workflow… detached `*.workflow.json`.
+  // Workflow mode's Save as… (`"workflow-copy"`) writes the open workflow to a new file.
+  const [saveAsDialog, setSaveAsDialog] = useState<"new-template" | "template" | "workflow" | "workflow-copy" | null>(null);
+  // Template mode's Open… picker.
+  const [openTemplateOpen, setOpenTemplateOpen] = useState(false);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
 
   const active = session.frames[session.activeIndex];
@@ -94,11 +98,37 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // saved-with-warnings file is clean).
   const warningCount = problems.length;
 
+  // Every door that replaces the stack (New, Open…, a mode switch, a template double-click) asks first
+  // when any frame on the stack has unsaved edits.
+  const confirmDiscard = (): boolean =>
+    !session.frames.some((frame) => frameDirty(frame)) || window.confirm("Discard unsaved changes?");
+  const inTemplateMode = session.mode === "template";
+  const onNew = (): void => {
+    if (!confirmDiscard()) return;
+    if (inTemplateMode) session.newTemplate();
+    else session.newFile();
+  };
+  const onOpen = (): void => (inTemplateMode ? setOpenTemplateOpen(true) : setOpenExistingOpen(true));
+  // Open a template's own source in template mode (#580): from a palette-card double-click or the picker.
+  const openTemplate = (template: TemplateSummary): void => {
+    if (template.id === null || !confirmDiscard()) return;
+    // The double-click's own single clicks armed or selected this card; disarm so a template read still
+    // in flight is dropped instead of landing after the open.
+    arming.arm(null);
+    session.openTemplate({
+      id: template.id,
+      kind: template.kind,
+      name: template.name,
+      description: template.description,
+      readOnly: template.read_only,
+    });
+  };
+
   // Open a discovered workflow as a fresh root (#254). `session.open` discards the current stack and its
   // per-file leases, so the selection resets through the active-frame effect above. Close the picker.
   const openExisting = (path: string): void => {
-    session.open(path);
     setOpenExistingOpen(false);
+    if (confirmDiscard()) session.open(path);
   };
 
   // The run surfaces (#372), gathered into one module (`useRunWatch`): the watched root run, the run inside
@@ -158,9 +188,20 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   return (
     <>
     <AppShell
+      modeSwitch={
+        <ModeSwitch
+          mode={session.mode}
+          onSwitch={(mode) => {
+            if (confirmDiscard()) session.switchMode(mode);
+          }}
+        />
+      }
       toolbar={
-        openedResult ? (
+        session.registry.phase === "ready" ? (
           <EditingToolbar
+            onNew={onNew}
+            onOpen={onOpen}
+            hasFile={openedResult !== null}
             saveState={session.saveState}
             dirty={dirty}
             canUndo={canUndo}
@@ -168,17 +209,28 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             onUndo={undo}
             onRedo={redo}
             // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save dialog
-            // instead of overwriting. A saved frame saves in place through the write route, and a template
-            // source (#580) writes back to its template by id.
-            onSave={activePath || activeTemplate ? session.save : () => setNewFileOpen(true)}
-            onOpenExisting={() => setOpenExistingOpen(true)}
+            // instead of overwriting — the new-template dialog in template mode. A saved frame saves in
+            // place through the write route, and a template source (#580) writes back to its template by id.
+            onSave={
+              activePath || activeTemplate
+                ? session.save
+                : inTemplateMode
+                  ? () => setSaveAsDialog("new-template")
+                  : () => setNewFileOpen(true)
+            }
+            // Save as…: a copy to a new workflow file, a copy to a new template, or (for a new template not
+            // saved yet) its first save.
+            onSaveAs={() => setSaveAsDialog(inTemplateMode ? (activeTemplate ? "template" : "new-template") : "workflow-copy")}
             onReload={session.reloadActive}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
             onReacquire={() => activePath && reacquire(activePath)}
-            authorMode={
-              activeTemplate
-                ? { template: activeTemplate, onSaveAsTemplate: () => setSaveAsDialog("template"), onSaveAsWorkflow: () => setSaveAsDialog("workflow") }
+            templateMode={
+              inTemplateMode
+                ? {
+                    template: activeTemplate ?? null,
+                    onSaveAsWorkflow: () => setSaveAsDialog("workflow"),
+                  }
                 : undefined
             }
           />
@@ -191,20 +243,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           arming={arming}
           canvasEmpty={session.canvasEmpty}
           placeWorkflowInstance={session.placeWorkflowInstance}
-          onEditTemplate={(template) => {
-            if (template.id === null) return;
-            // The double-click's own single clicks armed or selected this card; disarm so a template read
-            // still in flight is dropped instead of landing after the open.
-            arming.arm(null);
-            // Opening the template source discards the current stack, like Open… (#254).
-            session.openTemplate({
-              id: template.id,
-              kind: template.kind,
-              name: template.name,
-              description: template.description,
-              readOnly: template.read_only,
-            });
-          }}
+          // In template mode, a double-click opens the template source, discarding the current stack.
+          onEditTemplate={openTemplate}
+          canEditTemplates={inTemplateMode}
         />
       }
       canvas={
@@ -216,7 +257,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
               armed={arming.armed}
               onArm={arming.arm}
               problems={problems}
-              onOpenExisting={() => setOpenExistingOpen(true)}
+              onNew={onNew}
+              onOpenExisting={onOpen}
               // Double-click an unset `workflow` block to author its target — the same chooser the pane's
               // "Add a workflow reference" opens, offered only when the parent has a path for a relative ref.
               onAuthorRef={refAuthoring.onAuthorRef}
@@ -239,13 +281,14 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           />
         ) : (
           <div className="pane pane-idle">
-            <p className="pane-hint">Open a workflow and select a node to edit it.</p>
+            <p className="pane-hint">Open a {inTemplateMode ? "template" : "workflow"} and select a node to edit it.</p>
           </div>
         )
       }
       runDock={
         <RunDock
           client={client}
+          disabledReason={inTemplateMode ? "Templates do not run. Switch to Workflow mode to run a workflow." : undefined}
           plugins={plugins}
           // An unwritten buffer has no file on disk for the server to load, so it cannot launch (#391 AC:
           // "no launch until its first save"). A create-new child carries a pre-assigned path, so gate the
@@ -279,13 +322,32 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         onCancel={() => setNewFileOpen(false)}
       />
     ) : null}
-    {/* Author mode's Save-As doors (#580). Save as template names a new `*.workflow-template.json`; Save as
-        workflow reuses the first-save dialog to place the detached `*.workflow.json` instance. */}
+    {/* Template mode's save doors. A new template's first save picks its kind, name and description; Save
+        as… (#580) names a copy of the opened template; Save as workflow… reuses the first-save dialog to
+        place the detached `*.workflow.json` instance. */}
+    {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
+      <SaveTemplateAsDialog
+        source={null}
+        create={({ kind, name, description }) => session.saveNewTemplate(kind, name, description)}
+        onCreated={() => setSaveAsDialog(null)}
+        onCancel={() => setSaveAsDialog(null)}
+      />
+    ) : null}
     {saveAsDialog === "template" && activeTemplate ? (
       <SaveTemplateAsDialog
-        templateName={activeTemplate.name}
-        suffix={templateSuffix(activeTemplate.kind)}
-        create={session.saveAsTemplate}
+        source={activeTemplate}
+        create={({ name }) => session.saveAsTemplate(name)}
+        onCreated={() => setSaveAsDialog(null)}
+        onCancel={() => setSaveAsDialog(null)}
+      />
+    ) : null}
+    {saveAsDialog === "workflow-copy" && !inTemplateMode && openedFile ? (
+      <NewFileDialog
+        discovery={discovery}
+        title="Save workflow as"
+        workflowName={`${openedFile.name}-copy`}
+        initialDirectory={activePath ? dirnameOf(activePath) : ""}
+        create={session.saveWorkflowAs}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />
@@ -303,6 +365,16 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         above the shell from either the empty-canvas affordance or the toolbar's Open button. */}
     {openExistingOpen ? (
       <OpenWorkflowDialog discovery={discovery} onOpen={openExisting} onCancel={() => setOpenExistingOpen(false)} />
+    ) : null}
+    {openTemplateOpen ? (
+      <OpenTemplateDialog
+        templateList={templateList}
+        onOpen={(template) => {
+          setOpenTemplateOpen(false);
+          openTemplate(template);
+        }}
+        onCancel={() => setOpenTemplateOpen(false)}
+      />
     ) : null}
     {/* The ref-target chooser (#391): reference an existing workflow, or create a new one and descend into
         its fresh, unwritten child buffer. Shown only while an empty `workflow` node awaits a target. */}
