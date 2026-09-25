@@ -28,7 +28,9 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
 2. **A jump is a `SeqOutcome` variant: `{ status: "goto"; target: <node GUID>; output: JsonValue }`.**
    `runNode` returns it for a goto node (a worker-less controller: no task, no run, invariant 1).
    `target` is the target node's stable id (ADR 0006); `output` is the goto's incoming output passed
-   through unchanged (whether it seeds the target's input is the input-seeding ticket's call). Every
+   through unchanged (whether it seeds the target's input is the input-seeding ticket's call).
+   **Amended (#600):** the variant also carries the goto's own node id, `goto: <node GUID>`, so the
+   top-level walk can emit `goto-taken` and name the pass it opens ([ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md)). Every
    nested walker already returns any non-`succeeded` outcome early, so `runSequence`, `branch` and
    `sequence` carry it upward with no new code, exactly as they carry `awaiting`. Only the top-level
    walk consumes it: it re-seeks its index to `target` and continues. Because `SeqOutcome` is a
@@ -89,6 +91,7 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
   correctness (including rebuilding the per-goto jump counts from the record) are open under #544.
   **Amended (#599):** replay correctness and jump counts are decided in
   [ADR 0060](0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md).
+  **Amended (#600):** the `goto-taken` and `goto-exhausted` events are decided in [ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md).
 - Forward jumps skip nodes; a skipped node produces no run row.
 - Per the prior-art research (#547), this matches BPMN's same-scope link events and the
   authored-guard-plus-backstop pattern of every durable engine surveyed.

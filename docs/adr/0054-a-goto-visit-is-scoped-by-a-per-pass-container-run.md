@@ -59,7 +59,7 @@ belongs to. `while-do` hit the same wall and fixed it with a container run per i
 7. **Log: a new `pass-started` event**, the twin of `iteration-started`. It fires when a pass opens and
    carries `pass: N`. Its `node_id` / `node_name` name the opening goto (`null` for pass 1). The
    container's own `step-started` / `step-finished` still fire. The jump itself stays the job of
-   `goto-taken` (#600).
+   `goto-taken` (#600). **Amended (#600):** decided in [ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md).
 
 8. **Disk: no change.** `.path/runs/<root-run-id>/<run-id>/` is keyed by run id, and every visit and
    every pass has its own.
@@ -111,3 +111,4 @@ belongs to. `while-do` hit the same wall and fixed it with a container run per i
   context and publish behavior under cycles (#598); Designer rendering (#601). **Amended (#599):**
   jump counts, Complete replay across passes and divergence are decided in
   [ADR 0060](0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md).
+  **Amended (#600):** the `goto-taken` payload is decided in [ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md).
