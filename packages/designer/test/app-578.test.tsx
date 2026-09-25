@@ -190,7 +190,7 @@ describe("Insert a Template into a workflow (#578)", () => {
   it("a template select disarms what was armed before, so a failed read leaves nothing armed", async () => {
     const { canvas } = await openApp({});
     const tabs = screen.getByRole("region", { name: "Palette" });
-    fireEvent.click(within(tabs).getByRole("tab", { name: "Build" }));
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Nodes" }));
     fireEvent.click(screen.getByText("Prompt"));
     expect(within(canvas).getByRole("button", { name: /add prompt here/ })).toBeInTheDocument();
 

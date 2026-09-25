@@ -2,7 +2,7 @@ import type { WireStepPlugin } from "@path/client-core";
 
 /**
  * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
- * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
+ * two tabs of the rail (#564 variant C). The **Nodes** tab: **Step** — one entry per leaf step type — and
  * **Controller** — fixed by the grammar, split into a **Structure** sub-tab (the five Structure Controllers,
  * `checkpoint` included) and a **Graph** sub-tab (the Graph Controller `goto`). The **Templates**
  * tab: one card per entry of `GET /v0/templates`, with no group heading (one kind only, ADR 0063).
@@ -92,7 +92,7 @@ const CONTROLLERS: PaletteGroup = {
   ],
 };
 
-/** The Build tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
+/** The Nodes tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
 export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[] {
   return [stepGroup(plugins), CONTROLLERS];
 }

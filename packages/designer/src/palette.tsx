@@ -5,15 +5,15 @@ import { paletteGroups, type PaletteEntry, type PaletteSubTab } from "./palette-
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
 
-type PaletteTab = "build" | "templates";
+type PaletteTab = "nodes" | "templates";
 
 const TABS: readonly { key: PaletteTab; label: string }[] = [
-  { key: "build", label: "Build" },
+  { key: "nodes", label: "Nodes" },
   { key: "templates", label: "Templates" },
 ];
 
 /**
- * The palette rail (#368, #577): a **Build** | **Templates** tab pair (#564 variant C). Build holds the
+ * The palette rail (#368, #577): a **Nodes** | **Templates** tab pair (#564 variant C). Nodes holds the
  * primitives the author places from — Step + Controller; Controller splits into a
  * **Structure** | **Graph** sub-tab pair, with `goto` on Graph. A click **arms** an entry's kind; the canvas
  * then opens every socket the grammar admits it into (§ Adding — an illegal socket never opens, so an
@@ -24,7 +24,7 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * Controller group is fixed by the grammar and always shown.
  *
  * Templates holds the Template category from `GET /v0/templates` (the only kind, ADR 0063). A
- * Template card arms like a Build card (#578): the click reads the template's body, and the canvas
+ * Template card arms like a Nodes card (#578): the click reads the template's body, and the canvas
  * then opens the sockets the grammar admits that body into. In template mode, a double-click on a card
  * opens the template file itself in author mode (#580); in workflow
  * mode the Templates tab only inserts, so a double-click never leaves the open workflow. A failed read says why
@@ -45,7 +45,7 @@ export function Palette({
   /** Does a double-click on a template card open it for edit? Only in template mode. */
   canEditTemplates: boolean;
 }) {
-  const [tab, setTab] = useState<PaletteTab>("build");
+  const [tab, setTab] = useState<PaletteTab>("nodes");
   return (
     <>
       <div className="palette-tabs" role="tablist" aria-label="Palette sections">
@@ -65,8 +65,8 @@ export function Palette({
         ))}
       </div>
       <div className="palette" role="tabpanel" id={`palette-panel-${tab}`} aria-labelledby={`palette-tab-${tab}`}>
-        {tab === "build" ? (
-          <BuildTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
+        {tab === "nodes" ? (
+          <NodesTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
         ) : (
           <TemplatesTab
             templateList={templateList}
@@ -93,7 +93,7 @@ function PaletteGroupSection({ title, children }: { title: string; children: Rea
   );
 }
 
-function BuildTab({
+function NodesTab({
   plugins,
   armed,
   onArm,
@@ -259,7 +259,7 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
 /**
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
- * Template card is an arm toggle like a Build card (#578). In template mode (`canEdit`), a
+ * Template card is an arm toggle like a Nodes card (#578). In template mode (`canEdit`), a
  * double-click on a card opens its template file in author mode (#580). The card is only `aria-disabled`, so the double-click still reaches a
  * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
  */

@@ -4,7 +4,7 @@ import type { WorkflowNode } from "@path/schema";
 
 /**
  * What the palette has **armed** — the thing the canvas opens sockets for and places on a socket click.
- * A Build-tab card arms a node kind (#368); a Template card arms that template's body (#578), which
+ * A Nodes-tab card arms a node kind (#368); a Template card arms that template's body (#578), which
  * the canvas instantiates on place (ADR 0049). The template body rides in the armed value, fetched once
  * on select, so a place is synchronous and every open socket reads the same body.
  */
@@ -14,7 +14,7 @@ export type Armed =
 
 export interface ArmedState {
   armed: Armed | null;
-  /** Arm a value directly (a Build card) or disarm (`null`). Supersedes an in-flight template read. */
+  /** Arm a value directly (a Nodes card) or disarm (`null`). Supersedes an in-flight template read. */
   arm: (armed: Armed | null) => void;
   /**
    * Arm a Template: disarm at once, read its envelope (`GET /v0/templates/:id`), then arm its body.

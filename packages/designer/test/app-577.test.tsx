@@ -5,7 +5,7 @@ import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
 /**
- * #577: the palette lists templates. A `Templates` tab beside `Build` (variant C of #564) holds a
+ * #577: the palette lists templates. A `Templates` tab beside `Nodes` (variant C of #564) holds a
  * Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
  * rows alike. An invalid row is listed with its error and cannot be selected.
  */
@@ -41,13 +41,13 @@ async function openTemplatesTab(): Promise<HTMLElement> {
 }
 
 describe("Designer palette lists templates (#577)", () => {
-  it("keeps Step and Controller on the Build tab, selected by default", async () => {
+  it("keeps Step and Controller on the Nodes tab, selected by default", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const palette = screen.getByRole("region", { name: "Palette" });
-    expect(within(palette).getByRole("tab", { name: "Build" })).toHaveAttribute("aria-selected", "true");
-    const build = within(palette).getByRole("tabpanel", { name: "Build" });
-    expect(within(build).getByRole("region", { name: "Step" })).toBeInTheDocument();
-    expect(within(build).getByRole("region", { name: "Controller" })).toBeInTheDocument();
+    expect(within(palette).getByRole("tab", { name: "Nodes" })).toHaveAttribute("aria-selected", "true");
+    const nodes = within(palette).getByRole("tabpanel", { name: "Nodes" });
+    expect(within(nodes).getByRole("region", { name: "Step" })).toBeInTheDocument();
+    expect(within(nodes).getByRole("region", { name: "Controller" })).toBeInTheDocument();
     expect(within(palette).queryByRole("region", { name: "Templates" })).not.toBeInTheDocument();
   });
 

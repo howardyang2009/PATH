@@ -299,10 +299,10 @@ that shape. The received registry is a **bare snapshot with no staleness contrac
 sub-decision 3): the write route re-validates every save against the server's **live** registry, so a
 stale snapshot surfaces as a rejected write, never a corrupt file.
 
-### The palette's Build and Templates tabs
+### The palette's Nodes and Templates tabs
 
 The palette rail is two tabs ([#564](https://github.com/howardyang2009/PATH/issues/564) variant C,
-built in [#577](https://github.com/howardyang2009/PATH/issues/577)). **Build** holds the primitives:
+built in [#577](https://github.com/howardyang2009/PATH/issues/577)). **Nodes** holds the primitives:
 the **Step** category (the registry-driven leaf types above) and the **Controller** category
 (`checkpoint`, `parallel`, `sequence`, `while-do`, `branch`). **Templates** holds the reusable
 authoring artifacts, the **Templates** (one kind only,
@@ -316,12 +316,12 @@ of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)).
 
 ### Inserting a Template
 
-A **Template** card arms like a Build card
+A **Template** card arms like a Nodes card
 ([#578](https://github.com/howardyang2009/PATH/issues/578)). The click reads the template with
 `GET /v0/templates/:id` (server-api-v0.md §10.2) and arms its body; a second click disarms. A read that
 fails, or a template the server now reports invalid, arms nothing and the Templates tab says why. While
 a template is armed, the canvas opens only the sockets the grammar admits its body into, the same
-unsnappable-not-rejected rule as a Build card (§ Canvas interaction model):
+unsnappable-not-rejected rule as a Nodes card (§ Canvas interaction model):
 
 - A `sequence`-flavoured list (the file body or a `sequence` body) splices the body's nodes in, in
   order.

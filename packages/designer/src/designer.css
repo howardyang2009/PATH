@@ -212,7 +212,7 @@ body {
   color: var(--text-muted);
 }
 
-/* Palette tabs: Build | Templates (#564 variant C, #577). */
+/* Palette tabs: Nodes | Templates (#564 variant C, #577). */
 .palette-tabs {
   display: flex;
   gap: 4px;
@@ -238,7 +238,7 @@ body {
   border-bottom-color: var(--accent);
 }
 
-/* Controller sub-tabs: Structure | Graph, styled like the Build | Templates tabs. */
+/* Controller sub-tabs: Structure | Graph, styled like the Nodes | Templates tabs. */
 .palette-subtabs {
   display: flex;
   gap: 4px;
