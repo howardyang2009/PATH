@@ -212,7 +212,7 @@ body {
   color: var(--text-muted);
 }
 
-/* Palette tabs: Build | Templates (#564 variant C, #577). */
+/* Palette tabs: Nodes | Templates (#564 variant C, #577). */
 .palette-tabs {
   display: flex;
   gap: 4px;
@@ -238,7 +238,7 @@ body {
   border-bottom-color: var(--accent);
 }
 
-/* Controller sub-tabs: Structure | Graph, styled like the Build | Templates tabs. */
+/* Controller sub-tabs: Structure | Graph, styled like the Nodes | Templates tabs. */
 .palette-subtabs {
   display: flex;
   gap: 4px;
@@ -486,17 +486,7 @@ body {
   padding: 1px 8px;
 }
 
-/* Stamp-on-import notice and refusal banners. */
-.dirty-badge {
-  margin: 0 0 10px;
-  padding: 6px 10px;
-  font-size: var(--fs-sm);
-  color: var(--k-checkpoint);
-  background: var(--k-checkpoint-bg);
-  border: 1px solid var(--k-checkpoint);
-  border-radius: 6px;
-}
-
+/* Refusal banners. */
 .refusal {
   max-width: 640px;
   border: 1px solid var(--k-workflow);
@@ -1360,9 +1350,8 @@ body {
   cursor: default;
 }
 
-/* Undo/redo (#389): secondary buttons, left of Save; the glyph carries the affordance when narrow. */
-.undo-btn,
-.redo-btn {
+/* The toolbar's secondary buttons: New, Open…, Undo, Redo and Save as…. Save is the only primary action. */
+.toolbar-btn {
   padding: 5px 12px;
   font: inherit;
   color: var(--text);
@@ -1372,8 +1361,11 @@ body {
   cursor: pointer;
 }
 
-.undo-btn:disabled,
-.redo-btn:disabled {
+.toolbar-btn-danger {
+  color: var(--status-failed-fg);
+}
+
+.toolbar-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -1394,14 +1386,38 @@ body {
   color: var(--text);
 }
 
-.save-status {
+.file-status {
   font-size: var(--fs-sm);
+}
+
+.file-status-saved {
   color: var(--status-succeeded-fg);
 }
 
-/* Save conflict/error and a lost lease read as a failure; a held-by-other reads as a caution. */
-.save-conflict,
-.save-error,
+.file-status-unsaved {
+  color: var(--k-checkpoint);
+}
+
+.file-status-failed {
+  color: var(--status-failed-fg);
+}
+
+.file-status-action {
+  margin-left: 8px;
+  padding: 2px 10px;
+  font: inherit;
+  color: inherit;
+  background: transparent;
+  border: 1px solid currentColor;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+.author-mode-tag + .file-status {
+  margin-left: 10px;
+}
+
+/* A lost lease reads as a failure; a held-by-other reads as a caution. */
 .lease-lost,
 .lease-error {
   max-width: 420px;
@@ -1411,24 +1427,6 @@ body {
   background: var(--status-failed-bg);
   border: 1px solid var(--status-failed-fg);
   border-radius: 6px;
-}
-
-.save-conflict {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.save-conflict button {
-  padding: 3px 10px;
-  font: inherit;
-  font-size: var(--fs-sm);
-  color: inherit;
-  background: transparent;
-  border: 1px solid currentColor;
-  border-radius: 5px;
-  cursor: pointer;
 }
 
 .lease-banner {
@@ -1828,17 +1826,6 @@ body {
   cursor: pointer;
 }
 
-/* The toolbar's Open… — a quiet button, since it sits beside the edit controls, not the primary action. */
-.open-btn {
-  padding: 4px 12px;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
 .dialog-scrim {
   position: fixed;
   inset: 0;
@@ -1884,28 +1871,6 @@ body {
   color: var(--text);
 }
 
-/* The new-template dialog's kind choice: two radios on one line. */
-.template-kind {
-  border: 0;
-  padding: 0;
-  margin-inline: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.template-kind .dialog-label {
-  width: 100%;
-  padding: 0;
-}
-
-.template-kind label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-}
-
 /* The template dialog's description: a bordered, multi-line box, so it reads as editable at a glance. */
 .template-description {
   display: block;
@@ -1925,11 +1890,7 @@ body {
   outline-offset: -2px;
 }
 
-/* The open-template picker: one row per template, grouped by kind. */
-.template-picker-group + .template-picker-group {
-  margin-top: 12px;
-}
-
+/* The open-template picker: one row per template. */
 .template-picker-list {
   list-style: none;
   margin: 0;
@@ -1997,6 +1958,40 @@ body {
   margin: 12px 0 0;
   font-size: var(--fs-sm);
   color: var(--run-failed);
+}
+
+.save-as-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.save-as-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.save-as-choice:hover {
+  border-color: var(--accent);
+}
+
+.save-as-choice-label {
+  font-weight: 600;
+}
+
+.save-as-choice-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
 }
 
 .dialog-actions {

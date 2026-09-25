@@ -82,7 +82,7 @@ export interface Frame {
   loadSeq: number | null;
   /**
    * The template this frame edits in **author mode** (#580, ADR 0049 decision 8): set when the author
-   * opened a `*.workflow-template.json` or a `*.step-template.json` itself, `undefined` for a workflow file. The suffix of the opened
+   * opened a `*.step-template.json` itself, `undefined` for a workflow file. The suffix of the opened
    * file is the discriminator. A template frame is `written` (it is on disk) but holds no `path`: a
    * template is id-addressed (ADR 0050), so it takes no lease, cannot launch, and saves through
    * `PUT /v0/templates/:id` rather than the workflow write door.
@@ -90,22 +90,22 @@ export interface Frame {
   template?: TemplateSource;
 }
 
-/** The file suffix a template kind carries on disk. */
-export function templateSuffix(kind: TemplateSource["kind"]): string {
-  return kind === "step" ? ".step-template.json" : ".workflow-template.json";
+/** The file suffix a template carries on disk: `*.step-template.json`, one kind only (ADR 0063). */
+export function templateSuffix(_kind: TemplateSource["kind"]): string {
+  return ".step-template.json";
 }
 
 /** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {
   id: string;
   /**
-   * `workflow`: the frame's file is the template's whole workflow file. `step`: the frame's file is a
-   * synthetic workflow around the step-template's body; only `body` goes back into the envelope on save.
+   * Always `step` (ADR 0063): the frame's file is a synthetic workflow around the template's body;
+   * only `body` goes back into the envelope on save.
    */
-  kind: "step" | "workflow";
+  kind: "step";
   /** The file stem — the template's name, immutable through the write-back door. */
   name: string;
-  /** The template's description, kept so a step-template write-back rebuilds its envelope. */
+  /** The template's description, kept so a template write-back rebuilds its envelope. */
   description: string;
   /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
   readOnly: boolean;
@@ -140,14 +140,20 @@ export interface History {
 /**
  * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
  * `saved` shows the confirmation after a `200`; `conflict` is the `412` stale-write; `error` is any other
- * write failure.
+ * write failure. A Delete of the open file rides the same phase: `deleting` while in flight, `deleted`
+ * once the file is gone (the canvas is then empty), `delete-error` when the server refused it.
+ * `saved-as-template` confirms a workflow-mode Save as template: a copy was created, the workflow stays open.
  */
 export type SaveState =
   | { phase: "idle" }
   | { phase: "saving" }
   | { phase: "saved" }
   | { phase: "conflict"; message: string }
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: string }
+  | { phase: "deleting" }
+  | { phase: "deleted" }
+  | { phase: "delete-error"; message: string }
+  | { phase: "saved-as-template"; name: string };
 
 /** A frame's opened workflow result, or `null` when it is loading, failed to fetch, or is a refusal. */
 export type OpenedResult = Extract<OpenResult, { status: "opened" }>;
@@ -220,17 +226,6 @@ function withSavePoint(frame: Frame, etag: string, savedBytes: string): Frame {
 }
 
 /**
- * Is the canvas **empty** — the only place a Workflow-Template may be selected into (ADR 0049 decision 7,
- * #579)? True with nothing open, or when the active frame is an opened buffer whose body holds zero nodes.
- * A written file always holds at least one node (the body schema's `min(1)`), so an empty buffer is an
- * unwritten one: a from-scratch root or a create-new child.
- */
-export function canvasEmpty(state: SessionState): boolean {
-  if (state.frames.length === 0) return true;
-  return openedResultOf(state.frames[state.activeIndex])?.file.body.length === 0;
-}
-
-/**
  * The opened result of a frame, or `null`. The one predicate — "the frame is open and its open succeeded" —
  * that the canvas, the toolbar, and the save path all ask, kept in one place so the call sites cannot drift.
  */
@@ -250,6 +245,15 @@ export function frameDirty(frame: Frame | undefined): boolean {
   return canonicalSerialize(opened.file) !== frame.baseline;
 }
 
+/**
+ * Would discarding this frame lose work? A frame dirty by {@link frameDirty}, except a from-scratch buffer
+ * still exactly as it opened: it reads dirty only to keep Save live, and holds nothing the author made.
+ */
+export function frameHasUnsavedWork(frame: Frame | undefined): boolean {
+  if (!frameDirty(frame)) return false;
+  return frame!.written || canonicalSerialize(openedResultOf(frame)!.file) !== frame!.openedBytes;
+}
+
 /** Has the active frame an edit to undo (#389)? Drives the toolbar's Undo button and its keyboard peer. */
 export function frameCanUndo(frame: Frame | undefined): boolean {
   return frame !== undefined && frame.history.past.length > 0;
@@ -265,8 +269,8 @@ export function frameCanRedo(frame: Frame | undefined): boolean {
 /** The whole open-and-navigate session state the reducer owns: the trail, the active frame, the save phase. */
 /**
  * The Designer's edit mode, picked with the toolbar's Workflow | Template switch. **Workflow** mode edits
- * `*.workflow.json` files; **Template** mode edits template sources (`*.step-template.json`,
- * `*.workflow-template.json`) and new, not-yet-saved templates. Switching mode clears the canvas.
+ * `*.workflow.json` files; **Template** mode edits template sources (`*.step-template.json`) and
+ * new, not-yet-saved templates. Switching mode clears the canvas.
  */
 export type EditMode = "workflow" | "template";
 
@@ -296,7 +300,7 @@ export type SessionAction =
   /** Open `path` as a fresh root, discarding any current stack — one loading frame, active index 0. */
   | { type: "openLoading"; path: string; loadSeq: number }
   /**
-   * Open a `*.workflow-template.json` itself as a fresh root in **author mode** (#580), discarding any
+   * Open a `*.step-template.json` itself as a fresh root in **author mode** (#580), discarding any
    * current stack — one loading template frame. Its read lands through `loadLanded` with a `null` path.
    */
   | { type: "openTemplateLoading"; template: TemplateSource; loadSeq: number }
@@ -317,13 +321,6 @@ export type SessionAction =
    * (a from-scratch root) has no ref to resolve, so the action is a no-op.
    */
   | { type: "descend"; ref: string; nodeId: string; loadSeq: number }
-  /**
-   * Put a Workflow-Template **instance** (built by `@path/schema`'s `instantiateWorkflow`, #579) on an
-   * empty canvas — see {@link canvasEmpty}. With nothing open it starts a from-scratch root holding the
-   * instance; an empty active buffer takes it as one undoable edit. Anything else is refused (the state is
-   * returned as-is).
-   */
-  | { type: "placeWorkflowInstance"; file: WorkflowFile }
   /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId` (#391). */
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
@@ -375,6 +372,11 @@ export type SessionAction =
    * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
    */
   | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
+  /**
+   * The root file named by `plan` was deleted. If the root frame still holds it, the stack clears to an
+   * empty canvas in the same mode, in the `deleted` phase; otherwise only the phase resets.
+   */
+  | { type: "deleted"; plan: DeletePlan }
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
   | { type: "setSaveState"; saveState: SaveState };
 
@@ -395,18 +397,16 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "switchMode":
       return { mode: action.mode, frames: [], activeIndex: 0, saveState: IDLE };
 
+    case "deleted": {
+      const root = state.frames[0];
+      const plan = action.plan;
+      const stillOpen = plan.kind === "template" ? root?.template?.id === plan.id : root?.path === plan.path && !root.template;
+      if (!stillOpen) return { ...state, saveState: IDLE };
+      return { mode: state.mode, frames: [], activeIndex: 0, saveState: { phase: "deleted" } };
+    }
+
     case "openTemplateLoading":
       return { mode: "template", frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
-
-    case "placeWorkflowInstance": {
-      if (!canvasEmpty(state)) return state;
-      // A from-scratch root first, so the instance lands as an edit on an empty buffer either way: undo
-      // returns the empty canvas, and the save door stays the frame's own (the first-save dialog for a
-      // root, the pre-assigned `*.workflow.json` for a create-new child) — never the template (#460.3).
-      // In template mode the from-scratch root is a new template, so the canvas stays in template mode.
-      const base = state.frames.length === 0 ? reduceSession(state, { type: state.mode === "template" ? "newTemplate" : "newFile" }) : state;
-      return reduceSession(base, { type: "applyEdit", next: action.file });
-    }
 
     case "descend": {
       const depth = state.activeIndex;
@@ -469,7 +469,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved."/conflict phase, which
+      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved"/conflict phase, which
       // the hook used to guarantee by pre-checking the stack before dispatching.
       if (!frame || !opened || frame.history.past.length === 0) return state;
       const past = frame.history.past.slice();
@@ -662,6 +662,28 @@ export function planSave(state: SessionState): SavePlan | null {
   return frame.written
     ? { kind: "overwrite", depth, path: frame.path, file: opened.file, ifMatch: frame.etag ?? undefined }
     : { kind: "create", depth, path: frame.path, file: opened.file, ifMatch: undefined };
+}
+
+/**
+ * What the Delete button would remove, or `null` when it does nothing. Delete acts on the **root** file
+ * only (the breadcrumb's first entry, while it is active), so a nested file is deleted by opening it:
+ *
+ * - **workflow** — a written file removed through `DELETE /v0/workflows/file` under the read's `If-Match`
+ *   ETag, so it never removes bytes the author has not seen (a refused file can be deleted too);
+ * - **template** — a user template removed through `DELETE /v0/templates/:id`. A shipped template is
+ *   read-only, so it has no plan.
+ *
+ * A new buffer that was never saved has nothing on disk, so it has no plan either.
+ */
+export type DeletePlan = { kind: "workflow"; path: string; ifMatch: string } | { kind: "template"; id: string; name: string };
+
+export function planDelete(state: SessionState): DeletePlan | null {
+  if (state.activeIndex !== 0) return null;
+  const frame = state.frames[0];
+  if (!frame || frame.state.phase !== "open") return null;
+  if (frame.template) return frame.template.readOnly ? null : { kind: "template", id: frame.template.id, name: frame.template.name };
+  if (!frame.written || frame.path === null || frame.etag === null) return null;
+  return { kind: "workflow", path: frame.path, ifMatch: frame.etag };
 }
 
 /** What the first-save dialog's target would do, or `null` when the active frame is not a from-scratch root. */

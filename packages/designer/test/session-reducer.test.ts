@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { canonicalSerialize } from "../src/serialize.js";
-import { canvasEmpty, frameDirty, initialSessionState, openedResultOf, planNewFileSave, planNewTemplateSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState, type TemplateSource } from "../src/session-reducer.js";
+import { frameDirty, initialSessionState, openedResultOf, planDelete, planNewFileSave, planNewTemplateSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState, type TemplateSource } from "../src/session-reducer.js";
 
 /**
  * The pure session state machine (`session-reducer.ts`). These tests reach every transition the Designer's
@@ -329,59 +329,8 @@ describe("session-reducer — fresh opens reset the stack", () => {
   });
 });
 
-describe("session-reducer — instantiate a Workflow-Template into an empty canvas (#579)", () => {
-  /** A Workflow-Template instance, as `@path/schema`'s `instantiateWorkflow` builds it. */
-  function instance(): WorkflowFile {
-    return { ...file("nightly", "from the template"), id: uuid(9), input: { ticket: "PATH-1" }, worker_defaults: { prompt: "claude" } };
-  }
-
-  it("with nothing open, starts a from-scratch root holding the instance, saved through the first-save dialog", () => {
-    expect(canvasEmpty(initialSessionState)).toBe(true);
-    const next = reduceSession(initialSessionState, { type: "placeWorkflowInstance", file: instance() });
-    expect(next.frames).toHaveLength(1);
-    expect(next.frames[0]).toMatchObject({ path: null, written: false });
-    expect(activeFile(next)).toEqual(instance());
-    expect(frameDirty(next.frames[0])).toBe(true);
-    // Consume mode: the instance has no path, so Save is the first-save dialog's `*.workflow.json` create.
-    expect(planSave(next)).toBeNull();
-    expect(planNewFileSave(next)?.file).toEqual(instance());
-  });
-
-  it("fills an empty from-scratch buffer as one undoable edit", () => {
-    const empty = reduceSession(initialSessionState, { type: "newFile" });
-    expect(canvasEmpty(empty)).toBe(true);
-    const next = reduceSession(empty, { type: "placeWorkflowInstance", file: instance() });
-    expect(activeFile(next)).toEqual(instance());
-    expect(canvasEmpty(next)).toBe(false);
-    const undone = reduceSession(next, { type: "undo" });
-    expect(activeFile(undone).body).toEqual([]);
-  });
-
-  it("fills an empty create-new child in place, keeping its pre-assigned path", () => {
-    const parent = openFrame(file("flow"));
-    const child: Frame = { ...openFrame({ format: FORMAT_VERSION, id: uuid(5), name: "child", body: [] }), path: "child.workflow.json", written: false, etag: null, baseline: "" };
-    const start: SessionState = { frames: [parent, child], activeIndex: 1, saveState: { phase: "idle" }, mode: "workflow" };
-    const next = reduceSession(start, { type: "placeWorkflowInstance", file: instance() });
-    expect(next.frames[0]).toBe(parent);
-    expect(next.frames[1]!.path).toBe("child.workflow.json");
-    expect(planSave(next)).toMatchObject({ kind: "create", path: "child.workflow.json", file: instance() });
-  });
-
-  it("refuses a canvas that already holds nodes", () => {
-    const start = sessionOn(openFrame(file("flow")));
-    expect(canvasEmpty(start)).toBe(false);
-    expect(reduceSession(start, { type: "placeWorkflowInstance", file: instance() })).toBe(start);
-  });
-
-  it("refuses a frame that is still loading", () => {
-    const start = reduceSession(initialSessionState, { type: "openLoading", path: "flow.workflow.json", loadSeq: 1 });
-    expect(canvasEmpty(start)).toBe(false);
-    expect(reduceSession(start, { type: "placeWorkflowInstance", file: instance() })).toBe(start);
-  });
-});
-
-describe("session-reducer — author mode on a *.workflow-template.json (#580)", () => {
-  const source: TemplateSource = { id: uuid(1), kind: "workflow", name: "nightly", description: "", readOnly: false };
+describe("session-reducer — author mode on a *.step-template.json (#580)", () => {
+  const source: TemplateSource = { id: uuid(1), kind: "step", name: "nightly", description: "", readOnly: false };
 
   /** The session after opening the template source and its read landing, clean at the read's ETag. */
   function authoring(f: WorkflowFile = file("nightly")): SessionState {
@@ -436,8 +385,8 @@ describe("session-reducer — author mode on a *.workflow-template.json (#580)",
   it("after a Save-As the frame edits the new template, clean, with a fresh history", () => {
     const copy = { ...file("nightly", "edited"), id: uuid(7) };
     let s = reduceSession(authoring(), { type: "applyEdit", next: file("nightly", "edited") });
-    s = reduceSession(s, { type: "templateSavedAs", depth: 0, fromId: uuid(1), template: { id: uuid(7), kind: "workflow", name: "copy", description: "", readOnly: false }, file: copy, etag: "etag-c" });
-    expect(s.frames[0]).toMatchObject({ template: { id: uuid(7), kind: "workflow", name: "copy", readOnly: false }, etag: "etag-c" });
+    s = reduceSession(s, { type: "templateSavedAs", depth: 0, fromId: uuid(1), template: { id: uuid(7), kind: "step", name: "copy", description: "", readOnly: false }, file: copy, etag: "etag-c" });
+    expect(s.frames[0]).toMatchObject({ template: { id: uuid(7), kind: "step", name: "copy", readOnly: false }, etag: "etag-c" });
     expect(activeFile(s)).toEqual(copy);
     expect(frameDirty(s.frames[0])).toBe(false);
     expect(s.frames[0]!.history.past).toHaveLength(0);
@@ -492,5 +441,38 @@ describe("edit mode (Workflow | Template)", () => {
   it("opening a workflow returns to workflow mode", () => {
     const s = reduceSession(initialSessionState, { type: "newTemplate" });
     expect(reduceSession(s, { type: "openLoading", path: "a.workflow.json", loadSeq: 1 }).mode).toBe("workflow");
+  });
+});
+
+describe("planDelete and the deleted action", () => {
+  const template: TemplateSource = { id: uuid(90), kind: "step", name: "nightly", description: "", readOnly: false };
+
+  it("plans a written root workflow under its read ETag", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"))))).toEqual({ kind: "workflow", path: "flow.workflow.json", ifMatch: "etag-open" });
+  });
+
+  it("plans a user template by id, but not a shipped one", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, template })))).toEqual({ kind: "template", id: uuid(90), name: "nightly" });
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, template: { ...template, readOnly: true } })))).toBeNull();
+  });
+
+  it("plans nothing for a never-saved buffer or a nested active frame", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, written: false })))).toBeNull();
+    const nested: SessionState = { ...sessionOn(openFrame(file("flow"))), frames: [openFrame(file("flow")), openFrame(file("child"))], activeIndex: 1 };
+    expect(planDelete(nested)).toBeNull();
+  });
+
+  it("empties the canvas in the same mode when the deleted file is still the root", () => {
+    const start = { ...sessionOn(openFrame(file("flow"))), mode: "template" as const };
+    const plan = planDelete(sessionOn(openFrame(file("flow"))))!;
+    const next = reduceSession(start, { type: "deleted", plan });
+    expect(next).toEqual({ mode: "template", frames: [], activeIndex: 0, saveState: { phase: "deleted" } });
+  });
+
+  it("only resets the phase when the root no longer holds the deleted file", () => {
+    const start = sessionOn(openFrame(file("flow"), { path: "other.workflow.json" }));
+    const next = reduceSession(start, { type: "deleted", plan: { kind: "workflow", path: "flow.workflow.json", ifMatch: "e" } });
+    expect(next.frames).toHaveLength(1);
+    expect(next.saveState).toEqual({ phase: "idle" });
   });
 });

@@ -37,8 +37,8 @@ function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, u
   };
 }
 
-/** A valid workflow file used as a workflow-template. */
-function workflowTemplate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
+/** A valid workflow file (not a template kind since ADR 0063, so the template store ignores it). */
+function workflowFile(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     format: "path/workflow@5",
     id: randomUUID(),
@@ -48,12 +48,12 @@ function workflowTemplate(overrides: Record<string, unknown> = {}): Record<strin
   };
 }
 
-/** Write a template file into one of the four union directories, returning its bytes on disk. */
+/** Write a file into a template root's `<kindDir>`, returning its bytes on disk. */
 function writeTemplate(
   root: string,
-  kindDir: "step-template" | "workflow-template",
+  kindDir: string,
   fileStem: string,
-  suffix: ".step-template.json" | ".workflow-template.json",
+  suffix: string,
   content: Record<string, unknown>,
 ): string {
   const dir = join(root, kindDir);
@@ -71,7 +71,7 @@ async function start(): Promise<PathServerHandle> {
 describe("GET /v0/templates", () => {
   it("lists the shipped∪user union thin, with origin/read_only and no body", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
-    writeTemplate(projectDir + "/.path/template", "workflow-template", "nightly", ".workflow-template.json", workflowTemplate());
+    writeTemplate(projectDir + "/.path/template", "step-template", "nightly", ".step-template.json", stepTemplate());
 
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates`);
@@ -83,14 +83,16 @@ describe("GET /v0/templates", () => {
     expect(shipped).not.toHaveProperty("body");
 
     const user = templates.find((t) => t.origin === "user")!;
-    expect(user).toMatchObject({ name: "nightly", kind: "workflow", origin: "user", read_only: false, valid: true });
+    expect(user).toMatchObject({ name: "nightly", kind: "step", origin: "user", read_only: false, valid: true });
   });
 
-  it("filters by ?kind=", async () => {
+  it("ignores a former *.workflow-template.json file (ADR 0063: the Step-Template is the only kind)", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
-    writeTemplate(shippedDir, "workflow-template", "nightly", ".workflow-template.json", workflowTemplate());
+    writeTemplate(projectDir + "/.path/template", "workflow-template", "nightly", ".workflow-template.json", workflowFile());
 
     const { url } = await start();
+    const all = (await (await fetch(`${url}/v0/templates`)).json()) as { templates: { name: string }[] };
+    expect(all.templates.map((t) => t.name)).toEqual(["review"]);
     const stepOnly = (await (await fetch(`${url}/v0/templates?kind=step`)).json()) as { templates: { kind: string }[] };
     expect(stepOnly.templates.map((t) => t.kind)).toEqual(["step"]);
   });
@@ -186,18 +188,15 @@ describe("POST /v0/templates", () => {
     expect(existsSync(join(projectDir, rel))).toBe(true);
   });
 
-  it("creates a workflow-template under the workflow-template dir", async () => {
-    const body = workflowTemplate();
+  it("400s kind \"workflow\": the Workflow-Template is gone (ADR 0063)", async () => {
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "workflow", name: "nightly", description: "blurb", body }),
+      body: JSON.stringify({ kind: "workflow", name: "nightly", description: "blurb", body: workflowFile() }),
     });
-    expect(res.status).toBe(201);
-    const rel = ".path/template/workflow-template/nightly.workflow-template.json";
-    expect(await res.json()).toMatchObject({ id: body.id, relative_path: rel });
-    expect(existsSync(join(projectDir, rel))).toBe(true);
+    expect(res.status).toBe(400);
+    expect(existsSync(join(projectDir, ".path/template/workflow-template"))).toBe(false);
   });
 
   it("409s a name collision", async () => {
@@ -243,30 +242,6 @@ describe("PUT /v0/templates/:id", () => {
     const onDisk = readFileSync(join(projectDir, ".path/template/step-template/editable.step-template.json"), "utf8");
     expect(onDisk).toBe(`${JSON.stringify(updated, null, 2)}\n`);
     expect(res.headers.get("etag")).toBe(strongEtag(onDisk));
-  });
-
-  it("updates a workflow-template in place with a matching If-Match", async () => {
-    const tpl = workflowTemplate();
-    const bytes = writeTemplate(
-      projectDir + "/.path/template",
-      "workflow-template",
-      "nightly",
-      ".workflow-template.json",
-      tpl,
-    );
-    const { url } = await start();
-    const updated = { ...tpl, body: [{ type: "binary", id: randomUUID(), name: "edited", command: "echo" }] };
-    const res = await fetch(`${url}/v0/templates/${tpl.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json", "If-Match": strongEtag(bytes) },
-      body: JSON.stringify(updated),
-    });
-    expect(res.status).toBe(200);
-    const onDisk = readFileSync(
-      join(projectDir, ".path/template/workflow-template/nightly.workflow-template.json"),
-      "utf8",
-    );
-    expect(onDisk).toBe(`${JSON.stringify(updated, null, 2)}\n`);
   });
 
   it("412s a stale or missing If-Match", async () => {
@@ -333,15 +308,14 @@ describe("DELETE /v0/templates/:id", () => {
 });
 
 describe("the two write doors are disjoint (§10.6)", () => {
-  it("PUT /v0/workflows refuses a *.workflow-template.json path and a .path/template/ path", async () => {
+  it("PUT /v0/workflows refuses a .path/template/ path", async () => {
     const { url } = await start();
     const put = (path: string) =>
       fetch(`${url}/v0/workflows`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ workflow_path: path, workflow: workflowTemplate() }),
+        body: JSON.stringify({ workflow_path: path, workflow: workflowFile() }),
       });
-    expect((await put("nightly.workflow-template.json")).status).toBe(400);
-    expect((await put(".path/template/workflow-template/nightly.workflow.json")).status).toBe(400);
+    expect((await put(".path/template/step-template/nightly.workflow.json")).status).toBe(400);
   });
 });

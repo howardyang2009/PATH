@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
-import { templateSuffix } from "./session-reducer.js";
+import { canonicalSerialize } from "./serialize.js";
+import { frameHasUnsavedWork, openedResultOf, templateSuffix, type Frame } from "./session-reducer.js";
 import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
 
 const MODES: readonly { key: EditMode; label: string }[] = [
@@ -26,10 +27,78 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 }
 
 /**
+ * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
+ * never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
+ * recovery) or any other save or delete error. Else "Unsaved edits" for a buffer with unsaved work,
+ * "Saved" after a save lands, "Saved as template" after a workflow's Save as template, or
+ * "Deleted" once a Delete removed the file. An id-less file opens dirty
+ * with no edit (ids stamped on import, ADR 0015), so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
+ */
+export function FileStatus({
+  frame,
+  saveState,
+  onReload,
+}: {
+  frame: Frame | undefined;
+  saveState: SaveState;
+  /** Re-fetch the active file from disk — the stale-write conflict recovery. */
+  onReload: () => void;
+}): JSX.Element | null {
+  if (saveState.phase === "conflict") {
+    return (
+      <span className="file-status file-status-failed" role="alert" title="This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits.">
+        Save refused: this file changed on disk since you opened it
+        <button type="button" className="file-status-action" onClick={onReload}>
+          Reload file
+        </button>
+      </span>
+    );
+  }
+  if (saveState.phase === "error" || saveState.phase === "delete-error") {
+    const verb = saveState.phase === "error" ? "save" : "delete";
+    return (
+      <span className="file-status file-status-failed" role="alert" title={saveState.message}>
+        Could not {verb}: {saveState.message}
+      </span>
+    );
+  }
+  if (saveState.phase === "saved-as-template") {
+    return (
+      <span className="file-status file-status-saved" role="status">
+        Saved as template "{saveState.name}"
+      </span>
+    );
+  }
+  if (saveState.phase === "deleted") {
+    return (
+      <span className="file-status file-status-saved" role="status">
+        Deleted
+      </span>
+    );
+  }
+  const opened = openedResultOf(frame);
+  if (opened && frameHasUnsavedWork(frame)) {
+    // `pristine`: the buffer still equals its bytes at the last save-point, so only the id stamp dirties it.
+    const pristine = canonicalSerialize(opened.file) === frame!.openedBytes;
+    return (
+      <span className="file-status file-status-unsaved" role="status">
+        {opened.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)" : "Unsaved edits"}
+      </span>
+    );
+  }
+  if (saveState.phase !== "saved") return null;
+  return (
+    <span className="file-status file-status-saved" role="status">
+      Saved
+    </span>
+  );
+}
+
+/**
  * The top-bar editing controls (#371). The **Workflow | Template** switch ({@link ModeSwitch}) picks the
  * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save and
  * Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
- * conflict is shown, not swallowed. The lease affordances are an acquire `409` (someone else holds the
+ * conflict is shown ({@link FileStatus}, centred in the top bar), not swallowed. The lease affordances are an acquire `409` (someone else holds the
  * file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was lost
  * mid-edit: a warning and a re-acquire). Both leave the buffer intact — the lease is politeness, the
  * `If-Match` precondition is what actually guards the bytes (ADR 0017).
@@ -57,7 +126,7 @@ export function ModeSwitch({ mode, onSwitch }: { mode: EditMode; onSwitch: (mode
 export function EditingToolbar({
   onNew,
   onOpen,
-  hasFile,
+  canSaveAs,
   saveState,
   dirty,
   canUndo,
@@ -66,7 +135,8 @@ export function EditingToolbar({
   onRedo,
   onSave,
   onSaveAs,
-  onReload,
+  canDelete,
+  onDelete,
   lease,
   onTakeover,
   onReacquire,
@@ -75,8 +145,8 @@ export function EditingToolbar({
   onNew: () => void;
   /** Open the pick-an-existing dialog for the mode: a workflow (#254) or a template. */
   onOpen: () => void;
-  /** Is a file open on the canvas? Save as… needs one. */
-  hasFile: boolean;
+  /** Is a saved file open on the canvas? Save as… needs one: a new, never-saved buffer has only Save. */
+  canSaveAs: boolean;
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
   dirty: boolean;
@@ -89,61 +159,45 @@ export function EditingToolbar({
   onSave: () => void;
   /** Save a copy under a new name: a new workflow file in workflow mode, a new template in template mode. */
   onSaveAs: () => void;
-  /** Re-fetch the active file from disk — the stale-write conflict recovery. */
-  onReload: () => void;
+  /** Is a saved, deletable root file open (`planDelete`)? A new buffer or a shipped template is not. */
+  canDelete: boolean;
+  /** Delete the open workflow or template from disk, after the author confirms. */
+  onDelete: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element {
-  const saving = saveState.phase === "saving";
+  const saving = saveState.phase === "saving" || saveState.phase === "deleting";
   const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
       {/* New and Open… discard the current stack, so they sit apart from the edit controls. */}
-      <button type="button" className="open-btn" onClick={onNew}>
+      <button type="button" className="toolbar-btn" onClick={onNew}>
         New
       </button>
-      <button type="button" className="open-btn" onClick={onOpen}>
+      <button type="button" className="toolbar-btn" onClick={onOpen}>
         Open…
       </button>
       {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
-      <button type="button" className="undo-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
+      <button type="button" className="toolbar-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
         ↶ Undo
       </button>
-      <button type="button" className="redo-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
+      <button type="button" className="toolbar-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
         ↷ Redo
       </button>
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
-        {saving ? "Saving…" : "Save"}
+        {saveState.phase === "saving" ? "Saving…" : "Save"}
       </button>
-      <button type="button" className="save-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
+      <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
         Save as…
       </button>
-      {saveState.phase === "saved" ? (
-        <span className="save-status" role="status">
-          Saved.
-        </span>
-      ) : null}
-      {conflict ? (
-        <div className="save-conflict" role="alert">
-          <span>
-            This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get
-            the latest, then re-apply your edits.
-          </span>
-          <button type="button" onClick={onReload}>
-            Reload file
-          </button>
-        </div>
-      ) : null}
-      {saveState.phase === "error" ? (
-        <div className="save-error" role="alert">
-          Could not save: {saveState.message}
-        </div>
-      ) : null}
+      <button type="button" className="toolbar-btn toolbar-btn-danger" onClick={onDelete} disabled={saving || !canDelete}>
+        {saveState.phase === "deleting" ? "Deleting…" : "Delete"}
+      </button>
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>
   );

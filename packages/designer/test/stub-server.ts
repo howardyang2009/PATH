@@ -38,6 +38,8 @@ export interface StubCalls {
   resume: { rootRunId: string; body: unknown }[];
   /** Every template write (#580): `POST /v0/templates` (id `null`) or `PUT /v0/templates/:id`. */
   templateWrites: TemplateWrite[];
+  /** Every `DELETE` (a workflow file or a template): the request URL and its `If-Match`. */
+  deletes: { url: string; ifMatch: string | null }[];
 }
 
 /** One recorded template write: the verb, the URL id (`null` for a POST), the JSON body, and `If-Match`. */
@@ -78,6 +80,8 @@ export interface DesignerStubOptions {
   plugins?: WireStepPlugin[];
   /** Status for the registry response, for the failure path. */
   pluginsStatus?: number;
+  /** Answer a `DELETE` (workflow file or template) instead of the default `204`. */
+  onDelete?: (url: string) => Response;
   /** Raw file bodies keyed by relative path, for `GET /v0/workflows/file`. A path the map lacks answers 404. */
   files?: Record<string, string>;
   /** A recorder the caller passes in; the stub pushes every write/lock body into it. */
@@ -117,7 +121,7 @@ export interface DesignerStubOptions {
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
 export function makeCalls(): StubCalls {
-  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [] };
+  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [], deletes: [] };
 }
 
 /** A granted lease for a session — the default lock response. */
@@ -180,6 +184,11 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     if (treeMatch && (init?.method ?? "GET") === "GET") {
       return json(options.tree ?? { root_run_id: decodeURIComponent(treeMatch[1]!), status: "pending", output: null, runs: [] }, options.treeStatus ?? 200);
     }
+    if (init?.method === "DELETE") {
+      const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+      calls?.deletes.push({ url: input, ifMatch });
+      return options.onDelete ? options.onDelete(input) : new Response(null, { status: 204 });
+    }
     const fileMatch = /^\/v0\/workflows\/file\?path=(.+)$/.exec(input);
     if (fileMatch) {
       const path = decodeURIComponent(fileMatch[1]!);
@@ -207,11 +216,11 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       if (templateWrite.method === "POST") {
         const created = templateWrite.body["body"] as { id: string };
         const name = templateWrite.body["name"] as string;
-        return json({ id: created.id, relative_path: `.path/template/workflow-template/${name}.workflow-template.json`, etag: '"created"' }, 201);
+        return json({ id: created.id, relative_path: `.path/template/step-template/${name}.step-template.json`, etag: '"created"' }, 201);
       }
       const envelope = (options.templateBodies ?? {})[templateWrite.id!] as { read_only?: boolean } | undefined;
       if (envelope?.read_only) return json({ error: { message: "template is read-only" } }, 403);
-      return json({ id: templateWrite.id, relative_path: "t.workflow-template.json", etag: '"rewritten"' }, 200);
+      return json({ id: templateWrite.id, relative_path: "t.step-template.json", etag: '"rewritten"' }, 200);
     }
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);

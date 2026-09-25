@@ -1,15 +1,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join, relative, resolve } from "node:path";
-import {
-  formatIssues,
-  makeStepTemplateSchema,
-  makeWorkflowFileSchema,
-  NameSchema,
-  safeParseStepTemplateWith,
-  safeParseWorkflowFileWith,
-  type WireTemplateWriteResponse,
-} from "@path/schema";
+import { formatIssues, makeStepTemplateSchema, NameSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
 import { strongEtag } from "../etag.js";
 import { readJsonBody, sendError } from "../http-json.js";
@@ -17,15 +9,15 @@ import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
 
 /**
- * The save-as envelope (server-api-v0.md §10.3): `{ kind, name, description, body }`. `kind` selects
- * the `<kind-dir>` and suffix; `name` is the file stem (`NameSchema`); `body` is the **full template
- * object** — a step-template envelope or a whole workflow file — carrying the client-minted `id`
+ * The save-as envelope (server-api-v0.md §10.3): `{ kind, name, description, body }`. `kind` is always
+ * `"step"` (ADR 0063); `name` is the file stem (`NameSchema`); `body` is the **full template object** —
+ * the step-template envelope — carrying the client-minted `id`
  * (ADR 0015). The server writes `body` verbatim; the outer `name`/`kind` are the filename, not the
  * bytes.
  */
 const PostTemplateBodySchema = z
   .object({
-    kind: z.enum(["step", "workflow"]),
+    kind: z.literal("step"),
     name: NameSchema,
     description: z.string(),
     body: z.record(z.string(), z.unknown()),
@@ -60,12 +52,8 @@ export async function handlePostTemplates(
   // `put-workflow` does. `.strict()` above guaranteed it is an object.
   const rawBody = (raw.value as { body: unknown }).body;
 
-  // Registry-relative body validation: a step-template envelope against `makeStepTemplateSchema`, a
-  // whole workflow file against the workflow-file schema. Both surface the client-minted `id`.
-  const validation =
-    kind === "step"
-      ? safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody)
-      : safeParseWorkflowFileWith(makeWorkflowFileSchema(ctx.stepPlugins), rawBody);
+  // Registry-relative body validation of the step-template envelope; it surfaces the client-minted `id`.
+  const validation = safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody);
   if (!validation.success) {
     sendError(res, 400, "template validation failed", validation.errors);
     return;

@@ -20,7 +20,7 @@ const SUMMARY: TemplateSummary = {
   id: TEMPLATE_ID,
   name: "nightly",
   description: "nightly blurb",
-  kind: "workflow",
+  kind: "step",
   origin: "user",
   read_only: false,
   valid: true,
@@ -29,12 +29,7 @@ const SUMMARY: TemplateSummary = {
 const ENVELOPE = {
   ...SUMMARY,
   format: FORMAT_VERSION,
-  body: {
-    format: FORMAT_VERSION,
-    id: TEMPLATE_ID,
-    name: "nightly",
-    body: [{ type: "prompt", id: uuid(2), name: "draft", prompt: "draft it" }],
-  },
+  body: [{ type: "prompt", id: uuid(2), name: "draft", prompt: "draft it" }],
   etag: '"t"',
 };
 
@@ -75,6 +70,79 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Delete", () => {
+  it("deletes the open workflow after a confirm, under its If-Match, and empties the canvas", async () => {
+    const calls = renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining(`Delete "${WORKFLOW_PATH}"?`));
+    await waitFor(() => expect(calls.deletes).toHaveLength(1));
+    expect(calls.deletes[0]!.url).toMatch(/^\/v0\/workflows\/file\?path=flows%2Fmain\.workflow\.json&session_id=/);
+    expect(calls.deletes[0]!.ifMatch).toBe('"stub"');
+    expect((await screen.findByText("Deleted")).closest(".topbar-title")).not.toBeNull();
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+  });
+
+  it("keeps the file when the confirm is cancelled", async () => {
+    const calls = renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(calls.deletes).toHaveLength(0);
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("shows a refused delete in the top bar and keeps the file open", async () => {
+    const calls = makeCalls();
+    render(
+      <App
+        client={stubClient({
+          files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
+          calls,
+          onDelete: () => new Response(JSON.stringify({ error: { message: "workflow is being edited in another session" } }), { status: 409 }),
+        })}
+        initialPath={WORKFLOW_PATH}
+      />,
+    );
+    await screen.findByText("alpha");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const alert = await screen.findByText(/Could not delete: workflow is being edited in another session/);
+    expect(alert.closest(".topbar-title")).not.toBeNull();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("deletes the open user template by id", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(await screen.findByRole("button", { name: /nightly/ }));
+    await screen.findByText("draft");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Delete template "nightly"?'));
+    await waitFor(() => expect(calls.deletes).toHaveLength(1));
+    expect(calls.deletes[0]!.url).toBe(`/v0/templates/${TEMPLATE_ID}`);
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+  });
+
+  it("disables Delete for a new, never-saved workflow", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  });
+});
+
 describe("Workflow | Template edit-mode switch", () => {
   it("starts in workflow mode and switches to an empty template canvas", async () => {
     renderApp();
@@ -87,7 +155,7 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByRole("button", { name: "Open template" })).toBeInTheDocument();
   });
 
-  it("New in template mode starts an empty template; its first Save picks kind and name", async () => {
+  it("New in template mode starts an empty template; its first Save picks name and description", async () => {
     const calls = renderApp();
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
@@ -96,23 +164,24 @@ describe("Workflow | Template edit-mode switch", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
-    fireEvent.click(within(dialog).getByLabelText("Workflow-template"));
+    // The Template is the only kind (ADR 0063): the dialog offers no kind choice.
+    expect(within(dialog).queryByLabelText("Workflow-template")).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "weekly" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "weekly steps" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("weekly.workflow-template.json"));
-    expect(calls.templateWrites[0]).toMatchObject({ method: "POST", id: null, body: { kind: "workflow", name: "weekly" } });
-    expect((calls.templateWrites[0]!.body["body"] as { name: string }).name).toBe("weekly");
+    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("weekly.step-template.json"));
+    expect(calls.templateWrites[0]).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "weekly" } });
   });
 
-  it("a new step-template needs a description before it can be created", async () => {
+  it("a new template needs a description before it can be created", async () => {
     const calls = renderApp();
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Save as…" }));
+    expect(await screen.findByRole("button", { name: "Save as…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
-    expect(within(dialog).getByLabelText("Step-template")).toBeChecked();
     expect(within(dialog).getByLabelText("Template description").tagName).toBe("TEXTAREA");
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "gate" } });
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
@@ -130,10 +199,10 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open…" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a template" });
-    fireEvent.click(await within(dialog).findByRole("button", { name: /nightly\.workflow-template\.json/ }));
+    fireEvent.click(await within(dialog).findByRole("button", { name: /nightly\.step-template\.json/ }));
 
     await screen.findByText("draft");
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json");
+    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json");
   });
 
   it("a template double-click edits only in template mode", async () => {
@@ -152,13 +221,42 @@ describe("Workflow | Template edit-mode switch", () => {
     await switchTo("Template");
     fireEvent.doubleClick(await within(palette).findByRole("button", { name: /^nightly/ }));
     await screen.findByText("draft");
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json");
+    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json");
+  });
+
+  it("switches away from an untouched New workflow or template without asking", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
+    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Workflow" }));
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
+  it("shows \"Unsaved edits\" in the top bar only once a New workflow is edited", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Prompt"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
+    expect(screen.getByText("Unsaved edits").closest(".topbar-title")).not.toBeNull();
   });
 
   it("asks before a switch discards unsaved edits, and keeps them on cancel", async () => {
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
+    fireEvent.click(screen.getByText("Prompt"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
@@ -168,11 +266,20 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByRole("region", { name: "Workflow canvas" })).toBeInTheDocument();
   });
 
+  it("disables Save as… for a new, never-saved workflow: its first save is Save", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.getByRole("button", { name: "Save as…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
+  });
+
   it("Save as… in workflow mode writes a copy to a new file, then edits the copy", async () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Workflow…/ }));
     const dialog = await screen.findByRole("dialog", { name: "Save workflow as" });
     expect(within(dialog).getByLabelText("Filename")).toHaveValue("main-copy");
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "other" } });
@@ -188,6 +295,33 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(JSON.stringify(workflow)).not.toContain(uuid(21));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("Save as… in workflow mode saves a template of only the body, and the workflow stays open", async () => {
+    const calls = renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+
+    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Template…/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Save workflow as template" });
+    expect(within(dialog).getByLabelText("Template name")).toHaveValue("main");
+    expect(within(dialog).getByRole("note")).toHaveTextContent("A template keeps only the body.");
+    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "main-steps" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "an alpha step" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
+
+    await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
+    const write = calls.templateWrites[0]!;
+    expect(write).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "main-steps", description: "an alpha step" } });
+    const body = write.body["body"] as { id: string; body: unknown[] };
+    expect(Object.keys(body).sort()).toEqual(["body", "description", "format", "id"]);
+    // A fresh identity (a template must not share the workflow's), and the workflow's body.
+    expect(body.id).not.toBe(WORKFLOW_FILE.id);
+    expect(body.body).toEqual(WORKFLOW_FILE.body);
+    expect((await screen.findByText('Saved as template "main-steps"')).closest(".topbar-title")).not.toBeNull();
+    // The workflow stays open and was not written.
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+    expect(calls.put).toHaveLength(0);
   });
 
   it("disables the Runs dock in template mode, since a template never runs", async () => {
@@ -206,7 +340,7 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(toggle).toBeEnabled();
   });
 
-  it("a real double-click on a Workflow-Template in template mode opens it, placing nothing first", async () => {
+  it("a real double-click on a template card in template mode opens it without asking", async () => {
     renderApp();
     await switchTo("Template");
     const palette = screen.getByRole("region", { name: "Palette" });
@@ -220,7 +354,7 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(card);
     fireEvent.doubleClick(card);
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json"));
+    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json"));
     expect(confirm).not.toHaveBeenCalled();
   });
 });

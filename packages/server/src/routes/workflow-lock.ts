@@ -56,7 +56,7 @@ const LeaseOpBodySchema = z
  * marker itself not exist yet (acquire may create it); a marker that already exists as a symlink is
  * still refused.
  */
-function resolveMarker(ctx: RunsRouteContext, workflowPath: string): string | undefined {
+export function resolveMarker(ctx: RunsRouteContext, workflowPath: string): string | undefined {
   return confineToProjectRoot(resolve(ctx.project.dir), `${workflowPath}${MARKER_SUFFIX}`, {
     allowMissingTail: true,
   });
@@ -67,7 +67,7 @@ function resolveMarker(ctx: RunsRouteContext, workflowPath: string): string | un
  * use an exclusive `wx` create) from a present-but-unparseable marker (reclaimable — overwrite). A
  * corrupt marker parses to `lease: undefined` and is treated as expired.
  */
-function readLease(absPath: string): { fileExists: boolean; lease?: Lease } {
+export function readLease(absPath: string): { fileExists: boolean; lease?: Lease } {
   let bytes: string;
   try {
     bytes = readFileSync(absPath, "utf8");

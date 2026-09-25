@@ -11,7 +11,7 @@ const MIN_STAGE = 240;
 const RAIL_VRESIZER_SPAN = 12;
 
 export interface AppShellProps {
-  /** The left rail: the Build | Templates palette (§ The v1 authoring palette). */
+  /** The left rail: the Nodes | Templates palette (§ The v1 authoring palette). */
   palette: ReactNode;
   /** The centre surface: the node canvas the workflow body is authored on. */
   canvas: ReactNode;

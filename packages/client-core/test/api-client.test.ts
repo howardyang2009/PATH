@@ -88,6 +88,33 @@ describe("PathApiClient", () => {
     expect(inits[0]?.body).toBeUndefined();
   });
 
+  it("deleteWorkflowFile sends DELETE with the path, session id and If-Match", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteWorkflowFile({ path: "flows/a b.workflow.json", ifMatch: '"e1"', sessionId: "s1" })).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fa+b.workflow.json&session_id=s1");
+    expect(inits[0]?.method).toBe("DELETE");
+    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"e1"');
+  });
+
+  it("deleteTemplate sends DELETE /v0/templates/:id", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteTemplate("t 1")).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
+    expect(inits[0]?.method).toBe("DELETE");
+  });
+
   it("deleteRun appends ?force=true only when force is set", async () => {
     const stub = stubFetch(() => json({ root_run_id: "r1" }, 200));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
@@ -324,7 +351,7 @@ describe("PathApiClient", () => {
       json({
         templates: [
           { id: "t1", name: "review", description: "A review gate", kind: "step", origin: "shipped", read_only: true, valid: true, error: null },
-          { id: "t2", name: "nightly", description: "nightly", kind: "workflow", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
+          { id: "t2", name: "nightly", description: "nightly", kind: "step", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
         ],
       }),
     );
@@ -332,7 +359,7 @@ describe("PathApiClient", () => {
 
     const res = await client.listTemplates();
     expect(res.templates[0]).toMatchObject({ name: "review", kind: "step", origin: "shipped", read_only: true });
-    expect(res.templates[1]).toMatchObject({ kind: "workflow", valid: false, error: { message: "bad" } });
+    expect(res.templates[1]).toMatchObject({ kind: "step", valid: false, error: { message: "bad" } });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
   });
 
@@ -364,22 +391,22 @@ describe("PathApiClient", () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t2", relative_path: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' }, 201);
+      return json({ id: "t2", relative_path: ".path/template/step-template/copy.step-template.json", etag: '"new"' }, 201);
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    const res = await client.createTemplate({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
-    expect(res).toEqual({ id: "t2", relativePath: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' });
+    const res = await client.createTemplate({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
+    expect(res).toEqual({ id: "t2", relativePath: ".path/template/step-template/copy.step-template.json", etag: '"new"' });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
     expect(sent?.method).toBe("POST");
-    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
+    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
   });
 
   it("PUT /v0/templates/:id writes back under If-Match (#580)", async () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t 1", relative_path: ".path/template/workflow-template/x.workflow-template.json", etag: '"next"' });
+      return json({ id: "t 1", relative_path: ".path/template/step-template/x.step-template.json", etag: '"next"' });
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 

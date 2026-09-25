@@ -65,12 +65,12 @@ export function useWorkflowDiscovery(client: PathApiClient, savePhase: SaveState
       });
   }, [client]);
 
-  // The first scan, and one after each save that lands.
+  // The first scan, and one after each save or delete that lands.
   useEffect(() => {
     scan();
   }, [scan]);
   useEffect(() => {
-    if (savePhase === "saved") scan();
+    if (savePhase === "saved" || savePhase === "deleted") scan();
   }, [savePhase, scan]);
 
   return load;

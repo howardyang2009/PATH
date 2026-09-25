@@ -6,7 +6,7 @@ import { App } from "../src/app.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
- * #578: insert a Step-Template into an open workflow. Selecting a step-template card fetches
+ * #578: insert a Template into an open workflow. Selecting a template card fetches
  * `GET /v0/templates/:id` and arms its body; the canvas opens only the grammar-legal sockets for it, and
  * a place runs Instantiation (fresh ids, names uniquified on collision) and splices the nodes in — a
  * 2+-node body at a single-node slot wrapped in a fresh `sequence`. The inserted nodes are ordinary.
@@ -62,7 +62,7 @@ function envelope(name: string, body: unknown, overrides: Record<string, unknown
 }
 
 const TEMPLATES = {
-  templates: [summary("draft-judge"), summary("gate-check"), summary("nightly", { kind: "workflow" })],
+  templates: [summary("draft-judge"), summary("gate-check"), summary("nightly")],
 };
 
 const BODIES = {
@@ -98,7 +98,7 @@ async function savedBody(calls: ReturnType<typeof makeCalls>): Promise<Record<st
   return calls.put[0]!.body.workflow.body as Record<string, unknown>[];
 }
 
-describe("Insert a Step-Template into a workflow (#578)", () => {
+describe("Insert a Template into a workflow (#578)", () => {
   it("fetches the template on select and splices fresh nodes in at a list socket", async () => {
     const { calls, canvas, palette } = await openApp();
     await armTemplate(palette, "draft-judge");
@@ -190,7 +190,7 @@ describe("Insert a Step-Template into a workflow (#578)", () => {
   it("a template select disarms what was armed before, so a failed read leaves nothing armed", async () => {
     const { canvas } = await openApp({});
     const tabs = screen.getByRole("region", { name: "Palette" });
-    fireEvent.click(within(tabs).getByRole("tab", { name: "Build" }));
+    fireEvent.click(within(tabs).getByRole("tab", { name: "Nodes" }));
     fireEvent.click(screen.getByText("Prompt"));
     expect(within(canvas).getByRole("button", { name: /add prompt here/ })).toBeInTheDocument();
 

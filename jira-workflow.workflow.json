@@ -1,0 +1,375 @@
+{
+  "format": "path/workflow@5",
+  "id": "9a9629d2-42a8-46e3-8ed2-d781c254970a",
+  "name": "jira-workflow",
+  "body": [
+    {
+      "id": "d19b3987-0774-47af-a89a-638bd1bf8b2d",
+      "name": "backlog",
+      "description": "backlog",
+      "type": "person-activity"
+    },
+    {
+      "type": "sequence",
+      "id": "ee2e6b3c-602b-4518-840d-a5203b3590e6",
+      "name": "design",
+      "body": [
+        {
+          "id": "72fcc741-b890-4dff-b5ba-02ee42bcc810",
+          "name": "choice-design",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "backlog",
+                  "implement",
+                  "pending"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          },
+          "type": "person-activity"
+        },
+        {
+          "type": "branch",
+          "id": "66b38879-2227-4d36-922a-07132d89b6f2",
+          "name": "on-choice",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "backlog"
+              },
+              "node": {
+                "type": "goto",
+                "id": "dca57f06-d86c-45bc-97db-bee850ebf4d0",
+                "name": "goto",
+                "target": "backlog",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "implement"
+              },
+              "node": {
+                "type": "goto",
+                "id": "27a1c14c-1fd3-439c-b2b4-22b0fd9a60be",
+                "name": "goto-2",
+                "target": "implement",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "pending"
+              },
+              "node": {
+                "type": "goto",
+                "id": "de16aab9-6753-4116-946c-b7b107ed19b2",
+                "name": "goto-3",
+                "target": "pending",
+                "max_jumps": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sequence",
+      "id": "941b516c-8c19-4223-9c43-3a121db70c4a",
+      "name": "implement",
+      "body": [
+        {
+          "id": "d4d7f21b-541f-40ad-b738-3716f5277a81",
+          "name": "choice-implement",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "design",
+                  "test",
+                  "pending"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          },
+          "type": "person-activity"
+        },
+        {
+          "type": "branch",
+          "id": "714341a0-47d7-4808-92b8-ae5ee462cb08",
+          "name": "on-choice-2",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "design"
+              },
+              "node": {
+                "type": "goto",
+                "id": "e9812a88-d138-45f0-9f50-44a7dfc34837",
+                "name": "goto-4",
+                "target": "design",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "test"
+              },
+              "node": {
+                "type": "goto",
+                "id": "ca8e0932-920e-42c3-8225-5115c02919c1",
+                "name": "goto-2-2",
+                "target": "test",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "pending"
+              },
+              "node": {
+                "type": "goto",
+                "id": "849c19f9-21e7-4f3b-9849-f61c189a022c",
+                "name": "goto-3-2",
+                "target": "pending",
+                "max_jumps": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sequence",
+      "id": "eb1be14c-29f3-46ae-b5e1-990c49f6f88b",
+      "name": "test",
+      "body": [
+        {
+          "id": "3de711fd-7728-44b7-842e-e83d79057463",
+          "name": "choice-test",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "implement",
+                  "close",
+                  "pending"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          },
+          "type": "person-activity"
+        },
+        {
+          "type": "branch",
+          "id": "7e729f38-b909-4f58-b64d-f6124cfcdd38",
+          "name": "on-choice-3",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "implement"
+              },
+              "node": {
+                "type": "goto",
+                "id": "49ac2ff5-9006-46db-b5b9-5e64ea75a358",
+                "name": "goto-5",
+                "target": "implement",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "close"
+              },
+              "node": {
+                "type": "goto",
+                "id": "417282b6-3f7a-4b46-9c0b-050defefed14",
+                "name": "goto-2-3",
+                "target": "close",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "pending"
+              },
+              "node": {
+                "type": "goto",
+                "id": "b848e8a9-5cd1-4c9a-977c-3ac39863febd",
+                "name": "goto-3-3",
+                "target": "pending",
+                "max_jumps": 3
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "type": "sequence",
+      "id": "b94139ab-7c14-4fec-8f8a-1576a157754b",
+      "name": "close",
+      "body": [
+        {
+          "id": "b9eff702-2a4d-4a95-99d4-3ffb6c0469ec",
+          "name": "choose-3",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "option-a",
+                  "option-b"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          },
+          "type": "person-activity"
+        },
+        {
+          "type": "goto",
+          "id": "0fa1e9bf-ffe9-4e24-bf1d-fad93231b82e",
+          "name": "goto-6",
+          "target": "backlog",
+          "max_jumps": 3
+        }
+      ]
+    },
+    {
+      "type": "sequence",
+      "id": "e33a9235-bbfb-465c-a038-0df2e8ffec11",
+      "name": "pending",
+      "body": [
+        {
+          "id": "3df24374-14af-4e5f-9e87-2037b3bb7f15",
+          "name": "choice-pending",
+          "description": "Pick which option runs next.",
+          "outputSchema": {
+            "type": "object",
+            "properties": {
+              "choice": {
+                "type": "string",
+                "title": "Choice",
+                "description": "The option to run next.",
+                "enum": [
+                  "design",
+                  "implement",
+                  "test"
+                ]
+              }
+            },
+            "required": [
+              "choice"
+            ],
+            "additionalProperties": false
+          },
+          "type": "person-activity"
+        },
+        {
+          "type": "branch",
+          "id": "9d2f8b1d-4a04-41d3-8987-e1901b88de05",
+          "name": "on-choice-5",
+          "arms": [
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "design"
+              },
+              "node": {
+                "type": "goto",
+                "id": "a731ccad-e2ac-4644-a847-3c3644b1e465",
+                "name": "goto-7",
+                "target": "design",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "implement"
+              },
+              "node": {
+                "type": "goto",
+                "id": "d42c97fa-b7a9-4697-a613-ac1f715071fd",
+                "name": "goto-8",
+                "target": "implement",
+                "max_jumps": 3
+              }
+            },
+            {
+              "when": {
+                "type": "equals",
+                "path": "output.choice",
+                "value": "test"
+              },
+              "node": {
+                "type": "goto",
+                "id": "76c869d7-851a-4302-9631-a7516ec86546",
+                "name": "goto-9",
+                "target": "test",
+                "max_jumps": 3
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

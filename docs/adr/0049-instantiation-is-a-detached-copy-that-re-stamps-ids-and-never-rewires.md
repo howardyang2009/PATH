@@ -11,6 +11,9 @@ server never rewrites them, a save preserves every id), and [#559](https://githu
 (a `@2` body fragment holds no GUID cross-references). The glossary terms are `CONTEXT.md` § Templates
 (**Instantiation**, **Template instance**, **Template edit mode**).
 
+> [!NOTE]
+> Superseded in part by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): the Workflow-Template is removed (decision 7 no longer applies). The Step-Template parts stand.
+
 A **Template** is Server-owned and engine-blind: it expands into ordinary nodes *before* any run, and
 the engine sees only those nodes. So the one algorithm that turns a template into nodes is not the
 engine's; it is the Designer's, and its whole job is to produce a fragment indistinguishable from a

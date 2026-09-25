@@ -1,11 +1,11 @@
-import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import type { WireStepPlugin } from "@path/client-core";
 
 /**
  * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
- * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
+ * two tabs of the rail (#564 variant C). The **Nodes** tab: **Step** — one entry per leaf step type — and
  * **Controller** — fixed by the grammar, split into a **Structure** sub-tab (the five Structure Controllers,
  * `checkpoint` included) and a **Graph** sub-tab (the Graph Controller `goto`). The **Templates**
- * tab: **Step-Template** and **Workflow-Template**, one row per entry of `GET /v0/templates`.
+ * tab: one card per entry of `GET /v0/templates`, with no group heading (one kind only, ADR 0063).
  *
  * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
  * leaf type the received `GET /v0/step-plugins` snapshot describes (`prompt`, `binary`, and any plugin
@@ -92,28 +92,9 @@ const CONTROLLERS: PaletteGroup = {
   ],
 };
 
-/** The Build tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
+/** The Nodes tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
 export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[] {
   return [stepGroup(plugins), CONTROLLERS];
-}
-
-/** One Templates-tab category: the templates of one kind, and what to say when there are none. */
-export interface TemplateGroup {
-  readonly title: string;
-  readonly emptyText: string;
-  readonly templates: readonly TemplateSummary[];
-}
-
-/**
- * The Templates tab's groups: the received list split by `kind` into Step-Template then
- * Workflow-Template, server order kept (shipped before user). Invalid rows stay in — the palette shows
- * them unselectable with their error, never hides them (ADR 0050 decision 4).
- */
-export function templateGroups(templates: readonly TemplateSummary[]): readonly TemplateGroup[] {
-  return [
-    { title: "Step-Template", emptyText: "No step templates", templates: templates.filter((t) => t.kind === "step") },
-    { title: "Workflow-Template", emptyText: "No workflow templates", templates: templates.filter((t) => t.kind === "workflow") },
-  ];
 }
 
 /** The leaf step type a block's auto-filled occupants take — the first Step entry, else `prompt`. */

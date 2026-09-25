@@ -38,12 +38,12 @@ export function useTemplateList(client: PathApiClient, savePhase: SaveState["pha
       });
   }, [client]);
 
-  // The first scan, and one after each save that lands.
+  // The first scan, and one after each save or delete that lands.
   useEffect(() => {
     scan();
   }, [scan]);
   useEffect(() => {
-    if (savePhase === "saved") scan();
+    if (savePhase === "saved" || savePhase === "deleted" || savePhase === "saved-as-template") scan();
   }, [savePhase, scan]);
 
   return load;

@@ -212,7 +212,7 @@ as follows:
   entry is marked forward or backward. A value that names no eligible node (the inserted `""`, a deleted
   or moved target) shows as `missing: <name>` and is never cleared silently. There is no drag-to-connect.
 - **Placement is unsnappable.** The palette never offers `goto` at a socket whose ancestor chain holds a
-  `while-do` or a `parallel`, and a move or a Step-Template drop that would put a goto there is refused.
+  `while-do` or a `parallel`, and a move or a Template drop that would put a goto there is refused.
   The grammar check therefore reads the socket's ancestor chain, not only its flavor. The canvas has no
   wrap-in-block action, so no other edit can put an existing goto under such a block.
 - **Target edits are allowed, with a marker.** A rename rewrites every `target` that names the old name,
@@ -299,29 +299,29 @@ that shape. The received registry is a **bare snapshot with no staleness contrac
 sub-decision 3): the write route re-validates every save against the server's **live** registry, so a
 stale snapshot surfaces as a rejected write, never a corrupt file.
 
-### The palette's Build and Templates tabs
+### The palette's Nodes and Templates tabs
 
 The palette rail is two tabs ([#564](https://github.com/howardyang2009/PATH/issues/564) variant C,
-built in [#577](https://github.com/howardyang2009/PATH/issues/577)). **Build** holds the primitives:
+built in [#577](https://github.com/howardyang2009/PATH/issues/577)). **Nodes** holds the primitives:
 the **Step** category (the registry-driven leaf types above) and the **Controller** category
 (`checkpoint`, `parallel`, `sequence`, `while-do`, `branch`). **Templates** holds the reusable
-authoring artifacts: the **Step-Template** and **Workflow-Template** categories, one card per entry of
+authoring artifacts, the **Templates** (one kind only,
+[ADR 0063](../adr/0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md)): one card per entry of
 `GET /v0/templates` (server-api-v0.md §10.1), shipped and user rows alike, a shipped row tagged
 `shipped`. The list is loaded once and is thin (no bodies). An **invalid** template is listed, not
 dropped: its card shows the server's error and is disabled, so it cannot be selected
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md) decision 4).
 A failed list read says so instead of showing an empty category. The Graph-Controller category is out
-of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)). Selecting a Workflow-Template
-is § Starting from a Workflow-Template below.
+of scope ([#544](https://github.com/howardyang2009/PATH/issues/544)).
 
-### Inserting a Step-Template
+### Inserting a Template
 
-A **Step-Template** card arms like a Build card
+A **Template** card arms like a Nodes card
 ([#578](https://github.com/howardyang2009/PATH/issues/578)). The click reads the template with
 `GET /v0/templates/:id` (server-api-v0.md §10.2) and arms its body; a second click disarms. A read that
 fails, or a template the server now reports invalid, arms nothing and the Templates tab says why. While
 a template is armed, the canvas opens only the sockets the grammar admits its body into, the same
-unsnappable-not-rejected rule as a Build card (§ Canvas interaction model):
+unsnappable-not-rejected rule as a Nodes card (§ Canvas interaction model):
 
 - A `sequence`-flavoured list (the file body or a `sequence` body) splices the body's nodes in, in
   order.
@@ -334,48 +334,30 @@ A place runs Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)):
 every node gets a fresh id, a name that collides with one in the file becomes `name-2`, and every other
 value is copied verbatim. The inserted nodes are ordinary nodes, edited in the pane like any other, with
-no link back to the template. The place disarms. Two step-templates ship in
+no link back to the template. The place disarms. Two templates ship in
 `packages/server/template/`: `review-gate`, a `person-activity` review followed by a `branch` on its
 answer; and `person-switch` ([ADR 0052](../adr/0052-person-switch-is-a-shipped-step-template-not-a-controller.md)),
 one `sequence` of a `person-activity` ask whose `outputSchema` is a string enum of labels and a
 `branch` with one arm per label, routed on the ask's `output.choice`.
 
-### Starting from a Workflow-Template
-
-A **Workflow-Template** card starts a whole workflow
-([#579](https://github.com/howardyang2009/PATH/issues/579)). It is selectable **only into an empty
-canvas**: nothing open, or an active buffer whose body holds zero nodes (a from-scratch root or an
-unwritten create-new child; a written file always holds at least one node). Otherwise the card is
-disabled. It arms nothing: the click reads the template with `GET /v0/templates/:id` and runs
-Instantiation plus a workflow-level re-mint
-([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
-decision 7): a fresh workflow `id`, a fresh id on every node, and every other datum (`name`, `input`,
-`worker_defaults`, `config`, `output`, the node values) copied verbatim. With nothing open the instance
-becomes a from-scratch root; an empty buffer takes it as one undoable edit. A read that fails, a
-template the server now reports invalid, or a canvas that stopped being empty while the read was in
-flight puts nothing on the canvas and the Templates tab says why.
-
-The instance is in **consume mode**: it is an ordinary unsaved buffer with no link to the template, so
-its Save is the buffer's own door. A from-scratch root opens the first-save dialog (§ New-file placement
-and naming), prefilled from the template's `name`, and creates a `*.workflow.json` through
-`PUT /v0/workflows`; a create-new child creates at its pre-assigned `*.workflow.json` path. Nothing
-saves back to the template. One workflow-template ships in `packages/server/template/`: `draft-review`,
-a `prompt` draft followed by a `person-activity` review.
-
 ### Edit mode: Workflow | Template
 
 The top bar shows a **Workflow | Template** switch right after the `PATH designer` brand, left of the toolbar. **Workflow** mode edits `*.workflow.json`
-files; **Template** mode edits template sources (`*.step-template.json`, `*.workflow-template.json`) and
-new templates. The toolbar buttons keep the same plain labels in both modes, because the switch names
+files; **Template** mode edits template sources (`*.step-template.json`) and new templates. The toolbar buttons keep the same plain labels in both modes, because the switch names
 the mode: **New** and **Open…** act in the current mode (a new workflow or template; the workflow picker
 or the template picker), then Undo, Redo, **Save** and **Save as…**. A template saves only as a template:
-template mode has no Save as workflow door, and a workflow is made from a workflow-template in workflow
-mode, by selecting its card into an empty canvas (consume mode, above). In workflow mode, Save as… writes a copy of the open workflow to
+template mode has no Save as workflow door. In workflow mode, Save as… writes a copy of the open workflow to
 a new `*.workflow.json` through the first-save dialog (titled "Save workflow as", prefilled
 `<name>-copy` in the source file's directory) as an exclusive create. The copy is a new workflow:
 Instantiation gives it a fresh workflow `id` and fresh node ids (two workflows must not share identity,
 ADR 0006), and its `name` is the new file's stem. The editor then edits the copy; the original file is
-unchanged on disk. A switch clears the canvas. Template mode's Open… and a template-card
+unchanged on disk. In workflow mode, Save as… first asks what to save the workflow as (a "Save as"
+dialog with **Workflow…** and **Template…**). **Workflow…** is the copy above. **Template…** is
+the "Save as template" door (#459.6, ADR 0063): the "Save workflow as template" dialog takes the
+name (prefilled from the workflow's) and a required description, and creates a new user template of
+the workflow's **body** through `POST /v0/templates` with a fresh `id`. The workflow-level fields are
+dropped, and the dialog lists the ones that hold a value. The workflow stays open and unchanged, and the
+top bar says `Saved as template "<name>"`. A switch clears the canvas. Template mode's Open… and a template-card
 double-click (template mode only) open a template; opening a workflow enters workflow mode. In workflow mode the Templates tab only inserts: a double-click never leaves the open
 workflow, and the card's hover text says "Switch to Template mode to edit this template." Every door that replaces the stack (New, Open…, a switch, a template double-click) asks
 "Discard unsaved changes?" first when any frame on the stack is dirty. The Runs dock is disabled in template mode (its
@@ -383,52 +365,42 @@ toggle greys out, and a note says "Templates do not run"), because a template is
 ([ADR 0051](../adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md)) and runs only
 after Instantiation into a workflow.
 
-**New** in template mode gives an empty canvas with no kind yet. Its first **Save** (or Save as…) opens
-the new-template dialog: the kind (Step-template or Workflow-template, Step-template preselected), the
-name (the suffix follows the kind), and a description (a step-template requires one; it is the palette
-blurb). It creates through `POST /v0/templates` with a fresh `id`; a workflow-template's file takes the
-template name. The editor then edits the created template.
+**New** in template mode gives an empty canvas for a new template. Its first **Save** opens the
+new-template dialog: the name (with the `.step-template.json` suffix) and a required description
+(the palette blurb). It creates through `POST /v0/templates` with a fresh `id`. The editor then edits the
+created template.
 
 ### Editing a template's source (author mode)
 
-In template mode, a **double-click** on a Step-Template or Workflow-Template card
-([#580](https://github.com/howardyang2009/PATH/issues/580)) opens the `*.step-template.json` or
-`*.workflow-template.json` itself as a fresh root in template mode, discarding the current stack like
-Open…. Template mode's Open… picker opens the same way. The
-double-click disarms the card first, so its own single clicks leave nothing armed or placed. In
-template mode a Workflow-Template card does nothing on a single click (it is an edit target only), so
-its double-click never first fills an empty canvas with an instance. The suffix is the discriminator
+In template mode, a **double-click** on a Template card
+([#580](https://github.com/howardyang2009/PATH/issues/580)) opens the `*.step-template.json` itself as a
+fresh root in template mode, discarding the current stack like Open…. Template mode's Open… picker opens
+the same way. The double-click disarms the card first, so its own single clicks leave nothing armed or
+placed. The suffix is the discriminator
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
 decision 8): a `*.workflow.json` opens in workflow mode, a template card's select is consume mode, and
 the template file opened to edit is **author mode**. The read is `GET /v0/templates/:id`
-(server-api-v0.md §10.2); the template's workflow file opens through the same pipeline as a
-`*.workflow.json`. A step-template's `body` opens inside a synthetic workflow file that carries the
-template's `id` and name; only its `body` goes back into the envelope on save. The double-click also
-works on a card that is disabled for select (an invalid template, or a Workflow-Template while the
-canvas holds nodes), so an author can open an invalid template and see why.
+(server-api-v0.md §10.2). A template's `body` opens inside a synthetic workflow file that carries
+the template's `id` and name, through the same pipeline as a `*.workflow.json`; only its `body` goes
+back into the envelope on save. The double-click also works on a card that is disabled for select (an
+invalid template), so an author can open an invalid template and see why.
 
 An author-mode frame is id-addressed, not path-addressed
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md)). It
 takes no edit lease and cannot launch, since a template runs only after Instantiation. The top bar
-names the source file in its centre (`<name>.workflow-template.json` or `<name>.step-template.json`,
+names the source file in its centre (`<name>.step-template.json`,
 and `shipped, read-only` for a shipped one; `New template (not saved)` before a new template's first
 save) and offers two save doors:
 
 - **Save** writes back to the original through `PUT /v0/templates/:id` under the read's `If-Match`,
-  with the workflow `id` preserved. For a step-template it writes the envelope: `format`, `id`,
-  `description`, and the edited `body`. A `412` is the same stale-write conflict as a workflow's, and Reload
+  with the `id` preserved. It writes the envelope: `format`, `id`, `description`, and the edited `body`. A `412` is the same stale-write conflict as a workflow's, and Reload
   re-reads the template. A **shipped** template refuses the write with the API's `403`, shown as the
   save error.
-- **Save as…** names a new template (the stem is prefilled `<name>-copy`; the suffix follows the
-  chosen kind) and creates it through
+- **Save as…** names a new template (the stem is prefilled `<name>-copy`) and creates it through
   `POST /v0/templates` with a fresh `id`, since two templates must not share identity. Node ids are kept: they are unique in the
   file, and Instantiation re-stamps them on use. A taken name (`409`) asks for another name. The editor
-  then edits the new template, and the palette re-lists it.
-  The dialog's **Kind** is preselected to the source's kind and can be changed. A step-template saved
-  as a workflow-template gets a workflow file around its body, named by the new template, with no
-  `input`, `output`, `config` or `worker_defaults`. A workflow-template saved as a step-template keeps
-  only its body; the dialog notes that, and lists the workflow-level fields that hold a value and will
-  be dropped. A step-template needs a description (the palette blurb), prefilled from the source's.
+  then edits the new template, and the palette re-lists it. A template needs a description (the
+  palette blurb), prefilled from the source's.
 
 Author mode has no **Save as workflow** door (it was removed with the Workflow | Template switch, which
 supersedes that part of ADR 0049 decision 8): a template saves only as a template.

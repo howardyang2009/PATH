@@ -9,6 +9,8 @@ import { LeaseController, type LeaseMap } from "./lease-client.js";
  * acquire/heartbeat/takeover/lost logic (see `lease-client.ts`); this hook keeps it thin.
  */
 export interface EditLeases {
+  /** This Designer session's `session_id`, the holder its leases carry — a Delete names it. */
+  sessionId: string;
   /** The per-path lease state, for the toolbar/banners to read the active file's lease. */
   leases: LeaseMap;
   /** Take over a lease held by another session (confirmation-gated in the UI). */
@@ -55,6 +57,7 @@ export function useEditLeases(client: PathApiClient, paths: readonly string[]): 
   }, [controller, client]);
 
   return {
+    sessionId: sessionId.current,
     leases,
     takeover: (path) => controller.takeover(path),
     reacquire: (path) => controller.reacquire(path),

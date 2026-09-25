@@ -11,6 +11,9 @@
 (the `id`=GUID / `name`=human split). The endpoint surface is `docs/api/server-api-v0.md` §10; the
 glossary terms are `CONTEXT.md` § Templates.
 
+> [!NOTE]
+> Superseded in part by [ADR 0063](0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md): the Workflow-Template is removed (the `workflow` kind and its directories no longer exist). The Step-Template parts stand.
+
 A **Template** is Server-owned and engine-blind ([ADR 0048](0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)),
 so the Designer reaches it only over HTTP. The palette needs to list the union of shipped and user
 templates, read one to instantiate it, and — for **author mode** ([ADR 0049](0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)

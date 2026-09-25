@@ -65,7 +65,7 @@ export function socketBarred(body: readonly WorkflowNode[], ownerId: string | nu
 }
 
 /**
- * How a Step-Template body lands in a socket of `flavor` (#578, ADR 0049 decision 6), as the
+ * How a Template body lands in a socket of `flavor` (#578, ADR 0049 decision 6), as the
  * `instantiate` socket option. A `sequence`-flavoured list splices the nodes in directly. A single slot
  * and a `parallel` branch each take one node, so a 2+-node body is wrapped in a fresh `sequence` there:
  * a template body is an ordered run, and splicing it as several branches would run it concurrently.
@@ -75,7 +75,7 @@ export function bodyInsertSocket(flavor: SocketFlavor): "list" | "single" {
 }
 
 /**
- * Is a Step-Template `body` legal in a socket of `flavor`? The same rule as {@link socketAcceptsKind},
+ * Is a Template `body` legal in a socket of `flavor`? The same rule as {@link socketAcceptsKind},
  * applied to what actually lands (and, at a `barred` socket, refusing a goto anywhere in the body): every node when the list splices them, the lone node when a one-node
  * body inserts bare, and a fresh `sequence` (legal everywhere) when a 2+-node body is wrapped. An empty
  * body places nothing, so it opens no socket.

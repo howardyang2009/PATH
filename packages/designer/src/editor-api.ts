@@ -10,7 +10,7 @@ import type { Armed } from "./use-armed.js";
  * never renders a socket, so an illegal drop is unreachable rather than rejected on save (spec § Adding).
  *
  * "Placing" reads the armed value, makes the arriving node(s), applies the edit, and disarms. An armed
- * node kind mints one node (`node-factory`, a fresh client id — ADR 0015); an armed Step-Template runs
+ * node kind mints one node (`node-factory`, a fresh client id — ADR 0015); an armed Template runs
  * Instantiation over its body (#578, ADR 0049) — fresh ids, names uniquified against the file — shaped
  * for the socket (`grammar.bodyInsertSocket`: a 2+-node body at a single node slot is wrapped in a fresh
  * `sequence`). Structural affordances that carry no kind — add-arm, add-`else`, delete,
