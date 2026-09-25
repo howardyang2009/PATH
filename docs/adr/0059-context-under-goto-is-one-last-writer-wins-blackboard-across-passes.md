@@ -47,7 +47,8 @@ blackboard does across passes.
    publishes them again. Plain Resume-from-K has the same gap today; goto makes it common.
    [#608](https://github.com/howardyang2009/PATH/issues/608) replaces restore-by-load with replay from
    the seed (the predecessor's `input.json`) for every file, so K sees the context it saw originally.
-   Goto adds no rule of its own.
+   Goto adds no rule of its own. Landed as
+   [ADR 0062](0062-resume-rebuilds-context-by-replay-from-the-seed.md).
 
 ## Considered options
 
