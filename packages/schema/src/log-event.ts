@@ -124,6 +124,39 @@ const LoopExitedSchema = z
   })
   .strict();
 
+// Goto passes and jumps (spec docs/spec/goto.md §7, ADR 0054 / 0061): control events the top-level
+// walk emits, `run_id` the workflow-run and `node_id`/`node_name` the goto. `pass-started` fires as a
+// pass opens, pass 1 included — its envelope names the opening goto, both null for pass 1.
+// `goto-taken` records one jump: `jump` is this goto's 1-based count in the workflow-run (this one
+// included), `max_jumps` the resolved bound, `pass` the pass it opens. `goto-exhausted` records a goto
+// reached with its jumps spent, `pass` being the pass that fails; no jump happens, so no `jump`.
+// Payloads are ids, names and integers only. Every persisted line is re-validated on read, so a field
+// added to any of these later needs a default.
+const PassStartedSchema = z
+  .object({ type: z.literal("pass-started"), ...envelope, pass: z.number().int().positive() })
+  .strict();
+const GotoTakenSchema = z
+  .object({
+    type: z.literal("goto-taken"),
+    ...envelope,
+    target_node_id: z.string(),
+    target_node_name: z.string(),
+    jump: z.number().int().positive(),
+    max_jumps: z.number().int().positive(),
+    pass: z.number().int().positive(),
+  })
+  .strict();
+const GotoExhaustedSchema = z
+  .object({
+    type: z.literal("goto-exhausted"),
+    ...envelope,
+    target_node_id: z.string(),
+    target_node_name: z.string(),
+    max_jumps: z.number().int().positive(),
+    pass: z.number().int().positive(),
+  })
+  .strict();
+
 // A resumed tree reused one node's recorded work instead of re-running it (#172,
 // resume-restore-semantics.md §6): no `step-started`/`step-finished` fires for the node, so this
 // marker is the only place the resumed tree's own log records it happened — §8.1's "complete
@@ -159,6 +192,9 @@ export const LogEventSchema = z.discriminatedUnion("type", [
   RunCancelledSchema,
   IterationStartedSchema,
   LoopExitedSchema,
+  PassStartedSchema,
+  GotoTakenSchema,
+  GotoExhaustedSchema,
   ReuseMarkerSchema,
 ]);
 

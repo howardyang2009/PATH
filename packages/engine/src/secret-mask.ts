@@ -193,9 +193,13 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
     // A secret cannot reach these: every field is an id, a count, a context key or a node id the
     // workflow author wrote, or an enum value the engine chose — none of them a config value.
     // `reuse-marker` carries only run ids and a node id (#172) — no payload the engine did not build.
+    // The goto events (ADR 0061) carry node ids, node names and integers only.
     case "join-applied":
     case "run-cancelled":
     case "reuse-marker":
+    case "pass-started":
+    case "goto-taken":
+    case "goto-exhausted":
       return o;
     // `assignee` (#488) is an interpolated author value — it can read `${config.x}`, so it can reach a
     // secret — and must be scrubbed by value like any other payload before it crosses the seam.

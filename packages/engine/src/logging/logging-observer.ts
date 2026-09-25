@@ -81,6 +81,27 @@ export function toLogEvent(o: Observation, envelope: (o: Observation) => Envelop
         iterations: o.iterations,
         trace: o.trace,
       };
+    case "pass-started":
+      return { type: "pass-started", ...envelope(o), pass: o.pass };
+    case "goto-taken":
+      return {
+        type: "goto-taken",
+        ...envelope(o),
+        target_node_id: o.targetNodeId,
+        target_node_name: o.targetNodeName,
+        jump: o.jump,
+        max_jumps: o.maxJumps,
+        pass: o.pass,
+      };
+    case "goto-exhausted":
+      return {
+        type: "goto-exhausted",
+        ...envelope(o),
+        target_node_id: o.targetNodeId,
+        target_node_name: o.targetNodeName,
+        max_jumps: o.maxJumps,
+        pass: o.pass,
+      };
     case "join-applied":
       // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
       // the `parallel` node — never a run of its own (a controller has no run, invariant 1).

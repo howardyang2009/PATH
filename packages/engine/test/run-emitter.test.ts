@@ -144,6 +144,24 @@ describe("createEmitter — control nodes pull node id/name off the node", () =>
     ]);
   });
 
+  it("passStarted / gotoTaken / gotoExhausted", async () => {
+    const { seen, emit } = sink();
+    const e = createEmitter(NESTED, emit);
+    const target = { id: "target-guid", name: "b" };
+    await e.passStarted(null, { pass: 1 });
+    await e.passStarted(node, { pass: 2 });
+    await e.gotoTaken(node, { target, jump: 1, maxJumps: 3, pass: 2 });
+    await e.gotoExhausted(node, { target, maxJumps: 3, pass: 4 });
+
+    const env = { runId: "child-run", rootRunId: "root-run" };
+    expect(seen).toEqual([
+      { type: "pass-started", ...env, nodeId: null, nodeName: null, pass: 1 },
+      { type: "pass-started", ...env, nodeId: "node-guid", nodeName: "gate", pass: 2 },
+      { type: "goto-taken", ...env, nodeId: "node-guid", nodeName: "gate", targetNodeId: "target-guid", targetNodeName: "b", jump: 1, maxJumps: 3, pass: 2 },
+      { type: "goto-exhausted", ...env, nodeId: "node-guid", nodeName: "gate", targetNodeId: "target-guid", targetNodeName: "b", maxJumps: 3, pass: 4 },
+    ]);
+  });
+
   it("joinApplied includes winner only when given", async () => {
     const { seen, emit } = sink();
     const e = createEmitter(NESTED, emit);
