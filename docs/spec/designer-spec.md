@@ -190,6 +190,46 @@ fields are neither tabbable nor read out of order.
 | `branch` | a C-block; its N arms side by side, then `else` | `when <cond>` summary per arm head (first-match-wins) | each arm's **`when`** (selected on the arm's own node); the Branch node itself edits only structure |
 | `while-do` | a C-block wrapping one body node | `while <cond> · max N` summary | the loop **`condition`** and the **mandatory `max-iterations`** — exceeding it fails the run |
 | `sequence` | a vertical stack in the mouth | length | `name`; **order is structure** (below) |
+| `goto` | a leaf block, `GOTO` chip, **no edge** (below) | `→ <target>` with a direction glyph | `name`, **`target`** (picker over first-level names), the **mandatory `max_jumps`** (pre-filled `3`) |
+
+### `goto`: a jump without an edge (resolves #601)
+
+A `goto` is the one **Graph Controller**
+([ADR 0057](../adr/0057-controllers-split-into-structure-and-graph-kinds.md)). The canvas still draws no
+edge ([ADR 0029](../adr/0029-designer-canvas-is-the-block-grammar-no-arbitrary-dag.md) is narrowed, not
+reopened). The jump is a `target` **name** property
+([ADR 0056](../adr/0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md)), shown
+as follows:
+
+- **On the goto block.** A chip `→ <target>` with a direction glyph: `↑` when the target sits before the
+  goto's first-level position (a backward jump, a loop), `↓` when after (a forward jump, a skip).
+- **Highlight.** Selecting or hovering a goto highlights its target block.
+- **Incoming badge.** A first-level node that one or more gotos target carries a small badge, `← N`.
+  Hovering it lists those gotos by name. It warns the author before a delete or a move of the target.
+- **Target picker.** The pane's `target` control is a dropdown of every first-level node in file order,
+  the goto itself excluded. Controllers, other gotos and the first-level `branch` that holds the goto
+  are eligible ([ADR 0058](../adr/0058-a-goto-is-target-plus-max-jumps-in-path-workflow-5.md) §3). Each
+  entry is marked forward or backward. A value that names no eligible node (the inserted `""`, a deleted
+  or moved target) shows as `missing: <name>` and is never cleared silently. There is no drag-to-connect.
+- **Placement is unsnappable.** The palette never offers `goto` at a socket whose ancestor chain holds a
+  `while-do` or a `parallel`, and a move or a Step-Template drop that would put a goto there is refused.
+  The grammar check therefore reads the socket's ancestor chain, not only its flavor. The canvas has no
+  wrap-in-block action, so no other edit can put an existing goto under such a block.
+- **Target edits are allowed, with a marker.** A rename rewrites every `target` that names the old name,
+  in the same edit (one undo step). A delete of the target, or a move of it into a block, rewrites
+  nothing and is not refused: the goto gets a marker and the author picks a new target
+  (ADR 0056 §7). The rule is: refuse an edit that no follow-up edit could repair (a goto's own
+  placement); allow one whose repair is an author's choice (where the goto should now point).
+- **Markers.** The `@path/schema` goto rule module (`target-absent`, `target-inner`, `target-self`,
+  `placement`) feeds the problem pass exactly as `publishSetIssues` does: one marker per offending goto,
+  its messages stacked, and each issue in the problems panel (§ Deferred authoring UX).
+- **Run projection.** Pass rows carry the opening goto's `nodeId`
+  ([ADR 0054](../adr/0054-a-goto-visit-is-scoped-by-a-per-pass-container-run.md)), but a goto ran for no
+  time, so the projection skips them (`isPassRun`) and the goto block takes no status tint, like a
+  `branch`. While a run is watched it shows a jumps-spent badge, `<spent>/<max_jumps>`, where spent is
+  the count of pass rows it opened ([ADR 0060](../adr/0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md) §4).
+  A node that ran in several passes projects its latest run, as a `while-do` body does. There is no
+  per-pass canvas view: the inspector pane's run tree shows each pass as "Pass N".
 
 ### Adding, reordering, deleting, and the empty canvas
 

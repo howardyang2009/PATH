@@ -63,7 +63,8 @@ arrives as a **name** resolved at load (ADR 0056 §1), so no body ever holds a G
    the wording). Nothing is structural: "first level" is a per-file notion, and a Step-Template body
    has no file namespace until it lands (ADR 0056 §6), so `makeBodySchema` stays permissive. The module
    carries `nodeId` from the start so the Designer's problem pass reads the same rule for its canvas
-   marker, as it already does for `publishSetIssues`; #601 wires the marker.
+   marker, as it already does for `publishSetIssues`; #601 wires the marker. **Settled (#601):** see
+   [designer-spec.md § `goto`: a jump without an edge](../spec/designer-spec.md).
 
 6. **The format bumps to `path/workflow@5`.** `FORMAT_VERSION` moves; `SUPERSEDED_FORMAT_VERSIONS`
    gains an `@4` entry and appends `scripts/migrate-workflow-format-v5.ts` to the `@0`–`@3` chains. The
@@ -124,7 +125,7 @@ arrives as a **name** resolved at load (ADR 0056 §1), so no body ever holds a G
   `{ type: "goto", …, target: "", max_jumps: 3 }`; the properties pane gets a target picker over the
   file's first-level names (its own excluded) and a `max_jumps` field beside `max_iterations`; a
   rename rewrites every `target` naming the renamed node (ADR 0056 §7). #601 owns only the depiction of
-  the jump.
+  the jump. **Settled (#601):** see [designer-spec.md § `goto`: a jump without an edge](../spec/designer-spec.md).
 - The engine keeps ADR 0053/0054's `SeqOutcome.goto`, top-level walk and pass container; the schema
   delivers the node plus the `name → GUID` map the walk builds once per workflow-run (ADR 0056 §1).
 - `CONTEXT.md` names the post-0058 format string: its three `path/workflow@4` stamps read

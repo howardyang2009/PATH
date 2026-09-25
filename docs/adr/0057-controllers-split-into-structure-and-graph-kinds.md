@@ -41,7 +41,9 @@ hides the one property a reader must know first: whether the body still executes
      ([ADR 0056](0056-a-goto-names-its-target-by-step-name-checked-at-load-in-path-schema.md)), not an
      edge, in the same way dataflow is a dot-path interpolation and not a canvas wire.
    - The Designer canvas still draws no edges and still authors only the block grammar. It authors a
-     goto as a node with a `target` field.
+     goto as a node with a `target` field. **Settled (#601):** the chip, highlight, incoming badge and
+     picker that show the jump are in
+     [designer-spec.md § `goto`: a jump without an edge](../spec/designer-spec.md).
    - The routing is confined: only a file's top-level walk follows it, a target is always a first-level
      node of the same file, and a goto never sits under `while-do` or `parallel` (ADR 0053 §3–4).
      Inside every nested body, Structure Controller semantics are unchanged.
