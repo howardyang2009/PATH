@@ -109,7 +109,8 @@ describe("Workflow | Template edit-mode switch", () => {
     const calls = renderApp();
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
-    fireEvent.click(await screen.findByRole("button", { name: "Save as…" }));
+    expect(await screen.findByRole("button", { name: "Save as…" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
     expect(within(dialog).getByLabelText("Step-template")).toBeChecked();
@@ -166,6 +167,14 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(confirm).toHaveBeenCalledWith("Discard unsaved changes?");
     expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
     expect(screen.getByRole("region", { name: "Workflow canvas" })).toBeInTheDocument();
+  });
+
+  it("disables Save as… for a new, never-saved workflow: its first save is Save", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.getByRole("button", { name: "Save as…" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
   });
 
   it("Save as… in workflow mode writes a copy to a new file, then edits the copy", async () => {

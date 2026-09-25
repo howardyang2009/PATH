@@ -57,7 +57,7 @@ export function ModeSwitch({ mode, onSwitch }: { mode: EditMode; onSwitch: (mode
 export function EditingToolbar({
   onNew,
   onOpen,
-  hasFile,
+  canSaveAs,
   saveState,
   dirty,
   canUndo,
@@ -75,8 +75,8 @@ export function EditingToolbar({
   onNew: () => void;
   /** Open the pick-an-existing dialog for the mode: a workflow (#254) or a template. */
   onOpen: () => void;
-  /** Is a file open on the canvas? Save as… needs one. */
-  hasFile: boolean;
+  /** Is a saved file open on the canvas? Save as… needs one: a new, never-saved buffer has only Save. */
+  canSaveAs: boolean;
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
   dirty: boolean;
@@ -120,7 +120,7 @@ export function EditingToolbar({
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
         {saving ? "Saving…" : "Save"}
       </button>
-      <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
+      <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
         Save as…
       </button>
       {saveState.phase === "saved" ? (

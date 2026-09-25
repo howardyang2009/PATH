@@ -209,7 +209,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           <EditingToolbar
             onNew={onNew}
             onOpen={onOpen}
-            hasFile={openedResult !== null}
+            // A new workflow or template (no path, no template source) has only Save: its first save.
+            canSaveAs={openedResult !== null && Boolean(activePath || activeTemplate)}
             saveState={session.saveState}
             dirty={dirty}
             canUndo={canUndo}
@@ -226,9 +227,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
                   ? () => setSaveAsDialog("new-template")
                   : () => setNewFileOpen(true)
             }
-            // Save as…: a copy to a new workflow file, a copy to a new template, or (for a new template not
-            // saved yet) its first save.
-            onSaveAs={() => setSaveAsDialog(inTemplateMode ? (activeTemplate ? "template" : "new-template") : "workflow-copy")}
+            // Save as…: a copy to a new workflow file, or a copy to a new template.
+            onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-copy")}
             onReload={session.reloadActive}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
