@@ -135,7 +135,7 @@ describe("Instantiate a Workflow-Template into an empty canvas (#579)", () => {
   it("is not selectable while the canvas holds nodes", async () => {
     renderApp({ initialPath: PATH });
     await screen.findByText("alpha");
-    expect(await workflowTemplateCard()).toBeDisabled();
+    expect(await workflowTemplateCard()).toHaveAttribute("aria-disabled", "true");
   });
 
   it("disables the card once the instance fills the canvas", async () => {
@@ -144,7 +144,7 @@ describe("Instantiate a Workflow-Template into an empty canvas (#579)", () => {
     fireEvent.click(await workflowTemplateCard());
     await screen.findByText("draft");
 
-    expect(await workflowTemplateCard()).toBeDisabled();
+    expect(await workflowTemplateCard()).toHaveAttribute("aria-disabled", "true");
   });
 
   it("puts nothing on the canvas for a template the server reports invalid, and says why", async () => {

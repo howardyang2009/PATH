@@ -72,7 +72,9 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
   it("renders the authoring shell, not the read-only Viewer", () => {
     render(<App client={stubClient()} />);
     expect(screen.getByText("PATH")).toBeInTheDocument();
-    expect(screen.getByText("designer · authoring")).toBeInTheDocument();
+    expect(screen.getByText("designer")).toBeInTheDocument();
+    expect(screen.queryByText(/authoring/)).not.toBeInTheDocument();
+    expect(screen.getByRole("radiogroup", { name: "Edit mode" })).toBeInTheDocument();
   });
 
   it("shows the palette shell split into registry-driven Step and grammar-fixed Controller", async () => {
@@ -86,9 +88,16 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
       expect(within(steps).getByText(label)).toBeInTheDocument();
     }
     const controllers = within(palette).getByRole("region", { name: "Controller" });
+    expect(within(controllers).getByRole("tab", { name: "Structure" })).toHaveAttribute("aria-selected", "true");
+    const structure = within(controllers).getByRole("tabpanel", { name: "Structure" });
     for (const label of ["Parallel", "Branch", "While-do", "Sequence", "Checkpoint"]) {
-      expect(within(controllers).getByText(label)).toBeInTheDocument();
+      expect(within(structure).getByText(label)).toBeInTheDocument();
     }
+    expect(within(controllers).queryByText("Goto")).not.toBeInTheDocument();
+    fireEvent.click(within(controllers).getByRole("tab", { name: "Graph" }));
+    const graph = within(controllers).getByRole("tabpanel", { name: "Graph" });
+    expect(within(graph).getByText("Goto")).toBeInTheDocument();
+    expect(within(graph).queryByText("Parallel")).not.toBeInTheDocument();
   });
 
   it("shows an empty canvas when no file is opened", async () => {

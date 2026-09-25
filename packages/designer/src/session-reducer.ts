@@ -82,7 +82,7 @@ export interface Frame {
   loadSeq: number | null;
   /**
    * The template this frame edits in **author mode** (#580, ADR 0049 decision 8): set when the author
-   * opened a `*.workflow-template.json` itself, `undefined` for a workflow file. The suffix of the opened
+   * opened a `*.workflow-template.json` or a `*.step-template.json` itself, `undefined` for a workflow file. The suffix of the opened
    * file is the discriminator. A template frame is `written` (it is on disk) but holds no `path`: a
    * template is id-addressed (ADR 0050), so it takes no lease, cannot launch, and saves through
    * `PUT /v0/templates/:id` rather than the workflow write door.
@@ -90,11 +90,23 @@ export interface Frame {
   template?: TemplateSource;
 }
 
-/** The `*.workflow-template.json` an author-mode frame edits: its id (the route key), file stem, and origin. */
+/** The file suffix a template kind carries on disk. */
+export function templateSuffix(kind: TemplateSource["kind"]): string {
+  return kind === "step" ? ".step-template.json" : ".workflow-template.json";
+}
+
+/** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {
   id: string;
+  /**
+   * `workflow`: the frame's file is the template's whole workflow file. `step`: the frame's file is a
+   * synthetic workflow around the step-template's body; only `body` goes back into the envelope on save.
+   */
+  kind: "step" | "workflow";
   /** The file stem — the template's name, immutable through the write-back door. */
   name: string;
+  /** The template's description, kept so a step-template write-back rebuilds its envelope. */
+  description: string;
   /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
   readOnly: boolean;
 }
@@ -193,7 +205,7 @@ export function scratchFrame(path: string | null = null, refParent?: { depth: nu
  * The default workflow `name` for a create-new child, taken from its filename stem. It falls back to the
  * from-scratch default when a stem does not slug to a legal name (`^[a-z][a-z0-9-]*$`).
  */
-function stemName(path: string): string {
+export function stemName(path: string): string {
   const stem = basename(path).replace(/\.workflow\.json$/i, "");
   return /^[a-z][a-z0-9-]*$/.test(stem) ? stem : NEW_FILE_DEFAULT_NAME;
 }
@@ -251,7 +263,16 @@ export function frameCanRedo(frame: Frame | undefined): boolean {
 // ── The session state and its actions ──────────────────────────────────────────────────────────────
 
 /** The whole open-and-navigate session state the reducer owns: the trail, the active frame, the save phase. */
+/**
+ * The Designer's edit mode, picked with the toolbar's Workflow | Template switch. **Workflow** mode edits
+ * `*.workflow.json` files; **Template** mode edits template sources (`*.step-template.json`,
+ * `*.workflow-template.json`) and new, not-yet-saved templates. Switching mode clears the canvas.
+ */
+export type EditMode = "workflow" | "template";
+
 export interface SessionState {
+  /** Which kind of file the session edits (see {@link EditMode}). */
+  mode: EditMode;
   /** The navigation **trail**, root file first (#367). The active frame is `frames[activeIndex]`, not the tip. */
   frames: Frame[];
   /** The index of the active frame in `frames` — what the canvas renders and every edit/save op targets. */
@@ -261,7 +282,7 @@ export interface SessionState {
 }
 
 /** The empty session before any file opens. */
-export const initialSessionState: SessionState = { frames: [], activeIndex: 0, saveState: { phase: "idle" } };
+export const initialSessionState: SessionState = { mode: "workflow", frames: [], activeIndex: 0, saveState: { phase: "idle" } };
 
 /**
  * Every transition the session makes. The reducer owns each **decision** — whether a descent re-enters
@@ -281,6 +302,13 @@ export type SessionAction =
   | { type: "openTemplateLoading"; template: TemplateSource; loadSeq: number }
   /** Start a from-scratch buffer as a fresh root (#390), discarding any current stack. */
   | { type: "newFile" }
+  /**
+   * Start a new, unsaved template in template mode, discarding any current stack: an empty buffer with no
+   * template yet. Its kind and name are picked at its first save.
+   */
+  | { type: "newTemplate" }
+  /** Switch the edit mode, discarding any current stack: the canvas is empty in the new mode. */
+  | { type: "switchMode"; mode: EditMode }
   /**
    * Descend across the active file's `workflow`-ref. The reducer decides the whole shape of it: the
    * target path resolves from the active frame's own path, a frame just ahead that already holds it is
@@ -340,11 +368,11 @@ export type SessionAction =
    * `fromId`, now edits the new `template` and its `file` (the fresh workflow id), clean at `etag`. The
    * history starts fresh — an undo past the Save-As would restore the old template's id.
    */
-  | { type: "templateSavedAs"; depth: number; fromId: string; template: TemplateSource; file: WorkflowFile; etag: string }
+  | { type: "templateSavedAs"; depth: number; fromId: string | null; template: TemplateSource; file: WorkflowFile; etag: string }
   /**
-   * An author-mode Save-as-workflow wrote its instance to `relativePath` (#580): if the frame at `depth`
-   * still edits `fromId`, the session becomes that saved `*.workflow.json` as a fresh root, the way a
-   * Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
+   * A workflow-mode Save as… wrote a copy to a new `*.workflow.json` at `relativePath`. If the frame at
+   * `depth` still edits the file with id `fromId`, the session becomes that saved file as a fresh root,
+   * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
    */
   | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
@@ -356,20 +384,27 @@ const IDLE: SaveState = { phase: "idle" };
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
     case "openLoading":
-      return { frames: [loadingFrame(action.path, undefined, action.loadSeq)], activeIndex: 0, saveState: IDLE };
+      return { mode: "workflow", frames: [loadingFrame(action.path, undefined, action.loadSeq)], activeIndex: 0, saveState: IDLE };
 
     case "newFile":
-      return { frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
+      return { mode: "workflow", frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
+
+    case "newTemplate":
+      return { mode: "template", frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
+
+    case "switchMode":
+      return { mode: action.mode, frames: [], activeIndex: 0, saveState: IDLE };
 
     case "openTemplateLoading":
-      return { frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
+      return { mode: "template", frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
 
     case "placeWorkflowInstance": {
       if (!canvasEmpty(state)) return state;
       // A from-scratch root first, so the instance lands as an edit on an empty buffer either way: undo
       // returns the empty canvas, and the save door stays the frame's own (the first-save dialog for a
       // root, the pre-assigned `*.workflow.json` for a create-new child) — never the template (#460.3).
-      const base = state.frames.length === 0 ? reduceSession(state, { type: "newFile" }) : state;
+      // In template mode the from-scratch root is a new template, so the canvas stays in template mode.
+      const base = state.frames.length === 0 ? reduceSession(state, { type: state.mode === "template" ? "newTemplate" : "newFile" }) : state;
       return reduceSession(base, { type: "applyEdit", next: action.file });
     }
 
@@ -389,6 +424,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // Otherwise truncate the forward trail and load the target fresh below the active frame. `nodeId`
       // is the `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
       return {
+        mode: state.mode,
         frames: [...state.frames.slice(0, depth + 1), loadingFrame(path, action.nodeId, action.loadSeq)],
         activeIndex: depth + 1,
         saveState: IDLE,
@@ -400,7 +436,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       if (!state.frames[depth]) return state;
       const childDepth = depth + 1;
       const child = scratchFrame(null, { depth, nodeId: action.parentNodeId });
-      return { frames: [...state.frames.slice(0, childDepth), child], activeIndex: childDepth, saveState: IDLE };
+      return { mode: state.mode, frames: [...state.frames.slice(0, childDepth), child], activeIndex: childDepth, saveState: IDLE };
     }
 
     case "goTo": {
@@ -426,7 +462,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         state: { phase: "open", result: { ...opened, file: action.next } },
         history: { past, future: [], coalesceKey: action.key },
       };
-      return { frames, activeIndex: depth, saveState: IDLE };
+      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
     }
 
     case "undo": {
@@ -447,7 +483,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         state: { phase: "open", result: { ...opened, file: restored } },
         history: { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined },
       };
-      return { frames, activeIndex: depth, saveState: IDLE };
+      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
     }
 
     case "redo": {
@@ -463,7 +499,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         state: { phase: "open", result: { ...opened, file: restored } },
         history: { past: [...frame.history.past, opened.file], future, coalesceKey: undefined },
       };
-      return { frames, activeIndex: depth, saveState: IDLE };
+      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
     }
 
     case "reload": {
@@ -552,11 +588,13 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "templateSavedAs": {
       const top = state.frames[action.depth];
       const opened = openedResultOf(top);
-      if (!top || !opened || top.template?.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
+      // `fromId: null` is a new template's first save: the frame held no template yet.
+      if (!top || !opened || (top.template?.id ?? null) !== action.fromId) return { ...state, saveState: { phase: "saved" } };
       const bytes = canonicalSerialize(action.file);
       const frames = state.frames.slice();
       frames[action.depth] = {
         ...top,
+        written: true,
         template: action.template,
         state: { phase: "open", result: { ...opened, file: action.file } },
         etag: action.etag,
@@ -569,7 +607,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "detachedSaved": {
       const top = state.frames[action.depth];
-      if (!top || !openedResultOf(top) || top.template?.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
+      const opened = openedResultOf(top);
+      if (!top || !opened || opened.file.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
       const bytes = canonicalSerialize(action.file);
       const saved: Frame = {
         path: action.relativePath,
@@ -581,7 +620,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         history: freshHistory(),
         loadSeq: null,
       };
-      return { frames: [saved], activeIndex: 0, saveState: { phase: "saved" } };
+      return { mode: "workflow", frames: [saved], activeIndex: 0, saveState: { phase: "saved" } };
     }
 
     case "setSaveState":
@@ -609,7 +648,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 export type SavePlan =
   | { kind: "overwrite"; depth: number; path: string; file: WorkflowFile; ifMatch: string | undefined }
   | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined }
-  | { kind: "template"; depth: number; id: string; file: WorkflowFile; ifMatch: string };
+  | { kind: "template"; depth: number; id: string; template: TemplateSource; file: WorkflowFile; ifMatch: string };
 
 export function planSave(state: SessionState): SavePlan | null {
   const depth = state.activeIndex;
@@ -617,7 +656,7 @@ export function planSave(state: SessionState): SavePlan | null {
   const opened = openedResultOf(frame);
   if (frame?.template && opened) {
     // The read always carries an ETag; an empty token would only earn the honest `412`.
-    return { kind: "template", depth, id: frame.template.id, file: opened.file, ifMatch: frame.etag ?? "" };
+    return { kind: "template", depth, id: frame.template.id, template: frame.template, file: opened.file, ifMatch: frame.etag ?? "" };
   }
   if (!frame || !opened || frame.path === null) return null;
   return frame.written
@@ -658,4 +697,24 @@ export function planTemplateSaveAs(state: SessionState): TemplateSaveAsPlan | nu
   const opened = openedResultOf(frame);
   if (!frame?.template || !opened) return null;
   return { depth, template: frame.template, file: opened.file };
+}
+
+/** What a workflow-mode Save as… starts from: the active opened buffer in workflow mode, or `null`. */
+export function planWorkflowSaveAs(state: SessionState): NewFileSavePlan | null {
+  const depth = state.activeIndex;
+  const opened = openedResultOf(state.frames[depth]);
+  if (state.mode !== "workflow" || !opened) return null;
+  return { depth, file: opened.file };
+}
+
+/**
+ * What a new template's first save starts from: the active buffer in template mode that holds no
+ * template yet, or `null`. The save dialog picks its kind and name.
+ */
+export function planNewTemplateSave(state: SessionState): NewFileSavePlan | null {
+  const depth = state.activeIndex;
+  const frame = state.frames[depth];
+  const opened = openedResultOf(frame);
+  if (state.mode !== "template" || !frame || frame.template || !opened) return null;
+  return { depth, file: opened.file };
 }

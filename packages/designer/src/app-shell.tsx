@@ -17,7 +17,11 @@ export interface AppShellProps {
   canvas: ReactNode;
   /** The right rail: the properties pane that edits the selected node (or the file) (#369). */
   pane: ReactNode;
-  /** The top-bar actions: save, and the edit-lease status/banners (#371). Absent with no file open. */
+  /** The Workflow | Template edit-mode switch, shown right after the brand. */
+  modeSwitch?: ReactNode;
+  /** Centred in the top bar: template mode's file name. */
+  title?: ReactNode;
+  /** The top-bar actions: save, and the edit-lease status/banners (#371). */
   toolbar?: ReactNode;
   /** The bottom-docked run surfaces: launch, run list, and the run inspector (#372). */
   runDock?: ReactNode;
@@ -30,10 +34,10 @@ export interface AppShellProps {
  * (from #369) the **properties** pane on the right. Save and run still graduate in later tickets. The
  * frame exists so the empty canvas, the palette, and the pane load at `/designer/`.
  *
- * The brand strip says `designer · authoring`, the counterpart to the Viewer's `viewer · read-only`,
- * so the two peer surfaces are told apart at a glance.
+ * The brand strip says `designer`, then the Workflow | Template edit-mode switch, so the author sees the
+ * surface and the mode at a glance.
  */
-export function AppShell({ palette, canvas, pane, toolbar, runDock }: AppShellProps) {
+export function AppShell({ palette, canvas, pane, modeSwitch, title, toolbar, runDock }: AppShellProps) {
   const panesRef = useRef<HTMLDivElement | null>(null);
   // Palette (handle on its right edge, grow +1) and properties (handle on its left edge, grow -1); the
   // canvas stage between them takes the remainder — the same model as the run dock's three panes.
@@ -51,7 +55,10 @@ export function AppShell({ palette, canvas, pane, toolbar, runDock }: AppShellPr
     <div className="shell" data-has-dock={runDock ? "true" : "false"}>
       <header className="topbar">
         <span className="brand">PATH</span>
-        <span className="brand-sub">designer · authoring</span>
+        <span className="brand-sub">designer</span>
+        {modeSwitch ?? null}
+        {/* The centre slot always renders, so the toolbar keeps the right end with or without a title. */}
+        <div className="topbar-title">{title ?? null}</div>
         {toolbar ? <div className="toolbar">{toolbar}</div> : null}
       </header>
       <div className="panes" ref={panesRef}>

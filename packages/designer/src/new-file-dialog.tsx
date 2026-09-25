@@ -22,6 +22,8 @@ import type { SaveNewFileResult } from "./use-open-file.js";
 export function NewFileDialog({
   discovery,
   workflowName,
+  title = "Save new workflow",
+  initialDirectory = "",
   create,
   onCreated,
   onCancel,
@@ -29,6 +31,10 @@ export function NewFileDialog({
   discovery: DiscoveryLoad;
   /** The buffer's own `name` — the prefilled filename stem (it slugs cleanly, `^[a-z][a-z0-9-]*$`). */
   workflowName: string;
+  /** The dialog title; workflow-mode Save as… passes "Save workflow as". */
+  title?: string;
+  /** The preselected directory; Save as… starts in the source file's directory. */
+  initialDirectory?: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
   create: (targetPath: string) => Promise<SaveNewFileResult>;
   /** Called once the file is created — the App drops the dialog and the frame is now saved. */
@@ -36,7 +42,7 @@ export function NewFileDialog({
   /** Dismiss without saving; the from-scratch buffer stays on the canvas untouched. */
   onCancel: () => void;
 }): JSX.Element {
-  const [directory, setDirectory] = useState("");
+  const [directory, setDirectory] = useState(initialDirectory);
   const [stem, setStem] = useState(workflowName);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -45,10 +51,10 @@ export function NewFileDialog({
   // Nothing discovered (still scanning, or a failed scan) is not fatal: the root is always offered, so a
   // save can still proceed.
   const directories = useMemo(() => {
-    const dirs = new Set<string>([""]);
+    const dirs = new Set<string>(["", initialDirectory]);
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
     return [...dirs].sort();
-  }, [discovery]);
+  }, [discovery, initialDirectory]);
 
   const cleanStem = normalizeStem(stem);
   const targetPath = useMemo(() => composePath(directory, cleanStem), [directory, cleanStem]);
@@ -71,9 +77,9 @@ export function NewFileDialog({
   };
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Save new workflow">
+    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label={title}>
       <div className="dialog new-file-dialog">
-        <h2 className="dialog-title">Save new workflow</h2>
+        <h2 className="dialog-title">{title}</h2>
         <p className="dialog-hint">Choose where in the project this workflow is saved.</p>
 
         <label className="dialog-field">
@@ -155,7 +161,7 @@ function composePath(directory: string, stem: string): string {
 }
 
 /** The parent directory of a project-relative path, or `""` (the project root) for a top-level file. */
-function dirnameOf(path: string): string {
+export function dirnameOf(path: string): string {
   const cut = path.lastIndexOf("/");
   return cut === -1 ? "" : path.slice(0, cut);
 }

@@ -56,6 +56,7 @@ function selectNode(canvas: HTMLElement, name: string): void {
 describe("#619 G-D-01 palette placement", () => {
   it("opens no goto socket under a while-do or a parallel, and opens the file body's", async () => {
     const { canvas } = await openCanvas();
+    fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
     fireEvent.click(screen.getByText("Goto"));
     expect(within(canvas).getByRole("button", { name: /add goto here/ })).toBeInTheDocument();
     expect(within(canvas).queryByRole("button", { name: /swap for goto/ })).not.toBeInTheDocument();
