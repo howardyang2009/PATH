@@ -67,6 +67,8 @@ function eligibilityCell(verdict: EligibilityVerdict): string {
   switch (verdict.reason) {
     case "root-run":
       return "root run (never a boundary)";
+    case "pass-run":
+      return "goto pass (never a boundary)";
     case "not-in-file":
       return "not in current file";
     case "in-body":

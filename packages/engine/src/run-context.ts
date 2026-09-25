@@ -245,4 +245,9 @@ export interface RunResume {
    * `workflow`-child descent and the `while-do` loop consult.
    */
   rerunSuffix: string[];
+  /**
+   * Beside `rerunSuffix`, level for level (ADR 0054 §6): the goto pass this level's path-node B sits
+   * in, or `null` when this level's file holds no goto. Sliced in step with `rerunSuffix`.
+   */
+  rerunPasses: (number | null)[];
 }

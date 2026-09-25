@@ -10,6 +10,11 @@ import type { RunStatus } from "./run-status.js";
 export interface RerunFromNodePathEntry {
   nodeId: string;
   nodeName: string;
+  /**
+   * The goto pass K sits in at this level (ADR 0054 §6, spec docs/spec/goto.md §8.1): present only when
+   * this level's file holds a goto, so its first-level nodes run inside 1-based pass containers.
+   */
+  pass?: number;
 }
 
 /**
