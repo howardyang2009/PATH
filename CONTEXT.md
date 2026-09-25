@@ -126,7 +126,7 @@ and issues use them exactly.
   indistinguishable to a workflow author — `binary` and `prompt` are themselves plugin folders, not a
   privileged kind beside them. One directory holds every plugin, which is why no plugin can shadow
   another and no precedence order exists. Control constructs (parallel, branch, while-do, sequence,
-  checkpoint) stay engine-owned and are never plugin-contributed: their names are **reserved**, and a
+  checkpoint, goto) stay engine-owned and are never plugin-contributed: their names are **reserved**, and a
   folder claiming one is refused (map #308, ADR 0019). A workflow file that names a plugin type is
   **portable within a fork lineage, not across forks**: PATH's distribution is clone-or-fork, so the
   plugin a file needs lives in the reader's own PATH tree. A plugin type is therefore the second thing
@@ -248,7 +248,7 @@ and issues use them exactly.
   judgment. Any check that needs judgment (human or LLM) is a normal step that outputs a verdict,
   followed by a checkpoint that tests the verdict (the *judge-step pattern*). Compare `assert` and
   `if`: a branch routes, a checkpoint asserts.
-- **Goto** — *(planned, #478; spec [docs/spec/goto.md](docs/spec/goto.md))* the one **Graph Controller**. It sets the next step of the
+- **Goto** — *(grammar and load checks built, #614; execution planned, #478; spec [docs/spec/goto.md](docs/spec/goto.md))* the one **Graph Controller**. It sets the next step of the
   **top-level walk** to a named **first-level node** of its own file, backward jumps included, so a
   first-level node can run more than once in one workflow-run. A jump never crosses a `workflow`-ref
   boundary in either direction, so a target is always a first-level node of the goto's own file. A

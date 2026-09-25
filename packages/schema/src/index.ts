@@ -53,6 +53,10 @@ export {
   type PublishSetIssueRule,
 } from "./publish-set.js";
 
+// The goto load refusals, as data (docs/spec/goto.md §2.3, ADR 0056): the load refinement reads them
+// here, and the Designer's canvas marker reads the same walk.
+export { gotoIssues, type GotoIssue, type GotoIssueRule } from "./goto.js";
+
 // Node identity's one rule, as data (ADR 0006/0015): the load refinement's name check, the write
 // route's duplicate-`id` check and the Designer's pre-parse open gate all read these, so the three
 // doors cannot disagree about which occurrence offends, which one already held the value, and why.
@@ -108,6 +112,7 @@ export type {
   WhileDoNode,
   SequenceNode,
   CheckpointNode,
+  GotoNode,
 } from "./node-type.js";
 
 export { ConditionSchema } from "./conditions.js";

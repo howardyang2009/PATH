@@ -161,7 +161,7 @@ export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   return registry;
 }
 
-/** The known type names for a registry: the six reserved control names plus every registered leaf type. */
+/** The known type names for a registry: the seven reserved control names plus every registered leaf type. */
 function knownTypeNames(plugins: WireStepPlugin[]): Set<string> {
   return new Set<string>([...RESERVED_TYPE_NAMES, ...plugins.map((p) => p.name)]);
 }

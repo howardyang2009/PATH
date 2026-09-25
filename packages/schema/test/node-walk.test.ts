@@ -287,7 +287,7 @@ describe("CONTROL_CHILD_SLOTS", () => {
 
 describe("isStepType", () => {
   it("is false for every controller — the constructs with no run of their own (Invariant 1)", () => {
-    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"]) {
+    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint", "goto"]) {
       expect(isStepType(type)).toBe(false);
     }
   });

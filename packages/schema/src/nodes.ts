@@ -35,7 +35,7 @@ const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableSt
  * The recursion pair a member set closes over: the node-array slot (`sequence.body`,
  * `parallel.branches`, and the file `body`) and the single-node slot (`while-do` body, branch arm,
  * `else`). Passing it in — rather than reading a module-level `const` — is what lets the plugin
- * factory build the six control members against its *own* opened union, so a plugin step validates
+ * factory build the seven control members against its *own* opened union, so a plugin step validates
  * inside those bodies too (ADR 0018 sub-decision 7).
  */
 export interface NodeRecursion {
@@ -44,9 +44,10 @@ export interface NodeRecursion {
 }
 
 /**
- * The six control-construct members — `workflow`, `parallel`, `branch`, `while-do`, `sequence`,
- * `checkpoint` — built against a given recursion pair. These are the six reserved type names: a leaf
- * step type (`prompt`, `binary`, or a plugin's) is *not* here, it arrives through the registry.
+ * The seven control-construct members — `workflow`, `parallel`, `branch`, `while-do`, `sequence`,
+ * `checkpoint`, `goto` — built against a given recursion pair. These are the seven reserved type
+ * names: a leaf step type (`prompt`, `binary`, or a plugin's) is *not* here, it arrives through the
+ * registry.
  * `workflow` sits here because its `ref` runs a nested workflow-run, not a worker (`@3` §4), so it is
  * core grammar rather than a plugin-contributed leaf.
  *
@@ -131,6 +132,19 @@ export function buildCoreMembers({
     })
     .strict();
 
+  // `goto` is the one Graph Controller (ADR 0057, docs/spec/goto.md §2.1): no child body and no step
+  // envelope. `target` is the target's *name*, never its id (ADR 0056); `max_jumps` has no default
+  // (ADR 0058). Where it may sit and what it may name are file-scoped rules (`goto.ts`), not zod's.
+  const GotoNodeSchema = z
+    .object({
+      type: z.literal("goto"),
+      id: IdSchema,
+      name: NameSchema,
+      target: NameSchema,
+      max_jumps: MaxIterationsSchema,
+    })
+    .strict();
+
   return [
     WorkflowStepSchema,
     ParallelNodeSchema,
@@ -138,6 +152,7 @@ export function buildCoreMembers({
     WhileDoNodeSchema,
     SequenceNodeSchema,
     CheckpointNodeSchema,
+    GotoNodeSchema,
   ];
 }
 
@@ -170,7 +185,7 @@ export interface RegistryStepType {
 export type StepPluginRegistry = Record<string, RegistryStepType>;
 
 /**
- * The six reserved control-construct names. A plugin key equal to one of these is rejected before the
+ * The seven reserved control-construct names. A plugin key equal to one of these is rejected before the
  * union is built, so the shadow message is PATH's own rather than zod's duplicate-value throw (which
  * stays the backstop). `prompt` / `binary` are *not* reserved here — they are leaf step types that
  * arrive through the registry, so a plugin shadowing one collides on an existing registry key instead
@@ -183,6 +198,7 @@ export const RESERVED_TYPE_NAMES = [
   "while-do",
   "sequence",
   "checkpoint",
+  "goto",
 ] as const;
 
 /**
@@ -283,7 +299,7 @@ const unknownStepTypeErrorMap: z.ZodErrorMap = (issue) => {
 
 /**
  * The open node union for a given registry (ADR 0018 sub-decision 7). Reserved-name pre-check first,
- * so a shadow is PATH's own message; then the six control members and the registry's leaf members are
+ * so a shadow is PATH's own message; then the seven control members and the registry's leaf members are
  * handed to one `z.discriminatedUnion`, whose recursion (`z.lazy`) closes over this same union — so a
  * plugin step validates inside `sequence` / `parallel` / `branch` / `while-do` bodies. Built once per
  * freeze; the engine parses many files against the held schema.
@@ -292,7 +308,7 @@ export function makeNodeSchema(registry: StepPluginRegistry): z.ZodType<Workflow
   for (const typeName of Object.keys(registry)) {
     if ((RESERVED_TYPE_NAMES as readonly string[]).includes(typeName)) {
       throw new Error(
-        `step type "${typeName}" shadows a reserved control construct — the six control names ` +
+        `step type "${typeName}" shadows a reserved control construct — the seven control names ` +
           `(${RESERVED_TYPE_NAMES.join(", ")}) cannot be a plugin type`,
       );
     }
