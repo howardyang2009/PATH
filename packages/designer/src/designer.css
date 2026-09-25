@@ -584,6 +584,33 @@ body {
   outline-offset: 1px;
 }
 
+/* A goto draws no edge (#619): its chip names the target, and the target's block is outlined in the
+   goto hue while the goto is selected or hovered. A targeted first-level node wears a `← N` badge. */
+.node-block[data-goto-target="true"] {
+  outline: 2px dashed var(--k-goto);
+  outline-offset: 1px;
+}
+
+.goto-chip {
+  display: inline-flex;
+  gap: 4px;
+  align-items: baseline;
+  color: var(--k-goto);
+  font-size: var(--fs-sm);
+  white-space: nowrap;
+}
+
+.goto-incoming {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--k-goto);
+  border-radius: 999px;
+  color: var(--k-goto);
+  background: var(--k-goto-bg);
+  font-size: var(--fs-sm);
+  cursor: help;
+}
+
 /* ── Properties pane (#369) ──────────────────────────────────────────────────────────────────────── */
 
 .pane {

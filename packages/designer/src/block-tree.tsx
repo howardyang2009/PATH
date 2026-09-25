@@ -3,6 +3,7 @@ import type { WorkflowNode } from "@path/schema";
 import { summarizeCondition } from "./condition-summary.js";
 import { leafChip, leafGlyph, nodeHue } from "./node-kind.js";
 import { ConflictMarker } from "./conflict-context.js";
+import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
@@ -58,7 +59,7 @@ export function BlockTree({ nodes, onDescend, editor, socket }: TreeProps & { so
 
 /** The tail add-affordance of a list socket, shown only while the grammar admits the armed kind. */
 function TailSocket({ socket, editor }: { socket: ListSocket; editor?: EditorApi }): JSX.Element | null {
-  if (!editor || !editor.socketOpen(socket.flavor)) return null;
+  if (!editor || !editor.socketOpen(socket.flavor, socket.ownerId)) return null;
   return (
     <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(socket.ownerId)}>
       + add {editor.armedLabel} here
@@ -121,13 +122,22 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
  * their action and must not also select. A selected block carries `data-selected` for the highlight. On
  * a read-only render (no selection context, e.g. #367) it returns nothing, so the block stays inert.
  */
-function useSelectable(node: WorkflowNode): { "data-node-id": string; "data-selected"?: "true"; onClick?: (event: MouseEvent) => void } {
+function useSelectable(node: WorkflowNode): {
+  "data-node-id": string;
+  "data-selected"?: "true";
+  "data-goto-target"?: "true";
+  onClick?: (event: MouseEvent) => void;
+} {
   const selection = useSelection();
+  // A goto draws no edge, so its target's block is highlighted instead while the goto is selected or
+  // hovered (#619). It rides with the selection props because every block already spreads them.
+  const gotoTarget = useIsGotoTarget(node) ? ("true" as const) : undefined;
   // `data-node-id` rides on every block regardless of edit mode, so the problems panel's jump-to-node
   // (#388) can scroll the offending block into view whether or not it is the selected one.
-  if (!selection) return { "data-node-id": node.id };
+  if (!selection) return { "data-node-id": node.id, "data-goto-target": gotoTarget };
   return {
     "data-node-id": node.id,
+    "data-goto-target": gotoTarget,
     "data-selected": selection.selectedId === node.id ? "true" : undefined,
     onClick: (event: MouseEvent): void => {
       if ((event.target as HTMLElement).closest("button")) return;
@@ -170,6 +180,8 @@ function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend:
       return <SequenceBlock node={node} onDescend={onDescend} editor={editor} />;
     case "checkpoint":
       return <CheckpointBlock node={node} editor={editor} />;
+    case "goto":
+      return <GotoBlock node={node} editor={editor} />;
     default:
       return <LeafStep node={node} editor={editor} />;
   }
@@ -195,6 +207,7 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
       <span className="chip">{leafChip(node.type)}</span>
       <span className="node-name">{node.name}</span>
       <NodeRunBadge id={node.id} />
+      <IncomingBadge node={node} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -219,6 +232,7 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
       <span className="node-name">{node.name}</span>
       <span className="ref-path">{node.ref}</span>
       <NodeRunBadge id={node.id} />
+      <IncomingBadge node={node} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -240,6 +254,33 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
       <span className="node-name">{node.name}</span>
       <span className="summary">assert {summarizeCondition(node.condition)}</span>
       <NodeRunBadge id={node.id} />
+      <IncomingBadge node={node} />
+      <ConflictMarker id={node.id} />
+      <NodeControls node={node} editor={editor} />
+    </div>
+  );
+}
+
+/**
+ * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge (#619).
+ * Hovering it highlights its target. It takes no run badge: a goto runs for no time (#620 owns its run view).
+ */
+function GotoBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "goto" }>; editor?: EditorApi }): JSX.Element {
+  const { chip, hover } = useGotoChip(node);
+  return (
+    <div
+      className="node-block leaf"
+      style={hueStyle(node)}
+      data-node-type="goto"
+      tabIndex={editor ? 0 : undefined}
+      onKeyDown={deleteKeyHandler(node, editor)}
+      {...hover}
+      {...useSelectable(node)}
+    >
+      <span className="chip">GOTO</span>
+      <span className="node-name">{node.name}</span>
+      {chip}
+      <IncomingBadge node={node} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
     </div>
@@ -260,6 +301,7 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
       <div className="c-head">
         {head}
         <NodeRunBadge id={node.id} />
+        <IncomingBadge node={node} />
         <ConflictMarker id={node.id} />
         <NodeControls node={node} editor={editor} />
       </div>
@@ -270,7 +312,7 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
 
 /** The single-slot swap affordance: an armed, single-legal kind can replace an occupant (§ Replace). */
 function SlotSwap({ target, editor }: { target: SingleSlot; editor?: EditorApi }): JSX.Element | null {
-  if (!editor || !editor.socketOpen("single")) return null;
+  if (!editor || !editor.socketOpen("single", target.ownerId)) return null;
   return (
     <button type="button" className="socket socket-swap" onClick={() => editor.swapSingle(target)}>
       swap for {editor.armedLabel}
@@ -280,7 +322,7 @@ function SlotSwap({ target, editor }: { target: SingleSlot; editor?: EditorApi }
 
 /** `parallel` — a C-block, its N branches side by side in the mouth, with a `join:` badge on the head. */
 function ParallelBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "parallel" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
-  const branchSocketOpen = editor?.socketOpen("branches") ?? false;
+  const branchSocketOpen = editor?.socketOpen("branches", node.id) ?? false;
   return (
     <CBlock
       node={node}

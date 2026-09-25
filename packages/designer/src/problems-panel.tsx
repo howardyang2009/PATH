@@ -17,6 +17,10 @@ const KIND_LABEL: Record<ProblemKind, string> = {
   "dangling-interpolation": "context read",
   "dangling-condition": "condition",
   "dangling-ref": "ref",
+  "target-absent": "goto",
+  "target-inner": "goto",
+  "target-self": "goto",
+  placement: "goto",
 };
 
 /** Select the node and scroll its block into view — the panel's jump-to-node. */

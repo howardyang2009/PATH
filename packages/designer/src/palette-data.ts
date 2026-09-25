@@ -3,7 +3,7 @@ import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 /**
  * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
  * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
- * **Controller** — the five controllers (`checkpoint` included), fixed by the grammar. The **Templates**
+ * **Controller** — the five Structure Controllers (`checkpoint` included) and the Graph Controller `goto`, fixed by the grammar. The **Templates**
  * tab: **Step-Template** and **Workflow-Template**, one row per entry of `GET /v0/templates`.
  *
  * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
@@ -57,7 +57,7 @@ function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 
-/** Controllers — the five controllers (checkpoint included), fixed by the grammar (§ What is authorable). */
+/** Controllers — the five Structure Controllers (checkpoint included) and the one Graph Controller, goto, fixed by the grammar (§ What is authorable). */
 const CONTROLLERS: PaletteGroup = {
   title: "Controller",
   entries: [
@@ -66,6 +66,7 @@ const CONTROLLERS: PaletteGroup = {
     { kind: "while-do", label: "While-do", blurb: "A bounded loop over one body", hue: "while" },
     { kind: "sequence", label: "Sequence", blurb: "An ordered stack of nodes", hue: "sequence" },
     { kind: "checkpoint", label: "Checkpoint", blurb: "An assertion on the run", hue: "checkpoint" },
+    { kind: "goto", label: "Goto", blurb: "A bounded jump to a first-level node", hue: "goto" },
   ],
 };
 

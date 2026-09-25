@@ -45,6 +45,7 @@ import {
   fillPlaceholderOnTab,
 } from "./pane-controls.js";
 import { carriesEnvelope } from "./grammar.js";
+import { directionGlyph, gotoTargetOptions } from "./goto-view.js";
 import { kindExplanation } from "./node-kind.js";
 import { referenceablePaths } from "./interp-suggest.js";
 import {
@@ -482,6 +483,8 @@ function KindFields({
           />
         </>
       );
+    case "goto":
+      return <GotoEditor file={file} node={node} commit={commit} />;
     case "branch":
       return <p className="pane-hint">Arms and else are edited on the canvas; a Branch has no fields of its own.</p>;
     case "sequence":
@@ -499,6 +502,35 @@ function KindFields({
     default:
       return <LeafPayloadEditor file={file} node={node} plugins={plugins} commit={commit} />;
   }
+}
+
+/**
+ * `goto` — the `target` picker and the mandatory `max_jumps` (#619, designer-spec § goto). The picker
+ * lists every first-level node in file order, the goto itself excluded, each marked `↑` backward or `↓`
+ * forward. A value naming no eligible node (the minted `""`, a deleted or moved target) stays selected as
+ * `missing: <name>` and is never cleared silently. `max_jumps` shares `max_iterations`' grammar.
+ */
+function GotoEditor({ file, node, commit }: { file: WorkflowFile; node: Extract<WorkflowNode, { type: "goto" }>; commit: EditCommit<WorkflowNode> }): JSX.Element {
+  const options = gotoTargetOptions(file, node.id);
+  const eligible = options.some((option) => option.name === node.target);
+  const glyphs = new Map(options.map((option) => [option.name, directionGlyph(option.direction)]));
+  return (
+    <>
+      <SelectField
+        label="target"
+        value={node.target}
+        options={eligible ? options.map((option) => option.name) : [node.target, ...options.map((option) => option.name)]}
+        optionLabel={(name) => (glyphs.has(name) ? `${glyphs.get(name)} ${name}` : `missing: ${name === "" ? '""' : name}`)}
+        onChange={(target) => commit({ ...node, target })}
+      />
+      <MaxIterationsField
+        label="max jumps"
+        identity={editKey(node.id, "max_jumps")}
+        value={node.max_jumps}
+        onChange={(v) => commit({ ...node, max_jumps: v }, editKey(node.id, "max_jumps"))}
+      />
+    </>
+  );
 }
 
 /** `prompt` — the first-class editor: the `model` (a config datum) and the `prompt` text, plus the worker. */
@@ -1168,10 +1200,12 @@ function KeyedRowField({
  * flagged and not committed — so the node on the canvas stays strict-valid.
  */
 function MaxIterationsField({
+  label = "max iterations",
   identity,
   value,
   onChange,
 }: {
+  label?: string;
   identity: EditKey;
   value: number | string;
   onChange: (v: number | string) => void;
@@ -1182,7 +1216,7 @@ function MaxIterationsField({
   return (
     <div className="pane-field pane-field-row">
       <label className="pane-label" htmlFor={id}>
-        max iterations
+        {label}
       </label>
       <input
         id={id}

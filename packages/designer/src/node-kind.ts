@@ -34,6 +34,7 @@ const KIND: Record<string, KindDescriptor> = {
   "while-do": { hue: "while", explanation: "Repeats one body while a condition holds, up to a maximum count." },
   sequence: { hue: "sequence", explanation: "An ordered stack of nodes, run one after another." },
   checkpoint: { hue: "checkpoint", explanation: "Asserts a condition on the run; a failed assertion fails the run." },
+  goto: { hue: "goto", explanation: "Jumps back or ahead to a first-level node, at most max jumps times." },
 };
 
 /** The hue-token stem for a node type. A leaf step and any unlisted (registry) type share the step hue. */
