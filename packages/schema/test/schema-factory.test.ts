@@ -105,7 +105,7 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
 });
 
 describe("makeNodeSchema — reserved control names", () => {
-  for (const reserved of ["workflow", "parallel", "branch", "while-do", "sequence", "checkpoint"]) {
+  for (const reserved of ["workflow", "parallel", "branch", "while-do", "sequence", "checkpoint", "goto"]) {
     it(`rejects a plugin key shadowing "${reserved}" loud at freeze`, () => {
       const registry: StepPluginRegistry = {
         [reserved]: { fields: {}, config: {}, workers: { only: {} }, defaultWorker: "only" },

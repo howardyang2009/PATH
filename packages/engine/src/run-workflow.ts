@@ -1121,13 +1121,33 @@ export function analyzeRunStart(
   const configs = collectRunConfigs(file, options);
   const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
   const masker = collectSecrets(resolvedConfigs);
+  // Temporary scaffolding (#614): a goto loads before the engine can execute one, so a goto-holding
+  // tree fails ahead of every other gate. The goto execution ticket removes this call.
   const runStartFailure =
-    unset.length > 0
+    describeGotoNotExecutable(file, options.files) ??
+    (unset.length > 0
       ? describeUnsetEnv(unset)
       : (options.unresolvedLaunchSecrets?.length ?? 0) > 0
         ? describeMissingLaunchSecrets(options.unresolvedLaunchSecrets as string[])
-        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
+        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry));
   return { masker, runStartFailure };
+}
+
+// Temporary (#614): the one wording of "this engine cannot run a goto yet".
+function gotoNotExecutable(name: string): string {
+  return `goto "${name}" is not yet executable`;
+}
+
+// The run-start failure naming the first goto in the run's ref tree (the root file, then every loaded
+// file), or `undefined` when the tree holds none. Temporary: the goto execution ticket (#478) deletes
+// this, `gotoNotExecutable` and both call sites.
+function describeGotoNotExecutable(rootFile: WorkflowFile, files: Map<string, WorkflowFile> | undefined): string | undefined {
+  for (const file of [rootFile, ...(files?.values() ?? [])]) {
+    for (const node of walkNodes(file.body)) {
+      if (node.type === "goto") return `run failed before its first step: ${gotoNotExecutable(node.name)}`;
+    }
+  }
+  return undefined;
 }
 
 /**
@@ -1486,6 +1506,9 @@ export async function runNode(
     // `runSequence` already does. It is transparent to `exec` (same context/cancellation) like the
     // other controllers.
     if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
+    // Temporary backstop (#614): `analyzeRunStart` refuses a goto-holding tree before its first node,
+    // so this is reached only by a caller that skips the run-start gate.
+    if (node.type === "goto") return { status: "failed", error: gotoNotExecutable(node.name) };
     // The compile-time guard: if the control set grows a member this dispatch does not walk, the build
     // fails here rather than someone discovering it by running a workflow. A leaf step type never
     // reaches this branch — `isControlNode` excludes it — so an unknown *leaf* type is caught below,

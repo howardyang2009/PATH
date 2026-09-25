@@ -4,7 +4,7 @@ This is the normative definition of `path/workflow@5`. `@path/schema` implements
 engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
 controller, checkpoint, config vs context, output object, publish, first level).
 
-`@5` is `@4` plus **one** grammar change: the `goto` controller, which lands in a later build ticket
+`@5` is `@4` plus **one** grammar change: the `goto` controller
 (§1). Everything else — the envelope (`worker_defaults`, `input`), every other node type, config vs context, `publish`, `output`,
 interpolation, the worker-name model — is exactly as [`workflow-format-v4.md`](workflow-format-v4.md)
 and [`workflow-format-v3.md`](workflow-format-v3.md) state it. Those documents remain the full
@@ -35,14 +35,37 @@ Step-Templates and Workflow-Templates stamp the same `FORMAT_VERSION` (ADR 0048 
 ## 1. `goto`
 
 > [!NOTE]
-> The format version moved first (#621) so the goto build tickets land on a stable format. Until those
-> tickets ship, the schema does not accept a `goto` node yet, and a `@5` file is shape-for-shape a `@4`
-> file.
+> The grammar and the load refusals below are built (#614). The engine cannot execute a goto yet:
+> until the execution ticket lands, a run whose ref tree holds a goto fails before its first step
+> with `goto "<name>" is not yet executable`.
 
-The node is `{ "type": "goto", "id", "name", "target", "max_jumps" }`: `target` names a first-level
-node of the same file, and `max_jumps` bounds how often the jump is taken. Its placement rules, load
-refusals and execution are specified normatively in [`docs/spec/goto.md`](../spec/goto.md) §2–§3
-(ADRs 0053–0061). This section gains the full grammar when the node lands.
+```json
+{ "type": "goto", "id": "<guid>", "name": "retry-jump", "target": "draft", "max_jumps": 3 }
+```
+
+- The node is `.strict()`: no other key, and no step envelope (`config` / `input` / `parse` /
+  `publish`). It nests no child body.
+- `target` is required: a name string (`^[a-z][a-z0-9-]*$`), the **name** of the target node, never
+  its `id`.
+- `max_jumps` is required: a positive integer, or a string that interpolates to one over `config` +
+  `context` (the `while-do` `max_iterations` grammar). There is no default.
+- `goto` is the seventh reserved type name (`workflow`, `parallel`, `branch`, `while-do`, `sequence`,
+  `checkpoint`, `goto`), so no step-plugin folder may claim it. The controllers are now six: the five
+  Structure Controllers and `goto`, the one Graph Controller (ADR 0057).
+
+A whole-file load (the engine, the server template store, the Designer's draft validation) refuses a
+goto with one issue per offender, all in one failed parse:
+
+| `rule` | Case | Issue at | Message |
+|---|---|---|---|
+| `target-absent` | `target` names no node in the file | `target` | `goto target "retry" not found in this file` |
+| `target-inner` | `target` names a node that is not first-level | `target` | `goto target "check" is not a first-level node` |
+| `target-self` | `target` names the goto itself | `target` | `goto "loop" targets itself` |
+| `placement` | a goto under `while-do` or `parallel` | the goto node | `goto "x" may not sit under while-do "poll"` |
+
+A Step-Template body is not checked for these, because it has no file until it lands; the instance is
+checked by the target file's load. Execution is specified normatively in
+[`docs/spec/goto.md`](../spec/goto.md) §3 (ADRs 0053–0061).
 
 ## 2. Migration from `@4`
 

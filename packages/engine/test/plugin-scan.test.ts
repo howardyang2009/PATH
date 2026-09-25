@@ -116,7 +116,7 @@ describe("scanStepPlugins — reserved names, checked before import", () => {
     await expect(scan).rejects.not.toThrow(/threw at import/);
   });
 
-  it.each(["workflow", "parallel", "branch", "while-do", "sequence", "checkpoint"])(
+  it.each(["workflow", "parallel", "branch", "while-do", "sequence", "checkpoint", "goto"])(
     "rejects the reserved name %s",
     async (name) => {
       await writePlugin(name, validEntry());

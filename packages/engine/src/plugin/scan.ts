@@ -34,10 +34,10 @@ export type LoadedStepPluginRegistry = Record<string, StepPlugin>;
 export const STEP_PLUGINS_DIR = fileURLToPath(new URL("../../plugin/step-plugin/", import.meta.url));
 
 // The folder name becomes a `z.literal` and a `type` value in author-written JSON, so it must look like
-// a core type name (ADR 0019 sub-13). All eight core names already match this shape.
+// a core type name (ADR 0019 sub-13). Every core name already matches this shape.
 const FOLDER_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-// The six control-construct names a folder can never legitimately be (ADR 0019 sub-14). `binary` and
+// The seven control-construct names a folder can never legitimately be (ADR 0019 sub-14). `binary` and
 // `prompt` are *not* here — sub-10 makes them ordinary folders.
 const RESERVED_NAMES = new Set<string>(RESERVED_TYPE_NAMES);
 
@@ -74,7 +74,7 @@ export async function scanStepPlugins(dir: string = STEP_PLUGINS_DIR): Promise<L
     // Before the import: the verdict must not depend on whether the offending plugin happens to load.
     if (RESERVED_NAMES.has(name)) {
       throw new Error(
-        `step plugin "${name}": name shadows a reserved control construct — the six control names ` +
+        `step plugin "${name}": name shadows a reserved control construct — the seven control names ` +
           `(${RESERVED_TYPE_NAMES.join(", ")}) cannot be a plugin folder`,
       );
     }

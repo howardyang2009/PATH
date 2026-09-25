@@ -28,7 +28,7 @@ export interface NodeChildBody {
  * and then misbehaves. The `never` guard below turns that into a compile error: a new node type must
  * say where its children are, or nothing builds.
  *
- * Returns `[]` for a leaf — the four step and checkpoint kinds have no nested bodies. Deliberately
+ * Returns `[]` for a leaf — the step kinds, `checkpoint` and `goto` have no nested bodies. Deliberately
  * does **not** descend into a `workflow` step's ref'd file: that file has its own isolated context
  * and its own validation pass.
  */
@@ -57,11 +57,12 @@ type BranchingType = Extract<WorkflowNode, { body: unknown } | { branches: unkno
  */
 export type ControllerType = Extract<
   WorkflowNode,
-  { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" }
+  { type: "parallel" | "branch" | "while-do" | "sequence" | "checkpoint" | "goto" }
 >["type"];
 
 /**
- * The five controllers, as a record rather than a set: `ControllerType` is derived from the node
+ * The six controllers — five Structure Controllers and the one Graph Controller, `goto` (ADR 0057) —
+ * as a record rather than a set: `ControllerType` is derived from the node
  * union, so a control construct added to the format fails to compile until it is listed here — the
  * same exhaustive guard `CONTROL_CHILD_SLOTS`' `satisfies` puts on the descent. A record (rather than
  * a `Set`) lets the membership test be `Object.hasOwn`, so a plugin type named after a prototype key
@@ -73,6 +74,7 @@ const CONTROLLER_TYPES = {
   "while-do": true,
   sequence: true,
   checkpoint: true,
+  goto: true,
 } as const satisfies Record<ControllerType, true>;
 
 /**
@@ -124,6 +126,8 @@ export function childBodies(node: WorkflowNode): NodeChildBody[] {
     case "binary":
     case "workflow":
     case "checkpoint":
+    // A goto's route is a `target` name, not an edge (ADR 0057 §4): it nests no body.
+    case "goto":
       return [];
     // Two guards, as at the engine's node dispatch. The `never` assignment is the compile-time one:
     // a node type added to the format must say where its children are or nothing builds. The `[]` is
@@ -240,6 +244,7 @@ export function mapChildBodies(node: WorkflowNode, fn: (body: WorkflowNode[]) =>
     case "binary":
     case "workflow":
     case "checkpoint":
+    case "goto":
       return node;
     default: {
       const exhaustive: never = node;

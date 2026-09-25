@@ -85,6 +85,20 @@ export interface CheckpointNode {
   condition: Condition;
 }
 
+/**
+ * The one **Graph Controller** (ADR 0057): sets the next node of its file's top-level walk to the
+ * first-level node named `target` (ADR 0056, spec docs/spec/goto.md §2.1). No child body, no envelope.
+ */
+export interface GotoNode {
+  type: "goto";
+  id: string;
+  name: string;
+  /** The target node's `name` (never its `id`): a first-level node of this goto's own file. */
+  target: string;
+  /** A positive integer, or a string interpolating to one over `config` + `context`. */
+  max_jumps: number | string;
+}
+
 export type WorkflowNode =
   | PromptStep
   | BinaryStep
@@ -93,4 +107,5 @@ export type WorkflowNode =
   | BranchNode
   | WhileDoNode
   | SequenceNode
-  | CheckpointNode;
+  | CheckpointNode
+  | GotoNode;

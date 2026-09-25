@@ -5,6 +5,7 @@ import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
 import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
 import { nodeIdentityIssues } from "./node-identity.js";
+import { gotoIssues } from "./goto.js";
 import { publishSetIssues } from "./publish-set.js";
 import { collectWorkerDefaultIssues } from "./worker-defaults.js";
 import { STEP_ROOTS } from "./roots.js";
@@ -61,7 +62,8 @@ function checkWorkerDefaults(file: WorkflowFile, ctx: z.RefinementCtx, registry:
 }
 
 // The cross-node invariants zod's per-field parse cannot express: file-unique names, no two
-// concurrent parallel branches publishing one key, no publish inside a `do-not-wait` branch, and the
+// concurrent parallel branches publishing one key, no publish inside a `do-not-wait` branch, every
+// goto's placement and first-level target (docs/spec/goto.md §2.3), and the
 // registry-relative `worker_defaults` check (ADR 0044). Applied by the plugin factory's schema
 // (`makeWorkflowFileSchema`), which closes the registry over the last argument.
 function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, registry: StepPluginRegistry): void {
@@ -81,6 +83,10 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, r
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
   }
 
+  for (const issue of gotoIssues(file)) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: issue.path, message: issue.message });
+  }
+
   checkWorkerDefaults(file, ctx, registry);
 }
 
@@ -88,7 +94,7 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, r
  * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
  * wrapping the open node union `makeNodeSchema(registry)` builds, plus the same cross-node invariants
  * the closed schema enforces. The registry is required and has no default — a caller with no plugins
- * still passes an empty registry, which describes a grammar with the six control members and no leaf
+ * still passes an empty registry, which describes a grammar with the seven control members and no leaf
  * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
  */
 /**
@@ -99,8 +105,9 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, r
  * validates against `makeNodeSchema(registry)` (the node union, each type's `fields`/`config`, its
  * `worker` enum), controllers are legal at the top level because a controller *is* a `WorkflowNode`,
  * and the array carries the `@2` minimum of one node. The cross-node file rules — name uniqueness, the
- * publish set, `worker_defaults` — are deliberately **not** here: they are the file namespace's, not
- * the body's, and a fragment cannot know the namespace it will land in (decision 5).
+ * publish set, goto placement and targets, `worker_defaults` — are deliberately **not** here: they
+ * are the file namespace's, not the body's, and a fragment cannot know the namespace it will land in
+ * (decision 5).
  */
 export function makeBodySchema(registry: StepPluginRegistry): z.ZodType<WorkflowNode[]> {
   const nodeSchema = makeNodeSchema(registry);
@@ -184,7 +191,7 @@ export function safeParseWorkflowFileWith(
 
 // The single-file convenience door: build the open schema for `registry` and parse `json` against it.
 // The registry is **required** — there is no closed built-in schema to fall back on (ADR 0019, #337),
-// so a caller with no plugins still passes an empty registry (a grammar of the six control members and
+// so a caller with no plugins still passes an empty registry (a grammar of the seven control members and
 // no leaf step). A caller parsing many files should build the schema once with `makeWorkflowFileSchema`
 // and reuse it via `safeParseWorkflowFileWith`; this door is for the one-off case.
 export function safeParseWorkflowFile(
