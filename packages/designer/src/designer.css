@@ -611,6 +611,19 @@ body {
   cursor: help;
 }
 
+/* A watched run's jumps spent by a goto, `<spent>/<max_jumps>` (#620). Neutral, not a run tint: a goto
+   runs for no time, so it carries a count, never a status. */
+.goto-jumps {
+  flex: none;
+  padding: 0 6px;
+  border-radius: 999px;
+  color: var(--k-goto);
+  background: var(--k-goto-bg);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
 /* ── Properties pane (#369) ──────────────────────────────────────────────────────────────────────── */
 
 .pane {

@@ -1,8 +1,8 @@
 import type { RunNodeState } from "@path/client-core";
 import { describe, expect, it } from "vitest";
-import { projectRunStatus } from "../src/run/run-projection.js";
+import { projectJumpsSpent, projectRunStatus } from "../src/run/run-projection.js";
 
-/** A minimal run record — only the fields `projectRunStatus` reads matter; the rest are inert nulls. */
+/** A minimal run record — only the fields the projections read matter; the rest are inert nulls. */
 function run(partial: Partial<RunNodeState> & { runId: string }): RunNodeState {
   return {
     runId: partial.runId,
@@ -12,7 +12,7 @@ function run(partial: Partial<RunNodeState> & { runId: string }): RunNodeState {
     nodeName: null,
     workerName: null,
     iteration: null,
-    pass: null,
+    pass: partial.pass ?? null,
     status: partial.status ?? "pending",
     startedAt: partial.startedAt ?? null,
     finishedAt: null,
@@ -78,5 +78,35 @@ describe("projectRunStatus (#372 canvas projection)", () => {
     );
     expect(projected.get("revise")).toBe("awaiting");
     expect(projected.get("approve")).toBe("awaiting");
+  });
+});
+
+describe("goto passes in the canvas projection (#620)", () => {
+  // A goto-holding file's top-level walk: pass 1 (opened by nothing), then two passes opened by goto `g`.
+  // Each pass is a container row; the steps it ran are its children, so a step revisited runs in two passes.
+  const passRuns = mapOf(
+    run({ runId: "p1", parentRunId: "root", pass: 1, status: "succeeded", startedAt: "2026-01-01T00:00:00Z" }),
+    run({ runId: "s1", parentRunId: "p1", nodeId: "step", status: "failed", startedAt: "2026-01-01T00:00:01Z" }),
+    run({ runId: "p2", parentRunId: "root", nodeId: "g", pass: 2, status: "succeeded", startedAt: "2026-01-01T00:00:02Z" }),
+    run({ runId: "s2", parentRunId: "p2", nodeId: "step", status: "succeeded", startedAt: "2026-01-01T00:00:03Z" }),
+    run({ runId: "p3", parentRunId: "root", nodeId: "g", pass: 3, status: "running", startedAt: "2026-01-01T00:00:04Z" }),
+  );
+
+  it("skips pass rows, so the goto that opened them takes no status", () => {
+    expect(projectRunStatus(passRuns).has("g")).toBe(false);
+  });
+
+  it("projects a node revisited in several passes as its latest run", () => {
+    expect(projectRunStatus(passRuns).get("step")).toBe("succeeded");
+  });
+
+  it("counts a goto's jumps spent as the pass rows it opened", () => {
+    const spent = projectJumpsSpent(passRuns);
+    expect(spent.get("g")).toBe(2);
+    expect(spent.size).toBe(1);
+  });
+
+  it("counts no jumps in a goto-free run", () => {
+    expect(projectJumpsSpent(mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" }))).size).toBe(0);
   });
 });
