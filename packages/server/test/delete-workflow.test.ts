@@ -71,7 +71,7 @@ describe("DELETE /v0/workflows/file", () => {
 
   it("refuses a template path (400)", async () => {
     mkdirSync(join(projectDir, ".path", "template"), { recursive: true });
-    const res = await del(".path/template/x.workflow-template.json", { "If-Match": strongEtag(BYTES) });
+    const res = await del(".path/template/step-template/x.step-template.json", { "If-Match": strongEtag(BYTES) });
     expect(res.status).toBe(400);
   });
 

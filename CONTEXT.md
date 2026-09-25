@@ -339,14 +339,9 @@ and issues use them exactly.
   inserted only where its nodes are grammar-legal, and the author edits an instance's values afterwards
   like any other node's. It is the artifact behind the Designer's Step-Template palette category. Its
   name is its file name; its own `id` is its identity.
-- **Workflow-Template** — a Template that is a whole workflow: an ordinary `*.workflow.json` whose name
-  carries a `*.workflow-template.json` suffix. Unlike a Step-Template it is selectable **only** into an
-  empty canvas (a Designer buffer whose body holds zero nodes), and the resulting **instance** is
-  saveable **only** to a `*.workflow.json` (#460.3). Its identity is its own workflow `id`. Selecting it
-  is **Instantiation** like a Step-Template's, plus a workflow-level re-mint: the new buffer gets a fresh
-  workflow `id` (two workflows spawned from one template must not share a **source-workflow identity**,
-  ADR 0006) and fresh node ids, while its `input` and `worker_defaults` ride across verbatim and its new
-  name/path come from the save-as dialog (provenance, not identity, ADR 0006).
+- **Workflow-Template** — *removed* ([ADR 0063](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md)).
+  It was a whole workflow kept as a template. A starting-point workflow is now just a workflow, copied
+  with the Designer's Save as… Workflow; the **Step-Template** is the only template kind.
 - **Instantiation** — the detached-copy transform a Template runs to become ordinary nodes, a pure
   function of the template body owned by `@path/schema` and called by the Designer client; the engine
   never sees it (a Template is engine-blind). It deep-copies the `body`, mints a fresh UUIDv4 `id` on
@@ -373,26 +368,25 @@ and issues use them exactly.
   your own risk. And a relative `workflow` `ref` re-resolves against the *target* file's directory
   (#561), so a copied `ref` can point elsewhere when the template and target directories differ.
 - **Template edit mode** — which of two modes the Designer is in decides where a save of template content
-  lands, and the file suffix on open is the discriminator. **Consume mode** (a template selected from the
-  palette into an empty canvas) yields an instance whose default Save writes a `*.workflow.json`; it
-  becomes a template again only through an explicit "Save as template" (#459.6). **Author mode** (the
-  `*.workflow-template.json` file itself opened to edit the template source) is ordinary file editing
-  under the ADR 0015 round-trip, so its default Save writes **back to the original** template file with
-  the workflow `id` preserved; a Save-As to a **new** `*.workflow-template.json` mints a fresh workflow
-  `id` (two templates must not share identity). Author mode has no "Save as workflow": a template
-  saves only as a template, and a workflow is made from one in consume mode. Author-mode save rides the template write-route (#563); the Designer opens a
-  template source, a `*.workflow-template.json` or a `*.step-template.json`, with (in template mode)
-  a double-click on its palette card or Open… (#580, designer-spec § Edit mode: Workflow | Template).
-  The Designer's toolbar **Workflow | Template** switch picks which of the two kinds of file the
-  session edits; author mode is template mode with a template source open.
+  lands, and the file suffix on open is the discriminator. **Consume mode** (a Step-Template selected from
+  the palette into a workflow) yields ordinary nodes the workflow's own Save writes. **Author mode** (the
+  `*.step-template.json` file itself opened to edit the template source) is ordinary file editing under
+  the ADR 0015 round-trip, so its default Save writes **back to the original** template file with its `id`
+  preserved; a Save-As to a **new** `*.step-template.json` mints a fresh `id` (two templates must not share
+  identity). Author mode has no "Save as workflow": a template saves only as a template. The other way
+  round, workflow mode's Save as… offers **Save as step-template** (#459.6, ADR 0063): a new step-template
+  of the workflow's body, with a fresh `id`, the workflow-level fields dropped. Author-mode save rides the
+  template write-route (#563); the Designer opens a `*.step-template.json` with (in template mode) a
+  double-click on its palette card or Open… (#580, designer-spec § Edit mode: Workflow | Template). The
+  Designer's toolbar **Workflow | Template** switch picks which of the two kinds of file the session
+  edits; author mode is template mode with a template source open.
 - **Template store** — where the Server keeps templates and how it resolves one. It is a
-  **four-directory union** over two origins and two kinds:
-  `packages/server/template/{step-template,workflow-template}/` holds the **shipped** templates
-  (`read_only`, portable within a fork lineage) and `.path/template/{step-template,workflow-template}/`
-  holds the **user** templates (writable, project-scoped). Each file's **kind** is read from its suffix
-  (`*.step-template.json` vs `*.workflow-template.json`), never from its bytes. The Server builds one
-  **id-index** across all four directories, so a single `:id` lookup spans both kinds and both origins (a
-  GUID is globally unique,
+  **two-directory union** over two origins: `packages/server/template/step-template/` holds the
+  **shipped** templates (`read_only`, portable within a fork lineage) and `.path/template/step-template/`
+  holds the **user** templates (writable, project-scoped). A file's **kind** is read from its suffix
+  (`*.step-template.json`, the only kind since ADR 0063), never from its bytes. The Server builds one
+  **id-index** across both directories, so a single `:id` lookup spans both origins (a GUID is globally
+  unique,
   [ADR 0006](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0006-workflow-and-node-identity-guid-plus-name.md)).
   A duplicate id across origins lists **both** entries and flags the **user** one invalid; a template
   that fails to parse invalidates **only its own entry**, never Server start
@@ -404,10 +398,9 @@ and issues use them exactly.
 - **Template API** — the `/v0/templates` routes the Designer reaches a **Template** through, since a
   template is Server-owned and engine-blind. Unlike a **Workflow**, which the write routes address by
   *path* because a run is launched by where the file lives (ADR 0016, §7), a template is **addressed by
-  its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a step-template's envelope `id` or a
-  workflow-template's own workflow `id`. A GUID is globally unique (ADR 0006), so one lookup spans both
-  kinds. The Server resolves `:id` through the **Template store** index (the shipped + user
-  four-directory union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
+  its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a step-template's envelope `id`. A
+  GUID is globally unique (ADR 0006), so one lookup spans both origins. The Server resolves `:id` through
+  the **Template store** index (the shipped + user two-directory union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
   `description`, `kind`, `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=`
   filter; duplicate-id and per-entry validity are the **Template store**'s (ADR 0048). `GET
   /v0/templates/:id` returns a **parsed envelope** plus an
@@ -418,7 +411,7 @@ and issues use them exactly.
   cannot rename. It is the write door **author-mode save** rides: ADR 0049's "ordinary file editing
   round-trip" is this precondition-gated write, not a Workflow write. `DELETE /v0/templates/:id` removes a
   user template (`204`), `403` on shipped, `404` on unknown. The two write doors stay **disjoint**: `PUT
-  /v0/workflows` refuses a `.path/template/` or `*.workflow-template.json` path, so a template is written
+  /v0/workflows` refuses a `.path/template/` path, so a template is written
   only through this API and becomes runnable only by **Instantiation**. Fixed by
   [ADR 0050](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md);
   the endpoint surface is `docs/api/server-api-v0.md` §10.

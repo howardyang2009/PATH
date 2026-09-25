@@ -30,7 +30,8 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
  * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
  * never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
  * recovery) or any other save or delete error. Else "Unsaved edits" for a buffer with unsaved work,
- * "Saved" after a save lands, or "Deleted" once a Delete removed the file. An id-less file opens dirty
+ * "Saved" after a save lands, "Saved as step-template" after a workflow's Save as step-template, or
+ * "Deleted" once a Delete removed the file. An id-less file opens dirty
  * with no edit (ids stamped on import, ADR 0015), so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
 export function FileStatus({
@@ -58,6 +59,13 @@ export function FileStatus({
     return (
       <span className="file-status file-status-failed" role="alert" title={saveState.message}>
         Could not {verb}: {saveState.message}
+      </span>
+    );
+  }
+  if (saveState.phase === "saved-as-template") {
+    return (
+      <span className="file-status file-status-saved" role="status">
+        Saved as step-template "{saveState.name}"
       </span>
     );
   }

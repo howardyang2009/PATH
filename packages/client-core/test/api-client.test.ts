@@ -351,7 +351,7 @@ describe("PathApiClient", () => {
       json({
         templates: [
           { id: "t1", name: "review", description: "A review gate", kind: "step", origin: "shipped", read_only: true, valid: true, error: null },
-          { id: "t2", name: "nightly", description: "nightly", kind: "workflow", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
+          { id: "t2", name: "nightly", description: "nightly", kind: "step", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
         ],
       }),
     );
@@ -359,7 +359,7 @@ describe("PathApiClient", () => {
 
     const res = await client.listTemplates();
     expect(res.templates[0]).toMatchObject({ name: "review", kind: "step", origin: "shipped", read_only: true });
-    expect(res.templates[1]).toMatchObject({ kind: "workflow", valid: false, error: { message: "bad" } });
+    expect(res.templates[1]).toMatchObject({ kind: "step", valid: false, error: { message: "bad" } });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
   });
 
@@ -391,22 +391,22 @@ describe("PathApiClient", () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t2", relative_path: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' }, 201);
+      return json({ id: "t2", relative_path: ".path/template/step-template/copy.step-template.json", etag: '"new"' }, 201);
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    const res = await client.createTemplate({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
-    expect(res).toEqual({ id: "t2", relativePath: ".path/template/workflow-template/copy.workflow-template.json", etag: '"new"' });
+    const res = await client.createTemplate({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
+    expect(res).toEqual({ id: "t2", relativePath: ".path/template/step-template/copy.step-template.json", etag: '"new"' });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
     expect(sent?.method).toBe("POST");
-    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "workflow", name: "copy", description: "", body: { id: "t2" } });
+    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
   });
 
   it("PUT /v0/templates/:id writes back under If-Match (#580)", async () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t 1", relative_path: ".path/template/workflow-template/x.workflow-template.json", etag: '"next"' });
+      return json({ id: "t 1", relative_path: ".path/template/step-template/x.step-template.json", etag: '"next"' });
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 

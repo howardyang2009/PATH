@@ -43,7 +43,7 @@ export function useTemplateList(client: PathApiClient, savePhase: SaveState["pha
     scan();
   }, [scan]);
   useEffect(() => {
-    if (savePhase === "saved" || savePhase === "deleted") scan();
+    if (savePhase === "saved" || savePhase === "deleted" || savePhase === "saved-as-template") scan();
   }, [savePhase, scan]);
 
   return load;

@@ -159,7 +159,7 @@ describe("instantiate — insert socket", () => {
   });
 });
 
-describe("instantiateWorkflow — a Workflow-Template into an empty canvas (#579)", () => {
+describe("instantiateWorkflow — a whole-workflow copy with a fresh identity", () => {
   const TEMPLATE_ID = "22222222-2222-4222-8222-222222222222";
 
   function template(): WorkflowFile {

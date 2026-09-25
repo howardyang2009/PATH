@@ -6,15 +6,16 @@ import { App } from "../src/app.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
- * #580: author mode. Opening a `*.workflow-template.json` itself (a double-click on its palette card)
- * edits the template source, and two save doors apply (ADR 0049 decision 8, ADR 0050):
+ * #580: author mode. Opening a `*.step-template.json` itself (a double-click on its palette card) edits
+ * the template source inside a synthetic workflow, and two save doors apply (ADR 0049 decision 8, ADR
+ * 0050):
  *
- * - Save writes back to the original through `PUT /v0/templates/:id`, id preserved, under `If-Match`;
- * - Save as… creates a new `*.workflow-template.json` through `POST /v0/templates`, fresh id.
+ * - Save writes back the step-template envelope through `PUT /v0/templates/:id`, id preserved, under
+ *   `If-Match`;
+ * - Save as… creates a new `*.step-template.json` through `POST /v0/templates`, fresh id.
  *
  * A template saves only as a template: there is no Save as workflow door. A shipped template refuses the
- * write-back with the API's `403`. A `*.step-template.json` opens the same way, inside a synthetic
- * workflow; its Save writes back the step-template envelope.
+ * write-back with the API's `403`. The Step-Template is the only template kind (ADR 0063).
  */
 
 function uuid(n: number): string {
@@ -27,27 +28,19 @@ const NODE_IDS = [uuid(3), uuid(4)];
 const STEP_ID = uuid(5);
 const BROKEN_ID = uuid(6);
 
-function templateWorkflow(id: string): Record<string, unknown> {
-  return {
-    format: FORMAT_VERSION,
-    id,
-    name: "nightly",
-    input: { ticket: "PATH-1" },
-    body: [
-      { type: "prompt", id: NODE_IDS[0], name: "draft", prompt: "draft it" },
-      { type: "prompt", id: NODE_IDS[1], name: "judge", prompt: "judge it" },
-    ],
-  };
-}
+const TEMPLATE_BODY = [
+  { type: "prompt", id: NODE_IDS[0], name: "draft", prompt: "draft it" },
+  { type: "prompt", id: NODE_IDS[1], name: "judge", prompt: "judge it" },
+];
 
 function summary(id: string, origin: "user" | "shipped"): TemplateSummary {
   const name = origin === "user" ? "nightly" : "starter";
-  return { id, name, description: `${name} blurb`, kind: "workflow", origin, read_only: origin === "shipped", valid: true, error: null };
+  return { id, name, description: `${name} blurb`, kind: "step", origin, read_only: origin === "shipped", valid: true, error: null };
 }
 
 function envelope(id: string, origin: "user" | "shipped"): Record<string, unknown> {
   const { id: _id, ...rest } = summary(id, origin);
-  return { id, ...rest, format: FORMAT_VERSION, body: templateWorkflow(id), etag: '"t"' };
+  return { id, ...rest, format: FORMAT_VERSION, body: TEMPLATE_BODY, etag: '"t"' };
 }
 
 const STEP_SUMMARY: TemplateSummary = {
@@ -64,7 +57,7 @@ const STEP_SUMMARY: TemplateSummary = {
 const STEP_ENVELOPE = {
   ...STEP_SUMMARY,
   format: FORMAT_VERSION,
-  body: templateWorkflow(STEP_ID)["body"],
+  body: TEMPLATE_BODY,
   etag: '"s"',
 };
 
@@ -121,12 +114,12 @@ async function editTemplate(stem: string): Promise<HTMLElement> {
   return canvas;
 }
 
-describe("Author mode on a *.workflow-template.json (#580)", () => {
+describe("Author mode on a *.step-template.json (#580)", () => {
   it("opens the template source in author mode, named by its suffix", async () => {
     renderApp();
     await editTemplate("nightly");
 
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json");
+    expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json");
     expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /^Edit / })).not.toBeInTheDocument();
@@ -136,7 +129,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     renderApp();
     await editTemplate("broken");
 
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("broken.workflow-template.json");
+    expect(screen.getByTestId("author-mode")).toHaveTextContent("broken.step-template.json");
   });
 
   it("does not enter author mode for a *.workflow.json", async () => {
@@ -163,21 +156,20 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     expect(calls.put).toHaveLength(0);
   });
 
-  it("Save as template creates a new *.workflow-template.json with a fresh id, then edits it", async () => {
+  it("Save as creates a new *.step-template.json with a fresh id, then edits it", async () => {
     const calls = renderApp();
     const canvas = await editTemplate("nightly");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as new step-template" });
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly-v2.workflow-template.json"));
+    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly-v2.step-template.json"));
     const post = calls.templateWrites[0]!;
-    expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "workflow", name: "nightly-v2" } });
-    const created = post.body["body"] as { id: string; input: unknown };
+    expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "nightly-v2", description: "nightly blurb" } });
+    const created = post.body["body"] as { id: string };
     expect(created.id).not.toBe(USER_ID);
-    expect(created.input).toEqual({ ticket: "PATH-1" });
 
     // The editor now writes back to the new template, under the create's ETag.
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
@@ -199,16 +191,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
   });
 });
 
-describe("Author mode on a *.step-template.json", () => {
-  it("opens the step-template body on the canvas", async () => {
-    renderApp();
-    await editTemplate("draft-judge");
-
-    expect(screen.getByTestId("author-mode")).toHaveTextContent("draft-judge.step-template.json");
-    expect(screen.getByRole("button", { name: "Save as…" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Save as workflow…" })).not.toBeInTheDocument();
-  });
-
+describe("The step-template envelope", () => {
   it("Save writes back the step-template envelope, id and description preserved", async () => {
     const calls = renderApp();
     const canvas = await editTemplate("draft-judge");
@@ -224,12 +207,12 @@ describe("Author mode on a *.step-template.json", () => {
     expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([NODE_IDS[1], NODE_IDS[0]]);
   });
 
-  it("Save as template creates a new *.step-template.json with a fresh id", async () => {
+  it("Save as keeps the description and names the .step-template.json suffix", async () => {
     const calls = renderApp();
     await editTemplate("draft-judge");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as new step-template" });
     expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-judge-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
@@ -240,52 +223,5 @@ describe("Author mode on a *.step-template.json", () => {
     const created = post.body["body"] as { id: string; description: string };
     expect(created.id).not.toBe(STEP_ID);
     expect(created.description).toBe("draft then judge");
-  });
-});
-
-describe("Save as… across template kinds", () => {
-  it("saves a workflow-template as a step-template, keeping only the body and saying what it drops", async () => {
-    const calls = renderApp();
-    await editTemplate("nightly");
-
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
-    expect(within(dialog).getByLabelText("Workflow-template")).toBeChecked();
-    expect(within(dialog).queryByRole("note")).not.toBeInTheDocument();
-
-    fireEvent.click(within(dialog).getByLabelText("Step-template"));
-    expect(within(dialog).getByRole("note")).toHaveTextContent("A step-template keeps only the body. input will be dropped.");
-    expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-core" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly-core.step-template.json"));
-    const post = calls.templateWrites[0]!;
-    expect(post.body).toMatchObject({ kind: "step", name: "nightly-core", description: "nightly blurb" });
-    const created = post.body["body"] as Record<string, unknown>;
-    expect(Object.keys(created).sort()).toEqual(["body", "description", "format", "id"]);
-    expect(created["id"]).not.toBe(USER_ID);
-    expect((created["body"] as { id: string }[]).map((node) => node.id)).toEqual(NODE_IDS);
-  });
-
-  it("saves a step-template as a workflow-template, named by the new template", async () => {
-    const calls = renderApp();
-    await editTemplate("draft-judge");
-
-    fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
-    expect(within(dialog).getByLabelText("Step-template")).toBeChecked();
-    fireEvent.click(within(dialog).getByLabelText("Workflow-template"));
-    expect(within(dialog).queryByRole("note")).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-flow" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
-
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("draft-flow.workflow-template.json"));
-    const post = calls.templateWrites[0]!;
-    expect(post.body).toMatchObject({ kind: "workflow", name: "draft-flow" });
-    const created = post.body["body"] as Record<string, unknown>;
-    expect(created).toMatchObject({ format: FORMAT_VERSION, name: "draft-flow" });
-    expect(created["id"]).not.toBe(STEP_ID);
-    expect((created["body"] as { id: string }[]).map((node) => node.id)).toEqual(NODE_IDS);
   });
 });

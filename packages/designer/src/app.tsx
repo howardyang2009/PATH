@@ -10,6 +10,7 @@ import { OpenTemplateDialog } from "./open-template-dialog.js";
 import { Palette } from "./palette.js";
 import { PropertiesPane } from "./properties-pane.js";
 import { RefTargetDialog } from "./ref-target-dialog.js";
+import { SaveAsChoiceDialog } from "./save-as-choice-dialog.js";
 import { SaveTemplateAsDialog } from "./save-template-as-dialog.js";
 import { SelectionProvider } from "./selection-context.js";
 import { RunDock } from "./run/run-dock.js";
@@ -53,7 +54,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const [openExistingOpen, setOpenExistingOpen] = useState(false);
   // Template mode's save dialogs: a new template's first save, or a Save as… copy of an opened template
   // (#580). Workflow mode's Save as… (`"workflow-copy"`) writes the open workflow to a new file.
-  const [saveAsDialog, setSaveAsDialog] = useState<"new-template" | "template" | "workflow-copy" | null>(null);
+  const [saveAsDialog, setSaveAsDialog] = useState<"new-template" | "template" | "workflow-choice" | "workflow-copy" | "workflow-step-template" | null>(null);
   // Template mode's Open… picker.
   const [openTemplateOpen, setOpenTemplateOpen] = useState(false);
   const plugins: WireStepPlugin[] = session.registry.phase === "ready" ? session.registry.plugins : [];
@@ -63,7 +64,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // (no frame, or a never-saved buffer) reads uniformly here — the toolbar, lease, launch, and the
   // first-save dialog all branch on the single `activePath === undefined`.
   const activePath = active?.path ?? undefined;
-  // Author mode (#580): the active frame is a `*.workflow-template.json` source, saved by template id.
+  // Author mode (#580): the active frame is a `*.step-template.json` source, saved by template id.
   const activeTemplate = active?.template;
   const depth = session.activeIndex;
   // Switching the active file (descend, pop, or open a different one) deselects — the previous file's
@@ -240,8 +241,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
                   ? () => setSaveAsDialog("new-template")
                   : () => setNewFileOpen(true)
             }
-            // Save as…: a copy to a new workflow file, or a copy to a new template.
-            onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-copy")}
+            // Save as…: in template mode, a copy to a new template; in workflow mode, first a choice between a
+            // copy to a new workflow file and a new step-template made from the workflow's body (#459.6).
+            onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-choice")}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
             onReacquire={() => activePath && reacquire(activePath)}
@@ -255,8 +257,6 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           plugins={plugins}
           templateList={templateList}
           arming={arming}
-          canvasEmpty={session.canvasEmpty}
-          placeWorkflowInstance={session.placeWorkflowInstance}
           // In template mode, a double-click opens the template source, discarding the current stack.
           onEditTemplate={openTemplate}
           canEditTemplates={inTemplateMode}
@@ -336,13 +336,12 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         onCancel={() => setNewFileOpen(false)}
       />
     ) : null}
-    {/* Template mode's save doors. A new template's first save picks its kind, name and description; Save
-        as… (#580) names a copy of the opened template. A template saves only as a template: a workflow is
-        made from one in workflow mode, by selecting its card into an empty canvas. */}
+    {/* Template mode's save doors. A new step-template's first save picks its name and description; Save
+        as… (#580) names a copy of the opened step-template. A template saves only as a template. */}
     {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
       <SaveTemplateAsDialog
         source={null}
-        create={({ kind, name, description }) => session.saveNewTemplate(kind, name, description)}
+        create={({ name, description }) => session.saveNewTemplate(name, description)}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />
@@ -351,7 +350,24 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       <SaveTemplateAsDialog
         source={activeTemplate}
         droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
-        create={({ kind, name, description }) => session.saveAsTemplate(kind, name, description)}
+        create={({ name, description }) => session.saveAsTemplate(name, description)}
+        onCreated={() => setSaveAsDialog(null)}
+        onCancel={() => setSaveAsDialog(null)}
+      />
+    ) : null}
+    {saveAsDialog === "workflow-choice" && !inTemplateMode && openedFile ? (
+      <SaveAsChoiceDialog
+        onWorkflow={() => setSaveAsDialog("workflow-copy")}
+        onTemplate={() => setSaveAsDialog("workflow-step-template")}
+        onCancel={() => setSaveAsDialog(null)}
+      />
+    ) : null}
+    {saveAsDialog === "workflow-step-template" && !inTemplateMode && openedFile ? (
+      <SaveTemplateAsDialog
+        source={null}
+        workflowName={openedFile.name}
+        droppedFields={workflowLevelFields(openedFile)}
+        create={({ name, description }) => session.saveWorkflowAsTemplate(name, description)}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />

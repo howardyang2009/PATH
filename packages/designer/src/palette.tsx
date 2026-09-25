@@ -23,11 +23,10 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * describes, plus the `workflow` ref. Until the registry lands the Step list is just `workflow`; the
  * Controller group is fixed by the grammar and always shown.
  *
- * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. A
+ * Templates holds the Step-Template category from `GET /v0/templates` (the only kind, ADR 0063). A
  * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
- * then opens the sockets the grammar admits that body into. A Workflow-Template card is selectable only
- * into an empty canvas and fills it with an instance of the whole workflow (#579). In template mode, a
- * double-click on either kind of card opens the template file itself in author mode (#580); in workflow
+ * then opens the sockets the grammar admits that body into. In template mode, a double-click on a card
+ * opens the template file itself in author mode (#580); in workflow
  * mode the Templates tab only inserts, so a double-click never leaves the open workflow. A failed read says why
  * instead, and an invalid template is shown disabled with its error.
  */
@@ -35,18 +34,12 @@ export function Palette({
   plugins,
   templateList,
   arming,
-  canvasEmpty,
-  placeWorkflowInstance,
   onEditTemplate,
   canEditTemplates,
 }: {
   plugins: WireStepPlugin[];
   templateList: TemplateListLoad;
   arming: ArmedState;
-  /** Is the canvas empty? A Workflow-Template card is selectable only then (#579). */
-  canvasEmpty: boolean;
-  /** Put a Workflow-Template instance on the empty canvas; `false` when it is no longer empty. */
-  placeWorkflowInstance: (file: WorkflowFile) => boolean;
   /** Open a template's own source file in author mode (#580). */
   onEditTemplate: (template: TemplateSummary) => void;
   /** Does a double-click on a template card open it for edit? Only in template mode. */
@@ -78,8 +71,6 @@ export function Palette({
           <TemplatesTab
             templateList={templateList}
             arming={arming}
-            canvasEmpty={canvasEmpty}
-            placeWorkflowInstance={placeWorkflowInstance}
             onEditTemplate={onEditTemplate}
             canEditTemplates={canEditTemplates}
           />
@@ -192,15 +183,11 @@ function PaletteSubTabs({
 function TemplatesTab({
   templateList,
   arming,
-  canvasEmpty,
-  placeWorkflowInstance,
   onEditTemplate,
   canEditTemplates,
 }: {
   templateList: TemplateListLoad;
   arming: ArmedState;
-  canvasEmpty: boolean;
-  placeWorkflowInstance: (file: WorkflowFile) => boolean;
   onEditTemplate: (template: TemplateSummary) => void;
   canEditTemplates: boolean;
 }) {
@@ -231,11 +218,8 @@ function TemplatesTab({
                   key={`${template.origin}:${template.kind}:${template.name}`}
                   template={template}
                   armed={armed?.kind === "step-template" && armed.id === template.id}
-                  canvasEmpty={canvasEmpty}
                   canEdit={canEditTemplates}
-                  onSelect={() =>
-                    template.kind === "step" ? arming.armTemplate(template) : arming.selectWorkflowTemplate(template, placeWorkflowInstance)
-                  }
+                  onSelect={() => arming.armTemplate(template)}
                   onDisarm={() => arming.arm(null)}
                   onEdit={() => onEditTemplate(template)}
                 />
@@ -277,16 +261,13 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
 /**
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
- * Step-Template card is an arm toggle like a Build card (#578). A Workflow-Template card is a one-shot
- * select, enabled only while the canvas is empty (#579). In template mode (`canEdit`), a double-click on
- * any card opens its template file in author mode (#580), and a Workflow-Template card does nothing on a
- * single click. The card is only `aria-disabled`, so the double-click still reaches a
+ * Step-Template card is an arm toggle like a Build card (#578). In template mode (`canEdit`), a
+ * double-click on a card opens its template file in author mode (#580). The card is only `aria-disabled`, so the double-click still reaches a
  * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
  */
 function TemplateCard({
   template,
   armed,
-  canvasEmpty,
   canEdit,
   onSelect,
   onDisarm,
@@ -294,19 +275,13 @@ function TemplateCard({
 }: {
   template: TemplateSummary;
   armed: boolean;
-  canvasEmpty: boolean;
   canEdit: boolean;
   onSelect: () => void;
   onDisarm: () => void;
   onEdit: () => void;
 }) {
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
-  const armable = template.kind === "step";
-  // In template mode a Workflow-Template card is an edit target only: a single click places nothing, so
-  // the two clicks of a double-click cannot fill the canvas before the double-click opens the template.
-  const editOnly = canEdit && !armable;
-  const blocked = !armable && !editOnly && !canvasEmpty;
-  const disabled = !template.valid || blocked;
+  const disabled = !template.valid;
   const editable = canEdit && template.id !== null;
   const editHint = canEdit ? "Double-click to edit the template." : "Switch to Template mode to edit this template.";
   return (
@@ -316,12 +291,10 @@ function TemplateCard({
         className="palette-card"
         style={style}
         aria-disabled={disabled}
-        title={[blocked ? "A Workflow-Template goes only into an empty canvas." : null, template.id !== null ? editHint : null]
-          .filter((line) => line !== null)
-          .join("\n") || undefined}
-        aria-pressed={armable ? armed : undefined}
+        title={template.id !== null ? editHint : undefined}
+        aria-pressed={armed}
         data-armed={armed ? "true" : "false"}
-        onClick={disabled || editOnly ? undefined : armed ? onDisarm : onSelect}
+        onClick={disabled ? undefined : armed ? onDisarm : onSelect}
         onDoubleClick={editable ? onEdit : undefined}
       >
         <span className="palette-card-swatch" aria-hidden="true" />

@@ -89,13 +89,12 @@ export function instantiate(body: WorkflowNode[], options: InstantiateOptions = 
 }
 
 /**
- * **Workflow-Template instantiation** (ADR 0049 decision 7, #579): the same detached copy over the whole
- * workflow, plus a **workflow-level re-mint**. The template's workflow `id` is its own identity, so the
- * instance gets a fresh one — two workflows spawned from one template must not share a source-workflow
- * identity (ADR 0006). Every node id is re-stamped by {@link instantiate}; the target canvas is empty, so
- * no name collides and every name stays verbatim. Everything else — `name`, `input`, `worker_defaults`,
- * `config`, `output` — rides across verbatim as a deep copy; the saved name/path come from the save-as
- * dialog, not from here.
+ * **Whole-workflow instantiation**, the Designer's workflow-mode Save as… Workflow copy: the same detached
+ * copy over the whole workflow, plus a **workflow-level re-mint**. The source's workflow `id` is its own
+ * identity, so the copy gets a fresh one — two workflows must not share a source-workflow identity (ADR
+ * 0006). Every node id is re-stamped by {@link instantiate}; the copy is a whole file, so no name collides
+ * and every name stays verbatim. Everything else — `name`, `input`, `worker_defaults`, `config`, `output`
+ * — rides across verbatim as a deep copy; the saved name/path come from the save-as dialog, not from here.
  */
 export function instantiateWorkflow(template: WorkflowFile): WorkflowFile {
   const file = structuredClone(template);

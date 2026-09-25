@@ -6,7 +6,7 @@ import { stubClient } from "./stub-server.js";
 
 /**
  * #577: the palette lists templates. A `Templates` tab beside `Build` (variant C of #564) holds a
- * Step-Template and a Workflow-Template category, populated from `GET /v0/templates` — shipped and user
+ * Step-Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
  * rows alike. An invalid row is listed with its error and cannot be selected.
  */
 
@@ -25,10 +25,10 @@ function template(overrides: Partial<TemplateSummary> & Pick<TemplateSummary, "n
 const TEMPLATES: TemplateSummary[] = [
   template({ name: "person-switch", kind: "step", origin: "shipped", read_only: true, description: "A person picks the next node" }),
   template({ name: "review-gate", kind: "step" }),
-  template({ name: "nightly", kind: "workflow" }),
+  template({ name: "nightly", kind: "step" }),
   template({
     name: "broken-flow",
-    kind: "workflow",
+    kind: "step",
     valid: false,
     error: { message: 'unregistered step type "api-call"' },
   }),
@@ -51,7 +51,7 @@ describe("Designer palette lists templates (#577)", () => {
     expect(within(palette).queryByRole("region", { name: "Step-Template" })).not.toBeInTheDocument();
   });
 
-  it("lists shipped and user templates under Step-Template and Workflow-Template", async () => {
+  it("lists shipped and user templates under Step-Template, with no Workflow-Template category", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const panel = await openTemplatesTab();
 
@@ -59,11 +59,9 @@ describe("Designer palette lists templates (#577)", () => {
     expect(within(stepTemplates).getByText("person-switch")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("A person picks the next node")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("review-gate")).toBeInTheDocument();
-    expect(within(stepTemplates).queryByText("nightly")).not.toBeInTheDocument();
-
-    const workflowTemplates = within(panel).getByRole("region", { name: "Workflow-Template" });
-    expect(within(workflowTemplates).getByText("nightly")).toBeInTheDocument();
-    expect(within(workflowTemplates).getByText("broken-flow")).toBeInTheDocument();
+    expect(within(stepTemplates).getByText("nightly")).toBeInTheDocument();
+    expect(within(stepTemplates).getByText("broken-flow")).toBeInTheDocument();
+    expect(within(panel).queryByRole("region", { name: "Workflow-Template" })).not.toBeInTheDocument();
 
     // The shipped row says so, the user row does not.
     const shipped = within(stepTemplates).getByRole("button", { name: /person-switch/ });
@@ -82,13 +80,12 @@ describe("Designer palette lists templates (#577)", () => {
     expect(within(panel).getByRole("button", { name: /^nightly/ })).toHaveAttribute("aria-disabled", "false");
   });
 
-  it("says so when there are no templates of a kind", async () => {
-    render(<App client={stubClient({ templates: { templates: [TEMPLATES[0]] } })} />);
+  it("says so when there are no templates", async () => {
+    render(<App client={stubClient({ templates: { templates: [] } })} />);
     const panel = await openTemplatesTab();
 
-    await within(panel).findByText("person-switch");
-    const workflowTemplates = within(panel).getByRole("region", { name: "Workflow-Template" });
-    expect(within(workflowTemplates).getByText("No workflow templates")).toBeInTheDocument();
+    const stepTemplates = await within(panel).findByRole("region", { name: "Step-Template" });
+    expect(within(stepTemplates).getByText("No step templates")).toBeInTheDocument();
   });
 
   it("reports a failed template scan instead of an empty list", async () => {

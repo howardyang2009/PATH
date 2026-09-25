@@ -4,8 +4,8 @@ import { templateSuffix } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
 
 /**
- * Template mode's **Open…** picker: the project's templates (`GET /v0/templates`), grouped into
- * Step-Template and Workflow-Template like the palette's Templates tab. A choice opens that template's
+ * Template mode's **Open…** picker: the project's step-templates (`GET /v0/templates`), grouped like the
+ * palette's Templates tab. A choice opens that template's
  * source in template mode, the same as a double-click on its palette card. An invalid template is listed
  * too, so an author can open it and repair it.
  */

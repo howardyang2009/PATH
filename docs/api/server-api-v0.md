@@ -705,7 +705,7 @@ blind delete, as there is no blind overwrite.
 It respects the edit lease (ADR 0017). A live lease held by **another** session is a `409`. The caller
 names its own session in `session_id`; its own lease, or an expired one, is removed with the file.
 
-A template path (a `*.workflow-template.json` file, or anything under `.path/template/`) is refused,
+A template path (anything under `.path/template/`) is refused,
 as `PUT /v0/workflows` refuses one (§10.6). A template is deleted through `DELETE /v0/templates/:id`
 (§10.5). Other workflows that reference the deleted file keep their `ref`. The Designer reports it as
 a dangling ref.
@@ -807,23 +807,25 @@ and — for author-mode editing — creates, updates, and deletes the user-writa
 model, the discovery mechanism, and the write-door split are
 [ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md).
 
+**One kind.** The Step-Template is the only template kind
+([ADR 0063](../adr/0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md)
+removed the Workflow-Template). The wire keeps `kind`, always `"step"`.
+
 **Id-addressed, not path-addressed.** Unlike a workflow (§7, launched by *where* it lives), a template
 is selected by identity, so `:id` is the template's own GUID — a step-template's envelope `id`
-([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)), a
-workflow-template's own workflow `id`. A GUID is globally unique
-([ADR 0006](../adr/0006-workflow-and-node-identity-guid-plus-name.md)), so one id lookup spans both
-kinds with no `?kind=` disambiguator.
+([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)). A
+GUID is globally unique ([ADR 0006](../adr/0006-workflow-and-node-identity-guid-plus-name.md)), so one id
+lookup spans both origins.
 
-**The union is a four-directory scan.** Discovery reads, fresh on each request (no cache, like §6):
+**The union is a two-directory scan.** Discovery reads, fresh on each request (no cache, like §6):
 
 | Root | Kind subdir | `origin` | `read_only` | File suffix |
 | --- | --- | --- | --- | --- |
 | `packages/server/template/` | `step-template/` | `shipped` | `true` | `*.step-template.json` |
-| `packages/server/template/` | `workflow-template/` | `shipped` | `true` | `*.workflow-template.json` |
 | `.path/template/` | `step-template/` | `user` | `false` | `*.step-template.json` |
-| `.path/template/` | `workflow-template/` | `user` | `false` | `*.workflow-template.json` |
 
-The `kind` of a file is its suffix, never its bytes. The scan also builds the `id → {kind, origin,
+The `kind` of a file is its suffix, never its bytes. A leftover `*.workflow-template.json` file is
+ignored. The scan also builds the `id → {kind, origin,
 absPath}` index the by-id routes resolve against. An id shared by a user and a shipped file (reachable
 only when a user hand-copies a shipped file — save-as always mints a fresh id,
 [ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)) lists
@@ -832,18 +834,17 @@ origins is not a collision (distinct ids, distinct palette rows). A malformed, d
 unregistered-type template invalidates *that one entry* and never the Server start
 ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)).
 
-### 10.1 `GET /v0/templates?kind=step|workflow` — list the union
+### 10.1 `GET /v0/templates?kind=step` — list the union
 
-Ungated read (§2.1). `kind` is an **optional** filter: omitted, the response is both kinds; `kind=step`
-or `kind=workflow` narrows it. The list is **thin** — one summary per entry, **no `body`** — mirroring
+Ungated read (§2.1). `kind` is an **optional** filter; `step` is the only kind, so it changes nothing. The list is **thin** — one summary per entry, **no `body`** — mirroring
 workflow discovery (§6). Registry-relative validity rides each entry.
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `id` | string | The template GUID (the by-id routes' `:id`). |
 | `name` | string | The file stem (`NameSchema`), the palette label. |
-| `description` | string | The palette blurb ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)); a step-template's required envelope field, a workflow-template's `name`-derived blurb. |
-| `kind` | `"step" \| "workflow"` | Which suffix the file carried. |
+| `description` | string | The palette blurb ([ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)); a step-template's required envelope field. |
+| `kind` | `"step"` | Which suffix the file carried; always `"step"`. |
 | `origin` | `"shipped" \| "user"` | Which root it was scanned from. |
 | `read_only` | boolean | `true` for `shipped`, `false` for `user`. |
 | `valid` | boolean | Whether the body validates registry-relative. |
@@ -866,9 +867,9 @@ Response `200 OK`:
     },
     {
       "id": "9c1b…",
-      "name": "nightly-pipeline",
-      "description": "Full nightly workflow",
-      "kind": "workflow",
+      "name": "nightly-checks",
+      "description": "The nightly check steps",
+      "kind": "step",
       "origin": "user",
       "read_only": false,
       "valid": false,
@@ -890,12 +891,12 @@ unchanged.
 | --- | --- | --- |
 | `id` | string | The template GUID. |
 | `name` | string | Derived from the file stem. |
-| `kind` | `"step" \| "workflow"` | The file's kind. |
+| `kind` | `"step"` | The file's kind. |
 | `origin` | `"shipped" \| "user"` | Scan root. |
 | `read_only` | boolean | `true` for shipped. |
 | `format` | string | The envelope `format` stamp (`"path/workflow@5"`). |
 | `description` | string | The envelope description. |
-| `body` | array \| object | A step-template's `WorkflowNode[]` body, or a workflow-template's whole workflow file. |
+| `body` | array | The step-template's `WorkflowNode[]` body. |
 | `valid` | boolean | Registry-relative validity. |
 | `error` | object \| null | Error envelope when invalid. |
 | `etag` | string | sha256 of the on-disk bytes. |
@@ -919,10 +920,10 @@ Request body:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
-| `kind` | `"step" \| "workflow"` | Selects the `<kind-dir>` and the suffix. |
+| `kind` | `"step"` | Selects the `<kind-dir>` and the suffix; any other value is a `400`. |
 | `name` | string | The file stem; must match `NameSchema` (`^[a-z][a-z0-9-]*$`). |
 | `description` | string | The template's blurb (a step-template's required field). |
-| `body` | array \| object | The template body, carrying the client-minted `id`. |
+| `body` | object | The step-template envelope, carrying the client-minted `id`. |
 
 The write lands at `.path/template/<kind-dir>/<name>.<suffix>`, creating the directory chain
 (`mkdirSync` recursive, as §7). It is **create-only** — no blind overwrite; content changes go through
@@ -932,7 +933,7 @@ Responses:
 
 - `201 Created` — `{ "id": "<envelope id>", "relative_path": "<path under project root>", "etag": "<sha256>" }`.
 - `400 Bad Request` — body is not valid JSON, fails the envelope schema, `name` violates `NameSchema`,
-  or `body` fails `makeStepTemplateSchema(registry)` / the workflow-file schema.
+  `kind` is not `"step"`, or `body` fails `makeStepTemplateSchema(registry)`.
 - `409 Conflict` — a template of that `name` already exists in `.path/template/<kind-dir>/`.
 - `403 Forbidden` — the origin gate rejected the request (§2.1).
 
@@ -944,13 +945,12 @@ Origin-gated. **Update-only** and **precondition-gated**: it requires an `If-Mat
 it is **not** an upsert — creation is §10.3, so a `PUT` to an unknown id is a `404`, not a create. It
 **cannot rename**: the file stem, hence `name`, is immutable through this door (a rename is a file
 rename, [ADR 0048](../adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md)).
-This is the route that carries author-mode save of a `*.workflow-template.json`
+This is the route that carries author-mode save of a `*.step-template.json`
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
 decision 8): the "ordinary file editing round-trip" is this precondition-gated write, not a workflow
 write.
 
-Request body: the full template object (envelope for a step-template, workflow file for a
-workflow-template). Its `id` must equal the URL `:id`.
+Request body: the full step-template envelope. Its `id` must equal the URL `:id`.
 
 Responses:
 
@@ -973,10 +973,9 @@ Responses:
 
 ### 10.6 The two write doors are disjoint
 
-A workflow-template is a workflow file under the project root, so `PUT /v0/workflows` (§7) *could*
-address it by path. It does not: to keep one addressing scheme per artifact, **`PUT /v0/workflows`
-rejects a path under `.path/template/` or bearing a `*.workflow-template.json` suffix** (`400`/`404`),
-and `GET /v0/workflows` (§6) already scans `*.workflow.json` only, so a template never surfaces as a
-launchable workflow. A template is written only through `/v0/templates`, and reaches a runnable
+A template file lives under the project root, so `PUT /v0/workflows` (§7) *could* address it by path.
+It does not: to keep one addressing scheme per artifact, **`PUT /v0/workflows` rejects a path under
+`.path/template/`** (`400`/`404`), and `GET /v0/workflows` (§6) already scans `*.workflow.json` only, so
+a template never surfaces as a launchable workflow. A template is written only through `/v0/templates`, and reaches a runnable
 `*.workflow.json` only by Instantiation
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)).

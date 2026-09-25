@@ -62,7 +62,7 @@ function envelope(name: string, body: unknown, overrides: Record<string, unknown
 }
 
 const TEMPLATES = {
-  templates: [summary("draft-judge"), summary("gate-check"), summary("nightly", { kind: "workflow" })],
+  templates: [summary("draft-judge"), summary("gate-check"), summary("nightly")],
 };
 
 const BODIES = {

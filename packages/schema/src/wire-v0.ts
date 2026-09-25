@@ -251,22 +251,22 @@ export interface TemplateSummary {
   id: string | null;
   name: string;
   description: string;
-  kind: "step" | "workflow";
+  /** Always `"step"`: the Step-Template is the only template kind (ADR 0063). */
+  kind: "step";
   origin: "shipped" | "user";
   read_only: boolean;
   valid: boolean;
   error: WireError["error"] | null;
 }
 
-/** `GET /v0/templates` — the shipped∪user template union, both kinds unless `?kind=` narrows it. */
+/** `GET /v0/templates` — the shipped∪user step-template union. */
 export interface ListTemplatesResponse {
   templates: TemplateSummary[];
 }
 
 /**
  * `GET /v0/templates/:id` — one template as a **parsed envelope** (server-api-v0.md §10.2, ADR 0050
- * decision 5). `body` is a step-template's `WorkflowNode[]` or a workflow-template's whole workflow
- * file; it is best-effort for an invalid template (`valid: false`), so it stays `unknown` on the wire.
+ * decision 5). `body` is the step-template's `WorkflowNode[]`; it is best-effort for an invalid template (`valid: false`), so it stays `unknown` on the wire.
  * `etag` is the sha256 of the on-disk bytes, the `If-Match` value for a later update.
  */
 export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
@@ -278,11 +278,11 @@ export interface GetTemplateResponse extends Omit<TemplateSummary, "id"> {
 
 /**
  * `POST /v0/templates` — save-as (server-api-v0.md §10.3, ADR 0050 decision 6). `body` is the full
- * template object (a step-template envelope or a whole workflow file) carrying the client-minted `id`;
- * `name` is the file stem and `kind` picks the suffix, so neither lives in the written bytes.
+ * template object (the step-template envelope) carrying the client-minted `id`; `name` is the file stem
+ * and `kind` picks the suffix, so neither lives in the written bytes.
  */
 export interface WirePostTemplateRequest {
-  kind: "step" | "workflow";
+  kind: "step";
   name: string;
   description: string;
   body: Record<string, unknown>;

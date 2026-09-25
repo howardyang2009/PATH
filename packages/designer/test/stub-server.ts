@@ -216,11 +216,11 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       if (templateWrite.method === "POST") {
         const created = templateWrite.body["body"] as { id: string };
         const name = templateWrite.body["name"] as string;
-        return json({ id: created.id, relative_path: `.path/template/workflow-template/${name}.workflow-template.json`, etag: '"created"' }, 201);
+        return json({ id: created.id, relative_path: `.path/template/step-template/${name}.step-template.json`, etag: '"created"' }, 201);
       }
       const envelope = (options.templateBodies ?? {})[templateWrite.id!] as { read_only?: boolean } | undefined;
       if (envelope?.read_only) return json({ error: { message: "template is read-only" } }, 403);
-      return json({ id: templateWrite.id, relative_path: "t.workflow-template.json", etag: '"rewritten"' }, 200);
+      return json({ id: templateWrite.id, relative_path: "t.step-template.json", etag: '"rewritten"' }, 200);
     }
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);

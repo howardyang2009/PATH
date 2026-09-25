@@ -1,33 +1,25 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import {
-  makeStepTemplateSchema,
-  makeWorkflowFileSchema,
-  safeParseStepTemplateWith,
-  safeParseWorkflowFileWith,
-  type StepPluginRegistry,
-  type WireError,
-} from "@path/schema";
+import { makeStepTemplateSchema, safeParseStepTemplateWith, type StepPluginRegistry, type WireError } from "@path/schema";
 
 // The Template store (ADR 0050, ADR 0051): the Server-owned, engine-blind discovery of the
 // shipped∪user authoring templates. A template is typed by its file **suffix**, never its bytes
 // (ADR 0050 decision 2), so the two maps below are the whole classification: kind → its `<kind-dir>`
-// and its file suffix. A `<name>.<suffix>` in `<root>/<kind-dir>/` is a template of that kind.
+// and its file suffix. A `<name>.<suffix>` in `<root>/<kind-dir>/` is a template of that kind. The
+// Step-Template is the only kind (ADR 0063 removed the Workflow-Template).
 
-export type TemplateKind = "step" | "workflow";
+export type TemplateKind = "step";
 export type TemplateOrigin = "shipped" | "user";
 
 /** kind → the file suffix that names it. */
 const SUFFIX: Record<TemplateKind, string> = {
   step: ".step-template.json",
-  workflow: ".workflow-template.json",
 };
 
 /** kind → the subdirectory it lives under, in both roots. */
 const KIND_DIR: Record<TemplateKind, string> = {
   step: "step-template",
-  workflow: "workflow-template",
 };
 
 export function suffixFor(kind: TemplateKind): string {
@@ -40,7 +32,7 @@ export function kindDirFor(kind: TemplateKind): string {
 
 /**
  * The `.path/template/<kind-dir>/` root under a project, where every **user** (writable) template
- * lives. The four-directory union is this pair of `<kind-dir>`s plus the shipped pair.
+ * lives. The union is this `<kind-dir>` plus the shipped one.
  */
 export function userTemplateRoot(projectDir: string): string {
   return join(projectDir, ".path", "template");
@@ -70,14 +62,14 @@ export interface TemplateEntry {
   bytes: Buffer;
   description: string;
   format: string | null;
-  /** A step-template's `WorkflowNode[]` body, or a workflow-template's whole workflow file. */
+  /** A step-template's `WorkflowNode[]` body. */
   body: unknown;
   valid: boolean;
   error: WireError["error"] | null;
 }
 
 export interface TemplateStore {
-  /** Every discovered entry, in scan order: shipped before user, step before workflow, files sorted. */
+  /** Every discovered entry, in scan order: shipped before user, files sorted. */
   entries: TemplateEntry[];
   /**
    * `id → entry` for the by-id routes. First-seen wins — a shipped file is scanned before a user one,
@@ -100,12 +92,10 @@ function templateFiles(dir: string, suffix: string): string[] {
   return names.sort();
 }
 
-/** The validity/identity facts of one file's bytes, typed by its kind. Never throws — malformed JSON is invalid. */
+/** The validity/identity facts of one step-template file's bytes. Never throws — malformed JSON is invalid. */
 function classify(
   bytes: Buffer,
-  kind: TemplateKind,
   stepSchema: ReturnType<typeof makeStepTemplateSchema>,
-  workflowSchema: ReturnType<typeof makeWorkflowFileSchema>,
 ): Pick<TemplateEntry, "id" | "description" | "format" | "body" | "valid" | "error"> {
   let raw: unknown;
   try {
@@ -125,21 +115,11 @@ function classify(
   const id = typeof obj.id === "string" ? obj.id : null;
   const format = typeof obj.format === "string" ? obj.format : null;
 
-  // A step-template's blurb is its required envelope `description`; a workflow-template has no
-  // description field, so its palette blurb is derived from its `name` (ADR 0050 §10.1). `body` is a
-  // step-template's `body` array, but the whole file for a workflow-template.
-  const description =
-    kind === "step"
-      ? typeof obj.description === "string"
-        ? obj.description
-        : ""
-      : typeof obj.name === "string"
-        ? obj.name
-        : "";
-  const body = kind === "step" ? (obj.body ?? null) : raw;
+  // A step-template's palette blurb is its required envelope `description`.
+  const description = typeof obj.description === "string" ? obj.description : "";
+  const body = obj.body ?? null;
 
-  const parsed =
-    kind === "step" ? safeParseStepTemplateWith(stepSchema, raw) : safeParseWorkflowFileWith(workflowSchema, raw);
+  const parsed = safeParseStepTemplateWith(stepSchema, raw);
   const error = parsed.success
     ? null
     : { message: parsed.errors[0] ?? "invalid template", details: parsed.errors };
@@ -148,9 +128,9 @@ function classify(
 }
 
 /**
- * Discover the shipped∪user template union, fresh (no cache, like `GET /v0/workflows`). Scans the four
- * directories — `<shippedDir>/{step-template,workflow-template}/` (read-only) and
- * `<projectDir>/.path/template/{step-template,workflow-template}/` (writable) — types each file by its
+ * Discover the shipped∪user template union, fresh (no cache, like `GET /v0/workflows`). Scans the two
+ * directories — `<shippedDir>/step-template/` (read-only) and `<projectDir>/.path/template/step-template/`
+ * (writable) — types each file by its
  * suffix, validates its body registry-relative, and builds the `id → entry` index the by-id routes
  * resolve against. A duplicate id across origins invalidates the later (user) entry, never the earlier
  * one and never the scan (ADR 0050 decision 3).
@@ -161,7 +141,6 @@ export function discoverTemplates(
   registry: StepPluginRegistry,
 ): TemplateStore {
   const stepSchema = makeStepTemplateSchema(registry);
-  const workflowSchema = makeWorkflowFileSchema(registry);
 
   const roots: { root: string; origin: TemplateOrigin; readOnly: boolean }[] = [
     { root: shippedDir, origin: "shipped", readOnly: true },
@@ -170,7 +149,7 @@ export function discoverTemplates(
 
   const entries: TemplateEntry[] = [];
   for (const { root, origin, readOnly } of roots) {
-    for (const kind of ["step", "workflow"] as const) {
+    for (const kind of ["step"] as const) {
       const suffix = SUFFIX[kind];
       const dir = join(root, KIND_DIR[kind]);
       for (const fileName of templateFiles(dir, suffix)) {
@@ -184,7 +163,7 @@ export function discoverTemplates(
           readOnly,
           absPath,
           bytes,
-          ...classify(bytes, kind, stepSchema, workflowSchema),
+          ...classify(bytes, stepSchema),
         });
       }
     }

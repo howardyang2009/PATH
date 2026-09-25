@@ -1,6 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import type { GetTemplateResponse, PathApiClient, TemplateSummary } from "@path/client-core";
-import { instantiateWorkflow, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import type { WorkflowNode } from "@path/schema";
 
 /**
  * What the palette has **armed** — the thing the canvas opens sockets for and places on a socket click.
@@ -21,13 +21,6 @@ export interface ArmedState {
    * A failed read or a template the server reports invalid arms nothing and sets `templateError` instead.
    */
   armTemplate: (template: TemplateSummary) => void;
-  /**
-   * Select a Workflow-Template (#579): disarm at once, read its envelope, run Instantiation plus the
-   * workflow-level re-mint (`instantiateWorkflow`), and hand the instance to `place`. Nothing is armed —
-   * a Workflow-Template has one target, the empty canvas. A failed read, an invalid template, or a
-   * `place` that refuses (the canvas is no longer empty) sets `templateError` instead.
-   */
-  selectWorkflowTemplate: (template: TemplateSummary, place: (file: WorkflowFile) => boolean) => void;
   /** Why the last template select armed or placed nothing, or `null`. Cleared by the next arm. */
   templateError: string | null;
 }
@@ -88,19 +81,5 @@ export function useArmed(client: PathApiClient): ArmedState {
     [selectTemplate],
   );
 
-  const selectWorkflowTemplate = useCallback(
-    (template: TemplateSummary, place: (file: WorkflowFile) => boolean) =>
-      selectTemplate(template, (envelope) => {
-        // A valid Workflow-Template's `body` is its whole workflow file (server-api-v0.md §10.2).
-        if (!envelope.valid || envelope.kind !== "workflow" || typeof envelope.body !== "object" || envelope.body === null) {
-          return `Cannot use "${template.name}": ${envelope.error?.message ?? "invalid template"}`;
-        }
-        return place(instantiateWorkflow(envelope.body as WorkflowFile))
-          ? null
-          : `Cannot use "${template.name}": a Workflow-Template goes only into an empty canvas.`;
-      }),
-    [selectTemplate],
-  );
-
-  return { armed, arm, armTemplate, selectWorkflowTemplate, templateError };
+  return { armed, arm, armTemplate, templateError };
 }

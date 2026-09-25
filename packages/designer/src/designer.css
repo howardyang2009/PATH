@@ -1871,28 +1871,6 @@ body {
   color: var(--text);
 }
 
-/* The new-template dialog's kind choice: two radios on one line. */
-.template-kind {
-  border: 0;
-  padding: 0;
-  margin-inline: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 16px;
-}
-
-.template-kind .dialog-label {
-  width: 100%;
-  padding: 0;
-}
-
-.template-kind label {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  font-size: var(--fs-sm);
-}
-
 /* The template dialog's description: a bordered, multi-line box, so it reads as editable at a glance. */
 .template-description {
   display: block;
@@ -1984,6 +1962,40 @@ body {
   margin: 12px 0 0;
   font-size: var(--fs-sm);
   color: var(--run-failed);
+}
+
+.save-as-choices {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.save-as-choice {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 10px 14px;
+  font: inherit;
+  text-align: left;
+  color: var(--text);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+}
+
+.save-as-choice:hover {
+  border-color: var(--accent);
+}
+
+.save-as-choice-label {
+  font-weight: 600;
+}
+
+.save-as-choice-hint {
+  font-size: var(--fs-sm);
+  color: var(--text-muted);
 }
 
 .dialog-actions {

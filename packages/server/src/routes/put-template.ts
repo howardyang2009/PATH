@@ -1,13 +1,7 @@
 import { writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
-import {
-  makeStepTemplateSchema,
-  makeWorkflowFileSchema,
-  safeParseStepTemplateWith,
-  safeParseWorkflowFileWith,
-  type WireTemplateWriteResponse,
-} from "@path/schema";
+import { makeStepTemplateSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
 import { strongEtag } from "../etag.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
@@ -66,10 +60,7 @@ export async function handlePutTemplate(
     return;
   }
 
-  const validation =
-    entry.kind === "step"
-      ? safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody)
-      : safeParseWorkflowFileWith(makeWorkflowFileSchema(ctx.stepPlugins), rawBody);
+  const validation = safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody);
   if (!validation.success) {
     sendError(res, 400, "template validation failed", validation.errors);
     return;
