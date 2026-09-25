@@ -491,7 +491,11 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 - **Context** — key-value data written *from inside* the run. Steps produce it at runtime. The other
   steps of the same workflow can read it (a computed temp dir, a branch name, accumulated results). It
   is scoped to one workflow-run and isolated. A nested workflow-step starts with a fresh, empty
-  context. It exchanges data with its parent only through its input and output objects.
+  context. It exchanges data with its parent only through its input and output objects. Within one
+  workflow-run it is a single last-writer-wins blackboard: a `while-do` **iteration** and a goto
+  **Pass** share it, and nothing is reset when a loop repeats or a `goto` jumps backward. A key that no
+  node has published yet on the path taken is unresolvable when read, whatever the reason
+  ([ADR 0059](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0059-context-under-goto-is-one-last-writer-wins-blackboard-across-passes.md)).
 - **Publish set** — of a node: the set of `publish` keys declared on that node, plus the publish sets
   of every node reachable through its child bodies (the nested block grammar), through any depth of
   nesting. It **excludes** the file that a nested `workflow` step refs, because that file has its own
