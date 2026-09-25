@@ -1360,9 +1360,8 @@ body {
   cursor: default;
 }
 
-/* Undo/redo (#389): secondary buttons, left of Save; the glyph carries the affordance when narrow. */
-.undo-btn,
-.redo-btn {
+/* The toolbar's secondary buttons: New, Open…, Undo, Redo and Save as…. Save is the only primary action. */
+.toolbar-btn {
   padding: 5px 12px;
   font: inherit;
   color: var(--text);
@@ -1372,8 +1371,7 @@ body {
   cursor: pointer;
 }
 
-.undo-btn:disabled,
-.redo-btn:disabled {
+.toolbar-btn:disabled {
   opacity: 0.5;
   cursor: default;
 }
@@ -1824,17 +1822,6 @@ body {
   color: var(--accent);
   background: transparent;
   border: 1px solid var(--accent);
-  border-radius: 6px;
-  cursor: pointer;
-}
-
-/* The toolbar's Open… — a quiet button, since it sits beside the edit controls, not the primary action. */
-.open-btn {
-  padding: 4px 12px;
-  font: inherit;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
   border-radius: 6px;
   cursor: pointer;
 }

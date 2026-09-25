@@ -101,18 +101,18 @@ export function EditingToolbar({
   return (
     <div className="editing-toolbar">
       {/* New and Open… discard the current stack, so they sit apart from the edit controls. */}
-      <button type="button" className="open-btn" onClick={onNew}>
+      <button type="button" className="toolbar-btn" onClick={onNew}>
         New
       </button>
-      <button type="button" className="open-btn" onClick={onOpen}>
+      <button type="button" className="toolbar-btn" onClick={onOpen}>
         Open…
       </button>
       {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
-      <button type="button" className="undo-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
+      <button type="button" className="toolbar-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
         ↶ Undo
       </button>
-      <button type="button" className="redo-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
+      <button type="button" className="toolbar-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
         ↷ Redo
       </button>
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
@@ -120,7 +120,7 @@ export function EditingToolbar({
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
         {saving ? "Saving…" : "Save"}
       </button>
-      <button type="button" className="save-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
+      <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !hasFile}>
         Save as…
       </button>
       {saveState.phase === "saved" ? (
