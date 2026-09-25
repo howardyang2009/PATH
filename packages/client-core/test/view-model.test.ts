@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { RunViewModel, type RunViewState } from "../src/view-model.js";
+import { isPassRun } from "@path/schema";
 import type { LogEvent, RunTreeResponse } from "@path/schema";
 
 const ROOT = "root-1";
@@ -15,6 +16,10 @@ function stepFinished(seq: number, runId: string, nodeId: string | null, status:
 
 function stepAwaiting(seq: number, runId: string, nodeId: string | null, assignee: string | null = null): LogEvent {
   return { type: "step-awaiting", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, assignee };
+}
+
+function passStarted(seq: number, runId: string, nodeId: string | null, pass: number): LogEvent {
+  return { type: "pass-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, pass };
 }
 
 function tree(status: RunViewState["status"], output: RunTreeResponse["output"] = null): RunTreeResponse {
@@ -285,5 +290,36 @@ describe("RunViewModel", () => {
     model.setStreamPhase("live");
 
     expect(listener).not.toHaveBeenCalled();
+  });
+
+  describe("goto passes seen live, before a tree read (ADR 0054)", () => {
+    // The engine starts a pass container (its `step-started`, on the pass's own run id, named by the
+    // opening goto) and then emits `pass-started` on the workflow-run with the pass ordinal.
+    it("numbers a live-created pass container from the pass-started that follows it", () => {
+      const model = new RunViewModel(ROOT);
+      model.applyEvent(stepStarted(1, ROOT, null));
+      model.applyEvent(stepStarted(2, "p1", null));
+      model.applyEvent(passStarted(3, ROOT, null, 1));
+      model.applyEvent(stepStarted(4, "p2", "goto-g"));
+      model.applyEvent(passStarted(5, ROOT, "goto-g", 2));
+
+      const runs = model.getState().runs;
+      expect(runs.get("p1")!.pass).toBe(1);
+      expect(runs.get("p2")!.pass).toBe(2);
+      expect(isPassRun(runs.get("p2")!)).toBe(true);
+      expect(runs.get(ROOT)!.pass).toBeNull();
+    });
+
+    it("numbers only the newest un-numbered container a goto opened", () => {
+      const model = new RunViewModel(ROOT);
+      model.applyEvent(stepStarted(1, "p2", "goto-g"));
+      model.applyEvent(passStarted(2, ROOT, "goto-g", 2));
+      model.applyEvent(stepStarted(3, "p3", "goto-g"));
+      model.applyEvent(passStarted(4, ROOT, "goto-g", 3));
+
+      const runs = model.getState().runs;
+      expect(runs.get("p2")!.pass).toBe(2);
+      expect(runs.get("p3")!.pass).toBe(3);
+    });
   });
 });

@@ -166,7 +166,27 @@ export class RunViewModel {
     this.seenSeqs.add(event.seq);
     this.insertNarrative(event);
     this.applyToRun(event);
+    if (event.type === "pass-started") this.numberPass(event);
     this.commit();
+  }
+
+  /**
+   * Stamp a pass container's ordinal from the `pass-started` that follows it (ADR 0054). The engine
+   * starts the container first (its own `step-started`, named by the opening goto, or by nothing for
+   * pass 1) and then emits `pass-started` on the workflow-run, so a container met live, before any
+   * tree read, would read as an ordinary run until a re-hydrate. The container is the newest
+   * un-numbered run under that workflow-run named by the same opener. A tree row always wins: once a
+   * row numbered it, it is no longer a candidate.
+   */
+  private numberPass(event: Extract<LogEvent, { type: "pass-started" }>): void {
+    let container: RunNodeState | undefined;
+    for (const run of this.runs.values()) {
+      if (run.runId === event.run_id || run.runId === this.rootRunId) continue;
+      if (run.nodeId !== event.node_id || run.pass !== null || run.iteration !== null) continue;
+      if (run.parentRunId !== null && run.parentRunId !== event.run_id) continue;
+      container = run;
+    }
+    if (container) container.pass = event.pass;
   }
 
   private applyToRun(event: LogEvent): void {
