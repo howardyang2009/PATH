@@ -223,7 +223,7 @@ export function getRun(db: Database.Database, runId: string): RunRecord | undefi
 
 export function getRunsForRoot(db: Database.Database, rootRunId: string): RunRecord[] {
   const rows = db
-    .prepare(`SELECT * FROM runs WHERE root_run_id = @rootRunId ORDER BY started_at`)
+    .prepare(`SELECT * FROM runs WHERE root_run_id = @rootRunId ORDER BY started_at, rowid`)
     .all({ rootRunId }) as RunRowDb[];
   return rows.map(fromDbRow);
 }
