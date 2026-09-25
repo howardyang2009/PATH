@@ -1,9 +1,11 @@
 import {
+  gotoIssues,
   publishKeysOf,
   publishSetIssues,
   tokenizeInterpolation,
   walkNodes,
   type Condition,
+  type GotoIssueRule,
   type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
@@ -26,7 +28,10 @@ import { resolveRefPath } from "./resolve-ref.js";
  *    dangling from the moment its parent points at the pre-assigned path until the child's first save
  *    writes that file; the marker clears when discovery next lists it. This check needs the referring
  *    file's own path and the discovered-path set, so it runs only when a `refs` context is supplied — a
- *    from-scratch root (no path, no relative-ref origin) never reaches it.
+ *    from-scratch root (no path, no relative-ref origin) never reaches it; and
+ * 5. a **refused goto** (#619) — `@path/schema`'s goto rule module (`target-absent`, `target-inner`,
+ *    `target-self`, `placement`), projected exactly as the publish-set verdict is. The canvas refuses a
+ *    misplacing edit, but a delete, a move or a rename of a goto's target is allowed and lands here.
  *
  * Only the **`context`** root is checked. Context is written from inside the run, so its keys are
  * statically knowable — the file's own publish sets (CONTEXT.md § Context / Publish set). `output` is a
@@ -40,7 +45,7 @@ import { resolveRefPath } from "./resolve-ref.js";
  */
 
 /** Which cross-node check produced a problem, for the panel's grouping and the row's tint. */
-export type ProblemKind = "publish-conflict" | "dangling-interpolation" | "dangling-condition" | "dangling-ref";
+export type ProblemKind = "publish-conflict" | "dangling-interpolation" | "dangling-condition" | "dangling-ref" | GotoIssueRule;
 
 /**
  * What the dangling-`workflow`-ref check needs beyond the file itself: the referring file's own
@@ -181,6 +186,8 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
   for (const issue of publishSetIssues(file)) {
     if (!conflicts.has(issue.nodeId)) conflicts.set(issue.nodeId, issue.message);
   }
+  // The goto rule module's verdict, read the same way: one issue per offending goto, by its id.
+  const gotos = new Map(gotoIssues(file).map((issue) => [issue.nodeId, issue]));
   const problems: Problem[] = [];
 
   for (const node of walkNodes(file.body)) {
@@ -188,6 +195,8 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
     if (conflict) {
       problems.push({ nodeId: node.id, nodeName: node.name, kind: "publish-conflict", message: conflict });
     }
+    const jump = gotos.get(node.id);
+    if (jump) problems.push({ nodeId: node.id, nodeName: node.name, kind: jump.rule, message: jump.message });
 
     const readSeen = new Set<string>();
     for (const path of nodePlaceholderPaths(node)) {

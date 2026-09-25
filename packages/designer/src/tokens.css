@@ -37,6 +37,8 @@
   --k-sequence-bg: #eaeef2;
   --k-checkpoint: #9a6700;
   --k-checkpoint-bg: #fff8c5;
+  --k-goto: #bc4c00;
+  --k-goto-bg: #fff1e5;
   --k-template: #6639ba;
   --k-template-bg: #f1ecff;
 
@@ -95,6 +97,8 @@
   --k-sequence-bg: #21262d;
   --k-checkpoint: #d29922;
   --k-checkpoint-bg: #2a2213;
+  --k-goto: #f0883e;
+  --k-goto-bg: #2d1c0f;
   --k-template: #b083f0;
   --k-template-bg: #1e1633;
 
@@ -140,6 +144,8 @@
     --k-sequence-bg: #21262d;
     --k-checkpoint: #d29922;
     --k-checkpoint-bg: #2a2213;
+    --k-goto: #f0883e;
+    --k-goto-bg: #2d1c0f;
     --k-template: #b083f0;
     --k-template-bg: #1e1633;
 

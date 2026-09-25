@@ -91,6 +91,10 @@ export function createNode(kind: string, used: Set<string>, defaultLeaf = "promp
       };
     case "checkpoint":
       return { id: crypto.randomUUID(), name: uniqueName("checkpoint", used), type: "checkpoint", condition: defaultCondition() };
+    case "goto":
+      // Born pointing nowhere (`""`): the pane's target picker shows it as `missing:` until the author
+      // picks one, and `max_jumps` is pre-filled `3` because the field is mandatory (designer-spec § goto).
+      return { id: crypto.randomUUID(), name: uniqueName("goto", used), type: "goto", target: "", max_jumps: 3 };
     default:
       return makeLeaf(kind, used);
   }

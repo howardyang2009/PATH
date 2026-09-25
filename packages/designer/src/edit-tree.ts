@@ -1,4 +1,4 @@
-import { childBodies, mapChildBodies, walkNodes, type BranchArm, type Condition, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { childBodies, gotoIssues, mapChildBodies, walkNodes, type BranchArm, type Condition, type WorkflowFile, type WorkflowNode } from "@path/schema";
 
 /**
  * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
@@ -17,6 +17,10 @@ import { childBodies, mapChildBodies, walkNodes, type BranchArm, type Condition,
  * (the delete rules are the only ones that can refuse). Locating and querying stay their own exports
  * (`locate`, `findById`, `isDuplicable`), because a reader is not a mutation and carries the module's
  * depth — the recursive tree-walk — on its own.
+ *
+ * The door also holds the goto rules that no single op can see (#619, designer-spec § goto): an edit that
+ * would put a goto under a `while-do` or a `parallel` is **refused** (no follow-up edit could repair it),
+ * and a rename rewrites every goto `target` naming the old name in the same edit (one undo step).
  */
 
 // ── The one mutation door ─────────────────────────────────────────────────────────────────────────
@@ -41,11 +45,28 @@ export type EditOp =
 
 /**
  * The single entry point for every structural edit: apply `op` to `file` and return the new file, or a
- * refusal (only a `delete` that the slot rules forbid). A no-op op (a move off the end, a replace of an
- * absent id) returns `{ ok: true, file }` with the **same** file reference, so a caller commits only a
- * genuine change (`result.file !== file`).
+ * refusal (a `delete` that the slot rules forbid, or any edit that misplaces a goto). A no-op op (a move
+ * off the end, a replace of an absent id) returns `{ ok: true, file }` with the **same** file reference,
+ * so a caller commits only a genuine change (`result.file !== file`).
  */
 export function editFile(file: WorkflowFile, op: EditOp): EditResult {
+  const result = applyOp(file, op);
+  if (!result.ok || result.file === file) return result;
+  // Only a goto this edit misplaced refuses it: a draft that already held one is not made uneditable.
+  const before = new Set(placedWrong(file));
+  const misplaced = placedWrong(result.file).find((id) => !before.has(id));
+  if (misplaced !== undefined) return { ok: false, reason: "a goto may not sit under a while-do or a parallel" };
+  return result;
+}
+
+/** The ids of every goto the `@path/schema` rule module refuses for `placement`. */
+function placedWrong(file: WorkflowFile): string[] {
+  return gotoIssues(file)
+    .filter((issue) => issue.rule === "placement")
+    .map((issue) => issue.nodeId);
+}
+
+function applyOp(file: WorkflowFile, op: EditOp): EditResult {
   switch (op.kind) {
     case "replace":
       return { ok: true, file: replaceNode(file, op.id, op.node) };
@@ -71,9 +92,9 @@ export function editFile(file: WorkflowFile, op: EditOp): EditResult {
 }
 
 /**
- * Unwrap an {@link editFile} result whose op cannot legitimately refuse (every op but `delete`). A
- * refusal here is a bug — a total op returned `{ ok: false }` — so it throws rather than silently
- * dropping the edit. `delete` callers read the `EditResult` directly instead.
+ * Unwrap an {@link editFile} result the caller knows cannot refuse: an op other than `delete` whose
+ * arrival the grammar already admitted (`grammar.socketAcceptsKind`). A refusal here is a bug, so it
+ * throws rather than silently dropping the edit. `delete` callers read the `EditResult` directly instead.
  */
 export function unwrapEdit(result: EditResult): WorkflowFile {
   if (!result.ok) throw new Error(`edit refused: ${result.reason}`);
@@ -175,10 +196,35 @@ function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
  * reference. Unlike the structure ops, this one **may change the node's own `id`** — the pane's
  * confirmation-gated re-key (ADR 0015) passes a `next` carrying a fresh id — so the match is on the
  * *old* `id` and the replacement is whatever `next` carries. A missing `id` is a no-op.
+ *
+ * A rename of a first-level node rewrites every goto `target` naming the old name, in the same edit
+ * (#619, ADR 0056 §7). The pane commits a rename per keystroke, so the rewrite runs only when it cannot
+ * mis-aim: the old name was this node's alone (not a name shared mid-typing with another node) and the
+ * new name is free and non-empty (`""` is a fresh goto's "no target yet", never a link). Otherwise
+ * nothing is rewritten and the goto keeps its old target, which the goto markers then flag, so a lost
+ * link is visible, never a silent repoint to some other node.
  */
 function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
-  if (!locate(file, id)) return file;
-  return withBody(file, updateNode(file.body, id, () => next));
+  const previous = findById(file.body, id);
+  if (!previous) return file;
+  const body = updateNode(file.body, id, () => next);
+  return withBody(file, renames(file, previous, next) ? retarget(body, previous.name, next.name) : body);
+}
+
+/** Is replacing `previous` by `next` a rename whose gotos can safely follow it? */
+function renames(file: WorkflowFile, previous: WorkflowNode, next: WorkflowNode): boolean {
+  if (previous.name === next.name || previous.name === "" || next.name === "") return false;
+  if (!file.body.some((node) => node.id === previous.id)) return false; // only a first-level node is a target
+  const names = [...walkNodes(file.body)].map((node) => node.name);
+  return names.filter((name) => name === previous.name).length === 1 && !names.includes(next.name);
+}
+
+/** Point every goto whose `target` is `from` at `to`. A body with no such goto comes back unchanged. */
+function retarget(body: WorkflowNode[], from: string, to: string): WorkflowNode[] {
+  if (![...walkNodes(body)].some((node) => node.type === "goto" && node.target === from)) return body;
+  return body.map((node) =>
+    node.type === "goto" ? (node.target === from ? { ...node, target: to } : node) : mapChildBodies(node, (child) => retarget(child, from, to)),
+  );
 }
 
 /**

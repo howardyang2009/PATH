@@ -1,5 +1,5 @@
 import { instantiate, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { bodyInsertSocket, childSocketFlavor, socketAcceptsBody, socketAcceptsKind, type SocketFlavor } from "./grammar.js";
+import { bodyInsertSocket, childSocketFlavor, socketAcceptsBody, socketAcceptsKind, socketBarred, type SocketFlavor } from "./grammar.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node-factory.js";
 import { editFile, findById, isDuplicable, locate, unwrapEdit, type SingleSlot } from "./edit-tree.js";
 import type { Armed } from "./use-armed.js";
@@ -19,8 +19,11 @@ import type { Armed } from "./use-armed.js";
 export interface EditorApi {
   /** What a socket says it adds — the armed node kind or the armed template's name — or `null` when unarmed. */
   armedLabel: string | null;
-  /** Is a socket of `flavor` an open drop target right now (something is armed and the grammar admits it)? */
-  socketOpen(flavor: SocketFlavor): boolean;
+  /**
+   * Is the socket of `flavor` owned by `ownerId` (`null` for the file body) an open drop target right now:
+   * something is armed and the grammar admits it there, the owner's ancestor chain included (a goto)?
+   */
+  socketOpen(flavor: SocketFlavor, ownerId: string | null): boolean;
   /** Place the armed node(s) at the tail of a list socket: the file body (`null`), a `sequence`, or a `parallel`. */
   placeIntoList(ownerId: string | null): void;
   /** Swap a single-node slot's occupant for the armed node (never emptying the slot). */
@@ -73,9 +76,10 @@ export function createEditor(
 
   return {
     armedLabel: armed === null ? null : armed.kind === "node" ? armed.type : armed.name,
-    socketOpen(flavor) {
+    socketOpen(flavor, ownerId) {
       if (armed === null) return false;
-      return armed.kind === "node" ? socketAcceptsKind(flavor, armed.type) : socketAcceptsBody(flavor, armed.body);
+      const barred = socketBarred(file.body, ownerId);
+      return armed.kind === "node" ? socketAcceptsKind(flavor, armed.type, barred) : socketAcceptsBody(flavor, armed.body, barred);
     },
     placeIntoList(ownerId) {
       if (armed === null) return;

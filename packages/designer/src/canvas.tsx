@@ -6,6 +6,7 @@ import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useRunProjection } from "./run/run-projection.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
+import { GotoProvider } from "./goto-context.js";
 import { problemMarks, type Problem } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -264,11 +265,13 @@ function FrameView({
             </p>
           ) : null}
           <ConflictProvider value={problemMarks(problems)}>
-            {result.file.body.length === 0 ? (
-              <StartBody editor={editor} />
-            ) : (
-              <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
-            )}
+            <GotoProvider file={result.file}>
+              {result.file.body.length === 0 ? (
+                <StartBody editor={editor} />
+              ) : (
+                <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
+              )}
+            </GotoProvider>
           </ConflictProvider>
           <ProblemsPanel problems={problems} />
         </div>
@@ -293,7 +296,7 @@ function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
   return (
     <div className="start-body" role="region" aria-label="Start a body">
       <p className="start-body-hint">Empty body. Pick a step or block from the palette to start it.</p>
-      {editor.socketOpen("sequence") ? (
+      {editor.socketOpen("sequence", null) ? (
         <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(null)}>
           + add {editor.armedLabel} here
         </button>
