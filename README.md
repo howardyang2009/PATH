@@ -122,7 +122,7 @@ The full glossary is [`CONTEXT.md`](CONTEXT.md). These are the terms every other
 | **Worker** | *How* a step type produces its output: a named `run` method the type ships. `binary` ships `spawn`; `prompt` ships `anthropic` and `deepseek`; `person-activity` ships `person`. |
 | **Task** | A step bound to a worker. `task = step + worker`. |
 | **Run** | One executing or executed instance of a task. The only execution term in PATH. Statuses: `pending`, `running`, `awaiting`, `succeeded`, `failed`, `cancelled`. |
-| **Controller** | An engine-evaluated construct with no worker and no run: `sequence`, `parallel`, `branch`, `while-do`, `checkpoint`. |
+| **Controller** | An engine-evaluated construct with no worker and no run: `sequence`, `parallel`, `branch`, `while-do`, `checkpoint`, `goto`. |
 | **Config vs context** | `config` is authored, inherited, and evaluated before a run (`${config.x}`). `context` is produced by the run itself (`${context.x}`). |
 | **Node** | Any element of a `body` or a single-`node` slot: a step or a controller. |
 
@@ -139,6 +139,12 @@ Every workflow node type is a member of one flat union discriminated by `type`:
 | `branch` | controller | `arms`, `else?` |
 | `while-do` | controller | `condition`, `max_iterations`, `node` |
 | `checkpoint` | controller | `condition` |
+| `goto` | controller | `target` (a first-level node name), `max_jumps` |
+
+A `goto` moves the file's top-level walk to a named first-level node of its own file, backward or
+forward. Reached again after `max_jumps` jumps, it fails the run instead of jumping. It may not sit
+under a `while-do` or a `parallel`. Each stretch of the walk between jumps is a **pass** in the run
+tree ([`docs/spec/goto.md`](docs/spec/goto.md)).
 
 The engine-owned types are reserved. Every other `type` value is a plugin leaf type, so a file is valid
 *against a registry*: the same bytes load in a tree that holds the plugin and fail in one that does not,
@@ -333,8 +339,9 @@ schema is `SCHEMA_VERSION` 12. `main` is green: `pnpm typecheck` is clean across
 scripts 28.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
-product gap is open. Work continues on plugin requests (a person-switch step-template #477, a goto
-Graph Controller #478), authoring reuse (step template #459, workflow template #460), and the
+product gap is open. Work continues on plugin requests (a person-switch step-template #477; the goto
+Graph Controller #478 is built on `main`, unreleased), authoring reuse (step template #459, workflow
+template #460), and the
 [#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).
 
 | Release | Date | Headline |
