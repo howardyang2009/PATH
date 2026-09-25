@@ -87,6 +87,8 @@ seeded, audited, resumed or rendered (those are sibling tickets under #544).
   (research takeaway 2: per-visit keys, not node re-identification), what the target's input is, the
   `goto-taken` audit event, publish/context behavior under cycles, and Resume / Complete replay
   correctness (including rebuilding the per-goto jump counts from the record) are open under #544.
+  **Amended (#599):** replay correctness and jump counts are decided in
+  [ADR 0060](0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md).
 - Forward jumps skip nodes; a skipped node produces no run row.
 - Per the prior-art research (#547), this matches BPMN's same-scope link events and the
   authored-guard-plus-backstop pattern of every durable engine surveyed.
