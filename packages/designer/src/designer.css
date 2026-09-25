@@ -486,17 +486,7 @@ body {
   padding: 1px 8px;
 }
 
-/* Stamp-on-import notice and refusal banners. */
-.dirty-badge {
-  margin: 0 0 10px;
-  padding: 6px 10px;
-  font-size: var(--fs-sm);
-  color: var(--k-checkpoint);
-  background: var(--k-checkpoint-bg);
-  border: 1px solid var(--k-checkpoint);
-  border-radius: 6px;
-}
-
+/* Refusal banners. */
 .refusal {
   max-width: 640px;
   border: 1px solid var(--k-workflow);
@@ -1392,12 +1382,19 @@ body {
   color: var(--text);
 }
 
-.save-status {
+.file-status {
   font-size: var(--fs-sm);
+}
+
+.file-status-saved {
   color: var(--status-succeeded-fg);
 }
 
-.author-mode-tag + .save-status {
+.file-status-unsaved {
+  color: var(--k-checkpoint);
+}
+
+.author-mode-tag + .file-status {
   margin-left: 10px;
 }
 

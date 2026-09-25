@@ -3,7 +3,7 @@ import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/clien
 import type { WorkflowFile } from "@path/schema";
 import { AppShell } from "./app-shell.js";
 import { Canvas } from "./canvas.js";
-import { EditingToolbar, ModeSwitch, SaveStatus, TemplateFileName } from "./editing-toolbar.js";
+import { EditingToolbar, ModeSwitch, FileStatus, TemplateFileName } from "./editing-toolbar.js";
 import { dirnameOf, NewFileDialog } from "./new-file-dialog.js";
 import { OpenWorkflowDialog } from "./open-existing-dialog.js";
 import { OpenTemplateDialog } from "./open-template-dialog.js";
@@ -202,11 +202,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           }}
         />
       }
-      // Template mode always names the file being edited, centred in the top bar; "Saved" follows it there.
+      // Template mode always names the file being edited, centred in the top bar; the file status follows it there.
       title={
         <>
           {inTemplateMode && openedResult ? <TemplateFileName template={activeTemplate ?? null} /> : null}
-          <SaveStatus saveState={session.saveState} />
+          <FileStatus frame={active} saveState={session.saveState} />
         </>
       }
       toolbar={

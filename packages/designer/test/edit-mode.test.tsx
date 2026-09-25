@@ -172,6 +172,17 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(confirm).not.toHaveBeenCalled();
   });
 
+  it("shows \"Unsaved edits\" in the top bar only once a New workflow is edited", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByText("Prompt"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
+    expect(screen.getByText("Unsaved edits").closest(".topbar-title")).not.toBeNull();
+  });
+
   it("asks before a switch discards unsaved edits, and keeps them on cancel", async () => {
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));

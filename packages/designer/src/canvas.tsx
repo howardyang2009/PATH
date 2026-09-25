@@ -9,7 +9,6 @@ import { createEditor, type EditorApi } from "./editor-api.js";
 import { GotoProvider } from "./goto-context.js";
 import { problemMarks, type Problem } from "./problems.js";
 import { ProblemsPanel } from "./problems-panel.js";
-import { canonicalSerialize } from "./serialize.js";
 import { defaultLeafKind } from "./palette-data.js";
 import { basename } from "./resolve-ref.js";
 import { useSelection } from "./selection-context.js";
@@ -252,22 +251,13 @@ function FrameView({
     case "opened": {
       const editor = createEditor(result.file, applyEdit, armed, () => onArm(null), defaultLeafKind(plugins));
       // Dirty is content-equality against the baseline (ADR 0030), read through the one shared relation so
-      // the badge cannot drift from launch/Save. `pristine` (the buffer still equals its bytes at the last
-      // save-point) separates an id-stamp-only dirty from an authored edit, so the badge names the reason a
-      // never-edited file is already dirty.
+      // it cannot drift from launch/Save. Its note ("Unsaved edits") shows in the top bar, not here.
       const dirty = frameDirty(frame);
-      const pristine = canonicalSerialize(result.file) === frame.openedBytes;
-      const badge = !dirty ? null : result.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)." : "Unsaved edits.";
       // `problems` is the App's single cross-node pass (#388, #392), the same array the launch button's
       // warning count reads. Its marker map feeds the per-node ⚠ and its flat list feeds the problems
       // panel — two coupled surfaces onto one derivation, so a marker and the count cannot disagree.
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
-          {badge ? (
-            <p className="dirty-badge" role="status">
-              {badge}
-            </p>
-          ) : null}
           <ConflictProvider value={problemMarks(problems)}>
             <GotoProvider file={result.file}>
               {result.file.body.length === 0 ? (

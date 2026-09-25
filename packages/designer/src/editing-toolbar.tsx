@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
-import { templateSuffix } from "./session-reducer.js";
+import { canonicalSerialize } from "./serialize.js";
+import { frameHasUnsavedWork, openedResultOf, templateSuffix, type Frame } from "./session-reducer.js";
 import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
 
 const MODES: readonly { key: EditMode; label: string }[] = [
@@ -26,13 +27,25 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 }
 
 /**
- * The "Saved" note after a save lands, centred in the top bar beside the file name, so the toolbar's
- * buttons never shift when it appears.
+ * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
+ * never shift when it changes: "Unsaved edits" for a buffer with unsaved work, or "Saved" after a save
+ * lands. An id-less file opens dirty with no edit (ids stamped on import, ADR 0015), so that reason is
+ * named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
-export function SaveStatus({ saveState }: { saveState: SaveState }): JSX.Element | null {
+export function FileStatus({ frame, saveState }: { frame: Frame | undefined; saveState: SaveState }): JSX.Element | null {
+  const opened = openedResultOf(frame);
+  if (opened && frameHasUnsavedWork(frame)) {
+    // `pristine`: the buffer still equals its bytes at the last save-point, so only the id stamp dirties it.
+    const pristine = canonicalSerialize(opened.file) === frame!.openedBytes;
+    return (
+      <span className="file-status file-status-unsaved" role="status">
+        {opened.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)" : "Unsaved edits"}
+      </span>
+    );
+  }
   if (saveState.phase !== "saved") return null;
   return (
-    <span className="save-status" role="status">
+    <span className="file-status file-status-saved" role="status">
       Saved
     </span>
   );
