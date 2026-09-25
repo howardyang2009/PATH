@@ -17,6 +17,7 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     nodeName: "draft-notes",
     workerName: "spawn",
     iteration: null,
+    pass: null,
     status: "succeeded",
     startedAt: "2026-07-25T10:00:00.000Z",
     finishedAt: "2026-07-25T10:00:02.000Z",

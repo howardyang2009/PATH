@@ -15,6 +15,7 @@
 // longer sits one import away from SQLite, child processes and the Agent SDK.
 export {
   isIterationRun,
+  isPassRun,
   isReuseRow,
   isRootRun,
   isTerminal,

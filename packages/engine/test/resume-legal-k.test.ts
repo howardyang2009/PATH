@@ -17,6 +17,7 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
     nodeName: overrides.nodeId,
     workerName: null,
     iteration: null,
+    pass: null,
     startedAt: "t0",
     finishedAt: null,
     inputRef: null,

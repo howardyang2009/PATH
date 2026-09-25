@@ -92,6 +92,7 @@ function runState(overrides: Partial<RunNodeState> = {}): RunNodeState {
     nodeName: "legal-signoff",
     workerName: null,
     iteration: null,
+    pass: null,
     status: "awaiting",
     startedAt: "2026-07-25T10:00:00.000Z",
     finishedAt: null,

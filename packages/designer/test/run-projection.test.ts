@@ -12,6 +12,7 @@ function run(partial: Partial<RunNodeState> & { runId: string }): RunNodeState {
     nodeName: null,
     workerName: null,
     iteration: null,
+    pass: null,
     status: partial.status ?? "pending",
     startedAt: partial.startedAt ?? null,
     finishedAt: null,

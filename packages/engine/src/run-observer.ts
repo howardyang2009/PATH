@@ -81,6 +81,12 @@ export type Observation =
        */
       iteration?: number;
       /**
+       * A goto pass container's 1-based ordinal (ADR 0054), set only on a pass's run-started and
+       * absent on every other run. Persistence records it on the row's `pass` column; `isPassRun`
+       * reads it to classify the row as a pass scope.
+       */
+      pass?: number;
+      /**
        * The predecessor's root run id (#173), set only on a resumed tree's **root** run-started —
        * the one identity fact that marks this fresh root run as a successor of another (#168). Absent
        * for an ordinary run and for every nested run, whose predecessor is the tree's, not its own.

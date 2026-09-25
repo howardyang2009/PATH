@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { findRootRun, formatIssues, isStepType, rerunBoundaryIndex, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
+import { findRootRun, formatIssues, isStepType, rerunBoundaryIndex, rerunDisposition, walkNodes, type BranchNode, type CheckpointNode, type GotoNode, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WhileDoNode, type WorkflowFile } from "@path/schema";
 import { z } from "zod";
 import { resolveChildRef, walkRefTree } from "./ref-tree.js";
 import {
@@ -505,10 +505,10 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
       return fail(params.runStartFailure);
     }
 
-    // The whole body is one node sequence walked against this run's own context; a top-level
-    // publish is a context write-through (mvp spec §6). The implicit root step's default input is
-    // the workflow input (format doc §6.1).
-    const outcome = await runSequence(run, file.body, input, {
+    // The whole body is one top-level walk against this run's own context; a top-level publish is a
+    // context write-through (mvp spec §6). The implicit root step's default input is the workflow
+    // input (format doc §6.1).
+    const outcome = await runTopLevelWalk(run, input, {
       context,
       signal: params.signal,
       cancellation: params.cancellation,
@@ -1121,33 +1121,13 @@ export function analyzeRunStart(
   const configs = collectRunConfigs(file, options);
   const { configs: resolvedConfigs, unset } = resolveRunEnv(configs, env);
   const masker = collectSecrets(resolvedConfigs);
-  // Temporary scaffolding (#614): a goto loads before the engine can execute one, so a goto-holding
-  // tree fails ahead of every other gate. The goto execution ticket removes this call.
   const runStartFailure =
-    describeGotoNotExecutable(file, options.files) ??
-    (unset.length > 0
+    unset.length > 0
       ? describeUnsetEnv(unset)
       : (options.unresolvedLaunchSecrets?.length ?? 0) > 0
         ? describeMissingLaunchSecrets(options.unresolvedLaunchSecrets as string[])
-        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry));
+        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
   return { masker, runStartFailure };
-}
-
-// Temporary (#614): the one wording of "this engine cannot run a goto yet".
-function gotoNotExecutable(name: string): string {
-  return `goto "${name}" is not yet executable`;
-}
-
-// The run-start failure naming the first goto in the run's ref tree (the root file, then every loaded
-// file), or `undefined` when the tree holds none. Temporary: the goto execution ticket (#478) deletes
-// this, `gotoNotExecutable` and both call sites.
-function describeGotoNotExecutable(rootFile: WorkflowFile, files: Map<string, WorkflowFile> | undefined): string | undefined {
-  for (const file of [rootFile, ...(files?.values() ?? [])]) {
-    for (const node of walkNodes(file.body)) {
-      if (node.type === "goto") return `run failed before its first step: ${gotoNotExecutable(node.name)}`;
-    }
-  }
-  return undefined;
 }
 
 /**
@@ -1410,6 +1390,9 @@ async function runLoopIteration(
   // `run-finished`) and the loop stops here, propagating `awaiting` up. A Complete replay re-enters
   // this iteration container and drives it forward.
   if (outcome.status === "awaiting") return outcome;
+  // The load placement rule refuses a goto under `while-do` (spec docs/spec/goto.md §2.2), so a jump
+  // never reaches an iteration container.
+  if (outcome.status === "goto") throw new Error(`while-do "${node.name}": a goto jumped out of its body`);
   await containerEmitter.runFinished(outcome);
   return outcome;
 }
@@ -1428,24 +1411,8 @@ async function runWhileDoNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { fileConfig } = run;
-  let maxIterations: number;
-  if (typeof node.max_iterations === "number") {
-    maxIterations = node.max_iterations;
-  } else {
-    const scope: InterpolationScope = { config: configScope(fileConfig), context: exec.context };
-    let resolved: string;
-    try {
-      resolved = interpolateToString(node.max_iterations, scope);
-    } catch (err) {
-      return { status: "failed", error: describeInterpolationError(node.name, err) };
-    }
-    const parsed = Number(resolved);
-    if (!Number.isInteger(parsed) || parsed <= 0) {
-      return { status: "failed", error: `while-do "${node.name}": max_iterations resolved to "${resolved}", which is not a positive integer` };
-    }
-    maxIterations = parsed;
-  }
+  const maxIterations = resolveBound(run, node, exec);
+  if (typeof maxIterations !== "number") return maxIterations;
 
   let iterationOutput = incomingOutput;
   let iterations = 0; // completed iterations
@@ -1471,6 +1438,115 @@ async function runWhileDoNode(
     const bodyOutcome = await runLoopIteration(run, node, iterations, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
+  }
+}
+
+/**
+ * A loop bound — `while-do`'s `max_iterations` or a goto's `max_jumps` — as a positive integer: taken
+ * as written, or interpolated over `config` + `context` now. A failed outcome when it resolves to no
+ * positive integer.
+ */
+function resolveBound(
+  run: RunContext,
+  node: WhileDoNode | GotoNode,
+  exec: NodeExecContext,
+): number | Extract<SeqOutcome, { status: "failed" }> {
+  const [field, value] = node.type === "goto" ? ["max_jumps", node.max_jumps] : ["max_iterations", node.max_iterations];
+  if (typeof value === "number") return value;
+  const scope: InterpolationScope = { config: configScope(run.fileConfig), context: exec.context };
+  let resolved: string;
+  try {
+    resolved = interpolateToString(value, scope);
+  } catch (err) {
+    return { status: "failed", error: describeInterpolationError(node.name, err) };
+  }
+  const parsed = Number(resolved);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    return { status: "failed", error: `${node.type} "${node.name}": ${field} resolved to "${resolved}", which is not a positive integer` };
+  }
+  return parsed;
+}
+
+/**
+ * A goto node (ADR 0053, spec docs/spec/goto.md §3.2): no run of its own, only a jump. It names its
+ * target first-level node by GUID and passes its incoming output through unchanged, for the target to
+ * read (§4). The file's top-level walk consumes the jump; every walker in between hands it up.
+ */
+function runGotoNode(run: RunContext, node: GotoNode, incomingOutput: JsonValue): SeqOutcome {
+  const target = run.file.body.find((candidate) => candidate.name === node.target);
+  // The load check (`@path/schema` goto rules) refuses a file whose target is not a first-level node,
+  // so a miss is a caller that skipped the load.
+  if (!target) return { status: "failed", error: `goto target "${node.target}" not found in this file` };
+  return { status: "goto", goto: node.id, target: target.id, output: incomingOutput };
+}
+
+/**
+ * One workflow-run's **top-level walk** (ADR 0053/0054, spec docs/spec/goto.md §3): its file's first
+ * level walked as an index loop with a jump register, so a goto can re-seek it. A goto-free file has no passes and is
+ * walked by `runSequence` exactly as before. A file holding a goto walks in **passes**: each forward
+ * stretch — from the start, or from a jump target, to the next jump taken or the end of the body — is a
+ * container run under this workflow-run, and every run made in it is the pass's child. The pass shares
+ * this run's context (`exec` threads through unchanged), so context is one last-writer-wins blackboard
+ * across passes (ADR 0059).
+ *
+ * A jump is counted per goto for this walk; the jump after the last one `max_jumps` allows fails the
+ * pass and, with it, the workflow-run. The target's incoming output is the goto's passed-through
+ * output, forward or backward (ADR 0055).
+ */
+async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
+  const body = run.file.body;
+  const gotos = new Map<string, GotoNode>();
+  for (const node of walkNodes(body)) if (node.type === "goto") gotos.set(node.id, node);
+  if (gotos.size === 0) return runSequence(run, body, seedInput, exec);
+  const indexById = new Map(body.map((node, index) => [node.id, index]));
+
+  const jumpsSpent = new Map<string, number>();
+  let pass = 1;
+  let opener: GotoNode | null = null;
+  let start = 0;
+  let carried = seedInput;
+  for (;;) {
+    const passIdentity: RunIdentity = {
+      runId: randomUUID(),
+      rootRunId: run.identity.rootRunId,
+      parentRunId: run.identity.runId,
+      nodeId: opener?.id ?? null,
+      nodeName: opener?.name ?? null,
+      pass,
+    };
+    const passEmitter = run.emitter.child(passIdentity);
+    // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
+    await passEmitter.runStarted({ input: carried });
+    const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter };
+
+    const outcome = await runSequence(passRun, body.slice(start), carried, exec);
+    // A parked leaf keeps its pass `running`, like the workflow-run around it (ADR 0041).
+    if (outcome.status === "awaiting") return outcome;
+    if (outcome.status !== "goto") {
+      await passEmitter.runFinished(outcome);
+      return outcome;
+    }
+
+    const goto = gotos.get(outcome.goto)!;
+    const maxJumps = resolveBound(run, goto, exec);
+    if (typeof maxJumps !== "number") {
+      await passEmitter.runFinished(maxJumps);
+      return maxJumps;
+    }
+    const spent = jumpsSpent.get(goto.id) ?? 0;
+    if (spent >= maxJumps) {
+      const exhausted: SeqOutcome = { status: "failed", error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted` };
+      await passEmitter.runFinished(exhausted);
+      return exhausted;
+    }
+    jumpsSpent.set(goto.id, spent + 1);
+    await passEmitter.runFinished({ status: "succeeded", output: outcome.output });
+
+    pass += 1;
+    opener = goto;
+    // `runGotoNode` names a first-level node of this same file, so the target is always indexed.
+    start = indexById.get(outcome.target)!;
+    carried = outcome.output;
   }
 }
 
@@ -1506,9 +1582,7 @@ export async function runNode(
     // `runSequence` already does. It is transparent to `exec` (same context/cancellation) like the
     // other controllers.
     if (node.type === "sequence") return runSequence(run, node.body, incomingOutput, exec);
-    // Temporary backstop (#614): `analyzeRunStart` refuses a goto-holding tree before its first node,
-    // so this is reached only by a caller that skips the run-start gate.
-    if (node.type === "goto") return { status: "failed", error: gotoNotExecutable(node.name) };
+    if (node.type === "goto") return runGotoNode(run, node, incomingOutput);
     // The compile-time guard: if the control set grows a member this dispatch does not walk, the build
     // fails here rather than someone discovering it by running a workflow. A leaf step type never
     // reaches this branch — `isControlNode` excludes it — so an unknown *leaf* type is caught below,

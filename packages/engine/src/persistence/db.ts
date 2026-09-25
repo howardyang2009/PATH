@@ -76,8 +76,13 @@ import Database from "better-sqlite3";
  * config and worker-defaults from it, and the run-tree read exposes it so a reader can see what the
  * run was launched with. Same bump-and-break, clean-slate reading: an existing pre-#519 db refuses to
  * open rather than silently lacking the column a launch would then fail to write.
+ *
+ * Bumped to 13 for goto passes (ADR 0054): a goto-holding file's top-level walk mints one **pass**
+ * container run per forward stretch, so `runs` gains `pass` — the container's 1-based ordinal, null on
+ * every other run kind. Same bump-and-break, clean-slate reading: an existing pre-goto db refuses to
+ * open rather than silently lacking the column a pass container writes to.
  */
-export const SCHEMA_VERSION = 12;
+export const SCHEMA_VERSION = 13;
 
 export class SchemaVersionError extends Error {}
 
@@ -90,6 +95,7 @@ const RUNS_TABLE_DDL = `
     node_name TEXT,
     worker_name TEXT,
     iteration INTEGER,
+    pass INTEGER,
     status TEXT NOT NULL CHECK (status IN ('pending','running','awaiting','succeeded','failed','cancelled')),
     started_at TEXT,
     finished_at TEXT,

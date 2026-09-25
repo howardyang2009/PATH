@@ -32,6 +32,8 @@ export interface WireRunRecord {
   worker_name: string | null;
   /** The 1-based ordinal of a `while-do` iteration container (ADR 0037), null on every other kind. */
   iteration: number | null;
+  /** The 1-based ordinal of a goto pass container (ADR 0054), null on every other kind. */
+  pass: number | null;
   status: RunStatus;
   started_at: string | null;
   finished_at: string | null;

@@ -113,6 +113,7 @@ function existingRow(over: Partial<RunRecord> & Pick<RunRecord, "runId" | "nodeI
     nodeName: over.nodeId,
     workerName: null,
     iteration: null,
+    pass: null,
     startedAt: "t0",
     finishedAt: null,
     inputRef: null,

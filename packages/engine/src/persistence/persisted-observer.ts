@@ -51,6 +51,8 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       // Present only on a `while-do` iteration container's run-started (ADR 0037): its 1-based ordinal.
       // Undefined on every other run, which leaves the `iteration` column null.
       iteration?: number;
+      // Present only on a goto pass container's run-started (ADR 0054): its 1-based ordinal.
+      pass?: number;
       // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
       resumedFromRootRunId?: string;
       // Present only on a Resume-from-K successor's root run-started (#444, ADR 0032): the rerun
@@ -68,7 +70,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, input, resumedFromRootRunId, rerunFromNodePath, launchFacts } = fact;
+    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, pass, input, resumedFromRootRunId, rerunFromNodePath, launchFacts } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
     insertRun(db, {
@@ -79,6 +81,7 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       nodeName,
       workerName,
       iteration,
+      pass,
       status: "running",
       inputRef,
       resumedFromRootRunId,
@@ -107,7 +110,9 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step. A
           // workflow-run carries no worker of its own (ADR 0021 sub-14), so `worker_name` is null.
           // A workflow-run's input seeds its context (format doc §6.3), which a leaf step's does not.
-          recordStarted({ ...o, workerName: null }, true);
+          // A goto pass container shares its workflow-run's context and writes no snapshot of its own
+          // (spec docs/spec/goto.md §5), so its input does not seed a `context.json`.
+          recordStarted({ ...o, workerName: null }, o.pass === undefined);
           return;
 
         case "step-started":
