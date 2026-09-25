@@ -205,7 +205,7 @@ and issues use them exactly.
   block, so the rule holds per iteration. Any structure that Structure Controllers build is a **tree**.
   _Avoid_: block controller, structural node.
 - **Graph Controller** — a controller that adds routing the tree cannot express: it moves the walk to a
-  node that is not its structural successor. `goto` *(planned, #478)* is the only one. It is an ordinary
+  node that is not its structural successor. `goto` *(built, #478)* is the only one. It is an ordinary
   node in a slot, at the first level or inside a first-level `branch` arm, and its route is a **name**
   reference, not an edge, so the body stays a tree. Only one file's **top-level walk** follows the route
   ([ADR 0057](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0057-controllers-split-into-structure-and-graph-kinds.md)).
@@ -248,7 +248,7 @@ and issues use them exactly.
   judgment. Any check that needs judgment (human or LLM) is a normal step that outputs a verdict,
   followed by a checkpoint that tests the verdict (the *judge-step pattern*). Compare `assert` and
   `if`: a branch routes, a checkpoint asserts.
-- **Goto** — *(grammar and load checks built, #614; jumps and passes built, #615; audit events, Resume and Complete planned, #478; spec [docs/spec/goto.md](docs/spec/goto.md))* the one **Graph Controller**. It sets the next step of the
+- **Goto** — *(built, #478: grammar and load checks #614, jumps and passes #615, audit events #616, Resume #617, Complete #618, Designer #619 and #620; spec [docs/spec/goto.md](docs/spec/goto.md))* the one **Graph Controller**. It sets the next step of the
   **top-level walk** to a named **first-level node** of its own file, backward jumps included, so a
   first-level node can run more than once in one workflow-run. A jump never crosses a `workflow`-ref
   boundary in either direction, so a target is always a first-level node of the goto's own file. A
