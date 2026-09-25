@@ -154,7 +154,7 @@ describe("Author mode on a *.workflow-template.json (#580)", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await screen.findByText("Saved.");
+    await screen.findByText("Saved");
     expect(calls.templateWrites).toHaveLength(1);
     const write = calls.templateWrites[0]!;
     expect(write).toMatchObject({ method: "PUT", id: USER_ID, ifMatch: '"t"' });
@@ -216,7 +216,7 @@ describe("Author mode on a *.step-template.json", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await screen.findByText("Saved.");
+    await screen.findByText("Saved");
     const write = calls.templateWrites[0]!;
     expect(write).toMatchObject({ method: "PUT", id: STEP_ID, ifMatch: '"s"' });
     expect(Object.keys(write.body).sort()).toEqual(["body", "description", "format", "id"]);

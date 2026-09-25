@@ -1397,6 +1397,10 @@ body {
   color: var(--status-succeeded-fg);
 }
 
+.author-mode-tag + .save-status {
+  margin-left: 10px;
+}
+
 /* Save conflict/error and a lost lease read as a failure; a held-by-other reads as a caution. */
 .save-conflict,
 .save-error,

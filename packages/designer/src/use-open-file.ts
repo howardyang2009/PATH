@@ -396,7 +396,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   );
 
   // A no-op undo/redo is the reducer's to swallow (it returns the same state), so a standing
-  // "Saved."/conflict phase survives one without the hook pre-checking the stack.
+  // "Saved"/conflict phase survives one without the hook pre-checking the stack.
   const undo = useCallback((): void => {
     apply({ type: "undo" });
   }, [apply]);

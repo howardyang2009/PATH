@@ -97,7 +97,7 @@ describe("#390 first-save placement dialog", () => {
     expect(calls.put[0]!.ifMatch).toBeNull();
     // The dialog closes on success and the save-point confirmation shows.
     await waitFor(() => expect(screen.queryByRole("dialog", { name: "Save new workflow" })).not.toBeInTheDocument());
-    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
     // The lease is acquired for the freshly written path.
     await waitFor(() => expect(calls.lock.map((c) => c.workflow_path)).toContain("flows/my-flow.workflow.json"));
     // Launch behaves as for any saved file: the gate is gone and the run button is live.
@@ -124,7 +124,7 @@ describe("#390 first-save placement dialog", () => {
     expect(await within(dialog).findByText(/already exists at that path/i)).toBeInTheDocument();
     // The dialog stays open, no save-point was reached, and the write carried no If-Match — never an overwrite.
     expect(screen.getByRole("dialog", { name: "Save new workflow" })).toBeInTheDocument();
-    expect(screen.queryByText("Saved.")).not.toBeInTheDocument();
+    expect(screen.queryByText("Saved")).not.toBeInTheDocument();
     expect(calls.put.every((p) => p.ifMatch === null)).toBe(true);
   });
 });

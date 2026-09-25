@@ -115,8 +115,9 @@ describe("Designer save through the write route (#371)", () => {
     for (const node of saved.body as Record<string, unknown>[]) {
       expect(typeof node.id).toBe("string");
     }
-    // The buffer is now clean: "Saved." shows and the dirty badge is gone (the one clean save-point).
-    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    // The buffer is now clean: "Saved" shows and the dirty badge is gone (the one clean save-point).
+    // It shows in the top bar's centre slot, not among the toolbar buttons, so they never shift.
+    expect((await screen.findByText("Saved")).closest(".topbar-title")).not.toBeNull();
     expect(screen.queryByText(/stamped on import/)).not.toBeInTheDocument();
   });
 
@@ -178,6 +179,6 @@ describe("Designer save through the write route (#371)", () => {
     // The reloaded (still id-less) file opens dirty again; a second save now succeeds.
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    expect(await screen.findByText("Saved.", undefined, { timeout: 5000 })).toBeInTheDocument();
+    expect(await screen.findByText("Saved", undefined, { timeout: 5000 })).toBeInTheDocument();
   });
 });

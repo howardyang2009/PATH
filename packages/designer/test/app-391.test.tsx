@@ -164,7 +164,7 @@ describe("#391 end-to-end — the child's save picks the path and back-fills the
     await waitFor(() => expect(calls.put).toHaveLength(1));
     expect(calls.put[0]!.body.workflow_path).toBe("flows/child.workflow.json");
     expect(calls.put[0]!.ifMatch).toBeNull();
-    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
     // The lease is acquired for the freshly written child — the from-scratch rule lifts at the first save.
     await waitFor(() => expect(calls.lock.map((c) => c.workflow_path)).toContain("flows/child.workflow.json"));
 

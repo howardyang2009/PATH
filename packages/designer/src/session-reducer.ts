@@ -478,7 +478,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved."/conflict phase, which
+      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved"/conflict phase, which
       // the hook used to guarantee by pre-checking the stack before dispatching.
       if (!frame || !opened || frame.history.past.length === 0) return state;
       const past = frame.history.past.slice();

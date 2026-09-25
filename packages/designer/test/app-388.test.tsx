@@ -73,7 +73,7 @@ describe("#388 cross-node validation markers + problems panel", () => {
     // Opens dirty (ids stamped), so Save is enabled despite the dangling read.
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.put).toHaveLength(1));
-    expect(await screen.findByText("Saved.")).toBeInTheDocument();
+    expect(await screen.findByText("Saved")).toBeInTheDocument();
 
     // The warning survives the save — a saved-with-warnings file is clean but still flagged.
     expect(screen.getByRole("region", { name: "Problems" })).toBeInTheDocument();

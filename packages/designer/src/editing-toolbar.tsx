@@ -26,6 +26,19 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 }
 
 /**
+ * The "Saved" note after a save lands, centred in the top bar beside the file name, so the toolbar's
+ * buttons never shift when it appears.
+ */
+export function SaveStatus({ saveState }: { saveState: SaveState }): JSX.Element | null {
+  if (saveState.phase !== "saved") return null;
+  return (
+    <span className="save-status" role="status">
+      Saved
+    </span>
+  );
+}
+
+/**
  * The top-bar editing controls (#371). The **Workflow | Template** switch ({@link ModeSwitch}) picks the
  * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save and
  * Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
@@ -123,11 +136,6 @@ export function EditingToolbar({
       <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
         Save as…
       </button>
-      {saveState.phase === "saved" ? (
-        <span className="save-status" role="status">
-          Saved.
-        </span>
-      ) : null}
       {conflict ? (
         <div className="save-conflict" role="alert">
           <span>
