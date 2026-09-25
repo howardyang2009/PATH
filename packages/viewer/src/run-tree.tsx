@@ -2,6 +2,7 @@ import {
   awaitingNodeForRun,
   buildRunTree,
   isIterationRun,
+  isPassRun,
   nodeLabel,
   type RunNodeState,
   type RunTreeNode,
@@ -74,9 +75,16 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   // The human step name is the row's headline; the GUID `nodeId` and the `runId` trail it as the
   // two machine identities. `nodeName`/`nodeId` are null together on the implicit root run. A
   // `while-do` iteration container (ADR 0037) shares its loop's name across passes, so its 1-based
-  // ordinal trails the name to tell one pass from the next.
+  // ordinal trails the name to tell one pass from the next. A goto pass container (ADR 0054) has no
+  // name of its own: it reads `Pass N`, naming the goto that opened it after pass 1.
   const name = run.nodeName ?? nodeLabel(run.nodeId);
-  const label = isIterationRun(run) ? `${name} · iteration ${run.iteration}` : name;
+  const label = isPassRun(run)
+    ? run.nodeName === null
+      ? `Pass ${run.pass}`
+      : `Pass ${run.pass} · opened by ${run.nodeName}`
+    : isIterationRun(run)
+      ? `${name} · iteration ${run.iteration}`
+      : name;
   // An awaiting leaf shows its assignee as a chip in the rail (CONTEXT.md § Person-activity). The
   // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
   // is not loaded or the node has no assignee.

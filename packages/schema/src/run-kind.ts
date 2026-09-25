@@ -1,11 +1,12 @@
 /**
- * The kind of a run row (#257 grew the set to four; #454 to five). A `runs` row is a flat struct
- * standing in for a sum type: root run, nested workflow-run, leaf step, reuse row, or a `while-do`
- * iteration container. "Which kind" used to be re-derived by scattered null-checks — `parentRunId ===
- * null` for root, `reusedFromRunId !== null` for reuse — restated at every reader and across the
- * engine/client seam. The three type-guards below are where each distinction now lives — one reader of
- * `parentRunId`, one of `reusedFromRunId`, one of `iteration` — so a reader narrows through the guard
- * instead of re-writing its null-check. The five kinds a `runs` row stands in for:
+ * The kind of a run row (#257 grew the set to four; #454 to five; goto passes, #615, to six). A
+ * `runs` row is a flat struct standing in for a sum type: root run, nested workflow-run, leaf step,
+ * reuse row, a `while-do` iteration container, or a goto pass container. "Which kind" used to be
+ * re-derived by scattered null-checks — `parentRunId === null` for root, `reusedFromRunId !== null`
+ * for reuse — restated at every reader and across the engine/client seam. The type-guards below are
+ * where each distinction now lives — one reader of `parentRunId`, one of `reusedFromRunId`, one of
+ * `iteration`, one of `pass` — so a reader narrows through the guard instead of re-writing its
+ * null-check. The six kinds a `runs` row stands in for:
  *
  * - **root** — the tree's top run, no parent (its own id is the root run id). A workflow-run.
  * - **nested-workflow** — a `workflow` step's run, spawned under a parent (workflow-as-step). Also a
@@ -16,6 +17,8 @@
  *   the loop body's runs get a unique parent, restoring `(scope, node id)` uniqueness across iterations
  *   for Resume reuse. Worker-less like a workflow-run, but it does *not* isolate context — the loop's
  *   shared blackboard is the enclosing run's — so it is its own kind, told apart by `iteration` being set.
+ * - **pass** — one forward stretch of a goto-holding file's top-level walk (ADR 0054): the same kind
+ *   of worker-less, context-sharing scope as an iteration, told apart by `pass` being set.
  */
 
 /** The fields a run's kind is read from — a `RunRecord` or a client-side `RunNodeState` fits. */
@@ -25,6 +28,8 @@ export interface RunKindFields {
   workerName: string | null;
   /** 1-based ordinal on a `while-do` iteration container (ADR 0037), null on every other kind. */
   iteration: number | null;
+  /** 1-based ordinal on a goto pass container (ADR 0054), null on every other kind. */
+  pass: number | null;
 }
 
 /**
@@ -49,4 +54,13 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T):
  */
 export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(run: T): run is T & { iteration: number } {
   return run.iteration !== null;
+}
+
+/**
+ * A goto **pass** container (ADR 0054): one forward stretch of a goto-holding file's top-level walk,
+ * told apart by its 1-based `pass` ordinal, which no other kind carries. A type guard, so the branch
+ * that knows a row is a pass also knows its `pass` is set.
+ */
+export function isPassRun<T extends Pick<RunKindFields, "pass">>(run: T): run is T & { pass: number } {
+  return run.pass !== null;
 }

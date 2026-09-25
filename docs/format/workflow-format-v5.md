@@ -35,9 +35,10 @@ Step-Templates and Workflow-Templates stamp the same `FORMAT_VERSION` (ADR 0048 
 ## 1. `goto`
 
 > [!NOTE]
-> The grammar and the load refusals below are built (#614). The engine cannot execute a goto yet:
-> until the execution ticket lands, a run whose ref tree holds a goto fails before its first step
-> with `goto "<name>" is not yet executable`.
+> The grammar and the load refusals below are built (#614), and the engine executes a jump (#615):
+> a goto-holding file walks its first level in passes ([goto spec](../spec/goto.md) §3). The
+> `pass-started` / `goto-taken` / `goto-exhausted` audit events, and Resume and Complete across
+> passes, are not built yet.
 
 ```json
 { "type": "goto", "id": "<guid>", "name": "retry-jump", "target": "draft", "max_jumps": 3 }

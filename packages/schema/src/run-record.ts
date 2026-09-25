@@ -49,6 +49,13 @@ export interface RunRecord {
    * is its own kind rather than a nested workflow-run.
    */
   iteration: number | null;
+  /**
+   * The 1-based ordinal of a goto **pass** container (ADR 0054, spec docs/spec/goto.md §3.3), null on
+   * every other run kind. Only a file holding a goto has passes; each forward stretch of its top-level
+   * walk is one pass, and every run made while it is open is its child. `isPassRun` reads it. A pass's
+   * `nodeId`/`nodeName` name the goto that opened it, null for pass 1.
+   */
+  pass: number | null;
   status: RunStatus;
   startedAt: string | null;
   finishedAt: string | null;
@@ -117,6 +124,7 @@ export const RUN_RECORD_FIELDS: Record<keyof RunRecord, true> = {
   nodeName: true,
   workerName: true,
   iteration: true,
+  pass: true,
   status: true,
   startedAt: true,
   finishedAt: true,

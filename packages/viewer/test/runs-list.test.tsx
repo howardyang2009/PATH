@@ -72,6 +72,7 @@ function awaitingNode(over: Partial<RunNodeState> & { runId: string }): RunNodeS
     nodeName: over.runId,
     workerName: null,
     iteration: null,
+    pass: null,
     status: "running",
     startedAt: null,
     finishedAt: null,

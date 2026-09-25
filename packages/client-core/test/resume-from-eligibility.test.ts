@@ -12,6 +12,7 @@ function run(runId: string, over: Partial<RunRecord> = {}): RunRecord {
     nodeName: runId,
     workerName: null,
     iteration: null,
+    pass: null,
     status: "succeeded",
     startedAt: "2026-07-25T10:00:00.000Z",
     finishedAt: "2026-07-25T10:00:01.000Z",

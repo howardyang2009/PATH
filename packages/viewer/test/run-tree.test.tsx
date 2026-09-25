@@ -13,6 +13,7 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
     nodeName: "step",
     workerName: "spawn",
     iteration: null,
+    pass: null,
     status: "running",
     startedAt: null,
     finishedAt: null,
@@ -41,6 +42,22 @@ function tree(...runs: RunNodeState[]) {
 const ROOT_RUN = run({ runId: ROOT, parentRunId: null, nodeId: null });
 
 describe("RunTree", () => {
+  it("G-V-01: labels each goto pass `Pass N`, naming the opening goto after pass 1", () => {
+    const pass = (n: number, opener: string | null) =>
+      run({
+        runId: `run_pass_${n}`,
+        nodeId: opener === null ? null : "goto-guid",
+        nodeName: opener,
+        workerName: null,
+        pass: n,
+        startedAt: `2026-07-25T10:00:0${n}.000Z`,
+      });
+    tree(ROOT_RUN, pass(1, null), pass(2, "check"), pass(3, "check"));
+
+    const labels = [1, 2, 3].map((n) => within(screen.getByTestId(`tree-row-run_pass_${n}`)).getByText(/^Pass/).textContent);
+    expect(labels).toEqual(["Pass 1", "Pass 2 · opened by check", "Pass 3 · opened by check"]);
+  });
+
   it("orders siblings oldest-first, with a run that has not started last", () => {
     tree(
       ROOT_RUN,

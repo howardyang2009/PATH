@@ -64,7 +64,11 @@ export type SeqOutcome =
   | { status: "succeeded"; output: JsonValue }
   | { status: "failed"; error: string; causeRunId?: string }
   | { status: "cancelled" }
-  | { status: "awaiting" };
+  | { status: "awaiting" }
+  // A goto jump (ADR 0053, spec docs/spec/goto.md §3.2): `goto` is the goto node's GUID, `target` the
+  // target first-level node's GUID, `output` the goto's incoming output, unchanged. Every nested walker
+  // hands it up like any non-`succeeded` outcome; only the file's top-level walk consumes it.
+  | { status: "goto"; goto: string; target: string; output: JsonValue };
 
 /**
  * The three causes a cancellation can have (CONTEXT.md § Cancellation). `operator` is a cancel request
@@ -137,6 +141,11 @@ export interface RunIdentity {
    * the run tree can tell one loop pass from the next.
    */
   iteration?: number;
+  /**
+   * A goto pass container's 1-based ordinal (ADR 0054); omitted/undefined on every other run. It
+   * carries the opening goto's `nodeId`/`nodeName` (null for pass 1) plus this ordinal.
+   */
+  pass?: number;
 }
 
 /**

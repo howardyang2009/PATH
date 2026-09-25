@@ -17,6 +17,7 @@ function run(
     nodeName: runId,
     workerName: null,
     iteration: null,
+    pass: null,
     status,
     startedAt,
     finishedAt: null,
