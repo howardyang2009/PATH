@@ -20,7 +20,7 @@ afterEach(async () => {
 /** A minimal well-formed workflow object (snake_case wire), with a distinct id per node. */
 function workflow(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: randomUUID(),
     name: "draft",
     body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
@@ -64,7 +64,7 @@ describe("PUT /v0/workflows", () => {
   it("creates a `/`-bearing nested path, making intermediate dirs", async () => {
     const res = await put("lib/deep/flow.workflow.json", workflow());
     expect(res.status).toBe(201);
-    expect(readFileSync(join(projectDir, "lib/deep/flow.workflow.json"), "utf8")).toContain("path/workflow@4");
+    expect(readFileSync(join(projectDir, "lib/deep/flow.workflow.json"), "utf8")).toContain("path/workflow@5");
   });
 
   it("preserves every client-minted id unchanged (identity-agnostic, ADR 0015)", async () => {
@@ -97,7 +97,7 @@ describe("PUT /v0/workflows", () => {
       name: "ordered",
       body: [{ command: "echo", type: "binary", name: "s", id: randomUUID() }],
       id: randomUUID(),
-      format: "path/workflow@4",
+      format: "path/workflow@5",
     };
     const res = await put("ordered.workflow.json", wf);
     expect(res.status).toBe(201);
@@ -231,13 +231,13 @@ describe("PUT /v0/workflows", () => {
     });
 
     it("400s a workflow whose shape fails @path/schema", async () => {
-      const res = await put("bad.workflow.json", { format: "path/workflow@4", id: randomUUID(), name: "bad", body: [] });
+      const res = await put("bad.workflow.json", { format: "path/workflow@5", id: randomUUID(), name: "bad", body: [] });
       expect(res.status).toBe(400);
     });
 
     it("400s an id-less body (PUT is strict where GET is lenient, ADR 0015)", async () => {
       const res = await put("idless.workflow.json", {
-        format: "path/workflow@4",
+        format: "path/workflow@5",
         name: "idless",
         body: [{ type: "binary", name: "s", command: "echo" }],
       });

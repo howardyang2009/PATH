@@ -36,9 +36,15 @@ function write(file: string, doc: unknown): string {
 const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(file, "utf8"));
 const bytes = (file: string): string => readFileSync(file, "utf8");
 
-/** The migrated document must be a *loadable* `@4` file, not merely a reshaped one. */
+/**
+ * The migrated document must be a *loadable* file, not merely a reshaped one. `@4` is superseded now
+ * (the schema reads `@5`), so lift a copy the rest of the way with the `@5` codemod first.
+ */
 function expectSchemaValid(file: string): void {
-  const result = safeParseWorkflowFile(read(file), builtinRegistry);
+  const copy = `${file}.v5.json`;
+  writeFileSync(copy, readFileSync(file, "utf8"));
+  runCodemod([copy], dir, "migrate-workflow-format-v5.ts");
+  const result = safeParseWorkflowFile(read(copy), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);
 }
 

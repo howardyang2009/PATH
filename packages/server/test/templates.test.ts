@@ -29,7 +29,7 @@ function strongEtag(bytes: string): string {
 /** A valid step-template envelope (ADR 0048): `{ format, id, description, body }`, one `binary` node. */
 function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: randomUUID(),
     description: "a saved step fragment",
     body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
@@ -40,7 +40,7 @@ function stepTemplate(overrides: Record<string, unknown> = {}): Record<string, u
 /** A valid workflow file used as a workflow-template. */
 function workflowTemplate(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
-    format: "path/workflow@4",
+    format: "path/workflow@5",
     id: randomUUID(),
     name: "nightly",
     body: [{ type: "binary", id: randomUUID(), name: "step-one", command: "echo" }],
@@ -144,7 +144,7 @@ describe("GET /v0/templates/:id", () => {
       kind: "step",
       origin: "shipped",
       read_only: true,
-      format: "path/workflow@4",
+      format: "path/workflow@5",
       description: "a saved step fragment",
       body: tpl.body,
       valid: true,

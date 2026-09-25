@@ -23,7 +23,7 @@ import { runNode, runSequence } from "../src/run-workflow.js";
 type Node = WorkflowFile["body"][number];
 
 const file: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "wf-id",
   name: "walkers",
   body: [],

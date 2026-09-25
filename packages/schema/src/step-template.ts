@@ -10,7 +10,7 @@ import type { StepTemplate } from "./step-template-type.js";
 // nothing else. `.strict()` is the whole point of the shape — a `name`, a `worker_defaults`, a
 // `config`/`input`/`output` seed, or any file-level key is rejected, because a template is a fragment
 // and carries none of the file namespace. The envelope is frozen and unversioned; a new key here is a
-// change to *this* schema, never a `format` bump. `format` stamps the body grammar (`path/workflow@4`).
+// change to *this* schema, never a `format` bump. `format` stamps the body grammar (`path/workflow@5`).
 function buildStepTemplateSchema(bodySchema: z.ZodType<StepTemplate["body"]>) {
   return z
     .object({

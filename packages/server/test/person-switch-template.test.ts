@@ -101,7 +101,7 @@ describe("person-switch step-template (ADR 0052)", () => {
     expect(freshIds).toHaveLength(sourceIds.size);
     for (const id of freshIds) expect(sourceIds.has(id)).toBe(false);
 
-    const wf = { format: "path/workflow@4", id: crypto.randomUUID(), name: "person-switch-demo", body } as WorkflowFile;
+    const wf = { format: "path/workflow@5", id: crypto.randomUUID(), name: "person-switch-demo", body } as WorkflowFile;
     const project = open();
     try {
       expect((await project.run(wf, dir)).status).toBe("awaiting");

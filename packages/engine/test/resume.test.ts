@@ -84,7 +84,7 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
   // stampNames keeps each node's human id in place (so resume matching by id still works) and mirrors
   // it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
-  return stampNames({ format: "path/workflow@4", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
+  return stampNames({ format: "path/workflow@5", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
 }
 
 function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {

@@ -17,7 +17,7 @@ const CHILD_PATH = join(ROOT_DIR, "sub", "child.workflow.json");
 
 /** The nested file, with a `$env` value so the env the walk is handed — not `process.env` — is what it reads. */
 const child: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "child-id",
   name: "child",
   config: { childOnly: "from-child-file" },
@@ -34,7 +34,7 @@ const child: WorkflowFile = {
 
 /** The root: a plain step, then a `workflow` step whose own config must reach the child's nodes. */
 const root: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: "root-id",
   name: "root",
   config: { fileShared: "from-root-file" },

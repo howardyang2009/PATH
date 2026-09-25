@@ -44,7 +44,7 @@ describe("acceptance: registry-driven load + dispatch (#337)", () => {
 
     // No `worker` key on either leaf; `config.model` at the file top inherits to the prompt step.
     const file: WorkflowFile = {
-      format: "path/workflow@4",
+      format: "path/workflow@5",
       id: "00000000-0000-4000-8000-000000000000",
       name: "cutover",
       config: { model: "test-model" },

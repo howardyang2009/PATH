@@ -21,7 +21,7 @@ function stubClient(files: Record<string, unknown | string>): { client: PathApiC
 }
 
 function wf(id: string, body: unknown[]): unknown {
-  return { format: "path/workflow@4", id, name: id, body };
+  return { format: "path/workflow@5", id, name: id, body };
 }
 
 describe("loadReachableWorkflowFiles", () => {

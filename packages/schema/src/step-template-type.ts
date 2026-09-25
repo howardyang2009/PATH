@@ -5,11 +5,11 @@ import type { WorkflowNode } from "./node-type.js";
 // file's body does (ADR 0048). It is a fragment inserted into someone else's workflow file, so it
 // carries no file-scoped grammar: no `name` (the file stem is the name), no `worker_defaults` (that
 // table is the target file's and live), no `config`/`input`/`output` seed. The envelope shape is
-// frozen and unversioned; `format` stamps the **body grammar** (`path/workflow@4`), not the envelope,
+// frozen and unversioned; `format` stamps the **body grammar** (`path/workflow@5`), not the envelope,
 // because the only thing checked at load is the body, and the body is a workflow body.
 export interface StepTemplate {
   /**
-   * The **body** grammar version, the current `FORMAT_VERSION` (`path/workflow@4`) — not a
+   * The **body** grammar version, the current `FORMAT_VERSION` (`path/workflow@5`) — not a
    * step-template-specific string. The envelope has no grammar of its own to gate; the load-bearing
    * check is the body, which tracks `path/workflow@N`. A `@2`-stamped file names the body grammar this
    * map's tickets discuss but is not a loadable string: it is rejected by the superseded-format path.

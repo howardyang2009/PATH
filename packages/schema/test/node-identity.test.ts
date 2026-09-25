@@ -23,7 +23,7 @@ const OTHER_ID = "33333333-3333-4333-8333-333333333333";
 
 /** A body exercising every nesting shape: a step, a branch with an arm and an `else`, and a loop body. */
 const nested: WorkflowFile = {
-  format: "path/workflow@4",
+  format: "path/workflow@5",
   id: WORKFLOW_ID,
   name: "nested",
   body: [

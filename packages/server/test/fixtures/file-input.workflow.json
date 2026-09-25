@@ -1,5 +1,5 @@
 {
-  "format": "path/workflow@4",
+  "format": "path/workflow@5",
   "id": "9c0e6a1d-2b0b-4c81-9c2a-51b4c2e6f1a0",
   "name": "file-input",
   "input": {
