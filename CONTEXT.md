@@ -536,7 +536,10 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   backend**, with payloads stripped (they are reachable as blob refs on the run row). The event set
   covers step lifecycle (`step-started`, `step-awaiting`, `step-finished`) and control-node activity
   (`branch-taken`, `branch-no-match`, `checkpoint-passed` and `checkpoint-failed`, `iteration-started`,
-  `loop-exited`, `pass-started`, `join-applied`, `run-cancelled`). `step-awaiting` marks a step that suspended on an
+  `loop-exited`, `pass-started`, `goto-taken`, `goto-exhausted`, `join-applied`, `run-cancelled`).
+  `goto-taken` records one jump a goto took; `goto-exhausted` records a goto whose `max_jumps` was
+  already spent, which fails the run. The top-level walk emits both
+  ([ADR 0061](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md)). `step-awaiting` marks a step that suspended on an
   external completion (a **person-activity** step, #462); it carries no terminal status, so it is its
   own log event beside `step-finished`. It also carries the leaf's `assignee` (#488) — who the offline
   activity is for, `null` when the node named none — so an `awaiting`/Complete cycle reconstructs from

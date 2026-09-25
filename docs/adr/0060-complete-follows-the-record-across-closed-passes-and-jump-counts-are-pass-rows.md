@@ -44,7 +44,8 @@ that goto carried (ADR 0055 §4).
    0053 §5) is spent as `count(pass rows whose nodeId = G)`, under the workflow-run. One rule serves
    both modes: a Complete finds the rows already there; a Resume successor mints its own pass rows as
    its walk jumps, so the count grows with the walk. The `goto-taken` event (#600) is an audit trail,
-   not a source of engine state, and need not carry anything for recovery.
+   not a source of engine state, and need not carry anything for recovery. **Amended (#600):** its
+   payload is decided in [ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md).
 
 5. **Rule 1 depends on Complete restoring context by load.** Complete loads the workflow-run's own
    `context.json`, the exact blackboard at park time (ADR 0041; #608 keeps Complete out of its

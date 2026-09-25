@@ -58,4 +58,4 @@ own incoming output unchanged, and left open whether that seeds the target.
 - Resume needs nothing new for seeding: a reused pass's nodes replay their recorded outputs, so the
   goto that ends it passes through the same value the original run did.
 - Left to sibling tickets: context and publish under cycles (#598), replay divergence (#599), the
-  `goto-taken` payload (#600).
+  `goto-taken` payload (#600). **Amended (#600):** decided in [ADR 0061](0061-goto-taken-and-goto-exhausted-are-walk-emitted-control-events.md).
