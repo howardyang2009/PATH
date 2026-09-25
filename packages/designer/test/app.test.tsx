@@ -199,7 +199,7 @@ describe("Designer open + render (#367)", () => {
           { ...rootRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null },
           // The `workflow` node's sub-run: keyed by the node's id, so it projects onto that node — and onto
           // the crumb descended through it.
-          { ...rootRow, run_id: "sub-1", root_run_id: "root-1", parent_run_id: "root-1", node_id: uuid(12), node_name: "sub", status: "failed" },
+          { ...rootRow, run_id: "sub-1", root_run_id: "root-1", parent_run_id: "root-1", node_id: uuid(12), node_name: "sub", iteration: null, pass: null, status: "failed" },
         ],
       },
     });

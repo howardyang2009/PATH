@@ -62,6 +62,8 @@ function wireRun(partial: { run_id: string; status: string; node_id?: string | n
     node_id: partial.node_id ?? null,
     node_name: partial.node_name ?? null,
     worker_name: null,
+    iteration: null,
+    pass: null,
     status: partial.status,
     started_at: "2026-01-01T00:00:00Z",
     finished_at: null,

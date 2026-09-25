@@ -7,7 +7,7 @@ import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
 import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
 import { RUN_STATUS_GLYPH } from "./run/run-status.js";
-import { useNodeRunStatus } from "./run/run-projection.js";
+import { useGotoJumpsSpent, useNodeRunStatus } from "./run/run-projection.js";
 import { useSelection } from "./selection-context.js";
 
 /**
@@ -262,8 +262,22 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
 }
 
 /**
+ * A watched run's jumps spent by one goto, `<spent>/<max_jumps>` (#620). A goto runs for no time, so it
+ * takes no status badge; this is its whole run view. Absent when no run is watched.
+ */
+function GotoJumpsBadge({ node }: { node: Extract<WorkflowNode, { type: "goto" }> }): JSX.Element | null {
+  const spent = useGotoJumpsSpent(node.id);
+  if (spent === null) return null;
+  return (
+    <span className="goto-jumps" data-testid={`goto-jumps-${node.id}`} title="Jumps spent in the watched run">
+      {spent}/{node.max_jumps}
+    </span>
+  );
+}
+
+/**
  * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge (#619).
- * Hovering it highlights its target. It takes no run badge: a goto runs for no time (#620 owns its run view).
+ * Hovering it highlights its target. In a watched run it shows its jumps spent instead of a status badge.
  */
 function GotoBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "goto" }>; editor?: EditorApi }): JSX.Element {
   const { chip, hover } = useGotoChip(node);
@@ -280,6 +294,7 @@ function GotoBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "goto
       <span className="chip">GOTO</span>
       <span className="node-name">{node.name}</span>
       {chip}
+      <GotoJumpsBadge node={node} />
       <IncomingBadge node={node} />
       <ConflictMarker id={node.id} />
       <NodeControls node={node} editor={editor} />
