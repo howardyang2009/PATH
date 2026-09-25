@@ -21,7 +21,7 @@ import { useFileProblems } from "./use-file-problems.js";
 import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
-import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, frameHasUnsavedWork, openedResultOf, useOpenFile } from "./use-open-file.js";
 
 /** The workflow-level fields of `file` that hold a value — what a save as step-template drops. */
 function workflowLevelFields(file: WorkflowFile): string[] {
@@ -105,9 +105,9 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   const warningCount = problems.length;
 
   // Every door that replaces the stack (New, Open…, a mode switch, a template double-click) asks first
-  // when any frame on the stack has unsaved edits.
+  // when any frame on the stack has unsaved edits. An untouched New buffer has none, so it goes quietly.
   const confirmDiscard = (): boolean =>
-    !session.frames.some((frame) => frameDirty(frame)) || window.confirm("Discard unsaved changes?");
+    !session.frames.some((frame) => frameHasUnsavedWork(frame)) || window.confirm("Discard unsaved changes?");
   const inTemplateMode = session.mode === "template";
   const onNew = (): void => {
     if (!confirmDiscard()) return;

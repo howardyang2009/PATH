@@ -28,7 +28,7 @@ import {
 // `client` I/O that decision calls for, and dispatches the outcome as an action. Re-export the frame
 // types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
 // the tests that import them from here.
-export { openedResultOf, frameDirty, frameCanUndo, frameCanRedo } from "./session-reducer.js";
+export { openedResultOf, frameDirty, frameHasUnsavedWork, frameCanUndo, frameCanRedo } from "./session-reducer.js";
 export type { EditMode, Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
 
 /**

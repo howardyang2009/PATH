@@ -156,10 +156,28 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.workflow-template.json");
   });
 
+  it("switches away from an untouched New workflow or template without asking", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
+    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toHaveAttribute("aria-checked", "true");
+
+    fireEvent.click(screen.getByRole("button", { name: "New" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Workflow" }));
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(confirm).not.toHaveBeenCalled();
+  });
+
   it("asks before a switch discards unsaved edits, and keeps them on cancel", async () => {
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
+    fireEvent.click(screen.getByText("Prompt"));
+    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
