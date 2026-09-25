@@ -267,6 +267,8 @@ and issues use them exactly.
   consumes. Its mandatory **`max_jumps`** (default 3, per goto node per workflow-run) bounds it like
   `while-do`'s max-iterations: exhausting it fails the run
   ([ADR 0053](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0053-goto-is-a-seqoutcome-jump-caught-by-a-per-file-top-level-walk.md)).
+  A goto's jumps spent are the passes it opened in the workflow-run
+  ([ADR 0060](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md)).
   A goto carries no input of its own: the output it received passes through as the target's incoming
   output, forward or backward, and the target's own `input` map still wins
   ([ADR 0055](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0055-a-goto-target-is-seeded-by-the-gotos-passed-through-output.md)).
@@ -287,6 +289,9 @@ and issues use them exactly.
   predecessor's pass of the same ordinal opened by the same goto, whatever its status; a mismatch runs
   that pass and every later one fresh
   ([ADR 0054](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0054-a-goto-visit-is-scoped-by-a-per-pass-container-run.md)).
+  A Complete does not re-walk closed passes: it re-enters the one `running` pass in place by its
+  ordinal, starting at its opening goto's target
+  ([ADR 0060](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md)).
   _Avoid_: visit, round (a visit is one node's run; a pass is the whole stretch).
 
 ## Identity

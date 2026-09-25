@@ -108,4 +108,6 @@ belongs to. `while-do` hit the same wall and fixed it with a container run per i
   non-succeeded first-level node re-runs.
 - Left to sibling tickets: rebuilding the per-goto jump counts from the record, Complete/awaiting
   replay across passes and divergence after a file edit (#599); the `goto-taken` payload (#600);
-  context and publish behavior under cycles (#598); Designer rendering (#601).
+  context and publish behavior under cycles (#598); Designer rendering (#601). **Amended (#599):**
+  jump counts, Complete replay across passes and divergence are decided in
+  [ADR 0060](0060-complete-follows-the-record-across-closed-passes-and-jump-counts-are-pass-rows.md).
