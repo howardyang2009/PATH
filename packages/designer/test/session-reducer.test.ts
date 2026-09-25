@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { canonicalSerialize } from "../src/serialize.js";
-import { canvasEmpty, frameDirty, initialSessionState, openedResultOf, planNewFileSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState } from "../src/session-reducer.js";
+import { canvasEmpty, frameDirty, initialSessionState, openedResultOf, planNewFileSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState, type TemplateSource } from "../src/session-reducer.js";
 
 /**
  * The pure session state machine (`session-reducer.ts`). These tests reach every transition the Designer's
@@ -381,7 +381,7 @@ describe("session-reducer — instantiate a Workflow-Template into an empty canv
 });
 
 describe("session-reducer — author mode on a *.workflow-template.json (#580)", () => {
-  const source = { id: uuid(1), name: "nightly", readOnly: false };
+  const source: TemplateSource = { id: uuid(1), kind: "workflow", name: "nightly", description: "", readOnly: false };
 
   /** The session after opening the template source and its read landing, clean at the read's ETag. */
   function authoring(f: WorkflowFile = file("nightly")): SessionState {
@@ -409,7 +409,7 @@ describe("session-reducer — author mode on a *.workflow-template.json (#580)",
 
   it("saves back to the original template by id, under the read's If-Match", () => {
     const s = reduceSession(authoring(), { type: "applyEdit", next: file("nightly", "edited") });
-    expect(planSave(s)).toEqual({ kind: "template", depth: 0, id: uuid(1), file: file("nightly", "edited"), ifMatch: "etag-t" });
+    expect(planSave(s)).toEqual({ kind: "template", depth: 0, id: uuid(1), template: source, file: file("nightly", "edited"), ifMatch: "etag-t" });
   });
 
   it("advances the save-point when the write-back lands on the same template", () => {
@@ -436,8 +436,8 @@ describe("session-reducer — author mode on a *.workflow-template.json (#580)",
   it("after a Save-As the frame edits the new template, clean, with a fresh history", () => {
     const copy = { ...file("nightly", "edited"), id: uuid(7) };
     let s = reduceSession(authoring(), { type: "applyEdit", next: file("nightly", "edited") });
-    s = reduceSession(s, { type: "templateSavedAs", depth: 0, fromId: uuid(1), template: { id: uuid(7), name: "copy", readOnly: false }, file: copy, etag: "etag-c" });
-    expect(s.frames[0]).toMatchObject({ template: { id: uuid(7), name: "copy", readOnly: false }, etag: "etag-c" });
+    s = reduceSession(s, { type: "templateSavedAs", depth: 0, fromId: uuid(1), template: { id: uuid(7), kind: "workflow", name: "copy", description: "", readOnly: false }, file: copy, etag: "etag-c" });
+    expect(s.frames[0]).toMatchObject({ template: { id: uuid(7), kind: "workflow", name: "copy", readOnly: false }, etag: "etag-c" });
     expect(activeFile(s)).toEqual(copy);
     expect(frameDirty(s.frames[0])).toBe(false);
     expect(s.frames[0]!.history.past).toHaveLength(0);

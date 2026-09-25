@@ -82,7 +82,7 @@ export interface Frame {
   loadSeq: number | null;
   /**
    * The template this frame edits in **author mode** (#580, ADR 0049 decision 8): set when the author
-   * opened a `*.workflow-template.json` itself, `undefined` for a workflow file. The suffix of the opened
+   * opened a `*.workflow-template.json` or a `*.step-template.json` itself, `undefined` for a workflow file. The suffix of the opened
    * file is the discriminator. A template frame is `written` (it is on disk) but holds no `path`: a
    * template is id-addressed (ADR 0050), so it takes no lease, cannot launch, and saves through
    * `PUT /v0/templates/:id` rather than the workflow write door.
@@ -90,11 +90,23 @@ export interface Frame {
   template?: TemplateSource;
 }
 
-/** The `*.workflow-template.json` an author-mode frame edits: its id (the route key), file stem, and origin. */
+/** The file suffix a template kind carries on disk. */
+export function templateSuffix(kind: TemplateSource["kind"]): string {
+  return kind === "step" ? ".step-template.json" : ".workflow-template.json";
+}
+
+/** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {
   id: string;
+  /**
+   * `workflow`: the frame's file is the template's whole workflow file. `step`: the frame's file is a
+   * synthetic workflow around the step-template's body; only `body` goes back into the envelope on save.
+   */
+  kind: "step" | "workflow";
   /** The file stem — the template's name, immutable through the write-back door. */
   name: string;
+  /** The template's description, kept so a step-template write-back rebuilds its envelope. */
+  description: string;
   /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
   readOnly: boolean;
 }
@@ -609,7 +621,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 export type SavePlan =
   | { kind: "overwrite"; depth: number; path: string; file: WorkflowFile; ifMatch: string | undefined }
   | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined }
-  | { kind: "template"; depth: number; id: string; file: WorkflowFile; ifMatch: string };
+  | { kind: "template"; depth: number; id: string; template: TemplateSource; file: WorkflowFile; ifMatch: string };
 
 export function planSave(state: SessionState): SavePlan | null {
   const depth = state.activeIndex;
@@ -617,7 +629,7 @@ export function planSave(state: SessionState): SavePlan | null {
   const opened = openedResultOf(frame);
   if (frame?.template && opened) {
     // The read always carries an ETag; an empty token would only earn the honest `412`.
-    return { kind: "template", depth, id: frame.template.id, file: opened.file, ifMatch: frame.etag ?? "" };
+    return { kind: "template", depth, id: frame.template.id, template: frame.template, file: opened.file, ifMatch: frame.etag ?? "" };
   }
   if (!frame || !opened || frame.path === null) return null;
   return frame.written

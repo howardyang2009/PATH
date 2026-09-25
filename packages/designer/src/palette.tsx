@@ -26,9 +26,9 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * Templates holds the Step-Template and Workflow-Template categories from `GET /v0/templates`. A
  * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
  * then opens the sockets the grammar admits that body into. A Workflow-Template card is selectable only
- * into an empty canvas and fills it with an instance of the whole workflow (#579); its Edit button opens
- * the `*.workflow-template.json` itself in author mode (#580). A failed read says why instead, and an
- * invalid template is shown disabled with its error.
+ * into an empty canvas and fills it with an instance of the whole workflow (#579). A double-click on
+ * either kind of card opens the template file itself in author mode (#580). A failed read says why
+ * instead, and an invalid template is shown disabled with its error.
  */
 export function Palette({
   plugins,
@@ -45,7 +45,7 @@ export function Palette({
   canvasEmpty: boolean;
   /** Put a Workflow-Template instance on the empty canvas; `false` when it is no longer empty. */
   placeWorkflowInstance: (file: WorkflowFile) => boolean;
-  /** Open a Workflow-Template's own source file in author mode (#580). */
+  /** Open a template's own source file in author mode (#580). */
   onEditTemplate: (template: TemplateSummary) => void;
 }) {
   const [tab, setTab] = useState<PaletteTab>("build");
@@ -270,9 +270,9 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
  * Step-Template card is an arm toggle like a Build card (#578). A Workflow-Template card is a one-shot
- * select, enabled only while the canvas is empty (#579). A Workflow-Template also carries an Edit button
- * that opens its `*.workflow-template.json` in author mode (#580). Edit stays enabled for an invalid row,
- * so an author can open a broken template to repair it (ADR 0050 decision 5).
+ * select, enabled only while the canvas is empty (#579). A double-click on any card opens its template
+ * file in author mode (#580). The card is only `aria-disabled`, so the double-click still reaches a
+ * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
  */
 function TemplateCard({
   template,
@@ -292,17 +292,22 @@ function TemplateCard({
   const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
   const armable = template.kind === "step";
   const blocked = !armable && !canvasEmpty;
+  const disabled = !template.valid || blocked;
+  const editable = template.id !== null;
   return (
     <li>
       <button
         type="button"
         className="palette-card"
         style={style}
-        disabled={!template.valid || blocked}
-        title={blocked ? "A Workflow-Template goes only into an empty canvas." : undefined}
+        aria-disabled={disabled}
+        title={[blocked ? "A Workflow-Template goes only into an empty canvas." : null, editable ? "Double-click to edit the template." : null]
+          .filter((line) => line !== null)
+          .join("\n") || undefined}
         aria-pressed={armable ? armed : undefined}
         data-armed={armed ? "true" : "false"}
-        onClick={armed ? onDisarm : onSelect}
+        onClick={disabled ? undefined : armed ? onDisarm : onSelect}
+        onDoubleClick={editable ? onEdit : undefined}
       >
         <span className="palette-card-swatch" aria-hidden="true" />
         <span className="palette-card-text">
@@ -312,17 +317,6 @@ function TemplateCard({
         </span>
         {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
       </button>
-      {template.kind === "workflow" && template.id !== null ? (
-        <button
-          type="button"
-          className="palette-card-edit"
-          aria-label={`Edit ${template.name}.workflow-template.json`}
-          title="Open the template source to edit it"
-          onClick={onEdit}
-        >
-          Edit
-        </button>
-      ) : null}
     </li>
   );
 }

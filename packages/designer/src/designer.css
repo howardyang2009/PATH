@@ -264,7 +264,7 @@ body {
   border-bottom-color: var(--accent);
 }
 
-.palette-card:disabled {
+.palette-card[aria-disabled="true"] {
   cursor: not-allowed;
   opacity: 0.6;
 }
@@ -282,24 +282,6 @@ body {
   border: 1px solid var(--border);
   border-radius: 999px;
   padding: 0 6px;
-}
-
-/* A Workflow-Template card's Edit button (#580): opens the template source in author mode. */
-.palette-list li:has(.palette-card-edit) {
-  display: flex;
-  gap: 4px;
-}
-
-.palette-card-edit {
-  flex: none;
-  font: inherit;
-  font-size: var(--fs-xs);
-  padding: 0 8px;
-  color: var(--text);
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  cursor: pointer;
 }
 
 .palette-note {

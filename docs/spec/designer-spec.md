@@ -362,30 +362,35 @@ and naming), prefilled from the template's `name`, and creates a `*.workflow.jso
 saves back to the template. One workflow-template ships in `packages/server/template/`: `draft-review`,
 a `prompt` draft followed by a `person-activity` review.
 
-### Editing a Workflow-Template's source (author mode)
+### Editing a template's source (author mode)
 
-A **Workflow-Template** card also has an **Edit** button
-([#580](https://github.com/howardyang2009/PATH/issues/580)). It opens the `*.workflow-template.json`
-itself as a fresh root, discarding the current stack like Open…. The suffix is the discriminator
+A **double-click** on a Step-Template or Workflow-Template card
+([#580](https://github.com/howardyang2009/PATH/issues/580)) opens the `*.step-template.json` or
+`*.workflow-template.json` itself as a fresh root, discarding the current stack like Open…. The
+double-click disarms the card first, so its own single clicks leave nothing armed or placed. The suffix is the discriminator
 ([ADR 0049](../adr/0049-instantiation-is-a-detached-copy-that-re-stamps-ids-and-never-rewires.md)
 decision 8): a `*.workflow.json` opens in workflow mode, a template card's select is consume mode, and
 the template file opened to edit is **author mode**. The read is `GET /v0/templates/:id`
 (server-api-v0.md §10.2); the template's workflow file opens through the same pipeline as a
-`*.workflow.json`. Edit stays enabled for an invalid template, so an author can open it and see why.
+`*.workflow.json`. A step-template's `body` opens inside a synthetic workflow file that carries the
+template's `id` and name; only its `body` goes back into the envelope on save. The double-click also
+works on a card that is disabled for select (an invalid template, or a Workflow-Template while the
+canvas holds nodes), so an author can open an invalid template and see why.
 
 An author-mode frame is id-addressed, not path-addressed
 ([ADR 0050](../adr/0050-the-template-api-is-id-addressed-and-owns-the-template-write-door.md)). It
 takes no edit lease and cannot launch, since a template runs only after Instantiation. The toolbar
-names the source (`Template source: <name>.workflow-template.json`, and `shipped, read-only` for a
-shipped one) and offers three save doors:
+names the source (`Template source: <name>.workflow-template.json` or `<name>.step-template.json`, and
+`shipped, read-only` for a shipped one) and offers three save doors (a step-template has the first two):
 
-- **Save** writes back to the original through `PUT /v0/templates/:id` under the read's `If-Match`,
-  with the workflow `id` preserved. A `412` is the same stale-write conflict as a workflow's, and Reload
+- **Save template** writes back to the original through `PUT /v0/templates/:id` under the read's `If-Match`,
+  with the workflow `id` preserved. For a step-template it writes the envelope: `format`, `id`,
+  `description`, and the edited `body`. A `412` is the same stale-write conflict as a workflow's, and Reload
   re-reads the template. A **shipped** template refuses the write with the API's `403`, shown as the
   save error.
-- **Save as template…** names a new template (the stem is prefilled `<name>-copy`; the
-  `.workflow-template.json` suffix is fixed) and creates it through `POST /v0/templates` with a fresh
-  workflow `id`, since two templates must not share identity. Node ids are kept: they are unique in the
+- **Save template as…** names a new template of the same kind (the stem is prefilled `<name>-copy`;
+  the `.workflow-template.json` or `.step-template.json` suffix is fixed) and creates it through
+  `POST /v0/templates` with a fresh `id`, since two templates must not share identity. Node ids are kept: they are unique in the
   file, and Instantiation re-stamps them on use. A taken name (`409`) asks for another name. The editor
   then edits the new template, and the palette re-lists it.
 - **Save as workflow…** runs Instantiation plus the workflow-level re-mint (a fresh workflow `id`, fresh

@@ -20,6 +20,7 @@ import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { templateSuffix } from "./session-reducer.js";
 
 /**
  * The Designer app: the pinned shell with the palette in the left rail, the node canvas at the centre,
@@ -191,8 +192,18 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
           canvasEmpty={session.canvasEmpty}
           placeWorkflowInstance={session.placeWorkflowInstance}
           onEditTemplate={(template) => {
+            if (template.id === null) return;
+            // The double-click's own single clicks armed or selected this card; disarm so a template read
+            // still in flight is dropped instead of landing after the open.
+            arming.arm(null);
             // Opening the template source discards the current stack, like Open… (#254).
-            if (template.id !== null) session.openTemplate({ id: template.id, name: template.name, readOnly: template.read_only });
+            session.openTemplate({
+              id: template.id,
+              kind: template.kind,
+              name: template.name,
+              description: template.description,
+              readOnly: template.read_only,
+            });
           }}
         />
       }
@@ -273,6 +284,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     {saveAsDialog === "template" && activeTemplate ? (
       <SaveTemplateAsDialog
         templateName={activeTemplate.name}
+        suffix={templateSuffix(activeTemplate.kind)}
         create={session.saveAsTemplate}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}

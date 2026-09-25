@@ -77,9 +77,9 @@ describe("Designer palette lists templates (#577)", () => {
     const panel = await openTemplatesTab();
 
     const broken = await within(panel).findByRole("button", { name: /^broken-flow/ });
-    expect(broken).toBeDisabled();
+    expect(broken).toHaveAttribute("aria-disabled", "true");
     expect(within(broken).getByText('unregistered step type "api-call"')).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /^nightly/ })).toBeEnabled();
+    expect(within(panel).getByRole("button", { name: /^nightly/ })).toHaveAttribute("aria-disabled", "false");
   });
 
   it("says so when there are no templates of a kind", async () => {

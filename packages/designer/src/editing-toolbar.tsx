@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
+import { templateSuffix } from "./session-reducer.js";
 import type { SaveState, TemplateSource } from "./use-open-file.js";
 
 /**
- * Author mode's extra save doors (#580), present only while the active frame is a `*.workflow-template.json`
- * source. The plain Save then writes back to `template`; these two save it somewhere new.
+ * Author mode's extra save doors (#580), present only while the active frame is a template source
+ * (`*.workflow-template.json` or `*.step-template.json`). The plain Save then writes back to `template`;
+ * these save it somewhere new. Save as workflow applies to a workflow-template only.
  */
 export interface AuthorModeControls {
   template: TemplateSource;
@@ -60,6 +62,15 @@ export function EditingToolbar({
   const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
+      {/* Author mode (#580): the opened file is the template source, so Save writes back to it. A shipped
+          one is read-only: its write-back is the API's 403, and the Save-As doors fork it. The tag leads
+          the toolbar, left of every button, so the author sees which file they edit first. */}
+      {authorMode ? (
+        <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
+          Template source: <code>{authorMode.template.name}{templateSuffix(authorMode.template.kind)}</code>
+          {authorMode.template.readOnly ? " (shipped, read-only)" : null}
+        </span>
+      ) : null}
       {/* Open another workflow without leaving the app (#254). It discards the current stack, so it sits
           apart from the edit controls; a dirty buffer is the author's to Save first. */}
       <button type="button" className="open-btn" onClick={onOpenExisting}>
@@ -76,22 +87,18 @@ export function EditingToolbar({
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
-        {saving ? "Saving…" : "Save"}
+        {saving ? "Saving…" : authorMode ? "Save template" : "Save"}
       </button>
       {authorMode ? (
         <>
-          {/* Author mode (#580): the opened file is the template source, so Save writes back to it. A
-              shipped one is read-only: its write-back is the API's 403, and the two Save-As doors fork it. */}
-          <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
-            Template source: <code>{authorMode.template.name}.workflow-template.json</code>
-            {authorMode.template.readOnly ? " (shipped, read-only)" : null}
-          </span>
-          <button type="button" className="open-btn" onClick={authorMode.onSaveAsTemplate} disabled={saving}>
-            Save as template…
+          <button type="button" className="save-btn" onClick={authorMode.onSaveAsTemplate} disabled={saving}>
+            Save template as…
           </button>
-          <button type="button" className="open-btn" onClick={authorMode.onSaveAsWorkflow} disabled={saving}>
-            Save as workflow…
-          </button>
+          {authorMode.template.kind === "workflow" ? (
+            <button type="button" className="open-btn" onClick={authorMode.onSaveAsWorkflow} disabled={saving}>
+              Save as workflow…
+            </button>
+          ) : null}
         </>
       ) : null}
       {saveState.phase === "saved" ? (

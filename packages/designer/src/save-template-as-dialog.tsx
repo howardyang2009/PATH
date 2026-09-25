@@ -6,18 +6,21 @@ const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
 /**
  * Author mode's **Save as template** dialog (#580). A new user template always lands in
- * `.path/template/workflow-template/` (`POST /v0/templates` picks the place), so the author chooses only
- * the name. The `.workflow-template.json` suffix is fixed. The create is create-only: a taken name is
+ * `.path/template/<kind>-template/` (`POST /v0/templates` picks the place), so the author chooses only
+ * the name. The suffix is fixed by the source template's kind. The create is create-only: a taken name is
  * refused ("choose another name"), never an overwrite, and only a `created` closes the dialog.
  */
 export function SaveTemplateAsDialog({
   templateName,
+  suffix,
   create,
   onCreated,
   onCancel,
 }: {
   /** The source template's name; the prefilled stem is `<name>-copy`, since the source name is taken. */
   templateName: string;
+  /** The fixed file suffix, `.workflow-template.json` or `.step-template.json`. */
+  suffix: string;
   create: (name: string) => Promise<SaveAsTemplateResult>;
   onCreated: () => void;
   onCancel: () => void;
@@ -26,7 +29,8 @@ export function SaveTemplateAsDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const clean = name.trim().replace(/\.workflow-template\.json$/i, "");
+  const trimmed = name.trim();
+  const clean = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
   const legal = NAME_PATTERN.test(clean);
   const canSubmit = legal && !submitting;
 
@@ -61,7 +65,7 @@ export function SaveTemplateAsDialog({
               }}
             />
             <span className="new-file-suffix" aria-hidden="true">
-              .workflow-template.json
+              {suffix}
             </span>
           </span>
         </label>

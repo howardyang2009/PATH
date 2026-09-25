@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
-import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
+import { FORMAT_VERSION, instantiateWorkflow, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import type { EditCommit, EditKey } from "./edit-key.js";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
@@ -80,8 +80,9 @@ export interface OpenSession {
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
   /**
-   * Open a `*.workflow-template.json` itself as a fresh root in **author mode** (#580), discarding any
-   * current stack. It reads `GET /v0/templates/:id`; the frame's Save then writes back to that template.
+   * Open a `*.workflow-template.json` or a `*.step-template.json` itself as a fresh root in **author mode**
+   * (#580), discarding any current stack. It reads `GET /v0/templates/:id`; the frame's Save then writes
+   * back to that template.
    */
   openTemplate: (template: TemplateSource) => void;
   /**
@@ -183,25 +184,39 @@ async function loadFrame(
 /**
  * Read a template source (`GET /v0/templates/:id`) and run the open pipeline over its workflow file (#580).
  * A workflow-template's `body` is its whole workflow file, so it opens exactly like a `*.workflow.json`
- * (an invalid one still reads, so the refusal names why). The envelope carries no raw bytes, so the
- * baseline is the canonical serialization of the served body: the bytes the template write route itself
- * writes. A file the open parse re-orders therefore opens dirty, as a hand-authored workflow does (ADR 0030).
+ * (an invalid one still reads, so the refusal names why). A step-template's `body` is a node list, so it
+ * opens inside a synthetic workflow file that carries the template's id and name. The envelope carries
+ * no raw bytes, so the baseline is the canonical serialization of the opened file. A file the open parse
+ * re-orders therefore opens dirty, as a hand-authored workflow does (ADR 0030).
  */
 async function loadTemplateFrame(
   client: PathApiClient,
-  id: string,
+  template: TemplateSource,
   plugins: WireStepPlugin[],
 ): Promise<{ frameState: Frame["state"]; etag: string | null; baseline: string; openedBytes: string }> {
   try {
-    const envelope = await client.getTemplate(id);
-    if (envelope.kind !== "workflow") throw new Error(`"${envelope.name}" is not a workflow-template`);
-    const text = canonicalSerialize(envelope.body as WorkflowFile);
+    const envelope = await client.getTemplate(template.id);
+    if (envelope.kind !== template.kind) throw new Error(`"${envelope.name}" is not a ${template.kind}-template`);
+    const file: WorkflowFile =
+      envelope.kind === "step"
+        ? { format: FORMAT_VERSION, id: envelope.id, name: envelope.name, body: envelope.body as WorkflowNode[] }
+        : (envelope.body as WorkflowFile);
+    const text = canonicalSerialize(file);
     const result = openWorkflowFile(text, plugins);
     const openedBytes = result.status === "opened" ? canonicalSerialize(result.file) : "";
     return { frameState: { phase: "open", result }, etag: envelope.etag, baseline: text, openedBytes };
   } catch (error) {
     return { frameState: { phase: "fetch-error", message: errorMessage(error) }, etag: null, baseline: "", openedBytes: "" };
   }
+}
+
+/**
+ * The template object a template write sends for an author-mode buffer: the workflow file itself for a
+ * workflow-template, or a step-template envelope around the buffer's body for a step-template (ADR 0048).
+ */
+function templateBody(template: TemplateSource, file: WorkflowFile): Record<string, unknown> {
+  if (template.kind === "workflow") return file as unknown as Record<string, unknown>;
+  return { format: FORMAT_VERSION, id: file.id, description: template.description, body: file.body };
 }
 
 /** The result of a `PUT /v0/workflows` — the fresh ETag and the server-resolved relative path. */
@@ -262,7 +277,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       const plugins = pluginsRef.current;
       if (!plugins) return;
       const { path, template } = frame;
-      const read = template ? loadTemplateFrame(client, template.id, plugins) : path !== null ? loadFrame(client, path, plugins) : null;
+      const read = template ? loadTemplateFrame(client, template, plugins) : path !== null ? loadFrame(client, path, plugins) : null;
       void read?.then(({ frameState, etag, baseline, openedBytes }) => {
         apply({ type: "loadLanded", depth, path, loadSeq: seq, frameState, etag, baseline, openedBytes });
       });
@@ -423,7 +438,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       // refusal, shown as the save error it is.
       void commitSave({
         file: plan.file,
-        write: (body) => client.putTemplate({ id: plan.id, body, ifMatch: plan.ifMatch }),
+        write: () => client.putTemplate({ id: plan.id, body: templateBody(plan.template, plan.file) as JsonValue, ifMatch: plan.ifMatch }),
         successAction: (result, savedBytes) => ({ type: "templateSaved", depth: plan.depth, id: plan.id, etag: result.etag, savedBytes }),
       }).catch((error: unknown) => {
         apply({
@@ -497,14 +512,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       // A new template is a new identity (ADR 0049 decision 8): only the workflow `id` is re-minted.
       // Node ids stay, since they are unique within the file and Instantiation re-stamps them on use.
       const file: WorkflowFile = { ...plan.file, id: crypto.randomUUID() };
+      const { kind, description } = plan.template;
       return commitSave({
         file,
-        write: (body) => client.createTemplate({ kind: "workflow", name, description: "", body: body as Record<string, unknown> }),
+        write: () => client.createTemplate({ kind, name, description, body: templateBody(plan.template, file) }),
         successAction: (result) => ({
           type: "templateSavedAs",
           depth: plan.depth,
           fromId: plan.template.id,
-          template: { id: result.id, name, readOnly: false },
+          template: { id: result.id, kind, name, description, readOnly: false },
           file,
           etag: result.etag,
         }),
@@ -524,6 +540,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     (targetPath: string): Promise<SaveNewFileResult> => {
       const plan = planTemplateSaveAs(sessionRef.current);
       if (!plan) return Promise.resolve({ status: "error", message: "No template source to save." });
+      if (plan.template.kind !== "workflow") return Promise.resolve({ status: "error", message: "Only a workflow-template saves as a workflow." });
       // Detach (ADR 0049 decision 7): the same Instantiation a consume-mode select runs, so the workflow
       // shares no id with its template. Exclusive create — no `If-Match` — so an existing path is `exists`.
       const file = instantiateWorkflow(plan.file);
