@@ -116,3 +116,22 @@ describe("classifyLevelK — a skipped prefix path is not a broken one (#5)", ()
     expect(classifyLevelK({ body, rows, scopeRunId: "scope", nodeId: "c", leafStatus: "succeeded" })).toEqual({ ok: true });
   });
 });
+
+describe("classifyLevelK — under a goto the prefix is counted across passes (ADR 0054 §6)", () => {
+  // K = b in pass 2 (scope "pass-2"); pass 1 ("pass-1") ran the whole body before it.
+  const inPass = (scope: string, nodeId: string, status: RunStatus): LegalKLevelRun => ({ parentRunId: scope, nodeId, status });
+  const pass2 = [inPass("pass-2", "b", "succeeded")];
+
+  it("admits K when every node an earlier pass ran succeeded, including nodes after K's own index", () => {
+    const rows = [inPass("pass-1", "a", "succeeded"), inPass("pass-1", "b", "succeeded"), inPass("pass-1", "c", "succeeded"), ...pass2];
+    expect(classifyLevelK({ body, rows, scopeRunId: "pass-2", nodeId: "b", leafStatus: "succeeded", earlierPassRunIds: ["pass-1"] })).toEqual({ ok: true });
+  });
+
+  it("refuses K when an earlier pass holds an unsucceeded node, even one after K's index", () => {
+    const rows = [inPass("pass-1", "a", "succeeded"), inPass("pass-1", "c", "cancelled"), ...pass2];
+    expect(classifyLevelK({ body, rows, scopeRunId: "pass-2", nodeId: "b", leafStatus: "succeeded", earlierPassRunIds: ["pass-1"] })).toEqual({
+      ok: false,
+      reason: "prefix-unsucceeded",
+    });
+  });
+});

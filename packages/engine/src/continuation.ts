@@ -313,7 +313,7 @@ export function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<stri
 export function childResumeState(
   run: RunContext,
   nodeId: string,
-): { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] } | undefined {
+): { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[]; rerunPasses: (number | null)[] } | undefined {
   const resume = run.resume;
   if (!resume) return undefined;
   const suffix = resume.rerunSuffix;
@@ -325,7 +325,8 @@ export function childResumeState(
     disposition === "rerun-entire"
       ? undefined
       : findNestedCounterpart(resume.input.originalRuns, resume.counterpart?.runId, nodeId);
-  return { input: resume.input, counterpart, rerunSuffix: disposition === "descend" ? suffix.slice(1) : [] };
+  const descend = disposition === "descend";
+  return { input: resume.input, counterpart, rerunSuffix: descend ? suffix.slice(1) : [], rerunPasses: descend ? resume.rerunPasses.slice(1) : [] };
 }
 
 /**
@@ -340,11 +341,16 @@ export function resolveRerunFromNodePath(
   rootDir: string,
   files: Map<string, WorkflowFile> | undefined,
   rerunFromNodePath: string[] | undefined,
+  rerunFromPasses: (number | null)[] = [],
 ): RerunFromNodePathEntry[] | undefined {
   if (rerunFromNodePath === undefined || rerunFromNodePath.length === 0) return undefined;
   // One descent of the nested-ref tree (`descendNodePath`); each id paired with its current name at its
   // own level. A level the descent could not reach (a since-removed ref) has no node, so the id is its
   // own fallback — best-effort, since correctness never reads this crumb (#418).
   const { levels } = descendNodePath(rootFile, rootDir, files, rerunFromNodePath);
-  return rerunFromNodePath.map((id, level) => ({ nodeId: id, nodeName: levels[level]?.node?.name ?? id }));
+  // A level whose K sits in a goto pass names the pass too (ADR 0054 §6).
+  return rerunFromNodePath.map((id, level) => {
+    const pass = rerunFromPasses[level] ?? null;
+    return { nodeId: id, nodeName: levels[level]?.node?.name ?? id, ...(pass !== null ? { pass } : {}) };
+  });
 }

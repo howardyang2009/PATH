@@ -51,6 +51,13 @@ export interface ClassifyLevelKArgs {
    * intermediate path node, which is descended and re-run, not reused, so its own status is not gated.
    */
   leafStatus: RunStatus | null;
+  /**
+   * The earlier passes of this level, when K sits in pass N of a file holding a goto (ADR 0054 §6): the
+   * run ids of passes 1 to N-1, each a scope whose rows the prefix rule (#5) also reads. Every node
+   * those passes ran is serialized before K, so the prefix is counted across passes. Absent or empty
+   * for a goto-free level, or for K in pass 1.
+   */
+  earlierPassRunIds?: readonly string[];
 }
 
 /**
@@ -59,7 +66,7 @@ export interface ClassifyLevelKArgs {
  * the prefix's success (#5). `{ ok: true }` when this level is legal.
  */
 export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
-  const { body, rows, scopeRunId, nodeId, leafStatus } = args;
+  const { body, rows, scopeRunId, nodeId, leafStatus, earlierPassRunIds = [] } = args;
 
   // #2 / #3 — locate the node at this level. A top-level, run-producing node is the only legal locus;
   // anything else splits into since-deleted (#2) and illegal-locus (#3).
@@ -80,16 +87,20 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
   // legitimately skipped (an untaken branch arm, a zero-iteration `while-do` body) and does not gate
   // the prefix; only a ran-but-unsucceeded one breaks reuse. A `while-do` body that ran many times
   // passes on any succeeded iteration row, the same multi-iteration reuse limit plain Resume has.
+  // Under a goto the prefix is counted across passes (ADR 0054 §6): an earlier pass is serialized
+  // before K whole, so every node of the body is its prefix there, not only the nodes before K.
   const rowArray = [...rows];
-  const ranInScope = (id: string): boolean => rowArray.some((r) => r.parentRunId === scopeRunId && r.nodeId === id);
-  const succeededInScope = (id: string): boolean =>
-    rowArray.some((r) => r.parentRunId === scopeRunId && r.nodeId === id && r.status === "succeeded");
-  for (const prefixNode of body.slice(0, topLevelIndex)) {
-    for (const inner of walkNodes([prefixNode])) {
-      if (!isStepType(inner.type)) continue;
-      if (ranInScope(inner.id) && !succeededInScope(inner.id)) return { ok: false, reason: "prefix-unsucceeded" };
+  const prefixBroken = (scope: string | undefined, prefix: WorkflowNode[]): boolean => {
+    const ranInScope = (id: string): boolean => rowArray.some((r) => r.parentRunId === scope && r.nodeId === id);
+    const succeededInScope = (id: string): boolean =>
+      rowArray.some((r) => r.parentRunId === scope && r.nodeId === id && r.status === "succeeded");
+    for (const inner of walkNodes(prefix)) {
+      if (isStepType(inner.type) && ranInScope(inner.id) && !succeededInScope(inner.id)) return true;
     }
-  }
+    return false;
+  };
+  if (earlierPassRunIds.some((passRunId) => prefixBroken(passRunId, body))) return { ok: false, reason: "prefix-unsucceeded" };
+  if (prefixBroken(scopeRunId, body.slice(0, topLevelIndex))) return { ok: false, reason: "prefix-unsucceeded" };
 
   return { ok: true };
 }

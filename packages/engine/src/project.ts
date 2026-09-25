@@ -399,6 +399,7 @@ export function openProject(dir: string): OpenProjectResult {
         // legal-K input, never the reuse-swapped `originalRuns` below.
         const { rerunFromRunId, ...runOpts } = opts;
         let rerunFromNodePath: string[] | undefined;
+        let rerunFromPasses: (number | null)[] | undefined;
         if (rerunFromRunId !== undefined) {
           // The loaded file tree and the root file's own directory let legal-K descend a nested K one
           // level per path element (ADR 0036), resolving each intermediate `workflow` ref against the
@@ -406,6 +407,7 @@ export function openProject(dir: string): OpenProjectResult {
           const verdict = resolveLegalK(rootFile, directRuns, rerunFromRunId, runOpts.files ?? new Map(), workflowDir);
           if (!verdict.ok) return { found: false, refusal: verdict.refusal };
           rerunFromNodePath = verdict.nodePath;
+          rerunFromPasses = verdict.passes;
         }
 
         // The continuation recipe Resume and Complete share (`continuation.ts`): the tree's rows with
@@ -417,6 +419,7 @@ export function openProject(dir: string): OpenProjectResult {
           originalRuns,
           readBlob: continuationBlobReader(absDir),
           rerunFromNodePath,
+          rerunFromPasses,
         };
 
         const result = await execute(

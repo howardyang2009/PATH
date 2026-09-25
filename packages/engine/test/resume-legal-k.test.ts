@@ -58,11 +58,11 @@ function abcRows(statuses: { a?: RunRecord["status"]; b?: RunRecord["status"]; c
 describe("resolveLegalK — the legal path", () => {
   it("resolves a top-level succeeded node with a succeeded prefix to its length-1 node path", () => {
     const verdict = resolveLegalK(abcFile, abcRows(), "b-run", new Map(), "/tmp");
-    expect(verdict).toEqual({ ok: true, nodePath: ["b"] });
+    expect(verdict).toEqual({ ok: true, nodePath: ["b"], passes: [null] });
   });
 
   it("accepts the first node (empty prefix)", () => {
-    expect(resolveLegalK(abcFile, abcRows(), "a-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["a"] });
+    expect(resolveLegalK(abcFile, abcRows(), "a-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["a"], passes: [null] });
   });
 });
 
@@ -154,7 +154,7 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
       reusedFromRunId: "src-run",
       reusedFromRootRunId: "src-root",
     });
-    expect(resolveLegalK(abcFile, rows, "b-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["b"] });
+    expect(resolveLegalK(abcFile, rows, "b-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["b"], passes: [null] });
   });
 });
 
@@ -190,7 +190,7 @@ describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
   it("resolves a nested K by walking the run's parents to root", () => {
     // sub itself failed (a later node re-runs), but K = k succeeded with a succeeded inner prefix p.
     const verdict = resolveLegalK(rootWithSub, nestedRows(), "k-run", nestedFiles, "/tmp");
-    expect(verdict).toEqual({ ok: true, nodePath: ["sub", "k"] });
+    expect(verdict).toEqual({ ok: true, nodePath: ["sub", "k"], passes: [null, null] });
   });
 
   it("a since-deleted intermediate workflow is 409", () => {
@@ -344,7 +344,7 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
   }
 
   it("an untaken branch arm before K does not break the prefix", () => {
-    expect(resolveLegalK(pickFile, pickRows(), "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"] });
+    expect(resolveLegalK(pickFile, pickRows(), "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"], passes: [null] });
   });
 
   it("a branch arm that ran and failed before K still breaks the prefix", () => {
@@ -371,6 +371,6 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
       run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
       run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
     ];
-    expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"] });
+    expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"], passes: [null] });
   });
 });

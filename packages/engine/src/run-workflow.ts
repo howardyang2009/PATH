@@ -187,6 +187,11 @@ export interface ResumeInput {
    * current file before any successor starts — the engine trusts it and only backstops with a throw.
    */
   rerunFromNodePath?: string[];
+  /**
+   * Beside `rerunFromNodePath`, level for level: the goto pass (1-based) K's path-node sits in at that
+   * level, or `null` for a level whose file holds no goto (ADR 0054 §6). Absent when no level has one.
+   */
+  rerunFromPasses?: (number | null)[];
 }
 
 /**
@@ -285,7 +290,7 @@ interface WorkflowRunParams {
   // `rerunSuffix` is the Resume-from-K rerun boundary as a per-level remaining descent path (ADR 0036):
   // the root run carries the whole path, each descent hands the path-node its `slice(1)` tail, and
   // every off-path sibling hands `[]`, so suppression reaches exactly the on-path level at each depth.
-  resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[] };
+  resume?: { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[]; rerunPasses: (number | null)[] };
   // Complete-continue over the appendable tree (ADR 0041): the shared continue state plus **this**
   // run's own existing row. `existing` defined means the run is re-entered in place — its row already
   // exists, so no `run-started` is emitted and its context is restored from its own `context.json`; on
@@ -400,6 +405,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
           ? planReuse(params.resume.input.originalRuns, file, resumeCounterpart.runId, suppress)
           : new Map(),
         rerunSuffix,
+        rerunPasses: params.resume.rerunPasses,
       }
     : undefined;
   let previousOutput: JsonValue = seed;
@@ -959,6 +965,7 @@ export async function runWorkflow(
             input: options.resume,
             counterpart: originalRoot,
             rerunSuffix: options.resume.rerunFromNodePath ?? [],
+            rerunPasses: options.resume.rerunFromPasses ?? [],
           }
         : undefined,
       // Complete-continue (ADR 0041): the root run is re-entered in place — its own row is the
@@ -971,7 +978,7 @@ export async function runWorkflow(
       // The rerun boundary (K) descent path, denormalized to `{nodeId, nodeName}[]` for the root row
       // (#444, ADR 0032). Undefined on plain Resume, which leaves `rerun_from_node_path` null.
       rerunFromNodePath: options.resume
-        ? resolveRerunFromNodePath(file, fileDir, options.files, options.resume.rerunFromNodePath)
+        ? resolveRerunFromNodePath(file, fileDir, options.files, options.resume.rerunFromNodePath, options.resume.rerunFromPasses)
         : undefined,
       // The successor-identity fact (#173): this fresh root run resumes the original tree, so its own
       // predecessor is that tree's root run id. Stamped on the root `run-started` alone — nested runs
@@ -1334,6 +1341,7 @@ function loopIterationResume(run: RunContext, node: WhileDoNode, iteration: numb
     // that node — the whole point of the per-iteration scope (uniqueness restored one level down).
     plan: planReuse(resume.input.originalRuns, run.file, counterpart.runId),
     rerunSuffix: [],
+    rerunPasses: [],
   };
 }
 
@@ -1481,6 +1489,44 @@ function runGotoNode(run: RunContext, node: GotoNode, incomingOutput: JsonValue)
 }
 
 /**
+ * The resume state for pass `pass` of a resuming workflow-run (ADR 0054 §5–6, spec docs/spec/goto.md
+ * §8.1). While the walk is still `paired`, the pass pairs with the predecessor's pass holding the same
+ * ordinal **and** opened by the same goto (`null` for pass 1), whatever that pass's status, and its
+ * `planReuse` is scoped to that pass: a failed pass reuses its succeeded nodes and re-runs from the
+ * failure. No such pass (or an earlier mismatch) runs fresh: no counterpart, an empty plan.
+ *
+ * Resume-from-K at this level names the pass N its boundary B sits in. Passes before N pair as plain
+ * Resume; pass N pairs with this level's boundary applied inside it (B and after re-run, B descended
+ * when a deeper K follows); every pass after N runs fresh, paired or not.
+ */
+function passResumeState(resume: RunResume, file: WorkflowFile, pass: number, opener: GotoNode | null, paired: boolean): RunResume {
+  const fresh: RunResume = { input: resume.input, counterpart: undefined, plan: new Map(), rerunSuffix: [], rerunPasses: [] };
+  let boundaryPass: number | undefined;
+  if (resume.rerunSuffix.length > 0) {
+    // A boundary with no pass means the predecessor ran this level with no passes (a goto added
+    // since), or a caller that named none. Either way no pass is known to hold B, so nothing pairs:
+    // pairing without the boundary would silently reuse the work the operator asked to drop.
+    const named = resume.rerunPasses[0];
+    if (typeof named !== "number") return fresh;
+    boundaryPass = named;
+  }
+  if (!paired || (boundaryPass !== undefined && pass > boundaryPass)) return fresh;
+  const counterpart = resume.input.originalRuns.find(
+    (r) => r.parentRunId === resume.counterpart?.runId && r.pass === pass && r.nodeId === (opener?.id ?? null),
+  );
+  if (!counterpart) return fresh;
+  const atBoundary = pass === boundaryPass;
+  const rerunSuffix = atBoundary ? resume.rerunSuffix : [];
+  return {
+    input: resume.input,
+    counterpart,
+    plan: planReuse(resume.input.originalRuns, file, counterpart.runId, buildSuppressSet(file, rerunSuffix)),
+    rerunSuffix,
+    rerunPasses: atBoundary ? resume.rerunPasses : [],
+  };
+}
+
+/**
  * One workflow-run's **top-level walk** (ADR 0053/0054, spec docs/spec/goto.md §3): its file's first
  * level walked as an index loop with a jump register, so a goto can re-seek it. A goto-free file has no passes and is
  * walked by `runSequence` exactly as before. A file holding a goto walks in **passes**: each forward
@@ -1505,6 +1551,9 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
   let opener: GotoNode | null = null;
   let start = 0;
   let carried = seedInput;
+  // Resume pairing (spec §8.1): true while every pass so far found its predecessor counterpart. The
+  // first mismatch leaves the record, so that pass and every later one run fresh.
+  let paired = true;
   for (;;) {
     const passIdentity: RunIdentity = {
       runId: randomUUID(),
@@ -1518,7 +1567,9 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
     // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
     await passEmitter.runStarted({ input: carried });
     await run.emitter.passStarted(opener, { pass });
-    const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter };
+    const passResume = run.resume && passResumeState(run.resume, run.file, pass, opener, paired);
+    if (passResume && !passResume.counterpart) paired = false;
+    const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter, resume: passResume };
 
     const outcome = await runSequence(passRun, body.slice(start), carried, exec);
     // A parked leaf keeps its pass `running`, like the workflow-run around it (ADR 0041).

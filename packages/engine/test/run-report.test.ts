@@ -73,6 +73,7 @@ describe("renderListEligible", () => {
         { runId: "root-1", nodeName: null, status: "succeeded", verdict: { eligible: false, reason: "root-run" } },
         { runId: "s-1", nodeName: "build", status: "succeeded", verdict: { eligible: true } },
         { runId: "s-2", nodeName: "loop-step", status: "succeeded", verdict: { eligible: false, reason: "in-body", container: "loop" } },
+        { runId: "p-2", nodeName: "check", status: "succeeded", verdict: { eligible: false, reason: "pass-run" } },
       ],
     };
     const report = renderListEligible(result);
@@ -86,6 +87,8 @@ describe("renderListEligible", () => {
     expect(lines[1]).toMatch(/root-1\s+-\s+succeeded\s+root run \(never a boundary\)/);
     expect(lines[2]).toMatch(/s-1\s+build\s+succeeded\s+yes/);
     expect(lines[3]).toContain("inside a loop body");
+    // A goto pass container is never a boundary; K is a node inside it.
+    expect(lines[4]).toMatch(/p-2\s+check\s+succeeded\s+goto pass \(never a boundary\)/);
   });
 });
 
