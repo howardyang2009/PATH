@@ -384,6 +384,14 @@ export class PathApiClient {
     return this.writeTemplate(`/v0/templates/${encodeURIComponent(input.id)}`, "PUT", input.body, input.ifMatch);
   }
 
+  /**
+   * `DELETE /v0/templates/:id` — delete a user template (server-api-v0.md §10.5). A shipped (read-only)
+   * template is a `403` and an unknown id a `404`, each as a `PathApiError`.
+   */
+  async deleteTemplate(id: string): Promise<void> {
+    await this.del(`/v0/templates/${encodeURIComponent(id)}`);
+  }
+
   /** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed reply. */
   private async writeTemplate(path: string, method: "POST" | "PUT", body: unknown, ifMatch: string | undefined): Promise<TemplateWriteResult> {
     const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
@@ -443,6 +451,19 @@ export class PathApiClient {
     if (!res.ok) throw toApiError(res.status, text);
     const parsed = JSON.parse(text) as WirePutWorkflowResponse;
     return { relativePath: parsed.relative_path, id: parsed.id, etag: parsed.etag };
+  }
+
+  /**
+   * `DELETE /v0/workflows/file?path=<relative_path>` (server-api-v0.md §7.2): delete one workflow file.
+   * `ifMatch` is required, the ETag of the bytes the caller last read or wrote, so a delete never removes
+   * bytes the caller has not seen: a `412` says the file changed. `sessionId` names the caller's own edit
+   * lease, which the delete removes with the file; another session's live lease is a `409`. A `404` (the
+   * file is gone or the path escapes the root) and a `400` (a template path) also arrive as `PathApiError`s.
+   */
+  async deleteWorkflowFile(input: { path: string; ifMatch: string; sessionId?: string }): Promise<void> {
+    const query = new URLSearchParams({ path: input.path });
+    if (input.sessionId !== undefined) query.set("session_id", input.sessionId);
+    await this.del(`/v0/workflows/file?${query.toString()}`, { "If-Match": input.ifMatch });
   }
 
   /**
@@ -558,10 +579,10 @@ export class PathApiClient {
    * 2xx reply is not parsed (`deleteRun`'s caller already knows the id). Its own helper, so reading
    * it tells you the request is a delete without tracing a method flag.
    */
-  private async del(path: string): Promise<void> {
+  private async del(path: string, headers: Record<string, string> = {}): Promise<void> {
     const res = await this.fetch(this.url(path), {
       method: "DELETE",
-      headers: { Accept: "application/json" },
+      headers: { Accept: "application/json", ...headers },
     });
     const text = await res.text();
     if (!res.ok) throw toApiError(res.status, text);

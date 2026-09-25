@@ -88,6 +88,33 @@ describe("PathApiClient", () => {
     expect(inits[0]?.body).toBeUndefined();
   });
 
+  it("deleteWorkflowFile sends DELETE with the path, session id and If-Match", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteWorkflowFile({ path: "flows/a b.workflow.json", ifMatch: '"e1"', sessionId: "s1" })).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fa+b.workflow.json&session_id=s1");
+    expect(inits[0]?.method).toBe("DELETE");
+    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"e1"');
+  });
+
+  it("deleteTemplate sends DELETE /v0/templates/:id", async () => {
+    const inits: (RequestInit | undefined)[] = [];
+    const stub = stubFetch((_url, init) => {
+      inits.push(init);
+      return new Response(null, { status: 204 });
+    });
+    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+
+    await expect(client.deleteTemplate("t 1")).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
+    expect(inits[0]?.method).toBe("DELETE");
+  });
+
   it("deleteRun appends ?force=true only when force is set", async () => {
     const stub = stubFetch(() => json({ root_run_id: "r1" }, 200));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });

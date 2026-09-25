@@ -140,14 +140,18 @@ export interface History {
 /**
  * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
  * `saved` shows the confirmation after a `200`; `conflict` is the `412` stale-write; `error` is any other
- * write failure.
+ * write failure. A Delete of the open file rides the same phase: `deleting` while in flight, `deleted`
+ * once the file is gone (the canvas is then empty), `delete-error` when the server refused it.
  */
 export type SaveState =
   | { phase: "idle" }
   | { phase: "saving" }
   | { phase: "saved" }
   | { phase: "conflict"; message: string }
-  | { phase: "error"; message: string };
+  | { phase: "error"; message: string }
+  | { phase: "deleting" }
+  | { phase: "deleted" }
+  | { phase: "delete-error"; message: string };
 
 /** A frame's opened workflow result, or `null` when it is loading, failed to fetch, or is a refusal. */
 export type OpenedResult = Extract<OpenResult, { status: "opened" }>;
@@ -384,6 +388,11 @@ export type SessionAction =
    * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
    */
   | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
+  /**
+   * The root file named by `plan` was deleted. If the root frame still holds it, the stack clears to an
+   * empty canvas in the same mode, in the `deleted` phase; otherwise only the phase resets.
+   */
+  | { type: "deleted"; plan: DeletePlan }
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
   | { type: "setSaveState"; saveState: SaveState };
 
@@ -403,6 +412,14 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "switchMode":
       return { mode: action.mode, frames: [], activeIndex: 0, saveState: IDLE };
+
+    case "deleted": {
+      const root = state.frames[0];
+      const plan = action.plan;
+      const stillOpen = plan.kind === "template" ? root?.template?.id === plan.id : root?.path === plan.path && !root.template;
+      if (!stillOpen) return { ...state, saveState: IDLE };
+      return { mode: state.mode, frames: [], activeIndex: 0, saveState: { phase: "deleted" } };
+    }
 
     case "openTemplateLoading":
       return { mode: "template", frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
@@ -671,6 +688,28 @@ export function planSave(state: SessionState): SavePlan | null {
   return frame.written
     ? { kind: "overwrite", depth, path: frame.path, file: opened.file, ifMatch: frame.etag ?? undefined }
     : { kind: "create", depth, path: frame.path, file: opened.file, ifMatch: undefined };
+}
+
+/**
+ * What the Delete button would remove, or `null` when it does nothing. Delete acts on the **root** file
+ * only (the breadcrumb's first entry, while it is active), so a nested file is deleted by opening it:
+ *
+ * - **workflow** — a written file removed through `DELETE /v0/workflows/file` under the read's `If-Match`
+ *   ETag, so it never removes bytes the author has not seen (a refused file can be deleted too);
+ * - **template** — a user template removed through `DELETE /v0/templates/:id`. A shipped template is
+ *   read-only, so it has no plan.
+ *
+ * A new buffer that was never saved has nothing on disk, so it has no plan either.
+ */
+export type DeletePlan = { kind: "workflow"; path: string; ifMatch: string } | { kind: "template"; id: string; name: string };
+
+export function planDelete(state: SessionState): DeletePlan | null {
+  if (state.activeIndex !== 0) return null;
+  const frame = state.frames[0];
+  if (!frame || frame.state.phase !== "open") return null;
+  if (frame.template) return frame.template.readOnly ? null : { kind: "template", id: frame.template.id, name: frame.template.name };
+  if (!frame.written || frame.path === null || frame.etag === null) return null;
+  return { kind: "workflow", path: frame.path, ifMatch: frame.etag };
 }
 
 /** What the first-save dialog's target would do, or `null` when the active frame is not a from-scratch root. */

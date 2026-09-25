@@ -29,9 +29,9 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 /**
  * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
  * never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
- * recovery) or any other save error. Else "Unsaved edits" for a buffer with unsaved work, or "Saved"
- * after a save lands. An id-less file opens dirty with no edit (ids stamped on import, ADR 0015), so that reason is
- * named instead. An untouched New buffer has no unsaved work, so it shows nothing.
+ * recovery) or any other save or delete error. Else "Unsaved edits" for a buffer with unsaved work,
+ * "Saved" after a save lands, or "Deleted" once a Delete removed the file. An id-less file opens dirty
+ * with no edit (ids stamped on import, ADR 0015), so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
 export function FileStatus({
   frame,
@@ -53,10 +53,18 @@ export function FileStatus({
       </span>
     );
   }
-  if (saveState.phase === "error") {
+  if (saveState.phase === "error" || saveState.phase === "delete-error") {
+    const verb = saveState.phase === "error" ? "save" : "delete";
     return (
       <span className="file-status file-status-failed" role="alert" title={saveState.message}>
-        Could not save: {saveState.message}
+        Could not {verb}: {saveState.message}
+      </span>
+    );
+  }
+  if (saveState.phase === "deleted") {
+    return (
+      <span className="file-status file-status-saved" role="status">
+        Deleted
       </span>
     );
   }
@@ -119,6 +127,8 @@ export function EditingToolbar({
   onRedo,
   onSave,
   onSaveAs,
+  canDelete,
+  onDelete,
   lease,
   onTakeover,
   onReacquire,
@@ -141,12 +151,16 @@ export function EditingToolbar({
   onSave: () => void;
   /** Save a copy under a new name: a new workflow file in workflow mode, a new template in template mode. */
   onSaveAs: () => void;
+  /** Is a saved, deletable root file open (`planDelete`)? A new buffer or a shipped template is not. */
+  canDelete: boolean;
+  /** Delete the open workflow or template from disk, after the author confirms. */
+  onDelete: () => void;
   /** The active file's lease state, or `undefined` before it is known. */
   lease: LeaseState | undefined;
   onTakeover: () => void;
   onReacquire: () => void;
 }): JSX.Element {
-  const saving = saveState.phase === "saving";
+  const saving = saveState.phase === "saving" || saveState.phase === "deleting";
   const conflict = saveState.phase === "conflict";
   return (
     <div className="editing-toolbar">
@@ -168,10 +182,13 @@ export function EditingToolbar({
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
       <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
-        {saving ? "Saving…" : "Save"}
+        {saveState.phase === "saving" ? "Saving…" : "Save"}
       </button>
       <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
         Save as…
+      </button>
+      <button type="button" className="toolbar-btn toolbar-btn-danger" onClick={onDelete} disabled={saving || !canDelete}>
+        {saveState.phase === "deleting" ? "Deleting…" : "Delete"}
       </button>
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
     </div>

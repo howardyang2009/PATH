@@ -19,6 +19,7 @@ import { handleGetTemplate } from "./routes/get-template.js";
 import { handlePostTemplates } from "./routes/post-templates.js";
 import { handlePutTemplate } from "./routes/put-template.js";
 import { handleDeleteTemplate } from "./routes/delete-template.js";
+import { handleDeleteWorkflow } from "./routes/delete-workflow.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
 import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
@@ -106,6 +107,11 @@ async function handleRequest(
 
     if (req.method === "PUT" && pathname === "/v0/workflows") {
       await handlePutWorkflow(req, res, ctx);
+      return;
+    }
+
+    if (req.method === "DELETE" && pathname === "/v0/workflows/file") {
+      handleDeleteWorkflow(req, res, ctx, url.searchParams.get("path"), url.searchParams.get("session_id"));
       return;
     }
 

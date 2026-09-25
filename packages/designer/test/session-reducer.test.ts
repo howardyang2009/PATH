@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { canonicalSerialize } from "../src/serialize.js";
-import { canvasEmpty, frameDirty, initialSessionState, openedResultOf, planNewFileSave, planNewTemplateSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState, type TemplateSource } from "../src/session-reducer.js";
+import { canvasEmpty, frameDirty, initialSessionState, openedResultOf, planDelete, planNewFileSave, planNewTemplateSave, planSave, planTemplateSaveAs, reduceSession, type Frame, type SessionState, type TemplateSource } from "../src/session-reducer.js";
 
 /**
  * The pure session state machine (`session-reducer.ts`). These tests reach every transition the Designer's
@@ -492,5 +492,38 @@ describe("edit mode (Workflow | Template)", () => {
   it("opening a workflow returns to workflow mode", () => {
     const s = reduceSession(initialSessionState, { type: "newTemplate" });
     expect(reduceSession(s, { type: "openLoading", path: "a.workflow.json", loadSeq: 1 }).mode).toBe("workflow");
+  });
+});
+
+describe("planDelete and the deleted action", () => {
+  const template: TemplateSource = { id: uuid(90), kind: "workflow", name: "nightly", description: "", readOnly: false };
+
+  it("plans a written root workflow under its read ETag", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"))))).toEqual({ kind: "workflow", path: "flow.workflow.json", ifMatch: "etag-open" });
+  });
+
+  it("plans a user template by id, but not a shipped one", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, template })))).toEqual({ kind: "template", id: uuid(90), name: "nightly" });
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, template: { ...template, readOnly: true } })))).toBeNull();
+  });
+
+  it("plans nothing for a never-saved buffer or a nested active frame", () => {
+    expect(planDelete(sessionOn(openFrame(file("flow"), { path: null, written: false })))).toBeNull();
+    const nested: SessionState = { ...sessionOn(openFrame(file("flow"))), frames: [openFrame(file("flow")), openFrame(file("child"))], activeIndex: 1 };
+    expect(planDelete(nested)).toBeNull();
+  });
+
+  it("empties the canvas in the same mode when the deleted file is still the root", () => {
+    const start = { ...sessionOn(openFrame(file("flow"))), mode: "template" as const };
+    const plan = planDelete(sessionOn(openFrame(file("flow"))))!;
+    const next = reduceSession(start, { type: "deleted", plan });
+    expect(next).toEqual({ mode: "template", frames: [], activeIndex: 0, saveState: { phase: "deleted" } });
+  });
+
+  it("only resets the phase when the root no longer holds the deleted file", () => {
+    const start = sessionOn(openFrame(file("flow"), { path: "other.workflow.json" }));
+    const next = reduceSession(start, { type: "deleted", plan: { kind: "workflow", path: "flow.workflow.json", ifMatch: "e" } });
+    expect(next.frames).toHaveLength(1);
+    expect(next.saveState).toEqual({ phase: "idle" });
   });
 });

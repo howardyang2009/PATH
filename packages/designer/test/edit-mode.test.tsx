@@ -75,6 +75,79 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+describe("Delete", () => {
+  it("deletes the open workflow after a confirm, under its If-Match, and empties the canvas", async () => {
+    const calls = renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining(`Delete "${WORKFLOW_PATH}"?`));
+    await waitFor(() => expect(calls.deletes).toHaveLength(1));
+    expect(calls.deletes[0]!.url).toMatch(/^\/v0\/workflows\/file\?path=flows%2Fmain\.workflow\.json&session_id=/);
+    expect(calls.deletes[0]!.ifMatch).toBe('"stub"');
+    expect((await screen.findByText("Deleted")).closest(".topbar-title")).not.toBeNull();
+    expect(screen.queryByText("alpha")).not.toBeInTheDocument();
+  });
+
+  it("keeps the file when the confirm is cancelled", async () => {
+    const calls = renderApp(WORKFLOW_PATH);
+    await screen.findByText("alpha");
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(calls.deletes).toHaveLength(0);
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("shows a refused delete in the top bar and keeps the file open", async () => {
+    const calls = makeCalls();
+    render(
+      <App
+        client={stubClient({
+          files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
+          calls,
+          onDelete: () => new Response(JSON.stringify({ error: { message: "workflow is being edited in another session" } }), { status: 409 }),
+        })}
+        initialPath={WORKFLOW_PATH}
+      />,
+    );
+    await screen.findByText("alpha");
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    const alert = await screen.findByText(/Could not delete: workflow is being edited in another session/);
+    expect(alert.closest(".topbar-title")).not.toBeNull();
+    expect(screen.getByText("alpha")).toBeInTheDocument();
+  });
+
+  it("deletes the open user template by id", async () => {
+    const calls = renderApp();
+    await switchTo("Template");
+    fireEvent.click(screen.getByRole("button", { name: "Open…" }));
+    fireEvent.click(await screen.findByRole("button", { name: /nightly/ }));
+    await screen.findByText("draft");
+    const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+    fireEvent.click(screen.getByRole("button", { name: "Delete" }));
+
+    expect(confirm).toHaveBeenCalledWith(expect.stringContaining('Delete template "nightly"?'));
+    await waitFor(() => expect(calls.deletes).toHaveLength(1));
+    expect(calls.deletes[0]!.url).toBe(`/v0/templates/${TEMPLATE_ID}`);
+    expect(await screen.findByText("Deleted")).toBeInTheDocument();
+  });
+
+  it("disables Delete for a new, never-saved workflow", async () => {
+    renderApp();
+    fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
+    await screen.findByRole("region", { name: "Workflow canvas" });
+    expect(screen.getByRole("button", { name: "Delete" })).toBeDisabled();
+  });
+});
+
 describe("Workflow | Template edit-mode switch", () => {
   it("starts in workflow mode and switches to an empty template canvas", async () => {
     renderApp();

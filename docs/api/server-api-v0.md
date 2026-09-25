@@ -693,6 +693,33 @@ Responses:
 - `403 Forbidden` — a `GET` is ungated (§2.1), so this arises only if a future auth layer lands. It is
   listed for shape-parity, not emitted today.
 
+### 7.2 `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` — delete one workflow file
+
+The Designer's Delete. Origin-gated (§2.1). The path rides a query param, as in §7.1, and stays an
+opaque `/`-bearing string.
+
+It guards the bytes the way the write door does (ADR 0016). `If-Match` is **required** and must match
+the file's current strong ETag, so a delete never removes bytes the caller has not seen. There is no
+blind delete, as there is no blind overwrite.
+
+It respects the edit lease (ADR 0017). A live lease held by **another** session is a `409`. The caller
+names its own session in `session_id`; its own lease, or an expired one, is removed with the file.
+
+A template path (a `*.workflow-template.json` file, or anything under `.path/template/`) is refused,
+as `PUT /v0/workflows` refuses one (§10.6). A template is deleted through `DELETE /v0/templates/:id`
+(§10.5). Other workflows that reference the deleted file keep their `ref`. The Designer reports it as
+a dangling ref.
+
+Responses:
+
+- `204 No Content` — deleted, no body.
+- `400 Bad Request` — `path` is a template path.
+- `403 Forbidden` — a cross-origin caller, rejected by the origin gate (§2.1).
+- `404 Not Found` — the file does not exist, `path` escapes the project root, or a path component is a
+  symlink (same confinement as §7).
+- `409 Conflict` — another session holds a live edit lease on the file.
+- `412 Precondition Failed` — no `If-Match`, or an `If-Match` that does not match the file's bytes.
+
 ## 8. `GET /v0/step-plugins` — the authoring registry
 
 New capability ([#261](https://github.com/howardyang2009/PATH/issues/261), part of

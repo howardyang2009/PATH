@@ -56,7 +56,7 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
  * `*.workflow-template.json` file, or anything lexically under `.path/template/`. The prefix test
  * resolves the path first, so a `../` detour into the template tree is caught as well.
  */
-function isTemplatePath(projectDir: string, workflowPath: string): boolean {
+export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
   if (workflowPath.endsWith(".workflow-template.json")) return true;
   const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
   const templateDir = join(".path", "template");

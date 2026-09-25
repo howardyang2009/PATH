@@ -7,6 +7,7 @@ import { canonicalSerialize } from "./serialize.js";
 import {
   canvasEmpty,
   initialSessionState,
+  planDelete,
   planNewFileSave,
   planSave,
   planNewTemplateSave,
@@ -28,7 +29,7 @@ import {
 // `client` I/O that decision calls for, and dispatches the outcome as an action. Re-export the frame
 // types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
 // the tests that import them from here.
-export { openedResultOf, frameDirty, frameHasUnsavedWork, frameCanUndo, frameCanRedo } from "./session-reducer.js";
+export { planDelete, openedResultOf, frameDirty, frameHasUnsavedWork, frameCanUndo, frameCanRedo } from "./session-reducer.js";
 export type { EditMode, Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
 
 /**
@@ -173,6 +174,13 @@ export interface OpenSession {
    * ETag. The stale-write recovery (#371). A no-op with no file open.
    */
   reloadActive: () => void;
+  /**
+   * Delete the root file from disk (`planDelete`): a workflow under its read's `If-Match`, naming this
+   * session's edit lease `sessionId` so the server removes it with the file, or a user template by id. On
+   * success the canvas is empty in the `deleted` phase; a refusal is the `delete-error` phase. A no-op when
+   * there is nothing to delete.
+   */
+  deleteActive: (sessionId: string) => void;
   /** The active frame's save state — drives the save button and the stale-write conflict banner. */
   saveState: SaveState;
 }
@@ -405,6 +413,22 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     apply({ type: "redo" });
   }, [apply]);
 
+  const deleteActive = useCallback(
+    (sessionId: string): void => {
+      const plan = planDelete(sessionRef.current);
+      if (!plan) return;
+      apply({ type: "setSaveState", saveState: { phase: "deleting" } });
+      const request =
+        plan.kind === "template"
+          ? client.deleteTemplate(plan.id)
+          : client.deleteWorkflowFile({ path: plan.path, ifMatch: plan.ifMatch, sessionId });
+      request
+        .then(() => apply({ type: "deleted", plan }))
+        .catch((error: unknown) => apply({ type: "setSaveState", saveState: { phase: "delete-error", message: errorMessage(error) } }));
+    },
+    [apply, client],
+  );
+
   const reloadActive = useCallback((): void => {
     if (!pluginsRef.current) return;
     const seq = ++loadSeq.current;
@@ -630,5 +654,5 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, mode: session.mode, switchMode, newTemplate, saveNewTemplate, saveWorkflowAs, frames, activeIndex, open, openTemplate, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, saveAsTemplate, reloadActive, saveState };
+  return { registry, mode: session.mode, switchMode, newTemplate, saveNewTemplate, saveWorkflowAs, frames, activeIndex, open, openTemplate, newFile, canvasEmpty: canvasEmpty(session), placeWorkflowInstance, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveNewFile, saveAsTemplate, reloadActive, deleteActive, saveState };
 }

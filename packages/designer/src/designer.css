@@ -1361,6 +1361,10 @@ body {
   cursor: pointer;
 }
 
+.toolbar-btn-danger {
+  color: var(--status-failed-fg);
+}
+
 .toolbar-btn:disabled {
   opacity: 0.5;
   cursor: default;

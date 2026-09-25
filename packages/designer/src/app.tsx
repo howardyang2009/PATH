@@ -21,7 +21,7 @@ import { useFileProblems } from "./use-file-problems.js";
 import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
-import { frameCanRedo, frameCanUndo, frameDirty, frameHasUnsavedWork, openedResultOf, useOpenFile } from "./use-open-file.js";
+import { frameCanRedo, frameCanUndo, frameDirty, frameHasUnsavedWork, openedResultOf, planDelete, useOpenFile } from "./use-open-file.js";
 
 /** The workflow-level fields of `file` that hold a value — what a save as step-template drops. */
 function workflowLevelFields(file: WorkflowFile): string[] {
@@ -159,7 +159,15 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         .map((frame) => frame.path as string),
     [session.frames],
   );
-  const { leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
+  const { sessionId, leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
+  // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be undone.
+  const deletePlan = planDelete({ mode: session.mode, frames: session.frames, activeIndex: session.activeIndex, saveState: session.saveState });
+  const onDelete = (): void => {
+    if (!deletePlan) return;
+    const target = deletePlan.kind === "template" ? `template "${deletePlan.name}"` : `"${deletePlan.path}"`;
+    const unsaved = session.frames.some((frame) => frameHasUnsavedWork(frame)) ? " Unsaved changes are lost too." : "";
+    if (window.confirm(`Delete ${target}? This removes it from disk and cannot be undone.${unsaved}`)) session.deleteActive(sessionId);
+  };
   // Dirty is content-equality against the active frame's baseline (ADR 0030), the same fact launch and
   // Save gate on — not a mutation flag. `active` is the frame the buffer and its baseline live on.
   const dirty = frameDirty(active);
@@ -237,6 +245,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
             onReacquire={() => activePath && reacquire(activePath)}
+            canDelete={deletePlan !== null}
+            onDelete={onDelete}
           />
         ) : undefined
       }

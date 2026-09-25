@@ -38,6 +38,8 @@ export interface StubCalls {
   resume: { rootRunId: string; body: unknown }[];
   /** Every template write (#580): `POST /v0/templates` (id `null`) or `PUT /v0/templates/:id`. */
   templateWrites: TemplateWrite[];
+  /** Every `DELETE` (a workflow file or a template): the request URL and its `If-Match`. */
+  deletes: { url: string; ifMatch: string | null }[];
 }
 
 /** One recorded template write: the verb, the URL id (`null` for a POST), the JSON body, and `If-Match`. */
@@ -78,6 +80,8 @@ export interface DesignerStubOptions {
   plugins?: WireStepPlugin[];
   /** Status for the registry response, for the failure path. */
   pluginsStatus?: number;
+  /** Answer a `DELETE` (workflow file or template) instead of the default `204`. */
+  onDelete?: (url: string) => Response;
   /** Raw file bodies keyed by relative path, for `GET /v0/workflows/file`. A path the map lacks answers 404. */
   files?: Record<string, string>;
   /** A recorder the caller passes in; the stub pushes every write/lock body into it. */
@@ -117,7 +121,7 @@ export interface DesignerStubOptions {
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
 export function makeCalls(): StubCalls {
-  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [] };
+  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [], deletes: [] };
 }
 
 /** A granted lease for a session — the default lock response. */
@@ -179,6 +183,11 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     const treeMatch = /^\/v0\/runs\/([^/?]+)$/.exec(input);
     if (treeMatch && (init?.method ?? "GET") === "GET") {
       return json(options.tree ?? { root_run_id: decodeURIComponent(treeMatch[1]!), status: "pending", output: null, runs: [] }, options.treeStatus ?? 200);
+    }
+    if (init?.method === "DELETE") {
+      const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+      calls?.deletes.push({ url: input, ifMatch });
+      return options.onDelete ? options.onDelete(input) : new Response(null, { status: 204 });
     }
     const fileMatch = /^\/v0\/workflows\/file\?path=(.+)$/.exec(input);
     if (fileMatch) {
