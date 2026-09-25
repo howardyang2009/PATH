@@ -6,8 +6,11 @@ import {
   buildSuppressSet,
   childResumeState,
   continuationOf,
+  firstRecordedChild,
   readExistingOutput,
+  recordedPasses,
   resolveRerunFromNodePath,
+  targetLeafUnder,
 } from "./continuation.js";
 import { rootCancellation, stopCause } from "./cancellation.js";
 import { buildLaunchFacts, describeMissingLaunchSecrets } from "./launch-facts.js";
@@ -1554,9 +1557,39 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
   // Resume pairing (spec §8.1): true while every pass so far found its predecessor counterpart. The
   // first mismatch leaves the record, so that pass and every later one run fresh.
   let paired = true;
+  // Complete (ADR 0060, spec §8.2): follow the record. Every recorded pass counts one jump for the goto
+  // that opened it, and the walk re-enters the one `running` pass in place. Closed passes are facts,
+  // not re-walked: no condition, goto or event of theirs is replayed.
+  let reentered: RunRecord | undefined;
+  if (run.continue) {
+    const passes = recordedPasses(run.continue, run.identity.runId);
+    for (const recorded of passes) {
+      if (recorded.nodeId !== null) jumpsSpent.set(recorded.nodeId, (jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
+    }
+    reentered = passes.find((recorded) => recorded.status === "running");
+  }
+  if (reentered && run.continue) {
+    pass = reentered.pass!;
+    carried = run.continue.readBlob(reentered, RUN_BLOB_FILE.input);
+    if (pass > 1) {
+      // Pass N starts at its opening goto's target in the reloaded file, which must be the node the
+      // pass recorded first; else the tail would no longer match the pass's rows.
+      const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
+      const target = goto && body.find((candidate) => candidate.name === goto.target);
+      const recordedFirst = firstRecordedChild(run.continue, reentered.runId);
+      if (!target || target.id !== recordedFirst?.nodeId) {
+        const error =
+          `Complete replay diverged: pass ${pass} was opened by goto "${goto?.name ?? reentered.nodeName}" ` +
+          `whose target is now "${goto?.target ?? "(none)"}", recorded "${recordedFirst?.nodeName ?? "(none)"}"`;
+        return failDivergedPass(run, reentered, error);
+      }
+      opener = goto!;
+      start = indexById.get(target.id)!;
+    }
+  }
   for (;;) {
     const passIdentity: RunIdentity = {
-      runId: randomUUID(),
+      runId: reentered?.runId ?? randomUUID(),
       rootRunId: run.identity.rootRunId,
       parentRunId: run.identity.runId,
       nodeId: opener?.id ?? null,
@@ -1564,9 +1597,13 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
       pass,
     };
     const passEmitter = run.emitter.child(passIdentity);
-    // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
-    await passEmitter.runStarted({ input: carried });
-    await run.emitter.passStarted(opener, { pass });
+    // A re-entered running pass already has its row and was opened before; only a new pass starts.
+    if (reentered === undefined) {
+      // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
+      await passEmitter.runStarted({ input: carried });
+      await run.emitter.passStarted(opener, { pass });
+    }
+    reentered = undefined;
     const passResume = run.resume && passResumeState(run.resume, run.file, pass, opener, paired);
     if (passResume && !passResume.counterpart) paired = false;
     const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter, resume: passResume };
@@ -1605,6 +1642,30 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
     start = targetIndex;
     carried = outcome.output;
   }
+}
+
+/**
+ * A Complete whose running pass no longer matches the reloaded file (ADR 0060 §2): the pass and, with
+ * it, the workflow-run fail. The parked leaf, when it sits in this pass, is committed first with the
+ * supplied output, so a later Resume reuses it instead of asking for it again.
+ */
+async function failDivergedPass(run: RunContext, passRow: RunRecord, error: string): Promise<SeqOutcome> {
+  const state = run.continue!;
+  if (targetLeafUnder(state, passRow.runId)) {
+    const leaf = state.existingRuns.find((r) => r.runId === state.target.stepRunId)!;
+    await run.emitter.step({ id: leaf.nodeId!, name: leaf.nodeName! }, leaf.runId).finished({ status: "succeeded", output: state.target.output });
+  }
+  const failed: SeqOutcome = { status: "failed", error };
+  const passIdentity: RunIdentity = {
+    runId: passRow.runId,
+    rootRunId: run.identity.rootRunId,
+    parentRunId: run.identity.runId,
+    nodeId: passRow.nodeId,
+    nodeName: passRow.nodeName,
+    pass: passRow.pass!,
+  };
+  await run.emitter.child(passIdentity).runFinished(failed);
+  return failed;
 }
 
 /**
