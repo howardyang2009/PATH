@@ -23,8 +23,8 @@ const TABS: readonly { key: PaletteTab; label: string }[] = [
  * describes, plus the `workflow` ref. Until the registry lands the Step list is just `workflow`; the
  * Controller group is fixed by the grammar and always shown.
  *
- * Templates holds the Step-Template category from `GET /v0/templates` (the only kind, ADR 0063). A
- * Step-Template card arms like a Build card (#578): the click reads the template's body, and the canvas
+ * Templates holds the Template category from `GET /v0/templates` (the only kind, ADR 0063). A
+ * Template card arms like a Build card (#578): the click reads the template's body, and the canvas
  * then opens the sockets the grammar admits that body into. In template mode, a double-click on a card
  * opens the template file itself in author mode (#580); in workflow
  * mode the Templates tab only inserts, so a double-click never leaves the open workflow. A failed read says why
@@ -261,7 +261,7 @@ function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: bool
 /**
  * One template card: the file-stem name, the blurb, a `shipped` tag for a read-only shipped row, and —
  * for an invalid row — the server's error, with the card disabled so it cannot be selected. A
- * Step-Template card is an arm toggle like a Build card (#578). In template mode (`canEdit`), a
+ * Template card is an arm toggle like a Build card (#578). In template mode (`canEdit`), a
  * double-click on a card opens its template file in author mode (#580). The card is only `aria-disabled`, so the double-click still reaches a
  * disabled card: an author can open a broken template to repair it (ADR 0050 decision 5).
  */

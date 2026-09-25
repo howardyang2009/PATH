@@ -6,7 +6,7 @@ import { stubClient } from "./stub-server.js";
 
 /**
  * #577: the palette lists templates. A `Templates` tab beside `Build` (variant C of #564) holds a
- * Step-Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
+ * Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
  * rows alike. An invalid row is listed with its error and cannot be selected.
  */
 
@@ -48,14 +48,14 @@ describe("Designer palette lists templates (#577)", () => {
     const build = within(palette).getByRole("tabpanel", { name: "Build" });
     expect(within(build).getByRole("region", { name: "Step" })).toBeInTheDocument();
     expect(within(build).getByRole("region", { name: "Controller" })).toBeInTheDocument();
-    expect(within(palette).queryByRole("region", { name: "Step-Template" })).not.toBeInTheDocument();
+    expect(within(palette).queryByRole("region", { name: "Templates" })).not.toBeInTheDocument();
   });
 
-  it("lists shipped and user templates under Step-Template, with no Workflow-Template category", async () => {
+  it("lists shipped and user templates under Templates, with no Workflow-Template category", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const panel = await openTemplatesTab();
 
-    const stepTemplates = await within(panel).findByRole("region", { name: "Step-Template" });
+    const stepTemplates = await within(panel).findByRole("region", { name: "Templates" });
     expect(within(stepTemplates).getByText("person-switch")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("A person picks the next node")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("review-gate")).toBeInTheDocument();
@@ -84,8 +84,8 @@ describe("Designer palette lists templates (#577)", () => {
     render(<App client={stubClient({ templates: { templates: [] } })} />);
     const panel = await openTemplatesTab();
 
-    const stepTemplates = await within(panel).findByRole("region", { name: "Step-Template" });
-    expect(within(stepTemplates).getByText("No step templates")).toBeInTheDocument();
+    const stepTemplates = await within(panel).findByRole("region", { name: "Templates" });
+    expect(within(stepTemplates).getByText("No templates")).toBeInTheDocument();
   });
 
   it("reports a failed template scan instead of an empty list", async () => {

@@ -90,7 +90,7 @@ export interface Frame {
   template?: TemplateSource;
 }
 
-/** The file suffix a template kind carries on disk. The Step-Template is the only kind (ADR 0063). */
+/** The file suffix a template carries on disk: `*.step-template.json`, one kind only (ADR 0063). */
 export function templateSuffix(_kind: TemplateSource["kind"]): string {
   return ".step-template.json";
 }
@@ -99,13 +99,13 @@ export function templateSuffix(_kind: TemplateSource["kind"]): string {
 export interface TemplateSource {
   id: string;
   /**
-   * Always `step` (ADR 0063): the frame's file is a synthetic workflow around the step-template's body;
+   * Always `step` (ADR 0063): the frame's file is a synthetic workflow around the template's body;
    * only `body` goes back into the envelope on save.
    */
   kind: "step";
   /** The file stem — the template's name, immutable through the write-back door. */
   name: string;
-  /** The template's description, kept so a step-template write-back rebuilds its envelope. */
+  /** The template's description, kept so a template write-back rebuilds its envelope. */
   description: string;
   /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
   readOnly: boolean;
@@ -142,7 +142,7 @@ export interface History {
  * `saved` shows the confirmation after a `200`; `conflict` is the `412` stale-write; `error` is any other
  * write failure. A Delete of the open file rides the same phase: `deleting` while in flight, `deleted`
  * once the file is gone (the canvas is then empty), `delete-error` when the server refused it.
- * `saved-as-template` confirms a workflow-mode Save as step-template: a copy was created, the workflow stays open.
+ * `saved-as-template` confirms a workflow-mode Save as template: a copy was created, the workflow stays open.
  */
 export type SaveState =
   | { phase: "idle" }
@@ -269,8 +269,8 @@ export function frameCanRedo(frame: Frame | undefined): boolean {
 /** The whole open-and-navigate session state the reducer owns: the trail, the active frame, the save phase. */
 /**
  * The Designer's edit mode, picked with the toolbar's Workflow | Template switch. **Workflow** mode edits
- * `*.workflow.json` files; **Template** mode edits step-template sources (`*.step-template.json`) and
- * new, not-yet-saved step-templates. Switching mode clears the canvas.
+ * `*.workflow.json` files; **Template** mode edits template sources (`*.step-template.json`) and
+ * new, not-yet-saved templates. Switching mode clears the canvas.
  */
 export type EditMode = "workflow" | "template";
 

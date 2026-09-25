@@ -113,7 +113,7 @@ describe("#619 editor sockets (G-D-01, G-D-03)", () => {
     expect(editor.socketOpen("branches", uuid(6))).toBe(false);
   });
 
-  it("G-D-03: a Step-Template holding a goto opens no parallel branch socket", () => {
+  it("G-D-03: a Template holding a goto opens no parallel branch socket", () => {
     const body = [leaf(30, "a"), goto(31, "g", "start")];
     const editor = createEditor(fixture(), noop, { kind: "step-template", id: "t", name: "t", body }, noop, "prompt");
     expect(editor.socketOpen("branches", uuid(6))).toBe(false);

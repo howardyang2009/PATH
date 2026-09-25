@@ -339,8 +339,8 @@ schema is `SCHEMA_VERSION` 12. `main` is green: `pnpm typecheck` is clean across
 scripts 28.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
-product gap is open. Built on `main`, unreleased: authoring reuse (Step-Template #459; the
-Workflow-Template #460 was removed by ADR 0063), the person-switch step-template #477, and the goto Graph
+product gap is open. Built on `main`, unreleased: authoring reuse (Templates #459; the
+Workflow-Template #460 was removed by ADR 0063), the person-switch template #477, and the goto Graph
 Controller #478. Work
 continues on the
 [#109 v-next register](https://github.com/howardyang2009/PATH/issues/109).

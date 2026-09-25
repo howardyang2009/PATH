@@ -5,25 +5,25 @@ import type { SaveAsTemplateResult, TemplateSource } from "./use-open-file.js";
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
 const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-/** What the dialog hands back: the step-template's name and description. */
+/** What the dialog hands back: the template's name and description. */
 export interface TemplateSaveInput {
   name: string;
   description: string;
 }
 
 /**
- * The save-as-step-template dialog. A new user step-template always lands in
+ * The save-as-template dialog. A new user template always lands in
  * `.path/template/step-template/` (`POST /v0/templates` picks the place), so the author chooses only the
- * name and the description. The Step-Template is the only template kind (ADR 0063).
+ * name and the description. There is one template kind (ADR 0063).
  *
- * - **Save as…** of an opened step-template (`source` set, #580): the name (prefilled `<name>-copy`) and
+ * - **Save as…** of an opened template (`source` set, #580): the name (prefilled `<name>-copy`) and
  *   the description (prefilled from the source's).
- * - First **Save** of a new step-template (`source` `null`): the name and the description.
- * - Workflow mode's **Save as step-template** (`workflowName` set, #459.6): the name (prefilled from the
- *   workflow's) and the description. A step-template keeps only the body, so the dialog lists the
+ * - First **Save** of a new template (`source` `null`): the name and the description.
+ * - Workflow mode's **Save as template** (`workflowName` set, #459.6): the name (prefilled from the
+ *   workflow's) and the description. A template keeps only the body, so the dialog lists the
  *   workflow-level fields it drops.
  *
- * A step-template requires a description: it is the palette blurb.
+ * A template requires a description: it is the palette blurb.
  *
  * The create is create-only: a taken name is refused ("choose another name"), never an overwrite, and
  * only a `created` closes the dialog.
@@ -36,11 +36,11 @@ export function SaveTemplateAsDialog({
   onCreated,
   onCancel,
 }: {
-  /** The opened step-template this saves a copy of, or `null` for a new template or a workflow's save. */
+  /** The opened template this saves a copy of, or `null` for a new template or a workflow's save. */
   source: TemplateSource | null;
-  /** The open workflow's name, when workflow mode saves it as a step-template (`source` is then `null`). */
+  /** The open workflow's name, when workflow mode saves it as a template (`source` is then `null`). */
   workflowName?: string;
-  /** The source workflow's non-empty workflow-level fields a save as step-template drops. */
+  /** The source workflow's non-empty workflow-level fields a save as template drops. */
   droppedFields?: readonly string[];
   create: (input: TemplateSaveInput) => Promise<SaveAsTemplateResult>;
   onCreated: () => void;
@@ -59,7 +59,7 @@ export function SaveTemplateAsDialog({
   const legal = NAME_PATTERN.test(clean);
   const described = description.trim() !== "";
   const canSubmit = legal && described && !submitting;
-  const title = fromWorkflow ? "Save workflow as step-template" : source ? "Save as new step-template" : "Save new step-template";
+  const title = fromWorkflow ? "Save workflow as template" : source ? "Save as new template" : "Save new template";
 
   const submit = (): void => {
     if (!canSubmit) return;
@@ -79,10 +79,10 @@ export function SaveTemplateAsDialog({
         <h2 className="dialog-title">{title}</h2>
         <p className="dialog-hint">
           {fromWorkflow
-            ? "The step-template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open."
+            ? "The template is a copy of the workflow's body with a new identity, saved with this project's templates. The workflow stays open."
             : source
               ? "The copy gets a new identity and is saved with this project's templates."
-              : "The step-template is saved with this project's templates."}
+              : "The template is saved with this project's templates."}
         </p>
 
         <label className="dialog-field">
@@ -109,7 +109,7 @@ export function SaveTemplateAsDialog({
             className="template-description"
             aria-label="Template description"
             rows={3}
-            placeholder="What this step-template does. It is shown on the palette card."
+            placeholder="What this template does. It is shown on the palette card."
             value={description}
             onChange={(event) => setDescription(event.target.value)}
           />
@@ -118,10 +118,10 @@ export function SaveTemplateAsDialog({
         {!legal && clean !== "" ? (
           <p className="new-file-error">Use lowercase letters, digits, and hyphens, starting with a letter.</p>
         ) : null}
-        {!described ? <p className="dialog-hint">A step-template needs a description.</p> : null}
+        {!described ? <p className="dialog-hint">A template needs a description.</p> : null}
         {fromWorkflow ? (
           <p className="dialog-hint" role="note">
-            A step-template keeps only the body.
+            A template keeps only the body.
             {droppedFields.length > 0 ? ` ${formatList(droppedFields)} will be dropped.` : null}
           </p>
         ) : null}

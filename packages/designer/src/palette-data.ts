@@ -5,7 +5,7 @@ import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
  * two tabs of the rail (#564 variant C). The **Build** tab: **Step** — one entry per leaf step type — and
  * **Controller** — fixed by the grammar, split into a **Structure** sub-tab (the five Structure Controllers,
  * `checkpoint` included) and a **Graph** sub-tab (the Graph Controller `goto`). The **Templates**
- * tab: **Step-Template** (the only template kind, ADR 0063), one row per entry of `GET /v0/templates`.
+ * tab: **Template** (the only template kind, ADR 0063), one row per entry of `GET /v0/templates`.
  *
  * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
  * leaf type the received `GET /v0/step-plugins` snapshot describes (`prompt`, `binary`, and any plugin
@@ -105,13 +105,13 @@ export interface TemplateGroup {
 }
 
 /**
- * The Templates tab's groups: the one Step-Template group (the only kind, ADR 0063), server order kept
+ * The Templates tab's groups: the one Template group (the only kind, ADR 0063), server order kept
  * (shipped before user). Invalid rows stay in — the palette shows them unselectable with their error,
  * never hides them (ADR 0050 decision 4).
  */
 export function templateGroups(templates: readonly TemplateSummary[]): readonly TemplateGroup[] {
   return [
-    { title: "Step-Template", emptyText: "No step templates", templates: templates.filter((t) => t.kind === "step") },
+    { title: "Templates", emptyText: "No templates", templates: templates.filter((t) => t.kind === "step") },
   ];
 }
 

@@ -322,26 +322,29 @@ and issues use them exactly.
 
 ## Templates
 
-- **Template** — an **authoring artifact** that expands into ordinary nodes *before* any run. It is
-  distinct in kind from a **Step-type plugin**: a plugin is code the engine registers and a step type it
-  executes, while a template contributes no step type, ships no worker, and is never registered or
-  executed. It is **Server-owned and engine-blind**: the Server reads it and the Designer inserts from
-  it, and a run's engine never sees the template — only the ordinary nodes it produced, which are
-  indistinguishable from hand-authored ones. Its file format is
+- **Template** — an **authoring artifact** that expands into ordinary nodes *before* any run: a
+  **fragment of a workflow body** — one, two, or more nodes, saved as a unit and insertable into an
+  existing workflow. It is distinct in kind from a **Step-type plugin**: a plugin is code the engine
+  registers and a step type it executes, while a template contributes no step type, ships no worker, and
+  is never registered or executed. It is **Server-owned and engine-blind**: the Server reads it and the
+  Designer inserts from it, and a run's engine never sees the template — only the ordinary nodes it
+  produced, which are indistinguishable from hand-authored ones. Its **default property values** are
+  simply the values its own nodes hold — its body is a valid **Workflow body**, never a shape with
+  placeholders for one, so it is always a literal parameterized snippet and never a form to fill in. It
+  can be inserted only where its nodes are grammar-legal, and the author edits an instance's values
+  afterwards like any other node's. It is the artifact behind the Designer's Templates palette tab. Its
+  name is its file name; its own `id` is its identity. On disk it is a `*.step-template.json` file, and
+  the wire names its kind `"step"`: both keep the old name. Its file format is
   [ADR 0048](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0048-the-step-template-schema-is-an-envelope-over-a-validated-workflow-body.md).
   That it is a **Server authoring artifact** and not a step-plugin at all — the engine never registers
   or executes it — is
   [ADR 0051](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0051-a-template-is-a-server-authoring-artifact-not-a-step-plugin.md).
-- **Step-Template** — a Template that is a **fragment of a workflow body**: one, two, or more nodes,
-  saved as a unit and insertable into an existing workflow. Its **default property values** are simply
-  the values its own nodes hold — its body is a valid **Workflow body**, never a shape with placeholders
-  for one, so it is always a literal parameterized snippet and never a form to fill in. It can be
-  inserted only where its nodes are grammar-legal, and the author edits an instance's values afterwards
-  like any other node's. It is the artifact behind the Designer's Step-Template palette category. Its
-  name is its file name; its own `id` is its identity.
+- **Step-Template** — the old name of the **Template**, from when a Workflow-Template also existed
+  (ADR 0063). It survives only in file names (`*.step-template.json`, `step-template/`), the wire kind
+  `"step"`, and code identifiers; say **Template**.
 - **Workflow-Template** — *removed* ([ADR 0063](https://github.com/howardyang2009/PATH/blob/main/docs/adr/0063-the-workflow-template-is-removed-the-step-template-is-the-only-template.md)).
   It was a whole workflow kept as a template. A starting-point workflow is now just a workflow, copied
-  with the Designer's Save as… Workflow; the **Step-Template** is the only template kind.
+  with the Designer's Save as… Workflow; the **Template** is the only template kind.
 - **Instantiation** — the detached-copy transform a Template runs to become ordinary nodes, a pure
   function of the template body owned by `@path/schema` and called by the Designer client; the engine
   never sees it (a Template is engine-blind). It deep-copies the `body`, mints a fresh UUIDv4 `id` on
@@ -368,13 +371,13 @@ and issues use them exactly.
   your own risk. And a relative `workflow` `ref` re-resolves against the *target* file's directory
   (#561), so a copied `ref` can point elsewhere when the template and target directories differ.
 - **Template edit mode** — which of two modes the Designer is in decides where a save of template content
-  lands, and the file suffix on open is the discriminator. **Consume mode** (a Step-Template selected from
+  lands, and the file suffix on open is the discriminator. **Consume mode** (a Template selected from
   the palette into a workflow) yields ordinary nodes the workflow's own Save writes. **Author mode** (the
   `*.step-template.json` file itself opened to edit the template source) is ordinary file editing under
   the ADR 0015 round-trip, so its default Save writes **back to the original** template file with its `id`
   preserved; a Save-As to a **new** `*.step-template.json` mints a fresh `id` (two templates must not share
   identity). Author mode has no "Save as workflow": a template saves only as a template. The other way
-  round, workflow mode's Save as… offers **Save as step-template** (#459.6, ADR 0063): a new step-template
+  round, workflow mode's Save as… offers **Save as template** (#459.6, ADR 0063): a new template
   of the workflow's body, with a fresh `id`, the workflow-level fields dropped. Author-mode save rides the
   template write-route (#563); the Designer opens a `*.step-template.json` with (in template mode) a
   double-click on its palette card or Open… (#580, designer-spec § Edit mode: Workflow | Template). The
@@ -398,7 +401,7 @@ and issues use them exactly.
 - **Template API** — the `/v0/templates` routes the Designer reaches a **Template** through, since a
   template is Server-owned and engine-blind. Unlike a **Workflow**, which the write routes address by
   *path* because a run is launched by where the file lives (ADR 0016, §7), a template is **addressed by
-  its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a step-template's envelope `id`. A
+  its GUID**: `GET`/`PUT`/`DELETE /v0/templates/:id`, where `:id` is a template's envelope `id`. A
   GUID is globally unique (ADR 0006), so one lookup spans both origins. The Server resolves `:id` through
   the **Template store** index (the shipped + user two-directory union, suffix-typed). `GET /v0/templates` lists that union **thin** (`id`, `name`,
   `description`, `kind`, `origin`, `read_only`, `valid`, `error`; no `body`) with an optional `?kind=`

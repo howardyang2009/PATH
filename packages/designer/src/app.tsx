@@ -24,7 +24,7 @@ import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
 import { frameCanRedo, frameCanUndo, frameDirty, frameHasUnsavedWork, openedResultOf, planDelete, useOpenFile } from "./use-open-file.js";
 
-/** The workflow-level fields of `file` that hold a value — what a save as step-template drops. */
+/** The workflow-level fields of `file` that hold a value — what a save as template drops. */
 function workflowLevelFields(file: WorkflowFile): string[] {
   const filled = (value: object | undefined): boolean => value !== undefined && Object.keys(value).length > 0;
   return (["input", "output", "config", "worker_defaults"] as const).filter((key) => filled(file[key]));
@@ -242,7 +242,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
                   : () => setNewFileOpen(true)
             }
             // Save as…: in template mode, a copy to a new template; in workflow mode, first a choice between a
-            // copy to a new workflow file and a new step-template made from the workflow's body (#459.6).
+            // copy to a new workflow file and a new template made from the workflow's body (#459.6).
             onSaveAs={() => setSaveAsDialog(inTemplateMode ? "template" : "workflow-choice")}
             lease={activePath ? leases.get(activePath) : undefined}
             onTakeover={() => activePath && takeover(activePath)}
@@ -336,8 +336,8 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         onCancel={() => setNewFileOpen(false)}
       />
     ) : null}
-    {/* Template mode's save doors. A new step-template's first save picks its name and description; Save
-        as… (#580) names a copy of the opened step-template. A template saves only as a template. */}
+    {/* Template mode's save doors. A new template's first save picks its name and description; Save
+        as… (#580) names a copy of the opened template. A template saves only as a template. */}
     {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
       <SaveTemplateAsDialog
         source={null}

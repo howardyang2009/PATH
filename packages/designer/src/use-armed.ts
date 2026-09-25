@@ -4,7 +4,7 @@ import type { WorkflowNode } from "@path/schema";
 
 /**
  * What the palette has **armed** — the thing the canvas opens sockets for and places on a socket click.
- * A Build-tab card arms a node kind (#368); a Step-Template card arms that template's body (#578), which
+ * A Build-tab card arms a node kind (#368); a Template card arms that template's body (#578), which
  * the canvas instantiates on place (ADR 0049). The template body rides in the armed value, fetched once
  * on select, so a place is synchronous and every open socket reads the same body.
  */
@@ -17,7 +17,7 @@ export interface ArmedState {
   /** Arm a value directly (a Build card) or disarm (`null`). Supersedes an in-flight template read. */
   arm: (armed: Armed | null) => void;
   /**
-   * Arm a Step-Template: disarm at once, read its envelope (`GET /v0/templates/:id`), then arm its body.
+   * Arm a Template: disarm at once, read its envelope (`GET /v0/templates/:id`), then arm its body.
    * A failed read or a template the server reports invalid arms nothing and sets `templateError` instead.
    */
   armTemplate: (template: TemplateSummary) => void;
@@ -70,7 +70,7 @@ export function useArmed(client: PathApiClient): ArmedState {
   const armTemplate = useCallback(
     (template: TemplateSummary) =>
       selectTemplate(template, (envelope) => {
-        // `valid` is the server's registry-relative check, so a valid step-template body is a
+        // `valid` is the server's registry-relative check, so a valid template body is a
         // `WorkflowNode[]`; `kind` guards a file that changed kind between the list and this read.
         if (!envelope.valid || envelope.kind !== "step" || !Array.isArray(envelope.body)) {
           return `Cannot insert "${template.name}": ${envelope.error?.message ?? "invalid template"}`;

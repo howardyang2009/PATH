@@ -10,12 +10,12 @@ import { makeCalls, stubClient } from "./stub-server.js";
  * the template source inside a synthetic workflow, and two save doors apply (ADR 0049 decision 8, ADR
  * 0050):
  *
- * - Save writes back the step-template envelope through `PUT /v0/templates/:id`, id preserved, under
+ * - Save writes back the template envelope through `PUT /v0/templates/:id`, id preserved, under
  *   `If-Match`;
  * - Save as… creates a new `*.step-template.json` through `POST /v0/templates`, fresh id.
  *
  * A template saves only as a template: there is no Save as workflow door. A shipped template refuses the
- * write-back with the API's `403`. The Step-Template is the only template kind (ADR 0063).
+ * write-back with the API's `403`. The Template is the only template kind (ADR 0063).
  */
 
 function uuid(n: number): string {
@@ -161,7 +161,7 @@ describe("Author mode on a *.step-template.json (#580)", () => {
     const canvas = await editTemplate("nightly");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new step-template" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
@@ -191,8 +191,8 @@ describe("Author mode on a *.step-template.json (#580)", () => {
   });
 });
 
-describe("The step-template envelope", () => {
-  it("Save writes back the step-template envelope, id and description preserved", async () => {
+describe("The template envelope", () => {
+  it("Save writes back the template envelope, id and description preserved", async () => {
     const calls = renderApp();
     const canvas = await editTemplate("draft-judge");
 
@@ -212,7 +212,7 @@ describe("The step-template envelope", () => {
     await editTemplate("draft-judge");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save as new step-template" });
+    const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-judge-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));

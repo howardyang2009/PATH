@@ -155,7 +155,7 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByRole("button", { name: "Open template" })).toBeInTheDocument();
   });
 
-  it("New in template mode starts an empty step-template; its first Save picks name and description", async () => {
+  it("New in template mode starts an empty template; its first Save picks name and description", async () => {
     const calls = renderApp();
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
@@ -163,8 +163,8 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByText("New template (not saved)")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
-    const dialog = await screen.findByRole("dialog", { name: "Save new step-template" });
-    // The Step-Template is the only kind (ADR 0063): the dialog offers no kind choice.
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
+    // The Template is the only kind (ADR 0063): the dialog offers no kind choice.
     expect(within(dialog).queryByLabelText("Workflow-template")).not.toBeInTheDocument();
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "weekly" } });
     fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "weekly steps" } });
@@ -174,14 +174,14 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(calls.templateWrites[0]).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "weekly" } });
   });
 
-  it("a new step-template needs a description before it can be created", async () => {
+  it("a new template needs a description before it can be created", async () => {
     const calls = renderApp();
     await switchTo("Template");
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     expect(await screen.findByRole("button", { name: "Save as…" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    const dialog = await screen.findByRole("dialog", { name: "Save new step-template" });
+    const dialog = await screen.findByRole("dialog", { name: "Save new template" });
     expect(within(dialog).getByLabelText("Template description").tagName).toBe("TEXTAREA");
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "gate" } });
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
@@ -297,15 +297,15 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(screen.getByText("alpha")).toBeInTheDocument();
   });
 
-  it("Save as… in workflow mode saves a step-template of only the body, and the workflow stays open", async () => {
+  it("Save as… in workflow mode saves a template of only the body, and the workflow stays open", async () => {
     const calls = renderApp(WORKFLOW_PATH);
     await screen.findByText("alpha");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Step-template…/ }));
-    const dialog = await screen.findByRole("dialog", { name: "Save workflow as step-template" });
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Template…/ }));
+    const dialog = await screen.findByRole("dialog", { name: "Save workflow as template" });
     expect(within(dialog).getByLabelText("Template name")).toHaveValue("main");
-    expect(within(dialog).getByRole("note")).toHaveTextContent("A step-template keeps only the body.");
+    expect(within(dialog).getByRole("note")).toHaveTextContent("A template keeps only the body.");
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "main-steps" } });
     fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "an alpha step" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
@@ -318,7 +318,7 @@ describe("Workflow | Template edit-mode switch", () => {
     // A fresh identity (a template must not share the workflow's), and the workflow's body.
     expect(body.id).not.toBe(WORKFLOW_FILE.id);
     expect(body.body).toEqual(WORKFLOW_FILE.body);
-    expect((await screen.findByText('Saved as step-template "main-steps"')).closest(".topbar-title")).not.toBeNull();
+    expect((await screen.findByText('Saved as template "main-steps"')).closest(".topbar-title")).not.toBeNull();
     // The workflow stays open and was not written.
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(calls.put).toHaveLength(0);
@@ -340,7 +340,7 @@ describe("Workflow | Template edit-mode switch", () => {
     expect(toggle).toBeEnabled();
   });
 
-  it("a real double-click on a step-template card in template mode opens it without asking", async () => {
+  it("a real double-click on a template card in template mode opens it without asking", async () => {
     renderApp();
     await switchTo("Template");
     const palette = screen.getByRole("region", { name: "Palette" });

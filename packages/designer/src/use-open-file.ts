@@ -109,14 +109,14 @@ export interface OpenSession {
    */
   saveWorkflowAs: (targetPath: string) => Promise<SaveNewFileResult>;
   /**
-   * Workflow mode's **Save as step-template** (#459.6, ADR 0063): create a new user step-template named
+   * Workflow mode's **Save as template** (#459.6, ADR 0063): create a new user template named
    * `name` from the active workflow's body through `POST /v0/templates`, with a fresh `id` (a template
    * must not share the workflow's identity). Only the body is kept; the workflow-level fields are dropped.
    * The workflow stays open and unchanged; the phase becomes `saved-as-template`.
    */
   saveWorkflowAsTemplate: (name: string, description: string) => Promise<SaveAsTemplateResult>;
   /**
-   * First-save a new step-template (template mode): create it through `POST /v0/templates`, with a fresh
+   * First-save a new template (template mode): create it through `POST /v0/templates`, with a fresh
    * id. On `created` the frame edits the new template.
    */
   saveNewTemplate: (name: string, description: string) => Promise<SaveAsTemplateResult>;
@@ -159,7 +159,7 @@ export interface OpenSession {
    */
   saveNewFile: (targetPath: string) => Promise<SaveNewFileResult>;
   /**
-   * Author mode's **Save as…** (#580): create a new user step-template named `name` through
+   * Author mode's **Save as…** (#580): create a new user template named `name` through
    * `POST /v0/templates`, with a fresh `id` (two templates must not share identity). On `created` the frame
    * edits the new template. An `error` when the
    * active frame is not a template source.
@@ -205,7 +205,7 @@ async function loadFrame(
 }
 
 /**
- * Read a step-template source (`GET /v0/templates/:id`) and run the open pipeline over it (#580). Its
+ * Read a template source (`GET /v0/templates/:id`) and run the open pipeline over it (#580). Its
  * `body` is a node list, so it opens inside a synthetic workflow file that carries the template's id and
  * name (an invalid one still reads, so the refusal names why). The envelope carries
  * no raw bytes, so the baseline is the canonical serialization of the opened file. A file the open parse
@@ -229,7 +229,7 @@ async function loadTemplateFrame(
   }
 }
 
-/** The template object a template write sends: a step-template envelope around the buffer's body (ADR 0048). */
+/** The template object a template write sends: a template envelope around the buffer's body (ADR 0048). */
 function templateBody(template: TemplateSource, file: WorkflowFile): Record<string, unknown> {
   return { format: FORMAT_VERSION, id: file.id, description: template.description, body: file.body };
 }
