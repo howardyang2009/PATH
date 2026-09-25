@@ -51,17 +51,18 @@ describe("Designer palette lists templates (#577)", () => {
     expect(within(palette).queryByRole("region", { name: "Templates" })).not.toBeInTheDocument();
   });
 
-  it("lists shipped and user templates under Templates, with no Workflow-Template category", async () => {
+  it("lists shipped and user templates in the Templates tab, with no group heading", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const panel = await openTemplatesTab();
 
-    const stepTemplates = await within(panel).findByRole("region", { name: "Templates" });
-    expect(within(stepTemplates).getByText("person-switch")).toBeInTheDocument();
+    // One kind only (ADR 0063): the cards sit in the tab itself, with no group heading.
+    const stepTemplates = panel;
+    expect(await within(stepTemplates).findByText("person-switch")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("A person picks the next node")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("review-gate")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("nightly")).toBeInTheDocument();
     expect(within(stepTemplates).getByText("broken-flow")).toBeInTheDocument();
-    expect(within(panel).queryByRole("region", { name: "Workflow-Template" })).not.toBeInTheDocument();
+    expect(within(panel).queryByRole("region")).not.toBeInTheDocument();
 
     // The shipped row says so, the user row does not.
     const shipped = within(stepTemplates).getByRole("button", { name: /person-switch/ });
@@ -84,8 +85,7 @@ describe("Designer palette lists templates (#577)", () => {
     render(<App client={stubClient({ templates: { templates: [] } })} />);
     const panel = await openTemplatesTab();
 
-    const stepTemplates = await within(panel).findByRole("region", { name: "Templates" });
-    expect(within(stepTemplates).getByText("No templates")).toBeInTheDocument();
+    expect(await within(panel).findByText("No templates")).toBeInTheDocument();
   });
 
   it("reports a failed template scan instead of an empty list", async () => {

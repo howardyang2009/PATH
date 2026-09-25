@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
-import { paletteGroups, templateGroups, type PaletteEntry, type PaletteSubTab } from "./palette-data.js";
+import { paletteGroups, type PaletteEntry, type PaletteSubTab } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
 
@@ -207,27 +207,25 @@ function TemplatesTab({
           {arming.templateError}
         </p>
       ) : null}
-      {templateGroups(templateList.templates).map((group) => (
-        <PaletteGroupSection key={group.title} title={group.title}>
-          {group.templates.length === 0 ? (
-            <p className="palette-note">{group.emptyText}</p>
-          ) : (
-            <ul className="palette-list">
-              {group.templates.map((template) => (
-                <TemplateCard
-                  key={`${template.origin}:${template.kind}:${template.name}`}
-                  template={template}
-                  armed={armed?.kind === "step-template" && armed.id === template.id}
-                  canEdit={canEditTemplates}
-                  onSelect={() => arming.armTemplate(template)}
-                  onDisarm={() => arming.arm(null)}
-                  onEdit={() => onEditTemplate(template)}
-                />
-              ))}
-            </ul>
-          )}
-        </PaletteGroupSection>
-      ))}
+      {/* One kind only (ADR 0063), so the tab lists the templates with no group heading, in server order
+          (shipped before user). Invalid rows stay in, shown unselectable with their error (ADR 0050 decision 4). */}
+      {templateList.templates.length === 0 ? (
+        <p className="palette-note">No templates</p>
+      ) : (
+        <ul className="palette-list">
+          {templateList.templates.map((template) => (
+            <TemplateCard
+              key={`${template.origin}:${template.kind}:${template.name}`}
+              template={template}
+              armed={armed?.kind === "step-template" && armed.id === template.id}
+              canEdit={canEditTemplates}
+              onSelect={() => arming.armTemplate(template)}
+              onDisarm={() => arming.arm(null)}
+              onEdit={() => onEditTemplate(template)}
+            />
+          ))}
+        </ul>
+      )}
     </>
   );
 }

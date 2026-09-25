@@ -1890,11 +1890,7 @@ body {
   outline-offset: -2px;
 }
 
-/* The open-template picker: one row per template, grouped by kind. */
-.template-picker-group + .template-picker-group {
-  margin-top: 12px;
-}
-
+/* The open-template picker: one row per template. */
 .template-picker-list {
   list-style: none;
   margin: 0;
