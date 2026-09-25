@@ -488,8 +488,9 @@ Context ──shared blackboard──> all steps of one workflow-run (isolated p
 - **Launch facts** — what an operator supplied at launch beyond the workflow file: an **input** override,
   an **operator config** override, and a **worker-default** table, frozen on the run tree's root row
   (ADR 0046). A Resume or a Complete recovers the config and the worker-default table; the input
-  override is recorded and shown, never re-applied, because both continuations restore the **Context**
-  blackboard rather than re-seeding it. A recovered secret value is only its `[secret:<key>]` token, so
+  override is recorded and shown, never re-applied, because both continuations rebuild the **Context**
+  blackboard from the tree rather than re-seeding it from the request: a Resume replays each re-entered
+  workflow-run from its recorded seed (ADR 0062), a Complete loads the parked blackboard (ADR 0041). A recovered secret value is only its `[secret:<key>]` token, so
   the continuation must supply it again — otherwise the run ends before its first step naming the key.
   All three facts are readable on the run-tree response; a root-run summary carries the masked secret
   *names* alone, so a Resume surface can ask for them before it submits.
@@ -621,7 +622,7 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
 - **Successor run** — a resumed tree's own root run. It has a fresh root run id, distinct from the tree
   it resumed. The predecessor tree becomes permanent and read-only the instant a successor starts. The
   engine never mutates, appends to, or reopens it. Whatever the successor needs from the predecessor (a
-  reused node's output, a restored context, usage or cost figures) is read once at the point of reuse
+  reused node's output, the root's recorded seed, usage or cost figures) is read once at the point of reuse
   and referenced from then on. It is never copied.
 - **Resumed-from** — a successor run's own record of which root run it resumed from. It is always the
   *immediate* predecessor, one hop. This holds regardless of how far back the data it actually reuses

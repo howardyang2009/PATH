@@ -176,7 +176,7 @@ export interface RunOptions {
 export interface ResumeInput {
   /** Every run row of the original tree — `planReuse`'s input (#170), the whole tree not just the root. */
   originalRuns: RunRecord[];
-  /** Loads one blob of an original run by filename (`RUN_BLOB_FILE.output` / `.context`). */
+  /** Loads one blob of an original run by filename (`RUN_BLOB_FILE.output` / `.input`). */
   readBlob: (run: RunRecord, filename: string) => JsonValue;
   /**
    * The **rerun boundary (K)** as the descent path of node ids root→…→K (ADR 0032/0036). `[]` or
@@ -358,9 +358,14 @@ function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
 async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
   const { file, fileDir, input, incomingConfig, identity, files, emitter } = params;
 
-  // Resume (#172): a re-entered workflow-run restores its context blackboard from its original
-  // counterpart's recorded `context.json` verbatim (restore-by-load, resume-restore-semantics.md
-  // §1–2) instead of seeding fresh from input. A run with no counterpart — added since — is a first
+  // Resume (#172, ADR 0062): a re-entered workflow-run starts its context blackboard from its seed —
+  // what its counterpart started from — and the reused prefix re-publishes in walk order, so every
+  // node sees the context it saw originally (replay from seed). The counterpart's final
+  // `context.json` is never the start: under Resume-from-K it holds keys written after K, which would
+  // leak into K's view. A root Resume carries no input of its own, so its seed is the counterpart's
+  // recorded `input.json`. A nested run's own `input` is already its seed: the parent replayed to the
+  // same context, so the interpolation reproduces the recorded one — with real secret values, where
+  // the recorded blob holds mask tokens. A run with no counterpart — added since — is a first
   // attempt and seeds fresh (invariant 4). A `while-do` body's runs now each sit under their own
   // per-iteration container (ADR 0037, #454), so an iteration is told apart by ordinal and its body
   // re-enters the matching counterpart; `runWhileDoNode` supplies that counterpart via the container's
@@ -368,16 +373,18 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
   const resumeCounterpart = params.resume?.counterpart;
   // Complete-continue (ADR 0041): a re-entered run of the tree being Completed (`continue.existing`
   // defined) restores its context from its **own** `context.json` in this same tree — the blackboard
-  // as it stood when the run parked. This is the appendable-tree analogue of Resume's restore-by-load,
-  // over the run itself rather than a counterpart in a separate original tree.
+  // as it stood when the run parked. Complete has no rerun boundary, so the parked blackboard is
+  // already the exact state to continue from — it keeps restore-by-load where Resume replays.
   const continueReenter = params.continue?.existing;
-  const restoredContext =
+  const seed =
+    params.resume && resumeCounterpart && identity.parentRunId === null
+      ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.input) as { [key: string]: JsonValue })
+      : input;
+  const parkedContext =
     params.continue && continueReenter
       ? (params.continue.state.readBlob(continueReenter, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
-      : params.resume && resumeCounterpart
-        ? (params.resume.input.readBlob(resumeCounterpart, RUN_BLOB_FILE.context) as { [key: string]: JsonValue })
-        : undefined;
-  const context: { [key: string]: JsonValue } = restoredContext ? { ...restoredContext } : { ...input }; // format doc §6.3
+      : undefined;
+  const context: { [key: string]: JsonValue } = { ...(parkedContext ?? seed) }; // format doc §6.3
   // Producer A (ADR 0036): at every on-path level the level's own `suppress` set (this run's suffix
   // head B and every serialized-later run-producing id, over this file's own body) is dropped from the
   // plan, so B and after-B re-run instead of reusing. Off-path (`rerunSuffix` empty) it is undefined,
@@ -395,7 +402,7 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         rerunSuffix,
       }
     : undefined;
-  let previousOutput: JsonValue = input;
+  let previousOutput: JsonValue = seed;
 
   // At the file boundary the incoming (operator or parent-effective) config shadows this file's
   // declared defaults key by key, nearest wins (format doc §8). One of the two points a run
@@ -467,7 +474,9 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
     // past the parked leaf (`continue.existing` undefined) is an ordinary run and takes this path.
     if (continueReenter === undefined) {
       await emitter.runStarted({
-        input,
+        // The seed, not the raw `input`: a resumed root's own `input` is empty, and recording the seed
+        // is what lets a Resume of this successor replay from the same seed again (ADR 0062).
+        input: seed,
         resumedFromRootRunId: params.resumedFromRootRunId,
         // The rerun boundary (K) path, root-only (#444): the emitter gates it on `isRoot`, so a nested
         // run passing undefined here changes nothing.
@@ -480,14 +489,6 @@ async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult>
         workflowName: file.name,
         workflowPath: params.sourceWorkflowPath,
       });
-
-      // Resume (#172): the persisted observer just wrote this new run's `context.json` from `input`
-      // (its run-started seed). A re-entered workflow-run's real starting context is the restored one,
-      // so write it straight through as a fresh, self-sufficient `context.json` under the new tree
-      // (resume-restore-semantics.md §1) — overwriting the input-seed with what actually resumes.
-      if (restoredContext !== undefined) {
-        await emitter.contextChanged(context);
-      }
     }
 
     // A run-start config failure (#116) lands *here* rather than at load: the run exists, is

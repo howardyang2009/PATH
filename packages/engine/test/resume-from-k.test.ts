@@ -106,7 +106,7 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B", c: "FRESH_C" }, ran)),
       resume: {
         originalRuns: abcOriginalRuns(),
-        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
         // K = b: a is <K and reuses; b and c are ≥K and re-run.
         rerunFromNodePath: ["b"],
       },
@@ -144,7 +144,7 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
           run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
           run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
         ],
-        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
         // K = sub (a ≥K workflow node): its whole subtree re-runs, inner included.
         rerunFromNodePath: ["sub"],
       },
@@ -177,7 +177,7 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
             run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", nodeName: "c", status: "failed" }),
           ],
           readBlob: reader(
-            { "orig-root/context.json": {}, "a-run/output.json": "REUSED_A", "b-run/output.json": "REUSED_B" },
+            { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "b-run/output.json": "REUSED_B" },
             reads,
           ),
           rerunFromNodePath,
@@ -233,9 +233,9 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
         originalRuns: asubdOriginalRuns(),
         readBlob: reader(
           {
-            "orig-root/context.json": {},
+            "orig-root/input.json": {},
             "a-run/output.json": "REUSED_A",
-            "sub-run/context.json": {},
+            "sub-run/input.json": {},
             "p-run/output.json": "REUSED_P",
           },
           reads,
@@ -289,7 +289,7 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
           run({ runId: "p2-run", parentRunId: "sub2-run", nodeId: "p2", nodeName: "p2", status: "succeeded" }),
         ],
         readBlob: reader(
-          { "orig-root/context.json": {}, "sub-run/context.json": {}, "p-run/output.json": "REUSED_P" },
+          { "orig-root/input.json": {}, "sub-run/input.json": {}, "p-run/output.json": "REUSED_P" },
           reads,
         ),
         rerunFromNodePath: ["sub", "k"],

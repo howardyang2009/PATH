@@ -17,13 +17,13 @@ import { stampNames } from "./stamp-names.js";
 
 /**
  * Engine consumption of the reuse plan (#172): a resumed run reuses a succeeded node's recorded
- * `output.json` instead of re-executing it, restores each re-entered workflow-run's `context.json`
- * from the original tree, and narrates every reuse decision with a single `reuse-marker` — while
+ * `output.json` instead of re-executing it, seeds each re-entered workflow-run's context from its
+ * seed and replays the reused prefix over it (ADR 0062), and narrates every reuse decision with a single `reuse-marker` — while
  * never opening the original tree for writing. The plan itself is #170's pure `planReuse`; this
  * suite drives what the walker does with it.
  */
 
-// A run row of the original tree, with the fields planReuse and the restore path read.
+// A run row of the original tree, with the fields planReuse and the seed load read.
 function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
   return {
     rootRunId: "orig-root",
@@ -120,7 +120,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
           run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
           run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
         ],
-        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
     });
 
@@ -162,7 +162,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
           run({ runId: "gate-run", parentRunId: "orig-root", nodeId: "gate", nodeName: "gate", status: "succeeded" }),
           run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
         ],
-        readBlob: reader({ "orig-root/context.json": {}, "gate-run/output.json": "REUSED_GATE" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "gate-run/output.json": "REUSED_GATE" }, reads),
       },
     });
 
@@ -205,7 +205,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
           run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
           run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
         ],
-        readBlob: reader({ "orig-root/context.json": {}, "a-run/output.json": "REUSED_A" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
     });
 
@@ -232,7 +232,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
           // A descendant inside the collapsed subtree: it must never be walked, so its blob is never read.
           run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
         ],
-        readBlob: reader({ "orig-root/context.json": {}, "sub-run/output.json": { r: "SUB" } }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "sub-run/output.json": { r: "SUB" } }, reads),
       },
     });
 
@@ -246,7 +246,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     expect(reads.some((key) => key.startsWith("inner-run/"))).toBe(false);
   });
 
-  it("restores context and reuses inside a re-entered nested workflow-run, not just the root", async () => {
+  it("seeds context from its own input and reuses inside a re-entered nested workflow-run, not just the root", async () => {
     const ran: string[] = [];
     const reads: string[] = [];
     const observer = fakeObserver();
@@ -255,7 +255,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       { type: "prompt", id: "x", name: "x", prompt: "x", publish: { fromX: "${output}" } },
       { type: "prompt", id: "y", name: "y", prompt: "y" },
     ]);
-    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
+    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { restored: "CTX" } }]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -271,8 +271,7 @@ describe("resume — reusing a node's recorded output (#172)", () => {
         ],
         readBlob: reader(
           {
-            "orig-root/context.json": {},
-            "sub-run/context.json": { restored: "CTX" },
+            "orig-root/input.json": {},
             "x-run/output.json": "REUSED_X",
           },
           reads,
@@ -294,11 +293,10 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     expect(m).toHaveLength(1);
     expect(m[0]).toMatchObject({ nodeId: "x", nodeName: "x", originalRunId: "x-run", runId: subStarted!.runId });
 
-    // The nested run's restored context was read from the original tree (restore-by-load) and lands
-    // in the new tree. `restored` exists only in the original `context.json` — never in the workflow
-    // input or any publish — so its presence in the new tree's nested context proves the restore,
-    // and `fromX` proves the reused node still published into that restored blackboard.
-    expect(reads).toContain("sub-run/context.json");
+    // The nested run seeds from its own input (replay from seed, ADR 0062), never from a recorded
+    // blob of its counterpart: `restored` comes from the `workflow` node's input, and `fromX` proves
+    // the reused node re-published over that seed.
+    expect(reads.some((key) => key.startsWith("sub-run/"))).toBe(false);
     const nestedContexts = observer
       .all()
       .filter((o): o is Extract<Observation, { type: "context-changed" }> => o.type === "context-changed" && o.runId === subStarted!.runId)
@@ -342,9 +340,9 @@ describe("resume — the original tree is read-only (#172)", () => {
   });
 
   it("writes only under the new tree, never opening the original tree's blobs or rows for writing", async () => {
-    // A real original tree on disk: a succeeded node's output, and the root's context.
+    // A real original tree on disk: a succeeded node's output, and the root's seed.
     writeRunBlob(origDir, "orig-root", "a-run", RUN_BLOB_FILE.output, "REUSED_A");
-    writeRunBlob(origDir, "orig-root", "orig-root", RUN_BLOB_FILE.context, {});
+    writeRunBlob(origDir, "orig-root", "orig-root", RUN_BLOB_FILE.input, {});
     const before = snapshot(origDir);
 
     const observer = createPersistedObserver(newDb, newDir);
@@ -415,7 +413,7 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
           run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", nodeName: "s", status: "cancelled" }),
         ],
         // Only the winner's blob exists; a read of the loser's would throw, proving it is never reused.
-        readBlob: reader({ "orig-root/context.json": {}, "f-run/output.json": "REUSED_F" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "f-run/output.json": "REUSED_F" }, reads),
       },
     });
 
@@ -469,7 +467,7 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
           run({ runId: "e-run", parentRunId: "orig-root", nodeId: "e", nodeName: "e", status: "succeeded", finishedAt: "2026-08-09T00:00:01.000Z" }),
         ],
         readBlob: reader(
-          { "orig-root/context.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
+          { "orig-root/input.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
           reads,
         ),
       },
@@ -542,7 +540,7 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
         ],
         // The detached branch's blob is deliberately absent: any attempt to *reuse* it would throw,
         // catching a short-circuit that tried to restore it instead of re-running.
-        readBlob: reader({ "orig-root/context.json": {}, "pre-run/output.json": "REUSED_PRE" }, reads),
+        readBlob: reader({ "orig-root/input.json": {}, "pre-run/output.json": "REUSED_PRE" }, reads),
       },
     });
 

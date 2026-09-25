@@ -100,7 +100,7 @@ export interface LaunchInvocation {
 }
 
 /**
- * The resume form. A resumed run's starting context is restored from the original tree (ADR 0003) and a
+ * The resume form. A resumed run's starting context is rebuilt from the original tree (ADR 0003, 0062) and a
  * **launch worker-default** is fixed at the launch it was given on (ADR 0044), so both are refused with
  * `--resume` — hence the `undefined`/empty members this arm carries instead of them.
  */
@@ -241,14 +241,14 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     }
   }
 
-  // A resumed run's starting context is already fully determined by restore-by-load from the
-  // original tree (ADR 0003) — a supplied `--context`/`--set-context` seed has nothing to do but be
+  // A resumed run's starting context is already fully determined by the original tree: each
+  // re-entered workflow-run replays from its recorded seed (ADR 0003, ADR 0062) — a supplied `--context`/`--set-context` seed has nothing to do but be
   // silently discarded or fought over, so combining either with `--resume` is refused outright
   // rather than quietly dropped (this repo treats silently-discarded operator state as a failure).
   if (resumeRootRunId !== undefined && (contextFile !== undefined || setContextPairs.length > 0)) {
     return {
       success: false,
-      error: `--context/--set-context cannot be combined with --resume: a resumed run's context is restored from the original tree\n${RUN_USAGE}`,
+      error: `--context/--set-context cannot be combined with --resume: a resumed run's context is rebuilt from the original tree\n${RUN_USAGE}`,
     };
   }
 
