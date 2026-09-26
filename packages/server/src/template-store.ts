@@ -46,6 +46,15 @@ export function userTemplateRoot(projectDir: string): string {
 export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(new URL("../template", import.meta.url));
 
 /**
+ * The shipped template root the union scans: a context override (a test's fixture root) or the
+ * package-relative default. One place, so the template routes cannot disagree about where shipped
+ * templates live.
+ */
+export function shippedTemplateDir(ctx: { shippedTemplateDir?: string }): string {
+  return ctx.shippedTemplateDir ?? DEFAULT_SHIPPED_TEMPLATE_DIR;
+}
+
+/**
  * One discovered template. `id`/`description`/`format`/`body` are best-effort even when the entry is
  * invalid, so an author can open a broken template to repair it (ADR 0050 decision 5); `id` is `null`
  * only when even a shallow parse cannot recover it (malformed JSON), and such an entry is unaddressable

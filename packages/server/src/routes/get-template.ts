@@ -2,9 +2,8 @@ import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
-import { discoverTemplates } from "../template-store.js";
+import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
-import { shippedTemplateDir } from "./template-common.js";
 
 /**
  * `GET /v0/templates/:id` (server-api-v0.md §10.2, ADR 0050 decision 5): read one template as a

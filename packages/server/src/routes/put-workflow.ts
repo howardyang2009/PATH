@@ -1,6 +1,5 @@
-import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, join, relative, resolve, sep } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { validateWorkflowFile } from "@path/engine";
 import {
   formatIssues,
@@ -12,7 +11,7 @@ import {
 } from "@path/schema";
 import { z } from "zod";
 import { confineToProjectRoot } from "../confine.js";
-import { strongEtag } from "../etag.js";
+import { checkPrecondition, readArtifact, writeArtifact, type ArtifactConflict } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import type { RunsRouteContext } from "./post-runs.js";
@@ -50,6 +49,14 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
     return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
   });
 }
+
+/** The `412` wording for each precondition conflict at the workflow-file doors, write and delete (ADR 0016). */
+export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
+  missing: "precondition failed: the file no longer exists",
+  changed: "precondition failed: the file changed since it was read",
+  exists: "precondition failed: the file already exists (send If-Match to overwrite)",
+  required: "precondition failed: send If-Match to delete",
+};
 
 /**
  * Whether `workflowPath` addresses a template, which `PUT /v0/workflows` refuses (§10.6): anything
@@ -122,56 +129,16 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
     return;
   }
 
-  // Read the current bytes once. The precondition and the write are a single synchronous block below —
-  // no `await` between them — so no other request of this process can interleave; the only concurrency
-  // the precondition guards is an *external* writer (an editor, `git`, the CLI, a second tab), and
-  // that is exactly what the ETag detects (ADR 0016; #258's lease is separate politeness).
-  let currentBytes: Buffer | undefined;
-  try {
-    currentBytes = readFileSync(absPath);
-  } catch {
-    currentBytes = undefined;
-  }
-  const existed = currentBytes !== undefined;
-
-  const ifMatch = firstHeader(req.headers["if-match"]);
-  if (ifMatch !== undefined) {
-    // `If-Match: <etag>` present → overwrite-only. `412` if the file is gone or its bytes changed since
-    // read. Only a matching ETag overwrites: there is no `If-Match: *` wildcard here — the docs are
-    // explicit that no header spells a blind last-writer-wins overwrite (ADR 0016), so `*` fails the
-    // exact-match like any other stale value.
-    if (!existed) {
-      sendError(res, 412, "precondition failed: the file no longer exists");
-      return;
-    }
-    if (ifMatch !== strongEtag(currentBytes!)) {
-      sendError(res, 412, "precondition failed: the file changed since it was read");
-      return;
-    }
-  } else if (existed) {
-    // No `If-Match` → create-only. There is no header spelling for a blind last-writer-wins overwrite:
-    // every overwrite must present a matching ETag (ADR 0016).
-    sendError(res, 412, "precondition failed: the file already exists (send If-Match to overwrite)");
+  // Precondition and write are one synchronous block (`artifact-file.ts`, ADR 0016): `If-Match`
+  // present is overwrite-only, absent is create-only, and every conflict is a `412` here.
+  const precondition = checkPrecondition(readArtifact(absPath), firstHeader(req.headers["if-match"]), "create-or-overwrite");
+  const written = precondition.ok ? writeArtifact(absPath, rawWorkflow, { create: precondition.create }) : precondition;
+  if (!written.ok) {
+    sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
     return;
   }
-
-  const serialized = `${JSON.stringify(rawWorkflow, null, 2)}\n`;
-  try {
-    // Intermediate dirs of a client-named nested path are created inside the confined, symlink-free
-    // chain `confineForWrite` walked. A create uses `wx` so a file that raced into existence between
-    // the read above and here fails `EEXIST` rather than clobbering it — folded into the create-only
-    // `412`.
-    mkdirSync(dirname(absPath), { recursive: true });
-    writeFileSync(absPath, serialized, existed ? undefined : { flag: "wx" });
-  } catch (err) {
-    if (!existed && (err as NodeJS.ErrnoException).code === "EEXIST") {
-      sendError(res, 412, "precondition failed: the file already exists (send If-Match to overwrite)");
-      return;
-    }
-    throw err;
-  }
-
-  const etag = strongEtag(Buffer.from(serialized, "utf8"));
+  const { etag } = written;
+  const existed = precondition.ok && !precondition.create;
   const relativePath = relative(resolve(ctx.project.dir), absPath);
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error here.
   const reply: WirePutWorkflowResponse = { relative_path: relativePath, id: validation.file.id, etag };

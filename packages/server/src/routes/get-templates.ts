@@ -2,9 +2,8 @@ import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import type { TemplateSummary } from "@path/schema";
 import { sendJson } from "../http-json.js";
-import { discoverTemplates, type TemplateKind } from "../template-store.js";
+import { discoverTemplates, shippedTemplateDir, type TemplateKind } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
-import { shippedTemplateDir } from "./template-common.js";
 
 /**
  * `GET /v0/templates?kind=step` (server-api-v0.md §10.1, ADR 0050 decision 4): the thin list
