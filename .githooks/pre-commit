@@ -37,11 +37,12 @@ lint_staged() {
 		return 1
 	fi
 
-	echo "$files" | xargs node_modules/.bin/biome check --no-errors-on-unmatched && return 0
+	echo "$files" |
+		xargs node_modules/.bin/biome check --error-on-warnings --no-errors-on-unmatched && return 0
 
 	cat >&2 <<'EOF'
 
-  pre-commit: staged TypeScript is not formatted, or has lint errors.
+  pre-commit: staged TypeScript is not formatted, or has lint errors or warnings.
 
   Fix it in place, then re-stage:
 

@@ -9,7 +9,7 @@
     "prepare": "git config core.hooksPath .githooks || true",
     "test": "pnpm -r run test",
     "typecheck": "pnpm -r run typecheck",
-    "lint": "biome check .",
+    "lint": "biome check --error-on-warnings .",
     "format": "biome check --write .",
     "sandcastle": "tsx .sandcastle/main.mts",
     "path": "tsx packages/engine/bin/path.ts",
