@@ -24,18 +24,14 @@ export interface LaunchPanelProps {
 }
 
 /**
- * The launch surface (issue #233, part of #228): the pinned three-pane console's left column gains
- * a workflow list above the runs list, and launching happens **inline** — a valid workflow row
- * expands a raw-JSON launch form under itself (prototype variant A, the chosen placement). Discovery
- * is `GET /v0/workflows` (§6): every discovered file, roots flagged, invalid ones shown but not
- * launchable. A launch is `POST /v0/runs` (§2); its `202 {root_run_id}` is lifted to the app, which
- * selects the run so the centre pane streams it live.
+ * The launch surface: a workflow list above the runs list, launching **inline** — a valid workflow row
+ * expands a raw-JSON launch form under itself. Discovery is `GET /v0/workflows` (§6): every discovered
+ * file, roots flagged, invalid ones shown but not launchable. A launch is `POST /v0/runs` (§2); its
+ * `202 {root_run_id}` is lifted to the app, which selects the run.
  *
- * One-shot read, not a refresh loop like the runs list: discovery is a fresh filesystem scan with no
- * live feed behind it, and workflow files change on an author's timescale, not a run's — a reload
- * re-scans. The runs list next to it owns the periodic re-read. The panel also makes one
- * `GET /v0/step-plugins` read, for the launch form's launch worker-default editor: the
- * registry is what makes its type/worker dropdowns constrained, and it is read once beside discovery.
+ * One-shot read, not a refresh loop like the runs list: discovery is a fresh filesystem scan with no live
+ * feed behind it, and files change on an author's timescale — a reload re-scans. It also makes one
+ * `GET /v0/step-plugins` read, for the launch form's worker-default editor.
  */
 /** The panel's kind filter: the three `WorkflowSummary` shapes (root / nested / invalid), or all. */
 type WorkflowFilter = "all" | "root" | "nested" | "invalid";
@@ -49,9 +45,8 @@ const WORKFLOW_FILTERS: readonly { value: WorkflowFilter; label: string }[] = [
 ];
 
 /**
- * Client-side kind filter (the workflow list is a single one-shot read, not a live feed, so there is
- * nothing to re-query): `root`/`nested` split the valid files on `is_root`; `invalid` is the files
- * that failed to load (`is_root` is `null` there, so they are never root or nested).
+ * Client-side kind filter (the workflow list is a one-shot read, so there is nothing to re-query):
+ * `root`/`nested` split the valid files on `is_root`; `invalid` is the files that failed to load.
  */
 function matchesFilter(workflow: WorkflowSummary, filter: WorkflowFilter): boolean {
   switch (filter) {
@@ -85,9 +80,8 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
       .catch((error: unknown) => {
         if (!cancelled) setState({ phase: "error", message: errorMessage(error) });
       });
-    // The step-plugin registry feeds the launch form's launch worker-default editor (ADR 0044).
-    // It is secondary to discovery: a failed read leaves the editor hidden rather than failing the
-    // panel, because launching with no worker-default is the ordinary case.
+    // The step-plugin registry feeds the launch form's worker-default editor (ADR 0044). It is
+    // secondary to discovery: a failed read leaves the editor hidden rather than failing the panel.
     client
       .getStepPlugins()
       .then((res) => {
@@ -168,10 +162,8 @@ function indent(depth: number): React.CSSProperties {
 }
 
 /**
- * One level of the folder tree: its folders first (each a navigation step that expands the next
- * level below it), then its workflow files (each a launch trigger that expands its form). Recurses
- * into an open folder's children — only an open folder renders its level, so the tree walks down one
- * folder per level.
+ * One level of the folder tree: its folders first (each expands the next level below it), then its
+ * workflow files (each a launch trigger that expands its form). Recurses into an open folder's children.
  */
 function WorkflowTree({
   nodes,
@@ -302,17 +294,14 @@ function WorkflowRow({
   expanded: boolean;
   onToggle: () => void;
 }) {
-  // The row shows only the file name — the folders already sit above it, and the workflow's own
-  // `name` is redundant here (it shows on the Launch button and in the run detail). One line, mono,
-  // so a file reads distinctly from a folder row (which carries a chevron and a count instead).
+  // The row shows only the file name — the folders already sit above it, and the workflow's own `name`
+  // shows on the Launch button and in the run detail.
   const label = (
     <span className="workflow-file-name">{workflowBaseName(workflow.relative_path)}</span>
   );
 
-  // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the
-  // same load), so it opens no launch form — but it is still a toggle: clicking it expands its load
-  // error below the row (rendered by the caller), the same disclosure the launch form uses, rather
-  // than printing the error inline on every row.
+  // An invalid file cannot be launched (§6: `valid` is a load result, and a launch would 400 on the same
+  // load), so it opens no launch form — but it is still a toggle, expanding its load error below the row.
   if (!workflow.valid) {
     return (
       <button

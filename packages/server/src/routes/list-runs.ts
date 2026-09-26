@@ -8,9 +8,8 @@ import { sendError, sendJson } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50), `status`,
- * and `workflow_id` are query params; the summary carries only `run_id`/`status`/`started_at`/
- * `finished_at` — the full tree and output live at `GET /v0/runs/:root_run_id`.
+ * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50), `status`, and
+ * `workflow_id` are query params; the full tree and output live at `GET /v0/runs/:root_run_id`.
  */
 export function handleListRuns({ res, ctx, query }: ApiRequest): void {
   const limitParam = query.get("limit");
@@ -34,18 +33,12 @@ export function handleListRuns({ res, ctx, query }: ApiRequest): void {
   }
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
 
-  // `workflow_id` (#365): the Designer's per-workflow history, scoped to the file open on its canvas.
-  // The scope key is the workflow's source-identity GUID, not its path (ADR 0015) — a server-side
-  // `WHERE workflow_id = ?` past the latest-N window, composing with `limit`/`status`. Omitted, the
-  // route is unchanged. Any GUID string is a valid filter; an unknown one matches nothing, so no
-  // format check is needed (matching `path runs --workflow-id`, which also passes it straight through).
-  // An absent *or empty* param is "omitted": a bare `?workflow_id=` reads as no filter, not as a
-  // filter for the empty id (no root run has one), so the route stays unchanged rather than 200-ing [].
+  // Scopes the list to the workflow's source-identity GUID, not its path (ADR 0015). An absent *or
+  // empty* param means "no filter"; an unknown GUID matches nothing, so no format check is needed.
   const workflowId = query.get("workflow_id") || undefined;
 
   const rows = ctx.project.archive.listRoots({ limit, status, workflowId });
-  // Each summary carries the masked-secret *names* its launch recorded (ADR 0046) — never values — so
-  // a Resume surface can ask for them before it submits.
+  // Each summary carries the masked-secret *names* its launch recorded (ADR 0046), never values.
   const body: ListRunsResponse = {
     runs: rows.map((row) =>
       toRootRunSummary(row, ctx.project.archive.launchFacts(row.runId)?.secretKeys),

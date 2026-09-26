@@ -6,10 +6,7 @@ import { WorkerDefaultsEditor, workerDefaultCandidates } from "./worker-defaults
 
 export interface LaunchFormProps {
   client: PathApiClient;
-  /**
-   * The launch target — the file the server loads through `prepareWorkflow`. `null` means there is no
-   * launchable target (the Designer's never-saved buffer); pair it with a `gate` that says why.
-   */
+  /** The launch target — the file the server loads through `prepareWorkflow`. `null` means none. */
   workflowPath: string | null;
   /** Called with the new run's `root_run_id` once a launch is accepted (202). */
   onLaunched: (rootRunId: string) => void;
@@ -21,20 +18,15 @@ export interface LaunchFormProps {
   testIdPrefix: string;
   /** The outer container's `data-testid` (the Viewer keys it on the workflow path). */
   containerTestId: string;
-  /**
-   * An external disable reason (the Designer's save-first gate: an unsaved or dirty buffer). `null`
-   * means no external gate. When set, the button is disabled and the reason shows under it.
-   */
+  /** An external disable reason (the Designer's save-first gate); `null` means none. */
   gate?: string | null;
-  /** Soft cross-node warning count (#388) — badges the button and notes below; never blocks. */
+  /** Soft cross-node warning count — badges the button and notes below; never blocks. */
   warningCount?: number;
   /** The config field's placeholder JSON hint. */
   configPlaceholder?: string;
   /**
-   * The step-plugin registry (`GET /v0/step-plugins`) the **launch worker-default** editor picks its
-   * per-type choices from (ADR 0044). Empty by default — and the Designer's run dock passes
-   * none, because the launch table is operator input authored in no file and its one editor is the
-   * Viewer's operator surface. With no multi-worker type on offer the field is not rendered at all.
+   * The step-plugin registry the launch worker-default editor picks its per-type choices from
+   * (ADR 0044). Empty, and with no multi-worker type on offer the field is not rendered at all.
    */
   plugins?: readonly WireStepPlugin[];
 }
@@ -42,20 +34,10 @@ export interface LaunchFormProps {
 type Submit = { phase: "idle" } | { phase: "sending" } | { phase: "error"; message: string };
 
 /**
- * The inline launch form: an optional raw-JSON `input` **override** (prefilled `{}`, empty allowed —
- * leaving it empty falls back to the workflow file's own `input` seed, else `{}`) and an optional
- * `config` override, **each behind its own disclosure** — `Override input (optional)` and
- * `Override config (optional)`, both collapsed on first render — plus, when a registry with a
- * multi-worker type is supplied, the **launch worker-default** table (ADR 0044). Client-side JSON is
- * gated by {@link parseJsonField} (§ Shared seam); the server is still the validator, and its `400`
- * (schema failure, a rejected `$env` override — ADR 0012, a bad worker-default entry — ADR 0044) lands
- * back here as an alert **without collapsing the form**, so the operator can fix the body and retry.
- *
- * Shared by the Viewer's launch panel (a picker over discovered workflows, #233) and the Designer's
- * run dock (the file open on the canvas, save-first — ADR 0025). The two surfaces differ in what they
- * pass in: the Viewer supplies a valid workflow path, no gate, and the discovered step-plugin registry;
- * the Designer supplies its save-first `gate` and soft `warningCount`, passes `workflowPath: null` for
- * a never-saved buffer, and no registry — the launch worker-default is the operator's door (ADR 0044).
+ * The inline launch form: optional raw-JSON `input` and `config` overrides, each behind its own collapsed
+ * disclosure, plus the launch worker-default table when a plugin registry offers a multi-worker type
+ * (ADR 0044). Client-side JSON is gated by {@link parseJsonField}; the server is still the validator, and
+ * its `400` lands back here as an alert **without collapsing the form**, so the operator can retry.
  */
 export function LaunchForm({
   client,
@@ -72,23 +54,21 @@ export function LaunchForm({
 }: LaunchFormProps): JSX.Element {
   const [input, setInput] = useState("{}");
   const [config, setConfig] = useState("");
-  // The launch worker-default table (ADR 0044): a `{ <type>: <worker-name> }` map, empty until the
-  // operator adds a row. Its rows are constrained dropdowns, so no invalid entry can be authored here
-  // and there is nothing to force open — the disclosure is the only state.
+  // The launch worker-default table: a `{ <type>: <worker-name> }` map, empty until the operator adds a
+  // row. Its rows are constrained dropdowns, so nothing invalid can be authored and there is nothing to
+  // force open — the disclosure is the only state.
   const [workerDefaults, setWorkerDefaults] = useState<{ [type: string]: string }>({});
   const [showInput, setShowInput] = useState(false);
   const [showConfig, setShowConfig] = useState(false);
   const [showWorkerDefaults, setShowWorkerDefaults] = useState(false);
   const [submit, setSubmit] = useState<Submit>({ phase: "idle" });
 
-  // Both fields are always parsed from their own text, not gated on their disclosure being open: a
-  // value the operator typed is a value they meant to send, whether or not the field is visible, and
-  // gating on visibility would silently drop an input or an override on launch. The disclosures only
-  // show/hide the fields.
+  // Both fields always parse from their own text, not gated on their disclosure being open: a value the
+  // operator typed is a value they meant to send, and gating on visibility would silently drop it.
   const inputResult = parseJsonField(input, { allowEmpty: true });
   const configResult = parseJsonField(config, { allowEmpty: true });
-  // An override takes effect only when it has at least one top-level key: a blank field or a literal
-  // `{}` is "no override", so the server falls back to the workflow file's own `input` seed (else `{}`).
+  // An override needs at least one top-level key: a blank field or a literal `{}` is "no override", so
+  // the server falls back to the workflow file's own `input` seed (else `{}`).
   const inputOverride =
     inputResult.ok && inputResult.value !== undefined && Object.keys(inputResult.value).length > 0
       ? inputResult.value
@@ -97,7 +77,6 @@ export function LaunchForm({
   // reason off-screen — so a bad value forces its own field open.
   const inputOpen = showInput || !inputResult.ok;
   const configOpen = showConfig || !configResult.ok;
-  // Nothing to select when the registry ships no multi-worker type, so the field is not rendered at all.
   const hasWorkerChoices = workerDefaultCandidates(plugins).length > 0;
   const workerDefaultCount = Object.keys(workerDefaults).length;
   const canLaunch =
@@ -114,11 +93,10 @@ export function LaunchForm({
       .startRun({
         workflowPath,
         // An empty override is omitted, never sent as `{}` — the server then seeds the run from the
-        // workflow file's own `input`, the file's own rule mirrored here.
+        // workflow file's own `input`.
         input: inputOverride,
         config: configResult.value,
-        // An unset table is omitted, never sent as `{}` — the same "empty drops the key" rule the file
-        // channel's `worker_defaults` follows (ADR 0044).
+        // An unset table is omitted, never sent as `{}`, matching the file channel's `worker_defaults`.
         workerDefaults: workerDefaultCount > 0 ? workerDefaults : undefined,
       })
       .then((res) => {
@@ -130,8 +108,8 @@ export function LaunchForm({
 
   return (
     <div className="launch-form" data-testid={containerTestId}>
-      {/* The disclosure is the input field's title, so the textarea is named by it (`labelledBy`)
-          rather than printing the same words a second time as a field label. */}
+      {/* The disclosure titles the field, so the textarea is named by it (`labelledBy`) rather than
+          printing the same words a second time as a field label. */}
       <button
         type="button"
         id={`${idBase}-input-toggle`}
@@ -178,9 +156,8 @@ export function LaunchForm({
         />
       )}
 
-      {/* The launch worker-default (ADR 0044): a run-wide table sitting above every file's own
-          `worker_defaults` and below a step's own `worker` pin. The disclosure names the section, so
-          the editor inside prints no title of its own. */}
+      {/* The launch worker-default (ADR 0044) sits above every file's own `worker_defaults` and below a
+          step's own `worker` pin. The disclosure names the section, so the editor prints no title. */}
       {hasWorkerChoices && (
         <>
           <button

@@ -2,21 +2,15 @@ import type { JsonValue, LaunchFacts, RerunFromNodePathEntry } from "@path/schem
 import type { Trace } from "./condition.js";
 
 /**
- * Thrown by `observe` to signal the engine must **fail the run** rather than crash — the
- * audit-first policy for a log backend write failure (mvp spec §8.2). `runWorkflow` catches this
- * specific type, ends the run as failed, and drives a best-effort terminal `run-finished`; any other
- * thrown error is treated as a bug and propagates unchanged.
+ * Thrown by `observe` to fail the run rather than crash — the audit-first policy for a log-backend write failure (mvp
+ * spec §8.2); any other throw is a bug and propagates.
  */
 export class ObserverError extends Error {}
 
 /**
- * How a run/step ended — shared by the `step-finished` and `run-finished` observations (identical
- * shape). A failure
- * carries its `error` message so logging (#19) can put it on the `step-finished` event; for a
- * binary step that message already embeds the exit code + short stderr tail (mvp spec §8.1). A
- * `cancelled` outcome (#24) has neither output nor error — an in-flight sibling of a failing
- * parallel branch that the engine killed best-effort (mvp spec §5.6); its cause is narrated
- * separately by the `run-cancelled` event.
+ * How a run/step ended, shared by `step-finished` and `run-finished`. A failure carries its `error`
+ * (a binary step's embeds the exit code and stderr tail); `cancelled` has neither, its cause being
+ * narrated by `run-cancelled` (mvp spec §5.6).
  */
 export type RunOutcome =
   | { status: "succeeded"; output: JsonValue }
@@ -24,47 +18,14 @@ export type RunOutcome =
   | { status: "cancelled" };
 
 /**
- * One typed record of run activity the engine emits to its observer (#62) — the **full** set,
- * distinct from the narrower `LogEvent` narrative (logging/log-event.ts).
- *
- * Two things separate an observation from a log event, and both are why this union exists:
- *
- * 1. **Observations carry payloads.** `input`, `output`, `context` and `stderr` ride the
- *    observation, because persistence writes them to blobs (mvp spec §6). The log stream carries
- *    only blob refs, so `toLogEvent` strips them.
- * 2. **Four members are never narrated.** `step-stderr`, `step-usage`, `context-changed` and
- *    `step-context` have no log event at all — they exist purely for persistence.
- *
- * Every observation reaching an observer is **already secret-masked** (mvp spec §8.3): masking
- * happens at the engine's single emit choke point, not in a wrapper a caller might forget to
- * apply. Backends inherit that guarantee (see logging/log-backend.ts).
- *
- * Members mirror the run/step/control-node lifecycle one-for-one. **Every** member carries the same
- * four identity fields:
- *
- * - `runId` — the run the observation belongs to (a leaf step's own run for the step tier);
- * - `rootRunId` — that run's tree root, so one observer instance serves a whole nested run tree (#22);
- * - `nodeId`/`nodeName` — the node the observation is *about*: the run's own node for a run-tier
- *   observation (`null` on the root, the `workflow` node on a nested run), the step's node for a leaf,
- *   the control node for a control-node observation.
- *
- * Carrying all four on every member is what makes an observer a **function of one observation**. The
- * logging observer used to keep `nodeId`/`nodeName` maps, filled from whichever earlier observation
- * happened to carry them, to label the members that did not — state that made its output depend on the
- * order and completeness of the stream it was handed. Now the emitter stamps the pair where it is
- * known, and the log envelope is a rename.
+ * One typed record of run activity the engine emits to its observer — the **full** set, distinct from the
+ * narrower `LogEvent` narrative. Every observation is already secret-masked (mvp spec §8.3), carries all four
+ * identity fields, and carries the payloads persistence writes to blobs; four members are never narrated.
  */
 export type Observation =
   /**
-   * A workflow-run begins, before any body node executes. The root run has `parentRunId: null` and
-   * `nodeId: null`; a nested workflow-step's run (#22) carries its parent run's id and the
-   * `workflow` node's id — workflow-as-step means the child run *is* that step's run, so a nested
-   * workflow-run is reported here (with its own context) rather than as `step-started`.
-   *
-   * A workflow-run carries no `worker` of its own (ADR 0021 sub-14 removed the file worker): a
-   * worker is a per-step name now, and a workflow-run is its file's implicit root workflow-step
-   * (invariant 2), which runs a nested run rather than a worker. Logging still emits its
-   * `step-started`/`step-finished` as the run's own lifecycle (mvp spec §8.1).
+   * A workflow-run begins, before any body node executes; a nested workflow-step's run is reported here, not as
+   * `step-started`. A workflow-run has no worker of its own (ADR 0021 sub-14).
    */
   | {
       type: "run-started";
@@ -75,54 +36,38 @@ export type Observation =
       nodeName: string | null;
       input: JsonValue;
       /**
-       * A `while-do` iteration container's 1-based ordinal (ADR 0037, #454), set only on a container's
-       * run-started and absent on every other run. Persistence records it on the row's `iteration`
-       * column; `isIterationRun` reads it to classify the row as an iteration scope.
+       * A `while-do` iteration container's 1-based ordinal (ADR 0037), set only on a container's run-started;
+       * persistence records it on the row's `iteration` column.
        */
       iteration?: number;
       /**
-       * A goto pass container's 1-based ordinal (ADR 0054), set only on a pass's run-started and
-       * absent on every other run. Persistence records it on the row's `pass` column; `isPassRun`
-       * reads it to classify the row as a pass scope.
+       * A goto pass container's 1-based ordinal (ADR 0054), set only on a pass's run-started; persistence records it
+       * on the row's `pass` column.
        */
       pass?: number;
       /**
-       * The predecessor's root run id (#173), set only on a resumed tree's **root** run-started —
-       * the one identity fact that marks this fresh root run as a successor of another (#168). Absent
-       * for an ordinary run and for every nested run, whose predecessor is the tree's, not its own.
-       * Persistence records it on the root row's `resumed_from_root_run_id`; no other observer reads it.
+       * The predecessor's root run id, set only on a resumed tree's **root** run-started; the one identity fact
+       * marking this fresh root as a successor.
        */
       resumedFromRootRunId?: string;
       /**
-       * The rerun boundary (K) descent path a Resume-from-K successor resumed from (#444, ADR 0032),
-       * as `{nodeId, nodeName}[]`. Set only on the successor's **root** run-started, absent on plain
-       * Resume and on every nested run. Persistence writes it to the root row's `rerun_from_node_path`;
-       * a read denormalization no correctness path reads.
+       * The rerun boundary (K) descent path a Resume-from-K successor resumed from (ADR 0032), as `{nodeId,
+       * nodeName}[]`; set only on the successor's **root** run-started.
        */
       rerunFromNodePath?: RerunFromNodePathEntry[];
       /**
-       * The operator's frozen **launch facts** (ADR 0046) — the input override, the config override
-       * (`$env`-resolved, `$secret`-masked at the emit choke point), and the launch worker-default
-       * table (ADR 0044, #519) — set only on a **root** run-started whose launch supplied any of them.
-       * They are identity-defining like `input`: persistence records them on the root row
-       * (`getLaunchFacts` reads them back), `Project.resume`/`complete` recover the config and the
-       * table from them, and the run-tree read shows a reader what the run was launched with. Absent
-       * for a launch that supplied nothing beyond the file, and for every nested run.
+       * The operator's frozen launch facts (ADR 0046) — input override, masked config override, and the launch
+       * worker-default table (ADR 0044) — set only on a root run-started whose launch supplied any of them.
        */
       launchFacts?: LaunchFacts;
       /**
-       * The producing workflow's source identity (#202, ADR 0006): its durable GUID `id`, human
-       * `name`, and the launcher-supplied path (relative to the store dir). Set **only on the root
-       * run's** run-started — a nested workflow-run's own file identity is not recorded, its producing
-       * node already being named by `nodeId`/`nodeName`. Persistence writes the trio to the root row's
-       * `workflow_id`/`workflow_name`/`workflow_path`. `workflowPath` is absent when the launcher
-       * supplied none (a server-hosted run); the GUID/name are always present on the root.
+       * The producing workflow's source identity (ADR 0006), set only on the root run-started; persistence writes the
+       * trio to the root row's `workflow_id`/`workflow_name`/`workflow_path`.
        */
       workflowId?: string;
       workflowName?: string;
       workflowPath?: string;
     }
-  /** A leaf step run begins — its input/command/cwd are resolved and it's about to execute. */
   | {
       type: "step-started";
       runId: string;
@@ -145,11 +90,9 @@ export type Observation =
       stderr: string;
     }
   /**
-   * What one LLM step run spent (#25, mvp spec §5.7, §7): `usage` is the worker's real token counts,
-   * `estimatedCostUsd` the SDK's client-side estimate at API list prices. Reported **leaf-only**, on
-   * the prompt-step run where the tokens were spent — a workflow-run never reports a total of its
-   * children's spend, since subtree figures are a read-time SUM. Emitted before `step-finished`, and
-   * for a failed step too: a step that died mid-conversation still spent tokens.
+   * What one LLM step run spent (mvp spec §5.7, §7): the worker's real token counts and the SDK's client-side cost
+   * estimate. Leaf-only — subtree figures are a read-time SUM — and emitted before `step-finished`, for a failed step
+   * too.
    */
   | {
       type: "step-usage";
@@ -160,7 +103,6 @@ export type Observation =
       usage: JsonValue | null;
       estimatedCostUsd: number | null;
     }
-  /** A leaf step run finished. */
   | ({
       type: "step-finished";
       runId: string;
@@ -168,7 +110,6 @@ export type Observation =
       nodeId: string;
       nodeName: string;
     } & RunOutcome)
-  /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
   | {
       type: "context-changed";
       runId: string;
@@ -178,11 +119,8 @@ export type Observation =
       context: JsonValue;
     }
   /**
-   * A leaf step run's snapshot of the enclosing workflow-run's context, taken right after the step
-   * finished and its publish (if any) landed — so the step's own directory records the context as it
-   * stood when that step ran, and the viewer can follow the context evolve step by step. `runId` is
-   * the leaf step run's own id (not the workflow-run's), so persistence writes it under that step's
-   * directory alongside its `input.json`/`output.json`. Persistence-only, never narrated.
+   * A leaf step run's snapshot of the enclosing workflow-run's context, taken right after the step finished and its
+   * publish landed, written under the step run's own directory. Persistence-only, never narrated.
    */
   | {
       type: "step-context";
@@ -193,11 +131,8 @@ export type Observation =
       context: JsonValue;
     }
   /**
-   * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
-   * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the
-   * `winner` branch won the race and only its buffered publishes landed, `branches` naming just the
-   * winner. A control-node observation (the block is a controller, not a run) — `runId` is the enclosing
-   * workflow-run, `nodeId` the `parallel` node. `winner` is set only for a `wait-one` join.
+   * A `parallel` join applied at block end: for `collect` all branches succeeded and their buffered publishes landed
+   * in declaration order; for `wait-one` only the `winner` branch's landed.
    */
   | {
       type: "join-applied";
@@ -210,12 +145,8 @@ export type Observation =
       winner?: string;
     }
   /**
-   * A run the engine killed best-effort (#24, #52, mvp spec §5.6): `runId`/`nodeId` identify the
-   * cancelled step run and its node. `cause` is why — `sibling-failed` (a `collect` branch failed,
-   * `causeRunId` naming that run), `sibling-succeeded` (a `wait-one` branch won the race, so the
-   * losers are cancelled — wait-one-join.md §5, no cause run so `causeRunId` is null), or `operator`
-   * (a cancel request against the root run, also no cause run). Paired with a `cancelled`
-   * `step-finished` for the same run.
+   * A run the engine killed best-effort (mvp spec §5.6): `cause` is `sibling-failed` (with the failing run's id),
+   * `sibling-succeeded`, or `operator`. Paired with a `cancelled` `step-finished`.
    */
   | {
       type: "run-cancelled";
@@ -226,7 +157,6 @@ export type Observation =
       cause: "sibling-failed" | "sibling-succeeded" | "operator";
       causeRunId: string | null;
     }
-  /** A workflow-run finished (root or nested). */
   | ({
       type: "run-finished";
       runId: string;
@@ -235,14 +165,8 @@ export type Observation =
       nodeName: string | null;
     } & RunOutcome)
   /**
-   * A resumed tree reused a node's recorded work instead of re-running it (#172,
-   * resume-restore-semantics.md §6). No `step-started`/`step-finished` is emitted for the reused
-   * node and no run row is written — this marker is its whole trace. `runId` is the enclosing
-   * re-entered workflow-run (the reuse decision was taken while walking that run's body), `nodeId`
-   * the reused node's own id, and `originalRunId` the run in the *original* tree that holds the real
-   * data. Fires once per reuse decision — a reused workflow-run collapses its whole subtree into this
-   * single event, never one per descendant. Narrated to the log alone (see logging/logging-observer);
-   * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
+   * A resumed tree reused a node's recorded work instead of re-running it (resume-restore-semantics.md §6): this
+   * marker is the reused node's whole trace, with no `step-started`/`step-finished` and no run row.
    */
   | {
       type: "reuse-marker";
@@ -253,10 +177,8 @@ export type Observation =
       originalRunId: string;
     }
   /**
-   * A leaf step run entered the `awaiting` status (#462): the engine suspended it. `assignee` (#488)
-   * is who the offline activity is for — an informational string the worker echoed from its node
-   * (`null` when the node named none), on the record so an `awaiting`/Complete cycle reconstructs
-   * from the log alone. It is an interpolated author value, so it is secret-masked like any other.
+   * A leaf step run entered the `awaiting` status: the engine suspended it. `assignee` is the offline activity's
+   * informational string, `null` when the node named none, and is secret-masked like any other.
    */
   | {
       type: "step-awaiting";
@@ -267,11 +189,8 @@ export type Observation =
       assignee: string | null;
     }
   /**
-   * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
-   * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run
-   * of its own (invariant 1). `passed` is the condition outcome; a strict-error evaluation is
-   * `passed: false` with the error surfaced as an error leaf inside `trace`. Logging (#19) splits
-   * this into the `checkpoint-passed`/`checkpoint-failed` events.
+   * A `checkpoint` node was evaluated: `passed` is the condition outcome (a strict-error evaluation is `passed:
+   * false` with the error in `trace`), attributed to the enclosing run plus the control node's id.
    */
   | {
       type: "checkpoint-evaluated";
@@ -283,8 +202,8 @@ export type Observation =
       trace: Trace;
     }
   /**
-   * A `branch` arm won (#21): `arm` is the winning arm's index, or `"else"` for the fallback (which
-   * has no condition, so `trace` is null).
+   * A `branch` arm won: `arm` is the winning arm's index, or `else` for the fallback (which has no condition, so
+   * `trace` is null).
    */
   | {
       type: "branch-taken";
@@ -296,8 +215,8 @@ export type Observation =
       trace: Trace | null;
     }
   /**
-   * No `branch` arm matched and there was no `else` (#21) — this fails the run (§5.2). Carries every
-   * arm's `trace`.
+   * No `branch` arm matched and there was no `else` — this fails the run (mvp spec §5.2). Carries every arm's
+   * `trace`.
    */
   | {
       type: "branch-no-match";
@@ -307,10 +226,6 @@ export type Observation =
       nodeName: string;
       traces: Trace[];
     }
-  /**
-   * A `while-do` iteration is about to run (#23): `iteration` is 1-based; `trace` is the condition
-   * check that passed (true) leading to this iteration.
-   */
   | {
       type: "iteration-started";
       runId: string;
@@ -321,10 +236,8 @@ export type Observation =
       trace: Trace;
     }
   /**
-   * A `while-do` loop exited (#23): `reason` is `condition-false` (the normal exit) or
-   * `max-iterations-exceeded` (which fails the run — spec §5.2/§5.6); `iterations` is the number of
-   * completed iterations; `trace` is the final condition check (the false one, or the still-true one
-   * at the cap).
+   * A `while-do` loop exited: `reason` is `condition-false` or `max-iterations-exceeded` (which fails the run, mvp
+   * spec §5.2/§5.6); `iterations` counts completed iterations.
    */
   | {
       type: "loop-exited";
@@ -337,8 +250,8 @@ export type Observation =
       trace: Trace;
     }
   /**
-   * A goto pass opened (ADR 0054, spec docs/spec/goto.md §7): `pass` is its 1-based ordinal. `runId`
-   * is the workflow-run; `nodeId`/`nodeName` name the goto that opened it, both null for pass 1.
+   * A goto pass opened (ADR 0054, goto.md §7): `pass` is its 1-based ordinal; `nodeId`/`nodeName` name the goto that
+   * opened it, both null for pass 1.
    */
   | {
       type: "pass-started";
@@ -349,8 +262,8 @@ export type Observation =
       pass: number;
     }
   /**
-   * A goto jumped (ADR 0061): `jump` is this goto's 1-based count in the workflow-run, this one
-   * included; `maxJumps` the resolved bound; `pass` the ordinal of the pass the jump opens.
+   * A goto jumped (ADR 0061): `jump` is this goto's 1-based count in the workflow-run, this one included; `maxJumps`
+   * the resolved bound; `pass` the ordinal it opens.
    */
   | {
       type: "goto-taken";
@@ -364,10 +277,7 @@ export type Observation =
       maxJumps: number;
       pass: number;
     }
-  /**
-   * A goto was reached with its `max_jumps` already spent (ADR 0061) — this fails the pass and the
-   * workflow-run. `pass` is the ordinal of the pass that fails.
-   */
+  /** A goto was reached with its `max_jumps` already spent (ADR 0061) — this fails the pass and the workflow-run. */
   | {
       type: "goto-exhausted";
       runId: string;
@@ -381,55 +291,19 @@ export type Observation =
     };
 
 /**
- * The engine's audit seam: one required method, called at exactly the points persistence (#18) and
- * logging (#19) need to observe. The engine itself never touches fs/db directly — a caller with
- * nothing to observe passes no observer at all.
- *
- * **Why one method and not a hook per lifecycle point (#62).** A *sink* may legitimately care about
- * a subset — persistence ignores every control-node observation, and that is correct. A *decorator*
- * may not: a wrapper that forwards some observations and drops the rest silently deletes them.
- * Fourteen independently-optional hooks made that distinction unenforceable, and the masking
- * decorator shipped covering 6 of them, so eight kinds of observation vanished for any workflow
- * declaring a `$secret`. With one required method, a sink switches and ignores what it likes, while
- * a decorator cannot be partial — there is nothing to be partial about.
- *
- * **What an implementer may rely on:**
- * - Observations arrive **already secret-masked** (mvp spec §8.3) — the engine masks at its single
- *   emit choke point, so no caller has to remember to wrap anything.
- * - Every observation carries `rootRunId`, so one instance serves an entire nested run tree (#22)
- *   without hidden per-run state.
- * - A root run's `run-started` precedes every other observation of its tree, and its `run-finished`
- *   follows every other — the logging observer opens and closes its backends on that guarantee.
- *
- * Throwing `ObserverError` fails the run (audit-first, §8.2); any other throw is a bug and
- * propagates.
+ * The engine's audit seam: one required method, called wherever persistence and logging need to observe, and the
+ * engine never touches fs/db. One method rather than a hook per lifecycle point: a sink may ignore observations,
+ * but a decorator that drops them would silently delete them. Observations are already masked (mvp spec §8.3).
  */
 export interface RunObserver {
   observe(o: Observation): void | Promise<void>;
 }
 
 /**
- * Fans one observation out to several observers in argument order, awaiting each — the dumb ordered
- * fan-out `Project.execute` builds its audit pipeline from (project.ts). A throw (e.g. an
- * `ObserverError` from a log backend failure) propagates from the composite, so the engine still sees
- * it and fails the run; observers after the thrower do not run.
- *
- * **Argument order is load-bearing.** `Project.execute` is the one place a run's observers are
- * assembled (#64) — the CLI and the server both reach the engine through it, neither composing an
- * observer of its own. It orders the pipeline persistence → logging → appended observers for two
- * reasons, each now pinned by a test in `project.test.ts` rather than by this comment alone:
- *
- * - **Persistence before logging.** A log backend write failure raises `ObserverError`, which aborts
- *   the remaining observers for that observation. With logging first, a run whose audit failed would
- *   also have no run row — the row is the record that survives a failed audit, so it must land first.
- *   ("keeps the run row when a log backend throws".)
- * - **Appended observers last.** The server's capture observer resolves the deferred that sends HTTP
- *   202 (`post-runs.ts`), and a client may `GET /v0/runs/:id` the instant that response lands. Running
- *   it before the persisted observer races the row it will read; before the logging observer, it races
- *   the hub channel its SSE stream subscribes to. ("runs extraObservers after the built-in pair".)
- *
- * This function stays order-agnostic on purpose: it fans out in the order handed to it. The order is a
- * property of the single assembly that builds it, which is where the tests aim.
+ * Fans one observation out to several observers in argument order, awaiting each; a throw (e.g. `ObserverError`)
+ * propagates, so observers after the thrower do not run. `Project.execute` orders the pipeline persistence →
+ * logging → appended observers, so a failed audit still leaves the run row and the server's capture observer cannot
+ * race the row or hub channel it reads.
  */
 export function composeObservers(...observers: RunObserver[]): RunObserver {
   return {

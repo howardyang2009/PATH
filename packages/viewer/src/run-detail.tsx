@@ -36,12 +36,10 @@ export interface RunDetailProps {
 }
 
 /**
- * The run-detail read surface: root-run status plus the indented run tree, in the centre pane of
- * the pinned console (#44 Variant A), with the live narrative under it (#48). Status, tree and
- * narrative are all live off one connection — the view-model folds the SSE stream in as the run
- * executes, and reopening a run mid-flight replays its history (map #40's watch verb). That
- * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
- * snapshot to know when the run it is showing has written its output.
+ * The run-detail read surface: root-run status plus the indented run tree, with the live narrative under
+ * it. Status, tree and narrative are all live off one connection — the view-model folds the SSE stream in
+ * as the run executes, and reopening a run mid-flight replays its history. That connection is held by the
+ * app rather than by this pane, because the node-I/O pane reads the same snapshot.
  */
 export function RunDetail({
   client,
@@ -125,8 +123,8 @@ export function RunDetail({
   // Several leaves can await at once (parallel joins, ADR 0042). The rail carries a count badge when
   // more than one does, so the operator sees at a glance there is more than the selected one to act on.
   const awaitingCount = state.awaitingRunIds.size;
-  // A terminal run has nothing to cancel (#56) — the button is absent, not disabled-and-explaining.
-  // The finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
+  // A terminal run has nothing to cancel — the button is absent, not disabled-and-explaining. The
+  // finished-side mirror, Resume, lives in the runs rail (under the selected row), not here.
   const cancellable = !isTerminal(state.status);
 
   return (

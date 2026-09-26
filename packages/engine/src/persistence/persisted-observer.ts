@@ -14,38 +14,12 @@ import {
 } from "./run-store.js";
 
 /**
- * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/`
- * (mvp spec §5.7, §6). One instance serves an entire run tree: every observation carries its own
- * `rootRunId`, so a nested workflow-run (#22) records under the same root as its parent without the
- * observer holding any per-run state. The run tree in the db (parent/root ids on each row) and on
- * disk (`.path/runs/<root>/<run>/`) mirror the nesting, and each workflow-run keeps its own isolated
- * `context.json`.
- *
- * This module answers both halves of one question — which observations are run facts, and how a run
- * fact lands in `.path/`. They used to be two modules with a `RunStore` interface between them, but
- * that interface was three one-line delegations and a parameter object built by patching fields into
- * an observation at the caller: neither side could be read without the other's vocabulary.
- *
- * Recording one run used to take four calls in a required order — insert the row, build the blob
- * directory, write the blob, then update the row with a ref built separately from the same pieces.
- * Two hazards came with that (#72). The directory (`runBlobDir`, host separators) and the ref
- * (`blobRef`, always forward slashes) had to address the same file with nothing checking, so a
- * mismatch left the blob on disk and the row pointing elsewhere: no error, no failing test, just a
- * run whose input is unreadable through the API. And every row was INSERTed then immediately
- * UPDATEd, because `insertRun` did not take the ref its caller already had. Both are gone by
- * construction: `writeRunBlob` returns the ref for the bytes it just wrote, and the row carries that
- * ref from the start.
- *
- * Reads stay free functions in `run-store.ts` — `getRunsForRoot` and `listRootRuns` are queries with
- * no order between them, and the archive imports them directly. It is the write side that has a
- * sequence, so it is the write side that has an owner.
- */
+ * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/` (mvp spec §5.7,
+ * §6). One instance serves an entire run tree, since every observation carries its own `rootRunId`; the
+ * blob lands first and the row carries its ref from the start, so the two can never point at different files. */
 export function createPersistedObserver(db: Database.Database, projectDir: string): RunObserver {
-  /**
-   * A run began. `seedsContext` distinguishes the two callers: a workflow-run's input seeds its
-   * context (format §6.3), so `context.json` is written alongside `input.json`; a leaf step's input
-   * does not. The blob lands first and the row carries its ref from the start (#72).
-   */
+  /** A run began. `seedsContext` distinguishes the two callers: a workflow-run's input seeds its context
+   * (format §6.3) and writes `context.json` alongside `input.json`; a leaf step's input does not. */
   function recordStarted(
     fact: {
       runId: string;
@@ -55,22 +29,17 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
       nodeName: string | null;
       workerName: string | null;
       input: JsonValue;
-      // Present only on a `while-do` iteration container's run-started (ADR 0037): its 1-based ordinal.
-      // Undefined on every other run, which leaves the `iteration` column null.
+      // Present only on a `while-do` iteration container's run-started (ADR 0037); 1-based ordinal.
       iteration?: number;
-      // Present only on a goto pass container's run-started (ADR 0054): its 1-based ordinal.
+      // Present only on a goto pass container's run-started (ADR 0054); 1-based ordinal.
       pass?: number;
-      // Present only on a resumed tree's root run-started (#173); the row records it verbatim.
+      // Present only on a resumed tree's root run-started; the row records it verbatim.
       resumedFromRootRunId?: string;
-      // Present only on a Resume-from-K successor's root run-started (#444, ADR 0032): the rerun
-      // boundary (K) descent path, recorded root-only as JSON. Absent on plain Resume and nested runs.
+      // Present only on a Resume-from-K successor's root run-started (ADR 0032): the boundary (K) descent path.
       rerunFromNodePath?: RerunFromNodePathEntry[];
-      // Present only on a launch's root run-started that supplied one (ADR 0046): the operator's frozen
-      // launch facts (input override, resolved+masked config override, launch worker-default table),
-      // recorded root-only as JSON. Absent otherwise.
+      // Present only on a launch root run-started that supplied one (ADR 0046): the operator's frozen launch facts.
       launchFacts?: LaunchFacts;
-      // Present only on the root run-started (#202); the row records the source-workflow identity
-      // trio verbatim. Undefined on every nested run, which leaves those columns null.
+      // Present only on the root run-started: the source-workflow identity trio, recorded verbatim.
       workflowId?: string;
       workflowName?: string;
       workflowPath?: string;
@@ -126,12 +95,9 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     observe(o) {
       switch (o.type) {
         case "run-started":
-          // Root run: parentRunId/nodeId null, workerName null. Nested workflow-run (#22): its parent
-          // run's id + the `workflow` node's id — workflow-as-step means this row *is* that step. A
-          // workflow-run carries no worker of its own (ADR 0021 sub-14), so `worker_name` is null.
-          // A workflow-run's input seeds its context (format doc §6.3), which a leaf step's does not.
-          // A goto pass container shares its workflow-run's context and writes no snapshot of its own
-          // (spec docs/spec/goto.md §5), so its input does not seed a `context.json`.
+          // Root run: parentRunId/nodeId/workerName null. Nested workflow-run: its parent run's id and the
+          // `workflow` node's id, with no worker of its own (ADR 0021 sub-14). Its input seeds the context
+          // (format §6.3), unlike a leaf step's; a goto pass container shares it and writes no snapshot.
           recordStarted({ ...o, workerName: null }, o.pass === undefined);
           return;
 
@@ -139,8 +105,8 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           recordStarted(o, false);
           return;
 
-        // Always written, even empty — captured for audit, never passed downstream (format §4.2).
-        // Not a JSON blob and not referenced by a row column, so it goes through the raw writer.
+        // Always written, even empty — captured for audit, never passed downstream (format §4). Not a JSON
+        // blob and not referenced by a row column, so it goes through the raw writer.
         case "step-stderr":
           writeBlobFile(
             runBlobDir(projectDir, o.rootRunId, o.runId),
@@ -159,9 +125,8 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           writeRunBlob(projectDir, o.rootRunId, o.runId, RUN_BLOB_FILE.context, o.context);
           return;
 
-        // A per-step context snapshot: the same `context.json`, but written under the leaf step's own
-        // run directory (`o.runId` is the step run, not the workflow-run) so each step keeps the
-        // context as it stood when it finished — the input/output pair gains a context companion.
+        // A per-step context snapshot: the same `context.json`, but under the leaf step's own run directory
+        // (`o.runId` is the step run), so the input/output pair gains a context companion as it stood at finish.
         case "step-context":
           writeRunBlob(projectDir, o.rootRunId, o.runId, RUN_BLOB_FILE.context, o.context);
           return;
@@ -175,13 +140,9 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           recordFinished(o.rootRunId, o.runId, o);
           return;
 
-        // A reused node now records a real `succeeded` row of its own (#257) — a *reuse row* — so the
-        // node appears in the run tree (`getRunsForRoot`, viewer, `path runs`) rather than being
-        // visible only as a log marker, and a chained resume can reuse it straight from `runs`. The row
-        // holds no blobs and no spend: `reused_from_run_id` points at the source run whose recorded
-        // output and cost it reuses, direct-to-source (ADR 0001), never copied. The `reuse-marker` log
-        // event still fires alongside it (below), and stays the record the cost SUM (#176) and the `rm`
-        // guard (#175) read — the row is additive, not a replacement for the marker.
+        // A reused node records a real `succeeded` reuse row, so it appears in the run tree and a chained
+        // resume can reuse it from `runs`. It holds no blobs and no spend — `reused_from_run_id` points at
+        // the source run (direct-to-source, ADR 0001) — while the `reuse-marker` event stays the cost/rm record.
         case "reuse-marker":
           insertReuseRun(db, {
             runId: randomUUID(),
@@ -193,9 +154,9 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
           });
           return;
 
-        // Control-node observations have no run of their own (invariant 1), so there is no row to
-        // write: they are narrative, and the log stream is where they live. `run-cancelled` included
-        // — the cancelled row is written by the `cancelled` step-finished paired with it.
+        // Control-node observations have no run of their own (invariant 1), so there is no row to write: they
+        // are narrative, and the log stream is where they live. `run-cancelled` included — the cancelled row is
+        // written by the paired step-finished.
         case "join-applied":
         case "run-cancelled":
         case "checkpoint-evaluated":
@@ -203,7 +164,6 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
         case "branch-no-match":
         case "iteration-started":
         case "loop-exited":
-        // The goto events too: the pass itself has a row, written by its own run-started.
         case "pass-started":
         case "goto-taken":
         case "goto-exhausted":

@@ -1,15 +1,7 @@
 import { isPlainObject, type JsonValue, validateOutputSchema } from "@path/schema";
 
-/**
- * The Complete form model (ADR 0040, CONTEXT.md § Person-activity): a `person-activity` node's
- * `outputSchema` is author-supplied JSON Schema, and both the Viewer and the Designer build the
- * completion form from it. This is the framework-free half of that build — the field list, the value
- * coercion, the client pre-check, and the mapping of the server's ajv `400` back onto fields — so the
- * two surfaces draw the same form and read the same errors, with only the inputs left to each.
- *
- * The server is always the authority (it re-validates against the current file). The client pre-check
- * is a courtesy that catches the obvious before a round-trip; a passing pre-check is never a promise,
- * so a `400` still lands and its field errors show.
+/** The Complete form model (ADR 0040, CONTEXT.md § Person-activity): the field list, value coercion, client pre-check,
+ * and the mapping of the server's ajv `400` onto fields, shared by the Viewer and the Designer.
  */
 
 /** How one property is drawn and typed. `enum` collapses any typed enum to a select of its labels. */
@@ -18,14 +10,12 @@ export type CompleteFieldKind = "boolean" | "enum" | "number" | "integer" | "str
 export interface CompleteField {
   /** The property name — the output object key and the form control id. */
   key: string;
-  /** The label: the schema's `title`, else the key. */
   title: string;
-  /** The schema's `description`, shown as field help; `null` when absent. */
+  /** The schema's `description`, shown as field help. */
   description: string | null;
   kind: CompleteFieldKind;
-  /** In the schema's `required` array. */
   required: boolean;
-  /** The allowed values for an `enum` field, else `null`. */
+  /** The allowed values for an `enum` field. */
   enum: string[] | null;
   /** A string field the author marked `"format": "textarea"` — rendered as a textarea. */
   multiline: boolean;
@@ -47,10 +37,8 @@ function fieldKind(prop: { [key: string]: JsonValue }): {
   return { kind: "string", enumValues: null };
 }
 
-/**
- * The fields to draw for an `outputSchema`, in the schema's property order. A `null` schema (a node
- * with none) returns no fields — the form is then a bare "submit" over an empty output, which the
- * server accepts as any JSON. A schema that is not an object-with-properties also yields no fields.
+/** The fields to draw for an `outputSchema`, in the schema's property order; a `null` or property-less schema yields
+ * none.
  */
 export function buildCompleteFields(outputSchema: JsonValue | null): CompleteField[] {
   if (!isPlainObject(outputSchema) || !isPlainObject(outputSchema.properties)) return [];
@@ -74,16 +62,8 @@ export function buildCompleteFields(outputSchema: JsonValue | null): CompleteFie
   return fields;
 }
 
-/**
- * The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON is
- * accepted). It never rejects — the person can type anything:
- *
- * - blank ⇒ an empty object `{}`, the historical "bare submit" so a node that wants nothing back still
- *   completes with one click;
- * - text that parses as JSON ⇒ that JSON value (a number, a boolean, an array, an object), so a
- *   structured output is still possible;
- * - anything else ⇒ the text itself, as a JSON string. So `done` submits `"done"`, not a parse error —
- *   a schema-less step takes plain prose as readily as JSON, which is what `${output}` then carries.
+/** The output a schema-less node's raw control makes (ADR 0040: no `outputSchema` ⇒ any JSON accepted), never
+ * rejecting: blank ⇒ `{}`, text parsing as JSON ⇒ that value, anything else ⇒ the text as a JSON string.
  */
 export function coerceRawCompleteOutput(text: string): JsonValue {
   const trimmed = text.trim();
@@ -95,10 +75,8 @@ export function coerceRawCompleteOutput(text: string): JsonValue {
   }
 }
 
-/**
- * The output object a set of control values makes: a boolean field's value verbatim, a number field
- * parsed (blank omitted), any other field trimmed (blank omitted). An omitted field is left off the
- * object rather than sent as `null`/`""`, so a `required` check reads the same as the server's.
+/** The output object a set of control values makes: booleans verbatim, numbers parsed, other fields trimmed; a blank
+ * field is omitted rather than sent as `null`/`""`, so a `required` check matches the server's.
  */
 export function coerceCompleteOutput(
   fields: CompleteField[],
@@ -122,21 +100,16 @@ export function coerceCompleteOutput(
   return output;
 }
 
-/**
- * The client pre-check: validate the assembled output against the node's **own** `outputSchema` with
- * the very validator the Complete route runs (ADR 0040) — one owner for the rule, so the form can no
- * longer accept an output the route will refuse. The issues are mapped onto the form controls by the
- * same `mapCompleteErrors` that maps the route's `400`, so a failure reads identically whether it was
- * caught here or there. A node with no schema accepts any JSON, so there is nothing to check.
+/** The client pre-check, run with the very validator the Complete route runs (ADR 0040). The server is always the
+ * authority; a passing pre-check is a courtesy, never a promise.
  */
 export function validateCompleteDraft(
   outputSchema: JsonValue | null,
   output: JsonValue,
 ): MappedCompleteErrors {
   if (outputSchema === null) return { fieldErrors: {}, formErrors: [] };
-  // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (what
-  // `coerceCompleteOutput` makes of a number field the person typed text into) into `null`, so the
-  // pre-check reaches the verdict the route reaches instead of accepting what the wire cannot carry.
+  // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (a number
+  // field the person typed text into) into `null`, so the pre-check reaches the route's verdict.
   const wire = JSON.parse(JSON.stringify(output)) as JsonValue;
   const validation = validateOutputSchema(outputSchema, wire);
   return validation.ok
@@ -150,12 +123,9 @@ export interface MappedCompleteErrors {
   formErrors: string[];
 }
 
-/**
- * Map the ajv issues the Complete route returns in a `400`'s `error.details` (`output-schema.ts`) onto
- * the form. A `required` issue names its field in `params.missingProperty`; every other issue names its
- * field in `instancePath` (`/reviewer` → `reviewer`). An issue that names no field — the top-level
- * `required` aside, a schema that would not compile — lands at the form level. Messages are shown
- * **verbatim** (the AC's "the server's field errors"); the server is the authority on the wording.
+/** Map the route's ajv issues onto the form: a `required` issue names its field in `params.missingProperty`, every
+ * other in `instancePath`; one naming no field lands at the form level. Messages are shown **verbatim** — the server
+ * owns the wording.
  */
 export function mapCompleteErrors(details: JsonValue | undefined): MappedCompleteErrors {
   const fieldErrors: Record<string, string> = {};

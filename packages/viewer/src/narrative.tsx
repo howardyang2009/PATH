@@ -10,11 +10,10 @@ export interface NarrativeProps {
 }
 
 /**
- * The live-narrative surface: the run tree's log-event stream as a dense, `seq`-ordered list, under
- * the tree in the centre pane (#44 Variant A). `seq` is monotonic per root run and *is* the ordering
- * truth — timestamps collide under parallelism (CONTEXT.md, *Log event*) — so the row leads with it
- * and the view renders the order the model already established. Ordering, dedupe and
- * `Last-Event-ID` replay all live in `@path/client-core`; this component formats and follows.
+ * The live-narrative surface: the run tree's log-event stream as a dense, `seq`-ordered list. `seq` is
+ * monotonic per root run and *is* the ordering truth — timestamps collide under parallelism
+ * (CONTEXT.md, *Log event*) — so the row leads with it. Ordering, dedupe and `Last-Event-ID` replay all
+ * live in `@path/client-core`; this component formats and follows.
  */
 export function Narrative({ events, stream }: NarrativeProps) {
   const listRef = useRef<HTMLOListElement>(null);
@@ -36,8 +35,8 @@ export function Narrative({ events, stream }: NarrativeProps) {
   };
 
   const follow = (): void => {
-    // Setting the flag is not enough on its own: it is already false→true here, but if the list is
-    // re-pinned while no new event arrives the effect has nothing to react to, so scroll directly.
+    // Setting the flag is not enough on its own: if the list is re-pinned while no new event arrives
+    // the effect has nothing to react to, so scroll directly.
     setFollowing(true);
     const list = listRef.current;
     if (list) list.scrollTop = list.scrollHeight;

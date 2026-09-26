@@ -9,21 +9,17 @@ import {
   type WireError,
 } from "@path/schema";
 
-// The Template store (ADR 0050, ADR 0051): the Server-owned, engine-blind discovery of the
-// shipped∪user authoring templates. A template is typed by its file **suffix**, never its bytes
-// (ADR 0050 decision 2), so the two maps below are the whole classification: kind → its `<kind-dir>`
-// and its file suffix. A `<name>.<suffix>` in `<root>/<kind-dir>/` is a template of that kind. The
-// Step-Template is the only kind (ADR 0063 removed the Workflow-Template).
+// The Template store (ADR 0050): Server-owned, engine-blind discovery of shipped∪user authoring
+// templates. A template is typed by its file **suffix**, never its bytes, so the two maps below are the
+// whole classification. The Step-Template is the only kind.
 
 export type TemplateKind = "step";
 export type TemplateOrigin = "shipped" | "user";
 
-/** kind → the file suffix that names it. */
 const SUFFIX: Record<TemplateKind, string> = {
   step: ".step-template.json",
 };
 
-/** kind → the subdirectory it lives under, in both roots. */
 const KIND_DIR: Record<TemplateKind, string> = {
   step: "step-template",
 };
@@ -36,35 +32,24 @@ export function kindDirFor(kind: TemplateKind): string {
   return KIND_DIR[kind];
 }
 
-/**
- * The `.path/template/<kind-dir>/` root under a project, where every **user** (writable) template
- * lives. The union is this `<kind-dir>` plus the shipped one.
- */
+/** The `.path/template/<kind-dir>/` root under a project, where every writable (user) template lives. */
 export function userTemplateRoot(projectDir: string): string {
   return join(projectDir, ".path", "template");
 }
 
-/**
- * The shipped (read-only) template root: `packages/server/template`, resolved relative to this
- * package. Absent until fixtures ship — the scan of a missing directory is an empty contribution,
- * never a Server-start failure (ADR 0050 decision 3). A caller (a test) may inject a different root.
- */
+/** The shipped (read-only) template root: `packages/server/template`. A missing directory scans as an
+ * empty contribution, never a Server-start failure; a caller (a test) may inject a different root. */
 export const DEFAULT_SHIPPED_TEMPLATE_DIR = fileURLToPath(new URL("../template", import.meta.url));
 
-/**
- * The shipped template root the union scans: a context override (a test's fixture root) or the
- * package-relative default. One place, so the template routes cannot disagree about where shipped
- * templates live.
- */
+/** The shipped root the union scans: the context override, or the package-relative default. */
 export function shippedTemplateDir(ctx: { shippedTemplateDir?: string }): string {
   return ctx.shippedTemplateDir ?? DEFAULT_SHIPPED_TEMPLATE_DIR;
 }
 
 /**
  * One discovered template. `id`/`description`/`format`/`body` are best-effort even when the entry is
- * invalid, so an author can open a broken template to repair it (ADR 0050 decision 5); `id` is `null`
- * only when even a shallow parse cannot recover it (malformed JSON), and such an entry is unaddressable
- * by the by-id routes. `bytes` is the exact on-disk source the byte-exact ETag hashes.
+ * invalid, so an author can open a broken template to repair it; `id` is `null` only when even a
+ * shallow parse cannot recover it, which makes such an entry unaddressable by the by-id routes.
  */
 export interface TemplateEntry {
   id: string | null;
@@ -87,9 +72,8 @@ export interface TemplateStore {
   /** Every discovered entry, in scan order: shipped before user, files sorted. */
   entries: TemplateEntry[];
   /**
-   * `id → entry` for the by-id routes. First-seen wins — a shipped file is scanned before a user one,
-   * so a user hand-copy of a shipped id resolves to the shipped entry and the user duplicate lists
-   * `valid: false` (ADR 0050 decision 3). Malformed, id-less entries are absent (unaddressable).
+   * `id → entry` for the by-id routes. First-seen wins — shipped is scanned before user, so a user
+   * hand-copy of a shipped id resolves to the shipped entry. Malformed, id-less entries are absent.
    */
   byId: Map<string, TemplateEntry>;
 }
@@ -130,7 +114,6 @@ function classify(
   const id = typeof obj.id === "string" ? obj.id : null;
   const format = typeof obj.format === "string" ? obj.format : null;
 
-  // A step-template's palette blurb is its required envelope `description`.
   const description = typeof obj.description === "string" ? obj.description : "";
   const body = obj.body ?? null;
 
@@ -143,12 +126,9 @@ function classify(
 }
 
 /**
- * Discover the shipped∪user template union, fresh (no cache, like `GET /v0/workflows`). Scans the two
- * directories — `<shippedDir>/step-template/` (read-only) and `<projectDir>/.path/template/step-template/`
- * (writable) — types each file by its
- * suffix, validates its body registry-relative, and builds the `id → entry` index the by-id routes
- * resolve against. A duplicate id across origins invalidates the later (user) entry, never the earlier
- * one and never the scan (ADR 0050 decision 3).
+ * Discover the shipped∪user template union, fresh (no cache). Scans the two roots, types each file by
+ * its suffix, validates its body registry-relative, and builds the `id → entry` index. A duplicate id
+ * across origins invalidates the later (user) entry, never the earlier one and never the scan.
  */
 export function discoverTemplates(
   projectDir: string,
@@ -191,8 +171,7 @@ export function discoverTemplates(
     if (existing === undefined) {
       byId.set(entry.id, entry);
     } else {
-      // A second file claiming a live id (a user hand-copy of a shipped file): the earlier entry keeps
-      // the id, this one is flagged invalid (ADR 0050 decision 3). Both still list.
+      // The earlier entry keeps the id; this one is flagged invalid but still lists.
       entry.valid = false;
       entry.error = {
         message: `duplicate id "${entry.id}": already used by ${existing.origin} template "${existing.name}"`,
@@ -203,11 +182,8 @@ export function discoverTemplates(
   return { entries, byId };
 }
 
-/**
- * Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
- * lexically under `.path/template/`. The path is resolved first, so a `../` detour into the template
- * tree is caught as well. A template is changed through `/v0/templates` only.
- */
+/** Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
+ * lexically under `.path/template/`, resolved first so a `../` detour is caught too. */
 export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
   const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
   const templateDir = join(".path", "template");
@@ -227,8 +203,8 @@ export function templatesOf(ctx: TemplateStoreContext): TemplateStore {
 }
 
 /**
- * The user template `id` names, for a door that changes one — or the refusal: an unknown id is `404`, a
- * shipped one `403` (read-only, ADR 0050 decision 9).
+ * The user template `id` names, for a door that changes one — or the refusal: unknown → `404`,
+ * shipped → `403` (read-only, ADR 0050 decision 9).
  */
 export function writableTemplate(
   store: TemplateStore,

@@ -11,33 +11,16 @@ import {
 import { z } from "zod";
 
 /**
- * Opening a workflow file into the read-only canvas model (#367, designer-spec § Canvas interaction
- * model, § Opening a file the palette cannot render). This is the Designer's **open pipeline**: it takes
- * the raw on-disk text (`GET /v0/workflows/file`, kept raw so an id-less or unknown-field file survives,
- * ADR 0015) and the received step-plugin registry (`GET /v0/step-plugins`), and returns either a parsed
- * `WorkflowFile` to render or one of four legible refusals.
- *
- * The order of the passes is deliberate. Portability first (ADR 0026): a file naming any step `type`
- * the received registry does not describe cannot be rendered at all, so it refuses before anything else,
- * naming **every** absent type and the folder that would resolve each. Then identity (ADR 0015): a
- * duplicate or invalid-format `id` refuses (a silent repair would either destroy resume history or
- * clobber an author's deliberate string), while a merely **absent** `id` is stamped fresh (`idsStamped`).
- * Only then does the strict registry-relative schema parse produce the typed model. The stamp itself does
- * not set a dirty flag: dirtiness is content-equality against the baseline (ADR 0030), and a stamp reads
- * dirty only because it changed bytes.
- *
- * Why not one strict `makeWorkflowFileSchema` pass end to end (ADR 0026's "one door"): the wire registry
- * carries field *descriptors*, not the plugin zod schemas, so the browser cannot rebuild the server's
- * strict leaf-field validation. For this read-only render that is moot — no plugin field value is drawn —
- * so the reconstructed registry admits each registered leaf `type` by name and leaves its fields open.
- * The absent-type and identity gates, which this ticket does own, run as their own explicit passes above.
+ * The Designer's open pipeline: raw on-disk text (`GET /v0/workflows/file`, kept raw so an id-less or
+ * unknown-field file survives) plus the received step-plugin registry in, either a parsed
+ * `WorkflowFile` or one of four legible refusals out. Pass order is deliberate — absent-type gate
+ * (ADR 0026), then identity (ADR 0015), then the strict registry-relative schema parse.
  */
 
-/** One step `type` the file names but the received registry does not describe (ADR 0026). */
+/** One step `type` the file names but the received registry does not describe. */
 export interface AbsentStepType {
-  /** The unregistered `type` discriminant, echoed verbatim. */
   type: string;
-  /** The `packages/engine/plugin/step-plugin/<type>/` folder that would resolve it — the engine's own remedy. */
+  /** The `packages/engine/plugin/step-plugin/<type>/` folder that would resolve it. */
   folder: string;
 }
 
@@ -49,34 +32,26 @@ export type OpenResult =
   | { status: "invalid-ids"; message: string }
   | { status: "invalid"; message: string };
 
-/** A non-null, non-array object, or null. */
 function asObject(value: unknown): Record<string, unknown> | null {
   return typeof value === "object" && value !== null && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
 }
 
-/** An array, or null. */
 function asArray(value: unknown): unknown[] | null {
   return Array.isArray(value) ? value : null;
 }
 
-/** One raw node found in the tree, with the JSON path that locates it for an error message. */
 interface RawNodeRef {
   obj: Record<string, unknown>;
   path: (string | number)[];
 }
 
 /**
- * The child node objects of one raw node, following the block grammar's descent. This pass runs
- * **before** the file is schema-parsed (an id-less or unregistered-type file must survive it), so it
- * cannot take typed `WorkflowNode`s — it reads the one shape table `@path/schema` exposes
- * (`CONTROL_CHILD_SLOTS`), the same descent `childBodies` reads for typed nodes, instead of re-spelling
- * the grammar's shape a fourth time. A control block added to the format lands in that table and is
- * scanned here automatically, so a new kind can no longer be silently skipped. A leaf step, a `workflow`
- * ref, a `checkpoint`, and any unregistered type nest nothing — the table has no entry — so they descend
- * no further. A branch arm's occupant is unwrapped from its `{ when, node }` shape. Each child carries
- * its own JSON path.
+ * The child node objects of one raw node, descending by the one shape table `@path/schema` exposes
+ * (`CONTROL_CHILD_SLOTS`). Runs before the schema parse (an id-less or unregistered-type file must
+ * survive it), so it cannot take typed `WorkflowNode`s; a new control block lands in that table and is
+ * scanned here automatically. A branch arm's occupant is unwrapped from its `{ when, node }` shape.
  */
 function rawChildNodes(node: Record<string, unknown>, base: (string | number)[]): RawNodeRef[] {
   const type = typeof node.type === "string" ? node.type : "";
@@ -103,7 +78,6 @@ function rawChildNodes(node: Record<string, unknown>, base: (string | number)[])
   return out;
 }
 
-/** Every node object in a file body, depth-first, each with its JSON path. */
 function collectRawNodes(body: unknown[]): RawNodeRef[] {
   const out: RawNodeRef[] = [];
   const visit = (ref: RawNodeRef): void => {
@@ -117,16 +91,12 @@ function collectRawNodes(body: unknown[]): RawNodeRef[] {
   return out;
 }
 
-/** A human handle for a node in an error message: its `name` if it has a string one, else its JSON path. */
 function nodeLabel(ref: RawNodeRef): string {
   return typeof ref.obj.name === "string" ? `"${ref.obj.name}"` : `at ${ref.path.join(".")}`;
 }
 
-/**
- * The aggregate refusal for a file naming step types absent from the registry (ADR 0026): every absent
- * type in one message, the folder that resolves each, and the refresh-and-retry the stale-snapshot case
- * needs. Mirrors the engine's own unknown-type remedy so the two read the same.
- */
+/** The aggregate refusal for a file naming types absent from the registry: every absent type, the folder
+ * that resolves each, and the refresh-and-retry the stale-snapshot case needs. */
 function unregisteredTypesMessage(absent: AbsentStepType[]): string {
   const lines = absent.map((a) => `  • "${a.type}" — add ${a.folder} to this PATH tree`);
   return [
@@ -137,16 +107,10 @@ function unregisteredTypesMessage(absent: AbsentStepType[]): string {
 }
 
 /**
- * Reconstruct a parse-time `StepPluginRegistry` from the wire snapshot. It admits each registered leaf
- * `type` by name — so the strict node union rejects any *other* type — but leaves each type's fields
- * open (`z.unknown()` per declared field name). The wire carries field descriptors, not the plugin zod
- * schemas, and this read-only render draws no plugin field value, so field-level validation is neither
- * possible nor needed here; the `.strict()` member still rejects an unknown field key and an unknown
- * worker name. `config` is left empty (passthrough via the member factory).
- *
- * Each field is `z.unknown().optional()`: zod v3 made an `unknown` object key implicitly optional,
- * but zod v4 does not, so the `.optional()` is now explicit — without it every declared field would be
- * required and a valid file omitting one (`binary` with no `args`/`cwd`) would fail to open.
+ * Reconstruct a parse-time `StepPluginRegistry` from the wire snapshot: each registered leaf `type` by
+ * name, its declared fields left open (`z.unknown()`), since the wire carries field descriptors, not
+ * plugin zod schemas. Each field is `.optional()`: zod v4 no longer makes an `unknown` object key
+ * implicitly optional, so without it a valid file omitting one (`binary` with no `args`) would not open.
  */
 export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   const registry: StepPluginRegistry = {};
@@ -163,15 +127,13 @@ export function wireToRegistry(plugins: WireStepPlugin[]): StepPluginRegistry {
   return registry;
 }
 
-/** The known type names for a registry: the seven reserved control names plus every registered leaf type. */
 function knownTypeNames(plugins: WireStepPlugin[]): Set<string> {
   return new Set<string>([...RESERVED_TYPE_NAMES, ...plugins.map((p) => p.name)]);
 }
 
 /**
- * The absent-type gate (ADR 0026). Scans every node's `type` against the known set and returns one
- * `AbsentStepType` per distinct absent type, in first-seen order. A non-string `type` is left for the
- * schema parse to reject — it is malformed, not merely unregistered.
+ * The absent-type gate: one `AbsentStepType` per distinct absent type, in first-seen order. A
+ * non-string `type` is left for the schema parse to reject — malformed, not merely unregistered.
  */
 function findAbsentTypes(nodes: RawNodeRef[], plugins: WireStepPlugin[]): AbsentStepType[] {
   const known = knownTypeNames(plugins);
@@ -187,21 +149,19 @@ function findAbsentTypes(nodes: RawNodeRef[], plugins: WireStepPlugin[]): Absent
   return absent;
 }
 
-/** Is a value a present (non-absent) `id`? A missing key is absent; `null`/a number/a non-UUID string is present-but-invalid. */
+/**
+ * Is a value a present (non-absent) `id`? A missing key is absent; `null`/a number/a non-UUID string is
+ * present-but-invalid.
+ */
 function isPresent(id: unknown): boolean {
   return id !== undefined;
 }
 
 /**
- * The identity gate (ADR 0015), over the workflow's own `id` and every node's. A present-but-invalid
- * `id` or a duplicate refuses the open, naming the offenders; a merely absent `id` is stamped fresh and
- * flips the buffer dirty. `root` and `nodes` are the same object graph `safeParseWorkflowFile` then
- * reads, so a stamp lands in the parsed model. Returns a refusal, or `{ dirty }` for a clean/repaired file.
- *
- * The **rule** is `@path/schema`'s (`identityIssues`), over the occurrences this pre-parse walk can
- * see — the same rule the load refinement and the write route apply, so the three doors cannot
- * disagree about which occurrence offends. Only the refusal's presentation is the Designer's: it names
- * nodes by human label, which needs this raw pass (the file may not even parse yet).
+ * The identity gate (ADR 0015), over the workflow's own `id` and every node's. `root` and `nodes` are
+ * the same object graph `safeParseWorkflowFile` then reads, so a stamp lands in the parsed model. The
+ * **rule** is `@path/schema`'s (`identityIssues`), the same one the load refinement and write route
+ * apply; only the refusal's presentation — human node labels — is the Designer's.
  */
 function resolveIdentity(
   root: Record<string, unknown>,
@@ -210,8 +170,7 @@ function resolveIdentity(
   const rootRef: RawNodeRef = { obj: root, path: ["(workflow)"] };
   const labelFor = (ref: RawNodeRef): string => (ref === rootRef ? "the workflow" : nodeLabel(ref));
   const all = [rootRef, ...nodes];
-  // Paths are the caller's own spelling (`["(workflow)"]` for the root row), so an issue path maps back
-  // to the ref whose label the message prints.
+  // Paths are the caller's own spelling, so an issue path maps back to the ref whose label is printed.
   const refByPath = new Map(all.map((ref) => [JSON.stringify(ref.path), ref]));
   const labelAt = (path: (string | number)[]): string => {
     const ref = refByPath.get(JSON.stringify(path));
@@ -223,8 +182,8 @@ function resolveIdentity(
     ["invalid-id", "duplicate-id"],
   );
 
-  // Present-but-invalid ids refuse — an author who hand-typed a non-UUID may be encoding meaning, which
-  // the Designer must not clobber. Aggregate, so one open names every offender.
+  // Present-but-invalid ids refuse: an author who hand-typed a non-UUID may be encoding meaning, which
+  // the Designer must not clobber.
   const invalid = issues.filter((issue) => issue.rule === "invalid-id");
   if (invalid.length > 0) {
     const lines = invalid.map(
@@ -240,9 +199,8 @@ function resolveIdentity(
     };
   }
 
-  // Duplicate ids refuse — silently re-minting one is exactly the resume-breaking mutation ADR 0015
-  // exists to prevent; a human must choose which node keeps the id. One bullet per repeated id, naming
-  // every node that shares it: the first holder plus each later one the issues name.
+  // Duplicate ids refuse: silently re-minting one breaks resume (ADR 0015), so a human must choose which
+  // node keeps the id. One bullet per repeated id, naming every node that shares it.
   const shared = new Map<unknown, (string | number)[][]>();
   for (const issue of issues.filter((candidate) => candidate.rule === "duplicate-id")) {
     const paths = shared.get(issue.value) ?? [];
@@ -263,8 +221,8 @@ function resolveIdentity(
     };
   }
 
-  // Absent ids are stamped fresh into the object graph. The buffer opens dirty: the Designer opened
-  // something the format did not accept and is proposing the repair, un-persisted until a save (ADR 0015).
+  // Absent ids are stamped fresh. The buffer opens dirty: the Designer opened something the format did
+  // not accept and is proposing the repair, un-persisted until a save (ADR 0015).
   let dirty = false;
   for (const ref of all) {
     if (!isPresent(ref.obj.id)) {
@@ -275,11 +233,7 @@ function resolveIdentity(
   return { dirty };
 }
 
-/**
- * Open a raw workflow file against the received registry. See the module doc for the pass order:
- * JSON parse, absent-type gate (ADR 0026), identity gate (ADR 0015), then the strict registry-relative
- * schema parse for the typed model.
- */
+/** Open a raw workflow file against the received registry; see the module doc for the pass order. */
 export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): OpenResult {
   let json: unknown;
   try {
@@ -314,8 +268,7 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
       message: `Cannot open: the file does not validate.\n${parsed.errors.join("\n")}`,
     };
   }
-  // `idsStamped` records only that the identity gate minted an absent `id`; it drives the open badge's
-  // wording, not the buffer's dirtiness. Dirtiness is content-equality against the baseline (ADR 0030):
-  // a stamp reads dirty because it changed bytes, computed by the session, not asserted here.
+  // `idsStamped` drives the open badge's wording, not the buffer's dirtiness: dirtiness is
+  // content-equality against the baseline (ADR 0030), computed by the session because a stamp changed bytes.
   return { status: "opened", file: parsed.data, idsStamped };
 }

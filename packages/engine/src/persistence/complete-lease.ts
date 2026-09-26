@@ -4,30 +4,17 @@ import { join } from "node:path";
 import { rootRunTreeDir } from "./paths.js";
 
 /**
- * The per-root-run **Complete lease** (ADR 0041, the ADR 0017 lease pattern): single-writer mutual
- * exclusion so only one Complete advances a given tree at a time. A concurrent Complete against a
- * held lease is rejected (the route maps it to `409`); the person retries rather than queueing, so a
- * Complete never re-introduces the held wait ADR 0039 removed.
+ * The per-root-run **Complete lease** (ADR 0041, the ADR 0017 lease pattern): single-writer exclusion so
+ * only one Complete advances a tree at a time, and a concurrent one is rejected for the person to retry.
  *
- * The marker file **is** the state — no in-memory registry — so a server restart neither loses nor
- * rebuilds it, and reclaim is lazy: an expired marker is evaluated only when the next Complete tries
- * to acquire *that* tree's lease. It lives inside the tree's own `.path/runs/<root>/` directory, which
- * is already covered by `.path/`'s self-gitignore, so it is never committed.
- *
- * Unlike the Designer edit lease there is no session identity or takeover: a Complete is a one-shot
- * server-driven action, not a live client holding a marker across keystrokes. The holder token exists
- * only so `release` frees the lease this call took and never one a racing Complete reclaimed after
- * expiry.
+ * The marker file **is** the state, so a restart does not lose it, and reclaim is lazy — an expired
+ * marker is evaluated only when the next Complete acquires that tree's lease.
  */
 
-/** The marker filename inside `.path/runs/<root>/`. */
 const LEASE_FILE = "complete.lease";
 
-/**
- * TTL: generous, because one lease is held for a whole tail drive, which may run a real binary or LLM
- * step. A crash frees the marker in ≤ this window; a tail that outlives it is the rare case a racing
- * Complete could reclaim — acceptable, since the ADR promises no crash-atomicity for the tail either.
- */
+// Generous, because one lease is held for a whole tail drive that may run a real binary or LLM step.
+// A tail outliving it is the rare case a racing Complete could reclaim; ADR 0041 promises no atomicity.
 const TTL_MS = 10 * 60_000;
 
 interface LeaseMarker {
@@ -58,15 +45,9 @@ function readMarker(absPath: string): LeaseMarker | undefined {
   return undefined;
 }
 
-/**
- * Acquire the Complete lease for `rootRunId`, or `null` when a **live** lease is already held by
- * another Complete. Grants when no marker exists, the marker is expired, or the marker is corrupt.
- *
- * The read-decide-write is synchronous (no `await`), so no other request of this process interleaves —
- * the same concurrency stance the Designer write door and lock route take. A cross-*process* race
- * (two `path`/server processes over one store) is caught by the exclusive `wx` create when no marker
- * exists; the loser reads the winner's live marker and is rejected.
- */
+// Acquires the Complete lease for `rootRunId`, or returns `null` when a **live** lease is already held.
+// Grants when no marker exists, the marker is expired, or the marker is corrupt. The read-decide-write
+// is synchronous, and a cross-*process* race is caught by the exclusive `wx` create.
 export function acquireCompleteLease(projectDir: string, rootRunId: string): CompleteLease | null {
   const absPath = join(rootRunTreeDir(projectDir, rootRunId), LEASE_FILE);
   const now = Date.now();
@@ -80,8 +61,7 @@ export function acquireCompleteLease(projectDir: string, rootRunId: string): Com
 
   mkdirSync(rootRunTreeDir(projectDir, rootRunId), { recursive: true });
   try {
-    // No marker on disk → exclusive create, so a marker that raced into existence between the read and
-    // here is not clobbered. An expired/corrupt marker is present → overwrite it.
+    // No marker on disk → exclusive create, so a marker that raced in is not clobbered.
     writeFileSync(absPath, serialized, existing === undefined ? { flag: "wx" } : undefined);
   } catch (err) {
     if (existing === undefined && (err as NodeJS.ErrnoException).code === "EEXIST") {

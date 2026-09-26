@@ -6,11 +6,8 @@ import type { StepTemplate } from "./step-template-type.js";
 import { makeBodySchema, supersededFormatError } from "./workflow-file.js";
 import { FORMAT_VERSION } from "./workflow-file-type.js";
 
-// The strict Step-Template envelope (ADR 0048 decision 1): `{ format, id, description, body }` and
-// nothing else. `.strict()` is the whole point of the shape — a `name`, a `worker_defaults`, a
-// `config`/`input`/`output` seed, or any file-level key is rejected, because a template is a fragment
-// and carries none of the file namespace. The envelope is frozen and unversioned; a new key here is a
-// change to *this* schema, never a `format` bump. `format` stamps the body grammar (`path/workflow@5`).
+// The strict Step-Template envelope (ADR 0048): `{ format, id, description, body }` and nothing else.
+// A fragment carries no file namespace, so any file-level key is rejected; `format` stamps the body grammar.
 function buildStepTemplateSchema(bodySchema: z.ZodType<StepTemplate["body"]>) {
   return z
     .object({
@@ -23,13 +20,9 @@ function buildStepTemplateSchema(bodySchema: z.ZodType<StepTemplate["body"]>) {
 }
 
 /**
- * The whole `StepTemplateSchema` for a given registry (ADR 0048 decision 7). The strict envelope wraps
- * the shared body validator `makeBodySchema(registry)`, so a template's body is validated *exactly* as
- * a file's body — one `z.array(nodeSchema).min(1)`, one node union. Validity is per-node and
- * registry-relative and **nothing else** (decision 5): name uniqueness is the target file's namespace,
- * the publish set re-runs on the file the fragment lands in, and there is no node-count bound. A
- * relative `workflow` ref is allowed — it resolves against the target file at instantiation, not here
- * (decision 6). Build once per freeze; parse many templates with `safeParseStepTemplateWith`.
+ * The whole envelope for a registry, wrapping the shared `makeBodySchema(registry)`, so a template's
+ * body validates exactly as a file's body. Validity is per-node and registry-relative and nothing else:
+ * name uniqueness and the publish set belong to the target file, and a relative `workflow` ref resolves there.
  */
 export function makeStepTemplateSchema(registry: StepPluginRegistry): z.ZodType<StepTemplate> {
   return buildStepTemplateSchema(makeBodySchema(registry)) as z.ZodType<StepTemplate>;
@@ -45,11 +38,8 @@ export interface StepTemplateParseFailure {
   errors: string[];
 }
 
-// The superseded-format pre-check and success/failure shaping, against an already-built schema. The
-// `format` stamp versions the body grammar, so a template carrying `@0`/`@1`/`@2`/`@3` hits the same
-// codemod machinery a file does (workflow-file.ts's `supersededFormatError`): a `@2`-stamped envelope
-// names the body grammar this map's tickets discuss but is not loadable, and gets the "run the codemod"
-// message rather than a generic `.strict()`/`format` mismatch (ADR 0048 decision 1).
+// The superseded-format pre-check and success/failure shaping. A `format` stamp of `@0`–`@3` hits the
+// same codemod machinery a file does, so it gets the "run the codemod" message, not a generic mismatch.
 export function safeParseStepTemplateWith(
   schema: z.ZodType<StepTemplate>,
   json: unknown,
@@ -63,9 +53,8 @@ export function safeParseStepTemplateWith(
   return { success: false, errors: formatIssues(result.error) };
 }
 
-// The single-template convenience door: build the strict envelope for `registry` and parse `json`. The
-// registry is required — there is no closed built-in schema (ADR 0019). A caller parsing many templates
-// should build once with `makeStepTemplateSchema` and reuse it via `safeParseStepTemplateWith`.
+// The single-template convenience door; the registry is required, since there is no closed built-in
+// schema (ADR 0019). A caller parsing many templates should build once and reuse the schema.
 export function safeParseStepTemplate(
   json: unknown,
   registry: StepPluginRegistry,

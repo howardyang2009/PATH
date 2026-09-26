@@ -9,16 +9,7 @@ interface Channel {
 }
 
 /**
- * The in-process fan-out from a run's live log stream to its connected SSE clients
- * (server-api-v0.md §5). Since execution is in-process, one `RunEventHub` per server holds an open
- * **channel** per in-flight root run: the run's live-forwarding `LogBackend` (see
- * `createLiveLogBackend`) drives `open`/`publish`/`close`, and each `GET /events` request
- * `subscribe`s to the matching channel.
- *
- * Live-only: a channel exists solely while its run executes, so `subscribe` returns `null` once the
- * run has finished (its channel closed) — the SSE handler then falls back to the db to tell an
- * already-finished run (end-of-stream) from an unknown one (404). Replay of past events (#38) reads
- * the persisted NDJSON log directly in the route handler — not this hub's concern.
+ * Live fan-out from a run's log stream to its SSE clients (§5): one channel per in-flight root run.
  */
 export class RunEventHub {
   private readonly channels = new Map<string, Channel>();
@@ -45,11 +36,7 @@ export class RunEventHub {
     for (const listener of channel.closeListeners) listener();
   }
 
-  /**
-   * Attach a live subscriber to a run's channel. Returns an unsubscribe function, or `null` if the
-   * run has no open channel (already finished, or never started) — the caller distinguishes those
-   * two cases via the run store.
-   */
+  /** Attach a live subscriber; returns an unsubscribe function, or `null` if there is no open channel. */
   subscribe(
     rootRunId: string,
     onEvent: EventListener,

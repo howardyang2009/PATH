@@ -14,22 +14,16 @@ import { planReuse, type ReusePlan, recordedChild } from "./plan-reuse.js";
 import type { ResumeInput } from "./run-workflow.js";
 
 /**
- * The **Resume plan**: how each scope of a successor tree resumes against the predecessor (#172,
- * ADR 0001/0035/0036/0037/0054/0062), owned in one module.
- *
- * A successor walks the current file and, at every scope it opens — the root run, a nested
- * `workflow` run, a `while-do` iteration container, a goto pass — asks the same two questions: which
- * recorded row of the predecessor answers this scope (its **counterpart**), and which of its children
- * reuse (the **reuse plan**, with the Resume-from-K boundary suppressed out of it). Each scope kind
- * used to answer them itself: its own counterpart lookup, its own ambiguity rule, and its own slice of
- * two parallel boundary arrays. Here each scope kind is one `enter…` operation over one
- * {@link RunResume}, and the boundary is one list of `{nodeId, pass}` levels.
- *
- * The interface is the test surface: every operation is pure over `RunRecord[]` rows and a file, so a
- * pairing or boundary rule is testable without a store.
+ * The **Resume plan**: how each scope of a successor tree resumes against the predecessor. Every scope
+ * — root run, nested `workflow` run, `while-do` iteration, goto pass — asks which recorded row is its
+ * **counterpart** and which children reuse (the **reuse plan**, boundary suppressed). Each scope kind is
+ * one `enter…` operation over one {@link RunResume}, pure over rows and a file so rules are testable.
  */
 
-/** One level of the Resume-from-K descent path (ADR 0036): the path-node's id and the goto pass it sits in (ADR 0054 §6). */
+/**
+ * One level of the Resume-from-K descent path (ADR 0036): the path-node's id and the goto pass it sits in (ADR 0054
+ * §6).
+ */
 export interface RerunPathLevel {
   nodeId: string;
   /** The 1-based goto pass the path-node sits in at this level, or `null` for a level whose file holds no goto. */
@@ -37,10 +31,8 @@ export interface RerunPathLevel {
 }
 
 /**
- * What a scope carries into its workflow-run before its file is known: the whole-tree read inputs,
- * this scope's own **counterpart** (undefined = added since, run fresh), and the remaining rerun path
- * from this level down (`[]` = off-path / plain Resume). {@link resolveResume} turns it into a
- * {@link RunResume} once the run's file is in hand.
+ * What a scope carries into its workflow-run before its file is known: the read inputs, its **counterpart**
+ * (undefined = run fresh), and the remaining rerun path (`[]` = off-path).
  */
 export interface ResumeEntry {
   input: ResumeInput;
@@ -55,8 +47,8 @@ export interface RunResume extends ResumeEntry {
 }
 
 /**
- * The root run's entry: its counterpart is the predecessor tree's own root run, and it carries the
- * whole rerun path. `Project.resume` validated that path against this file already.
+ * The root run's entry: its counterpart is the predecessor's root run, carrying the whole rerun path
+ * (`Project.resume` already validated it).
  */
 export function rootResumeEntry(input: ResumeInput): ResumeEntry {
   const nodePath = input.rerunFromNodePath ?? [];
@@ -69,9 +61,8 @@ export function rootResumeEntry(input: ResumeInput): ResumeEntry {
 }
 
 /**
- * Producer A (ADR 0035): this level's **suppress** set — the boundary head B and every
- * serialized-later run-producing node id, over this file's own serial order (ADR 0064: a sequence body
- * is transparent). `undefined` off-path / plain Resume.
+ * Producer A (ADR 0035): this level's **suppress** set — the boundary head B and every serialized-later run-producing
+ * node id, over this file's serial order (ADR 0064: a sequence body is transparent); `undefined` off-path.
  */
 function suppressSet(
   file: WorkflowFile,
@@ -91,8 +82,8 @@ function suffixOf(rerunPath: readonly RerunPathLevel[]): string[] {
 }
 
 /**
- * A scope's resume state once its file is known: the reuse plan scoped to its counterpart's children,
- * with this level's boundary suppressed (B and after re-run). No counterpart plans nothing.
+ * A scope's resume state once its file is known: the reuse plan scoped to its counterpart's children, with this
+ * level's boundary suppressed (B and after re-run); no counterpart plans nothing.
  */
 export function resolveResume(entry: ResumeEntry, file: WorkflowFile): RunResume {
   const { counterpart } = entry;
@@ -110,10 +101,9 @@ export function resolveResume(entry: ResumeEntry, file: WorkflowFile): RunResume
 }
 
 /**
- * The context seed a resumed **root** run replays from (ADR 0062): the counterpart's recorded
- * `input.json`, never its final `context.json`, which under Resume-from-K would leak keys written after
- * K. `undefined` for a nested run (its own interpolated input already is its seed, secrets real) and
- * for a root with no counterpart (a first attempt seeds fresh).
+ * The context seed a resumed **root** run replays from (ADR 0062): the counterpart's recorded `input.json`, never its
+ * final `context.json`, which under Resume-from-K would leak keys written after K. `undefined` for a nested run (its
+ * own interpolated input is its seed) or a root with no counterpart.
  */
 export function resumeSeed(
   entry: ResumeEntry | undefined,
@@ -126,15 +116,9 @@ export function resumeSeed(
 }
 
 /**
- * The entry a nested `workflow` node's run inherits (Producer B, ADR 0036), from this level's own
- * boundary disposition:
- *
- * - **descend** — the node is this level's intermediate path-node B: re-enter its counterpart and hand
- *   it the path's tail, so it reuses its inner prefix and applies its own boundary one level down.
- * - **rerun-entire** — the node is after B, or is K itself: no counterpart, the whole subtree re-runs.
- * - **reuse / off-path** — re-enter the counterpart exactly as plain Resume, with no path.
- *
- * `undefined` when this run is not resuming.
+ * The entry a nested `workflow` node's run inherits (Producer B, ADR 0036): **descend** hands the
+ * intermediate path-node's counterpart the path's tail; **rerun-entire** (the node is after B or is K)
+ * plans no counterpart; **reuse / off-path** re-enters as plain Resume. `undefined` when not resuming.
  */
 export function enterNested(
   resume: RunResume | undefined,
@@ -155,10 +139,8 @@ export function enterNested(
 }
 
 /**
- * The resume state for one `while-do` iteration container (ADR 0037), or `undefined` to run it fresh.
- * An iteration reuses only when the loop is in this level's reuse region (K at or after it re-runs the
- * whole loop) and the counterpart holds a **succeeded** container with this ordinal. The container's
- * plan is scoped to it, whose only run-producing child is the loop body, so the body reuses whole.
+ * The resume state for one `while-do` iteration (ADR 0037), or `undefined` to run it fresh: it reuses only when the
+ * loop is in this level's reuse region and the counterpart holds a **succeeded** container with this ordinal.
  */
 export function enterIteration(
   resume: RunResume | undefined,
@@ -178,17 +160,12 @@ export function enterIteration(
 }
 
 /**
- * The resume state for each goto **pass** of one resuming workflow-run (ADR 0054 §5–6, spec
- * docs/spec/goto.md §8.1), in walk order. A pass pairs with the predecessor's pass holding the same
- * ordinal **and** opened by the same goto (`null` for pass 1), whatever its status, and plans reuse
- * inside it: a failed pass reuses its succeeded nodes and re-runs from the failure. The first pass
- * that finds no partner leaves the record, so it and every later pass run fresh — the returned
- * function holds that pairing state.
- *
- * Resume-from-K at this level names the pass N its boundary B sits in: passes before N pair as plain
- * Resume, pass N applies the boundary inside it, and every pass after N runs fresh. A boundary with no
- * pass (a goto added since) pairs nothing, since pairing without the boundary would silently reuse
- * the work the operator asked to drop.
+ * The resume state for each goto **pass** of one resuming workflow-run (ADR 0054 §5–6, goto spec §8.1),
+ * in walk order: a pass pairs with the predecessor's pass of the same ordinal opened by the same goto
+ * (`null` for pass 1), whatever its status. The first pass with no partner leaves the record, so it and
+ * every later pass run fresh; under Resume-from-K, passes before the boundary pass N pair as plain
+ * Resume and later ones run fresh. A boundary with no pass pairs nothing — pairing would reuse work the
+ * operator asked to drop.
  */
 export function passResumer(
   resume: RunResume,

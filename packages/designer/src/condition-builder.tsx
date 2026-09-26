@@ -14,18 +14,13 @@ import type { EditKey } from "./edit-key.js";
 import { useDraft } from "./validated-draft.js";
 
 /**
- * The typed `Condition` builder (#370, designer-spec § Canvas interaction model, ADR 0022). It edits the
- * structured AST — an operator picked from a menu, its operands in typed controls — never free text, so
- * an ill-typed or unparseable condition is **unrepresentable**, the structural analogue of the unsnappable
- * socket. One `ConditionField` governs each of the three condition sites: a branch arm's `when`, a
- * `while-do`'s `condition`, and a `checkpoint`'s assertion, each inside a labelled fieldset (the label on
- * the border).
+ * The typed `Condition` builder. It edits the structured AST — an operator picked from a menu, its
+ * operands in typed controls — never free text, so an ill-typed or unparseable condition is
+ * **unrepresentable**. One `ConditionField` governs each of the three condition sites: a branch arm's
+ * `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion, each inside a labelled fieldset.
  *
- * A sub-condition is committed only when the **whole** condition validates (`validateCondition`): the
- * builder is the pane's one **draft → validate → commit** protocol (`validated-draft.ts`) over the AST
- * instead of over text, so a half-typed dot-path never reaches the file and the node stays strict-valid.
- * `identity` is what re-seeds the draft when the selection moves — the same field identity the rest of
- * the pane uses, which is why this no longer needs a React `key` its caller had to remember.
+ * A sub-condition is committed only when the **whole** condition validates (`validateCondition`), so a
+ * half-typed dot-path never reaches the file. `identity` re-seeds the draft when the selection moves.
  */
 export function ConditionField({
   label,

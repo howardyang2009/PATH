@@ -21,10 +21,8 @@ import { isTemplatePath } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * The write envelope (server-api-v0.md §7): the resource path travels in the body, not the URL, so a
- * `/`-bearing `workflow_path` needs no `%2F` encoding and resolves exactly as `POST /v0/runs`
- * resolves its own `workflow_path`. `workflow` is the workflow object (snake_case wire, §1) — required
- * and must be an object; its shape is validated separately against `@path/schema` further down.
+ * The write envelope (server-api-v0.md §7): the resource path travels in the body, so a `/`-bearing
+ * `workflow_path` needs no `%2F` encoding. `workflow`'s shape is validated against `@path/schema` below.
  */
 const PutWorkflowBodySchema = z
   .object({
@@ -34,16 +32,8 @@ const PutWorkflowBodySchema = z
   .strict();
 
 /**
- * The internally-duplicate-`id` check the write door owns (ADR 0015, ADR 0016): the copy-paste
- * collision the Designer makes reachable. The walk and the rule are `@path/schema`'s
- * (`identityIssues`), shared with the load refinement's name check and the Designer's open gate, so
- * the three doors cannot disagree about which occurrence offends. This adapter only renders each issue
- * as the one `error.details` line the route owes: the offending `id` field path first, then the path
- * that already held it — never a bare "duplicate id".
- *
- * The workflow's own `id` is in the namespace beside its nodes (a node that reuses it collides exactly
- * as two nodes do); a duplicate among nodes alone never reaches here anyway, because the load
- * refinement refuses a file whose node `id`s are not UUIDs but not one whose `id`s repeat.
+ * The internally-duplicate-`id` check this door owns (ADR 0015); the workflow's own `id` shares the
+ * nodes' namespace. Each issue becomes one `error.details` line naming both offending paths.
  */
 function duplicateIdErrors(file: WorkflowFile): string[] {
   const occurrences = [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)];
@@ -55,39 +45,25 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
 }
 
 /**
- * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door. One verb for both create and
- * overwrite, the resource path in the body, concurrency via an `If-Match` precondition. It is
- * `@path/server`'s first write path for files.
- *
- * Checks run cheapest- and security-first, before the disk is touched (§7): the origin gate already
- * ran centrally (state-changing route, §2.1); here — body is valid JSON, envelope schema, path
- * confine/symlink, workflow schema + duplicate-id, precondition, then the write.
- *
- * The server is **identity-agnostic** (ADR 0015): it validates the incoming `id` *shape* but never
- * stamps a missing `id`, never re-mints, and never diffs against the file on disk. It serializes the
- * client's workflow object deterministically (`JSON.stringify(wf, null, 2)` + a trailing newline,
- * author key order preserved) and owns the on-disk bytes.
+ * `PUT /v0/workflows` (server-api-v0.md §7, ADR 0016): the write door for create and overwrite. The
+ * server is identity-agnostic (ADR 0015): it validates `id` shape but never mints or diffs it.
  */
 export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PutWorkflowBodySchema);
   if (!body) return;
   const { workflow_path: workflowPath } = body.data;
 
-  // The two write doors are disjoint (server-api-v0.md §10.6, ADR 0050 decision 8): a template is
-  // written only through `/v0/templates`, so this door refuses a `.path/template/` path.
+  // The two write doors are disjoint (§10.6): a template is written only through `/v0/templates`.
   if (isTemplatePath(resolve(ctx.project.dir), workflowPath)) {
     sendError(res, 400, "workflow path must not be a template path");
     return;
   }
 
-  // Serialize the *raw* object from the request, not zod's parsed copy: `WorkflowFileSchema` may emit
-  // keys in schema order, which would silently reorder the author's file. The raw object preserves the
-  // key order the client sent (ADR 0016). Envelope `.strict()` already guaranteed it is an object.
+  // Serialize the *raw* object, not zod's parsed copy, so the author's key order survives (ADR 0016).
   const rawWorkflow = (body.raw as { workflow: unknown }).workflow;
 
   // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink is
-  // refused regardless of what the body says. The two 404 causes fold into one response, as the read
-  // door does.
+  // refused regardless of what the body says.
   const absPath = confineToProjectRoot(resolve(ctx.project.dir), workflowPath, {
     allowMissingTail: true,
   });
@@ -107,8 +83,8 @@ export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<
     return;
   }
 
-  // Precondition and write are one synchronous block (`artifact-file.ts`, ADR 0016): `If-Match`
-  // present is overwrite-only, absent is create-only, and every conflict is a `412` here.
+  // Precondition and write are one synchronous block (ADR 0016): `If-Match` present is overwrite-only,
+  // absent is create-only, and every conflict is a `412` here.
   const precondition = checkPrecondition(
     readArtifact(absPath),
     firstHeader(req.headers["if-match"]),

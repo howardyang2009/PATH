@@ -1,11 +1,9 @@
 import type { JsonValue } from "@path/schema";
 
-// Thrown rather than returned as a Result: run-workflow.ts catches this at its single call site
-// and translates it into its own Result (`fail(...)`), same idiom as InterpolationError.
+// Thrown rather than returned as a Result: its caller translates it into its own failed outcome.
 export class OutputParseError extends Error {}
 
-// A surrounding ```json ... ``` (or bare ``` ... ```) fence is stripped before parsing —
-// format doc §6.5, "for LLM output a surrounding markdown code fence is stripped first."
+// A surrounding ```json ... ``` (or bare ``` ... ```) fence is stripped before parsing (format doc §6.5).
 const FENCE_PATTERN = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/;
 
 /** `parse: "json"` (format doc §6.5): unparseable output fails the step. */

@@ -11,20 +11,18 @@ import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
 
 /**
- * The `Resume from …` K-selection affordance: **one value** for the four facts the eager legal-K check
- * needs — the watched run's tree, the K selected in it, and the open buffer's file and dirty flag (the
- * Designer's save-first gate, ADR 0030; the Viewer never edits, so it passes `null`/`false`). They are
- * only meaningful together: a tree with no selection has no K, and a file with no selection has nothing
- * to check it against, so a surface cannot pass a plausible-looking subset.
+ * The four facts the eager legal-K check needs — the watched run's tree, the K selected in it, and the
+ * open buffer's file and dirty flag (the Designer's save-first gate, ADR 0030). They are only meaningful
+ * together, so a surface cannot pass a plausible-looking subset.
  */
 export interface ResumeFromAffordance {
-  /** The watched run's tree, keyed by run id — the same map the run tree renders; K is a row of it. */
+  /** The watched run's tree, keyed by run id; K is a row of it. */
   runs: ReadonlyMap<string, RunNodeState>;
-  /** The run selected in the run tree; K is this run. `null` when nothing (or the root) is selected. */
+  /** The run selected in the tree (K); `null` when nothing or the root is selected. */
   selectedRunId: string | null;
-  /** The open buffer's parsed file for the eager legal-K check (the Designer); the Viewer passes `null`. */
+  /** The open buffer's parsed file for the eager legal-K check; the Viewer passes `null`. */
   rootFile: WorkflowFile | null;
-  /** The open buffer's dirty flag — the Designer's save-first gate (ADR 0030). The Viewer passes `false`. */
+  /** The open buffer's dirty flag (ADR 0030); the Viewer passes `false`. */
   dirty: boolean;
 }
 
@@ -32,32 +30,23 @@ export interface ResumeActionsProps {
   client: PathApiClient;
   /** The selected root run — the run being resumed / reran. */
   rootRunId: string;
-  /**
-   * Show the plain **`Resume run`** button. `true` for any finished run; a still-running run gets no
-   * plain Resume at all (the panel never mounts these actions for it).
-   */
+  /** Show the plain **`Resume run`** button; a still-running run gets no plain Resume at all. */
   showResume: boolean;
   /**
-   * The run's status permits a plain resume — `true` only for a `cancelled`/`failed` run. A
-   * `succeeded` run leaves this `false`: the button stays visible but greyed, its reason inline, and
-   * the way back in is `Resume from …` instead.
+   * The run's status permits a plain resume — `true` only for `cancelled`/`failed`. A `succeeded` run
+   * stays visible but greyed, with its reason inline.
    */
   plainResumable: boolean;
-  /**
-   * Show the **`Resume from …`** K-selection button. `true` only in the watched run's own panel — the
-   * one row with a loaded tree behind it — when the surface opted in by passing {@link resumeFrom}.
-   */
+  /** Show **`Resume from …`**; only the watched run's own panel, with a loaded tree, opts in. */
   showResumeFrom: boolean;
-  /** Everything the eager legal-K check reads. Required here: the panel is only built with it. */
+  /** Everything the eager legal-K check reads. Required: the panel is only built with it. */
   resumeFrom: ResumeFromAffordance;
   /**
-   * The launch config dot-paths the root-run summary recorded as `$secret`-masked (`launch_secret_keys`,
-   * ADR 0046). Non-empty, the config field is prefilled with those paths' skeleton and opened: a resume
-   * recovers the frozen config, and a masked `[secret:<key>]` token cannot continue the run, so the
-   * operator must supply the values again. Absent or empty, the field keeps its blank, closed default.
+   * The root summary's `$secret`-masked config dot-paths (ADR 0046). Non-empty, the config field opens
+   * prefilled: a masked `[secret:<key>]` token cannot continue the run.
    */
   launchSecretKeys?: readonly string[];
-  /** Handed the successor's fresh root run id so the app can switch to watching it (as a launch/resume). */
+  /** Handed the successor's fresh root run id so the app can switch to watching it. */
   onResumed: (successorRootRunId: string) => void;
 }
 
@@ -65,19 +54,10 @@ type Phase = "idle" | "sending";
 type ErrorState = { source: "resume" | "resume-from"; message: string } | null;
 
 /**
- * The run's resume actions as one card: a single shared **`Override config (optional)`** field on top,
- * then the two resume verbs that both send it — plain **`Resume run`** (§4.3) and **`Resume from …`**
- * (K-selection, ADR 0033) — each with its disabled reason on the same line as its button.
- *
- * Both verbs post the same `POST …/resume` with the same operator config; the only difference is the
- * `rerun_from_run_id` a `Resume from …` carries (K's run id). So the config override is one field, not
- * one per button — a value typed once is the value both would send. The field shows always and is
- * disabled only while **both** verbs are disabled (nothing to configure); an invalid config still
- * forces it open so its lint is never off-screen, and blocks both buttons.
- *
- * `Resume from …` legality is the client mirror `resumeFromEligibility` (the engine's one legal-K
- * rule); the engine's `refusal` stays the authority for a race and lands as the error alert. Resume
- * reads the file only — no edit-lock lease (ADR 0017).
+ * The run's resume actions as one card: a shared `Override config (optional)` field, then the two verbs
+ * that both post it — plain `Resume run` (§4.3) and `Resume from …` (ADR 0033), which alone adds
+ * `rerun_from_run_id`. Illegality mirrors the engine's `resumeFromEligibility`; the engine's refusal stays
+ * authoritative for a race. Resume reads the file only — no edit-lock lease (ADR 0017).
  */
 export function ResumeActions({
   client,
@@ -93,27 +73,22 @@ export function ResumeActions({
   const secrets = launchSecretKeys ?? [];
   const resupply = launchSecretResupply(secrets);
   const showSecrets = resupply.required;
-  // Prefilled from the summary's recorded secret paths, so the operator fills values rather than
-  // retyping the shape. Lazy init: built once per mount, not on every keystroke.
+  // Prefilled from the summary's recorded secret paths; lazy init, so the skeleton is built once per mount.
   const [config, setConfig] = useState(() => resupply.skeleton);
-  // A run with masked secrets opens the field by default, so what must be re-entered is visible; a
-  // plain resume keeps the launch form's on-demand disclosure.
+  // A run with masked secrets opens the field by default so what must be re-entered is visible.
   const [showConfig, setShowConfig] = useState(showSecrets);
   const [error, setError] = useState<ErrorState>(null);
 
-  // A new K-selection makes a prior action's result stale: the refusal alert belonged to the node
-  // that was selected when the button was pressed, not the one now selected. Clear it on change.
+  // A new K-selection makes a prior action's refusal alert stale, so clear it on change.
   const selectedRunId = resumeFrom.selectedRunId;
   // biome-ignore lint/correctness/useExhaustiveDependencies: the effect's whole purpose is this reset.
   useEffect(() => {
     setError(null);
   }, [selectedRunId]);
 
-  // The shared launch-facts secret-restore gate (ADR 0046, `@path/client-core`): the config parse and
-  // the still-blank recorded secrets, one verdict both continuation doors read. A recorded secret is a
-  // credential the frozen config holds only as a mask token, so both resume verbs stay disabled (with
-  // the reason shown) from the moment the skeleton is on screen. Derived from the text, not gated on a
-  // keystroke. The Complete form reads the same gate on the other door.
+  // The shared secret-restore gate (ADR 0046): a recorded secret is a credential the frozen config holds
+  // only as a mask token, so both verbs stay disabled while one is blank — the engine would otherwise
+  // continue with a key the operator did not choose. Derived from the text, not gated on a keystroke.
   const gate = resupplyGate(secrets, config, "resuming");
   const configResult = gate.configResult;
   const blankSecrets = gate.blankPaths;
@@ -121,13 +96,11 @@ export function ResumeActions({
   // `Resume from …` legality — computed only when the button is shown (only then is a tree behind it).
   const eligibility = showResumeFrom ? resumeFromEligibility({ rootRunId, ...resumeFrom }) : null;
 
-  // "Enabled" here is by status / K-eligibility alone, not config validity — a bad config must not lock
-  // the config field it lives in. The field is disabled only when neither verb is enabled by status.
+  // Enabled by status/K alone, not config validity — a bad config must not lock the field it lives in.
   const resumeEnabledByStatus = showResume && plainResumable;
   const resumeFromEnabledByStatus = eligibility?.ok === true;
   const configDisabled = !resumeEnabledByStatus && !resumeFromEnabledByStatus;
-  // Collapsed while disabled (nothing to set); otherwise the launch form's rule — open on demand, and
-  // forced open on an invalid value so the reason is never hidden behind a collapsed disclosure.
+  // Collapsed while disabled; otherwise open on demand, and forced open on an invalid value.
   const configOpen = !configDisabled && (showConfig || !configResult.ok);
 
   const canResume =
@@ -138,10 +111,9 @@ export function ResumeActions({
     blankSecrets.length === 0 &&
     phase !== "sending";
 
-  // The one reason both verbs share when it is the *secret*, not the run's status or K, that blocks
-  // them. Kept out of the per-button reason lines so a failed run (both verbs visible) does not print
-  // the same sentence twice; a still-illegal K or a succeeded run keeps its own button reason, which
-  // already disables the button with nothing to fill in — hence the status guard.
+  // The one shared reason when the secret (not status or K) blocks both verbs; kept out of the per-button
+  // reason lines so a failed run does not print the same sentence twice. A still-illegal K or a succeeded
+  // run keeps its own button reason, which already disables it with nothing to fill in.
   const secretReason =
     gate.blockMessage !== null && (resumeEnabledByStatus || resumeFromEnabledByStatus)
       ? gate.blockMessage
@@ -174,8 +146,7 @@ export function ResumeActions({
     );
   };
 
-  // The greyed plain-Resume's inline reason: a finished-but-succeeded run reruns from a chosen
-  // boundary, it does not plain-resume. Shown only when the button is present and status-disabled.
+  // The greyed plain-Resume's inline reason: a succeeded run reruns from a chosen boundary instead.
   const resumeReason =
     showResume && !plainResumable ? "Succeeded — rerun from a chosen boundary below." : null;
 
@@ -250,9 +221,8 @@ export function ResumeActions({
             className="launch-submit resume-from-submit"
             data-testid="resume-from-submit"
             disabled={!canResumeFrom}
-            // K's identity (node name + full run id) is the hover title on an enabled K; on a disabled
-            // one the title is the reason, which also shows inline beside the button — a blank launch
-            // secret is that reason once K itself is legal.
+            // K's identity is the title on an enabled K; on a disabled one the title is the reason, which
+            // also shows inline beside the button.
             title={
               eligibility.ok
                 ? (secretReason ?? `Resume from ${eligibility.nodeName} (${eligibility.runId})`)

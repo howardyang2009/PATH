@@ -2,12 +2,8 @@ import type { PathApiClient } from "@path/client-core";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { LeaseController, type LeaseMap } from "./lease-client.js";
 
-/**
- * The React binding over `LeaseController` (#371): it mints one `session_id` for the whole Designer
- * session, reconciles the held leases against the open file paths, and wires the two things a browser
- * needs a DOM for — the `beforeunload` release beacon and React state. The pure controller carries the
- * acquire/heartbeat/takeover/lost logic (see `lease-client.ts`); this hook keeps it thin.
- */
+/** The React binding over `LeaseController`: one `session_id` per Designer session, leases reconciled
+ * against the open paths, plus the `beforeunload` release beacon and React state. */
 export interface EditLeases {
   /** This Designer session's `session_id`, the holder its leases carry — a Delete names it. */
   sessionId: string;
@@ -35,8 +31,7 @@ export function useEditLeases(client: PathApiClient, paths: readonly string[]): 
     };
   }, [controller]);
 
-  // Reconcile whenever the *set* of open paths changes. Keyed on the joined paths so an unchanged set
-  // (a re-render that only reordered React state) does not re-run acquire/release.
+  // Reconcile whenever the set of open paths changes; keyed on the joined paths so an unchanged set does not re-run.
   const pathsKey = paths.join("\n");
   useEffect(() => {
     controller.reconcile(pathsKey === "" ? [] : pathsKey.split("\n"));

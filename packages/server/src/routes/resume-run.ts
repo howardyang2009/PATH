@@ -5,30 +5,15 @@ import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
 import type { ApiRequest } from "./route-context.js";
 
-/**
- * Two optional fields: a config override for the resumed run (§4.3, no `input` — see below), and
- * `rerun_from_run_id` — the rerun boundary K's source run id (#444, ADR 0032). Absent
- * `rerun_from_run_id` is plain Resume; present, the engine's one legal-K authority validates it.
- */
+/** Optional `config` override, and `rerun_from_run_id` — the rerun boundary K's source run id (ADR 0032). */
 const ResumeBodySchema = z
   .object({ config: ConfigObjectSchema.optional(), rerun_from_run_id: z.string().optional() })
   .strict();
 
 /**
  * `POST /v0/runs/:root_run_id/resume` (server-api-v0.md §4.3) — re-runs a finished-but-unsuccessful
- * root run as a **successor** (ADR 0001, engine #173). Like `cancel` (§4.2) it is a named action on
- * an existing run, and like `POST /v0/runs` it answers `202` with the successor's *own* fresh ids as
- * soon as the run starts, then the client watches that new run's SSE stream to its terminal status.
- *
- * The workflow file to re-run is recovered from the predecessor's own row (`workflow_path`, stored
- * since engine #169). The one thing the caller may send is an optional `config` **override** for the
- * resumed run — the engine applies operator config on the resume path too (`run-workflow.ts`), so an
- * operator can, say, change an output path before continuing. It carries the same ADR 0012 `$env`
- * reject as §2. There is no `input`: a resumed run restores its context from the predecessor's tree,
- * so a fresh seed would be silently discarded (engine `cli.ts`).
- *
- * Each refusal names a distinct reason a resume cannot happen, so the client can tell "not finished
- * yet" from "already succeeded" from "the workflow file is gone".
+ * root run as a **successor** (ADR 0001). No `input`: a resumed run restores its context from the
+ * predecessor's tree, so a fresh seed would be discarded.
  */
 export async function handleResumeRun({
   req,
@@ -47,16 +32,14 @@ export async function handleResumeRun({
     }
   }
 
-  // The predecessor's root row, or null — the same `RunTree.root` `cancel` keys on, never some other
-  // row of the tree whose status could disagree with the root's.
+  // The predecessor's root row — never another row whose status could disagree with the root's.
   const root = ctx.project.archive.tree(rootRunId)?.root;
   if (!root) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);
     return;
   }
 
-  // Only a finished-but-unsuccessful run is resumable. A still-running run has nothing to resume yet;
-  // a succeeded run has nothing left to do. `cancelled` and `failed` fall through.
+  // A still-running run has nothing to resume yet; a succeeded run has nothing left to do.
   if (!isTerminal(root.status)) {
     sendError(
       res,
@@ -65,22 +48,15 @@ export async function handleResumeRun({
     );
     return;
   }
-  // Plain Resume of a succeeded run has nothing to do; but a **Resume-from-K** target is legitimately
-  // succeeded (#444, ADR 0032) — the operator re-runs a succeeded region from K against changed
-  // config. So the already-succeeded refusal is relaxed exactly when `rerun_from_run_id` is supplied;
-  // plain Resume's gate is unchanged.
+  // A Resume-from-K target is legitimately succeeded (ADR 0032), so the already-succeeded refusal is
+  // relaxed exactly when `rerun_from_run_id` is supplied; plain Resume's gate is unchanged.
   if (root.status === "succeeded" && rerunFromRunId === undefined) {
     sendError(res, 409, `run "${rootRunId}" already succeeded; there is nothing to resume`);
     return;
   }
 
-  // Recover and re-validate the workflow as it stands now (`launch.ts`'s `prepareRunWorkflow`): a run
-  // recorded without a path cannot be re-run, a file that is gone is a `404`, a file that has since
-  // become invalid is a `400` exactly as a fresh launch of it would be, and a file that is no longer
-  // the workflow this run ran (its id changed, ADR 0006) is a `409`. The path comes from the
-  // predecessor's row, so the not-found message names the run whose recorded file vanished, not a path
-  // a caller just sent. No `escapesRoot`: the path came from a row this server wrote relative to the
-  // project root, so an escape is unreachable and folds into the same "recorded file is gone" 404.
+  // Recover and re-validate the workflow as it stands now: gone → `404`, now-invalid → `400`, no longer
+  // this run's workflow (id changed, ADR 0006) → `409`. No `escapesRoot`: the path came from our own row.
   const prepared = await prepareRunWorkflow(ctx.project.dir, root, {
     notFound: () => `workflow file for run "${rootRunId}" not found at "${root.workflowPath}"`,
     noPath: () => `run "${rootRunId}" has no recorded workflow path and cannot be resumed`,
@@ -99,13 +75,10 @@ export async function handleResumeRun({
       files: workflow.files,
       // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
       registry: workflow.registry,
-      // The operator's override for the resumed run — shadows the workflow's declared config key by
-      // key (engine `run-workflow.ts`), applied to the steps that re-run.
+      // The operator's override — shadows the declared config key by key, for the steps that re-run.
       operatorConfig: config,
-      // Recorded on the successor's root row so it is itself resumable.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
-      // The rerun boundary K, forwarded verbatim (#444): the route does no K-logic; `Project.resume`
-      // resolves and validates it, and a refusal comes back as `ResumeRefused`.
+      // The rerun boundary K, forwarded verbatim: the route does no K-logic; `Project.resume` validates.
       rerunFromRunId,
     });
   } catch (err) {
@@ -114,9 +87,8 @@ export async function handleResumeRun({
       sendError(res, 404, `no run found with id "${rootRunId}"`);
       return;
     }
-    // A Resume-from-K refusal (#444, spec §5): the engine's one legal-K authority rejected the
-    // selection before any successor started. The route only translates — it renders the taxonomy
-    // `status` and the verbatim `message`, holding no status of its own.
+    // A Resume-from-K refusal: the engine's one legal-K authority rejected the selection before any
+    // successor started. The route only translates.
     if (err instanceof ResumeRefused) {
       sendError(res, err.status, err.message);
       return;

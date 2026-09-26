@@ -16,17 +16,9 @@ import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
  * A workflow-run's **top-level walk** and its **goto passes** (ADR 0053/0054/0060, spec
- * docs/spec/goto.md §3, §8). `runTopLevelWalk` is the module's interface; the pass questions it asks
- * are answered below it:
- *
- * - Where does the walk start? Pass 1 at the top for a launch or a Resume; for a Complete, the one
- *   `running` pass it re-enters in place, with every recorded pass counted as a jump of the goto that
- *   opened it (ADR 0060). A running pass whose opening goto no longer targets the node it recorded
- *   first is a **divergence** the walk fails on.
- * - How does pass N resume? Through the Resume plan's pass pairing (`passResumer`).
- *
- * Both Continuation modes answer here, so a rule about a pass's first recorded node or its pairing
- * has one home.
+ * docs/spec/goto.md §3, §8). A file holding a goto walks in **passes**: each forward stretch from the
+ * start, or from a jump target, to the next jump taken or the end of the body. Both Continuation modes
+ * answer here, so the rules for a pass's first recorded node and its Resume pairing have one home.
  */
 
 type WorkflowNode = WorkflowFile["body"][number];
@@ -34,17 +26,15 @@ type WorkflowNode = WorkflowFile["body"][number];
 /** Where a top-level walk with passes starts. */
 export interface PassWalkStart {
   pass: number;
-  /** The goto that opened the starting pass; `null` for pass 1. */
+  /** The starting pass's opener; `null` for pass 1. */
   opener: GotoNode | null;
-  /** Index into the file's first level the starting pass runs from. */
   start: number;
-  /** The starting pass's input: the walk's seed for pass 1, the recorded pass input on a re-entry. */
+  /** The walk's seed for pass 1, the recorded pass input on a re-entry. */
   carried: JsonValue;
-  /** Jumps already spent per goto id (a Complete counts every recorded pass). */
   jumpsSpent: Map<string, number>;
   /** The recorded `running` pass a Complete re-enters in place (same id, no `run-started`). */
   reentered: RunRecord | undefined;
-  /** The resume state for each pass as the walk opens it; `undefined` when the run is not resuming. */
+  /** The resume state for each pass as the walk opens it; `undefined` when not resuming. */
   resumeFor: (pass: number, opener: GotoNode | null) => RunResume | undefined;
 }
 
@@ -54,18 +44,12 @@ export interface PassDivergence {
   error: string;
 }
 
-/**
- * The node a pass opened at, as a run row records it: a goto target's first node in serial order
- * (ADR 0064), since a `sequence` records no row of its own.
- */
+/** A goto target's first node in serial order — the node a pass opened at (ADR 0064). */
 export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
   return serialOrder([target])[0];
 }
 
-/**
- * The goto **pass** rows recorded under one workflow-run (ADR 0060), in ordinal order. A pass's
- * `nodeId` names the goto that opened it (null for pass 1), so these rows are also the jump counts.
- */
+/** The goto pass rows recorded under one workflow-run, in ordinal order; also its per-goto jump counts. */
 export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
   return rows
     .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
@@ -73,7 +57,8 @@ export function recordedPasses(rows: readonly RunRecord[], parentRunId: string):
 }
 
 /**
- * The start of one workflow-run's top-level walk over a file holding gotos (`gotos` by id).
+ * The start of one workflow-run's top-level walk over a file holding gotos, and the divergence check
+ * a Complete's reloaded file must pass (ADR 0060).
  */
 export function passWalkStart(
   run: Pick<RunContext, "file" | "identity" | "resume" | "continue">,
@@ -93,9 +78,7 @@ export function passWalkStart(
   const state = run.continue;
   if (!state) return walk;
 
-  // Complete (ADR 0060, spec §8.2): follow the record. Every recorded pass counts one jump for the goto
-  // that opened it, and the walk re-enters the one `running` pass in place. Closed passes are facts,
-  // not re-walked: no condition, goto or event of theirs is replayed.
+  // Complete (ADR 0060, spec §8.2): follow the record. Closed passes are facts, not re-walked.
   const passes = recordedPasses(state.existingRuns, run.identity.runId);
   for (const recorded of passes) {
     if (recorded.nodeId !== null)
@@ -108,9 +91,8 @@ export function passWalkStart(
   walk.carried = state.readBlob(reentered, RUN_BLOB_FILE.input);
   if (walk.pass === 1) return walk;
 
-  // Pass N starts at its opening goto's target in the reloaded file, which must be the node the pass
-  // recorded first; else the tail would no longer match the pass's rows. `existingRuns` is in start
-  // order, so the first child row is the earliest.
+  // Pass N starts at its opening goto's target, which must be the node the pass recorded first: a
+  // different tail would no longer match the pass's rows. `existingRuns` is in start order.
   const body = run.file.body;
   const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
   const target = goto && body.find((candidate) => candidate.name === goto.target);
@@ -130,14 +112,9 @@ export function passWalkStart(
 
 /**
  * One workflow-run's **top-level walk** (ADR 0053/0054, spec docs/spec/goto.md §3): its file's first
- * level walked as an index loop with a jump register, so a goto can re-seek it. A goto-free file has no
- * passes and is walked exactly like any other body. A file holding a goto walks in **passes**: each
- * forward stretch — from the start, or from a jump target, to the next jump taken or the end of the
- * body — is a container run under this workflow-run, and every run made in it is the pass's child. The
- * pass shares this run's context (`exec` threads through unchanged), so context is one
- * last-writer-wins blackboard across passes (ADR 0059).
- *
- * A jump is counted per goto for this walk; the jump after the last one `max_jumps` allows fails the
+ * level walked as an index loop with a jump register. Each pass is a container run under this
+ * workflow-run sharing its context, so context is one last-writer-wins blackboard across passes
+ * (ADR 0059). A jump is counted per goto; the jump after the last one `max_jumps` allows fails the
  * pass and, with it, the workflow-run. The target's incoming output is the goto's passed-through
  * output, forward or backward (ADR 0055).
  */
@@ -158,7 +135,6 @@ export async function runTopLevelWalk(
   const { jumpsSpent, resumeFor } = walk;
   let { pass, opener, start, carried, reentered } = walk;
   for (;;) {
-    // A pass's input is its seed: the walk's seed for pass 1, the opening goto's passed-through output after.
     const container = await openContainerRun(run, {
       key: { owner: opener, pass },
       existingRunId: reentered?.runId,
@@ -209,8 +185,8 @@ export async function runTopLevelWalk(
 
 /**
  * A Complete whose running pass no longer matches the reloaded file (ADR 0060 §2): the pass and, with
- * it, the workflow-run fail. The parked leaf, when it sits in this pass, is committed first with the
- * supplied output, so a later Resume reuses it instead of asking for it again.
+ * it, the workflow-run fail. A parked leaf in this pass is committed first with the supplied output,
+ * so a later Resume reuses it instead of asking for it again.
  */
 async function failDivergedPass(
   run: RunContext,

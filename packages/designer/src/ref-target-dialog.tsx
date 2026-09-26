@@ -2,17 +2,10 @@ import { useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
- * The target chooser for a new `workflow`-ref (#391, designer-spec § Nested `workflow`-ref creation).
- * Because a ref stores a **path**, adding one offers two ways to fill it:
- *
- * - **Reference an existing workflow** — a picker over the project's discovered workflows (the App's one
- *   `discovery.ts` snapshot); the choice is the target path.
- * - **Create a new workflow** — descend at once into a fresh, unwritten, path-less child buffer. No path is
- *   chosen here: the child's first save picks it and back-fills the parent ref from it, so authoring comes
- *   first and the ref follows the save.
- *
- * The dialog owns only its mode; the App wires what each choice does (set the ref, descend the new child),
- * because those touch the open file and the navigation trail.
+ * The target chooser for a new `workflow`-ref. Because a ref stores a **path**, adding one either points
+ * at a discovered workflow or creates a new one: the child descends at once as an unwritten, path-less
+ * buffer, and its first save picks the path and back-fills the parent ref. The dialog owns only its mode;
+ * the App wires what each choice does.
  */
 export function RefTargetDialog({
   discovery,

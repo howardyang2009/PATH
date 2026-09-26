@@ -13,40 +13,18 @@ import {
 import { runStatusAfter } from "./event-outcome.js";
 import { displayStatusByRun } from "./run-tree.js";
 
-/**
- * Framework-agnostic view-model for one root run. It assembles the run tree from
- * `GET /v0/runs/:root_run_id` (`hydrate`) and folds the live `LogEvent` stream (`applyEvent`) into a
- * plain reactive state — status transitions per run plus the ordered narrative. No React, no DOM:
- * a view subscribes with `subscribe` and reads `getState`, so the same core drives a React web view
- * or a later React Native one. Pure data-in, snapshot-out.
- */
+/** Framework-agnostic view-model for one root run: `hydrate` seeds the run tree from
+ * `GET /v0/runs/:root_run_id`, `applyEvent` folds the live stream. Pure data-in, snapshot-out. */
 
-/**
- * Liveness of the event stream behind the narrative — what a viewer needs to tell "this run is
- * quiet" from "we lost the stream". The core reconnects from the high-water `seq` on its own, so
- * `reconnecting` is a transient state, not an error; `closed` is the terminal one (the root run
- * finished and the server closed the stream for good), and `failed` means reconnect is off or
- * exhausted and no more events are coming.
- *
- * `waiting` is the quiescent state a `person-activity` run reaches: a leaf is parked `awaiting` and the
- * server has no more events until a `complete`, so it ends the stream although the root run is still
- * `running` (ADR 0038). That is not a dropped connection — the core slow-polls for the continuation
- * rather than hot-looping a reconnect — so the viewer shows a calm "waiting" note, not "reconnecting".
- */
+/** Liveness of the stream behind the narrative: `reconnecting` is transient (the core reconnects by
+ * itself), `closed` is terminal, `failed` means no more events come. `waiting` is the quiescent
+ * leaf-parked state (ADR 0038) — a calm note, not a drop. */
 export type StreamPhase = "connecting" | "live" | "waiting" | "reconnecting" | "closed" | "failed";
 
-/**
- * One run's live state: the client's mutable projection of a run row, event-updated. It is the domain
- * `RunRecord` (#257) — the two fields a live view once omitted (`usage`, `estimatedCostUsd`) ride the
- * wire too, so there is no subset shape to maintain in parallel. Kept as a named alias because a
- * client surface reads "run node state" more plainly than "run record".
- */
+/** One run's live state: the domain `RunRecord`, event-updated; named for the client surface. */
 export type RunNodeState = RunRecord;
 
-/**
- * Decode one wire run row to the client's live node state. It is `fromWireRunRecord` (`@path/schema`)
- * under a client-facing name — the shared inverse of the encode the server ran, so the field set can
- * never drift from the wire shape the way a hand-written decode silently could.
+/** `fromWireRunRecord` under a client-facing name — the inverse of the server's encode, so the field set cannot drift.
  */
 const nodeFromRecord = fromWireRunRecord;
 
@@ -56,12 +34,8 @@ export interface RunViewState {
   /** Mirrors the root run's status (the run whose id is `rootRunId`). */
   status: RunStatus;
   output: JsonValue | null;
-  /**
-   * What the tree was launched with (ADR 0046), decoded to the domain shape — the operator's override
-   * input/config and the launch worker-default table, plus the dot-paths in `config` whose values were
-   * `$secret`-masked. A per-tree fact, not a per-run one, so it sits on the snapshot beside `output`
-   * rather than on any `runs` row. Absent when the launch supplied nothing beyond the workflow file.
-   */
+  /** What the tree was launched with (ADR 0046), decoded to the domain shape. A per-tree fact, so it
+   * sits on the snapshot; absent when the launch supplied nothing beyond the workflow file. */
   launchFacts?: LaunchFacts;
   /** Every run in the tree, keyed by `runId`. */
   runs: ReadonlyMap<string, RunNodeState>;
@@ -69,30 +43,17 @@ export interface RunViewState {
   narrative: readonly LogEvent[];
   /** Liveness of the event stream feeding `narrative`. */
   stream: StreamPhase;
-  /**
-   * The status each run should display, keyed by `runId` — a `running` run with an `awaiting` run below
-   * it reads `awaiting` (view-only, ADR 0038; `displayStatusByRun` in `run-tree.ts` owns the rule). A
-   * surface reads the fact from here rather than re-deriving it from `runs`, so the four run surfaces
-   * cannot disagree. A run the map does not hold (the root run before its row arrives) falls back to
-   * the record status, which is `status` for the root.
-   */
+  /** The status each run should display — `displayStatusByRun` owns the rule (view-only, ADR 0038).
+   * A run the map lacks falls back to its record status. */
   displayStatus: ReadonlyMap<string, RunStatus>;
-  /**
-   * The last failure message each run reached, keyed by `runId`. The error text rides the
-   * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here — beside the
-   * narrative that already holds the events in `seq` order — instead of each surface scanning the
-   * narrative for it. A run with no failed finish is absent.
-   */
+  /** The last failure message each run reached, keyed by run id. The error text rides the
+   * `step-finished` event, not the run record (mvp spec §8.1), so it is folded here. */
   lastError: ReadonlyMap<string, string>;
   /** The runs parked `awaiting` in this tree, for a surface that counts or badges them (ADR 0042). */
   awaitingRunIds: ReadonlySet<string>;
 }
 
-/**
- * The derived facts a run surface reads off the snapshot: what the view answers about a run, without
- * the raw events. A pane that only needs one run's display status, error and the tree's launch facts
- * takes this, so it cannot reach past the view into the event stream.
- */
+/** The derived facts a run surface reads off the snapshot, without reaching past the view. */
 export type RunViewFacts = Pick<RunViewState, "displayStatus" | "lastError" | "launchFacts">;
 
 export type RunViewListener = (state: RunViewState) => void;
@@ -129,9 +90,8 @@ export class RunViewModel {
   hydrate(tree: RunTreeResponse): void {
     for (const row of tree.runs) {
       const node = nodeFromRecord(row);
-      // A tree read races the run it describes: a re-hydrate taken to learn a new child's parentage
-      // can carry rows older than the events already folded in. Rows win on structure (they are the
-      // only source of `parent_run_id`), but never walk a finished run backwards.
+      // A tree read races the run it describes: rows win on structure (the only source of parentage),
+      // but never walk a finished run backwards.
       const existing = this.runs.get(row.run_id);
       if (existing && isTerminal(existing.status) && !isTerminal(node.status)) {
         node.status = existing.status;
@@ -140,9 +100,7 @@ export class RunViewModel {
       this.runs.set(row.run_id, node);
     }
     this.output = tree.output;
-    // Decode through the shared inverse, so the camelCase field set can never drift from the wire's
-    // snake_case one. Kept absent (not an empty object) when the response carries no `launch_facts`,
-    // which is how a launch that supplied nothing reads.
+    // Decoded through the shared inverse; left absent (not `{}`) when the response has no `launch_facts`.
     this.launchFacts =
       tree.launch_facts !== undefined ? fromWireLaunchFacts(tree.launch_facts) : undefined;
     const root = this.runs.get(this.rootRunId);
@@ -150,11 +108,7 @@ export class RunViewModel {
     this.commit();
   }
 
-  /**
-   * Record the event stream's liveness (`connectRunViewModel` drives this from the SSE client). A
-   * no-op when the phase is unchanged: a reconnect loop can report the same phase repeatedly, and a
-   * snapshot per repeat would re-render every subscriber for nothing.
-   */
+  /** Record the stream's liveness; a no-op when the phase is unchanged, so subscribers do not re-render. */
   setStreamPhase(phase: StreamPhase): void {
     if (this.streamPhase === phase) return;
     this.streamPhase = phase;
@@ -171,14 +125,8 @@ export class RunViewModel {
     this.commit();
   }
 
-  /**
-   * Stamp a pass container's ordinal from the `pass-started` that follows it (ADR 0054). The engine
-   * starts the container first (its own `step-started`, named by the opening goto, or by nothing for
-   * pass 1) and then emits `pass-started` on the workflow-run, so a container met live, before any
-   * tree read, would read as an ordinary run until a re-hydrate. The container is the newest
-   * un-numbered run under that workflow-run named by the same opener. A tree row always wins: once a
-   * row numbered it, it is no longer a candidate.
-   */
+  /** Stamp a pass container's ordinal from the `pass-started` that follows it (ADR 0054): the newest
+   * un-numbered run under that workflow-run named by the same opener. A numbered tree row wins. */
   private numberPass(event: Extract<LogEvent, { type: "pass-started" }>): void {
     let container: RunNodeState | undefined;
     for (const run of this.runs.values()) {
@@ -192,10 +140,7 @@ export class RunViewModel {
 
   private applyToRun(event: LogEvent): void {
     const existing = this.runs.get(event.run_id);
-    // An event can name a run before its tree row arrives (parentage comes from the row, not the
-    // event). Start it blank — all-null, status `pending` — and let the status fold below and a later
-    // `hydrate` fill it. `blankRunRecord` builds it from the record's own field manifest, so a new
-    // field is never forgotten here.
+    // An event can name a run before its row arrives (parentage comes from the row): start it blank.
     const node: RunNodeState =
       existing ??
       blankRunRecord({
@@ -205,21 +150,18 @@ export class RunViewModel {
         nodeName: event.node_name,
       });
 
-    // The status transition rules — including the replay guards on `step-started`/`step-awaiting` —
-    // live in `runStatusAfter` (`event-outcome.ts`), the one owner of what an event means for a run.
+    // Status transitions — including the replay guards — live in `runStatusAfter`, their one owner.
     node.status = runStatusAfter(node.status, event);
     if (event.type === "step-started") {
       node.workerName = event.worker_name;
       node.startedAt ??= event.ts;
     } else if (event.type === "step-finished") {
       node.finishedAt = event.ts;
-      // The error text rides the event, not the run row (mvp spec §8.1). The narrative is `seq`-ordered,
-      // so the last such event for a run is that run's final word; a `cancelled` finish carries none.
+      // The error text rides the event, not the run row (mvp spec §8.1); the last one for a run wins.
       if (event.error !== undefined) this.lastErrorById.set(event.run_id, event.error);
     }
 
     this.runs.set(node.runId, node);
-    // The top-level status mirrors the root run — the run whose own id is the root id (§4).
     if (node.runId === this.rootRunId) this.rootStatus = node.status;
   }
 
@@ -247,8 +189,6 @@ export class RunViewModel {
       runs,
       narrative: [...this.narrative],
       stream: this.streamPhase,
-      // Derived once per snapshot, not once per row: a deep tree costs one walk, and every pane reads
-      // the same map instead of re-deciding which rows are loaded.
       displayStatus: displayStatusByRun(runs),
       lastError: new Map(this.lastErrorById),
       awaitingRunIds,

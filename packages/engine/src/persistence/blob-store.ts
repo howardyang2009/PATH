@@ -36,14 +36,9 @@ export function removeDir(dir: string): void {
 }
 
 /**
- * Writes one of a run's blobs and returns the ref that addresses it — **one call producing both**,
- * which is the point (#72).
- *
- * Where the bytes go (`runBlobDir`, host separators) and what the row records (`blobRef`, always
- * forward slashes) are two values that must address the same file. They were built separately at
- * each call site, so a mismatch put the blob on disk with a row pointing elsewhere: no error, no
- * failing test, just a run whose input is unreadable through the API. Derived from one set of
- * arguments here, they cannot disagree.
+ * Writes one of a run's blobs and returns the ref that addresses it — **one call producing both**.
+ * Where the bytes go (`runBlobDir`, host separators) and what the row records (`blobRef`, forward
+ * slashes) must address the same file; derived from one set of arguments here, they cannot disagree.
  */
 export function writeRunBlob(
   projectDir: string,

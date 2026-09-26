@@ -1,12 +1,5 @@
-/**
- * A minimal JSON tokenizer for the node-I/O panel: it splits an already pretty-printed JSON document
- * into spans the view colours (#44 pinned mono JSON with keys/strings/numbers distinguished). It
- * only *splits* — every token's text is a slice of the input, so re-joining the tokens reproduces
- * the document byte for byte and nothing on screen is ever the tokenizer's invention.
- *
- * Not a parser: the input is `JSON.stringify` output, already known-valid, and the panel needs
- * colour, not structure.
- */
+/** Splits pretty-printed JSON (known-valid `JSON.stringify` output) into colour spans; tokens are
+ *  slices of the input, so re-joining reproduces the document byte for byte. */
 
 export type JsonTokenKind = "key" | "string" | "number" | "boolean" | "null" | "plain";
 
@@ -16,9 +9,9 @@ export interface JsonToken {
 }
 
 /**
- * Strings first, so a colon *inside* a value (`"[secret:github_token]"` — the masked form every run
- * carries, CONTEXT.md §Secret) is never mistaken for a key separator. The trailing `\s*:` group is
- * what promotes a string to a key; it is emitted as plain text so the join stays lossless.
+ * Strings first: a colon inside a value (`"[secret:github_token]"`, the masked form) is not a key
+ * separator. The trailing `\s*:` group promotes a string to a key; it is emitted as plain text so the
+ * join stays lossless.
  */
 const TOKEN_PATTERN =
   /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;

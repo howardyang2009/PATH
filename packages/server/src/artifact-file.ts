@@ -2,23 +2,10 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { strongEtag } from "./etag.js";
 
-/**
- * One **versioned JSON artifact file** on disk — a workflow file or a template — as the write doors
- * see it (server-api-v0.md §7, §10, ADR 0016/0050). Every write door reads the current bytes, checks
- * an `If-Match` precondition against their strong ETag, serializes the client's raw object with its
- * key order preserved, and writes create-only (`wx`) or overwrite. Each route used to inline that; this
- * owns it once, and a route is an adapter that maps a {@link ArtifactConflict} to its own status and
- * wording.
- *
- * Concurrency stance (ADR 0016): read, check and write are synchronous, so a route that runs them in
- * one block with no `await` between leaves only an *external* writer to guard, which the ETag detects.
- */
+/** One versioned JSON artifact file on disk as the write doors see it (server-api-v0.md §7, §10): read,
+ * check `If-Match` against the strong ETag, then write create-only (`wx`) or overwrite — synchronously. */
 
-/**
- * The `412` wording for each precondition conflict, at every artifact door — workflow write and
- * delete, template update (ADR 0016/0050). `required` arises only under the `overwrite` rule, where an
- * `If-Match` must be sent.
- */
+/** The `412` wording per precondition conflict, at every artifact door; `required` arises only under `overwrite`. */
 export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
   missing: "precondition failed: the file no longer exists",
   changed: "precondition failed: the file changed since it was read",
@@ -28,21 +15,14 @@ export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
 
 /** Why a precondition or a create failed. */
 export type ArtifactConflict =
-  /** `If-Match` sent, but the file is gone. */
   | "missing"
-  /** `If-Match` sent, but the bytes changed since it was read. */
   | "changed"
-  /** A create found the file already there. */
   | "exists"
   /** An overwrite or delete sent no `If-Match`. */
   | "required";
 
-/**
- * What a door lets `If-Match` mean:
- *
- * - `create-or-overwrite` — present overwrites a matching file; absent creates (the workflow upsert).
- * - `overwrite` — required, and must match (template update, any delete).
- */
+/** What a door lets `If-Match` mean: `create-or-overwrite` — present overwrites a matching file, absent
+ * creates (the workflow upsert); `overwrite` — required and must match (template update, any delete). */
 export type PreconditionRule = "create-or-overwrite" | "overwrite";
 
 /** The current bytes of an artifact file, or `undefined` when it does not exist. */
@@ -54,10 +34,8 @@ export function readArtifact(absPath: string): Buffer | undefined {
   }
 }
 
-/**
- * Check `ifMatch` against `current` under `rule`. There is no `If-Match: *` wildcard: no header spells
- * a blind last-writer-wins overwrite, so `*` fails the exact match like any stale value.
- */
+/** Check `ifMatch` against `current`. No `If-Match: *` wildcard: `*` fails the exact match like any
+ * stale value, since no header spells a blind last-writer-wins overwrite. */
 export function checkPrecondition(
   current: Buffer | undefined,
   ifMatch: string | undefined,
@@ -72,11 +50,8 @@ export function checkPrecondition(
   return { ok: true, create: false };
 }
 
-/**
- * Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key order
- * kept) and write it. A create uses `wx`, so a file that raced into existence fails `exists` rather
- * than being clobbered; intermediate directories are created. Returns the new bytes' strong ETag.
- */
+/** Serialize `raw` deterministically (`JSON.stringify(raw, null, 2)` + newline, the client's key order
+ * kept) and write it. A create uses `wx`, so a file that raced into existence fails `exists`. */
 export function writeArtifact(
   absPath: string,
   raw: unknown,

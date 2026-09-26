@@ -2,13 +2,9 @@ import type { Problem, ProblemKind } from "./problems.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The aggregate problems panel (#388, designer-spec § Canvas validation-error UX). The per-node ⚠
- * marker and this panel are **two coupled surfaces**: a marker on a collapsed or off-screen node is
- * invisible, and a marker alone makes the author hunt — so every current cross-node error is listed
- * here too, each row jumping to its node.
- *
- * These are **soft** errors — they do not block save (§ save-with-warnings). The panel states that
- * plainly, so a warning count is read as "launch knowingly", never as "the file is broken".
+ * The aggregate problems panel. The per-node ⚠ marker and this panel are **two coupled surfaces**: a
+ * marker on a collapsed or off-screen node is invisible, so every current cross-node error is also
+ * listed here, each row jumping to its node. These are **soft** errors — they do not block save.
  */
 
 /** The short tag each row wears, naming which check flagged it. */

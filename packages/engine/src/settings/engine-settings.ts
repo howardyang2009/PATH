@@ -5,8 +5,8 @@ import { LOG_BACKEND_IDS, type LogBackendId } from "../logging/backends.js";
 import { engineSettingsFilePath } from "../persistence/paths.js";
 
 /**
- * Keys are spelled as the spec names the settings (`log.backends`, §8.2 — the Processor cap, §5.5),
- * dots and all: this is a flat settings file, not a nested object, so a dot is just a character.
+ * Flat keys spelled as the spec names the settings (`log.backends` §8.2, `processor.concurrency` §5.5) — a dot is
+ * just a character.
  */
 const EngineSettingsFileSchema = z
   .object({
@@ -16,10 +16,8 @@ const EngineSettingsFileSchema = z
   .strict();
 
 /**
- * The engine-level operator settings (mvp spec §9, ticket #27): the two knobs the engine itself
- * reads. Deliberately *not* workflow Config — Config is read by steps and inherits per file,
- * while these are read by the engine and the Processor cap in particular is one engine-wide value.
- * Every field is optional: absent means "fall back to the built-in default".
+ * The engine-level operator settings (mvp spec §9): the two knobs the engine itself reads,
+ * deliberately not workflow Config. Every field is optional — absent means the built-in default.
  */
 export interface EngineSettings {
   logBackends?: LogBackendId[];
@@ -45,8 +43,7 @@ export function loadEngineSettings(projectDir: string): LoadEngineSettingsResult
     };
   }
 
-  // Strict-unknown-field, like the workflow format: a typo'd key is a settings file that does not
-  // do what its author thinks, so it fails loudly rather than being silently ignored.
+  // Strict unknown fields, like the workflow format: a typo'd key fails loudly rather than being ignored.
   const parsed = EngineSettingsFileSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = formatIssues(parsed.error);

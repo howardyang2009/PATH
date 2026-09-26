@@ -13,15 +13,11 @@ import { isTemplatePath } from "../template-store.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` (server-api-v0.md §7.2): remove one
- * workflow file, the Designer's Delete. Origin-gated centrally. It guards the bytes exactly as the write
- * door does (ADR 0016): `If-Match` is **required** and must match the file's current strong ETag, so a
- * delete never removes bytes the caller has not seen. A live edit lease held by *another* session is a
- * `409` (ADR 0017); the caller's own lease, or an expired one, is removed with the file.
+ * `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` (server-api-v0.md §7.2) — the
+ * Designer's Delete. `If-Match` is required and must match the current strong ETag (ADR 0016), so a
+ * delete never removes unseen bytes; a live lease held by another session is a `409` (ADR 0017).
  *
- * A template path is refused (`400`), as `PUT /v0/workflows` refuses one (§10.6): a template is deleted
- * through `DELETE /v0/templates/:id`. Other workflows that reference this file keep their ref; the
- * Designer's problems pass reports it as dangling.
+ * A template path is refused (`400`), as `PUT /v0/workflows` refuses one (§10.6).
  */
 export function handleDeleteWorkflow({ req, res, ctx, query }: ApiRequest): void {
   const path = query.get("path");

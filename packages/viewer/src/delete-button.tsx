@@ -14,14 +14,13 @@ type Phase = "idle" | "confirming" | "sending";
 
 /**
  * Delete a root run permanently — the console's destructive verb, expanded under a run row the way
- * Resume is (#56). Unlike Resume (a one-click recovery), a delete removes the run's rows and blobs
- * with no undo, so it is two-step: the first click arms a confirmation that spells out exactly which
- * run will go (its id and its source workflow's name / id / file), and only the confirm there sends
- * the request. The arm is reversible — "Keep" returns to idle — so a stray first click costs nothing.
+ * Resume is. Unlike Resume (a one-click recovery), a delete removes the run's rows and blobs with no
+ * undo, so it is two-step: the confirm step spells out exactly which run will go (its id and its source
+ * workflow's name / id / file), and only the confirm sends. "Keep" returns to idle for free.
  *
- * On success the parent clears the selection and re-reads the list, so the row disappears; a `409`
- * (still running, or a live successor reuses its data) or `404` (already gone) surfaces here as an
- * alert without collapsing the confirm, so the operator can read the reason.
+ * On success the parent clears the selection and re-reads the list; a `409` (still running, or a live
+ * successor reuses its data) or `404` (already gone) surfaces here as an alert without collapsing the
+ * confirm, so the operator can read the reason.
  */
 export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
   const [phase, setPhase] = useState<Phase>("idle");

@@ -1,18 +1,11 @@
 import type { AcquireLockResult, HeartbeatResult, PathApiClient } from "@path/client-core";
 
 /**
- * The client half of the Designer edit-lock lease (#371, ADR 0017). The server owns the lease as an
- * on-disk marker; this controller is the browser side that keeps one **alive per open file** — acquire
- * on open (before the first keystroke), heartbeat every 10s, release on close — and surfaces the two
- * conflict outcomes the UI must act on: an acquire `409` (someone else is editing: count down, offer a
- * confirmation-gated takeover) and a heartbeat `409` (the lease was reclaimed or taken over: stop
- * beating, warn, offer re-acquire).
- *
- * It is framework-free and driven by an injected `PathApiClient` and scheduler, so React is a thin
- * subscriber over it (`use-edit-leases.ts`) and the state machine is unit-tested without a DOM. One
- * controller holds several leases at once under one `session_id`: a `workflow`-ref descent opens a
- * second file, and each file's marker beats independently (ADR 0017). A brand-new, never-saved workflow
- * has no path and so is simply never reconciled in — no path, no lease.
+ * The client half of the Designer edit-lock lease (ADR 0017): a lease is kept alive per open file —
+ * acquire on open, heartbeat every 10s, release on close — and the two conflict outcomes surface as an
+ * acquire `409` (offer a confirm-gated takeover) and a heartbeat `409` (warn and offer re-acquire). The
+ * controller is framework-free over an injected client and scheduler, holding one lease per open path; a
+ * brand-new, never-saved workflow has no path and so is never reconciled in.
  */
 
 /** Heartbeat cadence: 10s, so a live tab beats three times per the server's 30s TTL (ADR 0017). */

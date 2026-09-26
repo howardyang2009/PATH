@@ -2,7 +2,7 @@ import type { PathApiClient } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { errorMessage } from "./load-state.js";
 
-/** How long an armed "Confirm cancel?" waits before disarming itself (issue #56). */
+/** How long an armed "Confirm cancel?" waits before disarming itself. */
 export const ARM_TIMEOUT_MS = 3000;
 
 export interface CancelButtonProps {
@@ -13,20 +13,13 @@ export interface CancelButtonProps {
 type Phase = "idle" | "armed" | "sending";
 
 /**
- * The console's first write verb (#56, decision record #52): an inline two-step confirm, not a
- * modal and not `window.confirm` — the first click arms, a second within {@link ARM_TIMEOUT_MS}
- * sends, and an idle arm disarms itself so a stray click cannot fire a cancel on its own. There is
- * no retry or resume in PATH (mvp spec §1), so a single click destroying minutes of paid,
- * unrecoverable LLM work is the failure this button exists to prevent.
+ * An inline two-step confirm: the first click arms, a second within {@link ARM_TIMEOUT_MS} sends, and
+ * an idle arm disarms itself so a stray click cannot fire a cancel on its own. PATH has no retry or
+ * resume (mvp spec §1), so one click destroying paid, unrecoverable work is the failure this prevents.
  *
- * "Cancelling…" is local state only: the server models no `cancelling` status (ticket 3), and the
- * truth still arrives over SSE (`run-cancelled` folded in by the view-model) — this component never
- * claims the run has stopped, only that the request was sent. A reload during the unwind window
- * shows an armed-and-ready button again, which is harmless because a repeat cancel answers 202.
- *
- * The parent mounts this only while the root run is pending/running (map #40's one exception to
- * read-only) and unmounts it the moment the status folds in as terminal, so there is no terminal
- * phase to model here.
+ * "Cancelling…" is local state only: the server models no `cancelling` status and the truth arrives
+ * over SSE, so this never claims the run stopped — only that the request was sent. The parent mounts it
+ * only while the root run is pending/running, so there is no terminal phase to model.
  */
 export function CancelButton({ client, rootRunId }: CancelButtonProps) {
   const [phase, setPhase] = useState<Phase>("idle");

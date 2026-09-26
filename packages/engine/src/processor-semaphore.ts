@@ -1,11 +1,8 @@
-/**
- * The engine-wide cap on concurrent Processors (mvp spec §5.5, §7): ~400 MB of RSS per live
- * Agent SDK session means memory, not CPU, is the ceiling — 4 processors is ~1.5 GB, comfortable
- * on a 16 GB machine. Overridable in engine config; binary steps are uncapped.
- */
+/** Engine-wide Processor concurrency cap (mvp spec §5.5): ~400 MB RSS per live Agent SDK session makes
+ * memory, not CPU, the ceiling. Overridable in engine config; binary steps are uncapped. */
 export const DEFAULT_PROCESSOR_CONCURRENCY = 4;
 
-/** Returns a slot to the semaphore. Idempotent — calling it twice must not widen the cap. */
+/** Returns a slot to the semaphore. Idempotent — a double release must not widen the cap. */
 export type ReleaseSlot = () => void;
 
 export interface ProcessorSemaphore {
@@ -13,11 +10,8 @@ export interface ProcessorSemaphore {
   acquire(): Promise<ReleaseSlot>;
 }
 
-/**
- * A counting semaphore with FIFO hand-off. One instance spans an entire run tree — nested
- * workflows and nested parallels included (mvp spec §5.5) — so a branch whose next prompt step
- * cannot get a slot simply waits.
- */
+/** Counting semaphore with FIFO hand-off; one instance spans an entire run tree, nested parallels
+ * included (mvp spec §5.5), so a branch whose next prompt step needs a slot simply waits. */
 export function createProcessorSemaphore(limit: number): ProcessorSemaphore {
   let available = limit;
   const waiting: ((release: ReleaseSlot) => void)[] = [];
@@ -25,11 +19,11 @@ export function createProcessorSemaphore(limit: number): ProcessorSemaphore {
   function makeRelease(): ReleaseSlot {
     let released = false;
     return () => {
-      if (released) return; // a second release would hand out a slot this holder never held
+      if (released) return;
       released = true;
       const next = waiting.shift();
       if (next) {
-        next(makeRelease()); // hand the slot straight to the waiter — `available` stays spoken for
+        next(makeRelease());
         return;
       }
       available += 1;

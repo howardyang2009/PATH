@@ -13,13 +13,9 @@ import { AssigneeChip } from "./assignee-chip.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
- * The run tree: an indented, collapsible parent/child list of the runs under one root run — the
- * shape pinned by map #40 (a node-graph canvas is designer territory, not this viewer). Every row
- * is a run, labelled by the node it ran.
- *
- * What nests, and in what order, is `buildRunTree`'s — parentage, orphan runs the last tree read
- * has not placed yet, and execution order are facts about runs, not about this list. What is left
- * here is the list: indentation, the collapse toggles, and selection.
+ * The run tree: an indented, collapsible parent/child list of the runs under one root run. Every row is a
+ * run, labelled by the node it ran; what nests and in what order is `buildRunTree`'s — what is left here
+ * is indentation, the collapse toggles, and selection.
  */
 export interface RunTreeProps {
   rootRunId: string;
@@ -78,11 +74,9 @@ interface TreeView {
 function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
   const { run, children } = node;
   const isCollapsed = tree.collapsed.has(run.runId);
-  // The human step name is the row's headline; the GUID `nodeId` and the `runId` trail it as the
-  // two machine identities. `nodeName`/`nodeId` are null together on the implicit root run. A
-  // `while-do` iteration container (ADR 0037) shares its loop's name across passes, so its 1-based
-  // ordinal trails the name to tell one pass from the next. A goto pass container (ADR 0054) has no
-  // name of its own: it reads `Pass N`, naming the goto that opened it after pass 1.
+  // The human step name is the headline; `nodeId` and `runId` trail it as the machine identities. A
+  // `while-do` iteration shares its loop's name across passes, so the ordinal distinguishes them (ADR 0037);
+  // a goto pass has no name of its own and reads `Pass N` (ADR 0054).
   const name = run.nodeName ?? nodeLabel(run.nodeId);
   const label = isPassRun(run)
     ? run.nodeName === null
@@ -91,14 +85,12 @@ function RunTreeRow({ node, tree }: { node: RunTreeNode; tree: TreeView }) {
     : isIterationRun(run)
       ? `${name} · iteration ${run.iteration}`
       : name;
-  // An awaiting leaf shows its assignee as a chip in the rail (CONTEXT.md § Person-activity). The
-  // assignee lives on the node in the file, not the run row, so it is read by id; absent when the file
-  // is not loaded or the node has no assignee.
+  // An awaiting leaf shows its assignee as a chip; it lives on the node in the file, not the run row,
+  // so it is read by id (CONTEXT.md § Person-activity).
   const assignee = awaitingNodeForRun(tree.workflowFiles, run)?.assignee ?? null;
-  // The display status the surfaces share comes off the tree node, which `buildRunTree` computed from
-  // the same snapshot every other pane reads: a running run with an awaiting run below it reads
-  // `awaiting` (view-only, ADR 0038). The chip above stays keyed on the real status, so only the actual
-  // awaiting leaf carries an assignee — a flipped ancestor gets the pill, not a chip.
+  // Display status comes off the tree node, computed by `buildRunTree` from the shared snapshot, so a
+  // running run with an awaiting run below reads `awaiting` (view-only, ADR 0038). The chip above stays
+  // keyed on the real status, so a flipped ancestor gets the pill, not a chip.
   const displayStatus = node.displayStatus;
 
   return (

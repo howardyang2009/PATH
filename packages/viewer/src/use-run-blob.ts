@@ -15,17 +15,11 @@ export interface RunBlobRequest {
   rootRunId: string;
   runId: string;
   name: BlobName;
-  /**
-   * The run record's `input_ref`/`output_ref` for this object, as the live snapshot carries it. It
-   * doubles as a re-read trigger: the ref appearing in a snapshot is one moment the object is known
-   * to have become readable.
-   */
+  /** The run record's `input_ref`/`output_ref` for this object; its arrival in a snapshot triggers a re-read. */
   ref: string | null;
   /**
-   * Whether the run has reached a terminal status. A null ref means "not written" only while the run
-   * is still going: refs enter the snapshot through a tree read, and nothing re-reads the tree after
-   * the last run in it finishes, so a terminal run may hold an object its snapshot does not name
-   * (#51). Terminal runs are therefore asked anyway, and their 404 is trusted.
+   * A null ref means "not written" only while the run is still going: nothing re-reads the tree after
+   * the last run finishes, so a terminal run is asked anyway and its 404 is trusted.
    */
   settled: boolean;
   /** Bumped by the panel's refresh, to re-read an unchanged ref on demand. */
@@ -33,12 +27,9 @@ export interface RunBlobRequest {
 }
 
 /**
- * Reads one run's `input` or `output` object over `GET /v0/runs/:root_run_id/blobs/:run_id/:name`.
- *
- * The absence rule — whether to read at all, and whether a caught 404 is a benign "no such object"
- * or a real failure — is the pure {@link planBlobRead}/{@link resolveBlobError} pair in
- * `@path/client-core` (#359), shared with the Designer. This hook is only the `useState`/`useEffect`
- * wiring around them.
+ * Reads one run's `input` or `output` object over `GET /v0/runs/:root_run_id/blobs/:run_id/:name`. The
+ * absence rule is the pure {@link planBlobRead}/{@link resolveBlobError} pair in `@path/client-core`;
+ * this hook is only the `useState`/`useEffect` wiring around them.
  */
 export function useRunBlob({
   client,

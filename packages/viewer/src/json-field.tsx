@@ -2,13 +2,10 @@ import type { parseJsonField } from "@path/client-core";
 
 /**
  * One raw-JSON textarea with its live client-side lint line, shared by the launch form's `input`/
- * `config` fields (#233) and the resume form's `config` override (§4.3). The parse/shape gate itself
- * is `parseJsonField` (launch-json.ts) — this only renders one field's text, hint, and invalid state.
+ * `config` fields and the resume form's `config` override. The parse/shape gate is `parseJsonField`;
+ * this only renders the text, hint and invalid state.
  *
- * The visible label is optional: when an existing title already names the field — the launch form's
- * `Override input (optional)` disclosure, which sits directly above the textarea — pass that element's
- * id as `labelledBy` and omit `label`, so the same words are not printed twice. The textarea keeps its
- * accessible name either way.
+ * Pass `labelledBy` when an existing title already names the field, so words are not printed twice.
  */
 export function JsonField({
   id,
@@ -25,7 +22,7 @@ export function JsonField({
   testId: string;
   /** The field's own visible label. Omit it when `labelledBy` names the field instead. */
   label?: string;
-  /** Id of the visible element that names this field — its disclosure title (see the module note). */
+  /** Id of the visible element that names this field — its disclosure title instead of a label. */
   labelledBy?: string;
   value: string;
   onChange: (next: string) => void;

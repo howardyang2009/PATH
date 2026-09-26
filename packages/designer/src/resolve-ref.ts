@@ -1,9 +1,6 @@
 /**
- * Resolve a `workflow`-ref's relative path against the file that holds it, so a descent crosses to the
- * right file (designer-spec § The model: inline within a file, drill-down across a ref boundary). A
- * `ref` is a relative path (`node-type.ts`, workflow-format §4.2), resolved from the referring file's
- * **directory** — POSIX-style, browser-safe (no `node:path`). `.` and empty segments drop; `..` pops one
- * segment. The server still confines the resolved path to the project root; this only forms the query.
+ * Resolve a ref's relative path from the referring file's **directory**, POSIX-style (no `node:path`); the server
+ * confines the result to the project root.
  */
 export function resolveRefPath(fromPath: string, ref: string): string {
   const fromDir = fromPath.split("/").slice(0, -1);
@@ -19,19 +16,14 @@ export function resolveRefPath(fromPath: string, ref: string): string {
   return out.join("/");
 }
 
-/** The last path segment — the file name — for a breadcrumb label when a file did not open with a `name`. */
 export function basename(path: string): string {
   const segments = path.split("/").filter((s) => s !== "");
   return segments.length > 0 ? segments[segments.length - 1]! : path;
 }
 
 /**
- * The inverse of `resolveRefPath` (#391): the relative `ref` a file at `fromPath` must store to reach the
- * project-relative `toPath`, so a create-new nested ref can set the parent's ref from two absolute paths.
- * Resolved from the referring file's **directory**, POSIX-style: it emits one `..` per directory the
- * parent must climb out of, then the remainder of the target. It satisfies
- * `resolveRefPath(fromPath, relativeRefPath(fromPath, toPath)) === toPath`, so a descent across the
- * stored ref lands back on `toPath`.
+ * The inverse of `resolveRefPath`: the relative `ref` a file at `fromPath` must store to reach the
+ * project-relative `toPath`; satisfies `resolveRefPath(fromPath, relativeRefPath(fromPath, toPath)) === toPath`.
  */
 export function relativeRefPath(fromPath: string, toPath: string): string {
   const fromDir = fromPath

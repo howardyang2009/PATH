@@ -1,23 +1,9 @@
 import type { ConfigObject, ConfigValue } from "@path/schema";
 import { withoutKey } from "./edit-target.js";
 
-/**
- * The pure model behind the config-inheritance region of the properties pane (#370, designer-spec
- * § Config inheritance display, invariant 5). A step inherits config downward from the enclosing
- * workflow unless it overrides it; the editor must let the author tell **mine from inherited without
- * reading the parent**. This module derives that distinction from data alone — the file's own `config`
- * and the node's own `config` — so the pane never needs the registry's config fragment (which the wire
- * registry does not carry) to render inherited-vs-overridden.
- *
- * - **inherited** — a key the file declares that the node does not: read-only, ghosted, with an Override
- *   button that makes it local (the ghost + Override is the inheritance cue; no origin caption).
- * - **overridden** — a key the node declares that the file also declares: solid, with a revert control
- *   that drops the local value and restores the inherited one.
- * - **local** — a key the node declares that the file does not: solid, with nothing to revert to.
- *
- * The `type` field (`command` / `prompt` / `endpoint`) is author-fixed and does **not** inherit
- * (ADR 0022); it edits in a distinct pane region (the kind fields) and never appears here.
- */
+/** The pure model behind the config-inheritance region: a step inherits config from the enclosing
+ * workflow unless it overrides it, so the pane shows **mine vs inherited** from the file's and node's own
+ * `config` alone (the wire registry carries no config fragment). `type` is author-fixed and never inherits. */
 
 export type ConfigOrigin = "inherited" | "overridden" | "local";
 
@@ -27,11 +13,8 @@ export interface ConfigRow {
   origin: ConfigOrigin;
 }
 
-/**
- * The config rows a node shows, merging the file's inheritable keys with the node's own. `hide` drops
- * keys a first-class editor already owns (a `prompt`'s `model` edits as its own Model field, #369), so
- * the two regions stay distinct. Rows are sorted by key for a stable render.
- */
+/** The config rows a node shows, merging the file's inheritable keys with the node's own; `hide` drops
+ * keys a first-class editor already owns, so the two regions stay distinct. Rows are sorted by key. */
 export function configRows(
   fileConfig: ConfigObject | undefined,
   nodeConfig: ConfigObject | undefined,
@@ -63,10 +46,7 @@ export function setConfigKey(
   return { ...(config ?? {}), [key]: value };
 }
 
-/**
- * Drop a local config key, returning the new config — or `undefined` when that empties it, so the node
- * can drop the whole `config` field (an empty `config: {}` is noise the author never wrote).
- */
+/** Drop a local config key — `undefined` when that empties it, so no bare `config: {}` is ever written. */
 export function dropConfigKey(
   config: ConfigObject | undefined,
   key: string,

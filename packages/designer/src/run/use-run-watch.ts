@@ -2,37 +2,20 @@ import type { PathApiClient } from "@path/client-core";
 import { useRunView } from "@path/viewer";
 import { useEffect, useRef, useState } from "react";
 
-/**
- * The Designer's **run-watching** state (#372), gathered out of `App` into one module. The App used to hold
- * three `useState` (the watched root run, the run inside its tree, a reload nonce), the `useRunView`
- * connection, and the select/launch/resume/delete transitions, interleaved with the unrelated authoring
- * state. Here they are one small interface, and the one invariant they share — **a new root run drops the
- * run-inside-the-tree selection**, because a run id from the previous tree names nothing in the new one —
- * lives once, in `selectRootRun`, instead of being re-spelled across three handlers.
- *
- * One connection, owned here, feeds both the canvas projection and the inspector: the two are views of one
- * live snapshot, and a second connection would tell the same story a beat apart. The App reads the derived
- * values (`runsForProjection`, `workflowRunStatus`) and wires the transitions straight onto the run dock.
- */
+/** The Designer's run-watching state: one `useRunView` connection feeds both the canvas projection and the
+ * inspector; a new root run drops the in-tree selection, since an id from the previous tree names nothing. */
 export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null) {
-  // The watched root run, and the run inside its tree the inspector shows. `null` when nothing is watched.
   const [rootRunId, setRootRunId] = useState<string | null>(null);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
-  // Bumped to make the run list re-read now (a launch/resume/delete just changed it), not at the next tick.
+  // Bumped to make the run list re-read now, not at the next periodic tick.
   const [reloadNonce, setReloadNonce] = useState(0);
 
-  // Opening a different workflow as a fresh root (`session.open`, #254) swaps the root frame, so the watched
-  // run — which belongs to the previous root workflow — names nothing here any more. Drop it, the same way
-  // `selectRootRun` drops the in-tree selection: otherwise the run-detail pane keeps rendering the old run and
-  // the canvas breadcrumb badges the new workflow with the old run's status, a run this workflow never had.
-  // The key is the *root* workflow id, so a `workflow`-ref descent (or a pop) — which changes the active file
-  // but keeps the same watched root run and its per-crumb projection — leaves the watch be. A launch/resume
-  // also keeps the same open file, so the root id does not change there either.
+  // A new root workflow names none of the watched run's ids, so drop the watch — otherwise the run-detail pane
+  // and breadcrumb badge the new workflow with the old run. Keyed on the root id, so a descent leaves it be.
   const prevRootWorkflowId = useRef<string | null | undefined>(undefined);
   useEffect(() => {
     const prev = prevRootWorkflowId.current;
     prevRootWorkflowId.current = rootWorkflowId;
-    // Skip the first population (nothing watched yet); reset only on a genuine change between two root workflows.
     if (prev !== undefined && prev !== rootWorkflowId) {
       setRootRunId(null);
       setSelectedRunId(null);
@@ -40,32 +23,27 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
   }, [rootWorkflowId]);
 
   const load = useRunView(client, rootRunId);
-  // The runs feeding the canvas projection, and the watched run's workflow-level (root run) status. The root
-  // run has no `nodeId`, so it projects onto no canvas node — the App badges the breadcrumb with it instead.
+  // The root run has no `nodeId`, so it projects onto no canvas node; the App badges the breadcrumb with it.
   const runsForProjection = load.phase === "ready" ? load.value.runs : null;
-  // The breadcrumb badge reads the root's **display** status, the same fact the runs list, the run-detail head,
-  // the run tree and the node pane share (`displayStatusByRun`, ADR 0038): a `running` root with an `awaiting`
-  // leaf below reads `awaiting`. Falls back to the raw root status before the root's row lands in the map.
+  // The breadcrumb badge reads the root's **display** status (`displayStatusByRun`, ADR 0038); the raw status
+  // is the fallback before the root's row lands in the map.
   const workflowRunStatus =
     load.phase === "ready" && rootRunId !== null
       ? (load.value.displayStatus.get(rootRunId) ?? load.value.status)
       : null;
 
-  // Switching root run drops the node-in-tree selection: a run id from the previous tree names nothing here.
   const selectRootRun = (id: string): void => {
     setRootRunId(id);
     setSelectedRunId(null);
   };
 
-  // A launch/resume is the same transition as a click — watch the new run — plus a nudge so the list
-  // re-reads and shows the new row now, not at the next periodic tick.
+  // A launch/resume is a click's transition plus a nudge so the list shows the new row now.
   const watchNewRun = (id: string): void => {
     selectRootRun(id);
     setReloadNonce((nonce) => nonce + 1);
   };
 
-  // A delete drops the watched run if it was the one removed (its tree is gone), then re-reads the list so
-  // the row disappears now rather than at the next periodic tick — the mirror of a launch.
+  // A delete drops the watched run if it was the one removed, then nudges the list — the mirror of a launch.
   const onDeleted = (id: string): void => {
     if (id === rootRunId) {
       setRootRunId(null);
@@ -75,25 +53,15 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
   };
 
   return {
-    /** The live run-view load — the run dock's `load` prop; also the source of the two derived values below. */
     load,
-    /** The watched tree's runs for the canvas projection, or `null` when nothing is watched. */
     runsForProjection,
-    /** The watched root run's workflow-level status for the breadcrumb badge, or `null`. */
     workflowRunStatus,
-    /** The watched root run id, or `null`. */
     rootRunId,
-    /** The selected run inside the watched tree, or `null`. */
     selectedRunId,
-    /** The run-list reload nonce — bumped on launch/resume/delete. */
     reloadNonce,
-    /** Watch `id` as the root run, dropping the in-tree selection. */
     selectRootRun,
-    /** Select a run inside the watched tree (the inspector target). */
     selectRun: setSelectedRunId,
-    /** Watch a just-launched/resumed run and nudge the list to re-read. */
     watchNewRun,
-    /** Handle a deleted root run: drop it if watched, then nudge the list to re-read. */
     onDeleted,
   };
 }

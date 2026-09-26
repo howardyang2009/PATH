@@ -1,17 +1,13 @@
 import type { WireStepPlugin } from "@path/client-core";
 
 /**
- * The worker-default editor, shared by the two surfaces that author a `{ <type>: <name> }` table: the
- * Designer's **file** `worker_defaults` region (ADR 0044, #505) and the Viewer's launch form, which
- * authors the **launch** worker-default (ADR 0044). The ADR splits the two *tiers* — file-scoped
- * and live versus run-wide and frozen — but not the editing: both pick a type among the registry's
- * multi-worker types and a worker among that type's shipped names, so the invalid `{ type, worker }`
- * pair neither channel accepts (a launch-boundary `400`, a file-invalidity) cannot be authored here.
+ * The worker-default editor, shared by the Designer's file `worker_defaults` region and the Viewer's
+ * launch form, which authors the launch worker-default. The two *tiers* differ (file-scoped and live
+ * versus run-wide and frozen) but not the editing: both pick a type among the registry's multi-worker
+ * types and a worker among that type's names, so an invalid `{ type, worker }` pair cannot be authored.
  *
- * Controlled and storage-free: `value`/`onChange` carry the table and the caller decides what an empty
- * one means — the Designer drops the file key, the launch form omits the wire field. The caller also
- * owns the section's framing: the launch form's disclosure and the Designer's pane section each name
- * this region, so the editor itself prints no title.
+ * Controlled and storage-free: the caller decides what an empty table means (the Designer drops the
+ * file key, the launch form omits the wire field) and owns the section's framing.
  */
 export interface WorkerDefaultsEditorProps {
   /** The received `GET /v0/step-plugins` registry — the source of both dropdowns' options. */
@@ -48,8 +44,8 @@ export function WorkerDefaultsEditor({
   const pluginOf = (type: string): WireStepPlugin | undefined =>
     plugins.find((p) => p.name === type);
 
-  // Retyping a row moves it to a different type; its worker resets to the new type's default, since a
-  // worker name is meaningless across types (CONTEXT.md invariant 5).
+  // Retyping a row resets its worker to the new type's default: a worker name is meaningless across
+  // types (CONTEXT.md invariant 5).
   const setTypeAt = (oldType: string, newType: string): void => {
     if (newType === oldType) return;
     const plugin = pluginOf(newType);

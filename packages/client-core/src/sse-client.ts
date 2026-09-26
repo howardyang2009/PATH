@@ -2,18 +2,9 @@ import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@pat
 import { defaultFetch, type FetchLike } from "./api-client.js";
 import { isRootRunFinished } from "./event-outcome.js";
 
-/**
- * A pure-TS SSE client for `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5). No DOM, so no
- * `EventSource`: it reads the `fetch` response body as a stream and parses the `id:`/`data:` frames
- * itself. `data:` is one `LogEvent` JSON verbatim (already snake_case at the envelope level).
- *
- * Reconnect/replay is the standard SSE mechanism the server already implements: each frame's `id:`
- * is the event `seq`, and on reconnect the client sends `Last-Event-ID: <last seq>` so the server
- * replays `seq >` that value out of `run.log`, then switches to live — no gap, no duplicate. This
- * client tracks the high-water seq and, if the transport drops before the run is done, reconnects
- * from it automatically. It stops reconnecting once the root run reaches a terminal status (the
- * root implicit step's `step-finished`, `node_id: null`), which is also when the server closes the
- * stream for good.
+/** Pure-TS SSE client for `GET /v0/runs/:root_run_id/events` (server-api-v0.md §5). No DOM, so no
+ * `EventSource`: it reads the `fetch` body as a stream and parses `id:`/`data:` frames itself, each
+ * `data:` one `LogEvent` JSON. A mid-run drop reconnects with `Last-Event-ID: <seq>`.
  */
 
 export interface SubscribeRunEventsOptions {
@@ -24,17 +15,10 @@ export interface SubscribeRunEventsOptions {
   onEvent: (event: LogEvent) => void;
   /** The stream is connected and delivering — fired on the first connect and on every reconnect. */
   onOpen?: () => void;
-  /**
-   * The stream dropped mid-run and a reconnect from the high-water `seq` is about to be attempted.
-   * Not an error: it is the liveness signal a viewer shows as "reconnecting" (issue #48). Never
-   * fired when `reconnect` is off — there the drop ends the subscription through `onError`.
-   */
+  /** The stream dropped mid-run and a reconnect from the high-water `seq` is about to be attempted. */
   onReconnecting?: (error?: unknown) => void;
-  /**
-   * The run is quiescent: a leaf is parked `awaiting`, so the server ended the stream with no more
-   * events to send although the root run is still `running` (ADR 0038). This is **not** a drop — the
-   * core slow-polls (`idlePollMs`) for a `complete` driven elsewhere rather than hot-looping — so a
-   * viewer shows a calm "waiting" note here, distinct from `onReconnecting`. Fired before each poll.
+  /** The run is quiescent: a leaf is parked `awaiting`, so the server ended the stream with no more
+   * events although the root run is still `running` (ADR 0038) — the core slow-polls. Fired per poll.
    */
   onWaiting?: () => void;
   /** Terminal completion — the root run finished and the stream closed for good. */
@@ -45,17 +29,9 @@ export interface SubscribeRunEventsOptions {
   lastEventId?: number;
   /** Reconnect from the last seq when the transport drops mid-run (default true). */
   reconnect?: boolean;
-  /**
-   * The base delay before a reconnect after a drop or an early mid-run close (default 200ms). Doubles
-   * per consecutive failure up to {@link MAX_RECONNECT_MS}, and resets on a healthy open — the backoff
-   * that keeps a flaky or slow server from being hammered.
-   */
+  /** Base reconnect delay before a drop retry (default 200ms); doubles per failure up to {@link MAX_RECONNECT_MS}. */
   reconnectDelayMs?: number;
-  /**
-   * How long to wait between polls while the run is quiescent (`awaiting`), default 3000ms. Longer
-   * than the reconnect delay: nothing is wrong, the poll only exists to catch a `complete` a different
-   * operator drove, so a status settling a few seconds late costs nothing.
-   */
+  /** Poll interval while the run is quiescent (default 3000ms); nothing is wrong, so it waits longer. */
   idlePollMs?: number;
   /** Injected `fetch`; defaults to the global. */
   fetch?: FetchLike;
@@ -98,10 +74,7 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
   let terminalSeen = false;
   let closed = false;
   let backoff = reconnectDelayMs;
-  // The runs currently parked `awaiting`: a `step-awaiting` adds one, its later `step-finished` (the
-  // `complete`) clears it. Non-empty at a clean stream end means the run is quiescent, not dropped —
-  // the server simply has nothing more to send until a completion. Kept across reconnects (the server
-  // replays only `seq >` the high-water mark, so a parked leaf's `step-awaiting` is not re-delivered).
+  // Runs parked `awaiting`, kept across reconnects (the server replays only `seq >` the high-water mark).
   const awaitingRuns = new Set<string>();
   const controller = new AbortController();
 
@@ -131,8 +104,7 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
         await readFrames(res, deliver, () => closed);
       } catch (error) {
         if (closed) return;
-        // Transport dropped — reconnect from the high-water seq (server replays the tail), unless
-        // reconnect is disabled, in which case the error ends the subscription.
+        // Transport dropped — reconnect from the high-water seq (server replays the tail) when enabled.
         if (reconnect) {
           options.onReconnecting?.(error);
           await delay(backoff, controller.signal);
@@ -142,28 +114,24 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
         options.onError?.(error);
         return;
       }
-      // The stream ended. A terminal event means the run finished and the server closed for good —
-      // a clean completion.
+      // The stream ended: a terminal event means the run finished and the server closed for good.
       if (closed) return;
       if (terminalSeen) {
         options.onClose?.();
         return;
       }
-      // With reconnect off there is nothing left to try, and this is *not* a completion: reporting it
-      // as one would tell a viewer the run is done while the rest of the narrative never arrives.
+      // With reconnect off this is not a completion — reporting one would say the run is done early.
       if (!reconnect) {
         options.onError?.(new Error("event stream ended before the root run finished"));
         return;
       }
       if (awaitingRuns.size > 0) {
-        // Quiescent: a leaf is parked `awaiting`, so this clean end is expected, not a drop (ADR 0038).
-        // Slow-poll for a `complete` driven elsewhere instead of hot-looping a reconnect.
+        // Quiescent clean end (ADR 0038): slow-poll for a `complete` driven elsewhere, not a hot loop.
         options.onWaiting?.();
         await delay(idlePollMs, controller.signal);
         continue;
       }
-      // A clean end mid-run with nothing parked is an early close (e.g. a proxy idle-timeout): reconnect
-      // and catch up, with the same backoff a dropped transport uses.
+      // A clean mid-run end with nothing parked is an early close (e.g. a proxy idle-timeout): reconnect.
       options.onReconnecting?.();
       await delay(backoff, controller.signal);
       backoff = Math.min(backoff * 2, MAX_RECONNECT_MS);
@@ -194,11 +162,8 @@ function openStream(
   });
 }
 
-/**
- * Reads a response body to its end, handing each decoded event to `onEvent`. Returns when the
- * stream ends (server closed it) or `isClosed()` becomes true; the caller re-checks `closed` to
- * tell the two apart. The frame grammar itself is `@path/schema`'s — this owns only the transport.
- */
+/** Read a response body to its end, handing each decoded event to `onEvent`; returns when the stream
+ * ends or `isClosed()`. The frame grammar is `@path/schema`'s — this owns only the transport. */
 async function readFrames(
   res: Response,
   onEvent: (event: LogEvent) => void,

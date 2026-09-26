@@ -19,24 +19,15 @@ import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node
 import type { Armed } from "./use-armed.js";
 
 /**
- * The canvas's edit surface (#368): it binds the palette's **armed** value to the pure `edit-tree` ops
- * over the active file. The block tree calls these; where the grammar refuses the armed value, the tree
- * never renders a socket, so an illegal drop is unreachable rather than rejected on save (spec § Adding).
- *
- * "Placing" reads the armed value, makes the arriving node(s), applies the edit, and disarms. An armed
- * node kind mints one node (`node-factory`, a fresh client id — ADR 0015); an armed Template runs
- * Instantiation over its body (#578, ADR 0049) — fresh ids, names uniquified against the file — shaped
- * for the socket (`grammar.bodyInsertSocket`: a 2+-node body at a single node slot is wrapped in a fresh
- * `sequence`). Structural affordances that carry no kind — add-arm, add-`else`, delete,
- * reorder, duplicate — do not need an armed kind and never disarm.
+ * The canvas's edit surface (designer-spec § Adding): it binds the palette's **armed** value to the pure
+ * `edit-tree` ops over the active file. "Placing" mints the arriving node(s), applies the edit, and
+ * disarms; an armed Template runs Instantiation over its body (ADR 0049), shaped for the socket. Where
+ * the grammar refuses the armed value the tree renders no socket, so an illegal drop is unreachable.
  */
 export interface EditorApi {
   /** What a socket says it adds — the armed node kind or the armed template's name — or `null` when unarmed. */
   armedLabel: string | null;
-  /**
-   * Is the socket of `flavor` owned by `ownerId` (`null` for the file body) an open drop target right now:
-   * something is armed and the grammar admits it there, the owner's ancestor chain included (a goto)?
-   */
+  /** Is `ownerId`'s socket of `flavor` an open drop target right now — armed, admitted, ancestor chain included? */
   socketOpen(flavor: SocketFlavor, ownerId: string | null): boolean;
   /** Place the armed node(s) at the tail of a list socket: the file body (`null`), a `sequence`, or a `parallel`. */
   placeIntoList(ownerId: string | null): void;

@@ -5,13 +5,10 @@ import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import type { ApiRequest, RouteContext } from "./route-context.js";
 
 /**
- * The three Designer edit-lease doors (ADR 0017, issue #364): acquire, heartbeat and release. The lease
- * itself — its marker file, TTL, liveness and takeover rules — is `edit-lease.ts`; each door here only
- * parses its body and maps the lease's answer to a status. `enforceSameOrigin` already gated all three
- * centrally (cross-origin → 403).
+ * The three Designer edit-lease doors (ADR 0017): acquire, heartbeat, release. The lease itself lives
+ * in `edit-lease.ts`.
  */
 
-/** `POST /v0/workflows/lock` body — acquire/takeover. */
 const LockBodySchema = z
   .object({
     workflow_path: z.string().min(1),
@@ -28,11 +25,7 @@ const LeaseOpBodySchema = z
   })
   .strict();
 
-/**
- * The prologue every lease door shares: parse the body, and find the lease of the named workflow. An
- * escaping or symlinked marker path is the write door's `404` escape class. `undefined` once a refusal
- * has been sent.
- */
+/** The shared prologue: parse the body, find the named workflow's lease; `undefined` once refused. */
 async function leaseRequest<T extends { workflow_path: string }>(
   req: IncomingMessage,
   res: ServerResponse,
@@ -49,11 +42,7 @@ async function leaseRequest<T extends { workflow_path: string }>(
   return { body: body.data, lease };
 }
 
-/**
- * `POST /v0/workflows/lock`: acquire or take over → `200` + lease. A live lease held by another session
- * is a `409` carrying `held_by_other` and the holder's `expires_at` (a lease conflict, not the write
- * door's byte-`412`).
- */
+/** `POST /v0/workflows/lock`: acquire or take over; a live lease held by another session is a `409`. */
 export async function handleWorkflowLock({ req, res, ctx }: ApiRequest): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LockBodySchema);
   if (!request) return;
@@ -62,10 +51,7 @@ export async function handleWorkflowLock({ req, res, ctx }: ApiRequest): Promise
   else sendJson(res, 409, result.held);
 }
 
-/**
- * `POST /v0/workflows/lock/heartbeat`: renew → `200` + lease. A lease that was reclaimed or taken over
- * is a `409`; the client stops beating and offers re-acquire.
- */
+/** `POST /v0/workflows/lock/heartbeat`: renew; a reclaimed or taken-over lease is a `409`. */
 export async function handleWorkflowLockHeartbeat({ req, res, ctx }: ApiRequest): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LeaseOpBodySchema);
   if (!request) return;
@@ -75,9 +61,8 @@ export async function handleWorkflowLockHeartbeat({ req, res, ctx }: ApiRequest)
 }
 
 /**
- * `POST /v0/workflows/lock/release`: free → always `200 { released }`, idempotent. Only the holder's own
- * lease is freed, so a stale `sendBeacon` from a closing tab can never free someone else's. POST, not
- * DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is POST-only.
+ * `POST /v0/workflows/lock/release`: free; always `200`, idempotent, and only the holder's own lease.
+ * POST, not DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is POST-only.
  */
 export async function handleWorkflowLockRelease({ req, res, ctx }: ApiRequest): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LeaseOpBodySchema);

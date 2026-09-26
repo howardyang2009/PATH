@@ -4,22 +4,15 @@ import type { WireLockHeldBody, WireWorkflowLease } from "@path/schema";
 import { confineToProjectRoot } from "./confine.js";
 
 /**
- * The Designer **edit lease** (ADR 0017, issue #364): a server-owned, expiring, file-based marker
- * `<name>.workflow.json.editing` beside the workflow it guards. It is Designer-to-Designer mutual
- * exclusion, so a second tab is warned before its first keystroke; it complements, never replaces, the
- * write door's `If-Match` precondition (ADR 0016), which alone protects the bytes against every writer.
- *
- * The marker file **is** the state: no in-memory registry, so a restart neither loses nor rebuilds a
- * lease, and reclaim is lazy — an expired marker is judged only when someone next touches that file.
- *
- * Every operation is synchronous (no `await`), so a read-decide-write never interleaves with another
- * request of this process — the write door's concurrency stance.
+ * The Designer **edit lease** (ADR 0017): an expiring marker `<name>.workflow.json.editing` beside the
+ * workflow — Designer-to-Designer exclusion, complementing the write door's `If-Match` precondition.
+ * The marker file *is* the state, so a restart loses nothing; all operations are synchronous.
  */
 
 /** TTL 30s (ADR 0017): a live tab heartbeats every 10s; a crashed one frees the marker within 30s. */
 const TTL_MS = 30_000;
 
-/** The marker's suffix. Discovery is blind to it (it fails `endsWith(".workflow.json")`) and `.gitignore` ignores it. */
+/** The marker's suffix; discovery is blind to it and `.gitignore` ignores it. */
 const MARKER_SUFFIX = ".editing";
 
 /** The marker's JSON — `@path/schema`'s wire shape, the same interface the Designer reads it back through. */
@@ -27,12 +20,10 @@ export type Lease = WireWorkflowLease;
 
 export type AcquireResult = { ok: true; lease: Lease } | { ok: false; held: WireLockHeldBody };
 
-/** The edit lease of one workflow file. */
 export interface EditLease {
   /**
-   * Grant the lease to `sessionId` when no marker exists, it expired, the caller already holds it, or
-   * `takeover` is set. A live lease held by another session is refused with its expiry, so the UI can
-   * offer a timed takeover.
+   * Grant the lease to `sessionId` unless a live lease is held by another session and `takeover` is unset,
+   * in which case refuse with its expiry so the UI can offer a timed takeover.
    */
   acquire(sessionId: string, takeover: boolean): AcquireResult;
   /** Extend the caller's own lease; `undefined` when it no longer holds it (reclaimed or taken over). */
@@ -46,9 +37,8 @@ export interface EditLease {
 }
 
 /**
- * The edit lease of `workflowPath`, or `undefined` when its marker would escape the project root or
- * traverse a symlink — the write door's confinement (ADR 0017 decision 7). The marker itself may not
- * exist yet.
+ * The edit lease of `workflowPath`, or `undefined` when its marker would escape the project root or traverse a
+ * symlink (ADR 0017 decision 7).
  */
 export function editLease(
   projectDir: string,
@@ -89,8 +79,8 @@ export function editLease(
           live && lease.session_id === sessionId ? lease.acquired_at : new Date(at).toISOString(),
         ...window(at),
       };
-      // A fresh grant uses `wx`, so a marker another OS process created since the read fails rather
-      // than being clobbered; a reclaim or takeover overwrites.
+      // A fresh grant uses `wx`, so a marker another OS process created since the read fails rather than
+      // being clobbered; a reclaim or takeover overwrites.
       mkdirSync(dirname(markerPath), { recursive: true });
       try {
         writeFileSync(markerPath, serializeLease(granted), fileExists ? undefined : { flag: "wx" });
@@ -137,8 +127,8 @@ export function editLease(
 }
 
 /**
- * Read a marker. `fileExists` tells a bare "no marker" (a grant may `wx`-create) from a present but
- * unparseable one, which is treated as expired and reclaimable.
+ * Read a marker; `fileExists` tells a bare "no marker" from a present but unparseable one, treated as expired and
+ * reclaimable.
  */
 function readLease(absPath: string): { fileExists: boolean; lease?: Lease } {
   let bytes: string;
@@ -153,7 +143,7 @@ function readLease(absPath: string): { fileExists: boolean; lease?: Lease } {
       return { fileExists: true, lease: parsed as Lease };
     }
   } catch {
-    // A hand-mangled or truncated marker is not a valid lease.
+    // a hand-mangled or truncated marker is not a valid lease
   }
   return { fileExists: true };
 }

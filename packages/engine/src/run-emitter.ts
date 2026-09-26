@@ -10,35 +10,9 @@ import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
 
 /**
- * The run-scoped producer of **observations** (CONTEXT, Audit — "Emitter"). One is built per
- * workflow-run from that run's `identity`, and it owns the shared envelope so a call site declares
- * only what a given observation *adds*, never the fields every observation already carries.
- *
- * **What it absorbs, and why.** Before this seam, all ~28 emit sites hand-built the full
- * `Observation` literal and re-threaded the envelope — `run_id`/`root_run_id` on every one, plus
- * `node_id`/`node_name` copied off the node for control-node observations, plus the root-only
- * `run-started` extras behind `...(isRoot ? {…} : {})` spreads. So every identity-shape change (the
- * GUID `id` of ADR 0006, the `node_name` audit field of ADR 0007) had to land in all of them at
- * once. Here it lands in one module: the envelope is computed from `identity`, and `runStarted`
- * gates the root-only trio on `isRoot` itself.
- *
- * **Two tiers, one for each subject of an observation.** The run tier's observations are attributed
- * to the workflow-run (`identity.runId`) — its own lifecycle (`run-started`/`run-finished`/
- * `context-changed`) and the engine-evaluated control nodes it walks (a checkpoint, a branch, a
- * loop, a join, a reuse decision), whose `node_id`/`node_name` come off the node. A leaf step is a
- * *different* subject: it mints its own run id and four observations share it. That is the
- * **step-scoped** sub-emitter (`step`), so the minted id can't be dropped between `step-started` and
- * `step-finished`.
- *
- * **Every observation it builds carries the node identity it is about** (`nodeId`/`nodeName`, from
- * `identity` for the run tier and from the step's `NodeRef` for the leaf tier), so an observer labels a
- * record from the record alone — no map filled by whichever earlier observation happened to carry the
- * pair, no output depending on the stream's order.
- *
- * **It sits above the mask point, not through it.** The emitter composes the record and calls
- * `emit`; `emit` is where masking happens (mvp spec §8.3, `runWorkflow`'s single choke point). The
- * `Observation` union stays the wire type crossing that seam — this only concentrates who *builds* a
- * member of it.
+ * The run-scoped producer of **observations**: one per workflow-run, owning the shared envelope so a call site
+ * declares only what an observation adds. The run tier covers this run's lifecycle and control nodes, `step` is
+ * the step-scoped sub-emitter, and every record carries its node identity. It composes; `emit` masks (§8.3).
  */
 
 /** The identity a control-node or step observation names its node by — the node's own `id`/`name`. */
@@ -51,11 +25,9 @@ export interface NodeRef {
 type StepFinish = Exclude<RunOutcome, { status: "cancelled" }>;
 
 /**
- * A single leaf step run's observations, all under one minted run id (`runId`, exposed because a
- * failing step names itself as a sibling cancellation's `causeRunId`). Lifecycle: `started`, then any
- * of `usage`/`stderr`, then exactly one terminal — `finished` when the step ran to a verdict of its
- * own, or `cancelled` when the engine killed it (which narrates `run-cancelled` *then* the terminal
- * `step-finished`, mvp spec §5.6).
+ * A single leaf step run's observations, all under one minted run id. Lifecycle: `started`, then any of
+ * `usage`/`stderr`, then exactly one terminal — `finished`, or `cancelled`, which narrates
+ * `run-cancelled` *then* the terminal `step-finished` (mvp spec §5.6).
  */
 export interface StepEmitter {
   /** This step run's own minted id — the `causeRunId` its failure hands its cancelling siblings. */
@@ -65,15 +37,13 @@ export interface StepEmitter {
   stderr(stderr: string): Promise<void>;
   finished(outcome: StepFinish): Promise<void>;
   /**
-   * This step's snapshot of the enclosing workflow-run's context, taken after the step finished and
-   * its publish landed — persistence writes it under this step run's own directory so the context as
-   * it stood at each step is followable step by step. Emitted only for a step that succeeded.
+   * This step's snapshot of the enclosing workflow-run's context, taken after the step finished and its publish
+   * landed; emitted only for a succeeded step.
    */
   context(context: JsonValue): Promise<void>;
   /**
-   * The step entered `awaiting` status (#462): the engine suspends it until a `complete` resolves it.
-   * `assignee` (#488) is who the offline activity is for — the worker's echoed informational string,
-   * `null` when the node named none — carried on the `step-awaiting` record.
+   * The step entered `awaiting` status: suspended until a `complete` resolves it. `assignee` is the worker's echoed
+   * string, `null` when the node named none.
    */
   awaiting(args: { assignee: string | null }): Promise<void>;
   /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled` `step-finished`. */
@@ -84,26 +54,21 @@ export interface StepEmitter {
 }
 
 /**
- * The run-tier surface: this workflow-run's own lifecycle and the control nodes it evaluates. One
- * method per observation type (the envelope is what carries the depth, not a discriminated payload
- * that would re-leak the shape to the call site). `step` opens a step-scoped sub-emitter.
+ * The run-tier surface: this workflow-run's own lifecycle and the control nodes it evaluates, one method per
+ * observation type; `step` opens a step-scoped sub-emitter.
  */
 export interface Emitter {
   /**
-   * This workflow-run begins. `input` is the run's own; the rest are root-only and gated here: the
-   * source-workflow trio (`workflowId`/`workflowName`/`workflowPath`, ADR 0006) rides only a root
-   * run's `run-started`, the frozen launch worker-default table (ADR 0044) likewise, and
-   * `resumedFromRootRunId` (ADR 0009 lineage) only when the run is a successor. A nested run passes
-   * them and they are dropped — `isRoot` is read off `identity`.
+   * This workflow-run begins. The source-workflow trio, the launch facts and `resumedFromRootRunId` are
+   * root-only, gated on `isRoot`; a nested run passes them and they are dropped.
    */
   runStarted(args: {
     input: JsonValue;
     resumedFromRootRunId?: string;
     rerunFromNodePath?: RerunFromNodePathEntry[];
     /**
-     * The operator's frozen launch facts (ADR 0046): the input override, the config override, and the
-     * launch worker-default table (ADR 0044, #519). Root-only like the source-workflow trio: a nested
-     * run passes none, and persistence writes them to the root row only.
+     * The operator's frozen launch facts (ADR 0046): input override, config override, launch worker-default table
+     * (ADR 0044). Root-only; persistence writes them to the root row only.
      */
     launchFacts?: LaunchFacts;
     workflowId?: string;
@@ -142,24 +107,20 @@ export interface Emitter {
   ): Promise<void>;
   reuseMarker(node: NodeRef, args: { originalRunId: string }): Promise<void>;
   /**
-   * Open a step-scoped sub-emitter for one leaf step run. Mints a fresh run id normally; a Complete
-   * replay (ADR 0041) passes the **existing** parked leaf's step-run id (`existingRunId`) so the
-   * `step-finished` it emits transitions that same row `awaiting → succeeded` in place, rather than
-   * inserting a second row for the leaf.
+   * Open a step-scoped sub-emitter, minting a fresh run id. A Complete replay (ADR 0041) passes the
+   * **existing** parked leaf's id, so its `step-finished` transitions that row in place.
    */
   step(node: NodeRef, existingRunId?: string): StepEmitter;
   /**
-   * The emitter for a nested workflow-run (#22), over this run tree's *same* masking sink — the one
-   * door a child run gets to the audit seam. Its own `identity` fixes its envelope; nothing of this
-   * run's envelope leaks in. Lets a child run be spawned without threading the raw `emit` alongside
-   * the emitter that wraps it.
+   * The emitter for a nested workflow-run, over this tree's same masking sink; its own `identity` fixes its envelope
+   * and nothing of this run's leaks in.
    */
   child(identity: RunIdentity): Emitter;
 }
 
 /**
- * Build the emitter for one workflow-run over the run tree's masking `emit` (the choke point every
- * observation still passes through). `identity` fixes the envelope for this run's whole life.
+ * Build the emitter for one workflow-run over the tree's masking `emit`; `identity` fixes the envelope for its whole
+ * life.
  */
 export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
   const { runId, rootRunId, parentRunId, nodeId, nodeName, iteration, pass } = identity;
@@ -175,8 +136,7 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         nodeId,
         nodeName,
         input: args.input,
-        // A `while-do` iteration container's ordinal (ADR 0037): part of this run's identity, so it
-        // rides its own `run-started` and nothing else has to pass it. Omitted on every other run.
+        // A `while-do` iteration container's ordinal (ADR 0037): part of this run's identity, omitted on every other run.
         ...(iteration !== undefined ? { iteration } : {}),
         // A goto pass container's ordinal (ADR 0054), the same way.
         ...(pass !== undefined ? { pass } : {}),
@@ -184,16 +144,15 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         ...(args.resumedFromRootRunId !== undefined
           ? { resumedFromRootRunId: args.resumedFromRootRunId }
           : {}),
-        // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,
-        // and the caller supplies it on the root alone, so gating on `isRoot` keeps it there.
+        // The rerun boundary (K) descent path is root-only (ADR 0032); the caller supplies it on the root alone.
         ...(isRoot && args.rerunFromNodePath !== undefined
           ? { rerunFromNodePath: args.rerunFromNodePath }
           : {}),
-        // The frozen launch facts are root-only (ADR 0046), gated on `isRoot` for the same reason:
-        // only the root row records them, and only a resume/Complete reads them back.
+        // The frozen launch facts are root-only (ADR 0046); only the root row records them and only a resume/Complete
+        // reads them back.
         ...(isRoot && args.launchFacts !== undefined ? { launchFacts: args.launchFacts } : {}),
-        // Source-workflow identity is root-only (ADR 0006): a nested run's producing node is already
-        // named by `nodeId`/`nodeName`, so the trio is dropped for it even when supplied.
+        // Source-workflow identity is root-only (ADR 0006); a nested run's producing node is already named by
+        // `nodeId`/`nodeName`.
         ...(isRoot && args.workflowId !== undefined ? { workflowId: args.workflowId } : {}),
         ...(isRoot && args.workflowName !== undefined ? { workflowName: args.workflowName } : {}),
         ...(isRoot && args.workflowPath !== undefined ? { workflowPath: args.workflowPath } : {}),
@@ -320,9 +279,8 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
       });
     },
     step(node, existingRunId): StepEmitter {
-      // The step run's own id, minted once and shared across its four observations — the reason the
-      // step tier is a handle and not four run-emitter methods each re-passed the same id. A Complete
-      // replay re-enters an existing parked leaf, reusing its id so `step-finished` updates that row.
+      // The step run's own id, minted once and shared across its observations; a Complete replay reuses the parked
+      // leaf's id so `step-finished` updates that row.
       const stepRunId = existingRunId ?? randomUUID();
       return {
         runId: stepRunId,

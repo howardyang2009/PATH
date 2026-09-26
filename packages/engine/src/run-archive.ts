@@ -34,88 +34,41 @@ import {
 } from "./persistence/run-store.js";
 
 /**
- * What a finished run left behind in `.path/`, read back.
- *
- * **What this module exists to own.** `Project` gave the *write* side of a run an owner (#64): one
- * place that knows `.path/`, opens its db, and assembles a run into it. The read and delete sides
- * had none. Five server routes and two CLI subcommands each composed the same three stores by hand
- * — run rows from `path.db`, blobs under `.path/runs/<root>/<run>/`, the narrative in
- * `<root>/run.log` — so the engine's on-disk layout was a fact every caller had to know, and
- * `Project.db` was public purely to let them.
- *
- * The consequences were the ordinary ones. `rows.find((row) => row.runId === rootRunId)` (the root
- * row of a tree) was written four times; `runBlobDir(dir, root, run) + "output.json"` twice; the
- * blob filenames `input.json`/`output.json` lived in an HTTP route. `path runs rm` bypassed
- * `Project` entirely and carried its own copy of the "which error is the operator's fault" policy.
- * A change to the layout would have had to land in `paths.ts`, `run-store.ts` and six call sites in
- * another package at once, with nothing in the type system saying so.
- *
- * The division of labour matches `Project`'s. An archive knows what is stored and where; it knows
- * nothing about HTTP status codes, exit codes, or which of its `null`s is a 404 — those stay with
- * the server and the CLI.
+ * Read/delete side of a run's `.path/` footprint. An archive knows what is stored and where, and
+ * nothing about HTTP status codes, exit codes, or which of its `null`s a caller reads as a 404 —
+ * those stay with the server and the CLI.
  */
 export interface RunArchive {
   /** Root runs, most recent first (server-api-v0.md §3). */
   listRoots(options?: ListRootsOptions): RunRecord[];
-  /**
-   * Which of the given run ids still have rows — the storage fact behind `path runs`' `resumed-from`
-   * column (#174), where a predecessor that has been `rm`'d must render `(deleted)` while one merely
-   * off the current page renders live. Pagination and existence are different questions, so a
-   * listing that has already capped its rows can still ask this about any id.
-   */
+  /** Which of the given run ids still have rows; pagination and existence are separate questions. */
   existingRunIds(ids: readonly string[]): Set<string>;
-  /**
-   * One root run's tree, or `null` when no rows exist for this id — the single "is this run known"
-   * question every read path asks first.
-   */
+  /** One root run's tree, or `null` when no rows exist for this id. */
   tree(rootRunId: string): RunTree | null;
   /**
-   * The root run id of the tree a given run belongs to, or `null` when no row has that id. A leaf
-   * step run names its tree's root so a Complete route can recover the root's recorded workflow path
-   * (ADR 0041) — the path lives on the root row, but the caller holds only the parked leaf's id.
+   * The tree's root run id for a run, or `null` when no row has that id — a leaf names its root so a Complete route
+   * can recover the root's recorded workflow path (ADR 0041).
    */
   rootRunIdOf(runId: string): string | null;
   /**
-   * The **launch facts** a tree's root row recorded (ADR 0046) — the operator's input override, their
-   * `$env`-resolved/`$secret`-masked config override, the launch worker-default table, and the config
-   * paths that were secrets — or `undefined` when the launch supplied nothing beyond the file (or the
-   * tree is unknown). The run-tree read exposes them so a reader sees what the run was launched with,
-   * and a Resume surface reads `secretKeys` to ask for a masked credential before it submits.
+   * The launch facts the tree's root row recorded (ADR 0046): input override, masked config override, launch
+   * worker-default table and secret config paths; `undefined` when nothing was supplied.
    */
   launchFacts(rootRunId: string): LaunchFacts | undefined;
   /**
-   * The live successor trees that would be orphaned by deleting `rootRunId` — every *other* root run
-   * still holding a reuse-marker whose `original_run_id` points at a run inside this tree (#175). The
-   * back-reference is resolved by membership: a marker blocks iff the run it names is one of this
-   * tree's own rows, which is the `original_run_id → root-run-id` resolution in its collapsed form
-   * (the run belongs to exactly one root). Root run ids only, sorted, deduplicated. A holder whose
-   * own rows are already gone (its tree was `rm`'d, leaving orphaned log rows `rm` does not clear) is
-   * not live and does not block. `runs rm` refuses by default when this is non-empty and names these
-   * in its `--force` output; the archive computes the fact and leaves the policy to the CLI.
+   * Live successor trees that deleting this root would orphan — other roots holding a reuse-marker naming a run
+   * inside it. Root ids only, sorted; a holder whose own rows are gone does not block.
    */
   blockingSuccessors(rootRunId: string): string[];
   /**
-   * A root run's whole-tree cost as a read-time SUM of `estimated_cost_usd` over its own descendant
-   * rows, amended for resume (#176): for every node this tree reused, the SUM also reaches into the
-   * *original* tree via the reuse-marker rather than stopping at the successor's own — necessarily
-   * absent — row for that node. Without the amendment a resumed tree's total silently undercounts
-   * the reused LLM spend the moment any resume has happened.
-   *
-   * Each reuse-marker's `original_run_id` names where the reused node's real data lives (leaf or a
-   * collapsed workflow-run, resolved through that row's own tree), and its whole recorded subtree is
-   * summed — costs are leaf-only, so a collapsed subtree contributes exactly its own leaves. Markers
-   * fire once per reuse decision over disjoint subtrees, so nothing is double-counted; a marker
-   * whose original tree has since been `rm`'d contributes 0, the data being genuinely gone.
-   *
-   * `0` for an unknown id (no rows, nothing spent) and for a tree with no LLM spend. Regression:
-   * with nothing reused there are no markers, so the answer equals a from-scratch run's own SUM.
+   * A root run's whole-tree cost: a read-time SUM of `estimated_cost_usd` over its descendant rows,
+   * amended for resume by also summing each reuse-marker's original subtree — without which a resumed
+   * tree silently undercounts reused LLM spend. `0` for an unknown id or a tree with no spend.
    */
   cost(rootRunId: string): number;
   /**
-   * Removes one root run's rows *and* its on-disk tree, which mvp spec §6 requires happen together
-   * so the two stores never drift. `false` when neither store held anything for the id — an
-   * orphaned directory with no rows still counts as something to remove, so a half-finished
-   * cleanup can be finished rather than reported missing.
+   * Removes one root run's rows *and* its on-disk tree together (mvp spec §6) so the stores never drift; `false` only
+   * when neither held anything.
    */
   remove(rootRunId: string): boolean;
   /** Removes every run from both stores. Returns the number of rows removed. */
@@ -125,35 +78,29 @@ export interface RunArchive {
 export interface ListRootsOptions {
   /** Cap on the number of root runs returned; server-api-v0.md §3 default is 50. */
   limit?: number;
-  /** Optional filter: only root runs in this status. */
   status?: RunStatus;
-  /** Optional filter (#202): only root runs whose source workflow has this human `name` (exact). */
+  /** Only root runs whose source workflow has this human `name` (exact). */
   workflowName?: string;
-  /** Optional filter (#202): only root runs whose source workflow has this GUID `id` (exact). */
   workflowId?: string;
 }
 
 /**
- * The blobs a run's directory holds that are readable back through the archive. Only a workflow-run
- * writes a `context.json` (persisted-observer.ts); a leaf step's directory has none, so a `context`
- * read for one returns `undefined` like any absent file.
+ * Blobs a run's directory holds; only a workflow-run writes a `context.json`, so a leaf step's `context` read is
+ * `undefined` like any absent file.
  */
 export type RunBlobName = "input" | "output" | "context";
 
 /**
- * One root run's tree as it was persisted: its rows, its blobs, and its narrative, addressed by run
- * id rather than by directory. A `RunTree` is a snapshot — it holds the rows read when it was
- * built, so a caller that needs fresher rows asks the archive for the tree again.
+ * One root run's tree as persisted — rows, blobs and narrative by run id. A snapshot; ask the archive again for
+ * fresher rows.
  */
 export interface RunTree {
   readonly rootRunId: string;
   /** Every run of the tree in start order (mvp spec §5.7). Never empty. */
   readonly runs: RunRecord[];
   /**
-   * The row whose own id is the root id — an invariant of the run tree, and the only row whose
-   * status describes the *tree*. `null` when the tree has rows but not that one, which a caller
-   * that must not mistake a child's status for the root's has to handle (a child can read
-   * `succeeded` while the tree is still running).
+   * The row whose own id is the root id — the only row whose status describes the *tree*; `null` when the tree has
+   * rows but not that one.
    */
   readonly root: RunRecord | null;
   /** Whether a run id belongs to this tree. */
@@ -161,27 +108,18 @@ export interface RunTree {
   /** The root run's output — `undefined` unless it succeeded and recorded an output blob. */
   output(): JsonValue | undefined;
   /**
-   * One run's blob, or `undefined` when the run isn't in this tree or the file isn't there.
-   * `undefined` rather than `null` because `null` is a value a stored blob can legitimately hold,
-   * and "no blob" must not read as "a blob containing null".
+   * One run's blob, or `undefined` when the run isn't in this tree or the file isn't there; `undefined` not `null`
+   * because a stored blob can legitimately hold `null`.
    */
   blob(runId: string, name: RunBlobName): JsonValue | undefined;
   /**
-   * The persisted Log event narrative in `seq` order, sliced to `seq > afterSeq` when given — the
-   * replay an SSE client gets on connect or reconnect (server-api-v0.md §5). `[]` only when *no*
-   * log backend recorded this run, which is a run without a persisted narrative, not an error.
-   *
-   * Either backend of §8.2 can serve it: `run.log` is authoritative when it exists, and the
-   * `log_events` table answers when it doesn't. A run configured `log_backends: ["db"]` is a
-   * supported configuration, not a degraded one, so its narrative replays like any other.
+   * The persisted Log narrative in `seq` order, sliced to `seq > afterSeq` — the SSE replay on connect
+   * (server-api-v0.md §5). `[]` only when no log backend recorded the run; either §8.2 backend serves it.
    */
   events(afterSeq?: number): LogEvent[];
 }
 
-/**
- * An archive over an already-open db. Used where the db's lifetime belongs to someone else — the
- * server holds one `Project` per process and the archive rides on its db.
- */
+/** An archive over an already-open db, used where the db's lifetime belongs to someone else. */
 export function createRunArchive(db: Database.Database, projectDir: string): RunArchive {
   const dir = resolve(projectDir);
 
@@ -197,8 +135,8 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
     tree(rootRunId: string): RunTree | null {
       const runs = getRunsForRoot(db, rootRunId);
       if (runs.length === 0) return null;
-      // Resolve each reuse row's provenance once here (#257), so every reader downstream — `blob()`,
-      // the wire encoder, the viewer — reads a record that no longer lies about what it has.
+      // Resolve each reuse row's provenance once, so every downstream reader sees a record that no longer lies about
+      // what it has.
       return makeTree(
         db,
         dir,
@@ -224,8 +162,8 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
           .map((ref) => ref.holderRootRunId),
       );
       if (holders.size === 0) return [];
-      // A holder whose tree was `rm`'d leaves its log rows behind (rm clears `runs`, not `log_events`),
-      // so a dead holder can still name this tree — existence in `runs` is what makes it a live block.
+      // `rm` clears `runs` but not `log_events`, so a dead holder can still name this tree; existence in `runs` is
+      // what makes it live.
       const live = existingRunIds(db, [...holders]);
       return [...holders].filter((id) => live.has(id)).sort();
     },
@@ -250,8 +188,7 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
 
     prune(): number {
       const deleted = deleteAllRuns(db);
-      // Always, even when the db held nothing: an orphaned directory shouldn't survive a prune
-      // just because its rows happened to be gone already.
+      // Always, even when the db held nothing: an orphaned directory must not survive a prune.
       removeDir(runsDir(dir));
       return deleted;
     },
@@ -264,26 +201,20 @@ function sumCost(runs: readonly RunRecord[]): number {
 }
 
 /**
- * The cost recorded under one run in its own tree — that run and every transitive descendant. Given
- * a reuse-marker's `original_run_id` (a leaf, or a workflow-run whose whole subtree the successor
- * collapsed), this sums the real spend the successor reused. `0` when the original tree is gone.
+ * The cost recorded under one run in its own tree — that run and every transitive descendant; `0` when the original
+ * tree is gone.
  */
 function subtreeCost(db: Database.Database, originalRunId: string): number {
   const originRootRunId = rootRunIdOf(db, originalRunId);
   if (originRootRunId === null) return 0;
-  // The original tree is complete, so no `orphanTo` is needed; `subtree` is `[]` when `originalRunId`
-  // has no row (the tree was since `rm`'d in part), which sums to 0 like the deleted-original case.
+  // The original tree is complete, so no `orphanTo` is needed; a partly-`rm`'d original yields `[]`.
   return sumCost(subtree(getRunsForRoot(db, originRootRunId), originalRunId));
 }
 
 /**
- * A reuse row (#257) owns no blobs and no stored source-tree root: its input/output live under the
- * source run it reused, in that run's own tree (direct-to-source, ADR 0001). Resolve that provenance
- * once — the source's root run id, plus the ref strings that address its blobs — so `tree()`,
- * `blob()`, and the wire all read a record that no longer lies about what it has. The refs are
- * synthesized from ids (`blobRef`), so this costs one `rootRunIdOf` and no row read. A source since
- * `rm`'d resolves to a null root; the refs stay null then, matching how the blob read degrades to
- * "no blob". A non-reuse row is returned untouched.
+ * A reuse row owns no blobs and no source-tree root: its input/output live under the source run it
+ * reused, in that run's own tree (direct-to-source, ADR 0001). Resolve that provenance once so
+ * `tree()`, `blob()` and the wire read a record that no longer lies about what it has.
  */
 function resolveReuseRow(db: Database.Database, run: RunRecord): RunRecord {
   if (!isReuseRow(run)) return run;
@@ -314,10 +245,8 @@ function makeTree(
   function blob(runId: string, name: RunBlobName): JsonValue | undefined {
     const record = runs.find((run) => run.runId === runId);
     if (record === undefined) return undefined;
-    // A reuse row (#257) holds no blobs of its own: its input/output live under the source run it
-    // reused, in that run's own tree. The record is already resolved (`resolveReuseRow`, direct-to-
-    // source, ADR 0001), so read the source location off it rather than looking it up again — a
-    // source since `rm`'d left `reusedFromRootRunId` null, which reads as "no blob" like an absent file.
+    // A reuse row holds no blobs of its own: they live under the source run it reused; the record is already
+    // resolved, so read the source off it.
     if (isReuseRow(record)) {
       if (record.reusedFromRootRunId === null) return undefined;
       return readBlobAt(
@@ -333,15 +262,13 @@ function makeTree(
     runs,
     root,
     has: (runId) => runs.some((run) => run.runId === runId),
-    // `outputRef` is the row's own record that the blob was written, so a succeeded root without
-    // one has no output to read rather than a missing file to explain.
+    // `outputRef` is the row's own record that the blob was written, so a succeeded root without one has no output to
+    // read.
     output: () =>
       root?.status === "succeeded" && root.outputRef ? blob(root.runId, "output") : undefined,
     blob,
     events(afterSeq?: number): LogEvent[] {
-      // One owner for "where did this run's narrative go" (`logging/run-log.ts`): the same rule the
-      // Complete path reads its continuation point from, so the two can never disagree about which
-      // store answers.
+      // One owner for where a run's narrative goes (`logging/run-log.ts`), the same rule the Complete path reads.
       const log = openRunLog(projectDir, db, rootRunId);
       return afterSeq === undefined ? log.events() : log.read(afterSeq);
     },
@@ -353,14 +280,8 @@ export type OpenRunArchiveResult =
   | { success: false; error: string };
 
 /**
- * Opens a project's archive on its own, for a caller that reads or deletes runs without running
- * one — `path runs rm`/`path runs prune`, which need neither engine settings nor `.path/` to be
- * created for them.
- *
- * A project with no `path.db` yet has no run rows, but may still have an orphaned run tree on disk
- * that `remove`/`prune` must clean up. That case opens an in-memory db with the same schema, so
- * every query below stays unconditional and nothing is written to disk: asking a directory that
- * never ran a workflow about its runs must not leave a db behind.
+ * Opens a project's archive on its own; a project with no `path.db` yet still opens an in-memory db with the same
+ * schema, so an orphaned run tree can be cleaned up without writing anything to disk.
  */
 export function openRunArchive(projectDir: string): OpenRunArchiveResult {
   const dir = resolve(projectDir);
