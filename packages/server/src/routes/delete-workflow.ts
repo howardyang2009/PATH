@@ -1,13 +1,12 @@
-import { rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { confineToProjectRoot } from "../confine.js";
 import { checkPrecondition, deleteArtifact, readArtifact } from "../artifact-file.js";
+import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import type { RunsRouteContext } from "./post-runs.js";
 import { isTemplatePath, PRECONDITION_FAILED } from "./put-workflow.js";
-import { readLease, resolveMarker } from "./workflow-lock.js";
 
 /**
  * `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` (server-api-v0.md §7.2): remove one
@@ -37,8 +36,8 @@ export function handleDeleteWorkflow(
   }
 
   const absPath = confineToProjectRoot(resolve(ctx.project.dir), path);
-  const markerPath = resolveMarker(ctx, path);
-  if (absPath === undefined || markerPath === undefined) {
+  const lease = editLease(ctx.project.dir, path);
+  if (absPath === undefined || lease === undefined) {
     sendError(res, 404, "not found");
     return;
   }
@@ -55,14 +54,13 @@ export function handleDeleteWorkflow(
     return;
   }
 
-  const { lease } = readLease(markerPath);
-  if (lease !== undefined && Date.now() <= Date.parse(lease.expires_at) && lease.session_id !== sessionId) {
+  if (lease.heldByOther(sessionId)) {
     sendError(res, 409, "workflow is being edited in another session");
     return;
   }
 
   deleteArtifact(absPath);
-  rmSync(markerPath, { force: true });
+  lease.remove();
   res.writeHead(204);
   res.end();
 }
