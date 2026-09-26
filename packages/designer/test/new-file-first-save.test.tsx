@@ -32,7 +32,7 @@ function buildAPromptBody(): void {
   fireEvent.click(within(canvas).getByRole("button", { name: /add prompt here/ }));
 }
 
-describe("#390 from-scratch buffer — no path, no lease until first save", () => {
+describe("from-scratch buffer — no path, no lease until first save", () => {
   it("starts an empty buffer that takes no lease and cannot launch yet", async () => {
     const calls = makeCalls();
     render(<App client={stubClient({ calls })} />);
@@ -56,7 +56,7 @@ describe("#390 from-scratch buffer — no path, no lease until first save", () =
   });
 });
 
-describe("#390 first-save placement dialog", () => {
+describe("first-save placement dialog", () => {
   it("prefills the name, enforces the .workflow.json suffix, and confines the directory to the root", async () => {
     render(<App client={stubClient({ workflows: DISCOVERY })} />);
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));

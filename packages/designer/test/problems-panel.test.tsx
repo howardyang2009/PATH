@@ -7,9 +7,10 @@ import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS, type DesignerStubOptions, stubClient } from "./stub-server.js";
 
 /**
- * #392 — launch warning badge + dangling-`workflow`-ref marker. A create-new child ref (#391) points the
- * parent at a path with no file yet; that transient state surfaces as a per-node ⚠ and a problems-panel
- * row, badges (never blocks) launch, and clears when the child's first save makes discovery list it.
+ * #392 — the launch warning badge and the dangling-`workflow`-ref marker. A create-new child ref (#391)
+ * points the parent at a path with no file yet; that transient state surfaces as a per-node ⚠ and a
+ * problems-panel row, badges (never blocks) launch, and clears when the child's first save makes
+ * discovery list it.
  */
 
 function uuid(n: number): string {
@@ -61,7 +62,7 @@ async function openParent(options: DesignerStubOptions) {
   return screen.getByRole("region", { name: "Workflow canvas" });
 }
 
-describe("#392 dangling-`workflow`-ref marker + launch badge", () => {
+describe("dangling-`workflow`-ref marker + launch badge", () => {
   it("marks the ref node and lists it in the problems panel when the target is unsaved", async () => {
     const canvas = await openParent({
       files: { [PARENT_PATH]: canonical(parentFile(true)) },

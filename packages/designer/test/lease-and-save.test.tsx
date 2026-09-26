@@ -5,6 +5,11 @@ import { App } from "../src/app.js";
 import { canonicalSerialize } from "../src/serialize.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
+/**
+ * #371 — the Designer's edit-lock lease (acquire on open, a confirmation-gated takeover, one lease per
+ * descended ref file) and its save through the write route (`PUT` with `If-Match`).
+ */
+
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -38,7 +43,7 @@ function filesWith(root: unknown): Record<string, string> {
   return { [ROOT_PATH]: JSON.stringify(root), [CHILD_PATH]: JSON.stringify(childFile()) };
 }
 
-describe("Designer edit-lock lease (#371)", () => {
+describe("Designer edit-lock lease", () => {
   it("acquires the lease on open, before any edit, with a client-minted session_id", async () => {
     const calls = makeCalls();
     render(
@@ -121,7 +126,7 @@ describe("Designer edit-lock lease (#371)", () => {
   });
 });
 
-describe("Designer save through the write route (#371)", () => {
+describe("Designer save through the write route", () => {
   it("saves through PUT with the If-Match ETag and preserves every node id, clearing the dirty flag", async () => {
     const calls = makeCalls();
     // An id-less-but-valid file opens dirty (ids stamped on import) — so Save is enabled without an edit.

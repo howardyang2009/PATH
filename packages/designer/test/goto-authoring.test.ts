@@ -17,7 +17,7 @@ import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS } from "./stub-server.js";
 
 /**
- * #619 goto authoring in the Designer (docs/spec/goto.md §9, designer-spec § goto): the pure seams —
+ * #619 — goto authoring in the Designer (docs/spec/goto.md §9, designer-spec § goto): the pure seams —
  * the ancestor-aware grammar, the mint, the edit door's placement refusal and rename rewrite, the goto
  * markers, and the chip / picker / badge derivations the canvas and pane read.
  */
@@ -60,7 +60,7 @@ function fixture(): WorkflowFile {
 
 const noop = (): void => {};
 
-describe("#619 grammar — goto placement reads the socket's ancestor chain", () => {
+describe("grammar — goto placement reads the socket's ancestor chain", () => {
   it("goto is a controller without a step envelope", () => {
     expect(carriesEnvelope("goto")).toBe(false);
   });
@@ -93,7 +93,7 @@ describe("#619 grammar — goto placement reads the socket's ancestor chain", ()
   });
 });
 
-describe("#619 palette and mint", () => {
+describe("palette and mint", () => {
   it("offers goto in the Controller group", () => {
     const controllers = paletteGroups([]).find((group) => group.title === "Controller")!;
     expect(controllers.entries.map((entry) => entry.kind)).toContain("goto");
@@ -113,7 +113,7 @@ describe("#619 palette and mint", () => {
   });
 });
 
-describe("#619 editor sockets (G-D-01, G-D-03)", () => {
+describe("editor sockets (G-D-01, G-D-03)", () => {
   it("G-D-01: an armed goto opens no socket under a while-do or parallel, at any depth", () => {
     const editor = createEditor(fixture(), noop, { kind: "node", type: "goto" }, noop, "prompt");
     expect(editor.socketOpen("sequence", null)).toBe(true);
@@ -137,7 +137,7 @@ describe("#619 editor sockets (G-D-01, G-D-03)", () => {
   });
 });
 
-describe("#619 edit door (G-D-02, G-D-04, G-D-05)", () => {
+describe("edit door (G-D-02, G-D-04, G-D-05)", () => {
   it("G-D-02: an edit that puts a sequence holding a goto into a while-do is refused", () => {
     const moved = {
       type: "sequence",
@@ -235,7 +235,7 @@ describe("#619 edit door (G-D-02, G-D-04, G-D-05)", () => {
   });
 });
 
-describe("#619 chip, picker and badge derivations (G-D-06, G-D-07)", () => {
+describe("chip, picker and badge derivations (G-D-06, G-D-07)", () => {
   it("lists every first-level node in file order, the goto's own node excluded, with a direction", () => {
     const file = wrap([leaf(2, "a"), goto(3, "g", "a"), leaf(4, "b")]);
     expect(gotoTargetOptions(file, uuid(3))).toEqual([
@@ -265,7 +265,7 @@ describe("#619 chip, picker and badge derivations (G-D-06, G-D-07)", () => {
   });
 });
 
-describe("#619 round-trip", () => {
+describe("round-trip", () => {
   it("a draft authored through the edit door saves as a valid @5 file", () => {
     let file = wrap([leaf(2, "start")]);
     const node = createNode("goto", new Set(["start"]));

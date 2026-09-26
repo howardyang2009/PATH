@@ -6,6 +6,11 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
 
+/**
+ * #388 — a cross-node soft error (a read of a context key no step publishes) is a per-node marker and a
+ * problems-panel row, and it never blocks a save.
+ */
+
 /** The canonical on-disk bytes of a file — what a Designer save writes, so it opens clean (not dirty). */
 function canonical(f: Record<string, unknown>): string {
   const opened = openWorkflowFile(JSON.stringify(f), DEFAULT_PLUGINS);
@@ -41,7 +46,7 @@ async function openApp(files: Record<string, string>, calls = makeCalls()) {
   return { canvas, calls };
 }
 
-describe("#388 cross-node validation markers + problems panel", () => {
+describe("cross-node validation markers + problems panel", () => {
   it("marks the offending node and lists it in the problems panel", async () => {
     const { canvas } = await openApp({ [PATH]: JSON.stringify(danglingFile()) });
 

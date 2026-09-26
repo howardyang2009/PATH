@@ -7,7 +7,7 @@ import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS, stubClient } from "./stub-server.js";
 
 /**
- * The `$env` / `$secret` authoring affordance on a config value (#387, designer-spec § `$env` / `$secret`
+ * #387 — the `$env` / `$secret` authoring affordance on a config value (designer-spec § `$env` / `$secret`
  * authoring, map decision 9). A per-config-value mode selector (`Literal` / `$env` / `$secret`) edits the
  * config region only; display is reference-only (never a resolved value); the wrapper round-trips intact.
  */
@@ -49,7 +49,7 @@ function openSection(pane: HTMLElement, title: string): void {
   fireEvent.click(within(pane).getByRole("button", { name: title }));
 }
 
-describe("#387 config value mode selector", () => {
+describe("config value mode selector", () => {
   it("opens a literal config value in Literal mode with its scalar input", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -122,7 +122,7 @@ describe("#387 config value mode selector", () => {
   });
 });
 
-describe("#387 wrapper round-trips through open/serialize", () => {
+describe("wrapper round-trips through open/serialize", () => {
   it("preserves a composed {$secret:{$env:…}} config value byte-for-byte", () => {
     const composed = {
       format: FORMAT_VERSION,

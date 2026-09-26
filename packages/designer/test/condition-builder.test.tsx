@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
+/**
+ * #370 — the properties-pane surfaces for conditions, config inheritance, input wiring, and a publish
+ * conflict: the typed condition builder, the inherited/overridden config rows, the live-checked input
+ * draft, and the same-key publish race marker.
+ */
+
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -92,7 +98,7 @@ function openSection(pane: HTMLElement, title: string): void {
   fireEvent.click(within(pane).getByRole("button", { name: title }));
 }
 
-describe("#370 the typed condition builder", () => {
+describe("the typed condition builder", () => {
   it("authors a checkpoint assertion inside a labelled fieldset and commits a valid switch", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "gate");
@@ -172,7 +178,7 @@ describe("#370 the typed condition builder", () => {
   });
 });
 
-describe("#370 config inheritance display", () => {
+describe("config inheritance display", () => {
   it("shows inherited (ghosted value + Override) and overridden (revert), and Override makes a key local", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -191,7 +197,7 @@ describe("#370 config inheritance display", () => {
   });
 });
 
-describe("#370 input wiring", () => {
+describe("input wiring", () => {
   it("live-checks the input object and rejects an unclosed placeholder", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -210,7 +216,7 @@ describe("#370 input wiring", () => {
   });
 });
 
-describe("#370 publish conflict marker", () => {
+describe("publish conflict marker", () => {
   it("marks a branch as a node validation error once an edit creates a collect same-key race", async () => {
     const { canvas, pane } = await openPane();
     // No conflict at open.

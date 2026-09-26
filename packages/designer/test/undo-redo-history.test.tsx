@@ -5,7 +5,7 @@ import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
 /**
- * The #389 keyboard surface: Backspace-delete (withheld before for want of an undo) is unlocked, and the
+ * #389 — the keyboard surface: Backspace-delete (withheld before for want of an undo) is unlocked, and the
  * toolbar Undo restores it. This is the acceptance-criteria Backspace round-trip driven through the real
  * app, not the hook.
  */
@@ -40,7 +40,7 @@ async function openApp() {
   return screen.getByRole("region", { name: "Workflow canvas" });
 }
 
-describe("#389 Backspace-delete is enabled and is undoable", () => {
+describe("Backspace-delete is enabled and is undoable", () => {
   it("deletes a focused block on Backspace, then restores it on Undo", async () => {
     const canvas = await openApp();
 

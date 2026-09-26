@@ -92,7 +92,7 @@ function buildAPromptBody(): void {
   fireEvent.click(within(canvas).getByRole("button", { name: /add prompt here/ }));
 }
 
-describe("#391 adding a workflow-ref offers reference-existing or create-new", () => {
+describe("adding a workflow-ref offers reference-existing or create-new", () => {
   it("shows the two-way chooser for an empty ref node", async () => {
     await openParentAndSelectRef();
     fireEvent.click(await screen.findByRole("button", { name: "Choose a reference target…" }));
@@ -143,7 +143,7 @@ describe("#391 adding a workflow-ref offers reference-existing or create-new", (
   });
 });
 
-describe("#391 create-new descends into a fresh, unwritten child", () => {
+describe("create-new descends into a fresh, unwritten child", () => {
   it("writes no stub, descends into a dirty, path-less child that takes no lease and cannot launch", async () => {
     const calls = makeCalls();
     await openParentAndSelectRef(
@@ -201,7 +201,7 @@ describe("#391 create-new descends into a fresh, unwritten child", () => {
   });
 });
 
-describe("#391 end-to-end — the child's save picks the path and back-fills the parent ref", () => {
+describe("end-to-end — the child's save picks the path and back-fills the parent ref", () => {
   it("authors + saves the child (exclusive create, then leased), and the parent ref auto-fills from it", async () => {
     const calls = makeCalls();
     await openParentAndSelectRef(

@@ -8,7 +8,9 @@ import {
   validateCondition,
 } from "../src/condition-edit.js";
 
-describe("#370 condition-edit defaults", () => {
+/** #370 — the pure condition-editing model behind the pane's typed condition builder. */
+
+describe("condition-edit defaults", () => {
   it("mints a structurally-valid condition for every operator", () => {
     for (const type of CONDITION_TYPES) {
       const condition = defaultConditionOfType(type);
@@ -25,7 +27,7 @@ describe("#370 condition-edit defaults", () => {
   });
 });
 
-describe("#370 changeConditionType carries what the new shape can hold", () => {
+describe("changeConditionType carries what the new shape can hold", () => {
   it("keeps the dot-path across a leaf → leaf switch", () => {
     const prev: Condition = { type: "exists", path: "output.result" };
     const next = changeConditionType(prev, "equals");
@@ -61,7 +63,7 @@ describe("#370 changeConditionType carries what the new shape can hold", () => {
   });
 });
 
-describe("#370 validateCondition rejects an ill-typed condition", () => {
+describe("validateCondition rejects an ill-typed condition", () => {
   it("flags a bad dot-path root", () => {
     // `config` is not a legal condition root (CONDITION_ROOTS is context/output).
     expect(validateCondition({ type: "exists", path: "config.x" } as Condition)).not.toBeNull();

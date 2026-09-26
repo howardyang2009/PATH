@@ -2,6 +2,8 @@ import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/sche
 import { describe, expect, it } from "vitest";
 import { fileProblems, problemMarks, refLookupFor } from "../src/problems.js";
 
+/** #388 — the pure cross-node problem model behind the problems panel. */
+
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
 }
@@ -18,7 +20,7 @@ function refNode(id: number, name: string, ref: string): WorkflowNode {
   return { type: "workflow", id: uuid(id), name, ref } as never;
 }
 
-describe("#388 cross-node problems", () => {
+describe("cross-node problems", () => {
   it("flags a dangling `${context.missing}` input read", () => {
     const file = wrap([step(2, "reader", { input: { q: "${context.missing}" } })]);
     const problems = fileProblems(file);

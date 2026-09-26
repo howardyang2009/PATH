@@ -2,6 +2,8 @@ import { FORMAT_VERSION, STEP_ROOTS, type WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { parseInputDraft, referenceablePaths } from "../src/interp-suggest.js";
 
+/** #370 — the pure input-wiring model behind the pane's input editor. */
+
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
 }
@@ -31,7 +33,7 @@ function file(): WorkflowFile {
   };
 }
 
-describe("#370 referenceablePaths", () => {
+describe("referenceablePaths", () => {
   it("offers config keys, published context keys, and each root prefix for a step's input", () => {
     const paths = referenceablePaths(file(), STEP_ROOTS);
     expect(paths).toContain("config.");
@@ -45,7 +47,7 @@ describe("#370 referenceablePaths", () => {
   });
 });
 
-describe("#370 parseInputDraft", () => {
+describe("parseInputDraft", () => {
   it("accepts an object with valid placeholders", () => {
     const result = parseInputDraft('{ "q": "${context.score}", "n": 3 }', STEP_ROOTS);
     expect(result).toEqual({ ok: true, value: { q: "${context.score}", n: 3 } });
