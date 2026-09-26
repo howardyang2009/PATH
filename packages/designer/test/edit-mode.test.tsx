@@ -29,7 +29,7 @@ const SUMMARY: TemplateSummary = {
 const ENVELOPE = {
   ...SUMMARY,
   format: FORMAT_VERSION,
-  body: [{ type: "prompt", id: uuid(2), name: "draft", prompt: "draft it" }],
+  body: [{ id: uuid(2), name: "draft", prompt: "draft it", type: "prompt" }],
   etag: '"t"',
 };
 
@@ -170,7 +170,9 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "weekly steps" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("weekly.step-template.json"));
+    // The green "Saved" status replaces the file name in the top bar.
+    await screen.findByText("Saved");
+    expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
     expect(calls.templateWrites[0]).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "weekly" } });
   });
 

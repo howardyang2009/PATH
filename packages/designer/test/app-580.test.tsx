@@ -29,8 +29,8 @@ const STEP_ID = uuid(5);
 const BROKEN_ID = uuid(6);
 
 const TEMPLATE_BODY = [
-  { type: "prompt", id: NODE_IDS[0], name: "draft", prompt: "draft it" },
-  { type: "prompt", id: NODE_IDS[1], name: "judge", prompt: "judge it" },
+  { id: NODE_IDS[0], name: "draft", prompt: "draft it", type: "prompt" },
+  { id: NODE_IDS[1], name: "judge", prompt: "judge it", type: "prompt" },
 ];
 
 function summary(id: string, origin: "user" | "shipped"): TemplateSummary {
@@ -165,7 +165,9 @@ describe("Author mode on a *.step-template.json (#580)", () => {
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly-v2.step-template.json"));
+    // The green "Saved" status replaces the file name in the top bar.
+    await screen.findByText("Saved");
+    expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
     const post = calls.templateWrites[0]!;
     expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "nightly-v2", description: "nightly blurb" } });
     const created = post.body["body"] as { id: string };
@@ -217,7 +219,9 @@ describe("The template envelope", () => {
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-judge-v2" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("draft-judge-v2.step-template.json"));
+    // The green "Saved" status replaces the file name in the top bar.
+    await screen.findByText("Saved");
+    expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
     const post = calls.templateWrites[0]!;
     expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "draft-judge-v2", description: "draft then judge" } });
     const created = post.body["body"] as { id: string; description: string };

@@ -2,6 +2,7 @@ import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
+import { canonicalSerialize } from "../src/serialize.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
 /** A distinct valid UUIDv4 per seed. */
@@ -119,6 +120,19 @@ describe("Designer save through the write route (#371)", () => {
     // It shows in the top bar's centre slot, not among the toolbar buttons, so they never shift.
     expect((await screen.findByText("Saved")).closest(".topbar-title")).not.toBeNull();
     expect(screen.queryByText(/stamped on import/)).not.toBeInTheDocument();
+    // The status replaces the workflow's file name in that slot.
+    expect(screen.queryByTestId("workflow-file-name")).not.toBeInTheDocument();
+  });
+
+  it("names the open workflow's file in the top bar while no status shows", async () => {
+    // Canonical bytes, so the file opens clean (ADR 0030) and no "Unsaved edits" status replaces the name.
+    const clean = { format: FORMAT_VERSION, id: uuid(1), name: "clean", body: [{ id: uuid(2), name: "draft", prompt: "hi", type: "prompt" }] };
+    const files = { [ROOT_PATH]: canonicalSerialize(clean as never) };
+    render(<App client={stubClient({ files, calls: makeCalls() })} initialPath={ROOT_PATH} />);
+
+    await screen.findByText("draft");
+    expect(screen.getByTestId("workflow-file-name")).toHaveTextContent(ROOT_PATH);
+    expect(screen.getByTestId("workflow-file-name").closest(".topbar-title")).not.toBeNull();
   });
 
   it("surfaces a 412 as a stale-write conflict the author must resolve, keeping the buffer", async () => {
