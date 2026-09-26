@@ -5,6 +5,7 @@ import {
   isStepType,
   rerunBoundaryIndex,
   rerunDisposition,
+  serialOrder,
   walkNodes,
   type ConfigObject,
   type JsonValue,
@@ -304,7 +305,8 @@ export function readExistingOutput(state: ContinueState, run: RunRecord): JsonVa
 
 /**
  * Producer A (ADR 0035): this on-path level's **suppress** set — the rerun-boundary head B and every
- * serialized-later run-producing node id, over this file's own nested walk (`body.slice(indexOf(B))`).
+ * serialized-later run-producing node id, over this file's own nested walk of its serial order
+ * (`serialOrder(body).slice(indexOf(B))`, ADR 0064: a sequence body is transparent).
  * `planReuse` drops these from the reuse plan, so B and after-B re-run instead of reusing. `undefined`
  * off-path / plain Resume (empty suffix).
  *
@@ -318,7 +320,7 @@ export function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<stri
   const bIndex = rerunBoundaryIndex(file.body, suffix);
   if (bIndex === undefined) return undefined;
   const suppress = new Set<string>();
-  for (const node of walkNodes(file.body.slice(bIndex))) {
+  for (const node of walkNodes(serialOrder(file.body).slice(bIndex))) {
     if (isStepType(node.type)) suppress.add(node.id);
   }
   return suppress;

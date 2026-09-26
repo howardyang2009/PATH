@@ -305,3 +305,102 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     expect(reads.some((key) => key.startsWith("sub2-run/") || key.startsWith("p2-run/"))).toBe(false);
   });
 });
+
+describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
+  const prompt = (id: string) => ({ type: "prompt" as const, id, name: id, prompt: id, publish: { [`from${id.toUpperCase()}`]: "${output}" } });
+
+  it("K inside a sequence: earlier siblings reuse, K, later siblings, and later nodes re-run", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    // Root [a, s{b, c, d}, e]; K = c. Serial order a, b, c, d, e.
+    const file = tree([prompt("a"), { type: "sequence", id: "s", name: "s", body: [prompt("b"), prompt("c"), prompt("d")] }, prompt("e")]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+          ...["a", "b", "c", "d", "e"].map((id) => run({ runId: `${id}-run`, parentRunId: "orig-root", nodeId: id, nodeName: id, status: "succeeded" })),
+        ],
+        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "b-run/output.json": "REUSED_B" }, reads),
+        rerunFromNodePath: ["c"],
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["c", "d", "e"]);
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "b"]);
+  });
+
+  it("a workflow node before K in the same sequence reuses whole (not re-run entire)", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner", publish: { r: "${output}" } }]);
+    // Root [s{sub→[inner], c}]; K = c.
+    const file = tree([
+      {
+        type: "sequence",
+        id: "s",
+        name: "s",
+        body: [{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} }, prompt("c")],
+      },
+    ]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      files: new Map([[NESTED_PATH, nested]]),
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
+      resume: {
+        originalRuns: [
+          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
+          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
+          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
+          run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", nodeName: "c", status: "succeeded" }),
+        ],
+        readBlob: reader({ "orig-root/input.json": {}, "sub-run/output.json": { r: "REUSED" } }, reads),
+        rerunFromNodePath: ["c"],
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["c"]);
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["sub"]);
+  });
+
+  it("descends through a sequence: an intermediate workflow path-node inside a sequence", async () => {
+    const ran: string[] = [];
+    const reads: string[] = [];
+    const observer = fakeObserver();
+    // Root [s{a, sub→[p, k, q]}, d]; path [sub, k].
+    const file = tree([
+      {
+        type: "sequence",
+        id: "s",
+        name: "s",
+        body: [prompt("a"), { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { seed: "${context.fromA}" } }],
+      },
+      prompt("d"),
+    ]);
+
+    const result = await runWorkflow(file, "/tmp", {
+      observer,
+      files: new Map([[NESTED_PATH, nestedPkq()]]),
+      workerOverrides: promptOverride(recordingWorker({}, ran)),
+      resume: {
+        originalRuns: asubdOriginalRuns(),
+        readBlob: reader(
+          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "sub-run/input.json": {}, "p-run/output.json": "REUSED_P" },
+          reads,
+        ),
+        rerunFromNodePath: ["sub", "k"],
+      },
+    });
+
+    expect(result.status).toBe("succeeded");
+    expect(ran).toEqual(["k", "q", "d"]);
+    expect(markers(observer).map((m) => m.nodeId)).toEqual(["a", "p"]);
+  });
+});

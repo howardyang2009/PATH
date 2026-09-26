@@ -1,7 +1,8 @@
 import type { WorkflowNode } from "./node-type.js";
+import { serialOrder } from "./node-walk.js";
 
 /**
- * The **disposition** of one top-level node under Resume-from-K (CONTEXT.md *Rerun boundary (K)*, ADR
+ * The **disposition** of one serial-order node under Resume-from-K (CONTEXT.md *Rerun boundary (K)*, ADR
  * 0036): what a resuming workflow-run does with a node of its own body, given this level's remaining
  * root→…→K descent path (`suffix`, whose head is this level's path-node **B**).
  *
@@ -28,7 +29,8 @@ export type RerunDisposition = "reuse" | "descend" | "rerun-entire";
  *
  * The one statement of "where is B here", which the verdict below and the engine's `suppress` producer
  * (ADR 0035's Producer A) both used to compute — each with its own `findIndex` and its own copy of the
- * invariant throw. The head is **known** to be a top-level node by the time either reader runs:
+ * invariant throw. The index is into the body's serial order (`serialOrder`, ADR 0064: a sequence body is
+ * transparent). The head is **known** to be in that order by the time either reader runs:
  * `Project.resume` validates the whole root→…→K path against the current file before any successor
  * starts (ADR 0036, spec §5). A head absent here is therefore an internal-invariant violation, thrown
  * rather than silently degraded — never "no boundary", which would reuse the very work the operator
@@ -37,7 +39,7 @@ export type RerunDisposition = "reuse" | "descend" | "rerun-entire";
 export function rerunBoundaryIndex(body: WorkflowNode[], suffix: readonly string[]): number | undefined {
   if (suffix.length === 0) return undefined;
   const head = suffix[0]!;
-  const index = body.findIndex((node) => node.id === head);
+  const index = serialOrder(body).findIndex((node) => node.id === head);
   if (index < 0) {
     throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
   }
@@ -45,16 +47,16 @@ export function rerunBoundaryIndex(body: WorkflowNode[], suffix: readonly string
 }
 
 /**
- * Classify one top-level node of `body` against this level's `suffix`. An empty suffix is plain Resume
+ * Classify one node of `body`'s serial order against this level's `suffix`. An empty suffix is plain Resume
  * / off-path — every node reuses.
  *
- * A `nodeId` that is not a top-level node degrades to `rerun-entire` (re-run, never mis-reuse).
+ * A `nodeId` that is not in the serial order degrades to `rerun-entire` (re-run, never mis-reuse).
  */
 export function rerunDisposition(body: WorkflowNode[], suffix: string[], nodeId: string): RerunDisposition {
   const bIndex = rerunBoundaryIndex(body, suffix);
   if (bIndex === undefined) return "reuse";
-  const nodeIndex = body.findIndex((node) => node.id === nodeId);
-  if (nodeIndex < 0 || nodeIndex > bIndex) return "rerun-entire"; // after B, or not a top-level node
+  const nodeIndex = serialOrder(body).findIndex((node) => node.id === nodeId);
+  if (nodeIndex < 0 || nodeIndex > bIndex) return "rerun-entire"; // after B, or not in the serial order
   if (nodeIndex < bIndex) return "reuse"; // before B
   // nodeIndex === bIndex: the node is B itself — descend when an inner boundary follows, else K.
   return suffix.length > 1 ? "descend" : "rerun-entire";

@@ -135,3 +135,40 @@ describe("classifyLevelK — under a goto the prefix is counted across passes (A
     });
   });
 });
+
+describe("classifyLevelK — a sequence body is transparent (ADR 0064)", () => {
+  const seq = (id: string, inner: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body: inner });
+  // body: a, design{b, c}, test{d, deep{e}}, f — the serial order is a, b, c, d, e, f.
+  const staged: WorkflowNode[] = [step("a"), seq("design", [step("b"), step("c")]), seq("test", [step("d"), seq("deep", [step("e")])]), step("f")];
+  const rows = ["a", "b", "c", "d", "e"].map((id) => run(id, "succeeded"));
+
+  it("admits K that is a sequence's child", () => {
+    expect(classifyLevelK({ body: staged, rows, scopeRunId: "scope", nodeId: "d", leafStatus: "succeeded" })).toEqual({ ok: true });
+  });
+
+  it("admits K inside nested sequences", () => {
+    expect(classifyLevelK({ body: staged, rows, scopeRunId: "scope", nodeId: "e", leafStatus: "succeeded" })).toEqual({ ok: true });
+  });
+
+  it("#5 counts the prefix in serial order: an earlier sibling in the same sequence gates K", () => {
+    const broken = [run("a", "succeeded"), run("b", "succeeded"), run("c", "failed"), run("d", "succeeded")];
+    expect(classifyLevelK({ body: staged, rows: broken, scopeRunId: "scope", nodeId: "d", leafStatus: "succeeded" })).toEqual({
+      ok: false,
+      reason: "prefix-unsucceeded",
+    });
+  });
+
+  it("#5 does not count a later sibling in K's own sequence", () => {
+    const laterFailed = [run("a", "succeeded"), run("b", "succeeded"), run("c", "failed")];
+    expect(classifyLevelK({ body: staged, rows: laterFailed, scopeRunId: "scope", nodeId: "b", leafStatus: "succeeded" })).toEqual({ ok: true });
+  });
+
+  it("#3 still refuses K inside a sequence inside a loop, naming the loop", () => {
+    const looped: WorkflowNode[] = [step("a"), loop("spin", seq("s", [step("inner")]) )];
+    expect(classifyLevelK({ body: looped, rows: allSucceeded, scopeRunId: "scope", nodeId: "inner", leafStatus: "succeeded" })).toEqual({
+      ok: false,
+      reason: "in-body",
+      container: "loop",
+    });
+  });
+});

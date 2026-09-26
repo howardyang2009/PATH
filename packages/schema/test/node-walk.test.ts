@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { CONTROL_CHILD_SLOTS, childBodies, isStepType, mapChildBodies, walkNodes } from "../src/node-walk.js";
+import { CONTROL_CHILD_SLOTS, childBodies, enclosingControlBlock, isStepType, mapChildBodies, serialOrder, walkNodes } from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -304,5 +304,47 @@ describe("isStepType", () => {
     // producing runs.
     expect(isStepType("constructor")).toBe(true);
     expect(isStepType("toString")).toBe(true);
+  });
+});
+
+describe("serialOrder (ADR 0064)", () => {
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body });
+  const loop = (id: string, node: WorkflowNode): WorkflowNode => ({
+    type: "while-do",
+    id,
+    name: id,
+    condition: { type: "exists", path: "context.x" },
+    max_iterations: 2,
+    node,
+  });
+  const ids = (nodes: WorkflowNode[]): string[] => nodes.map((node) => node.id);
+
+  it("is the body itself when the body holds no sequence", () => {
+    expect(ids(serialOrder([step("a"), step("b")]))).toEqual(["a", "b"]);
+  });
+
+  it("splices a sequence's children in place of the sequence, recursively", () => {
+    const body = [step("a"), seq("s", [step("b"), seq("t", [step("c")]), step("d")]), step("e")];
+    expect(ids(serialOrder(body))).toEqual(["a", "b", "c", "d", "e"]);
+  });
+
+  it("never enters a while-do, parallel, or branch: the controller is one serial element", () => {
+    const body = [seq("s", [step("a"), loop("spin", seq("inner", [step("b")]))]), step("c")];
+    expect(ids(serialOrder(body))).toEqual(["a", "spin", "c"]);
+  });
+});
+
+describe("enclosingControlBlock (ADR 0064)", () => {
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body });
+
+  it("is undefined for a node enclosed only by sequences", () => {
+    expect(enclosingControlBlock([seq("s", [seq("t", [step("a")])])], "a")).toBeUndefined();
+  });
+
+  it("names the innermost non-sequence controller, looking through sequences", () => {
+    const body: WorkflowNode[] = [
+      { type: "while-do", id: "spin", name: "spin", condition: { type: "exists", path: "context.x" }, max_iterations: 2, node: seq("s", [step("a")]) },
+    ];
+    expect(enclosingControlBlock(body, "a")).toBe("loop");
   });
 });

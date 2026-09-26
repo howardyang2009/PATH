@@ -143,6 +143,7 @@ export {
   CONTROL_CHILD_SLOTS,
   childBodies,
   enclosingControlBlock,
+  serialOrder,
   isStepType,
   mapChildBodies,
   walkNodes,

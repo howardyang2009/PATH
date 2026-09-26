@@ -646,11 +646,11 @@ Rule of thumb: **Config flows in from outside. Context is written from inside.**
   first child with a genuine-execution row, not a reuse row — so the persisted field is a
   denormalization for read, never load-bearing for correctness. The run-id selection is checked
   before the successor starts: a **legal K** resolves to a node still present in the current file,
-  **succeeded**, at the **first level** of its own file's body, whose whole prefix `<K` also
-  succeeded. A selection that resolves to no run in the source tree, to a since-deleted node, to a
+  **succeeded**, in the **serial order** of its own file's body (the first level, or inside `sequence`
+  blocks only: a sequence body is transparent, ADR 0064), whose whole prefix `<K` also succeeded. A selection that resolves to no run in the source tree, to a since-deleted node, to a
   node inside a loop/parallel/branch body, to a node that did not succeed, or over a prefix that did
   not fully succeed is **refused** and no successor is created. Plain Resume omits the selection
-  entirely. In a file with passes, K may be a first-level node inside pass N: passes before N reuse,
+  entirely. In a file with passes, K may be a serial-order node inside pass N: passes before N reuse,
   pass N reuses the nodes before K, and K, the rest of pass N and every later pass re-run; the path
   entry for that level carries the pass ordinal (ADR 0054).
 - **Reuse-marker** — a log event on a successor run's stream. For one reused node, it names the original

@@ -61,3 +61,27 @@ describe("rerunBoundaryIndex", () => {
     expect(() => rerunBoundaryIndex(body, ["nope"])).toThrow('resume: rerun boundary node "nope" is not a top-level node of the workflow');
   });
 });
+
+describe("rerunDisposition — a sequence body is transparent (ADR 0064)", () => {
+  const seq = (id: string, inner: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body: inner });
+  // body: a, s{b, c, d}, e — the serial order is a, b, c, d, e. B = c.
+  const staged: WorkflowNode[] = [step("a"), seq("s", [step("b"), step("c"), step("d")]), step("e")];
+
+  it("indexes the boundary in serial order", () => {
+    expect(rerunBoundaryIndex(staged, ["c"])).toBe(2);
+  });
+
+  it("classifies sequence children against a boundary inside the same sequence", () => {
+    expect(rerunDisposition(staged, ["c"], "a")).toBe("reuse");
+    expect(rerunDisposition(staged, ["c"], "b")).toBe("reuse");
+    expect(rerunDisposition(staged, ["c"], "c")).toBe("rerun-entire");
+    expect(rerunDisposition(staged, ["c"], "d")).toBe("rerun-entire");
+    expect(rerunDisposition(staged, ["c"], "e")).toBe("rerun-entire");
+    expect(rerunDisposition(staged, ["c", "inner"], "c")).toBe("descend");
+  });
+
+  it("classifies a sequence child against a first-level boundary", () => {
+    expect(rerunDisposition(staged, ["e"], "c")).toBe("reuse");
+    expect(rerunDisposition(staged, ["a"], "c")).toBe("rerun-entire");
+  });
+});

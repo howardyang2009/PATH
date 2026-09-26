@@ -180,38 +180,52 @@ export function isStepType(type: string): boolean {
 }
 
 /**
- * The operator-facing name of a control block, as the rerun-boundary refusal taxonomy spells it
- * (spec §6): `loop` is a `while-do`, the others keep their type name (CONTEXT.md § Rerun-boundary).
+ * The operator-facing name of a control block that makes a rerun-boundary locus illegal, as the
+ * refusal taxonomy spells it (spec §6): `loop` is a `while-do`, the others keep their type name
+ * (CONTEXT.md § Rerun-boundary). A `sequence` is not one: its body is transparent (ADR 0064).
  */
-export type ControlBlockKind = "loop" | "parallel" | "branch" | "sequence";
+export type ControlBlockKind = "loop" | "parallel" | "branch";
 
-const CONTROL_BLOCK_KINDS: Record<"while-do" | "parallel" | "branch" | "sequence", ControlBlockKind> = {
+const CONTROL_BLOCK_KINDS: Record<"while-do" | "parallel" | "branch", ControlBlockKind> = {
   "while-do": "loop",
   parallel: "parallel",
   branch: "branch",
-  sequence: "sequence",
 };
 
 /**
- * The innermost control block enclosing `targetId` in `body`, or `undefined` when `targetId` is a
- * top-level node (enclosed by nothing) or absent. Walks the block grammar via `childBodies` and names
- * the nearest control node whose child body holds the target — what the rerun-boundary "inside a … body"
- * refusal names (`@path/engine`'s `resolveLegalK`, the client's eager mirror). The **one** statement of
- * that locus lookup, so the two never disagree on which block a node sits in.
+ * The **serial order** of a body (ADR 0064): the body with every `sequence` node replaced by its
+ * children, recursively, and never entering a `while-do`, `parallel`, or `branch` — each of those is
+ * one element. A `sequence` owns no run and runs its children once, in order, under the same scope as
+ * its siblings, so its body is transparent to "serialized before / after K". This is the one order the
+ * rerun boundary is located in: legal-K's locus and prefix, both reuse producers, and the descent.
+ */
+export function serialOrder(body: WorkflowNode[]): WorkflowNode[] {
+  return body.flatMap((node) => (node.type === "sequence" ? serialOrder(node.body) : [node]));
+}
+
+/**
+ * The innermost control block enclosing `targetId` in `body` that makes it an illegal rerun-boundary
+ * locus, or `undefined` when `targetId` is in the body's serial order (enclosed by nothing, or by
+ * sequences only) or absent. Sequences are looked through (ADR 0064). Walks the block grammar via
+ * `childBodies` and names the nearest non-sequence control node whose child body holds the target —
+ * what the rerun-boundary "inside a … body" refusal names (`@path/engine`'s `resolveLegalK`, the
+ * client's eager mirror). The **one** statement of that locus lookup, so the two never disagree on
+ * which block a node sits in.
  */
 export function enclosingControlBlock(body: WorkflowNode[], targetId: string): ControlBlockKind | undefined {
-  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined => {
+  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined | null => {
     for (const node of nodes) {
       if (node.id === targetId) return enclosing;
+      const next = node.type === "sequence" ? enclosing : node;
       for (const child of childBodies(node)) {
-        const found = search(child.nodes, node);
-        if (found !== undefined) return found;
+        const found = search(child.nodes, next);
+        if (found !== null) return found;
       }
     }
-    return undefined;
+    return null;
   };
   const container = search(body, undefined);
-  if (container === undefined) return undefined;
+  if (!container) return undefined;
   return CONTROL_BLOCK_KINDS[container.type as keyof typeof CONTROL_BLOCK_KINDS];
 }
 
