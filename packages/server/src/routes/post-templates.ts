@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, relative, resolve } from "node:path";
 import {
   makeStepTemplateSchema,
@@ -10,7 +9,7 @@ import { z } from "zod";
 import { writeArtifact } from "../artifact-file.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * The save-as envelope (server-api-v0.md §10.3): `{ kind, name, description, body }`. `kind` is always
@@ -35,11 +34,7 @@ const PostTemplateBodySchema = z
  * verbatim (key order preserved, as §7), never a shipped path. A name that already exists in the
  * `<kind-dir>` is a `409`; content changes go through `PUT` (§10.4).
  */
-export async function handlePostTemplates(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-): Promise<void> {
+export async function handlePostTemplates({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PostTemplateBodySchema);
   if (!body) return;
   const { kind, name } = body.data;

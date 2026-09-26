@@ -1,3 +1,4 @@
+import type { IncomingMessage, ServerResponse } from "node:http";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import type { LiveRuns } from "../live-runs.js";
 
@@ -21,4 +22,19 @@ export interface RouteContext {
    * 0050). Defaults to `packages/server/template` when absent; a test injects a fixture root here.
    */
   shippedTemplateDir?: string;
+}
+
+/**
+ * One matched request: the raw HTTP pair, the context, and what the path and query decoded to.
+ * `Params` is the capture tuple the row's pattern declares, so a handler names its captures by
+ * destructuring — `params: [rootRunId]` — with no non-null assertion. A route with no captures takes
+ * the default.
+ */
+export interface ApiRequest<Params extends string[] = string[]> {
+  req: IncomingMessage;
+  res: ServerResponse;
+  ctx: RouteContext;
+  /** The path parameters, percent-decoded, in pattern order. */
+  params: Params;
+  query: URLSearchParams;
 }

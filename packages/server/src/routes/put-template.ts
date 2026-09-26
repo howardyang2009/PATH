@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
 import {
   makeStepTemplateSchema,
@@ -9,7 +8,7 @@ import { checkPrecondition, PRECONDITION_FAILED, writeArtifact } from "../artifa
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { templatesOf, writableTemplate } from "../template-store.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `PUT /v0/templates/:id` (server-api-v0.md §10.4, ADR 0050 decision 7): **update-only** and
@@ -19,12 +18,12 @@ import type { RouteContext } from "./route-context.js";
  * `absPath`, so the file stem (hence `name`) is immutable through this door. A shipped id is a `403`.
  * The server serializes the raw request object (author key order preserved), as `put-workflow` does.
  */
-export async function handlePutTemplate(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-  id: string,
-): Promise<void> {
+export async function handlePutTemplate({
+  req,
+  res,
+  ctx,
+  params: [id],
+}: ApiRequest<[string]>): Promise<void> {
   const raw = await readJsonBody(req);
   if (!raw.ok) {
     sendError(res, 400, "request body must be valid JSON");

@@ -1,7 +1,7 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
+import type { IncomingMessage } from "node:http";
 import { encodeEventFrame } from "@path/schema";
 import { sendError } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -27,12 +27,12 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
  * `LiveRuns.stream`'s guarantee; the frame grammar is `encodeEventFrame`'s. What this route owns is
  * the 404, the `Last-Event-ID` header, and the socket.
  */
-export function handleGetRunEvents(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-  rootRunId: string,
-): void {
+export function handleGetRunEvents({
+  req,
+  res,
+  ctx,
+  params: [rootRunId],
+}: ApiRequest<[string]>): void {
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns (run-started has
   // fired), so any id a client could hold is already queryable here.
   if (!ctx.project.archive.tree(rootRunId)) {

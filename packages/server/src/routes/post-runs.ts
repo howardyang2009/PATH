@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { LOG_BACKEND_IDS } from "@path/engine";
 import {
   ConfigObjectSchema,
@@ -11,7 +10,7 @@ import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
 import type { StartedRun } from "../live-runs.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 const PostRunsBodySchema = z
   .object({
@@ -30,11 +29,7 @@ const PostRunsBodySchema = z
   })
   .strict();
 
-export async function handlePostRuns(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-): Promise<void> {
+export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PostRunsBodySchema);
   if (!body) return;
   const {

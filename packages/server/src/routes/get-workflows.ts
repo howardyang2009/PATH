@@ -1,10 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
-import type { ServerResponse } from "node:http";
 import { join, relative, resolve } from "node:path";
 import { loadWorkflowTree } from "@path/engine";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
 import { sendJson } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * Every `*.workflow.json` under `root`, as absolute paths, sorted for a deterministic response.
@@ -63,7 +62,7 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
  * otherwise; a file that failed to load carries `is_root: null` (a failed load has no `workflow.files`,
  * so it cannot be classified) with the shared error envelope and a best-effort id/name.
  */
-export async function handleGetWorkflows(res: ServerResponse, ctx: RouteContext): Promise<void> {
+export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
   // Canonicalized so scan paths (`join` off this root) match `loadWorkflowTree`'s keys (`resolve`)
   // exactly — the map lookups below assume that equality. `project.dir` is already `resolve`d today
   // (openProject); resolving again is a cheap belt-and-braces that keeps the assumption local.

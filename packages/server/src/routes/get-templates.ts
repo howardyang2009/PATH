@@ -1,7 +1,6 @@
-import type { ServerResponse } from "node:http";
 import { sendJson } from "../http-json.js";
 import { type TemplateKind, templateSummary, templatesOf } from "../template-store.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `GET /v0/templates?kind=step` (server-api-v0.md §10.1, ADR 0050 decision 4): the thin list
@@ -10,11 +9,9 @@ import type { RouteContext } from "./route-context.js";
  * (ADR 0063), so it changes nothing today. Each row carries its registry-relative `valid`/`error`, so the palette greys out a template it
  * cannot insert without hiding it.
  */
-export function handleGetTemplates(
-  res: ServerResponse,
-  ctx: RouteContext,
-  kindParam: string | null,
-): void {
+export function handleGetTemplates({ res, ctx, query }: ApiRequest): void {
+  const kindParam = query.get("kind");
+
   const { entries } = templatesOf(ctx);
 
   const filter: TemplateKind | undefined = kindParam === "step" ? kindParam : undefined;
