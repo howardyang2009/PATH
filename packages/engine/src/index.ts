@@ -1,7 +1,8 @@
 export { loadWorkflowTree, type LoadedWorkflow, type LoadResult } from "./load-workflow-tree.js";
 export { validateWorkflowFile, type ValidateWorkflowFileResult } from "./validate-workflow-file.js";
 export { loadStepPluginRegistry, type LoadedStepPluginRegistry } from "./plugin/scan.js";
-export { resolveNode, runWorkflow, type ContinueInput, type ResolvedNode, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
+export { resolveNode, type ResolvedNode } from "./ref-tree.js";
+export { runWorkflow, type ContinueInput, type ResumeInput, type RunOptions, type RunResult, type WorkerOverrides } from "./run-workflow.js";
 export { interpolateValue, InterpolationError, type InterpolationScope } from "./interpolate.js";
 export {
   openProject,

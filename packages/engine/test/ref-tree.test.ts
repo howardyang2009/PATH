@@ -1,8 +1,7 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import type { WorkflowFile } from "@path/schema";
-import { resolveChildRef, walkRefTree } from "../src/ref-tree.js";
-import { resolveNode } from "../src/run-workflow.js";
+import { resolveChildRef, resolveNode, walkRefTree } from "../src/ref-tree.js";
 
 /**
  * The loaded ref tree's one walk (#architecture-deepening): `walkRefTree` and `resolveChildRef` are

@@ -1,12 +1,37 @@
-import { mapSecrets, resolveDotPath as resolvePath, tokenizeInterpolation, type JsonValue } from "@path/schema";
+import { mapSecrets, resolveDotPath as resolvePath, tokenizeInterpolation, type ConfigObject, type JsonValue } from "@path/schema";
 
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
 // Thrown rather than returned as a Result: interpolateValue recurses through arbitrary JSON
-// structure, and threading a Result through that walk is noisier than letting run-workflow.ts
-// catch this at each call site and translate it into its own Result (`fail(...)`).
+// structure, and threading a Result through that walk is noisier than letting each caller catch
+// this and translate it into its own failed outcome (`describeInterpolationError`).
 export class InterpolationError extends Error {}
+
+/**
+ * The scope a node's `${}` expressions resolve against: its effective `config`, the enclosing run's
+ * `context`, and — for a `publish` map only — the step's own `output` (format doc §5).
+ */
+export function interpolationScope(
+  config: ConfigObject,
+  context: { [key: string]: JsonValue },
+  output?: JsonValue,
+): InterpolationScope {
+  // ConfigObject and JsonValue are structurally compatible (config's `$secret` wrapper is just a
+  // plain object shape) but not nominally assignable across their recursive unions.
+  const scope: InterpolationScope = { config: config as unknown as JsonValue, context };
+  if (output !== undefined) scope.output = output;
+  return scope;
+}
+
+/**
+ * An interpolation failure as a node's failed-outcome message. An error that is not an
+ * `InterpolationError` is a bug, not a data-flow failure, so it is re-thrown rather than swallowed.
+ */
+export function describeInterpolationError(nodeName: string, err: unknown): string {
+  if (err instanceof InterpolationError) return `node "${nodeName}": ${err.message}`;
+  throw err;
+}
 
 /**
  * Resolves a `${}` dot-path against a scope, in the engine's failure mode: interpolation cannot

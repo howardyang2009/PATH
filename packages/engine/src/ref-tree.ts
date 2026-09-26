@@ -1,7 +1,6 @@
 import { dirname, resolve } from "node:path";
 import { walkNodes, type ConfigObject, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { mergeConfig } from "./merge-config.js";
-import { resolveEffectiveConfig, type EnvSource } from "./resolve-env.js";
+import { effectiveConfig, type EnvSource } from "./resolve-env.js";
 
 /**
  * The **loaded ref tree** (CONTEXT.md § Workflow): one root `workflow.json` plus every file its nested
@@ -76,10 +75,10 @@ export function resolveChildRef(dir: string, ref: string, files: Map<string, Wor
  */
 export function* walkRefTree(rootFile: WorkflowFile, rootDir: string, scope: RefTreeScope): Generator<RefTreeEntry> {
   function* walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): Generator<RefTreeEntry> {
-    const fileConfig = resolveEffectiveConfig(mergeConfig(file.config ?? {}, incomingConfig), scope.env);
+    const fileConfig = effectiveConfig(file.config ?? {}, incomingConfig, scope.env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
-      const stepConfig = resolveEffectiveConfig(mergeConfig(fileConfig, nodeConfig), scope.env);
+      const stepConfig = effectiveConfig(fileConfig, nodeConfig, scope.env);
       yield { file, dir, node, stepConfig };
       if (node.type === "workflow") {
         const child = resolveChildRef(dir, node.ref, scope.files);
@@ -88,4 +87,47 @@ export function* walkRefTree(rootFile: WorkflowFile, rootDir: string, scope: Ref
     }
   }
   yield* walk(rootFile, scope.operatorConfig ?? {}, rootDir);
+}
+
+/** A node found by id in a loaded ref tree, with the effective config that reaches it. */
+export interface ResolvedNode {
+  /** The node exactly as it stands in the current file. */
+  node: WorkflowNode;
+  /**
+   * The `config` scope a caller interpolates this node's fields against — the file's config merged
+   * with the node's own, `$env`-resolved and `$secret` unwrapped (`resolveEffectiveConfig`), exactly
+   * the object `runLeafStep` interpolates fields against at execution time.
+   */
+  config: ConfigObject;
+}
+
+/**
+ * Locate a node by its durable GUID `id` across the loaded ref tree, threading effective config
+ * across each `workflow` boundary exactly as the run will (`validateRunStartConfig`, format §8) — so
+ * the config a caller interpolates a field against here is the one the run itself used. `undefined`
+ * when no reachable file carries a node with that id (the author deleted it mid-wait).
+ *
+ * The Complete route (#485) reads a parked `person-activity` leaf's `outputSchema` through this,
+ * re-interpolates it against config, and ajv-validates the submitted output (ADR 0040) — all before
+ * any lease is taken, so a bad submit never blocks a sibling leaf.
+ */
+export function resolveNode(
+  rootFile: WorkflowFile,
+  rootDir: string,
+  nodeId: string,
+  options: { files?: Map<string, WorkflowFile>; operatorConfig?: ConfigObject; env?: EnvSource } = {},
+): ResolvedNode | undefined {
+  // The one descent of the loaded tree (`walkRefTree`), so the config a caller interpolates this node's
+  // fields against is the object dispatch hands the worker — one rule, not a second copy of it. The
+  // caller owns the environment snapshot (`RunOptions`/`Project`), because a reader that takes its own
+  // `process.env` here would judge the node against config the run never used.
+  const scope = {
+    files: options.files,
+    operatorConfig: options.operatorConfig,
+    env: options.env ?? { ...process.env },
+  };
+  for (const entry of walkRefTree(rootFile, rootDir, scope)) {
+    if (entry.node.id === nodeId) return { node: entry.node, config: entry.stepConfig };
+  }
+  return undefined;
 }

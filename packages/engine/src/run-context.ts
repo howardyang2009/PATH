@@ -23,7 +23,7 @@ import type { RunResume } from "./resume-plan.js";
  * - **Secrets are masked** (mvp spec §8.3) before anything crosses the seam. No caller has to apply
  *   a wrapper, so no caller can forget to — and no wrapper can cover part of the union.
  * - **The absent observer is handled once.** A run with nothing observing it emits into a no-op, so
- *   the 24 call sites downstream are plain `await emit(...)` rather than optional chains.
+ *   the emitter built over it (`run-emitter.ts`) never has to check for one.
  */
 export type Emit = (o: Observation) => Promise<void>;
 
