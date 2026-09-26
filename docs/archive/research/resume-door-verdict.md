@@ -130,7 +130,7 @@ document is added next to it in the spec text; the sentence's own words do not c
 §5.7 states subtree/whole-run cost as a read-time SUM over descendant run rows, "so ground truth exists
 exactly once." [resume-restore-semantics.md §5](resume-restore-semantics.md) found this breaks under the
 successor-run identity model ([resume-run-identity.md](resume-run-identity.md),
-[ADR 0001](../adr/0001-resumed-run-is-a-successor-run.md)): a reused node's usage/cost row lives only in
+[ADR 0001](../../adr/0001-resumed-run-is-a-successor-run.md)): a reused node's usage/cost row lives only in
 the *original* tree, so a naive SUM over a resumed tree's own descendants silently undercounts every
 reused LLM run. §5.7 gains a sentence: for a successor run, the SUM traverses the reuse-marker link into
 the original tree for every reused node, rather than a duplicate of rows into the new tree (which would

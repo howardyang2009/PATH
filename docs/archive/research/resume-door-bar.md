@@ -14,7 +14,7 @@ If something here turns out to be unmeasurable, the correction goes in #144's fi
 this standard (§7), not as an edit here. A bar the person who holds the number can move is not a bar.
 
 Why a bar at all: the thing being measured is a **dollar figure**, and the question it decides is
-whether to redraw [mvp-spec](../spec/mvp-spec.md) §1's out-of-scope line. To choose the threshold after
+whether to redraw [mvp-spec](../../spec/mvp-spec.md) §1's out-of-scope line. To choose the threshold after
 you see the figure is the failure mode pre-registration exists to remove. It is the same discipline as
 the API door's [rubric](api-door-rubric.md) (#130), which is what let
 [#135](https://github.com/howardyang2009/PATH/issues/135)'s verdict stand when it came back against the
@@ -106,8 +106,8 @@ but it says it in §6, not in the bar.
 Fixed here so the measurement cannot be shopped for a depth that produces the wanted number.
 
 The target is the acceptance pipeline
-([`release-notes.workflow.json`](../acceptance-workflow/release-notes.workflow.json) plus
-[`revise-cycle.workflow.json`](../acceptance-workflow/revise-cycle.workflow.json), §11's acceptance
+([`release-notes.workflow.json`](../../acceptance-workflow/release-notes.workflow.json) plus
+[`revise-cycle.workflow.json`](../../acceptance-workflow/revise-cycle.workflow.json), §11's acceptance
 case). Its shape puts the money in the tail: one `binary` `git log`, a checkpoint, two short parallel
 `prompt` summaries, then `draft-notes`, `judge-draft`, and a `while-do` that runs the nested `revise`
 workflow (two prompts per iteration) up to `max_revisions`.

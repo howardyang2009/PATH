@@ -8,14 +8,14 @@ The engine does this with no edit to the core union in `@path/schema`. The prior
 [step-plugin-prior-art.md](step-plugin-prior-art.md) settled the cross-engine shape. Its §7.1 says the fix
 is to make the *discriminator* open ("validate after lookup"), not to abandon serialization. This document
 settles the zod-mechanics half. It shows **how** to open the closed `z.discriminatedUnion("type", [...])`
-at [`packages/schema/src/nodes.ts:129`](../../packages/schema/src/nodes.ts) against a runtime-populated
+at [`packages/schema/src/nodes.ts:129`](../../../packages/schema/src/nodes.ts) against a runtime-populated
 registry, and how to keep what the closed union gives today. It compares three approaches against three
 hard constraints. It states which zod API version the repo is on, and what a migration would buy. It ends
 with a concrete `makeNodeSchema(registry)` factory.
 
 **Date:** 2026-08-26. **zod version consulted:** `3.25.76`. This is the version that pnpm resolved into
 `node_modules/.pnpm/zod@3.25.76`. Every package declares `"zod": "^3.23.8"` (see
-[`packages/schema/package.json`](../../packages/schema/package.json)). zod 3.25.x is the hinge release. It
+[`packages/schema/package.json`](../../../packages/schema/package.json)). zod 3.25.x is the hinge release. It
 ships the zod **v4** core under the `zod/v4` subpath, while the bare `zod` and `zod/v3` import stays
 **v3**. The repo imports `from "zod"`, so it runs v3 today. This document reads both codepaths from the
 installed source. It does not infer them. Each claim below carries a source URL, or the installed file
@@ -31,7 +31,7 @@ document cites the installed source file and line, in preference to prose docs.
 
 ## 1. What the closed union gives today, in zod's own terms
 
-Read [`packages/schema/src/nodes.ts`](../../packages/schema/src/nodes.ts) first. Three properties are
+Read [`packages/schema/src/nodes.ts`](../../../packages/schema/src/nodes.ts) first. Three properties are
 load-bearing. Any opening must preserve all three.
 
 **`.strict()` on every member (no silent extra keys).** `commonStepFields` (lines 11-19) is spread into

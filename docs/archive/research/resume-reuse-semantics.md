@@ -41,7 +41,7 @@ qualifier is needed and that the unit it attaches to is the run.
 ## Why the rule is sound
 
 Five findings, in dependency order. Each rests on the domain model as written
-([CONTEXT.md](../../CONTEXT.md), [mvp-spec](../spec/mvp-spec.md)); none requires a new invariant.
+([CONTEXT.md](../../../CONTEXT.md), [mvp-spec](../../spec/mvp-spec.md)); none requires a new invariant.
 
 ### 1. A succeeded run's `output.json` is the step's product, not a proxy for its execution
 

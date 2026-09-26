@@ -27,7 +27,7 @@ authority on the authenticated limits, not this one.
 ## 1. There is no API node, and that is the point
 
 Format v0's node union is seven types: `prompt`, `binary`, `workflow`, `parallel`, `branch`, `while-do`,
-`checkpoint` ([workflow-format-v0.md](../format/workflow-format-v0.md) §4). No HTTP type exists. §11
+`checkpoint` ([workflow-format-v0.md](../../format/archive/workflow-format-v0.md) §4). No HTTP type exists. §11
 lists "API/MCP/skill step types" as deferred, and `mvp-spec.md:429` states the current answer outright:
 
 ```

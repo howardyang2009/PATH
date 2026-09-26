@@ -10,7 +10,7 @@ one succeeded candidate (`succeeded.length === 1`), and `findNestedCounterpart` 
 more than one match. The result ([#454](https://github.com/howardyang2009/PATH/issues/454)): a Resume
 whose K sits **after** a loop reuses everything up to the loop, then **re-runs the whole loop body from
 scratch** whenever the loop ran more than once — while a one-iteration loop reuses correctly. That
-re-burns exactly the LLM tail Resume exists to save ([resume-door-bar.md §4](../research/resume-door-bar.md)
+re-burns exactly the LLM tail Resume exists to save ([resume-door-bar.md §4](../archive/research/resume-door-bar.md)
 names the money as inside the second iteration's `revise` prompt).
 
 This is the per-iteration-identity gap the retired

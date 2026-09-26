@@ -6,7 +6,7 @@
 named `run` method per step type), [ADR 0018](0018-open-node-union-via-pure-registry-factory.md) (the
 schema opens through a pure `makeWorkflowFileSchema(registry)` factory, #310), and the
 [#313](https://github.com/howardyang2009/PATH/issues/313) resolution (the executor seam and one-lookup
-dispatch). Informed by [step-plugin-prior-art.md](../research/step-plugin-prior-art.md) §7.3.
+dispatch). Informed by [step-plugin-prior-art.md](../archive/research/step-plugin-prior-art.md) §7.3.
 
 **Amends** ADR 0018 sub-decisions 3 and 6, and the #313 resolution's sub-decisions 2 and 19. Those
 amendments are stated in full below, under "What this amends". No code implements ADR 0018 or #313 yet,
@@ -41,7 +41,7 @@ in this design.
    it. Version and engine-compat, when the lifecycle work wants them, become keys in the entry module's
    own export, not a second file that can drift from the first. This follows the prior art's read of the
    GitHub Actions folder model over n8n's `package.json` node manifest
-   ([step-plugin-prior-art.md](../research/step-plugin-prior-art.md) §7.3).
+   ([step-plugin-prior-art.md](../archive/research/step-plugin-prior-art.md) §7.3).
 
 2. **The entry module declares no type name, so the folder-name binding cannot be violated.** #308 locked
    decision 2 makes the folder name the type name. This ADR enforces it by leaving the plugin author no
@@ -337,5 +337,5 @@ in this design.
   grammar shape), and no plugin data on source-workflow identity, which stays `{id, name, relative-path}`.
   A plugin type simply joins `relative-path` as the second thing in PATH that is brittle across machines;
   the file's `id` stays portable, and only its *loadability* was ever environment-relative. The record
-  lands in ADR 0018 sub-decisions 3 and 5, [workflow-format-v2.md](../format/workflow-format-v2.md)
+  lands in ADR 0018 sub-decisions 3 and 5, [workflow-format-v2.md](../format/archive/workflow-format-v2.md)
   §1/§4, [server-api-v0.md](../api/server-api-v0.md) §6, and CONTEXT.md.

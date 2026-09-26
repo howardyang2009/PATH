@@ -4,16 +4,16 @@
 > This document describes `path/workflow@1` (despite its `v0` filename). It is **superseded by**
 > [`workflow-format-v2.md`](workflow-format-v2.md), the normative definition of `path/workflow@2`. The
 > engine reads `@2` only. It rejects `@1` and `@0` files at load (run
-> [`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts)). This file is
+> [`scripts/archive/migrate-workflow-format-v2.ts`](../../../scripts/archive/migrate-workflow-format-v2.ts)). This file is
 > kept because the CHANGELOG and several closed issues link it.
 
 This spec resolves wayfinder ticket [#10](https://github.com/howardyang2009/PATH/issues/10). This
 document is the normative definition of the v0 workflow file format. `@path/schema` implements it as zod
-schemas. The vocabulary follows [CONTEXT.md](../../CONTEXT.md). Ticket #11 owns the runtime semantics
+schemas. The vocabulary follows [CONTEXT.md](../../../CONTEXT.md). Ticket #11 owns the runtime semantics
 (scheduling, when context writes land, branch-arm matching, collect output shape, condition timing).
 This document fixes the *shape* of the format and the data-flow contracts it implies.
 
-Worked example: the acceptance pipeline in [docs/acceptance-workflow/](../acceptance-workflow/) is
+Worked example: the acceptance pipeline in [docs/acceptance-workflow/](../../acceptance-workflow/) is
 written in this format.
 
 ## 1. File & envelope
@@ -129,7 +129,7 @@ land, so two branches that publish one context key are allowed there (§4.1), wh
 Its output is the stable `{ "winner": { "name", "output" } }` shape (§3), the winner named by its human
 `name`. `do-not-wait` **launches every branch and waits for none at the join**. The block completes at
 once with output `{}`, and a branch **may not `publish`** (rejected at load, §10). See
-[wait-one-join.md](../spec/wait-one-join.md) and [do-not-wait-join.md](../spec/do-not-wait-join.md). The
+[wait-one-join.md](../../spec/wait-one-join.md) and [do-not-wait-join.md](../../spec/do-not-wait-join.md). The
 join execution semantics are #11's.
 
 **`branch`** — `arms` is a non-empty array of `{ "when": <condition>, "body" }`, plus an optional
@@ -322,12 +322,12 @@ The engine loads the **whole file tree** (following `ref`s) before any step runs
 - duplicate `publish` keys across sibling branches of one `collect` `parallel` block (per the execution
   semantics: publish keys are static, so the race is detectable, and rejected, at load). A `wait-one`
   block is exempt: only the winner's publishes land, so the same key across branches is deterministic
-  ([wait-one-join.md](../spec/wait-one-join.md) §4.1)
+  ([wait-one-join.md](../../spec/wait-one-join.md) §4.1)
 - **any `publish` inside a `do-not-wait` branch.** A detached branch lands after its would-be readers,
   so a `publish` from it is a nondeterministic write-after-read. It is a load error, not a silent
   runtime drop, and it is caught **anywhere** below the block, including one nested in a
   `collect`/`while-do`/`branch` inside the detached branch
-  ([do-not-wait-join.md](../spec/do-not-wait-join.md) §4)
+  ([do-not-wait-join.md](../../spec/do-not-wait-join.md) §4)
 - malformed `${}` syntax in interpolable positions, and `${}` roots other than the allowed ones
 - malformed config wrappers, and sole `$`-prefixed config keys that name no known wrapper (§8.3)
 
@@ -346,7 +346,7 @@ first step (§8.3). Operator config, which can carry wrappers too, has no load t
   post-MVP. Strict unknown-field rejection plus the `@`-version rule keeps the door open safely.
 - **Deferred by earlier decisions**: API/MCP/skill step types; `config` as a condition root; input
   declarations (§2). (Both the `wait-one` and `do-not-wait` joins have since **shipped**:
-  [wait-one-join.md](../spec/wait-one-join.md), [do-not-wait-join.md](../spec/do-not-wait-join.md).)
+  [wait-one-join.md](../../spec/wait-one-join.md), [do-not-wait-join.md](../../spec/do-not-wait-join.md).)
 - **Escape hatch for a literal sole `$`-prefixed config key** (§8.3): parked until something concrete is
   blocked by the reservation. Further sourcing wrappers (`$file`, `$keychain`) are additive for the same
   reason: the reservation is what keeps them unambiguous.

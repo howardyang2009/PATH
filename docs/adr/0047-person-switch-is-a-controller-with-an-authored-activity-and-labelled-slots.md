@@ -10,7 +10,7 @@ Originally: accepted; resolved the model decision of Wayfinder map
 fixes the frame for every later person-switch ticket: the selection act
 ([#552](https://github.com/howardyang2009/PATH/issues/552)) and the children/output contract
 ([#553](https://github.com/howardyang2009/PATH/issues/553)). Informed by
-[graph-controller-prior-art.md](../research/graph-controller-prior-art.md) (#547). The glossary entry
+[graph-controller-prior-art.md](../archive/research/graph-controller-prior-art.md) (#547). The glossary entry
 and the Structure-versus-Graph-Controller taxonomy are
 [#555](https://github.com/howardyang2009/PATH/issues/555)'s, and stay blocked until `goto`'s model
 ([#546](https://github.com/howardyang2009/PATH/issues/546)) lands.

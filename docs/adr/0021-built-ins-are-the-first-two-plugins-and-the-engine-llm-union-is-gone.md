@@ -120,7 +120,7 @@ test, not by a shipped plugin.
 ### The format bump and the codemod
 
 11. **The format bumps to `path/workflow@3`**, documented in a new
-    [`workflow-format-v3.md`](../format/workflow-format-v3.md) that supersedes `v2` (which is retained),
+    [`workflow-format-v3.md`](../format/archive/workflow-format-v3.md) that supersedes `v2` (which is retained),
     matching how `@2` treated `@0`. Removing a *required* top-level field (`worker`) and changing the
     step-level `worker` from a tagged object to a name string is a grammar change, which `format` tracks
     — distinct from the step-type *set*, which it deliberately does not (`@2` §0). `@3`'s format doc

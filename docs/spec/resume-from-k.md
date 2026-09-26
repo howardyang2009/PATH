@@ -18,8 +18,8 @@ engine-mechanism ADRs ([0035](../adr/0035-resume-rerun-boundary-is-a-suppression
 [designer-spec.md § Resume from here](designer-spec.md)), and the CLI eligibility listing
 ([ADR 0034](../adr/0034-resume-eligibility-listing-rides-resume-not-runs-show.md),
 [resume-eligibility-listing.md](resume-eligibility-listing.md)). The two engine-mechanism research docs
-([resume-from-k-mechanism.md](../research/resume-from-k-mechanism.md),
-[resume-from-nested-k-mechanism.md](../research/resume-from-nested-k-mechanism.md)) carry the `file:line`
+([resume-from-k-mechanism.md](../archive/research/resume-from-k-mechanism.md),
+[resume-from-nested-k-mechanism.md](../archive/research/resume-from-nested-k-mechanism.md)) carry the `file:line`
 mechanism map the ADRs decide over. Where this document and a tracker comment disagree, this document
 wins. §10 maps every section back to its originating ticket and ADR.
 
@@ -85,8 +85,8 @@ Normative source: [ADR 0032](../adr/0032-resume-from-k-boundary-representation-a
 Normative sources: [ADR 0035](../adr/0035-resume-rerun-boundary-is-a-suppression-set-on-the-two-reuse-producers.md)
 (the root-only base), [ADR 0036](../adr/0036-resume-rerun-boundary-is-a-per-level-plan-reuse-override.md)
 (the per-level generalization). The `file:line` map is
-[resume-from-k-mechanism.md](../research/resume-from-k-mechanism.md) and
-[resume-from-nested-k-mechanism.md](../research/resume-from-nested-k-mechanism.md).
+[resume-from-k-mechanism.md](../archive/research/resume-from-k-mechanism.md) and
+[resume-from-nested-k-mechanism.md](../archive/research/resume-from-nested-k-mechanism.md).
 
 The builder implements the per-level form (ADR 0036); the root-only form (ADR 0035) is its length-1 special
 case, not a separate build.

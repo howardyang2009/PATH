@@ -30,7 +30,7 @@ Six findings, which address the six candidate invalidators
 
 ### 1. Cascading invalidation (changed input object) is a non-issue by construction
 
-[mvp-spec §5.1](../spec/mvp-spec.md): a workflow body executes **strictly sequentially**. The engine
+[mvp-spec §5.1](../../spec/mvp-spec.md): a workflow body executes **strictly sequentially**. The engine
 walks nodes one at a time, in order, within each thread (the top-level body, or one `parallel` branch,
 or one `while-do`'s iteration chain). A grilling of this ticket settled that the **frontier, the first
 not-`succeeded` run, is per-thread**, not global. A `parallel` block's branches run concurrently, and a
@@ -66,7 +66,7 @@ reverses the ticket's starting assumption rather than confirm it.
 
 ### 4. Tree-shape changes are resolved for free by id-based matching
 
-This resolves "changed tree shape." [workflow-format-v0.md §3](../format/workflow-format-v0.md): every
+This resolves "changed tree shape." [workflow-format-v0.md §3](../../format/archive/workflow-format-v0.md): every
 body node carries a required `id`, unique across the whole file; there is no positional identity. Reuse
 looks up a run by `(node id, succeeded)` in the prior root run's tree against the re-read file. A renamed
 or removed node id has no match and runs fresh. An added node id has no match and runs fresh. A reorder

@@ -2,8 +2,8 @@
 
 **Status:** accepted; the schema-open decision of map [#308](https://github.com/howardyang2009/PATH/issues/308),
 resolving [#310](https://github.com/howardyang2009/PATH/issues/310). Informed by
-[zod-open-union.md](../research/zod-open-union.md) (zod mechanics, resolves #312) and
-[step-plugin-prior-art.md](../research/step-plugin-prior-art.md) §7 (cross-engine shape). Does not
+[zod-open-union.md](../archive/research/zod-open-union.md) (zod mechanics, resolves #312) and
+[step-plugin-prior-art.md](../archive/research/step-plugin-prior-art.md) §7 (cross-engine shape). Does not
 re-open #308's locked decisions or the #309 keystone.
 
 **Amended** three times since, all inline below; nothing here is superseded. The
@@ -40,7 +40,7 @@ The seven pinned sub-decisions:
    v3 constructor simply iterates `options` (installed `zod/v3/types.js:2469-2484`); nothing requires
    compile-time membership. This reuses zod's own direct-`Map.get` dispatch and its own miss error, keeps
    `.strict()` untouched, and needs zero bespoke error code — the properties that
-   [zod-open-union.md](../research/zod-open-union.md) §4, §7 select it for.
+   [zod-open-union.md](../archive/research/zod-open-union.md) §4, §7 select it for.
 
 2. **zod v3, not a v4 migration.** The repo runs v3 (`zod` bare import re-exports `./v3/external.js`;
    `zod@3.25.76` ships v4 only under the `zod/v4` subpath). For a **flat** plugin registry v3 is the better
@@ -210,7 +210,7 @@ The seven pinned sub-decisions:
   that line is [#320](https://github.com/howardyang2009/PATH/issues/320).
 - **Portability of a workflow file that names a plugin type** is resolved by
   [#315](https://github.com/howardyang2009/PATH/issues/315), which amends sub-decisions 3 and 5 above and
-  writes the rest into [workflow-format-v2.md](../format/workflow-format-v2.md) §1/§4,
+  writes the rest into [workflow-format-v2.md](../format/archive/workflow-format-v2.md) §1/§4,
   [server-api-v0.md](../api/server-api-v0.md) §6, and CONTEXT.md. In short: a file needs **no `requires`
   block** (its `type` values are its dependency list); a plugin type **does not bump `format`**, because
   `format` fixes the grammar shape and keys the codemod chain while the registry fixes the type set;
