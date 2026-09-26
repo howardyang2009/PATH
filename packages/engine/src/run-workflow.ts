@@ -1576,8 +1576,11 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
       // pass recorded first; else the tail would no longer match the pass's rows.
       const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
       const target = goto && body.find((candidate) => candidate.name === goto.target);
+      // A `sequence` records no row of its own, so a sequence target's first recorded node is its first leaf.
+      let firstNode: WorkflowNode | undefined = target;
+      while (firstNode?.type === "sequence" && firstNode.body.length > 0) firstNode = firstNode.body[0];
       const recordedFirst = firstRecordedChild(run.continue, reentered.runId);
-      if (!target || target.id !== recordedFirst?.nodeId) {
+      if (!target || firstNode!.id !== recordedFirst?.nodeId) {
         const error =
           `Complete replay diverged: pass ${pass} was opened by goto "${goto?.name ?? reentered.nodeName}" ` +
           `whose target is now "${goto?.target ?? "(none)"}", recorded "${recordedFirst?.nodeName ?? "(none)"}"`;
