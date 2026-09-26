@@ -1,6 +1,8 @@
 import { enclosingControlBlock, isStepType, serialOrder, walkNodes, type ControlBlockKind } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
 import type { RunStatus } from "./run-status.js";
+import { isPassRun, type RunKindFields } from "./run-kind.js";
+import { findRootRun, pathToRoot, type RunTreeFields } from "./run-tree.js";
 
 /**
  * The **legal-K** taxonomy, at the grain of one descent level, as a shared primitive (spec §5, ADR
@@ -106,4 +108,50 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
   if (prefixBroken(scopeRunId, order.slice(0, serialIndex))) return { ok: false, reason: "prefix-unsucceeded" };
 
   return { ok: true };
+}
+
+/** The fields the boundary-level walk reads from a run row — a `RunRecord` or a client `RunNodeState` fits. */
+export interface BoundaryLevelRun extends RunTreeFields, Pick<RunKindFields, "pass"> {
+  nodeId: string | null;
+}
+
+/**
+ * One level of the root→…→K descent, as the run tree records it: the path-node's own run, the goto pass
+ * it ran in (ADR 0054 §6, `undefined` for a goto-free level) and the scope `classifyLevelK` reads —
+ * `scopeRunId` (the pass run under a goto, else the run whose direct children are this level's nodes)
+ * and `earlierPassRunIds` (passes 1 to N-1 of the same workflow-run, the prefix counted across passes).
+ */
+export interface BoundaryLevel<T extends BoundaryLevelRun> {
+  run: T;
+  passRun: (T & { pass: number }) | undefined;
+  scopeRunId: string | undefined;
+  earlierPassRunIds: string[];
+}
+
+/**
+ * The descent levels root→…→`selectedRunId`, top-down (the root run excluded), read from the run tree
+ * alone. A goto pass row on the chain is not a level of its own: it is folded into the level below it as
+ * that level's pass. The engine authority (`resolveLegalK`) classifies every level; the client mirror
+ * holds only the root file, so it classifies a one-level result and backstops deeper ones to the engine.
+ * `[]` when `selectedRunId` is not in `rows` or is the root run.
+ */
+export function boundaryLevels<T extends BoundaryLevelRun>(rows: Iterable<T>, selectedRunId: string): BoundaryLevel<T>[] {
+  const all = [...rows];
+  const levels: BoundaryLevel<T>[] = [];
+  let scopeRunId = findRootRun(all)?.runId;
+  let passRun: (T & { pass: number }) | undefined;
+  for (const run of pathToRoot(all, selectedRunId).slice(1)) {
+    if (isPassRun(run)) {
+      passRun = run;
+      continue;
+    }
+    const pass = passRun;
+    const earlierPassRunIds = pass
+      ? all.filter((r) => r.parentRunId === scopeRunId && isPassRun(r) && r.pass < pass.pass).map((r) => r.runId)
+      : [];
+    levels.push({ run, passRun: pass, scopeRunId: pass?.runId ?? scopeRunId, earlierPassRunIds });
+    scopeRunId = run.runId;
+    passRun = undefined;
+  }
+  return levels;
 }

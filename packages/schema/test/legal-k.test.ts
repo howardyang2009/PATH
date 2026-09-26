@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
 import type { RunStatus } from "../src/run-status.js";
-import { classifyLevelK, type LegalKLevelRun } from "../src/legal-k.js";
+import { boundaryLevels, classifyLevelK, type BoundaryLevelRun, type LegalKLevelRun } from "../src/legal-k.js";
 
 /**
  * The per-level legal-K taxonomy (spec §5), the one predicate the engine authority and the client's
@@ -170,5 +170,50 @@ describe("classifyLevelK — a sequence body is transparent (ADR 0064)", () => {
       reason: "in-body",
       container: "loop",
     });
+  });
+});
+
+describe("boundaryLevels — the descent levels read from the run tree", () => {
+  const row = (runId: string, parentRunId: string | null, nodeId: string | null, pass: number | null = null): BoundaryLevelRun => ({
+    runId,
+    parentRunId,
+    nodeId,
+    pass,
+  });
+
+  it("gives one level for a direct child of the root, scoped at the root", () => {
+    const rows = [row("root", null, null), row("r-a", "root", "a")];
+    expect(boundaryLevels(rows, "r-a")).toEqual([{ run: rows[1], passRun: undefined, scopeRunId: "root", earlierPassRunIds: [] }]);
+  });
+
+  it("folds a goto pass into the level below it, with the earlier passes of the same scope as prefix", () => {
+    const rows = [
+      row("root", null, null),
+      row("p1", "root", null, 1),
+      row("p2", "root", null, 2),
+      row("p3", "root", null, 3),
+      row("r-a", "p2", "a"),
+    ];
+    expect(boundaryLevels(rows, "r-a")).toEqual([{ run: rows[4], passRun: rows[2], scopeRunId: "p2", earlierPassRunIds: ["p1"] }]);
+  });
+
+  it("walks a nested descent level by level, folding a pass at any level", () => {
+    const rows = [
+      row("root", null, null),
+      row("r-w", "root", "w"),
+      row("p1", "r-w", null, 1),
+      row("p2", "r-w", null, 2),
+      row("r-x", "p2", "x"),
+    ];
+    expect(boundaryLevels(rows, "r-x")).toEqual([
+      { run: rows[1], passRun: undefined, scopeRunId: "root", earlierPassRunIds: [] },
+      { run: rows[4], passRun: rows[3], scopeRunId: "p2", earlierPassRunIds: ["p1"] },
+    ]);
+  });
+
+  it("is empty for the root run and for an unknown run id", () => {
+    const rows = [row("root", null, null)];
+    expect(boundaryLevels(rows, "root")).toEqual([]);
+    expect(boundaryLevels(rows, "nope")).toEqual([]);
   });
 });

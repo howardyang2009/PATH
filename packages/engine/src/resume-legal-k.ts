@@ -1,8 +1,7 @@
 import {
+  boundaryLevels,
   classifyLevelK,
-  findRootRun,
   isPassRun,
-  pathToRoot,
   type ControlBlockKind,
   type LegalKLevelReason,
   type RunRecord,
@@ -113,25 +112,12 @@ export function resolveLegalK(
     return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
   }
 
-  // The descent path of runs root→…→K, top-down (root excluded): `pathToRoot` walks the selected run's
-  // `parentRunId` chain up to the null-parent root, so `slice(1)` drops the root and leaves the
-  // path-nodes. Each run's `nodeId` is the path-node at its level; its parent's run is the scope the
-  // level's prefix succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
-  // A goto pass row on the chain is not a level of its own: it is the scope its level's node ran under
-  // (ADR 0054 §6), so it is folded into the level below it as that level's pass.
-  const chain: { run: RunRecord; passRun: RunRecord | undefined }[] = [];
-  let openPass: RunRecord | undefined;
-  for (const run of pathToRoot(sourceRows, runId).slice(1)) {
-    if (isPassRun(run)) {
-      openPass = run;
-      continue;
-    }
-    chain.push({ run, passRun: openPass });
-    openPass = undefined;
-  }
-  const rootRun = findRootRun(sourceRows);
-  const nodePath = chain.map((level) => level.run.nodeId!); // non-null: the chain excludes the root and pass runs
-  const passes = chain.map((level) => level.passRun?.pass ?? null);
+  // The descent levels root→…→K, top-down (`boundaryLevels`, shared with the client's eager mirror):
+  // each level's path-node run, the goto pass it ran in (ADR 0054 §6), and the scope its prefix
+  // succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
+  const levels = boundaryLevels(sourceRows, runId);
+  const nodePath = levels.map((level) => level.run.nodeId!); // non-null: the levels exclude the root and pass runs
+  const passes = levels.map((level) => level.passRun?.pass ?? null);
 
   // Descend the current file tree along the node-id path once, up front (`descendNodePath`), so each
   // level's file feeds the taxonomy and this walk never re-resolves a `ref`. The run chain — not the
@@ -139,15 +125,11 @@ export function resolveLegalK(
   // file-divergence refusal below, mapped from the descent's own `miss`.
   const descent = descendNodePath(rootFile, rootDir, files, nodePath);
 
-  // Walk the levels top-down. `scopeRunId` is the run whose direct children are this level's nodes:
-  // the root run at level 0, then each descended path-node's own run.
-  let scopeRunId = rootRun?.runId;
-
-  for (let level = 0; level < chain.length; level++) {
-    const { run: pathRun, passRun } = chain[level]!;
+  for (let level = 0; level < levels.length; level++) {
+    const { run: pathRun, scopeRunId, earlierPassRunIds } = levels[level]!;
     const nodeId = pathRun.nodeId!;
     const label = pathRun.nodeName ?? nodeId;
-    const isLeaf = level === chain.length - 1;
+    const isLeaf = level === levels.length - 1;
 
     // The descent reaches this level whenever every prior level descended (a prior miss refuses first),
     // so `levelInfo` is present here; treat its absence as a file divergence rather than assume it.
@@ -161,16 +143,10 @@ export function resolveLegalK(
     // ADR 0032/0036). Only the leaf level gates its own status; an intermediate path-node is descended
     // and re-run, not reused. The engine owns the descent, the HTTP status, and the verbatim message;
     // the reason code it returns is this taxonomy. `#427`: an in-body locus names its enclosing controller.
-    // Under a goto the node ran inside pass N: its prefix is the pass's own children, plus every node
-    // of passes 1 to N-1 of the same workflow-run (the prefix counted across passes).
-    const levelScopeRunId = passRun?.runId ?? scopeRunId;
-    const earlierPassRunIds = passRun
-      ? sourceRows.filter((r) => r.parentRunId === scopeRunId && isPassRun(r) && r.pass < passRun.pass!).map((r) => r.runId)
-      : [];
     const levelResult = classifyLevelK({
       body: levelInfo.file.body,
       rows: sourceRows,
-      scopeRunId: levelScopeRunId,
+      scopeRunId,
       nodeId,
       leafStatus: isLeaf ? pathRun.status : null,
       earlierPassRunIds,
@@ -221,7 +197,6 @@ export function resolveLegalK(
           "not-in-file",
         );
       }
-      scopeRunId = pathRun.runId;
     }
   }
 
