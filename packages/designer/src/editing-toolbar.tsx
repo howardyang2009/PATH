@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
 import { frameHasUnsavedWork, openedResultOf, templateSuffix, type Frame } from "./session-reducer.js";
@@ -10,9 +10,26 @@ const MODES: readonly { key: EditMode; label: string }[] = [
 ];
 
 /**
+ * Workflow mode's file name, centred in the top bar: the opened workflow's path, or — for a new workflow
+ * not saved yet (`path` `undefined`) — a note that it has no file yet. {@link FileStatus} replaces it while
+ * a status shows.
+ */
+export function WorkflowFileName({ path }: { path: string | undefined }): JSX.Element {
+  if (path === undefined) {
+    return <span className="author-mode-tag">New workflow (not saved)</span>;
+  }
+  return (
+    <span className="author-mode-tag" data-testid="workflow-file-name" title="Save writes back to this file">
+      <code>{path}</code>
+    </span>
+  );
+}
+
+/**
  * Template mode's file name, centred in the top bar (#580): the opened template source, whose Save writes
  * back to it, or — for a new template not saved yet (`template` `null`) — a note that it has no file yet.
  * A shipped template is read-only: its write-back is the API's 403, and Save as… forks it.
+ * {@link FileStatus} replaces it while a status shows.
  */
 export function TemplateFileName({ template }: { template: TemplateSource | null }): JSX.Element {
   if (!template) {
@@ -27,8 +44,8 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 }
 
 /**
- * The active file's save status, centred in the top bar after the file name, so the toolbar's buttons
- * never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
+ * The active file's save status, centred in the top bar in place of the file name (`fileName`, shown
+ * only while no status shows), so the toolbar's buttons never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
  * recovery) or any other save or delete error. Else "Unsaved edits" for a buffer with unsaved work,
  * "Saved" after a save lands, "Saved as template" after a workflow's Save as template, or
  * "Deleted" once a Delete removed the file. An id-less file opens dirty
@@ -38,11 +55,14 @@ export function FileStatus({
   frame,
   saveState,
   onReload,
+  fileName,
 }: {
   frame: Frame | undefined;
   saveState: SaveState;
   /** Re-fetch the active file from disk — the stale-write conflict recovery. */
   onReload: () => void;
+  /** The active file's name, shown when there is no status to show. */
+  fileName?: ReactNode;
 }): JSX.Element | null {
   if (saveState.phase === "conflict") {
     return (
@@ -86,7 +106,7 @@ export function FileStatus({
       </span>
     );
   }
-  if (saveState.phase !== "saved") return null;
+  if (saveState.phase !== "saved") return <>{fileName ?? null}</>;
   return (
     <span className="file-status file-status-saved" role="status">
       Saved

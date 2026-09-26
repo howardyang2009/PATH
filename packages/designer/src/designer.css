@@ -1370,8 +1370,7 @@ body {
   cursor: default;
 }
 
-/* Author mode (#580): names the template source the plain Save writes back to. */
-/* Template mode's file name, centred in the top bar between the mode switch and the toolbar. */
+/* The active file's name, or its status in place of it, centred between the mode switch and the toolbar. */
 .topbar-title {
   flex: 1;
   min-width: 0;
@@ -1411,10 +1410,6 @@ body {
   border: 1px solid currentColor;
   border-radius: 5px;
   cursor: pointer;
-}
-
-.author-mode-tag + .file-status {
-  margin-left: 10px;
 }
 
 /* A lost lease reads as a failure; a held-by-other reads as a caution. */
