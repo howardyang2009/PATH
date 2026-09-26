@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { findRootRun, isStepType, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WorkflowFile } from "@path/schema";
 import { rootCancellation } from "./cancellation.js";
 import { childIdentity } from "./child-run.js";
-import { continuationOf, readExistingOutput, resolveRerunFromNodePath } from "./continuation.js";
+import { continuationOf, resolveRerunFromNodePath } from "./continuation.js";
 import { runBranchNode, runCheckpointNode, runGotoNode, runWhileDoNode } from "./controllers.js";
 import { runTopLevelWalk } from "./goto-pass.js";
 import { describeInterpolationError, InterpolationError, interpolateValue, interpolationScope } from "./interpolate.js";
@@ -775,17 +775,9 @@ export async function runNode(
   // `$secret` (#116, ADR 0022 sub-4) — the same call the run-start gate validated against.
   const stepConfig = effectiveConfig(run.fileConfig, node.config, run.env);
 
-  // Which of the four dispositions this node takes — reuse (Resume), reuse-this-tree's-output /
-  // re-enter / park (Complete), or run fresh — is the continuation adapter's one answer, so this
-  // walker, `runWorkflowNode` and `runLoopIteration` cannot disagree about what a recorded row means.
-  //
-  // Resume reuse (#172): a node whose recorded run this successor tree reuses does not execute at
-  // all — its output is the original run's recorded `output.json`, read once from the read-only
-  // original tree, and a `reuse-marker` is its whole trace (no step-started/step-finished, no run
-  // row). A reused `workflow` node collapses its whole subtree here: the plan holds only that node,
-  // and returning without `runWorkflowNode` means nothing inside it is ever walked — so the marker
-  // fires once per reuse decision, never once per descendant. Everything downstream treats the
-  // reused output identically to a freshly produced one, so the `publish` block below is shared.
+  // What this node's recorded row means — reuse, complete in place, park, re-enter, or run fresh — is
+  // the continuation adapter's one answer, so this walker, `runWorkflowNode` and `runLoopIteration`
+  // cannot disagree about it, and none of them needs to know whether this is a Resume or a Complete.
   const disposition = continuationOf(run).disposition(node);
   let outcome: SeqOutcome;
   // A leaf runner reports its minted step emitter here (via `onLeafStep`), so the post-publish
@@ -793,30 +785,25 @@ export async function runNode(
   // `workflow` node leave this undefined — the former emits no step run, the latter keeps its own
   // context.json — so neither gets a per-step snapshot here.
   let leafStep: StepEmitter | undefined;
-  const continuing = run.continue;
-  if (continuing && disposition.kind === "succeeded") {
-    // A node already `succeeded` in this tree is reused **read-only from its own row** — no reuse
-    // marker and no new row, because unlike Resume this is not a fresh successor tree. Its recorded
-    // output threads down the default-input chain, and a `succeeded` `workflow` node collapses its
-    // whole subtree here exactly as Resume's reuse does (we never descend into it).
-    outcome = { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
-  } else if (continuing && disposition.kind === "complete") {
-    // The parked leaf being Completed: transition it `awaiting → succeeded` **in place** (the narrow
-    // read-only exception) by re-entering its own step-run id and finishing it with the supplied
-    // output. `finishSucceeded` emits the `step-finished` that the persisted observer turns into the
-    // leaf's status flip and output blob, and streams it to any watcher — then `parse: "json"` and
-    // the node's `publish` land just as they would for a freshly produced leaf output.
-    const step = run.emitter.step(node, disposition.existing.runId);
+  if (disposition.kind === "reuse") {
+    // The node does not execute: its recorded output threads down the default-input chain like a
+    // fresh one, and the `publish` below lands the same way. A reused `workflow` node collapses its
+    // whole subtree here — nothing inside it is walked. Resume leaves one `reuse-marker` as the
+    // node's whole trace (#172); Complete reads its own tree's row and marks nothing (ADR 0041).
+    const output = disposition.output();
+    if (disposition.reusedFrom !== undefined) await run.emitter.reuseMarker(node, { originalRunId: disposition.reusedFrom });
+    outcome = { status: "succeeded", output };
+  } else if (disposition.kind === "complete") {
+    // The parked leaf being Completed transitions `awaiting → succeeded` in place, under its own
+    // step-run id. `finishSucceeded` emits the `step-finished` the persisted observer turns into the
+    // status flip and the output blob; `parse: "json"` and `publish` land as for a fresh output.
+    const step = run.emitter.step(node, disposition.runId);
     leafStep = step;
-    outcome = await finishSucceeded(step, node, continuing.target.output);
+    outcome = await finishSucceeded(step, node, disposition.output);
   } else if (disposition.kind === "park") {
     // A still-parked sibling (park-at-join): the walk parks again here, re-driving nothing. This
     // leaf is resolved by its own later Complete, and only the last such Complete runs the tail.
     return { status: "awaiting" };
-  } else if (run.resume && disposition.kind === "reuse") {
-    const output = run.resume.input.readBlob(disposition.original, RUN_BLOB_FILE.output);
-    await run.emitter.reuseMarker(node, { originalRunId: disposition.original.runId });
-    outcome = { status: "succeeded", output };
   } else {
     const scope = interpolationScope(stepConfig, exec.context);
     let stepInput: JsonValue;

@@ -153,14 +153,9 @@ function node(id: string, type = "binary"): Parameters<ReturnType<typeof continu
   return { id, type } as unknown as Parameters<ReturnType<typeof continuationOf>["disposition"]>[0];
 }
 
-/** A RunContext carrying only what `continuationOf`/`disposition` read: identity, and one of resume/continue. */
-function runCtx(parts: Pick<RunContext, "identity"> & Partial<Pick<RunContext, "resume" | "continue">>): RunContext {
-  return parts as unknown as RunContext;
-}
-
 /** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
 function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
-  return { existingRuns, readBlob: () => ({}), target: { stepRunId: targetStepRunId, output: {} } };
+  return { existingRuns, readBlob: (run) => ({ from: run.runId }), target: { stepRunId: targetStepRunId, output: { submitted: true } } };
 }
 
 describe("continuationOf — Resume adapter", () => {
@@ -168,15 +163,19 @@ describe("continuationOf — Resume adapter", () => {
 
   it("reuses a node the plan holds, and runs every other node fresh", () => {
     const original = record("orig-1", "wf-1");
-    const resume = { plan: new Map([["a", original]]) } as unknown as RunContext["resume"];
-    const c = continuationOf(runCtx({ identity, resume }));
+    const readBlob = (run: RunRecord, file: string) => ({ from: run.runId, file });
+    const resume = { plan: new Map([["a", original]]), input: { readBlob } } as unknown as RunContext["resume"];
+    const c = continuationOf({ identity, resume });
 
-    expect(c.disposition(node("a"))).toEqual({ kind: "reuse", original });
+    const reused = c.disposition(node("a"));
+    expect(reused).toMatchObject({ kind: "reuse", reusedFrom: "orig-1" });
+    // The output is read from the original tree's run, only when the walker asks for it.
+    expect(reused.kind === "reuse" && reused.output()).toEqual({ from: "orig-1", file: "output.json" });
     expect(c.disposition(node("b"))).toEqual({ kind: "fresh" });
   });
 
   it("answers fresh everywhere for a plain forward run (no resume, no continue)", () => {
-    const c = continuationOf(runCtx({ identity }));
+    const c = continuationOf({ identity });
     expect(c.disposition(node("a"))).toEqual({ kind: "fresh" });
   });
 });
@@ -184,11 +183,15 @@ describe("continuationOf — Resume adapter", () => {
 describe("continuationOf — Complete adapter", () => {
   const identity = { runId: "parent-1" } as RunContext["identity"];
   const complete = (rows: RunRecord[], target: string) =>
-    continuationOf(runCtx({ identity, continue: continueState(rows, target) }));
+    continuationOf({ identity, continue: continueState(rows, target) });
 
   it("reuses a succeeded row read-only", () => {
-    const existing = record("r1", "parent-1", "root-1", { nodeId: "a", status: "succeeded" });
-    expect(complete([existing], "none").disposition(node("a"))).toEqual({ kind: "succeeded", existing });
+    const existing = record("r1", "parent-1", "root-1", { nodeId: "a", status: "succeeded", outputRef: "output.json" });
+    const reused = complete([existing], "none").disposition(node("a"));
+    // Read-only from this tree's own row, and unmarked: a Complete is not a fresh successor tree.
+    expect(reused).toMatchObject({ kind: "reuse" });
+    expect(reused.kind === "reuse" && reused.reusedFrom).toBeUndefined();
+    expect(reused.kind === "reuse" && reused.output()).toEqual({ from: "r1" });
   });
 
   it("completes the parked target leaf, but parks another parked sibling", () => {
@@ -196,7 +199,7 @@ describe("continuationOf — Complete adapter", () => {
     const sibling = record("r-sib", "parent-1", "root-1", { nodeId: "b", status: "awaiting" });
     const c = complete([target, sibling], "r-target");
 
-    expect(c.disposition(node("a"))).toEqual({ kind: "complete", existing: target });
+    expect(c.disposition(node("a"))).toEqual({ kind: "complete", runId: "r-target", output: { submitted: true } });
     expect(c.disposition(node("b"))).toEqual({ kind: "park" });
   });
 

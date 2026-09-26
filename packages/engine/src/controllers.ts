@@ -1,7 +1,7 @@
 import type { BranchNode, CheckpointNode, GotoNode, JsonValue, WhileDoNode } from "@path/schema";
 import { openContainerRun } from "./child-run.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
-import { continuationOf, readExistingOutput } from "./continuation.js";
+import { continuationOf } from "./continuation.js";
 import { describeInterpolationError, interpolateToString, interpolationScope } from "./interpolate.js";
 import { enterIteration } from "./resume-plan.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
@@ -91,10 +91,7 @@ async function runLoopIteration(
   // re-entered in place (same id, no `run-started`), and none means a fresh iteration appended past
   // the parked leaf.
   const disposition = continuationOf(run).disposition(node, iteration);
-  const continuing = run.continue;
-  if (continuing && disposition.kind === "succeeded") {
-    return { status: "succeeded", output: readExistingOutput(continuing, disposition.existing) };
-  }
+  if (disposition.kind === "reuse") return { status: "succeeded", output: disposition.output() };
   // The container shares this run's file, config, env, runtime and continue state, and `exec` (the
   // loop's shared blackboard) passes through unchanged, so the body publishes into the loop's context.
   const container = await openContainerRun(run, {
