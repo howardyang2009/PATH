@@ -44,6 +44,8 @@ function wireRun(p: { run_id: string; status: string; node_id?: string | null; n
     node_id: p.node_id ?? null,
     node_name: p.node_name ?? null,
     worker_name: null,
+    iteration: null,
+    pass: null,
     status: p.status,
     started_at: "2026-01-01T00:00:00Z",
     finished_at: "2026-01-01T00:01:00Z",
