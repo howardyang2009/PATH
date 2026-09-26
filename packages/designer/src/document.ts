@@ -1,5 +1,6 @@
 import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { errorMessage } from "@path/viewer";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
 import { openedResultOf, type Frame, type SessionState } from "./session-reducer.js";
@@ -23,10 +24,6 @@ export interface LoadedDocument {
   etag: string | null;
   baseline: string;
   openedBytes: string;
-}
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
 }
 
 function opened(text: string, plugins: WireStepPlugin[], etag: string | null): LoadedDocument {

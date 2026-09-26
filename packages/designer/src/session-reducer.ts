@@ -378,7 +378,8 @@ export type SessionAction =
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
   | { type: "setSaveState"; saveState: SaveState };
 
-const IDLE: SaveState = { phase: "idle" };
+/** The save state with nothing in flight and nothing to report. */
+export const IDLE: SaveState = { phase: "idle" };
 
 /** The one pure `(state, action) => state` behind the whole session (see the module header). */
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {

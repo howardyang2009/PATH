@@ -1,5 +1,5 @@
 import type { Condition, WorkflowNode } from "@path/schema";
-import { childBodies } from "@path/schema";
+import { childBodies, uniqueName } from "@path/schema";
 
 /**
  * Minting new nodes for the canvas (#368, designer-spec § Adding; ADR 0015 node identity). Every node
@@ -17,21 +17,6 @@ import { childBodies } from "@path/schema";
 /** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited in the pane later. */
 function defaultCondition(): Condition {
   return { type: "exists", path: "context.value" };
-}
-
-/** A free name derived from `base`: `base`, then `base-2`, `base-3`, … until one is unused. Reserves the result. */
-function uniqueName(base: string, used: Set<string>): string {
-  if (!used.has(base)) {
-    used.add(base);
-    return base;
-  }
-  for (let n = 2; ; n++) {
-    const candidate = `${base}-${n}`;
-    if (!used.has(candidate)) {
-      used.add(candidate);
-      return candidate;
-    }
-  }
 }
 
 /** A fresh leaf step of `type`, with the type's own required field(s) stubbed empty for the pane to fill. */

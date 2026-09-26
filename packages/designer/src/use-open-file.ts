@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
+import { errorMessage } from "@path/viewer";
 import { loadDocument, writeDocument, type DocumentWrite } from "./document.js";
 import type { EditCommit, EditKey } from "./edit-key.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
+  IDLE,
   initialSessionState,
   planDelete,
   planNewFileSave,
@@ -163,12 +165,6 @@ export interface OpenSession {
   /** The active frame's save state — drives the save button and the stale-write conflict banner. */
   saveState: SaveState;
 }
-
-function errorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-const IDLE: SaveState = { phase: "idle" };
 
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });

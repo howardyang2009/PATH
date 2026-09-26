@@ -46,7 +46,7 @@ export interface InstantiateOptions {
 }
 
 /** A free name derived from `base`: `base`, then `base-2`, `base-3`, … until one is unused. Reserves it. */
-function uniqueName(base: string, used: Set<string>): string {
+export function uniqueName(base: string, used: Set<string>): string {
   if (!used.has(base)) {
     used.add(base);
     return base;
