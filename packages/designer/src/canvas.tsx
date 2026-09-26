@@ -1,19 +1,19 @@
-import type { MouseEvent } from "react";
 import type { RunStatus, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
+import type { MouseEvent } from "react";
 import { BlockTree, type DescendHandler } from "./block-tree.js";
-import { RUN_STATUS_GLYPH } from "./run/run-status.js";
-import { useRunProjection } from "./run/run-projection.js";
 import { ConflictProvider } from "./conflict-context.js";
 import { createEditor, type EditorApi } from "./editor-api.js";
 import { GotoProvider } from "./goto-context.js";
-import { problemMarks, type Problem } from "./problems.js";
-import { ProblemsPanel } from "./problems-panel.js";
 import { defaultLeafKind } from "./palette-data.js";
+import { type Problem, problemMarks } from "./problems.js";
+import { ProblemsPanel } from "./problems-panel.js";
 import { basename } from "./resolve-ref.js";
+import { useRunProjection } from "./run/run-projection.js";
+import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 import type { Armed } from "./use-armed.js";
-import { frameDirty, type Frame, type OpenSession } from "./use-open-file.js";
+import { type Frame, frameDirty, type OpenSession } from "./use-open-file.js";
 
 /**
  * The canvas region: the centre surface a `path/workflow` body renders on. Read-only in #367;
@@ -93,7 +93,7 @@ export function Canvas({
 
   const active = frames[activeIndex]!;
   return (
-    <div className="canvas" role="region" aria-label="Workflow canvas">
+    <section className="canvas" aria-label="Workflow canvas">
       <Breadcrumb
         frames={frames}
         activeIndex={activeIndex}
@@ -102,9 +102,17 @@ export function Canvas({
         workflowRunStatus={workflowRunStatus}
       />
       <CanvasBody>
-        <FrameView frame={active} onDescend={onDescend} applyEdit={applyEdit} plugins={plugins} armed={armed} onArm={onArm} problems={problems} />
+        <FrameView
+          frame={active}
+          onDescend={onDescend}
+          applyEdit={applyEdit}
+          plugins={plugins}
+          armed={armed}
+          onArm={onArm}
+          problems={problems}
+        />
       </CanvasBody>
-    </div>
+    </section>
   );
 }
 
@@ -123,6 +131,8 @@ function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
     selection?.onSelect(null);
   };
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: background click-to-deselect is a pointer
+    // biome-ignore lint/a11y/useKeyWithClickEvents: convenience; blocks carry the keyboard path.
     <div className="canvas-body" onClick={selection ? onClick : undefined}>
       {children}
     </div>
@@ -164,10 +174,19 @@ function Breadcrumb({
         const label = frameLabel(frame);
         // The root crumb (index 0) badges the root run's status; a descent crumb badges its descent node's.
         const crumbStatus =
-          index === 0 ? workflowRunStatus : frame.descendedVia ? projection?.get(frame.descendedVia) ?? null : null;
+          index === 0
+            ? workflowRunStatus
+            : frame.descendedVia
+              ? (projection?.get(frame.descendedVia) ?? null)
+              : null;
         return (
+          // biome-ignore lint/suspicious/noArrayIndexKey: trail position is the frame identity here.
           <span className="crumb-wrap" key={`${index}:${frame.path}`}>
-            {index > 0 ? <span className="crumb-sep" aria-hidden="true">/</span> : null}
+            {index > 0 ? (
+              <span className="crumb-sep" aria-hidden="true">
+                /
+              </span>
+            ) : null}
             {current ? (
               // The current crumb is the open file's name. Clicking it shows the workflow's own properties
               // (deselect), which is a no-op when nothing is wired to select. It stays marked current.
@@ -181,7 +200,12 @@ function Breadcrumb({
                 {label}
               </button>
             ) : (
-              <button type="button" className="crumb" title={frame.path ?? undefined} onClick={() => onCrumb(index)}>
+              <button
+                type="button"
+                className="crumb"
+                title={frame.path ?? undefined}
+                onClick={() => onCrumb(index)}
+              >
                 {label}
               </button>
             )}
@@ -249,7 +273,13 @@ function FrameView({
   const { result } = state;
   switch (result.status) {
     case "opened": {
-      const editor = createEditor(result.file, applyEdit, armed, () => onArm(null), defaultLeafKind(plugins));
+      const editor = createEditor(
+        result.file,
+        applyEdit,
+        armed,
+        () => onArm(null),
+        defaultLeafKind(plugins),
+      );
       // Dirty is content-equality against the baseline (ADR 0030), read through the one shared relation so
       // it cannot drift from launch/Save. Its note ("Unsaved edits") shows in the top bar, not here.
       const dirty = frameDirty(frame);
@@ -263,7 +293,12 @@ function FrameView({
               {result.file.body.length === 0 ? (
                 <StartBody editor={editor} />
               ) : (
-                <BlockTree nodes={result.file.body} onDescend={onDescend} editor={editor} socket={{ ownerId: null, flavor: "sequence" }} />
+                <BlockTree
+                  nodes={result.file.body}
+                  onDescend={onDescend}
+                  editor={editor}
+                  socket={{ ownerId: null, flavor: "sequence" }}
+                />
               )}
             </GotoProvider>
           </ConflictProvider>
@@ -288,14 +323,20 @@ function FrameView({
  */
 function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
   return (
-    <div className="start-body" role="region" aria-label="Start a body">
-      <p className="start-body-hint">Empty body. Pick a step or block from the palette to start it.</p>
+    <section className="start-body" aria-label="Start a body">
+      <p className="start-body-hint">
+        Empty body. Pick a step or block from the palette to start it.
+      </p>
       {editor.socketOpen("sequence", null) ? (
-        <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(null)}>
+        <button
+          type="button"
+          className="socket socket-tail"
+          onClick={() => editor.placeIntoList(null)}
+        >
           + add {editor.armedLabel} here
         </button>
       ) : null}
-    </div>
+    </section>
   );
 }
 
@@ -314,7 +355,15 @@ function Refusal({ heading, message }: { heading: string; message: string }): JS
  * `region`/`Workflow canvas` label — that landmark belongs to the *open* canvas, so a test (and a
  * screen reader) can wait for the real surface rather than matching this placeholder first.
  */
-function CanvasNote({ title, hint, action }: { title: string; hint: string; action?: JSX.Element }): JSX.Element {
+function CanvasNote({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint: string;
+  action?: JSX.Element;
+}): JSX.Element {
   return (
     <div className="canvas">
       <div className="canvas-empty">

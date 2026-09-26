@@ -1,15 +1,21 @@
 import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LaunchFacts, RunRecord } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LaunchFacts, RunRecord } from "@path/schema";
-import { continuationBlobReader, continuationOf, continuationRunOptions, sourceRuns, successorCapture } from "../src/continuation.js";
-import type { ContinueState, RunContext } from "../src/run-context.js";
-import type { Observation } from "../src/run-observer.js";
+import {
+  continuationBlobReader,
+  continuationOf,
+  continuationRunOptions,
+  sourceRuns,
+  successorCapture,
+} from "../src/continuation.js";
 import { openDb } from "../src/persistence/db.js";
 import { runBlobDir } from "../src/persistence/paths.js";
 import { insertReuseRun, insertRun } from "../src/persistence/run-store.js";
+import type { ContinueState, RunContext } from "../src/run-context.js";
+import type { Observation } from "../src/run-observer.js";
 
 /**
  * The continuation recipe Resume and Complete share (#architecture-deepening). These pin the four
@@ -32,12 +38,32 @@ afterEach(() => {
 
 /** A row to insert: only the fields these tests care about, the rest left at their column defaults. */
 function newRow(runId: string, parentRunId: string | null, rootRunId = "root-1") {
-  return { runId, rootRunId, parentRunId, nodeId: `node-${runId}`, nodeName: runId, workerName: null, status: "running" as const };
+  return {
+    runId,
+    rootRunId,
+    parentRunId,
+    nodeId: `node-${runId}`,
+    nodeName: runId,
+    workerName: null,
+    status: "running" as const,
+  };
 }
 
 /** The same row as the reader sees it, with the fields `sourceRuns` reads named explicitly. */
-function record(runId: string, parentRunId: string | null, rootRunId = "root-1", extra: Partial<RunRecord> = {}): RunRecord {
-  return { ...newRow(runId, parentRunId, rootRunId), finishedAt: null, inputRef: null, outputRef: null, reusedFromRunId: null, ...extra } as unknown as RunRecord;
+function record(
+  runId: string,
+  parentRunId: string | null,
+  rootRunId = "root-1",
+  extra: Partial<RunRecord> = {},
+): RunRecord {
+  return {
+    ...newRow(runId, parentRunId, rootRunId),
+    finishedAt: null,
+    inputRef: null,
+    outputRef: null,
+    reusedFromRunId: null,
+    ...extra,
+  } as unknown as RunRecord;
 }
 
 describe("sourceRuns", () => {
@@ -53,14 +79,23 @@ describe("sourceRuns", () => {
       reusedFromRunId: "step-1",
     });
 
-    const swapped = sourceRuns(db, [record("reuse-1", "root-1", "root-1", { reusedFromRunId: "step-1" })]);
+    const swapped = sourceRuns(db, [
+      record("reuse-1", "root-1", "root-1", { reusedFromRunId: "step-1" }),
+    ]);
 
     // The reuse row keeps the parent it sat under, but names the source's run and tree from now on.
-    expect(swapped[0]).toMatchObject({ runId: "step-1", rootRunId: "root-1", parentRunId: "root-1", status: "succeeded" });
+    expect(swapped[0]).toMatchObject({
+      runId: "step-1",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      status: "succeeded",
+    });
   });
 
   it("drops a reuse row whose source is gone, so that node re-executes", () => {
-    expect(sourceRuns(db, [record("reuse-1", "root-1", "root-1", { reusedFromRunId: "vanished" })])).toEqual([]);
+    expect(
+      sourceRuns(db, [record("reuse-1", "root-1", "root-1", { reusedFromRunId: "vanished" })]),
+    ).toEqual([]);
   });
 
   it("passes an ordinary row through unchanged", () => {
@@ -82,8 +117,12 @@ describe("continuationBlobReader", () => {
       writeFileSync(join(blobDir, "output.json"), JSON.stringify(value));
     }
 
-    expect(reader(record("step-1", "parent-1", "source-root"), "output.json")).toEqual({ from: "source" });
-    expect(reader(record("step-1", "parent-1", "other-root"), "output.json")).toEqual({ from: "other" });
+    expect(reader(record("step-1", "parent-1", "source-root"), "output.json")).toEqual({
+      from: "source",
+    });
+    expect(reader(record("step-1", "parent-1", "other-root"), "output.json")).toEqual({
+      from: "other",
+    });
   });
 });
 
@@ -105,13 +144,21 @@ describe("continuationRunOptions", () => {
   });
 
   it("consumes the rerun boundary, which is a Resume's business and never a run option", () => {
-    expect(continuationRunOptions({ rerunFromRunId: "run-7" }, undefined)).not.toHaveProperty("rerunFromRunId");
+    expect(continuationRunOptions({ rerunFromRunId: "run-7" }, undefined)).not.toHaveProperty(
+      "rerunFromRunId",
+    );
   });
 
   it("merges a supplied value over the frozen one and re-marks a supplied secret at its recorded path", () => {
-    const options = continuationRunOptions({ operatorConfig: { model: "supplied-model", token: "real-credential" } }, frozen);
+    const options = continuationRunOptions(
+      { operatorConfig: { model: "supplied-model", token: "real-credential" } },
+      frozen,
+    );
 
-    expect(options.operatorConfig).toEqual({ model: "supplied-model", token: { $secret: "real-credential" } });
+    expect(options.operatorConfig).toEqual({
+      model: "supplied-model",
+      token: { $secret: "real-credential" },
+    });
     // Supplied again, so nothing is missing — the run must not end at its first step naming the key.
     expect(options.unresolvedLaunchSecrets).toEqual([]);
   });
@@ -149,13 +196,20 @@ describe("successorCapture", () => {
 });
 
 /** A node the disposition adapters read: only the two fields they look at, cast to the body-node type. */
-function node(id: string, type = "binary"): Parameters<ReturnType<typeof continuationOf>["disposition"]>[0] {
+function node(
+  id: string,
+  type = "binary",
+): Parameters<ReturnType<typeof continuationOf>["disposition"]>[0] {
   return { id, type } as unknown as Parameters<ReturnType<typeof continuationOf>["disposition"]>[0];
 }
 
 /** A Complete-continue state over a fixed row set, targeting one parked leaf by id. */
 function continueState(existingRuns: RunRecord[], targetStepRunId: string): ContinueState {
-  return { existingRuns, readBlob: (run) => ({ from: run.runId }), target: { stepRunId: targetStepRunId, output: { submitted: true } } };
+  return {
+    existingRuns,
+    readBlob: (run) => ({ from: run.runId }),
+    target: { stepRunId: targetStepRunId, output: { submitted: true } },
+  };
 }
 
 describe("continuationOf — Resume adapter", () => {
@@ -164,13 +218,19 @@ describe("continuationOf — Resume adapter", () => {
   it("reuses a node the plan holds, and runs every other node fresh", () => {
     const original = record("orig-1", "wf-1");
     const readBlob = (run: RunRecord, file: string) => ({ from: run.runId, file });
-    const resume = { plan: new Map([["a", original]]), input: { readBlob } } as unknown as RunContext["resume"];
+    const resume = {
+      plan: new Map([["a", original]]),
+      input: { readBlob },
+    } as unknown as RunContext["resume"];
     const c = continuationOf({ identity, resume });
 
     const reused = c.disposition(node("a"));
     expect(reused).toMatchObject({ kind: "reuse", reusedFrom: "orig-1" });
     // The output is read from the original tree's run, only when the walker asks for it.
-    expect(reused.kind === "reuse" && reused.output()).toEqual({ from: "orig-1", file: "output.json" });
+    expect(reused.kind === "reuse" && reused.output()).toEqual({
+      from: "orig-1",
+      file: "output.json",
+    });
     expect(c.disposition(node("b"))).toEqual({ kind: "fresh" });
   });
 
@@ -186,7 +246,11 @@ describe("continuationOf — Complete adapter", () => {
     continuationOf({ identity, continue: continueState(rows, target) });
 
   it("reuses a succeeded row read-only", () => {
-    const existing = record("r1", "parent-1", "root-1", { nodeId: "a", status: "succeeded", outputRef: "output.json" });
+    const existing = record("r1", "parent-1", "root-1", {
+      nodeId: "a",
+      status: "succeeded",
+      outputRef: "output.json",
+    });
     const reused = complete([existing], "none").disposition(node("a"));
     // Read-only from this tree's own row, and unmarked: a Complete is not a fresh successor tree.
     expect(reused).toMatchObject({ kind: "reuse" });
@@ -199,7 +263,11 @@ describe("continuationOf — Complete adapter", () => {
     const sibling = record("r-sib", "parent-1", "root-1", { nodeId: "b", status: "awaiting" });
     const c = complete([target, sibling], "r-target");
 
-    expect(c.disposition(node("a"))).toEqual({ kind: "complete", runId: "r-target", output: { submitted: true } });
+    expect(c.disposition(node("a"))).toEqual({
+      kind: "complete",
+      runId: "r-target",
+      output: { submitted: true },
+    });
     expect(c.disposition(node("b"))).toEqual({ kind: "park" });
   });
 

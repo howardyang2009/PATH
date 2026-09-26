@@ -1,9 +1,9 @@
 import {
   launchSecretResupply,
-  resumeFromEligibility,
-  resupplyGate,
   type PathApiClient,
   type RunNodeState,
+  resumeFromEligibility,
+  resupplyGate,
   type WorkflowFile,
 } from "@path/client-core";
 import { useEffect, useState } from "react";
@@ -103,9 +103,11 @@ export function ResumeActions({
 
   // A new K-selection makes a prior action's result stale: the refusal alert belonged to the node
   // that was selected when the button was pressed, not the one now selected. Clear it on change.
+  const selectedRunId = resumeFrom.selectedRunId;
+  // biome-ignore lint/correctness/useExhaustiveDependencies: the effect's whole purpose is this reset.
   useEffect(() => {
     setError(null);
-  }, [resumeFrom.selectedRunId]);
+  }, [selectedRunId]);
 
   // The shared launch-facts secret-restore gate (ADR 0046, `@path/client-core`): the config parse and
   // the still-blank recorded secrets, one verdict both continuation doors read. A recorded secret is a
@@ -117,9 +119,7 @@ export function ResumeActions({
   const blankSecrets = gate.blankPaths;
 
   // `Resume from …` legality — computed only when the button is shown (only then is a tree behind it).
-  const eligibility = showResumeFrom
-    ? resumeFromEligibility({ rootRunId, ...resumeFrom })
-    : null;
+  const eligibility = showResumeFrom ? resumeFromEligibility({ rootRunId, ...resumeFrom }) : null;
 
   // "Enabled" here is by status / K-eligibility alone, not config validity — a bad config must not lock
   // the config field it lives in. The field is disabled only when neither verb is enabled by status.
@@ -130,8 +130,13 @@ export function ResumeActions({
   // forced open on an invalid value so the reason is never hidden behind a collapsed disclosure.
   const configOpen = !configDisabled && (showConfig || !configResult.ok);
 
-  const canResume = resumeEnabledByStatus && configResult.ok && blankSecrets.length === 0 && phase !== "sending";
-  const canResumeFrom = resumeFromEnabledByStatus && configResult.ok && blankSecrets.length === 0 && phase !== "sending";
+  const canResume =
+    resumeEnabledByStatus && configResult.ok && blankSecrets.length === 0 && phase !== "sending";
+  const canResumeFrom =
+    resumeFromEnabledByStatus &&
+    configResult.ok &&
+    blankSecrets.length === 0 &&
+    phase !== "sending";
 
   // The one reason both verbs share when it is the *secret*, not the run's status or K, that blocks
   // them. Kept out of the per-button reason lines so a failed run (both verbs visible) does not print
@@ -156,7 +161,8 @@ export function ResumeActions({
   };
 
   const sendResumeFrom = (): void => {
-    if (eligibility === null || !eligibility.ok || !configResult.ok || blankSecrets.length > 0) return;
+    if (eligibility === null || !eligibility.ok || !configResult.ok || blankSecrets.length > 0)
+      return;
     setError(null);
     setPhase("sending");
     client.resumeRun(rootRunId, configResult.value, eligibility.runId).then(
@@ -171,9 +177,7 @@ export function ResumeActions({
   // The greyed plain-Resume's inline reason: a finished-but-succeeded run reruns from a chosen
   // boundary, it does not plain-resume. Shown only when the button is present and status-disabled.
   const resumeReason =
-    showResume && !plainResumable
-      ? "Succeeded — rerun from a chosen boundary below."
-      : null;
+    showResume && !plainResumable ? "Succeeded — rerun from a chosen boundary below." : null;
 
   return (
     <div className="launch-form resume-form" data-testid="resume-form">
@@ -193,7 +197,9 @@ export function ResumeActions({
           <JsonField
             id={`resume-config-${rootRunId}`}
             testId="resume-config"
-            label={showSecrets ? "Launch secrets (config override) · JSON" : "config override · JSON"}
+            label={
+              showSecrets ? "Launch secrets (config override) · JSON" : "config override · JSON"
+            }
             value={config}
             onChange={setConfig}
             result={configResult}
@@ -209,7 +215,11 @@ export function ResumeActions({
       )}
 
       {secretReason !== null && (
-        <p className="pane-note pane-error resume-secret-error" role="alert" data-testid="resume-secret-error">
+        <p
+          className="pane-note pane-error resume-secret-error"
+          role="alert"
+          data-testid="resume-secret-error"
+        >
           {secretReason}
         </p>
       )}

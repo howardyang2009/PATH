@@ -43,8 +43,8 @@ export function configRows(
   const rows: ConfigRow[] = [];
   for (const key of [...keys].sort()) {
     if (hide.has(key)) continue;
-    const inNode = Object.prototype.hasOwnProperty.call(node, key);
-    const inFile = Object.prototype.hasOwnProperty.call(file, key);
+    const inNode = Object.hasOwn(node, key);
+    const inFile = Object.hasOwn(file, key);
     if (inNode) {
       rows.push({ key, value: node[key]!, origin: inFile ? "overridden" : "local" });
     } else {
@@ -55,7 +55,11 @@ export function configRows(
 }
 
 /** Set (or add) a local config key on a node's config, returning a new config object. */
-export function setConfigKey(config: ConfigObject | undefined, key: string, value: ConfigValue): ConfigObject {
+export function setConfigKey(
+  config: ConfigObject | undefined,
+  key: string,
+  value: ConfigValue,
+): ConfigObject {
   return { ...(config ?? {}), [key]: value };
 }
 
@@ -63,7 +67,10 @@ export function setConfigKey(config: ConfigObject | undefined, key: string, valu
  * Drop a local config key, returning the new config — or `undefined` when that empties it, so the node
  * can drop the whole `config` field (an empty `config: {}` is noise the author never wrote).
  */
-export function dropConfigKey(config: ConfigObject | undefined, key: string): ConfigObject | undefined {
+export function dropConfigKey(
+  config: ConfigObject | undefined,
+  key: string,
+): ConfigObject | undefined {
   const rest = withoutKey(config ?? {}, key);
   return Object.keys(rest).length === 0 ? undefined : rest;
 }

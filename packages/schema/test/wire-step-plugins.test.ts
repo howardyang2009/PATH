@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
-import { describeField, toWireStepPlugins } from "../src/wire-step-plugins.js";
 import type { StepPluginRegistry } from "../src/nodes.js";
+import { describeField, toWireStepPlugins } from "../src/wire-step-plugins.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
 const doNotRun = () => Promise.reject(new Error("run must not be called"));

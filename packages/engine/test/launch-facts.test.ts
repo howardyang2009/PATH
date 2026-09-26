@@ -79,13 +79,21 @@ describe("recoverLaunchConfig", () => {
   });
 
   it("has nothing to recover from a launch that recorded no facts", () => {
-    expect(recoverLaunchConfig(undefined, { a: 1 })).toEqual({ config: { a: 1 }, missingSecretKeys: [] });
+    expect(recoverLaunchConfig(undefined, { a: 1 })).toEqual({
+      config: { a: 1 },
+      missingSecretKeys: [],
+    });
   });
 });
 
 describe("wrapSecretsAtPaths", () => {
   it("re-marks a supplied value at each recorded path, nested or flat", () => {
-    expect(wrapSecretsAtPaths({ apiKey: "sk-2", options: { token: "t" }, other: "x" }, ["apiKey", "options.token"])).toEqual({
+    expect(
+      wrapSecretsAtPaths({ apiKey: "sk-2", options: { token: "t" }, other: "x" }, [
+        "apiKey",
+        "options.token",
+      ]),
+    ).toEqual({
       apiKey: { $secret: "sk-2" },
       options: { token: { $secret: "t" } },
       other: "x",
@@ -103,7 +111,9 @@ describe("wrapSecretsAtPaths", () => {
   it("re-marks a supplied value inside an array, at the index secretPathsOf recorded", () => {
     const paths = secretPathsOf({ list: [{ $secret: "old" }, "plain"] });
     expect(paths).toEqual(["list.0"]);
-    expect(wrapSecretsAtPaths({ list: ["new", "plain"] }, paths)).toEqual({ list: [{ $secret: "new" }, "plain"] });
+    expect(wrapSecretsAtPaths({ list: ["new", "plain"] }, paths)).toEqual({
+      list: [{ $secret: "new" }, "plain"],
+    });
   });
 });
 

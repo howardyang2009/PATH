@@ -33,9 +33,13 @@ export const OBSERVATION_TYPES = [
 ] as const satisfies readonly Observation["type"][];
 
 // Fails to compile if the union grows a member the list above is missing.
-type _Exhaustive = Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]> extends never
-  ? true
-  : ["OBSERVATION_TYPES is missing", Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]>];
+type _Exhaustive =
+  Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]> extends never
+    ? true
+    : [
+        "OBSERVATION_TYPES is missing",
+        Exclude<Observation["type"], (typeof OBSERVATION_TYPES)[number]>,
+      ];
 
 /** The payload of one observation type, minus the discriminant. */
 type PayloadOf<K extends Observation["type"]> = Omit<Extract<Observation, { type: K }>, "type">;

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { checkDotPath } from "./dot-path.js";
 import type { AllCondition, AnyCondition, Condition, NotCondition } from "./condition-type.js";
+import { checkDotPath } from "./dot-path.js";
 import { CONDITION_ROOTS } from "./roots.js";
 
 const ConditionPathSchema = z.string().superRefine((value, ctx) => {

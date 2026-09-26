@@ -43,11 +43,23 @@ function canonicalBytes(file: Record<string, unknown>): string {
 }
 
 /** A wire run row under the watched root `root-1`; the fields the projection does not read are inert nulls. */
-function wireRun(partial: { run_id: string; status: string; parent_run_id?: string | null; node_id?: string | null; pass?: number | null; started_at?: string }): Record<string, unknown> {
+function wireRun(partial: {
+  run_id: string;
+  status: string;
+  parent_run_id?: string | null;
+  node_id?: string | null;
+  pass?: number | null;
+  started_at?: string;
+}): Record<string, unknown> {
   return {
     run_id: partial.run_id,
     root_run_id: "root-1",
-    parent_run_id: partial.parent_run_id === undefined ? (partial.run_id === "root-1" ? null : "root-1") : partial.parent_run_id,
+    parent_run_id:
+      partial.parent_run_id === undefined
+        ? partial.run_id === "root-1"
+          ? null
+          : "root-1"
+        : partial.parent_run_id,
     node_id: partial.node_id ?? null,
     node_name: null,
     worker_name: null,
@@ -74,7 +86,19 @@ function wireRun(partial: { run_id: string; status: string; parent_run_id?: stri
 async function watch(runs: Record<string, unknown>[]): Promise<HTMLElement> {
   const client = stubClient({
     files: { [PATH]: canonicalBytes(gotoFile()) },
-    runs: { runs: [{ run_id: "root-1", workflow_name: "flow", workflow_id: WF_ID, workflow_path: PATH, status: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null }] },
+    runs: {
+      runs: [
+        {
+          run_id: "root-1",
+          workflow_name: "flow",
+          workflow_id: WF_ID,
+          workflow_path: PATH,
+          status: "running",
+          started_at: "2026-01-01T00:00:00Z",
+          finished_at: null,
+        },
+      ],
+    },
     tree: { root_run_id: "root-1", status: "running", output: null, runs },
   });
   render(<App client={client} initialPath={PATH} />);
@@ -94,19 +118,55 @@ describe("#620 G-D-08 watched run with passes", () => {
     const canvas = await watch([
       wireRun({ run_id: "root-1", status: "running" }),
       wireRun({ run_id: "p1", pass: 1, status: "succeeded", started_at: "2026-01-01T00:00:01Z" }),
-      wireRun({ run_id: "a1", parent_run_id: "p1", node_id: ALPHA_ID, status: "failed", started_at: "2026-01-01T00:00:02Z" }),
-      wireRun({ run_id: "p2", node_id: HOP_ID, pass: 2, status: "succeeded", started_at: "2026-01-01T00:00:03Z" }),
-      wireRun({ run_id: "a2", parent_run_id: "p2", node_id: ALPHA_ID, status: "succeeded", started_at: "2026-01-01T00:00:04Z" }),
-      wireRun({ run_id: "p3", node_id: HOP_ID, pass: 3, status: "running", started_at: "2026-01-01T00:00:05Z" }),
-      wireRun({ run_id: "t3", parent_run_id: "p3", node_id: TAIL_ID, status: "running", started_at: "2026-01-01T00:00:06Z" }),
+      wireRun({
+        run_id: "a1",
+        parent_run_id: "p1",
+        node_id: ALPHA_ID,
+        status: "failed",
+        started_at: "2026-01-01T00:00:02Z",
+      }),
+      wireRun({
+        run_id: "p2",
+        node_id: HOP_ID,
+        pass: 2,
+        status: "succeeded",
+        started_at: "2026-01-01T00:00:03Z",
+      }),
+      wireRun({
+        run_id: "a2",
+        parent_run_id: "p2",
+        node_id: ALPHA_ID,
+        status: "succeeded",
+        started_at: "2026-01-01T00:00:04Z",
+      }),
+      wireRun({
+        run_id: "p3",
+        node_id: HOP_ID,
+        pass: 3,
+        status: "running",
+        started_at: "2026-01-01T00:00:05Z",
+      }),
+      wireRun({
+        run_id: "t3",
+        parent_run_id: "p3",
+        node_id: TAIL_ID,
+        status: "running",
+        started_at: "2026-01-01T00:00:06Z",
+      }),
     ]);
 
     const jumps = await screen.findByTestId(`goto-jumps-${HOP_ID}`);
     expect(jumps).toHaveTextContent("2/3");
     expect(block(canvas, HOP_ID)).toContainElement(jumps);
     expect(screen.queryByTestId(`node-run-badge-${HOP_ID}`)).not.toBeInTheDocument();
-    expect(screen.getByTestId(`node-run-badge-${ALPHA_ID}`)).toHaveAttribute("data-run-status", "succeeded");
-    expect(screen.getByTestId(`node-run-badge-${TAIL_ID}`)).toHaveAttribute("data-run-status", "running");
+    expect(screen.getByTestId(`node-run-badge-${ALPHA_ID}`)).toHaveAttribute(
+      "data-run-status",
+      "succeeded",
+    );
+    expect(screen.getByTestId(`node-run-badge-${TAIL_ID}`)).toHaveAttribute(
+      "data-run-status",
+      "running",
+    );
   });
 
   it("badges a goto that never jumped as 0/<max_jumps>", async () => {
@@ -121,7 +181,12 @@ describe("#620 G-D-08 watched run with passes", () => {
   });
 
   it("draws no jumps badge while no run is watched", async () => {
-    render(<App client={stubClient({ files: { [PATH]: canonicalBytes(gotoFile()) } })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: canonicalBytes(gotoFile()) } })}
+        initialPath={PATH}
+      />,
+    );
     const canvas = await screen.findByRole("region", { name: "Workflow canvas" });
     await within(canvas).findByText("hop");
     expect(screen.queryByTestId(`goto-jumps-${HOP_ID}`)).not.toBeInTheDocument();

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let handle: PathServerHandle;
@@ -37,11 +37,18 @@ function writeLease(sessionId: string, ttlMs: number): void {
 }
 
 /** `DELETE /v0/workflows/file` against a freshly started server. */
-async function del(path: string, headers: Record<string, string> = {}, sessionId?: string): Promise<Response> {
+async function del(
+  path: string,
+  headers: Record<string, string> = {},
+  sessionId?: string,
+): Promise<Response> {
   handle = await startPathServer(projectDir);
   const query = new URLSearchParams({ path });
   if (sessionId !== undefined) query.set("session_id", sessionId);
-  return fetch(`${handle.url}/v0/workflows/file?${query.toString()}`, { method: "DELETE", headers });
+  return fetch(`${handle.url}/v0/workflows/file?${query.toString()}`, {
+    method: "DELETE",
+    headers,
+  });
 }
 
 describe("DELETE /v0/workflows/file", () => {
@@ -64,14 +71,20 @@ describe("DELETE /v0/workflows/file", () => {
   });
 
   it("returns 404 for a missing file or a path that escapes the root", async () => {
-    expect((await del("missing.workflow.json", { "If-Match": strongEtag(BYTES) })).status).toBe(404);
+    expect((await del("missing.workflow.json", { "If-Match": strongEtag(BYTES) })).status).toBe(
+      404,
+    );
     await handle.close();
-    expect((await del("../outside.workflow.json", { "If-Match": strongEtag(BYTES) })).status).toBe(404);
+    expect((await del("../outside.workflow.json", { "If-Match": strongEtag(BYTES) })).status).toBe(
+      404,
+    );
   });
 
   it("refuses a template path (400)", async () => {
     mkdirSync(join(projectDir, ".path", "template"), { recursive: true });
-    const res = await del(".path/template/step-template/x.step-template.json", { "If-Match": strongEtag(BYTES) });
+    const res = await del(".path/template/step-template/x.step-template.json", {
+      "If-Match": strongEtag(BYTES),
+    });
     expect(res.status).toBe(400);
   });
 

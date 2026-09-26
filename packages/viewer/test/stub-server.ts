@@ -1,4 +1,4 @@
-import { PathApiClient, type FetchLike } from "@path/client-core";
+import { type FetchLike, PathApiClient } from "@path/client-core";
 
 /**
  * A stand-in `path-server` for viewer tests: one injected `fetch` routing the three read endpoints
@@ -8,7 +8,9 @@ import { PathApiClient, type FetchLike } from "@path/client-core";
  */
 
 function frame(event: Record<string, unknown>): Uint8Array {
-  return new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`);
+  return new TextEncoder().encode(
+    `id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`,
+  );
 }
 
 /**
@@ -91,7 +93,10 @@ export function stubClient(options: StubServerOptions = {}): PathApiClient {
     if (completeMatch && init?.method === "POST") {
       options.completeBodies?.push(init.body ? JSON.parse(init.body as string) : undefined);
       if (options.complete) return json(options.complete.body, options.complete.status);
-      return json({ step_run_id: decodeURIComponent(completeMatch[1]!), root_run_id: "run_root" }, 202);
+      return json(
+        { step_run_id: decodeURIComponent(completeMatch[1]!), root_run_id: "run_root" },
+        202,
+      );
     }
     if (input === "/v0/workflows") {
       return json(workflows, 200);

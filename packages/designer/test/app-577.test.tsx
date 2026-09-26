@@ -10,7 +10,9 @@ import { stubClient } from "./stub-server.js";
  * rows alike. An invalid row is listed with its error and cannot be selected.
  */
 
-function template(overrides: Partial<TemplateSummary> & Pick<TemplateSummary, "name" | "kind">): TemplateSummary {
+function template(
+  overrides: Partial<TemplateSummary> & Pick<TemplateSummary, "name" | "kind">,
+): TemplateSummary {
   return {
     id: `${overrides.name}-id`,
     description: `${overrides.name} blurb`,
@@ -23,7 +25,13 @@ function template(overrides: Partial<TemplateSummary> & Pick<TemplateSummary, "n
 }
 
 const TEMPLATES: TemplateSummary[] = [
-  template({ name: "person-switch", kind: "step", origin: "shipped", read_only: true, description: "A person picks the next node" }),
+  template({
+    name: "person-switch",
+    kind: "step",
+    origin: "shipped",
+    read_only: true,
+    description: "A person picks the next node",
+  }),
   template({ name: "review-gate", kind: "step" }),
   template({ name: "nightly", kind: "step" }),
   template({
@@ -44,7 +52,10 @@ describe("Designer palette lists templates (#577)", () => {
   it("keeps Step and Controller on the Nodes tab, selected by default", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const palette = screen.getByRole("region", { name: "Palette" });
-    expect(within(palette).getByRole("tab", { name: "Nodes" })).toHaveAttribute("aria-selected", "true");
+    expect(within(palette).getByRole("tab", { name: "Nodes" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     const nodes = within(palette).getByRole("tabpanel", { name: "Nodes" });
     expect(within(nodes).getByRole("region", { name: "Step" })).toBeInTheDocument();
     expect(within(nodes).getByRole("region", { name: "Controller" })).toBeInTheDocument();
@@ -78,7 +89,10 @@ describe("Designer palette lists templates (#577)", () => {
     const broken = await within(panel).findByRole("button", { name: /^broken-flow/ });
     expect(broken).toHaveAttribute("aria-disabled", "true");
     expect(within(broken).getByText('unregistered step type "api-call"')).toBeInTheDocument();
-    expect(within(panel).getByRole("button", { name: /^nightly/ })).toHaveAttribute("aria-disabled", "false");
+    expect(within(panel).getByRole("button", { name: /^nightly/ })).toHaveAttribute(
+      "aria-disabled",
+      "false",
+    );
   });
 
   it("says so when there are no templates", async () => {
@@ -89,7 +103,14 @@ describe("Designer palette lists templates (#577)", () => {
   });
 
   it("reports a failed template scan instead of an empty list", async () => {
-    render(<App client={stubClient({ templates: { error: { message: "scan failed" } }, templatesStatus: 500 })} />);
+    render(
+      <App
+        client={stubClient({
+          templates: { error: { message: "scan failed" } },
+          templatesStatus: 500,
+        })}
+      />,
+    );
     const panel = await openTemplatesTab();
 
     expect(await within(panel).findByRole("alert")).toHaveTextContent("scan failed");

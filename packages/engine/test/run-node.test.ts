@@ -1,15 +1,22 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
-import type { BranchNode, CheckpointNode, JsonValue, RunRecord, WhileDoNode, WorkflowFile } from "@path/schema";
+import type {
+  BranchNode,
+  CheckpointNode,
+  JsonValue,
+  RunRecord,
+  WhileDoNode,
+  WorkflowFile,
+} from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin/scan.js";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
+import type { NodeExecContext, RunContext } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
-import type { NodeExecContext, RunContext } from "../src/run-context.js";
 
 /**
  * The node seam, called directly. Every kind of node a body can hold goes through `runNode`, so
@@ -47,9 +54,13 @@ beforeAll(async () => {
 });
 
 /** A run runtime whose `prompt`/`anthropic` worker is the given descriptor — for the prompt-step tests. */
-function promptRuntime(worker: WorkerDescriptor, semaphore = createProcessorSemaphore(1)): RunContext["runtime"] {
+function promptRuntime(
+  worker: WorkerDescriptor,
+  semaphore = createProcessorSemaphore(1),
+): RunContext["runtime"] {
   const clone: LoadedStepPluginRegistry = {};
-  for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+  for (const [t, plugin] of Object.entries(registry))
+    clone[t] = { ...plugin, workers: { ...plugin.workers } };
   clone.prompt!.workers.anthropic = worker;
   return { registry: clone, semaphore };
 }
@@ -75,11 +86,20 @@ function answeringWorker(output: string): WorkerDescriptor {
   };
 }
 
-function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
+function makeRun(overrides: Partial<RunContext> = {}): {
+  run: RunContext;
+  observed: Observation[];
+} {
   const observed: Observation[] = [];
   // A real emitter over the capturing sink (Q7-b): the walker emits through `run.emitter`, so the
   // `observed` assertions stay assertions about the wire `Observation`s the emitter produces.
-  const identity: RunContext["identity"] = { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null };
+  const identity: RunContext["identity"] = {
+    runId: "run-1",
+    rootRunId: "run-1",
+    parentRunId: null,
+    nodeId: null,
+    nodeName: null,
+  };
   const emit = async (o: Observation): Promise<void> => void observed.push(o);
   return {
     observed,
@@ -106,7 +126,9 @@ function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
  * One run row of the tree being Completed (ADR 0041), spanning every field the disposition reads.
  * `parentRunId` defaults to this fixture's run id, which is what makes it "this node's row".
  */
-function existingRow(over: Partial<RunRecord> & Pick<RunRecord, "runId" | "nodeId" | "status">): RunRecord {
+function existingRow(
+  over: Partial<RunRecord> & Pick<RunRecord, "runId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "run-1",
     parentRunId: "run-1",
@@ -138,7 +160,13 @@ function askNode(): Node {
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
 function echo(id: string, text: string): Node {
-  return { type: "binary", id, name: id, command: "node", args: ["-e", `process.stdout.write(${JSON.stringify(text)})`] };
+  return {
+    type: "binary",
+    id,
+    name: id,
+    command: "node",
+    args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
+  };
 }
 
 /**
@@ -152,7 +180,12 @@ function append(id: string, suffix: string): Node {
 }
 
 describe("runNode — checkpoint", () => {
-  const node: CheckpointNode = { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.ready" } };
+  const node: CheckpointNode = {
+    type: "checkpoint",
+    id: "gate",
+    name: "gate",
+    condition: { type: "exists", path: "context.ready" },
+  };
 
   it("forwards its predecessor's output unchanged when the condition holds (§5.4)", async () => {
     const { run, observed } = makeRun();
@@ -178,21 +211,28 @@ describe("runNode — checkpoint", () => {
     const { run, observed } = makeRun();
     const erroring: CheckpointNode = {
       type: "checkpoint",
-      id: "gate", name: "gate",
+      id: "gate",
+      name: "gate",
       condition: { type: "equals", path: "context.absent", value: 1 },
     };
 
     const outcome = await runNode(run, erroring, {}, makeExec({}));
 
     expect(outcome.status).toBe("failed");
-    expect(observed[0]).toMatchObject({ nodeId: "gate", nodeName: "gate", passed: false, trace: expect.objectContaining({ outcome: "error" }) });
+    expect(observed[0]).toMatchObject({
+      nodeId: "gate",
+      nodeName: "gate",
+      passed: false,
+      trace: expect.objectContaining({ outcome: "error" }),
+    });
   });
 });
 
 describe("runNode — branch", () => {
   const branch = (withElse: boolean): BranchNode => ({
     type: "branch",
-    id: "route", name: "route",
+    id: "route",
+    name: "route",
     arms: [
       { when: { type: "equals", path: "context.pick", value: "a" }, node: echo("arm-a", "A") },
       { when: { type: "equals", path: "context.pick", value: "b" }, node: echo("arm-b", "B") },
@@ -205,7 +245,11 @@ describe("runNode — branch", () => {
     const outcome = await runNode(run, branch(true), {}, makeExec({ pick: "b" }));
 
     expect(outcome).toEqual({ status: "succeeded", output: "B" });
-    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({ nodeId: "route", nodeName: "route", arm: 1 });
+    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({
+      nodeId: "route",
+      nodeName: "route",
+      arm: 1,
+    });
   });
 
   it("takes the else fallback when no arm matches, and reports it as the arm", async () => {
@@ -213,7 +257,10 @@ describe("runNode — branch", () => {
     const outcome = await runNode(run, branch(true), {}, makeExec({ pick: "zzz" }));
 
     expect(outcome).toEqual({ status: "succeeded", output: "F" });
-    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({ arm: "else", trace: null });
+    expect(observed.find((o) => o.type === "branch-taken")).toMatchObject({
+      arm: "else",
+      trace: null,
+    });
   });
 
   // Silent fall-through would hide an authoring bug, so it fails the run (§5.2).
@@ -236,11 +283,17 @@ describe("runNode — branch", () => {
     const { run, observed } = makeRun();
     const node: BranchNode = {
       type: "branch",
-      id: "route", name: "route",
+      id: "route",
+      name: "route",
       arms: [
         {
           when: { type: "equals", path: "context.pick", value: "a" },
-          node: { type: "sequence", id: "arm-a", name: "arm-a", body: [append("a1", "-1"), append("a2", "-2")] },
+          node: {
+            type: "sequence",
+            id: "arm-a",
+            name: "arm-a",
+            body: [append("a1", "-1"), append("a2", "-2")],
+          },
         },
       ],
       else: echo("fallback", "F"),
@@ -256,12 +309,14 @@ describe("runNode — branch", () => {
 describe("runNode — while-do", () => {
   const loop: WhileDoNode = {
     type: "while-do",
-    id: "spin", name: "spin",
+    id: "spin",
+    name: "spin",
     condition: { type: "range", path: "context.count", max: 1 },
     max_iterations: 5,
     node: {
       type: "binary",
-      id: "bump", name: "bump",
+      id: "bump",
+      name: "bump",
       command: "node",
       args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
       parse: "json",
@@ -274,10 +329,15 @@ describe("runNode — while-do", () => {
     const outcome = await runNode(run, loop, {}, makeExec({ count: 0 }));
 
     expect(outcome.status).toBe("succeeded");
-    expect(observed.filter((o) => o.type === "iteration-started").map((o) => "iteration" in o && o.iteration)).toEqual([
-      1, 2,
-    ]);
-    expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({ reason: "condition-false", iterations: 2 });
+    expect(
+      observed
+        .filter((o) => o.type === "iteration-started")
+        .map((o) => "iteration" in o && o.iteration),
+    ).toEqual([1, 2]);
+    expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({
+      reason: "condition-false",
+      iterations: 2,
+    });
   });
 
   // Exceeding the bound fails the run (§5.2/§5.6) — an unbounded loop is an authoring bug.
@@ -286,7 +346,9 @@ describe("runNode — while-do", () => {
     const outcome = await runNode(run, { ...loop, max_iterations: 1 }, {}, makeExec({ count: 0 }));
 
     expect(outcome.status).toBe("failed");
-    expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({ reason: "max-iterations-exceeded" });
+    expect(observed.find((o) => o.type === "loop-exited")).toMatchObject({
+      reason: "max-iterations-exceeded",
+    });
   });
 
   // Zero iterations is not a special case — the block is transparent on the output side, forwarding
@@ -308,7 +370,10 @@ describe("runNode — while-do", () => {
   // neither an iteration nor an exit — it never got as far as deciding either.
   it("fails the run when the condition evaluation errors, narrating no iteration and no exit", async () => {
     const { run, observed } = makeRun();
-    const erroring: WhileDoNode = { ...loop, condition: { type: "equals", path: "context.absent", value: 1 } };
+    const erroring: WhileDoNode = {
+      ...loop,
+      condition: { type: "equals", path: "context.absent", value: 1 },
+    };
 
     const outcome = await runNode(run, erroring, {}, makeExec({}));
 
@@ -325,11 +390,17 @@ describe("runNode — while-do", () => {
     const { run, observed } = makeRun();
     const spin: WhileDoNode = {
       type: "while-do",
-      id: "spin-seq", name: "spin-seq",
+      id: "spin-seq",
+      name: "spin-seq",
       // Stop once the loop's own output carries two full passes.
       condition: { type: "not", of: { type: "matches", path: "output", pattern: "\\*!\\*!$" } },
       max_iterations: 5,
-      node: { type: "sequence", id: "pass", name: "pass", body: [append("grow", "*"), append("tag", "!")] },
+      node: {
+        type: "sequence",
+        id: "pass",
+        name: "pass",
+        body: [append("grow", "*"), append("tag", "!")],
+      },
     };
 
     const outcome = await runNode(run, spin, "a", makeExec());
@@ -340,7 +411,11 @@ describe("runNode — while-do", () => {
 
   it("resolves an interpolated max_iterations against config before capping", async () => {
     const { run, observed } = makeRun({ fileConfig: { cap: "1" } });
-    const capped: WhileDoNode = { ...loop, condition: { type: "range", path: "context.count", max: 100 }, max_iterations: "${config.cap}" };
+    const capped: WhileDoNode = {
+      ...loop,
+      condition: { type: "range", path: "context.count", max: 100 },
+      max_iterations: "${config.cap}",
+    };
 
     const outcome = await runNode(run, capped, {}, makeExec({ count: 0 }));
 
@@ -371,23 +446,42 @@ describe("runNode — sequence", () => {
   // one node.
   it("returns its last child's output, seeding its first child from its own predecessor (§5.4)", async () => {
     const { run, observed } = makeRun();
-    const node: Node = { type: "sequence", id: "steps", name: "steps", body: [append("one", "-1"), append("two", "-2")] };
+    const node: Node = {
+      type: "sequence",
+      id: "steps",
+      name: "steps",
+      body: [append("one", "-1"), append("two", "-2")],
+    };
 
-    expect(await runNode(run, node, "seed", makeExec())).toEqual({ status: "succeeded", output: "seed-1-2" });
+    expect(await runNode(run, node, "seed", makeExec())).toEqual({
+      status: "succeeded",
+      output: "seed-1-2",
+    });
     // A controller has no worker, task or run of its own: only its children are narrated.
-    expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["one", "two"]);
+    expect(
+      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
+    ).toEqual(["one", "two"]);
   });
 
   it("chains the same way at any depth, a sequence inside a sequence included", async () => {
     const { run } = makeRun();
-    const inner: Node = { type: "sequence", id: "inner", name: "inner", body: [append("a", "-a"), append("b", "-b")] };
+    const inner: Node = {
+      type: "sequence",
+      id: "inner",
+      name: "inner",
+      body: [append("a", "-a"), append("b", "-b")],
+    };
     const outer: Node = {
       type: "sequence",
-      id: "outer", name: "outer",
+      id: "outer",
+      name: "outer",
       body: [append("head", "-head"), inner, append("tail", "-tail")],
     };
 
-    expect(await runNode(run, outer, "seed", makeExec())).toEqual({ status: "succeeded", output: "seed-head-a-b-tail" });
+    expect(await runNode(run, outer, "seed", makeExec())).toEqual({
+      status: "succeeded",
+      output: "seed-head-a-b-tail",
+    });
   });
 
   // Transparent on the context side too: a child's publish lands as that child succeeds, not buffered
@@ -398,11 +492,18 @@ describe("runNode — sequence", () => {
     const landed: { [key: string]: JsonValue }[] = [];
     const node: Node = {
       type: "sequence",
-      id: "steps", name: "steps",
-      body: [{ ...echo("greet", "hi"), publish: { greeting: "${output}" } } as Node, append("after", "!")],
+      id: "steps",
+      name: "steps",
+      body: [
+        { ...echo("greet", "hi"), publish: { greeting: "${output}" } } as Node,
+        append("after", "!"),
+      ],
     };
 
-    const outcome = await runNode(run, node, "seed", { ...exec, onPublish: async (u) => void landed.push(u) });
+    const outcome = await runNode(run, node, "seed", {
+      ...exec,
+      onPublish: async (u) => void landed.push(u),
+    });
 
     expect(outcome).toEqual({ status: "succeeded", output: "hi!" });
     expect(exec.context).toEqual({ greeting: "hi" });
@@ -413,24 +514,46 @@ describe("runNode — sequence", () => {
     const { run, observed } = makeRun();
     const node: Node = {
       type: "sequence",
-      id: "steps", name: "steps",
-      body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }, echo("never", "x")],
+      id: "steps",
+      name: "steps",
+      body: [
+        {
+          type: "binary",
+          id: "boom",
+          name: "boom",
+          command: "node",
+          args: ["-e", "process.exit(3)"],
+        },
+        echo("never", "x"),
+      ],
     };
 
     const outcome = await runNode(run, node, "seed", makeExec());
 
     expect(outcome.status).toBe("failed");
-    expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["boom"]);
+    expect(
+      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
+    ).toEqual(["boom"]);
   });
 });
 
 describe("runNode — binary step", () => {
   it("seeds a step with no input map from its predecessor's output (§6.1)", async () => {
     const { run } = makeRun();
-    const echoStdin = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))";
-    const node: Node = { type: "binary", id: "cat", name: "cat", command: "node", args: ["-e", echoStdin] };
+    const echoStdin =
+      "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d))";
+    const node: Node = {
+      type: "binary",
+      id: "cat",
+      name: "cat",
+      command: "node",
+      args: ["-e", echoStdin],
+    };
 
-    expect(await runNode(run, node, "carried", makeExec())).toEqual({ status: "succeeded", output: "carried" });
+    expect(await runNode(run, node, "carried", makeExec())).toEqual({
+      status: "succeeded",
+      output: "carried",
+    });
   });
 
   it("lands its publish on the run's context after it succeeds (§5.3)", async () => {
@@ -439,7 +562,10 @@ describe("runNode — binary step", () => {
     const landed: { [key: string]: JsonValue }[] = [];
     const node: Node = { ...echo("greet", "hi"), publish: { greeting: "${output}" } } as Node;
 
-    const outcome = await runNode(run, node, "seed", { ...exec, onPublish: async (u) => void landed.push(u) });
+    const outcome = await runNode(run, node, "seed", {
+      ...exec,
+      onPublish: async (u) => void landed.push(u),
+    });
 
     expect(outcome).toEqual({ status: "succeeded", output: "hi" });
     expect(exec.context).toEqual({ greeting: "hi" });
@@ -451,7 +577,8 @@ describe("runNode — binary step", () => {
     const exec = makeExec();
     const node: Node = {
       type: "binary",
-      id: "boom", name: "boom",
+      id: "boom",
+      name: "boom",
       command: "node",
       args: ["-e", "process.exit(3)"],
       publish: { greeting: "${output}" },
@@ -465,13 +592,22 @@ describe("runNode — binary step", () => {
     const { run } = makeRun({ fileConfig: { greeting: "file", other: "kept" } });
     const node: Node = {
       type: "binary",
-      id: "show", name: "show",
+      id: "show",
+      name: "show",
       command: "node",
-      args: ["-e", "process.stdout.write(process.argv[1] + process.argv[2])", "${config.greeting}", "${config.other}"],
+      args: [
+        "-e",
+        "process.stdout.write(process.argv[1] + process.argv[2])",
+        "${config.greeting}",
+        "${config.other}",
+      ],
       config: { greeting: "step" },
     };
 
-    expect(await runNode(run, node, "seed", makeExec())).toEqual({ status: "succeeded", output: "stepkept" });
+    expect(await runNode(run, node, "seed", makeExec())).toEqual({
+      status: "succeeded",
+      output: "stepkept",
+    });
   });
 
   it("fails the step, naming it, when its input map references something that isn't there", async () => {
@@ -490,7 +626,8 @@ describe("runNode — binary step", () => {
 describe("runNode — prompt step", () => {
   const promptNode: Node = {
     type: "prompt",
-    id: "ask", name: "ask",
+    id: "ask",
+    name: "ask",
     prompt: "say ${context.word}",
     config: { model: "test-model" },
   };
@@ -502,7 +639,12 @@ describe("runNode — prompt step", () => {
       needsProcessorSlot: true,
       run: async (request) => {
         prompts.push(String(request.fields.prompt));
-        return { status: "succeeded", output: "hello", usage: { input_tokens: 3 }, estimatedCostUsd: 0.01 };
+        return {
+          status: "succeeded",
+          output: "hello",
+          usage: { input_tokens: 3 },
+          estimatedCostUsd: 0.01,
+        };
       },
     };
     const { run, observed } = makeRun({ runtime: promptRuntime(worker) });
@@ -513,7 +655,12 @@ describe("runNode — prompt step", () => {
     expect(prompts).toEqual(["say hi"]);
     // `step-context` closes the sequence: a succeeded leaf step snapshots its enclosing context under
     // its own directory, after `step-finished`.
-    expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished", "step-context"]);
+    expect(observed.map((o) => o.type)).toEqual([
+      "step-started",
+      "step-usage",
+      "step-finished",
+      "step-context",
+    ]);
     expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ estimatedCostUsd: 0.01 });
   });
 
@@ -525,14 +672,17 @@ describe("runNode — prompt step", () => {
     });
     const node: Node = {
       type: "prompt",
-      id: "summarize", name: "summarize",
+      id: "summarize",
+      name: "summarize",
       prompt: "Summarize ${config.subject}.",
       input: { version: "${context.version}" },
       // `model` inherits from the file config; `options` is the step's own config (`@3` §8).
       config: { options: { mcpServers: { docs: { type: "stdio" } } } },
     };
 
-    expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe("succeeded");
+    expect((await runNode(run, node, "seed", makeExec({ version: "1.2.0" }))).status).toBe(
+      "succeeded",
+    );
     expect(requests[0]).toMatchObject({
       fields: { prompt: "Summarize the release." },
       input: { version: "1.2.0" },
@@ -550,7 +700,13 @@ describe("runNode — prompt step", () => {
       fileConfig: { model: "inherited" },
       runtime: promptRuntime(recordingWorker(requests)),
     });
-    const node: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "claude-haiku-4-5" } };
+    const node: Node = {
+      type: "prompt",
+      id: "ask",
+      name: "ask",
+      prompt: "Hi.",
+      config: { model: "claude-haiku-4-5" },
+    };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(requests[0]?.config.model).toBe("claude-haiku-4-5");
@@ -569,7 +725,12 @@ describe("runNode — prompt step", () => {
 
   it("fails the step when the output is not the JSON its parse declares", async () => {
     const { run } = makeRun({ runtime: promptRuntime(answeringWorker("not json")) });
-    const node: Node = { ...(promptNode as object), id: "judge", name: "judge", parse: "json" } as Node;
+    const node: Node = {
+      ...(promptNode as object),
+      id: "judge",
+      name: "judge",
+      parse: "json",
+    } as Node;
 
     const outcome = await runNode(run, node, "seed", makeExec({ word: "hi" }));
 
@@ -597,13 +758,18 @@ describe("runNode — prompt step", () => {
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.error).toMatch(/error_max_turns/);
     expect(observed.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-finished"]);
-    expect(observed.find((o) => o.type === "step-usage")).toMatchObject({ usage: { input_tokens: 9 }, estimatedCostUsd: 0.02 });
+    expect(observed.find((o) => o.type === "step-usage")).toMatchObject({
+      usage: { input_tokens: 9 },
+      estimatedCostUsd: 0.02,
+    });
   });
 
   it("reports no usage at all for a processor that recorded none", async () => {
     const { run, observed } = makeRun({ runtime: promptRuntime(answeringWorker("ok")) });
 
-    expect((await runNode(run, promptNode, "seed", makeExec({ word: "hi" }))).status).toBe("succeeded");
+    expect((await runNode(run, promptNode, "seed", makeExec({ word: "hi" }))).status).toBe(
+      "succeeded",
+    );
     expect(observed.filter((o) => o.type === "step-usage")).toHaveLength(0);
   });
 
@@ -618,7 +784,13 @@ describe("runNode — prompt step", () => {
       },
     };
     const { run } = makeRun({ runtime: promptRuntime(worker) });
-    const ask = (id: string): Node => ({ type: "prompt", id, name: id, prompt: `${id} question.`, config: { model: "m" } });
+    const ask = (id: string): Node => ({
+      type: "prompt",
+      id,
+      name: id,
+      prompt: `${id} question.`,
+      config: { model: "m" },
+    });
 
     const outcome = await runSequence(run, [ask("first"), ask("second")], "seed", makeExec());
 
@@ -643,24 +815,53 @@ describe("runNode — prompt step", () => {
         return { status: "failed", error: "cancelled" };
       },
     };
-    const { run, observed } = makeRun({ runtime: promptRuntime(worker, createProcessorSemaphore(2)) });
+    const { run, observed } = makeRun({
+      runtime: promptRuntime(worker, createProcessorSemaphore(2)),
+    });
     const node: Node = {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         {
-          type: "sequence", id: "slow", name: "slow",
-          body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" }, publish: { answer: "${output}" } }],
+          type: "sequence",
+          id: "slow",
+          name: "slow",
+          body: [
+            {
+              type: "prompt",
+              id: "ask",
+              name: "ask",
+              prompt: "Hi.",
+              config: { model: "m" },
+              publish: { answer: "${output}" },
+            },
+          ],
         },
-        { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "fail", name: "fail", command: "node", args: ["-e", "process.exit(3)"] }] },
+        {
+          type: "sequence",
+          id: "boom",
+          name: "boom",
+          body: [
+            {
+              type: "binary",
+              id: "fail",
+              name: "fail",
+              command: "node",
+              args: ["-e", "process.exit(3)"],
+            },
+          ],
+        },
       ],
     };
     const exec = makeExec();
 
     expect((await runNode(run, node, "seed", exec)).status).toBe("failed");
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({ nodeId: "ask" });
-    expect(observed.find((o) => o.type === "step-finished" && o.status === "cancelled")).toBeDefined();
+    expect(
+      observed.find((o) => o.type === "step-finished" && o.status === "cancelled"),
+    ).toBeDefined();
     expect(exec.context).toEqual({});
   });
 });
@@ -670,14 +871,21 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
   // assert which NAME dispatch resolved to without either real provider worker running.
   function bothPromptWorkers(worker: WorkerDescriptor): RunContext["runtime"] {
     const clone: LoadedStepPluginRegistry = {};
-    for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+    for (const [t, plugin] of Object.entries(registry))
+      clone[t] = { ...plugin, workers: { ...plugin.workers } };
     clone.prompt!.workers.anthropic = worker;
     clone.prompt!.workers.deepseek = worker;
     return { registry: clone, semaphore: createProcessorSemaphore(1) };
   }
 
   function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
-    return { format: "path/workflow@5", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
+    return {
+      format: "path/workflow@5",
+      id: "wf-defaults",
+      name: "wf",
+      body: [],
+      ...(worker_defaults ? { worker_defaults } : {}),
+    };
   }
 
   function startedWorker(observed: Observation[]): string | undefined {
@@ -685,17 +893,29 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     return started?.type === "step-started" ? started.workerName : undefined;
   }
 
-  const unpinned: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" } };
+  const unpinned: Node = {
+    type: "prompt",
+    id: "ask",
+    name: "ask",
+    prompt: "Hi.",
+    config: { model: "m" },
+  };
 
   it("resolves an un-pinned step to worker_defaults[type] when the file names one", async () => {
-    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ prompt: "deepseek" }) });
+    const { run, observed } = makeRun({
+      runtime: bothPromptWorkers(answeringWorker("ok")),
+      file: fileWith({ prompt: "deepseek" }),
+    });
 
     expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
     expect(startedWorker(observed)).toBe("deepseek");
   });
 
   it("lets an explicit node.worker win over worker_defaults", async () => {
-    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ prompt: "deepseek" }) });
+    const { run, observed } = makeRun({
+      runtime: bothPromptWorkers(answeringWorker("ok")),
+      file: fileWith({ prompt: "deepseek" }),
+    });
     const pinned: Node = { ...unpinned, worker: "anthropic" };
 
     expect((await runNode(run, pinned, "seed", makeExec())).status).toBe("succeeded");
@@ -703,14 +923,20 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
   });
 
   it("falls back to the plugin defaultWorker for a type absent from worker_defaults", async () => {
-    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith({ binary: "spawn" }) });
+    const { run, observed } = makeRun({
+      runtime: bothPromptWorkers(answeringWorker("ok")),
+      file: fileWith({ binary: "spawn" }),
+    });
 
     expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
     expect(startedWorker(observed)).toBe("anthropic"); // prompt's own defaultWorker, untouched by an unrelated row
   });
 
   it("resolves to the plugin defaultWorker when the file declares no worker_defaults", async () => {
-    const { run, observed } = makeRun({ runtime: bothPromptWorkers(answeringWorker("ok")), file: fileWith() });
+    const { run, observed } = makeRun({
+      runtime: bothPromptWorkers(answeringWorker("ok")),
+      file: fileWith(),
+    });
 
     expect((await runNode(run, unpinned, "seed", makeExec())).status).toBe("succeeded");
     expect(startedWorker(observed)).toBe("anthropic");
@@ -722,7 +948,9 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
     // the parent (ADR 0044). `ctx.run.file` is the child's file inside the nested run, which is what
     // keeps the table from crossing the ref boundary.
     const childWithPrompt: WorkflowFile = {
-      format: "path/workflow@5", id: "wf-child", name: "child",
+      format: "path/workflow@5",
+      id: "wf-child",
+      name: "child",
       body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
     };
     const { run, observed } = makeRun({
@@ -730,7 +958,13 @@ describe("runNode — worker resolution (file worker_defaults, ADR 0044)", () =>
       file: fileWith({ prompt: "deepseek" }),
       files: new Map([[resolve(fileDir, "child.json"), childWithPrompt]]),
     });
-    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
+    const node: Node = {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: {},
+    };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(startedWorker(observed)).toBe("anthropic");
@@ -741,16 +975,30 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
   // As in the file-tier block: prompt's `anthropic` and `deepseek` names both map to the same stub, so
   // a test asserts which NAME dispatch chose without a real provider worker running. `launch` seeds the
   // run-wide launch table on the shared runtime.
-  function promptWorkersWithLaunch(worker: WorkerDescriptor, launch?: { [type: string]: string }): RunContext["runtime"] {
+  function promptWorkersWithLaunch(
+    worker: WorkerDescriptor,
+    launch?: { [type: string]: string },
+  ): RunContext["runtime"] {
     const clone: LoadedStepPluginRegistry = {};
-    for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+    for (const [t, plugin] of Object.entries(registry))
+      clone[t] = { ...plugin, workers: { ...plugin.workers } };
     clone.prompt!.workers.anthropic = worker;
     clone.prompt!.workers.deepseek = worker;
-    return { registry: clone, semaphore: createProcessorSemaphore(1), ...(launch ? { launchWorkerDefaults: launch } : {}) };
+    return {
+      registry: clone,
+      semaphore: createProcessorSemaphore(1),
+      ...(launch ? { launchWorkerDefaults: launch } : {}),
+    };
   }
 
   function fileWith(worker_defaults?: { [type: string]: string }): WorkflowFile {
-    return { format: "path/workflow@5", id: "wf-defaults", name: "wf", body: [], ...(worker_defaults ? { worker_defaults } : {}) };
+    return {
+      format: "path/workflow@5",
+      id: "wf-defaults",
+      name: "wf",
+      body: [],
+      ...(worker_defaults ? { worker_defaults } : {}),
+    };
   }
 
   function startedWorker(observed: Observation[]): string | undefined {
@@ -758,7 +1006,13 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
     return started?.type === "step-started" ? started.workerName : undefined;
   }
 
-  const unpinned: Node = { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", config: { model: "m" } };
+  const unpinned: Node = {
+    type: "prompt",
+    id: "ask",
+    name: "ask",
+    prompt: "Hi.",
+    config: { model: "m" },
+  };
 
   it("resolves an un-pinned step to the launch default over the file worker_defaults", async () => {
     // The file names `anthropic`; the launch table names `deepseek`. The launch tier is above the file
@@ -820,7 +1074,9 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
     // the child's own file default names `anthropic` — the operator's run-wide intent outranks an
     // author's per-file default (ADR 0044). Only a `node.worker` pin sits above the launch tier.
     const childWithFileDefault: WorkflowFile = {
-      format: "path/workflow@5", id: "wf-child", name: "child",
+      format: "path/workflow@5",
+      id: "wf-child",
+      name: "child",
       worker_defaults: { prompt: "anthropic" },
       body: [{ type: "prompt", id: "inner", name: "inner", prompt: "Hi.", config: { model: "m" } }],
     };
@@ -829,7 +1085,13 @@ describe("runNode — worker resolution (launch worker-default, ADR 0044)", () =
       file: fileWith(),
       files: new Map([[resolve(fileDir, "child.json"), childWithFileDefault]]),
     });
-    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
+    const node: Node = {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: {},
+    };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(startedWorker(observed)).toBe("deepseek");
@@ -848,7 +1110,13 @@ describe("runNode — workflow step", () => {
 
   it("runs the referenced file as a nested run under this one, seeded only by its input", async () => {
     const { run, observed } = makeRun({ files: new Map([[childPath(), child]]) });
-    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: { name: "world" } };
+    const node: Node = {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: { name: "world" },
+    };
 
     const outcome = await runNode(run, node, "seed", makeExec({ parent_only: "invisible" }));
 
@@ -856,14 +1124,21 @@ describe("runNode — workflow step", () => {
     // The nested run is a run of its own, filed under this run and this node (#22).
     expect(observed.find((o) => o.type === "run-started")).toMatchObject({
       parentRunId: "run-1",
-      nodeId: "nested", nodeName: "nested",
+      nodeId: "nested",
+      nodeName: "nested",
       input: { name: "world" },
     });
   });
 
   it("fails when the ref is not in the loaded tree, rather than reading the disk itself", async () => {
     const { run } = makeRun({ files: new Map() });
-    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: {} };
+    const node: Node = {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: {},
+    };
 
     const outcome = await runNode(run, node, "seed", makeExec());
 
@@ -887,13 +1162,21 @@ describe("runNode — workflow step", () => {
         target: { stepRunId: "a-parked-leaf-deeper-down", output: null },
       },
     });
-    const node: Node = { type: "workflow", id: "nested", name: "nested", ref: "child.json", input: { name: "world" } };
+    const node: Node = {
+      type: "workflow",
+      id: "nested",
+      name: "nested",
+      ref: "child.json",
+      input: { name: "world" },
+    };
 
     const outcome = await runNode(run, node, "seed", makeExec());
 
     expect(outcome).toEqual({ status: "succeeded", output: { greeting: "world" } });
     // Re-entered, so no second `run-started` row for the child, and its own context was restored.
-    expect(observed.find((o) => o.type === "run-started" && o.runId === "child-run")).toBeUndefined();
+    expect(
+      observed.find((o) => o.type === "run-started" && o.runId === "child-run"),
+    ).toBeUndefined();
     expect(reads).toContain("child-run:context.json");
   });
 });
@@ -903,7 +1186,14 @@ describe("runNode — a node's own recorded row decides the walk (ADR 0041)", ()
     const requests: StepRequest[] = [];
     const { run, observed } = makeRun({
       continue: {
-        existingRuns: [existingRow({ runId: "done-run", nodeId: "ask", status: "succeeded", outputRef: "runs/root/done/output.json" })],
+        existingRuns: [
+          existingRow({
+            runId: "done-run",
+            nodeId: "ask",
+            status: "succeeded",
+            outputRef: "runs/root/done/output.json",
+          }),
+        ],
         readBlob: () => "recorded-output",
         target: { stepRunId: "some-other-leaf", output: null },
       },
@@ -980,12 +1270,19 @@ describe("runNode — a node type this engine does not walk", () => {
   it("fails the run, naming the type and the node", async () => {
     const { run } = makeRun();
 
-    const outcome = await runNode(run, { type: "mystery", id: "m", name: "m" } as unknown as Node, "seed", makeExec());
+    const outcome = await runNode(
+      run,
+      { type: "mystery", id: "m", name: "m" } as unknown as Node,
+      "seed",
+      makeExec(),
+    );
 
     expect(outcome.status).toBe("failed");
     // A `type` that is neither a control construct nor a registry leaf reaches the leaf dispatch and
     // fails at the registry lookup, naming the node and the unknown type (ADR 0019 sub-5 wording).
-    expect(outcome.status === "failed" && outcome.error).toMatch(/step "m": unknown step type "mystery"/);
+    expect(outcome.status === "failed" && outcome.error).toMatch(
+      /step "m": unknown step type "mystery"/,
+    );
   });
 });
 
@@ -993,10 +1290,14 @@ describe("runSequence", () => {
   // A step's default input is its predecessor's output, delivered on stdin (format §4.2, §5.4).
   it("chains each node's output into the next as its default input (§5.4)", async () => {
     const { run } = makeRun();
-    const appendTwo = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-two'))";
+    const appendTwo =
+      "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-two'))";
     const outcome = await runSequence(
       run,
-      [echo("first", "one"), { type: "binary", id: "second", name: "second", command: "node", args: ["-e", appendTwo] }],
+      [
+        echo("first", "one"),
+        { type: "binary", id: "second", name: "second", command: "node", args: ["-e", appendTwo] },
+      ],
       "seed",
       makeExec(),
     );
@@ -1008,14 +1309,25 @@ describe("runSequence", () => {
     const { run, observed } = makeRun();
     const outcome = await runSequence(
       run,
-      [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }, echo("never", "x")],
+      [
+        {
+          type: "binary",
+          id: "boom",
+          name: "boom",
+          command: "node",
+          args: ["-e", "process.exit(3)"],
+        },
+        echo("never", "x"),
+      ],
       "seed",
       makeExec(),
     );
 
     expect(outcome.status).toBe("failed");
     expect(outcome.status === "failed" && outcome.causeRunId).toBeTruthy();
-    expect(observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId)).toEqual(["boom"]);
+    expect(
+      observed.filter((o) => o.type === "step-started").map((o) => "nodeId" in o && o.nodeId),
+    ).toEqual(["boom"]);
   });
 
   // Starting a step run only to kill it would put a run in the record that never really ran.

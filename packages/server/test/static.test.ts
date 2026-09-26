@@ -2,7 +2,7 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let staticDir: string;
@@ -16,7 +16,12 @@ const DESIGNER_APP_JS = "console.log('path designer bundle');";
 
 /** Starts the server with the Viewer built and the Designer dir chosen by `withDesigner`. */
 async function start(withDesigner: boolean): Promise<PathServerHandle> {
-  return startPathServer(projectDir, 0, staticDir, withDesigner ? designerDir : join(projectDir, "no-designer"));
+  return startPathServer(
+    projectDir,
+    0,
+    staticDir,
+    withDesigner ? designerDir : join(projectDir, "no-designer"),
+  );
 }
 
 beforeEach(async () => {

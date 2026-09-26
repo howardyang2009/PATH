@@ -35,7 +35,10 @@ function open(): Project {
  * `answers[prompt]`, falling back to `<prompt>-<visit>` (the visit counted per prompt for this worker).
  * A prompt in `failing` fails. `ran` records every execution, so a reused node is one that is absent.
  */
-function scripted(ran: string[], opts: { failing?: string[]; answers?: { [prompt: string]: string[] } } = {}) {
+function scripted(
+  ran: string[],
+  opts: { failing?: string[]; answers?: { [prompt: string]: string[] } } = {},
+) {
   const visits = new Map<string, number>();
   const worker: WorkerDescriptor = {
     meters: false,
@@ -46,7 +49,10 @@ function scripted(ran: string[], opts: { failing?: string[]; answers?: { [prompt
       const visit = (visits.get(prompt) ?? 0) + 1;
       visits.set(prompt, visit);
       if (opts.failing?.includes(prompt)) return { status: "failed", error: `${prompt} failed` };
-      return { status: "succeeded", output: opts.answers?.[prompt]?.[visit - 1] ?? `${prompt}-${visit}` };
+      return {
+        status: "succeeded",
+        output: opts.answers?.[prompt]?.[visit - 1] ?? `${prompt}-${visit}`,
+      };
     },
   };
   return { prompt: { anthropic: worker } };
@@ -56,7 +62,11 @@ function step(name: string, extra: { [key: string]: unknown } = {}) {
   return { type: "prompt", id: name, prompt: name, ...extra };
 }
 
-function guarded(id: string, arms: { values: string[]; goto: string; target: string; maxJumps?: number }[], elseStep: string) {
+function guarded(
+  id: string,
+  arms: { values: string[]; goto: string; target: string; maxJumps?: number }[],
+  elseStep: string,
+) {
   return {
     type: "branch",
     id,
@@ -69,19 +79,30 @@ function guarded(id: string, arms: { values: string[]; goto: string; target: str
 }
 
 function file(body: unknown[]): WorkflowFile {
-  return stampNames({ format: "path/workflow@5", id: "wf-id", name: "jumps", config: { model: "m" }, body } as unknown as WorkflowFile);
+  return stampNames({
+    format: "path/workflow@5",
+    id: "wf-id",
+    name: "jumps",
+    config: { model: "m" },
+    body,
+  } as unknown as WorkflowFile);
 }
 
 /** The observations a successor emits, captured by an observer appended after the built-in pair. */
 function capture(): { observer: RunObserver; all: Observation[] } {
   const all: Observation[] = [];
-  return { observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver, all };
+  return {
+    observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver,
+    all,
+  };
 }
 
 /** A tree's pass rows under its root, in ordinal order, and each pass's direct children. */
 function passesOf(runs: RunRecord[]) {
   const root = runs.find((r) => r.parentRunId === null)!;
-  const passes = runs.filter((r) => r.parentRunId === root.runId && isPassRun(r)).sort((a, b) => a.pass! - b.pass!);
+  const passes = runs
+    .filter((r) => r.parentRunId === root.runId && isPassRun(r))
+    .sort((a, b) => a.pass! - b.pass!);
   return passes.map((p) => ({
     pass: p.pass,
     opener: p.nodeName,
@@ -104,12 +125,18 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
   // `[a, b, guard]`: the guard jumps back to `b` while `b`'s output is `b-1` or `b-2`, so pass 1 is
   // `a, b`, pass 2 is `b`, pass 3 is `b, done`.
   const loop = () =>
-    file([step("a"), step("b", { publish: { last: "${output}" } }), guarded("guard", [{ values: ["b-1", "b-2"], goto: "check", target: "b" }], "done")]);
+    file([
+      step("a"),
+      step("b", { publish: { last: "${output}" } }),
+      guarded("guard", [{ values: ["b-1", "b-2"], goto: "check", target: "b" }], "done"),
+    ]);
 
   it("G-E-14: a run failed in pass 3 pairs passes 1–2 and reuses them; pass 3 reuses its succeeded nodes and re-runs from the failure", async () => {
     const project = open();
     try {
-      const first = await project.run(loop(), dir, { workerOverrides: scripted([], { failing: ["done"] }) });
+      const first = await project.run(loop(), dir, {
+        workerOverrides: scripted([], { failing: ["done"] }),
+      });
       expect(first.status).toBe("failed");
       const rootId = await originalRoot(project);
       expect(passesOf(project.archive.tree(rootId)!.runs).map((p) => [p.pass, p.status])).toEqual([
@@ -159,7 +186,9 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
         ),
       ]);
       const ran: string[] = [];
-      const result = await project.resume(edited, rootId, dir, { workerOverrides: scripted(ran, { answers: { b: ["b-2", "b-3"] } }) });
+      const result = await project.resume(edited, rootId, dir, {
+        workerOverrides: scripted(ran, { answers: { b: ["b-2", "b-3"] } }),
+      });
       if (!result.found) throw new Error("expected found:true");
       expect(result.status).toBe("succeeded");
       expect(ran).toEqual(["b", "b", "done"]);
@@ -188,7 +217,9 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
       ]);
     const project = open();
     try {
-      expect((await project.run(kLoop(), dir, { workerOverrides: scripted([]) })).status).toBe("succeeded");
+      expect((await project.run(kLoop(), dir, { workerOverrides: scripted([]) })).status).toBe(
+        "succeeded",
+      );
       const rootId = await originalRoot(project);
       const original = passesOf(project.archive.tree(rootId)!.runs);
       const kRunId = original[1]!.children.find((r) => r.nodeName === "c")!.runId;
@@ -210,7 +241,11 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
         [2, "check"],
         [3, "check"],
       ]);
-      expect(passes.map((p) => shape(p.children))).toEqual([["a*", "b*", "c*"], ["b*", "c"], ["b", "c", "done"]]);
+      expect(passes.map((p) => shape(p.children))).toEqual([
+        ["a*", "b*", "c*"],
+        ["b*", "c"],
+        ["b", "c", "done"],
+      ]);
       // The boundary's level names the pass K sits in.
       expect(successor.root!.rerunFromNodePath).toEqual([{ nodeId: "c", nodeName: "c", pass: 2 }]);
     } finally {
@@ -244,7 +279,10 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
           return worker.run(request);
         },
       };
-      const result = await project.resume(publishing(), rootId, dir, { rerunFromRunId: kRunId, workerOverrides: { prompt: { anthropic: spying } } });
+      const result = await project.resume(publishing(), rootId, dir, {
+        rerunFromRunId: kRunId,
+        workerOverrides: { prompt: { anthropic: spying } },
+      });
       if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
       expect(result.status).toBe("succeeded");
       expect(inputs[0]).toEqual({ saw: "a-1" });
@@ -256,13 +294,23 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
   it("Resume-from-K after a goto was added to a goto-free file runs every pass fresh: the record has no pass to pair", async () => {
     const project = open();
     try {
-      await project.run(file([step("a"), step("b"), step("c")]), dir, { workerOverrides: scripted([], { failing: ["c"] }) });
+      await project.run(file([step("a"), step("b"), step("c")]), dir, {
+        workerOverrides: scripted([], { failing: ["c"] }),
+      });
       const rootId = await originalRoot(project);
       const kRunId = project.archive.tree(rootId)!.runs.find((r) => r.nodeName === "b")!.runId;
 
       const ran: string[] = [];
-      const edited = file([step("a"), step("b"), step("c", { publish: { last: "${output}" } }), guarded("guard", [{ values: ["never"], goto: "check", target: "a" }], "done")]);
-      const result = await project.resume(edited, rootId, dir, { rerunFromRunId: kRunId, workerOverrides: scripted(ran) });
+      const edited = file([
+        step("a"),
+        step("b"),
+        step("c", { publish: { last: "${output}" } }),
+        guarded("guard", [{ values: ["never"], goto: "check", target: "a" }], "done"),
+      ]);
+      const result = await project.resume(edited, rootId, dir, {
+        rerunFromRunId: kRunId,
+        workerOverrides: scripted(ran),
+      });
       if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
       expect(result.status).toBe("succeeded");
       expect(ran).toEqual(["a", "b", "c", "done"]);
@@ -279,11 +327,18 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
       const listing = project.listEligible(loop(), rootId, dir);
       if (!listing.found) throw new Error(listing.error);
 
-      const passOf = new Map(project.archive.tree(rootId)!.runs.filter(isPassRun).map((p) => [p.runId, p.pass]));
+      const passOf = new Map(
+        project.archive
+          .tree(rootId)!
+          .runs.filter(isPassRun)
+          .map((p) => [p.runId, p.pass]),
+      );
       const runs = new Map(project.archive.tree(rootId)!.runs.map((r) => [r.runId, r]));
       const rows = listing.rows.map((row) => {
         const record = runs.get(row.runId)!;
-        const where = isPassRun(record) ? `pass ${record.pass}` : `${row.nodeName} in pass ${passOf.get(record.parentRunId!) ?? "-"}`;
+        const where = isPassRun(record)
+          ? `pass ${record.pass}`
+          : `${row.nodeName} in pass ${passOf.get(record.parentRunId!) ?? "-"}`;
         return [where, row.verdict.eligible ? "yes" : row.verdict.reason];
       });
       expect(rows).toEqual([
@@ -301,7 +356,10 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
 
       // `--from` a pass row is refused with the same verdict, and no successor starts.
       const pass2 = [...passOf].find(([, pass]) => pass === 2)![0];
-      const refused = await project.resume(loop(), rootId, dir, { rerunFromRunId: pass2, workerOverrides: scripted([]) });
+      const refused = await project.resume(loop(), rootId, dir, {
+        rerunFromRunId: pass2,
+        workerOverrides: scripted([]),
+      });
       expect(refused).toMatchObject({ found: false, refusal: { status: 400, reason: "pass-run" } });
     } finally {
       project.close();
@@ -315,12 +373,19 @@ describe("goto — Resume pairs passes (spec §8.1)", () => {
       const rootId = await originalRoot(project);
 
       const { observer, all } = capture();
-      const result = await project.resume(loop(), rootId, dir, { workerOverrides: scripted([]), extraObservers: [observer] });
+      const result = await project.resume(loop(), rootId, dir, {
+        workerOverrides: scripted([]),
+        extraObservers: [observer],
+      });
       if (!result.found) throw new Error("expected found:true");
 
       const gotoEvents = all.flatMap((o) => {
-        if (o.type === "pass-started") return [`${o.runId === result.rootRunId ? "own" : "other"} pass-started ${o.pass}`];
-        if (o.type === "goto-taken") return [`${o.runId === result.rootRunId ? "own" : "other"} goto-taken ${o.jump}/${o.maxJumps} pass ${o.pass}`];
+        if (o.type === "pass-started")
+          return [`${o.runId === result.rootRunId ? "own" : "other"} pass-started ${o.pass}`];
+        if (o.type === "goto-taken")
+          return [
+            `${o.runId === result.rootRunId ? "own" : "other"} goto-taken ${o.jump}/${o.maxJumps} pass ${o.pass}`,
+          ];
         return [];
       });
       expect(gotoEvents).toEqual([

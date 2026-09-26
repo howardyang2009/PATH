@@ -1,6 +1,14 @@
+import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode, walkNodes } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { FORMAT_VERSION, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { editFile, findById, isDuplicable, locate, unwrapEdit, type EditOp, type EditResult } from "../src/edit-tree.js";
+import {
+  type EditOp,
+  type EditResult,
+  editFile,
+  findById,
+  isDuplicable,
+  locate,
+  unwrapEdit,
+} from "../src/edit-tree.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "../src/node-factory.js";
 
 /** Apply one op and unwrap it to the new file — for the total ops (every op but `delete`). */
@@ -28,7 +36,13 @@ function fixture(): WorkflowFile {
     body: [
       leaf(2, "top-a"),
       { type: "sequence", id: uuid(3), name: "seq", body: [leaf(4, "s1"), leaf(5, "s2")] },
-      { type: "parallel", id: uuid(6), name: "par", join: "collect", branches: [leaf(7, "b1"), leaf(8, "b2")] },
+      {
+        type: "parallel",
+        id: uuid(6),
+        name: "par",
+        join: "collect",
+        branches: [leaf(7, "b1"), leaf(8, "b2")],
+      },
       {
         type: "branch",
         id: uuid(9),
@@ -39,7 +53,14 @@ function fixture(): WorkflowFile {
         ],
         else: leaf(12, "els"),
       },
-      { type: "while-do", id: uuid(13), name: "wh", condition: { type: "exists", path: "context.z" }, max_iterations: 3, node: leaf(14, "body") },
+      {
+        type: "while-do",
+        id: uuid(13),
+        name: "wh",
+        condition: { type: "exists", path: "context.z" },
+        max_iterations: 3,
+        node: leaf(14, "body"),
+      },
     ],
   };
 }
@@ -55,8 +76,18 @@ describe("edit-tree — locate (#368)", () => {
   it("locates a node in each container kind", () => {
     const f = fixture();
     expect(locate(f, uuid(2))).toEqual({ where: "file-body", index: 0 });
-    expect(locate(f, uuid(5))).toMatchObject({ where: "list", listKind: "sequence-body", ownerId: uuid(3), index: 1 });
-    expect(locate(f, uuid(8))).toMatchObject({ where: "list", listKind: "branches", ownerId: uuid(6), index: 1 });
+    expect(locate(f, uuid(5))).toMatchObject({
+      where: "list",
+      listKind: "sequence-body",
+      ownerId: uuid(3),
+      index: 1,
+    });
+    expect(locate(f, uuid(8))).toMatchObject({
+      where: "list",
+      listKind: "branches",
+      ownerId: uuid(6),
+      index: 1,
+    });
     expect(locate(f, uuid(11))).toEqual({ where: "arm", ownerId: uuid(9), armIndex: 1 });
     expect(locate(f, uuid(12))).toEqual({ where: "else", ownerId: uuid(9) });
     expect(locate(f, uuid(14))).toEqual({ where: "while-body", ownerId: uuid(13) });
@@ -89,9 +120,15 @@ describe("edit-tree — reorder preserves every id (#368, ADR 0015)", () => {
   it("reorders inside a sequence and inside branch arms", () => {
     let f = fixture();
     f = apply(f, { kind: "move", id: uuid(4), delta: 1 }); // s1 down within seq
-    expect((f.body[1] as { body: WorkflowNode[] }).body.map((n) => n.id)).toEqual([uuid(5), uuid(4)]);
+    expect((f.body[1] as { body: WorkflowNode[] }).body.map((n) => n.id)).toEqual([
+      uuid(5),
+      uuid(4),
+    ]);
     f = apply(f, { kind: "move", id: uuid(11), delta: -1 }); // arm2 up
-    expect((f.body[3] as { arms: { node: WorkflowNode }[] }).arms.map((a) => a.node.id)).toEqual([uuid(11), uuid(10)]);
+    expect((f.body[3] as { arms: { node: WorkflowNode }[] }).arms.map((a) => a.node.id)).toEqual([
+      uuid(11),
+      uuid(10),
+    ]);
   });
 
   it("is a no-op off either end and for a single-node slot, returning the same file (no spurious edit)", () => {
@@ -108,18 +145,35 @@ describe("edit-tree — reorder preserves every id (#368, ADR 0015)", () => {
 describe("edit-tree — swap a single-node slot (#368)", () => {
   it("swaps a while-do body, a branch arm occupant, and an else, never emptying the slot", () => {
     let f = fixture();
-    f = apply(f, { kind: "swap-single", target: { slot: "while-body", ownerId: uuid(13) }, node: leaf(30, "new-body") });
+    f = apply(f, {
+      kind: "swap-single",
+      target: { slot: "while-body", ownerId: uuid(13) },
+      node: leaf(30, "new-body"),
+    });
     expect((f.body[4] as { node: WorkflowNode }).node.id).toBe(uuid(30));
-    f = apply(f, { kind: "swap-single", target: { slot: "arm", ownerId: uuid(9), armIndex: 0 }, node: leaf(31, "new-arm") });
+    f = apply(f, {
+      kind: "swap-single",
+      target: { slot: "arm", ownerId: uuid(9), armIndex: 0 },
+      node: leaf(31, "new-arm"),
+    });
     expect((f.body[3] as { arms: { node: WorkflowNode }[] }).arms[0]!.node.id).toBe(uuid(31));
-    f = apply(f, { kind: "swap-single", target: { slot: "else", ownerId: uuid(9) }, node: leaf(32, "new-else") });
+    f = apply(f, {
+      kind: "swap-single",
+      target: { slot: "else", ownerId: uuid(9) },
+      node: leaf(32, "new-else"),
+    });
     expect((f.body[3] as { else: WorkflowNode }).else.id).toBe(uuid(32));
   });
 });
 
 describe("edit-tree — delete slot rules (#368)", () => {
   it("removes a plain file-body node, allowing the body to empty", () => {
-    const f: WorkflowFile = { format: FORMAT_VERSION, id: uuid(1), name: "flow", body: [leaf(2, "only")] };
+    const f: WorkflowFile = {
+      format: FORMAT_VERSION,
+      id: uuid(1),
+      name: "flow",
+      body: [leaf(2, "only")],
+    };
     const r = del(f, uuid(2));
     expect(r.ok && r.file.body).toEqual([]);
   });
@@ -184,7 +238,11 @@ describe("edit-tree — else management (#368: at most one else)", () => {
 
 describe("edit-tree — arm and duplicate (#368)", () => {
   it("adds an arm to a branch", () => {
-    const f = apply(fixture(), { kind: "add-arm", branchId: uuid(9), arm: createArm(usedNames(fixture().body)) });
+    const f = apply(fixture(), {
+      kind: "add-arm",
+      branchId: uuid(9),
+      arm: createArm(usedNames(fixture().body)),
+    });
     expect((f.body[3] as { arms: unknown[] }).arms).toHaveLength(3);
   });
 
@@ -214,7 +272,11 @@ describe("edit-tree — replace (#369: the pane's content commit)", () => {
 
   it("re-keys a node — the match is on the old id, the replacement carries the new one", () => {
     const f = fixture();
-    const g = apply(f, { kind: "replace", id: uuid(2), node: { ...(f.body[0] as WorkflowNode), id: uuid(99) } });
+    const g = apply(f, {
+      kind: "replace",
+      id: uuid(2),
+      node: { ...(f.body[0] as WorkflowNode), id: uuid(99) },
+    });
     expect(g.body[0]!.id).toBe(uuid(99));
     expect(locate(g, uuid(2))).toBeNull();
   });
@@ -228,7 +290,12 @@ describe("edit-tree — replace (#369: the pane's content commit)", () => {
 describe("edit-tree — set-arm-when (#370)", () => {
   it("sets a branch arm's condition, leaving its occupant untouched", () => {
     const f = fixture();
-    const g = apply(f, { kind: "set-arm-when", branchId: uuid(9), armIndex: 0, when: { type: "exists", path: "context.new" } });
+    const g = apply(f, {
+      kind: "set-arm-when",
+      branchId: uuid(9),
+      armIndex: 0,
+      when: { type: "exists", path: "context.new" },
+    });
     const branch = g.body[3] as { arms: { when: { path?: string }; node: WorkflowNode }[] };
     expect(branch.arms[0]!.when).toEqual({ type: "exists", path: "context.new" });
     expect(branch.arms[0]!.node.id).toBe(uuid(10)); // occupant untouched

@@ -1,4 +1,4 @@
-import { ENVELOPE_KEYS, type ConfigObject, type WorkflowNode } from "@path/schema";
+import { type ConfigObject, ENVELOPE_KEYS, type WorkflowNode } from "@path/schema";
 import { withoutKey } from "./edit-target.js";
 
 /**
@@ -30,7 +30,10 @@ export function nodePayload(node: WorkflowNode): Record<string, unknown> {
 }
 
 /** Rebuild a node from its envelope plus a fresh payload (envelope keys in the payload are ignored). */
-export function mergeNodePayload(node: WorkflowNode, payload: Record<string, unknown>): WorkflowNode {
+export function mergeNodePayload(
+  node: WorkflowNode,
+  payload: Record<string, unknown>,
+): WorkflowNode {
   const envelope: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
     if (ENVELOPE_KEYS.has(key)) envelope[key] = value;
@@ -66,11 +69,16 @@ export function withOptionalArray(node: WorkflowNode, key: string, value: string
 /** The node's own `config` object, or `undefined` when it carries none. */
 export function nodeConfigOf(node: WorkflowNode): ConfigObject | undefined {
   const config = rec(node).config;
-  return config !== null && typeof config === "object" && !Array.isArray(config) ? (config as ConfigObject) : undefined;
+  return config !== null && typeof config === "object" && !Array.isArray(config)
+    ? (config as ConfigObject)
+    : undefined;
 }
 
 /** Write (or drop) a node's `config`, keeping the node otherwise intact. */
-export function applyNodeConfig(node: WorkflowNode, config: ConfigObject | undefined): WorkflowNode {
+export function applyNodeConfig(
+  node: WorkflowNode,
+  config: ConfigObject | undefined,
+): WorkflowNode {
   return config === undefined ? dropNodeKey(node, "config") : ({ ...node, config } as WorkflowNode);
 }
 
@@ -102,7 +110,9 @@ export function configStringOf(config: Record<string, unknown> | undefined, key:
  * full inherited-vs-overridden config editor (§ Config inheritance display) uses `config-inheritance.ts`.
  */
 export function withConfig(node: WorkflowNode, key: string, value: string): WorkflowNode {
-  const config: Record<string, unknown> = { ...((rec(node).config as Record<string, unknown> | undefined) ?? {}) };
+  const config: Record<string, unknown> = {
+    ...((rec(node).config as Record<string, unknown> | undefined) ?? {}),
+  };
   if (value === "") delete config[key];
   else config[key] = value;
   if (Object.keys(config).length === 0) return dropNodeKey(node, "config");

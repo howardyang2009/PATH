@@ -1,10 +1,10 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
-import type { Emitter } from "./run-emitter.js";
 import type { EnvSource } from "./resolve-env.js";
-import type { Observation } from "./run-observer.js";
 import type { RunResume } from "./resume-plan.js";
+import type { Emitter } from "./run-emitter.js";
+import type { Observation } from "./run-observer.js";
 
 /**
  * The vocabulary one run tree threads through its walk, shared by the executor (`run-workflow.ts`)

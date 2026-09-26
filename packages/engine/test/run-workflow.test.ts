@@ -6,9 +6,9 @@ import type { ConfigObject, WorkflowFile } from "@path/schema";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
 import { DEFAULT_PROCESSOR_CONCURRENCY } from "../src/processor-semaphore.js";
-import { fakeObserver, type FakeObserver } from "./fake-observer.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { runWorkflow, type WorkerOverrides } from "../src/run-workflow.js";
+import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
@@ -47,8 +47,20 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
       id: "wf-id",
       name: "fail-fast",
       body: [
-        { type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] },
-        { type: "binary", id: "never", name: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
+        {
+          type: "binary",
+          id: "boom",
+          name: "boom",
+          command: "node",
+          args: ["-e", "process.exit(3)"],
+        },
+        {
+          type: "binary",
+          id: "never",
+          name: "never",
+          command: "node",
+          args: ["-e", "process.stdout.write('nope')"],
+        },
       ],
     };
     const result = await runWorkflow(stampNames(file), fixturesDir);
@@ -60,45 +72,54 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
   it("acceptance: races two binary sleeps under wait-one — the shorter wins, the longer is cancelled sibling-succeeded", async () => {
     // The real file, through the real schema: two branches publishing the same key `answer` — which
     // `collect` would reject at load, but `wait-one` allows because only the winner's publish lands.
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "race-two-sleeps",
-      body: [
-        {
-          type: "parallel",
-          id: "race", name: "race",
-          join: "wait-one",
-          branches: [
-            {
-              type: "sequence", id: "fast", name: "fast",
-              body: [
-                {
-                  type: "binary",
-                  id: "quick", name: "quick",
-                  command: "node",
-                  args: ["-e", "setTimeout(()=>process.stdout.write('FAST'),10)"],
-                  publish: { answer: "${output}" },
-                },
-              ],
-            },
-            {
-              type: "sequence", id: "slow", name: "slow",
-              body: [
-                {
-                  type: "binary",
-                  id: "sluggish", name: "sluggish",
-                  command: "node",
-                  args: ["-e", "setTimeout(()=>process.stdout.write('SLOW'),5000)"],
-                  publish: { answer: "${output}" },
-                },
-              ],
-            },
-          ],
-        },
-      ],
-      output: { answer: "${context.answer}" },
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "race-two-sleeps",
+        body: [
+          {
+            type: "parallel",
+            id: "race",
+            name: "race",
+            join: "wait-one",
+            branches: [
+              {
+                type: "sequence",
+                id: "fast",
+                name: "fast",
+                body: [
+                  {
+                    type: "binary",
+                    id: "quick",
+                    name: "quick",
+                    command: "node",
+                    args: ["-e", "setTimeout(()=>process.stdout.write('FAST'),10)"],
+                    publish: { answer: "${output}" },
+                  },
+                ],
+              },
+              {
+                type: "sequence",
+                id: "slow",
+                name: "slow",
+                body: [
+                  {
+                    type: "binary",
+                    id: "sluggish",
+                    name: "sluggish",
+                    command: "node",
+                    args: ["-e", "setTimeout(()=>process.stdout.write('SLOW'),5000)"],
+                    publish: { answer: "${output}" },
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+        output: { answer: "${context.answer}" },
+      }),
+    );
 
     const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { observer });
@@ -117,10 +138,17 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     });
     // The longer branch was cancelled best-effort, with the new cause and no cause run behind it.
     const cancelled = all.find((o) => o.type === "run-cancelled");
-    expect(cancelled).toMatchObject({ nodeName: "sluggish", cause: "sibling-succeeded", causeRunId: null });
+    expect(cancelled).toMatchObject({
+      nodeName: "sluggish",
+      cause: "sibling-succeeded",
+      causeRunId: null,
+    });
     // And it ends `cancelled`, a distinct status from `failed`, so nothing of its lands.
     expect(
-      all.some((o) => o.type === "step-finished" && o.status === "cancelled" && o.runId === cancelled!.runId),
+      all.some(
+        (o) =>
+          o.type === "step-finished" && o.status === "cancelled" && o.runId === cancelled!.runId,
+      ),
     ).toBe(true);
   });
 
@@ -135,11 +163,38 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
       body: [
         {
           type: "parallel",
-          id: "race", name: "race",
+          id: "race",
+          name: "race",
           join: "wait-one",
           branches: [
-            { type: "sequence", id: "arm-a", name: "arm-a", body: [{ type: "binary", id: "boom-a", name: "boom-a", command: "node", args: ["-e", "process.exit(7)"] }] },
-            { type: "sequence", id: "arm-b", name: "arm-b", body: [{ type: "binary", id: "boom-b", name: "boom-b", command: "node", args: ["-e", "process.exit(9)"] }] },
+            {
+              type: "sequence",
+              id: "arm-a",
+              name: "arm-a",
+              body: [
+                {
+                  type: "binary",
+                  id: "boom-a",
+                  name: "boom-a",
+                  command: "node",
+                  args: ["-e", "process.exit(7)"],
+                },
+              ],
+            },
+            {
+              type: "sequence",
+              id: "arm-b",
+              name: "arm-b",
+              body: [
+                {
+                  type: "binary",
+                  id: "boom-b",
+                  name: "boom-b",
+                  command: "node",
+                  args: ["-e", "process.exit(9)"],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -157,7 +212,9 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
     // No winner, so no join lands (§8)...
     expect(observer["join-applied"]).not.toHaveBeenCalled();
     // ...and nothing was cancelled sibling-succeeded — each branch died on its own (§2).
-    expect(all.some((o) => o.type === "run-cancelled" && o.cause === "sibling-succeeded")).toBe(false);
+    expect(all.some((o) => o.type === "run-cancelled" && o.cause === "sibling-succeeded")).toBe(
+      false,
+    );
 
     // Each branch's own failure is still recorded on its own run row (nodeId lands on step-started,
     // so map each arm's node to its run and assert that run's step-finished is `failed`).
@@ -179,7 +236,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
       body: [
         {
           type: "binary",
-          id: "pwd", name: "pwd",
+          id: "pwd",
+          name: "pwd",
           command: "node",
           args: ["-e", "process.stdout.write(process.cwd())"],
           cwd: fixturesDir,
@@ -198,7 +256,8 @@ describe("runWorkflow — walking-skeleton basics (ticket #16, still true under 
       body: [
         {
           type: "binary",
-          id: "pwd", name: "pwd",
+          id: "pwd",
+          name: "pwd",
           command: "node",
           args: ["-e", "process.stdout.write(process.cwd())"],
           // `.` is what the acceptance pipeline's `repo_path` default is; anchoring it to the
@@ -235,41 +294,48 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     // One detached branch that takes 1s, then an instant successor. Launch-and-continue means the
     // successor runs against the block's `{}` output without waiting for the branch; the enclosing-run
     // barrier means the run does not finish until the branch is terminal (do-not-wait-join.md §2/§1.1).
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "fire-and-continue",
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "notify", name: "notify",
-              body: [
-                {
-                  type: "binary",
-                  id: "slow-notify", name: "slow-notify",
-                  command: "node",
-                  args: ["-e", "setTimeout(()=>process.stdout.write('SENT'),1000)"],
-                },
-              ],
-            },
-          ],
-        },
-        // The successor's default input is the block's output; it echoes its stdin, so its stdout is
-        // exactly what the block handed downstream — `{}` serialized.
-        {
-          type: "binary",
-          id: "after", name: "after",
-          command: "node",
-          args: ["-e", echoStdinScript()],
-          publish: { seen: "${output}" },
-        },
-      ],
-      output: { seen: "${context.seen}" },
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "fire-and-continue",
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "notify",
+                name: "notify",
+                body: [
+                  {
+                    type: "binary",
+                    id: "slow-notify",
+                    name: "slow-notify",
+                    command: "node",
+                    args: ["-e", "setTimeout(()=>process.stdout.write('SENT'),1000)"],
+                  },
+                ],
+              },
+            ],
+          },
+          // The successor's default input is the block's output; it echoes its stdin, so its stdout is
+          // exactly what the block handed downstream — `{}` serialized.
+          {
+            type: "binary",
+            id: "after",
+            name: "after",
+            command: "node",
+            args: ["-e", echoStdinScript()],
+            publish: { seen: "${output}" },
+          },
+        ],
+        output: { seen: "${context.seen}" },
+      }),
+    );
 
     const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { observer });
@@ -294,29 +360,44 @@ describe("runWorkflow — do-not-wait launch-and-continue (ticket #213)", () => 
     // Barrier: the detached branch reached `succeeded`, and it did so before the root run finished —
     // the run never returned with the branch still live.
     expect(finishedOf("slow-notify")).toMatchObject({ status: "succeeded" });
-    const rootFinishedIndex = all.findIndex((o) => o.type === "run-finished" && o.runId === o.rootRunId);
+    const rootFinishedIndex = all.findIndex(
+      (o) => o.type === "run-finished" && o.runId === o.rootRunId,
+    );
     expect(finishedIndexOf("slow-notify")).toBeLessThan(rootFinishedIndex);
   });
 
   it("emits join-applied at the do-not-wait join with no winner and no landed keys (§9)", async () => {
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "fire-once",
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "notify", name: "notify",
-              body: [{ type: "binary", id: "ping", name: "ping", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
-            },
-          ],
-        },
-      ],
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "fire-once",
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "notify",
+                name: "notify",
+                body: [
+                  {
+                    type: "binary",
+                    id: "ping",
+                    name: "ping",
+                    command: "node",
+                    args: ["-e", "process.stdout.write('ok')"],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    );
 
     const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { observer });
@@ -341,25 +422,44 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     // The demoable case (§5, ADR 0008): a detached branch exits non-zero while the main path
     // succeeds. The block discharged at the join, so the run ends on its main path alone — `succeeded`
     // — with the branch's `failed` recorded on its own run row and narrated by its own `step-finished`.
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "fire-and-fail",
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "doomed", name: "doomed",
-              body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(7)"] }],
-            },
-          ],
-        },
-        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
-      ],
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "fire-and-fail",
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "doomed",
+                name: "doomed",
+                body: [
+                  {
+                    type: "binary",
+                    id: "boom",
+                    name: "boom",
+                    command: "node",
+                    args: ["-e", "process.exit(7)"],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "binary",
+            id: "after",
+            name: "after",
+            command: "node",
+            args: ["-e", "process.stdout.write('ok')"],
+          },
+        ],
+      }),
+    );
 
     const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { observer });
@@ -381,29 +481,58 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     // Two detached siblings: one exits non-zero at once, the other sleeps then succeeds. A `collect`
     // failure would cross-cancel the in-flight sibling (`sibling-failed`); do-not-wait cancels nothing.
     // The surviving sibling runs to `succeeded` and the main path is untouched.
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "fail-one-keep-other",
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "doomed", name: "doomed",
-              body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(7)"] }],
-            },
-            {
-              type: "sequence", id: "survivor", name: "survivor",
-              body: [{ type: "binary", id: "slow-ok", name: "slow-ok", command: "node", args: ["-e", "setTimeout(()=>process.stdout.write('ok'),80)"] }],
-            },
-          ],
-        },
-        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
-      ],
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "fail-one-keep-other",
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "doomed",
+                name: "doomed",
+                body: [
+                  {
+                    type: "binary",
+                    id: "boom",
+                    name: "boom",
+                    command: "node",
+                    args: ["-e", "process.exit(7)"],
+                  },
+                ],
+              },
+              {
+                type: "sequence",
+                id: "survivor",
+                name: "survivor",
+                body: [
+                  {
+                    type: "binary",
+                    id: "slow-ok",
+                    name: "slow-ok",
+                    command: "node",
+                    args: ["-e", "setTimeout(()=>process.stdout.write('ok'),80)"],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "binary",
+            id: "after",
+            name: "after",
+            command: "node",
+            args: ["-e", "process.stdout.write('ok')"],
+          },
+        ],
+      }),
+    );
 
     const observer = fakeObserver();
     const result = await runWorkflow(file, fixturesDir, { observer });
@@ -423,25 +552,44 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     // A detached branch and the main path both sleep long enough to still be live when the operator
     // aborts the root. do-not-wait adds no sibling-driven cancel path, so the only abort that reaches
     // the branch is the existing operator one, and it lands under the existing cause `operator`.
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "operator-cancels-detached",
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "detached", name: "detached",
-              body: [{ type: "binary", id: "detached-work", name: "detached-work", command: "node", args: ["-e", "setTimeout(()=>{},5000)"] }],
-            },
-          ],
-        },
-        { type: "binary", id: "main-work", name: "main-work", command: "node", args: ["-e", "setTimeout(()=>{},5000)"] },
-      ],
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "operator-cancels-detached",
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "detached",
+                name: "detached",
+                body: [
+                  {
+                    type: "binary",
+                    id: "detached-work",
+                    name: "detached-work",
+                    command: "node",
+                    args: ["-e", "setTimeout(()=>{},5000)"],
+                  },
+                ],
+              },
+            ],
+          },
+          {
+            type: "binary",
+            id: "main-work",
+            name: "main-work",
+            command: "node",
+            args: ["-e", "setTimeout(()=>{},5000)"],
+          },
+        ],
+      }),
+    );
 
     const observer = fakeObserver();
     const controller = new AbortController();
@@ -459,7 +607,9 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
     expect(branchCancel).toMatchObject({ cause: "operator", causeRunId: null });
     // No new cancel cause: every cancellation on this path is `operator` — do-not-wait added no
     // sibling-driven path, so nothing here reads `sibling-failed`, `sibling-succeeded`, or anything else.
-    const causes = all.filter((o) => o.type === "run-cancelled").map((o) => (o as Extract<Observation, { type: "run-cancelled" }>).cause);
+    const causes = all
+      .filter((o) => o.type === "run-cancelled")
+      .map((o) => (o as Extract<Observation, { type: "run-cancelled" }>).cause);
     expect(causes.length).toBeGreaterThan(0);
     expect(causes.every((c) => c === "operator")).toBe(true);
   });
@@ -473,32 +623,53 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
       needsProcessorSlot: true,
       async run() {
         await new Promise((r) => setTimeout(r, 60));
-        return { status: "failed", error: "sink rejected", usage: { input_tokens: 11, output_tokens: 7 }, estimatedCostUsd: 0.002 };
+        return {
+          status: "failed",
+          error: "sink rejected",
+          usage: { input_tokens: 11, output_tokens: 7 },
+          estimatedCostUsd: 0.002,
+        };
       },
     };
-    const file = parseWorkflowFile(stampGuids({
-      format: "path/workflow@5",
-      id: "wf-id",
-      name: "detached-spend-counts",
-      config: { model: "claude-sonnet-5" },
-      body: [
-        {
-          type: "parallel",
-          id: "fire", name: "fire",
-          join: "do-not-wait",
-          branches: [
-            {
-              type: "sequence", id: "telemetry", name: "telemetry",
-              body: [{ type: "prompt", id: "emit", name: "emit", prompt: "Emit to the slow sink." }],
-            },
-          ],
-        },
-        { type: "binary", id: "after", name: "after", command: "node", args: ["-e", "process.stdout.write('ok')"] },
-      ],
-    }));
+    const file = parseWorkflowFile(
+      stampGuids({
+        format: "path/workflow@5",
+        id: "wf-id",
+        name: "detached-spend-counts",
+        config: { model: "claude-sonnet-5" },
+        body: [
+          {
+            type: "parallel",
+            id: "fire",
+            name: "fire",
+            join: "do-not-wait",
+            branches: [
+              {
+                type: "sequence",
+                id: "telemetry",
+                name: "telemetry",
+                body: [
+                  { type: "prompt", id: "emit", name: "emit", prompt: "Emit to the slow sink." },
+                ],
+              },
+            ],
+          },
+          {
+            type: "binary",
+            id: "after",
+            name: "after",
+            command: "node",
+            args: ["-e", "process.stdout.write('ok')"],
+          },
+        ],
+      }),
+    );
 
     const observer = fakeObserver();
-    const result = await runWorkflow(file, fixturesDir, { observer, workerOverrides: promptOverride(worker) });
+    const result = await runWorkflow(file, fixturesDir, {
+      observer,
+      workerOverrides: promptOverride(worker),
+    });
 
     expect(result.status).toBe("succeeded");
 
@@ -508,10 +679,15 @@ describe("runWorkflow — do-not-wait failure isolation (ticket #214, ADR 0008)"
       (o) => o.type === "step-usage" && o.runId === runIdOf(all, "emit"),
     );
     expect(usageIdx).toBeGreaterThanOrEqual(0);
-    expect((all[usageIdx] as Extract<Observation, { type: "step-usage" }>).usage).toEqual({ input_tokens: 11, output_tokens: 7 });
+    expect((all[usageIdx] as Extract<Observation, { type: "step-usage" }>).usage).toEqual({
+      input_tokens: 11,
+      output_tokens: 7,
+    });
     expect(finishedOf(all, "emit")).toMatchObject({ status: "failed" });
     // The barrier guarantees the spend landed before the run returned: usage precedes run-finished.
-    const rootFinishedIdx = all.findIndex((o) => o.type === "run-finished" && o.runId === o.rootRunId);
+    const rootFinishedIdx = all.findIndex(
+      (o) => o.type === "run-finished" && o.runId === o.rootRunId,
+    );
     expect(usageIdx).toBeLessThan(rootFinishedIdx);
   });
 });
@@ -526,7 +702,8 @@ describe("runWorkflow — config interpolation and inheritance (ticket #17)", ()
       body: [
         {
           type: "binary",
-          id: "echo", name: "echo",
+          id: "echo",
+          name: "echo",
           command: "node",
           args: ["-e", "process.stdout.write(process.argv[1])", "${config.greeting}"],
           ...(stepConfig ? { config: stepConfig } : {}),
@@ -547,7 +724,9 @@ describe("runWorkflow — config interpolation and inheritance (ticket #17)", ()
     (file.body[0] as { publish?: Record<string, unknown> }).publish = { seen: "${output}" };
     file.output = { seen: "${context.seen}" };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { operatorConfig: { greeting: "operator-override" } });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      operatorConfig: { greeting: "operator-override" },
+    });
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ seen: "operator-override" });
   });
@@ -557,7 +736,9 @@ describe("runWorkflow — config interpolation and inheritance (ticket #17)", ()
     (file.body[0] as { publish?: Record<string, unknown> }).publish = { seen: "${output}" };
     file.output = { seen: "${context.seen}" };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { operatorConfig: { greeting: "operator-override" } });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      operatorConfig: { greeting: "operator-override" },
+    });
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ seen: "step-override" });
   });
@@ -577,9 +758,14 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
       body: [
         {
           type: "binary",
-          id: "leak", name: "leak",
+          id: "leak",
+          name: "leak",
           command: "node",
-          args: ["-e", "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])", "${config.apiKey}"],
+          args: [
+            "-e",
+            "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])",
+            "${config.apiKey}",
+          ],
           publish: { saved: "${output}" },
         },
       ],
@@ -638,7 +824,9 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     // run), so this is what a caller handing the engine a value that is also a declared secret gets
     // back. Real on success, masked otherwise: the rule is about the product, and a failed run has
     // none.
-    const result = await runWorkflow(stampNames(secretLeakFailingFile()), fixturesDir, { input: { carried: SECRET } });
+    const result = await runWorkflow(stampNames(secretLeakFailingFile()), fixturesDir, {
+      input: { carried: SECRET },
+    });
 
     expect(result.status).toBe("failed");
     expect(result.output).toEqual({ carried: "[secret:apiKey]" });
@@ -650,7 +838,10 @@ describe("runWorkflow — secret masking at the persistence boundary (ticket #20
     // collects an unresolved wrapper, `maskString` coerces it to "[object Object]" and scrubs
     // nothing — the test would pass against a masker that cannot garble anything. The set secret is
     // what makes the pass mean something.
-    file.config = { apiKey: { $secret: SECRET }, other: { $secret: { $env: "PATH_TEST_UNSET_SECRET_123" } } };
+    file.config = {
+      apiKey: { $secret: SECRET },
+      other: { $secret: { $env: "PATH_TEST_UNSET_SECRET_123" } },
+    };
 
     const result = await runWorkflow(stampNames(file), fixturesDir);
 
@@ -690,7 +881,8 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
       body: [
         {
           type: "binary",
-          id: "echo", name: "echo",
+          id: "echo",
+          name: "echo",
           command: "node",
           args: ["-e", "process.stdout.write(process.argv[1])", `\${${path}}`],
           publish: { seen: "${output}" },
@@ -702,7 +894,10 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
 
   it("resolves a plain wrapper into the value the worker receives", async () => {
     vi.stubEnv("PATH_TEST_TOKEN", VALUE);
-    const result = await runWorkflow(stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })), fixturesDir);
+    const result = await runWorkflow(
+      stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })),
+      fixturesDir,
+    );
 
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ seen: VALUE });
@@ -710,7 +905,10 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
 
   it("resolves a wrapper nested deep inside a config value", async () => {
     vi.stubEnv("PATH_TEST_TOKEN", VALUE);
-    const file = envEchoFile({ creds: { headers: [{ auth: { $env: "PATH_TEST_TOKEN" } }] } }, "config.creds.headers.0.auth");
+    const file = envEchoFile(
+      { creds: { headers: [{ auth: { $env: "PATH_TEST_TOKEN" } }] } },
+      "config.creds.headers.0.auth",
+    );
 
     const result = await runWorkflow(stampNames(file), fixturesDir);
     expect(result.output).toEqual({ seen: VALUE });
@@ -720,7 +918,9 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     vi.stubEnv("PATH_TEST_TOKEN", VALUE);
     const file = envEchoFile({ token: "file-default" });
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { operatorConfig: { token: { $env: "PATH_TEST_TOKEN" } } });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      operatorConfig: { token: { $env: "PATH_TEST_TOKEN" } },
+    });
     expect(result.output).toEqual({ seen: VALUE });
   });
 
@@ -735,11 +935,13 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
       body: [
         {
           type: "branch",
-          id: "pick", name: "pick",
+          id: "pick",
+          name: "pick",
           arms: [],
           else: {
             type: "binary",
-            id: "echo", name: "echo",
+            id: "echo",
+            name: "echo",
             command: "node",
             args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
             config: { token: { $env: "PATH_TEST_TOKEN" } },
@@ -774,7 +976,11 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     vi.stubEnv("PATH_TEST_TOKEN", "ab");
     const warn = vi.fn();
 
-    await runWorkflow(stampNames(envEchoFile({ pin: { $secret: { $env: "PATH_TEST_TOKEN" } } }, "config.pin")), fixturesDir, { warn });
+    await runWorkflow(
+      stampNames(envEchoFile({ pin: { $secret: { $env: "PATH_TEST_TOKEN" } } }, "config.pin")),
+      fixturesDir,
+      { warn },
+    );
     expect(warn).toHaveBeenCalledWith(expect.stringMatching(/pin/));
   });
 
@@ -782,7 +988,10 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     vi.stubEnv("PATH_TEST_MISSING_A", undefined);
     vi.stubEnv("PATH_TEST_MISSING_B", undefined);
     const observer = fakeObserver();
-    const file = envEchoFile({ token: { $env: "PATH_TEST_MISSING_A" }, other: { $env: "PATH_TEST_MISSING_B" } });
+    const file = envEchoFile({
+      token: { $env: "PATH_TEST_MISSING_A" },
+      other: { $env: "PATH_TEST_MISSING_B" },
+    });
 
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
 
@@ -793,7 +1002,9 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
     // failed without any step having run.
     expect(observer["run-started"]).toHaveBeenCalledTimes(1);
     expect(observer["step-started"]).not.toHaveBeenCalled();
-    expect(observer["run-finished"]).toHaveBeenCalledWith(expect.objectContaining({ status: "failed" }));
+    expect(observer["run-finished"]).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "failed" }),
+    );
   });
 
   it("still cancels a run whose signal was already aborted, unset variables notwithstanding", async () => {
@@ -811,7 +1022,10 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
 
   it("counts an empty variable as set rather than failing the run", async () => {
     vi.stubEnv("PATH_TEST_TOKEN", "");
-    const result = await runWorkflow(stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })), fixturesDir);
+    const result = await runWorkflow(
+      stampNames(envEchoFile({ token: { $env: "PATH_TEST_TOKEN" } })),
+      fixturesDir,
+    );
 
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ seen: "" });
@@ -827,7 +1041,15 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
       id: "wf-id",
       name: "child",
       config: { token: { $env: "PATH_TEST_MISSING_A" } },
-      body: [{ type: "binary", id: "noop", name: "noop", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
+      body: [
+        {
+          type: "binary",
+          id: "noop",
+          name: "noop",
+          command: "node",
+          args: ["-e", "process.stdout.write('ok')"],
+        },
+      ],
     };
     const childPath = join(fixturesDir, "env-child.workflow.json");
     const parent: WorkflowFile = {
@@ -835,10 +1057,14 @@ describe("runWorkflow — $env resolution at run start (ticket #116)", () => {
       id: "wf-id",
       name: "parent",
       config: { token: "parent-wins" },
-      body: [{ type: "workflow", id: "sub", name: "sub", ref: "env-child.workflow.json", input: {} }],
+      body: [
+        { type: "workflow", id: "sub", name: "sub", ref: "env-child.workflow.json", input: {} },
+      ],
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: new Map([[childPath, child]]) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: new Map([[childPath, child]]),
+    });
 
     expect(result.status).toBe("failed");
     expect(result.error).toContain("PATH_TEST_MISSING_A");
@@ -855,7 +1081,8 @@ describe("runWorkflow — input maps (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "reflect", name: "reflect",
+          id: "reflect",
+          name: "reflect",
           command: "node",
           args: ["-e", echoStdinScript()],
           input: { greeting: "${context.name}", count: "${config.max}", literal: "constant" },
@@ -882,7 +1109,8 @@ describe("runWorkflow — input maps (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "reflect", name: "reflect",
+          id: "reflect",
+          name: "reflect",
           command: "node",
           args: ["-e", echoStdinScript()],
           input: { x: "${context.missing}" },
@@ -904,14 +1132,16 @@ describe("runWorkflow — publish (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "first", name: "first",
+          id: "first",
+          name: "first",
           command: "node",
           args: ["-e", "process.stdout.write('hi')"],
           publish: { greeting: "${output}" },
         },
         {
           type: "binary",
-          id: "second", name: "second",
+          id: "second",
+          name: "second",
           command: "node",
           args: ["-e", echoStdinScript()],
           input: "${context.greeting}",
@@ -930,7 +1160,8 @@ describe("runWorkflow — publish (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "boom", name: "boom",
+          id: "boom",
+          name: "boom",
           command: "node",
           args: ["-e", "process.exit(3)"],
           // If publish were (wrongly) evaluated on failure, this would throw an interpolation
@@ -955,7 +1186,8 @@ describe("runWorkflow — parse: json (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "produce", name: "produce",
+          id: "produce",
+          name: "produce",
           command: "node",
           args: ["-e", "process.stdout.write(JSON.stringify({value: 42}))"],
           parse: "json",
@@ -963,7 +1195,8 @@ describe("runWorkflow — parse: json (ticket #17)", () => {
         },
         {
           type: "binary",
-          id: "consume", name: "consume",
+          id: "consume",
+          name: "consume",
           command: "node",
           args: ["-e", echoStdinScript()],
           input: { seen: "${context.data.value}" },
@@ -983,7 +1216,8 @@ describe("runWorkflow — parse: json (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "produce", name: "produce",
+          id: "produce",
+          name: "produce",
           command: "node",
           args: ["-e", "process.stdout.write('not json')"],
           parse: "json",
@@ -1005,7 +1239,8 @@ describe("runWorkflow — workflow output map (ticket #17)", () => {
       body: [
         {
           type: "binary",
-          id: "step", name: "step",
+          id: "step",
+          name: "step",
           command: "node",
           args: ["-e", "process.stdout.write('done')"],
           publish: { result: "${output}" },
@@ -1023,7 +1258,15 @@ describe("runWorkflow — workflow output map (ticket #17)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "no-output-map",
-      body: [{ type: "binary", id: "step", name: "step", command: "node", args: ["-e", "process.exit(0)"] }],
+      body: [
+        {
+          type: "binary",
+          id: "step",
+          name: "step",
+          command: "node",
+          args: ["-e", "process.exit(0)"],
+        },
+      ],
     };
     const result = await runWorkflow(stampNames(file), fixturesDir);
     expect(result.status).toBe("succeeded");
@@ -1044,7 +1287,13 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
     ]);
   }
 
-  const noopStep = { type: "binary" as const, id: "noop", name: "noop", command: "node", args: ["-e", "process.exit(0)"] };
+  const noopStep = {
+    type: "binary" as const,
+    id: "noop",
+    name: "noop",
+    command: "node",
+    args: ["-e", "process.exit(0)"],
+  };
 
   it("the child sees only its input-seeded context, and the parent receives exactly the child's output map", async () => {
     const parent: WorkflowFile = {
@@ -1054,14 +1303,16 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       body: [
         {
           type: "binary",
-          id: "seed-parent", name: "seed-parent",
+          id: "seed-parent",
+          name: "seed-parent",
           command: "node",
           args: ["-e", "process.stdout.write('parent-only')"],
           publish: { parentKey: "${output}" },
         },
         {
           type: "workflow",
-          id: "call-child", name: "call-child",
+          id: "call-child",
+          name: "call-child",
           ref: "./nested-child.workflow.json",
           input: { seed: "from-parent" },
           publish: { childOut: "${output}" },
@@ -1077,7 +1328,9 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       output: { echoedSeed: "${context.seed}" },
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: tree(parent, child) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: tree(parent, child),
+    });
     expect(result.status).toBe("succeeded");
     // The step's output object *is* the child's `output` map — nothing more, nothing less.
     expect(result.output).toEqual({ childOut: { echoedSeed: "from-parent" } });
@@ -1091,12 +1344,19 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       body: [
         {
           type: "binary",
-          id: "seed-parent", name: "seed-parent",
+          id: "seed-parent",
+          name: "seed-parent",
           command: "node",
           args: ["-e", "process.stdout.write('secret')"],
           publish: { parentKey: "${output}" },
         },
-        { type: "workflow", id: "call-child", name: "call-child", ref: "./nested-child.workflow.json", input: { seed: "x" } },
+        {
+          type: "workflow",
+          id: "call-child",
+          name: "call-child",
+          ref: "./nested-child.workflow.json",
+          input: { seed: "x" },
+        },
       ],
     };
     const child: WorkflowFile = {
@@ -1107,7 +1367,9 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       output: { leaked: "${context.parentKey}" }, // parentKey is a *parent* context key
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: tree(parent, child) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: tree(parent, child),
+    });
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/parentKey/);
   });
@@ -1118,12 +1380,19 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       id: "wf-id",
       name: "parent",
       body: [
-        { type: "workflow", id: "call-child", name: "call-child", ref: "./nested-child.workflow.json", input: {} },
+        {
+          type: "workflow",
+          id: "call-child",
+          name: "call-child",
+          ref: "./nested-child.workflow.json",
+          input: {},
+        },
         // If the child's publish had leaked into the parent context, `childInternal` would resolve;
         // it must not, so this second step's input interpolation fails the parent run instead.
         {
           type: "binary",
-          id: "read-leak", name: "read-leak",
+          id: "read-leak",
+          name: "read-leak",
           command: "node",
           args: ["-e", echoStdinScript()],
           input: "${context.childInternal}",
@@ -1137,7 +1406,8 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       body: [
         {
           type: "binary",
-          id: "produce", name: "produce",
+          id: "produce",
+          name: "produce",
           command: "node",
           args: ["-e", "process.stdout.write('v')"],
           publish: { childInternal: "${output}" }, // written to the *child's* context only
@@ -1145,7 +1415,9 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       ],
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: tree(parent, child) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: tree(parent, child),
+    });
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/childInternal/);
   });
@@ -1159,7 +1431,8 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       body: [
         {
           type: "workflow",
-          id: "call-child", name: "call-child",
+          id: "call-child",
+          name: "call-child",
           ref: "./nested-child.workflow.json",
           input: {},
           publish: { childOut: "${output}" },
@@ -1177,7 +1450,9 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       output: { shared: "${config.shared}", childOnly: "${config.childOnly}" },
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: tree(parent, child) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: tree(parent, child),
+    });
     expect(result.status).toBe("succeeded");
     expect(result.output).toEqual({ childOut: { shared: "from-parent", childOnly: "kept" } });
   });
@@ -1187,7 +1462,15 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "parent",
-      body: [{ type: "workflow", id: "call-child", name: "call-child", ref: "./nested-child.workflow.json", input: "not-an-object" }],
+      body: [
+        {
+          type: "workflow",
+          id: "call-child",
+          name: "call-child",
+          ref: "./nested-child.workflow.json",
+          input: "not-an-object",
+        },
+      ],
     };
     const child: WorkflowFile = {
       format: "path/workflow@5",
@@ -1196,7 +1479,9 @@ describe("runWorkflow — nested workflow steps (ticket #22)", () => {
       body: [noopStep],
     };
 
-    const result = await runWorkflow(stampNames(parent), fixturesDir, { files: tree(parent, child) });
+    const result = await runWorkflow(stampNames(parent), fixturesDir, {
+      files: tree(parent, child),
+    });
     expect(result.status).toBe("failed");
     expect(result.error).toMatch(/JSON object/);
   });
@@ -1209,10 +1494,21 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "observed",
-      body: [{ type: "binary", id: "greet", name: "greet", command: "node", args: ["-e", "process.stdout.write('hi')"] }],
+      body: [
+        {
+          type: "binary",
+          id: "greet",
+          name: "greet",
+          command: "node",
+          args: ["-e", "process.stdout.write('hi')"],
+        },
+      ],
     };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { input: { seed: 1 }, observer });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      input: { seed: 1 },
+      observer,
+    });
 
     expect(result.status).toBe("succeeded");
     expect(observer["run-started"]).toHaveBeenCalledTimes(1);
@@ -1239,7 +1535,13 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     expect(stepCall.workerName).toBe("spawn");
     expect(stepCall.runId).not.toBe(runId); // the step run is distinct from the root run
 
-    expect(observer["step-stderr"]).toHaveBeenCalledWith({ runId: stepCall.runId, rootRunId: runId, nodeId: "greet", nodeName: "greet", stderr: "" });
+    expect(observer["step-stderr"]).toHaveBeenCalledWith({
+      runId: stepCall.runId,
+      rootRunId: runId,
+      nodeId: "greet",
+      nodeName: "greet",
+      stderr: "",
+    });
     expect(observer["step-finished"]).toHaveBeenCalledWith({
       runId: stepCall.runId,
       rootRunId: runId,
@@ -1248,7 +1550,14 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       status: "succeeded",
       output: "hi",
     });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId, rootRunId: runId, nodeId: null, nodeName: null, status: "succeeded", output: {} });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId,
+      rootRunId: runId,
+      nodeId: null,
+      nodeName: null,
+      status: "succeeded",
+      output: {},
+    });
   });
 
   it("reports stepFinished failed and runFinished failed on a non-zero exit, without a stepFinished-succeeded call", async () => {
@@ -1257,7 +1566,15 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "observed-fail",
-      body: [{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(2)"] }],
+      body: [
+        {
+          type: "binary",
+          id: "boom",
+          name: "boom",
+          command: "node",
+          args: ["-e", "process.exit(2)"],
+        },
+      ],
     };
 
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
@@ -1315,7 +1632,8 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
       body: [
         {
           type: "binary",
-          id: "step", name: "step",
+          id: "step",
+          name: "step",
           command: "node",
           args: ["-e", "process.stdout.write('v')"],
           publish: { seen: "${output}" },
@@ -1326,7 +1644,13 @@ describe("runWorkflow — RunObserver hooks (ticket #18 seam)", () => {
     await runWorkflow(stampNames(file), fixturesDir, { observer });
 
     const { runId } = observer["run-started"].mock.calls[0]![0];
-    expect(observer["context-changed"]).toHaveBeenCalledWith({ runId, rootRunId: runId, nodeId: null, nodeName: null, context: { seen: "v" } });
+    expect(observer["context-changed"]).toHaveBeenCalledWith({
+      runId,
+      rootRunId: runId,
+      nodeId: null,
+      nodeName: null,
+      context: { seen: "v" },
+    });
   });
 });
 
@@ -1395,11 +1719,30 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
     const file = llmFile([
       {
         type: "parallel",
-        id: "fanout", name: "fanout",
+        id: "fanout",
+        name: "fanout",
         join: "collect",
         branches: [
-          { type: "sequence", id: "direct", name: "direct", body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Parent question." }] },
-          { type: "sequence", id: "nested", name: "nested", body: [{ type: "workflow", id: "sub", name: "sub", ref: "llm-child.workflow.json", input: {} }] },
+          {
+            type: "sequence",
+            id: "direct",
+            name: "direct",
+            body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Parent question." }],
+          },
+          {
+            type: "sequence",
+            id: "nested",
+            name: "nested",
+            body: [
+              {
+                type: "workflow",
+                id: "sub",
+                name: "sub",
+                ref: "llm-child.workflow.json",
+                input: {},
+              },
+            ],
+          },
         ],
       },
     ]);
@@ -1428,23 +1771,27 @@ describe("runWorkflow — the engine-wide processor cap (ticket #25, spec §5.5)
       type: "sequence" as const,
       id,
       name: id,
-      body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: `Question ${id}.` }],
+      body: [
+        { type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: `Question ${id}.` },
+      ],
     });
     const file = llmFile([
       {
         type: "parallel",
-        id: "fanout", name: "fanout",
+        id: "fanout",
+        name: "fanout",
         join: "collect",
         branches: [branch("a"), branch("b"), branch("c"), branch("d"), branch("e"), branch("f")],
       },
     ]);
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { workerOverrides: promptOverride(llm.worker) });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      workerOverrides: promptOverride(llm.worker),
+    });
 
     expect(result.status).toBe("succeeded");
     expect(llm.peakLive).toBe(DEFAULT_PROCESSOR_CONCURRENCY);
   });
-
 });
 
 describe("runWorkflow — external abort of a root run (ticket #52)", () => {
@@ -1480,19 +1827,36 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       name: "operator-cancel",
       body: [
         sleeperNode("sleeper"),
-        { type: "binary", id: "never", name: "never", command: "node", args: ["-e", "process.stdout.write('nope')"] },
+        {
+          type: "binary",
+          id: "never",
+          name: "never",
+          command: "node",
+          args: ["-e", "process.stdout.write('nope')"],
+        },
       ],
     };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { observer, signal: controller.signal });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      observer,
+      signal: controller.signal,
+    });
 
     // The root run ends cancelled — not failed (the workflow did not break), and not left running.
     expect(result.status).toBe("cancelled");
     const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId: root.runId,
+      rootRunId: root.runId,
+      nodeId: null,
+      nodeName: null,
+      status: "cancelled",
+    });
 
     // The killed step's cancellation names its cause: the operator, with no cause run behind it.
-    const sleeper = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "sleeper")!;
+    const sleeper = observer["step-started"].mock.calls
+      .map((c) => c[0])
+      .find((s) => s.nodeId === "sleeper")!;
     expect(observer["run-cancelled"]).toHaveBeenCalledWith({
       runId: sleeper.runId,
       rootRunId: root.runId,
@@ -1501,7 +1865,13 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer["step-finished"]).toHaveBeenCalledWith({ runId: sleeper.runId, rootRunId: root.runId, nodeId: "sleeper", nodeName: "sleeper", status: "cancelled" });
+    expect(observer["step-finished"]).toHaveBeenCalledWith({
+      runId: sleeper.runId,
+      rootRunId: root.runId,
+      nodeId: "sleeper",
+      nodeName: "sleeper",
+      status: "cancelled",
+    });
 
     // Nothing downstream of the abort runs, and the cancelled step's publish never lands (#24).
     expect(observer["step-started"].mock.calls.map((c) => c[0].nodeId)).toEqual(["sleeper"]);
@@ -1532,7 +1902,9 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       id: "wf-id",
       name: "operator-cancel-prompt",
       config: { model: "claude-sonnet-5" },
-      body: [{ type: "prompt", id: "ask", name: "ask", prompt: "Hi.", publish: { answer: "${output}" } }],
+      body: [
+        { type: "prompt", id: "ask", name: "ask", prompt: "Hi.", publish: { answer: "${output}" } },
+      ],
     };
 
     const result = await runWorkflow(stampNames(file), fixturesDir, {
@@ -1543,7 +1915,9 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
 
     expect(result.status).toBe("cancelled");
     const root = observer["run-started"].mock.calls[0]![0];
-    const ask = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "ask")!;
+    const ask = observer["step-started"].mock.calls
+      .map((c) => c[0])
+      .find((s) => s.nodeId === "ask")!;
     expect(observer["run-cancelled"]).toHaveBeenCalledWith({
       runId: ask.runId,
       rootRunId: root.runId,
@@ -1552,7 +1926,13 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       cause: "operator",
       causeRunId: null,
     });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId: root.runId,
+      rootRunId: root.runId,
+      nodeId: null,
+      nodeName: null,
+      status: "cancelled",
+    });
     expect(observer["context-changed"]).not.toHaveBeenCalled();
   });
 
@@ -1564,16 +1944,33 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "pre-aborted",
-      body: [{ type: "binary", id: "greet", name: "greet", command: "node", args: ["-e", "process.stdout.write('hi')"] }],
+      body: [
+        {
+          type: "binary",
+          id: "greet",
+          name: "greet",
+          command: "node",
+          args: ["-e", "process.stdout.write('hi')"],
+        },
+      ],
     };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { observer, signal: controller.signal });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      observer,
+      signal: controller.signal,
+    });
 
     expect(result.status).toBe("cancelled");
     // The run row still exists and lands cancelled: an already-aborted signal is not a special case.
     expect(observer["run-started"]).toHaveBeenCalledTimes(1);
     const root = observer["run-started"].mock.calls[0]![0];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId: root.runId,
+      rootRunId: root.runId,
+      nodeId: null,
+      nodeName: null,
+      status: "cancelled",
+    });
     // No step ran, so there is no killed run to narrate.
     expect(observer["step-started"]).not.toHaveBeenCalled();
     expect(observer["run-cancelled"]).not.toHaveBeenCalled();
@@ -1593,7 +1990,15 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       format: "path/workflow@5",
       id: "wf-id",
       name: "parent",
-      body: [{ type: "workflow", id: "call-child", name: "call-child", ref: "nested-child.workflow.json", input: {} }],
+      body: [
+        {
+          type: "workflow",
+          id: "call-child",
+          name: "call-child",
+          ref: "nested-child.workflow.json",
+          input: {},
+        },
+      ],
     };
 
     const result = await runWorkflow(stampNames(parent), fixturesDir, {
@@ -1608,9 +2013,28 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       (typeof observer)["run-started"]["mock"]["calls"][number][0],
       (typeof observer)["run-started"]["mock"]["calls"][number][0],
     ];
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: nested.runId, rootRunId: root.runId, nodeId: "call-child", nodeName: "call-child", status: "cancelled" });
-    expect(observer["run-finished"]).toHaveBeenCalledWith({ runId: root.runId, rootRunId: root.runId, nodeId: null, nodeName: null, status: "cancelled" });
-    expect(observer["run-cancelled"]).toHaveBeenCalledWith(expect.objectContaining({ nodeId: "sleeper", nodeName: "sleeper", cause: "operator", causeRunId: null }));
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId: nested.runId,
+      rootRunId: root.runId,
+      nodeId: "call-child",
+      nodeName: "call-child",
+      status: "cancelled",
+    });
+    expect(observer["run-finished"]).toHaveBeenCalledWith({
+      runId: root.runId,
+      rootRunId: root.runId,
+      nodeId: null,
+      nodeName: null,
+      status: "cancelled",
+    });
+    expect(observer["run-cancelled"]).toHaveBeenCalledWith(
+      expect.objectContaining({
+        nodeId: "sleeper",
+        nodeName: "sleeper",
+        cause: "operator",
+        causeRunId: null,
+      }),
+    );
   });
 
   it("still calls a cancellation sibling-failed when the failing branch encloses a nested parallel", async () => {
@@ -1624,21 +2048,45 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       body: [
         {
           type: "parallel",
-          id: "outer", name: "outer",
+          id: "outer",
+          name: "outer",
           join: "collect",
           branches: [
             {
-              type: "sequence", id: "nested", name: "nested",
+              type: "sequence",
+              id: "nested",
+              name: "nested",
               body: [
                 {
                   type: "parallel",
-                  id: "inner", name: "inner",
+                  id: "inner",
+                  name: "inner",
                   join: "collect",
-                  branches: [{ type: "sequence", id: "deep-branch", name: "deep-branch", body: [sleeperNode("deep")] }],
+                  branches: [
+                    {
+                      type: "sequence",
+                      id: "deep-branch",
+                      name: "deep-branch",
+                      body: [sleeperNode("deep")],
+                    },
+                  ],
                 },
               ],
             },
-            { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+            {
+              type: "sequence",
+              id: "boom",
+              name: "boom",
+              body: [
+                {
+                  type: "binary",
+                  id: "kaboom",
+                  name: "kaboom",
+                  command: "node",
+                  args: ["-e", "process.exit(1)"],
+                },
+              ],
+            },
           ],
         },
       ],
@@ -1647,9 +2095,16 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
     const result = await runWorkflow(stampNames(file), fixturesDir, { observer });
 
     expect(result.status).toBe("failed");
-    const kaboom = observer["step-started"].mock.calls.map((c) => c[0]).find((s) => s.nodeId === "kaboom")!;
+    const kaboom = observer["step-started"].mock.calls
+      .map((c) => c[0])
+      .find((s) => s.nodeId === "kaboom")!;
     expect(observer["run-cancelled"]).toHaveBeenCalledWith(
-      expect.objectContaining({ nodeId: "deep", nodeName: "deep", cause: "sibling-failed", causeRunId: kaboom.runId }),
+      expect.objectContaining({
+        nodeId: "deep",
+        nodeName: "deep",
+        cause: "sibling-failed",
+        causeRunId: kaboom.runId,
+      }),
     );
   });
 
@@ -1663,7 +2118,8 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       body: [
         {
           type: "parallel",
-          id: "fanout", name: "fanout",
+          id: "fanout",
+          name: "fanout",
           join: "collect",
           branches: [
             { type: "sequence", id: "a", name: "a", body: [sleeperNode("sleep-a")] },
@@ -1673,7 +2129,10 @@ describe("runWorkflow — external abort of a root run (ticket #52)", () => {
       ],
     };
 
-    const result = await runWorkflow(stampNames(file), fixturesDir, { observer, signal: controller.signal });
+    const result = await runWorkflow(stampNames(file), fixturesDir, {
+      observer,
+      signal: controller.signal,
+    });
 
     expect(result.status).toBe("cancelled");
     // No sibling failed, so neither branch's cancellation points at a cause run.
@@ -1701,7 +2160,11 @@ describe("runWorkflow — run-start config validation (ADR 0022 sub-3)", () => {
 
     const result = await runWorkflow(stampNames(file), fixturesDir, {
       observer,
-      workerOverrides: promptOverride({ meters: false, needsProcessorSlot: true, run: async () => ({ status: "succeeded", output: "x" }) }),
+      workerOverrides: promptOverride({
+        meters: false,
+        needsProcessorSlot: true,
+        run: async () => ({ status: "succeeded", output: "x" }),
+      }),
     });
 
     expect(result.status).toBe("failed");
@@ -1725,7 +2188,11 @@ describe("runWorkflow — run-start config validation (ADR 0022 sub-3)", () => {
     };
 
     const result = await runWorkflow(stampNames(file), fixturesDir, {
-      workerOverrides: promptOverride({ meters: false, needsProcessorSlot: true, run: async () => ({ status: "succeeded", output: "x" }) }),
+      workerOverrides: promptOverride({
+        meters: false,
+        needsProcessorSlot: true,
+        run: async () => ({ status: "succeeded", output: "x" }),
+      }),
     });
 
     expect(result.status).toBe("failed");
@@ -1735,7 +2202,11 @@ describe("runWorkflow — run-start config validation (ADR 0022 sub-3)", () => {
 });
 
 describe("runWorkflow — workerOverrides (ADR 0021 sub-15)", () => {
-  const okWorker: WorkerDescriptor = { meters: false, needsProcessorSlot: false, run: async () => ({ status: "succeeded", output: "x" }) };
+  const okWorker: WorkerDescriptor = {
+    meters: false,
+    needsProcessorSlot: false,
+    run: async () => ({ status: "succeeded", output: "x" }),
+  };
 
   it("hard-errors on an override naming a step type the scan did not produce", async () => {
     const file: WorkflowFile = {
@@ -1746,7 +2217,9 @@ describe("runWorkflow — workerOverrides (ADR 0021 sub-15)", () => {
     };
 
     await expect(
-      runWorkflow(stampNames(file), fixturesDir, { workerOverrides: { "no-such-type": { any: okWorker } } }),
+      runWorkflow(stampNames(file), fixturesDir, {
+        workerOverrides: { "no-such-type": { any: okWorker } },
+      }),
     ).rejects.toThrow(/unknown step type "no-such-type"/);
   });
 
@@ -1759,7 +2232,9 @@ describe("runWorkflow — workerOverrides (ADR 0021 sub-15)", () => {
     };
 
     await expect(
-      runWorkflow(stampNames(file), fixturesDir, { workerOverrides: { binary: { "no-such-worker": okWorker } } }),
+      runWorkflow(stampNames(file), fixturesDir, {
+        workerOverrides: { binary: { "no-such-worker": okWorker } },
+      }),
     ).rejects.toThrow(/ships no worker "no-such-worker"/);
   });
 });

@@ -60,7 +60,7 @@ describe("#388 cross-node validation markers + problems panel", () => {
     const panel = screen.getByRole("region", { name: "Problems" });
 
     // The block is not selected until the panel row is clicked.
-    const block = canvas.querySelector('[data-node-id]') as HTMLElement;
+    const block = canvas.querySelector("[data-node-id]") as HTMLElement;
     expect(block.getAttribute("data-selected")).toBeNull();
 
     fireEvent.click(within(panel).getByRole("button", { name: /^Jump to reader/ }));
@@ -101,7 +101,13 @@ describe("#388 cross-node validation markers + problems panel", () => {
       id: uuid(1),
       name: "flow",
       body: [
-        { type: "prompt", id: uuid(2), name: "writer", prompt: "x", publish: { ready: "${output.a}" } },
+        {
+          type: "prompt",
+          id: uuid(2),
+          name: "writer",
+          prompt: "x",
+          publish: { ready: "${output.a}" },
+        },
         { type: "prompt", id: uuid(3), name: "reader", prompt: "use ${context.ready}" },
       ],
     };

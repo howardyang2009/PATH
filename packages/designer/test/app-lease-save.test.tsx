@@ -26,7 +26,12 @@ function rootFile(): Record<string, unknown> {
 }
 
 function childFile(): Record<string, unknown> {
-  return { format: FORMAT_VERSION, id: uuid(40), name: "child-flow", body: [{ type: "prompt", id: uuid(41), name: "child-step", prompt: "deep" }] };
+  return {
+    format: FORMAT_VERSION,
+    id: uuid(40),
+    name: "child-flow",
+    body: [{ type: "prompt", id: uuid(41), name: "child-step", prompt: "deep" }],
+  };
 }
 
 function filesWith(root: unknown): Record<string, string> {
@@ -36,7 +41,9 @@ function filesWith(root: unknown): Record<string, string> {
 describe("Designer edit-lock lease (#371)", () => {
   it("acquires the lease on open, before any edit, with a client-minted session_id", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ files: filesWith(rootFile()), calls })} initialPath={ROOT_PATH} />);
+    render(
+      <App client={stubClient({ files: filesWith(rootFile()), calls })} initialPath={ROOT_PATH} />,
+    );
 
     await screen.findByText("draft");
     await waitFor(() => expect(calls.lock).toHaveLength(1));
@@ -53,17 +60,31 @@ describe("Designer edit-lock lease (#371)", () => {
       if (first) {
         first = false;
         return new Response(
-          JSON.stringify({ error: { message: "held" }, held_by_other: true, expires_at: new Date(Date.now() + 25_000).toISOString() }),
+          JSON.stringify({
+            error: { message: "held" },
+            held_by_other: true,
+            expires_at: new Date(Date.now() + 25_000).toISOString(),
+          }),
           { status: 409, headers: { "Content-Type": "application/json" } },
         );
       }
       const now = Date.now();
       return new Response(
-        JSON.stringify({ session_id: "s", acquired_at: new Date(now).toISOString(), heartbeat_at: new Date(now).toISOString(), expires_at: new Date(now + 30_000).toISOString() }),
+        JSON.stringify({
+          session_id: "s",
+          acquired_at: new Date(now).toISOString(),
+          heartbeat_at: new Date(now).toISOString(),
+          expires_at: new Date(now + 30_000).toISOString(),
+        }),
         { status: 200, headers: { "Content-Type": "application/json" } },
       );
     };
-    render(<App client={stubClient({ files: filesWith(rootFile()), calls, onLock })} initialPath={ROOT_PATH} />);
+    render(
+      <App
+        client={stubClient({ files: filesWith(rootFile()), calls, onLock })}
+        initialPath={ROOT_PATH}
+      />,
+    );
 
     await screen.findByText("draft");
     const banner = await screen.findByText(/Another session is editing/);
@@ -76,19 +97,25 @@ describe("Designer edit-lock lease (#371)", () => {
 
     await waitFor(() => expect(calls.lock).toHaveLength(2));
     expect(calls.lock[1]).toMatchObject({ workflow_path: ROOT_PATH, takeover: true });
-    await waitFor(() => expect(screen.queryByText(/Another session is editing/)).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByText(/Another session is editing/)).not.toBeInTheDocument(),
+    );
   });
 
   it("takes a second, independent lease when descending into a ref'd file", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ files: filesWith(rootFile()), calls })} initialPath={ROOT_PATH} />);
+    render(
+      <App client={stubClient({ files: filesWith(rootFile()), calls })} initialPath={ROOT_PATH} />,
+    );
 
     await screen.findByText("draft");
     await waitFor(() => expect(calls.lock).toHaveLength(1));
     fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
 
     await screen.findByText("child-step");
-    await waitFor(() => expect(calls.lock.map((c) => c.workflow_path)).toEqual([ROOT_PATH, CHILD_PATH]));
+    await waitFor(() =>
+      expect(calls.lock.map((c) => c.workflow_path)).toEqual([ROOT_PATH, CHILD_PATH]),
+    );
     // Both leases beat under the same client-minted session.
     expect(calls.lock[1]!.session_id).toBe(calls.lock[0]!.session_id);
   });
@@ -101,7 +128,9 @@ describe("Designer save through the write route (#371)", () => {
     const idless = rootFile();
     delete idless.id;
     delete (idless.body as Record<string, unknown>[])[0]!.id;
-    render(<App client={stubClient({ files: filesWith(idless), calls })} initialPath={ROOT_PATH} />);
+    render(
+      <App client={stubClient({ files: filesWith(idless), calls })} initialPath={ROOT_PATH} />,
+    );
 
     await screen.findByText("draft");
     expect(screen.getByRole("status")).toHaveTextContent("stamped on import");
@@ -126,7 +155,12 @@ describe("Designer save through the write route (#371)", () => {
 
   it("names the open workflow's file in the top bar while no status shows", async () => {
     // Canonical bytes, so the file opens clean (ADR 0030) and no "Unsaved edits" status replaces the name.
-    const clean = { format: FORMAT_VERSION, id: uuid(1), name: "clean", body: [{ id: uuid(2), name: "draft", prompt: "hi", type: "prompt" }] };
+    const clean = {
+      format: FORMAT_VERSION,
+      id: uuid(1),
+      name: "clean",
+      body: [{ id: uuid(2), name: "draft", prompt: "hi", type: "prompt" }],
+    };
     const files = { [ROOT_PATH]: canonicalSerialize(clean as never) };
     render(<App client={stubClient({ files, calls: makeCalls() })} initialPath={ROOT_PATH} />);
 
@@ -144,7 +178,12 @@ describe("Designer save through the write route (#371)", () => {
         status: 412,
         headers: { "Content-Type": "application/json" },
       });
-    render(<App client={stubClient({ files: filesWith(idless), calls, onPut })} initialPath={ROOT_PATH} />);
+    render(
+      <App
+        client={stubClient({ files: filesWith(idless), calls, onPut })}
+        initialPath={ROOT_PATH}
+      />,
+    );
 
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -169,17 +208,25 @@ describe("Designer save through the write route (#371)", () => {
     const onPut = (b: { workflow: Record<string, unknown> }): Response => {
       putCount += 1;
       if (putCount === 1) {
-        return new Response(JSON.stringify({ error: { message: "the file changed since it was read" } }), {
-          status: 412,
-          headers: { "Content-Type": "application/json" },
-        });
+        return new Response(
+          JSON.stringify({ error: { message: "the file changed since it was read" } }),
+          {
+            status: 412,
+            headers: { "Content-Type": "application/json" },
+          },
+        );
       }
-      return new Response(JSON.stringify({ relative_path: ROOT_PATH, id: b.workflow.id as string, etag: '"saved"' }), {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      });
+      return new Response(
+        JSON.stringify({ relative_path: ROOT_PATH, id: b.workflow.id as string, etag: '"saved"' }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json" },
+        },
+      );
     };
-    render(<App client={stubClient({ files: filesWith(idless), onPut })} initialPath={ROOT_PATH} />);
+    render(
+      <App client={stubClient({ files: filesWith(idless), onPut })} initialPath={ROOT_PATH} />,
+    );
 
     await screen.findByText("draft");
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -189,7 +236,11 @@ describe("Designer save through the write route (#371)", () => {
 
     // Reload discards the buffer for the on-disk bytes, clearing the conflict.
     fireEvent.click(screen.getByRole("button", { name: "Reload file" }));
-    await waitFor(() => expect(screen.queryByText(/changed on disk since you opened it/)).not.toBeInTheDocument(), { timeout: 5000 });
+    await waitFor(
+      () =>
+        expect(screen.queryByText(/changed on disk since you opened it/)).not.toBeInTheDocument(),
+      { timeout: 5000 },
+    );
 
     // The reloaded (still id-less) file opens dirty again; a second save now succeeds.
     await screen.findByText("draft");

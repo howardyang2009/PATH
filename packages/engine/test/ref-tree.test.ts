@@ -1,6 +1,6 @@
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import type { WorkflowFile } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import { resolveChildRef, resolveNode, walkRefTree } from "../src/ref-tree.js";
 
 /**
@@ -38,8 +38,20 @@ const root: WorkflowFile = {
   name: "root",
   config: { fileShared: "from-root-file" },
   body: [
-    { type: "binary", id: "root-step", name: "root-step", command: "echo", config: { rootNode: "from-root-node" } },
-    { type: "workflow", id: "ref-node", name: "ref-node", ref: CHILD_REF, config: { refStep: "from-ref-step" } },
+    {
+      type: "binary",
+      id: "root-step",
+      name: "root-step",
+      command: "echo",
+      config: { rootNode: "from-root-node" },
+    },
+    {
+      type: "workflow",
+      id: "ref-node",
+      name: "ref-node",
+      ref: CHILD_REF,
+      config: { refStep: "from-ref-step" },
+    },
   ],
 };
 
@@ -48,7 +60,9 @@ const env = { REF_TREE_TEST_VAR: "resolved-from-env" };
 
 describe("walkRefTree", () => {
   it("yields the root's nodes and then the ref'd file's, threading effective config across the seam", () => {
-    const entries = [...walkRefTree(root, ROOT_DIR, { files, operatorConfig: { fromOperator: "operator" }, env })];
+    const entries = [
+      ...walkRefTree(root, ROOT_DIR, { files, operatorConfig: { fromOperator: "operator" }, env }),
+    ];
 
     expect(entries.map((entry) => entry.node.id)).toEqual(["root-step", "ref-node", "child-step"]);
     expect(entries.map((entry) => entry.dir)).toEqual([ROOT_DIR, ROOT_DIR, join(ROOT_DIR, "sub")]);
@@ -82,7 +96,9 @@ describe("walkRefTree", () => {
       ],
     };
 
-    const reached = [...walkRefTree(twice, ROOT_DIR, { files, env })].filter((entry) => entry.node.id === "child-step");
+    const reached = [...walkRefTree(twice, ROOT_DIR, { files, env })].filter(
+      (entry) => entry.node.id === "child-step",
+    );
 
     expect(reached).toHaveLength(2);
     expect(reached.map((entry) => entry.stepConfig.branch)).toEqual(["a", "b"]);
@@ -97,7 +113,10 @@ describe("walkRefTree", () => {
 
 describe("resolveChildRef", () => {
   it("resolves a ref against the level's own dir and carries the child's own dir", () => {
-    expect(resolveChildRef(ROOT_DIR, CHILD_REF, files)).toEqual({ file: child, dir: join(ROOT_DIR, "sub") });
+    expect(resolveChildRef(ROOT_DIR, CHILD_REF, files)).toEqual({
+      file: child,
+      dir: join(ROOT_DIR, "sub"),
+    });
   });
 
   it("is undefined for an absent file or an absent tree", () => {
@@ -108,7 +127,11 @@ describe("resolveChildRef", () => {
 
 describe("resolveNode", () => {
   it("finds a node in a nested file with the effective config that reaches it", () => {
-    const resolved = resolveNode(root, ROOT_DIR, "child-step", { files, operatorConfig: { fromOperator: "operator" }, env });
+    const resolved = resolveNode(root, ROOT_DIR, "child-step", {
+      files,
+      operatorConfig: { fromOperator: "operator" },
+      env,
+    });
 
     expect(resolved?.node.id).toBe("child-step");
     expect(resolved?.config).toMatchObject({
@@ -121,7 +144,10 @@ describe("resolveNode", () => {
   });
 
   it("reads the env it is handed, not the ambient one, so a caller can pass the Run's snapshot", () => {
-    const resolved = resolveNode(root, ROOT_DIR, "child-step", { files, env: { REF_TREE_TEST_VAR: "run-snapshot" } });
+    const resolved = resolveNode(root, ROOT_DIR, "child-step", {
+      files,
+      env: { REF_TREE_TEST_VAR: "run-snapshot" },
+    });
 
     expect(resolved?.config.fromEnv).toBe("run-snapshot");
   });

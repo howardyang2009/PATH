@@ -46,7 +46,10 @@ export type ChildSlot =
   | { key: "arms"; shape: "arm-list" };
 
 /** Every `WorkflowNode` member that nests a child body — the control block types, derived structurally. */
-type BranchingType = Extract<WorkflowNode, { body: unknown } | { branches: unknown } | { node: unknown } | { arms: unknown }>["type"];
+type BranchingType = Extract<
+  WorkflowNode,
+  { body: unknown } | { branches: unknown } | { node: unknown } | { arms: unknown }
+>["type"];
 
 /**
  * Every controller type name — the engine-evaluated control constructs (CONTEXT.md § Controller). A
@@ -225,8 +228,14 @@ export function serialOrder(body: WorkflowNode[]): WorkflowNode[] {
  * client's eager mirror). The **one** statement of that locus lookup, so the two never disagree on
  * which block a node sits in.
  */
-export function enclosingControlBlock(body: WorkflowNode[], targetId: string): ControlBlockKind | undefined {
-  const search = (nodes: WorkflowNode[], enclosing: WorkflowNode | undefined): WorkflowNode | undefined | null => {
+export function enclosingControlBlock(
+  body: WorkflowNode[],
+  targetId: string,
+): ControlBlockKind | undefined {
+  const search = (
+    nodes: WorkflowNode[],
+    enclosing: WorkflowNode | undefined,
+  ): WorkflowNode | undefined | null => {
     for (const node of nodes) {
       if (node.id === targetId) return enclosing;
       const next = node.type === "sequence" ? enclosing : node;
@@ -254,7 +263,10 @@ export function enclosingControlBlock(body: WorkflowNode[], targetId: string): C
  * It shares `childBodies`' `never` guard: a node type added to the format must say where its children
  * are here too, or nothing builds — so the read and the write can never disagree on the shape.
  */
-export function mapChildBodies(node: WorkflowNode, fn: (body: WorkflowNode[]) => WorkflowNode[]): WorkflowNode {
+export function mapChildBodies(
+  node: WorkflowNode,
+  fn: (body: WorkflowNode[]) => WorkflowNode[],
+): WorkflowNode {
   switch (node.type) {
     case "sequence":
       return { ...node, body: fn(node.body) };

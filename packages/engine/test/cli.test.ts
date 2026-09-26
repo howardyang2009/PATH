@@ -1,18 +1,27 @@
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { main } from "../src/cli.js";
-import { stampGuids } from "./stamp-names.js";
-import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
-import type { WorkerOverrides } from "../src/run-workflow.js";
 import { createDbLogBackend } from "../src/logging/db-backend.js";
 import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { openDb } from "../src/persistence/db.js";
 import { dbFilePath } from "../src/persistence/paths.js";
 import { finishRun, insertRun } from "../src/persistence/run-store.js";
+import type { StepRequest, StepResult, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { WorkerOverrides } from "../src/run-workflow.js";
+import { stampGuids } from "./stamp-names.js";
 
 const realFixtures = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -62,7 +71,14 @@ describe("cli main()", () => {
         format: "path/workflow@1",
         id: "d8503fa6-27e1-4c09-95b8-af631074e2dc",
         name: "old-v1",
-        body: [{ type: "binary", id: "6194c7de-b3a8-4f62-80d1-59e2fb0a4738", name: "step-one", command: "echo" }],
+        body: [
+          {
+            type: "binary",
+            id: "6194c7de-b3a8-4f62-80d1-59e2fb0a4738",
+            name: "step-one",
+            command: "echo",
+          },
+        ],
       }),
     );
 
@@ -119,7 +135,10 @@ describe("cli main() — operator config flags (ticket #17)", () => {
 
   it("--config loads a whole object that overrides the file default", async () => {
     const io = fakeIo();
-    const code = await main(["run", configEcho(), "--config", join(fixtures, "config-override.json")], io);
+    const code = await main(
+      ["run", configEcho(), "--config", join(fixtures, "config-override.json")],
+      io,
+    );
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "config-file-value" }));
   });
@@ -127,7 +146,14 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   it("--set wins over --config when both touch the same key", async () => {
     const io = fakeIo();
     const code = await main(
-      ["run", configEcho(), "--config", join(fixtures, "config-override.json"), "--set", "greeting=set-value"],
+      [
+        "run",
+        configEcho(),
+        "--config",
+        join(fixtures, "config-override.json"),
+        "--set",
+        "greeting=set-value",
+      ],
       io,
     );
     expect(code).toBe(0);
@@ -164,7 +190,14 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   it("is repeatable across step types in one launch", async () => {
     const io = fakeIo();
     const code = await main(
-      ["run", configEcho(), "--worker-default", "binary=spawn", "--worker-default", "prompt=anthropic"],
+      [
+        "run",
+        configEcho(),
+        "--worker-default",
+        "binary=spawn",
+        "--worker-default",
+        "prompt=anthropic",
+      ],
       io,
     );
     expect(code).toBe(0);
@@ -196,9 +229,14 @@ describe("cli main() — operator config flags (ticket #17)", () => {
     // A launch worker-default is fixed at launch (ADR 0044) — a resume does not re-take it. Supplying
     // it on a resume is silently-discarded operator state, so it is refused, like --set-context.
     const io = fakeIo();
-    const code = await main(["run", configEcho(), "--resume", "whatever", "--worker-default", "prompt=anthropic"], io);
+    const code = await main(
+      ["run", configEcho(), "--resume", "whatever", "--worker-default", "prompt=anthropic"],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default cannot be combined with --resume/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--worker-default cannot be combined with --resume/),
+    );
   });
 
   // The launch channel of ADR 0044's registry-relative validation (#518): a launch worker-default
@@ -234,7 +272,14 @@ describe("cli main() — operator config flags (ticket #17)", () => {
   it("reports every bad launch worker-default entry in one pass", async () => {
     const io = fakeIo();
     const code = await main(
-      ["run", configEcho(), "--worker-default", "badtype=x", "--worker-default", "prompt=nosuchworker"],
+      [
+        "run",
+        configEcho(),
+        "--worker-default",
+        "badtype=x",
+        "--worker-default",
+        "prompt=nosuchworker",
+      ],
       io,
     );
     expect(code).toBe(2);
@@ -259,7 +304,10 @@ describe("cli main() — --context / --set-context (ticket #171)", () => {
 
   it("--context loads a whole object that seeds the starting context", async () => {
     const io = fakeIo();
-    const code = await main(["run", contextEcho(), "--context", join(fixtures, "context-override.json")], io);
+    const code = await main(
+      ["run", contextEcho(), "--context", join(fixtures, "context-override.json")],
+      io,
+    );
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "context-file-value" }));
   });
@@ -297,9 +345,14 @@ describe("cli main() — --context / --set-context (ticket #171)", () => {
 
   it("reports a clear error when --context file is not a JSON object", async () => {
     const io = fakeIo();
-    const code = await main(["run", contextEcho(), "--context", join(fixtures, "context-array.json")], io);
+    const code = await main(
+      ["run", contextEcho(), "--context", join(fixtures, "context-array.json")],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--context.*must contain a JSON object/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--context.*must contain a JSON object/),
+    );
   });
 });
 
@@ -320,7 +373,10 @@ describe("cli main() — file-level input (format @4 §1a)", () => {
 
   it("still lets an operator seed win over the file's input", async () => {
     const io = fakeIo();
-    const code = await main(["run", fileInputEcho(), "--set-context", "greeting=operator-value"], io);
+    const code = await main(
+      ["run", fileInputEcho(), "--set-context", "greeting=operator-value"],
+      io,
+    );
     expect(code).toBe(0);
     expect(io.log).toHaveBeenCalledWith(JSON.stringify({ seen: "operator-value" }));
   });
@@ -344,14 +400,29 @@ describe("cli main() — --resume (ticket #177)", () => {
   // a resumed run's starting context is already fully determined by restore-by-load.
   it("rejects --context combined with --resume as a validation error (exit 2)", async () => {
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", "whatever", "--context", join(fixtures, "context-override.json")], io);
+    const code = await main(
+      [
+        "run",
+        workflow(),
+        "--resume",
+        "whatever",
+        "--context",
+        join(fixtures, "context-override.json"),
+      ],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--context.*--resume|--resume.*--context/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--context.*--resume|--resume.*--context/),
+    );
   });
 
   it("rejects --set-context combined with --resume as a validation error (exit 2)", async () => {
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", "whatever", "--set-context", "k=v"], io);
+    const code = await main(
+      ["run", workflow(), "--resume", "whatever", "--set-context", "k=v"],
+      io,
+    );
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--set-context|--context/));
   });
@@ -403,7 +474,11 @@ describe("cli main() — --resume (ticket #177)", () => {
 
     const db = openDb(dbFilePath(projectDir));
     const originalRoot = (
-      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+      db
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
+        .get() as {
         root_run_id: string;
       }
     ).root_run_id;
@@ -428,7 +503,11 @@ describe("cli main() — --resume (ticket #177)", () => {
 
     const db = openDb(dbFilePath(projectDir));
     const originalRoot = (
-      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+      db
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
+        .get() as {
         root_run_id: string;
       }
     ).root_run_id;
@@ -447,7 +526,11 @@ describe("cli main() — --resume (ticket #177)", () => {
     try {
       const successorRows = after
         .prepare("SELECT node_name, status, reused_from_run_id FROM runs WHERE root_run_id = ?")
-        .all(successorRoot) as { node_name: string | null; status: string; reused_from_run_id: string | null }[];
+        .all(successorRoot) as {
+        node_name: string | null;
+        status: string;
+        reused_from_run_id: string | null;
+      }[];
       // step-a was reused: it now records a `succeeded` reuse row (#257) carrying a `reused_from_run_id`
       // pointer to the original, rather than re-executing. step-b reran and succeeded (no pointer). The
       // successor's root row records the immediate predecessor it resumed from.
@@ -489,16 +572,25 @@ describe("cli main() — --resume (ticket #177)", () => {
     expect(await main(["run", workflow()], fakeIo())).toBe(1);
     const db = openDb(dbFilePath(projectDir));
     const originalRoot = (
-      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+      db
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
+        .get() as {
         root_run_id: string;
       }
     ).root_run_id;
     db.close();
 
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", originalRoot, "--from", "not-a-run"], io);
+    const code = await main(
+      ["run", workflow(), "--resume", originalRoot, "--from", "not-a-run"],
+      io,
+    );
     expect(code).toBe(1);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/not in the run tree being resumed/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/not in the run tree being resumed/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -507,17 +599,26 @@ describe("cli main() — --resume (ticket #177)", () => {
     expect(await main(["run", workflow(), "--set", "mode=ok"], fakeIo())).toBe(0);
     const db = openDb(dbFilePath(projectDir));
     const originalRoot = (
-      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+      db
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
+        .get() as {
         root_run_id: string;
       }
     ).root_run_id;
     const stepBRun = (
-      db.prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'").get(originalRoot) as { run_id: string }
+      db
+        .prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'")
+        .get(originalRoot) as { run_id: string }
     ).run_id;
     db.close();
 
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", originalRoot, "--from", stepBRun, "--set", "mode=ok"], io);
+    const code = await main(
+      ["run", workflow(), "--resume", originalRoot, "--from", stepBRun, "--set", "mode=ok"],
+      io,
+    );
     expect(code).toBe(0);
     const successorRoot = io.log.mock.calls.at(-1)![0] as string;
     expect(successorRoot).not.toBe(originalRoot);
@@ -533,7 +634,9 @@ describe("cli main() — --resume (ticket #177)", () => {
       const rootRow = after
         .prepare("SELECT rerun_from_node_path FROM runs WHERE run_id = ?")
         .get(successorRoot) as { rerun_from_node_path: string | null };
-      expect(JSON.parse(rootRow.rerun_from_node_path!)).toEqual([{ nodeId: "548ed098-0a65-499d-a5ea-4a1e091aca04", nodeName: "step-b" }]);
+      expect(JSON.parse(rootRow.rerun_from_node_path!)).toEqual([
+        { nodeId: "548ed098-0a65-499d-a5ea-4a1e091aca04", nodeName: "step-b" },
+      ]);
     } finally {
       after.close();
     }
@@ -562,7 +665,11 @@ describe("cli main() — --list-eligible (#446)", () => {
     const db = openDb(dbFilePath(projectDir));
     try {
       return (
-        db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+        db
+          .prepare(
+            "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+          )
+          .get() as {
           root_run_id: string;
         }
       ).root_run_id;
@@ -581,23 +688,35 @@ describe("cli main() — --list-eligible (#446)", () => {
     const io = fakeIo();
     const code = await main(["run", workflow(), "--list-eligible"], io);
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible requires --resume/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--list-eligible requires --resume/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
   it("is mutually exclusive with --from (exit 2)", async () => {
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", "whatever", "--from", "k", "--list-eligible"], io);
+    const code = await main(
+      ["run", workflow(), "--resume", "whatever", "--from", "k", "--list-eligible"],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible cannot be combined with --from/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--list-eligible cannot be combined with --from/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
   it("refuses a launch-only flag it cannot apply (exit 2)", async () => {
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", "whatever", "--list-eligible", "--set", "mode=ok"], io);
+    const code = await main(
+      ["run", workflow(), "--resume", "whatever", "--list-eligible", "--set", "mode=ok"],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--list-eligible cannot be combined with --set/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--list-eligible cannot be combined with --set/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -606,9 +725,22 @@ describe("cli main() — --list-eligible (#446)", () => {
     // (a launch worker-default is fixed at launch, ADR 0044), so that earlier guard catches it before
     // the launch-only-flag refusal — still exit 2, still nothing launched.
     const io = fakeIo();
-    const code = await main(["run", workflow(), "--resume", "whatever", "--list-eligible", "--worker-default", "prompt=anthropic"], io);
+    const code = await main(
+      [
+        "run",
+        workflow(),
+        "--resume",
+        "whatever",
+        "--list-eligible",
+        "--worker-default",
+        "prompt=anthropic",
+      ],
+      io,
+    );
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--worker-default cannot be combined with --resume/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--worker-default cannot be combined with --resume/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -668,7 +800,11 @@ describe("cli main() — --list-eligible (#446)", () => {
     // The run-id column is never truncated: step-b's full id is copyable into --from.
     const stepBRun = openDb(dbFilePath(projectDir));
     try {
-      const id = (stepBRun.prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'").get(originalRoot) as { run_id: string }).run_id;
+      const id = (
+        stepBRun
+          .prepare("SELECT run_id FROM runs WHERE root_run_id = ? AND node_name = 'step-b'")
+          .get(originalRoot) as { run_id: string }
+      ).run_id;
       expect(stepB.startsWith(id)).toBe(true);
     } finally {
       stepBRun.close();
@@ -702,7 +838,10 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
   beforeEach(() => {
     workflowHome = mkdtempSync(join(tmpdir(), "path-engine-c-workflow-"));
     storeDir = mkdtempSync(join(tmpdir(), "path-engine-c-store-"));
-    cpSync(join(realFixtures, "two-binary-steps.workflow.json"), join(workflowHome, "workflow.json"));
+    cpSync(
+      join(realFixtures, "two-binary-steps.workflow.json"),
+      join(workflowHome, "workflow.json"),
+    );
   });
 
   afterEach(() => {
@@ -761,7 +900,9 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
     const db = openDb(dbFilePath(storeDir));
     try {
       const root = db
-        .prepare("SELECT workflow_id, workflow_name, workflow_path FROM runs WHERE run_id = root_run_id")
+        .prepare(
+          "SELECT workflow_id, workflow_name, workflow_path FROM runs WHERE run_id = root_run_id",
+        )
         .get() as { workflow_id: string; workflow_name: string; workflow_path: string };
       // id + name come from the file itself; the path is resolved relative to the *store* dir, so a
       // central store distinguishes this workflow from another by where its file lives.
@@ -782,7 +923,11 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
 
     const db = openDb(dbFilePath(storeDir));
     const originalRoot = (
-      db.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1").get() as {
+      db
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
+        .get() as {
         root_run_id: string;
       }
     ).root_run_id;
@@ -791,13 +936,20 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
     // Resume against the same -C store: the successor reads the predecessor from it and writes back
     // into it, all under -C.
     const io = fakeIo();
-    expect(await main(["run", workflow(), "-C", storeDir, "--resume", originalRoot, "--set", "mode=ok"], io)).toBe(0);
+    expect(
+      await main(
+        ["run", workflow(), "-C", storeDir, "--resume", originalRoot, "--set", "mode=ok"],
+        io,
+      ),
+    ).toBe(0);
     const successorRoot = io.log.mock.calls.at(-1)![0] as string;
     expect(successorRoot).not.toBe(originalRoot);
 
     const after = openDb(dbFilePath(storeDir));
     try {
-      const successorRootRow = after.prepare("SELECT resumed_from_root_run_id FROM runs WHERE run_id = ?").get(successorRoot) as {
+      const successorRootRow = after
+        .prepare("SELECT resumed_from_root_run_id FROM runs WHERE run_id = ?")
+        .get(successorRoot) as {
         resumed_from_root_run_id: string | null;
       };
       expect(successorRootRow.resumed_from_root_run_id).toBe(originalRoot);
@@ -811,14 +963,20 @@ describe("cli main() — -C store relocation (ticket #201)", () => {
 describe("cli main() — log.backends setting (ticket #19)", () => {
   it("accepts --log-backends to select the audit stream and still runs the workflow", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "ndjson"], io);
+    const code = await main(
+      ["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "ndjson"],
+      io,
+    );
     expect(code).toBe(0);
     expect(io.error).not.toHaveBeenCalled();
   });
 
   it("reports a clear error for an unknown backend id", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "syslog"], io);
+    const code = await main(
+      ["run", join(fixtures, "two-binary-steps.workflow.json"), "--log-backends", "syslog"],
+      io,
+    );
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/syslog/));
   });
@@ -848,7 +1006,9 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   function ndjsonLogWritten(): boolean {
     const runsDir = join(projectDir, ".path", "runs");
     if (!existsSync(runsDir)) return false;
-    return readdirSync(runsDir).some((rootRunId) => existsSync(join(runsDir, rootRunId, "run.log")));
+    return readdirSync(runsDir).some((rootRunId) =>
+      existsSync(join(runsDir, rootRunId, "run.log")),
+    );
   }
 
   function runWorkflowFile(...args: string[]) {
@@ -880,12 +1040,17 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   // operator Config under nested keys, which would make this run succeed and print the cap.
   it("never leaks an engine setting into a step's Config", async () => {
     writeSettings({ "processor.concurrency": 2 });
-    cpSync(join(realFixtures, "config-leak-probe.workflow.json"), join(projectDir, "probe.workflow.json"));
+    cpSync(
+      join(realFixtures, "config-leak-probe.workflow.json"),
+      join(projectDir, "probe.workflow.json"),
+    );
 
     const io = fakeIo();
     const code = await main(["run", join(projectDir, "probe.workflow.json")], io);
     expect(code).toBe(1);
-    expect(io.error.mock.calls.join("\n")).toMatch(/cannot resolve "config\.processor\.concurrency"/);
+    expect(io.error.mock.calls.join("\n")).toMatch(
+      /cannot resolve "config\.processor\.concurrency"/,
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -934,8 +1099,13 @@ describe("cli main() — engine-settings file (ticket #27)", () => {
   }
 
   function runFanout(worker: WorkerDescriptor, ...args: string[]) {
-    cpSync(join(realFixtures, "llm-fanout.workflow.json"), join(projectDir, "fanout.workflow.json"));
-    return main(["run", join(projectDir, "fanout.workflow.json"), ...args], fakeIo(), { workerOverrides: promptOverride(worker) });
+    cpSync(
+      join(realFixtures, "llm-fanout.workflow.json"),
+      join(projectDir, "fanout.workflow.json"),
+    );
+    return main(["run", join(projectDir, "fanout.workflow.json"), ...args], fakeIo(), {
+      workerOverrides: promptOverride(worker),
+    });
   }
 
   it("applies the file's processor.concurrency cap with no CLI flags", async () => {
@@ -977,7 +1147,13 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     name: "sigint-cancel",
     config: { model: "claude-sonnet-5" },
     body: [
-      { type: "prompt", id: "ask", name: "ask", prompt: "Question.", publish: { answer: "${output}" } },
+      {
+        type: "prompt",
+        id: "ask",
+        name: "ask",
+        prompt: "Question.",
+        publish: { answer: "${output}" },
+      },
       { type: "prompt", id: "never", name: "never", prompt: "Second question." },
     ],
     output: { result: "${context.answer}" },
@@ -994,7 +1170,10 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
   });
 
   function runIt(worker: WorkerDescriptor, io = fakeIo(), forceExit?: (code: number) => void) {
-    return main(["run", join(projectDir, "workflow.json")], io, { workerOverrides: promptOverride(worker), forceExit });
+    return main(["run", join(projectDir, "workflow.json")], io, {
+      workerOverrides: promptOverride(worker),
+      forceExit,
+    });
   }
 
   function promptOverride(worker: WorkerDescriptor): WorkerOverrides {
@@ -1026,7 +1205,9 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
 
   function readRunRows() {
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
-    const rows = db.prepare("SELECT run_id, root_run_id, node_id, node_name, status FROM runs").all() as {
+    const rows = db
+      .prepare("SELECT run_id, root_run_id, node_id, node_name, status FROM runs")
+      .all() as {
       run_id: string;
       root_run_id: string;
       node_id: string | null;
@@ -1068,9 +1249,19 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
     // The NDJSON stream tells the same story, and the backends were closed on the root's terminal event.
     const events = readLogEvents(root.root_run_id);
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "run-cancelled", node_name: "ask", cause: "operator", cause_run_id: null }),
+      expect.objectContaining({
+        type: "run-cancelled",
+        node_name: "ask",
+        cause: "operator",
+        cause_run_id: null,
+      }),
     );
-    expect(events.at(-1)).toMatchObject({ type: "step-finished", run_id: root.run_id, node_id: null, status: "cancelled" });
+    expect(events.at(-1)).toMatchObject({
+      type: "step-finished",
+      run_id: root.run_id,
+      node_id: null,
+      status: "cancelled",
+    });
   });
 
   it("removes its SIGINT listener once the run settles", async () => {
@@ -1123,14 +1314,20 @@ describe("cli main() — graceful ^C (ticket #53)", () => {
 describe("cli main() — Processor cap (ticket #25)", () => {
   it("accepts --processor-concurrency to override the engine-wide cap and still runs the workflow", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "2"], io);
+    const code = await main(
+      ["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "2"],
+      io,
+    );
     expect(code).toBe(0);
     expect(io.error).not.toHaveBeenCalled();
   });
 
   it("rejects a non-positive-integer cap with a clear error", async () => {
     const io = fakeIo();
-    const code = await main(["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "0"], io);
+    const code = await main(
+      ["run", join(fixtures, "two-binary-steps.workflow.json"), "--processor-concurrency", "0"],
+      io,
+    );
     expect(code).toBe(2);
     expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--processor-concurrency/));
   });
@@ -1151,7 +1348,9 @@ describe("cli main() — runs subcommand argument strictness (ticket #61)", () =
     const io = fakeIo();
     const code = await main(["runs", "prune", "--older-than", "7d"], io);
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/takes no arguments, got "--older-than"/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/takes no arguments, got "--older-than"/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -1204,7 +1403,8 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
       runId,
       rootRunId: runId,
       parentRunId: null,
-      nodeId: null, nodeName: null,
+      nodeId: null,
+      nodeName: null,
       workerName: null,
       status: "running",
       resumedFromRootRunId: resumedFromRootRunId ?? null,
@@ -1234,11 +1434,32 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     expect(io.error).not.toHaveBeenCalled();
     const lines = (io.log.mock.calls.at(-1)![0] as string).split("\n");
     expect(lines).toHaveLength(4);
-    expect(cellsOf(lines[0]!)).toEqual(["root-run-id", "workflow", "status", "started", "finished", "resumed-from"]);
+    expect(cellsOf(lines[0]!)).toEqual([
+      "root-run-id",
+      "workflow",
+      "status",
+      "started",
+      "finished",
+      "resumed-from",
+    ]);
 
     const [ccc, bbb, aaa] = lines.slice(1).map(cellsOf);
-    expect(ccc).toEqual(["run-ccc", "-", "failed", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "ghost (deleted)"]);
-    expect(bbb).toEqual(["run-bbb", "-", "succeeded", expect.stringMatching(ISO_RE), expect.stringMatching(ISO_RE), "run-aaa"]);
+    expect(ccc).toEqual([
+      "run-ccc",
+      "-",
+      "failed",
+      expect.stringMatching(ISO_RE),
+      expect.stringMatching(ISO_RE),
+      "ghost (deleted)",
+    ]);
+    expect(bbb).toEqual([
+      "run-bbb",
+      "-",
+      "succeeded",
+      expect.stringMatching(ISO_RE),
+      expect.stringMatching(ISO_RE),
+      "run-aaa",
+    ]);
     expect(aaa).toEqual(["run-aaa", "greeter", "running", expect.stringMatching(ISO_RE), "-", "-"]);
   });
 
@@ -1283,7 +1504,9 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs"], io);
 
     expect(code).toBe(0);
-    expect(io.log).toHaveBeenCalledWith("root-run-id  workflow  status  started  finished  resumed-from");
+    expect(io.log).toHaveBeenCalledWith(
+      "root-run-id  workflow  status  started  finished  resumed-from",
+    );
   });
 
   it("filters by --workflow on the source workflow's human name (#202)", async () => {
@@ -1327,7 +1550,9 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs", "--workflow"], io);
 
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--workflow requires a name argument/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--workflow requires a name argument/),
+    );
     expect(io.log).not.toHaveBeenCalled();
   });
 
@@ -1336,7 +1561,9 @@ describe("cli main() — runs bare listing (ticket #174)", () => {
     const code = await main(["runs", "--limit", "0"], io);
 
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/--limit requires a positive integer/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/--limit requires a positive integer/),
+    );
   });
 
   it("still reports a mistyped subcommand as a usage error", async () => {
@@ -1366,7 +1593,15 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
 
   function seedRoot(runId: string, childNodeId = "greet"): void {
     const db = openDb(dbFilePath(projectDir));
-    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
+    insertRun(db, {
+      runId,
+      rootRunId: runId,
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "succeeded",
+    });
     insertRun(db, {
       runId: `${runId}-child`,
       rootRunId: runId,
@@ -1406,12 +1641,14 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
     const code = await main(["runs", "rm", "target"], io);
 
     expect(code).toBe(1);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/refusing to remove target.*successor/s));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/refusing to remove target.*successor/s),
+    );
     expect(io.log).not.toHaveBeenCalled();
     // The target still exists — a refused delete removes nothing.
     const check = fakeIo();
     await main(["runs"], check);
-    expect((check.log.mock.calls.at(-1)![0] as string)).toContain("target");
+    expect(check.log.mock.calls.at(-1)![0] as string).toContain("target");
   });
 
   it("--force overrides the block, deletes only the named tree, and names the orphaned successor", async () => {
@@ -1449,7 +1686,9 @@ describe("cli main() — runs rm reuse-marker guard (ticket #175)", () => {
     const code = await main(["runs", "rm", "--force", "never-ran"], io);
 
     expect(code).toBe(1);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/no run found with id "never-ran"/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/no run found with id "never-ran"/),
+    );
   });
 
   it("rejects an unknown flag with a usage error", async () => {
@@ -1478,7 +1717,15 @@ describe("cli main() — runs prune confirmation (ticket #166)", () => {
 
   function seedRoot(runId: string): void {
     const db = openDb(dbFilePath(projectDir));
-    insertRun(db, { runId, rootRunId: runId, parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
+    insertRun(db, {
+      runId,
+      rootRunId: runId,
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "succeeded",
+    });
     db.close();
   }
 
@@ -1574,7 +1821,9 @@ describe("cli main() — runs prune confirmation (ticket #166)", () => {
     const code = await main(["runs", "prune", "--older-than", "7d"], io);
 
     expect(code).toBe(2);
-    expect(io.error).toHaveBeenCalledWith(expect.stringMatching(/takes no arguments, got "--older-than"/));
+    expect(io.error).toHaveBeenCalledWith(
+      expect.stringMatching(/takes no arguments, got "--older-than"/),
+    );
     expect(rowCount()).toBe(1);
   });
 

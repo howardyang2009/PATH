@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import { replaceNode, withOptionalKey, withoutKey } from "../src/edit-target.js";
 
 /**
@@ -46,7 +46,10 @@ describe("withOptionalKey", () => {
 
 describe("replaceNode", () => {
   it("splices the edited node in place in its body, by id", () => {
-    const edited = replaceNode(file, { ...node(UUID, "renamed"), command: "printf" } as unknown as WorkflowNode);
+    const edited = replaceNode(file, {
+      ...node(UUID, "renamed"),
+      command: "printf",
+    } as unknown as WorkflowNode);
 
     expect(edited.body.map((n) => (n as { command?: string }).command)).toEqual(["printf", "echo"]);
     expect(edited.body.map((n) => n.name)).toEqual(["renamed", "second"]);

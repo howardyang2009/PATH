@@ -1,5 +1,5 @@
-import { z } from "zod";
 import type { StepPluginRegistry } from "@path/schema";
+import { z } from "zod";
 
 /**
  * A registry mirroring the two shipped built-in leaf step types (`binary`, `prompt`) at the level
@@ -13,7 +13,11 @@ const doNotRun = () => Promise.reject(new Error("run must not be called at valid
 
 export const builtinRegistry: StepPluginRegistry = {
   binary: {
-    fields: { command: z.string(), args: z.array(z.string()).optional(), cwd: z.string().optional() },
+    fields: {
+      command: z.string(),
+      args: z.array(z.string()).optional(),
+      cwd: z.string().optional(),
+    },
     config: {},
     workers: { spawn: { run: doNotRun, meters: false, needsProcessorSlot: false } },
     defaultWorker: "spawn",

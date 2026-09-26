@@ -1,4 +1,4 @@
-import { walkNodes, type WorkflowFile } from "@path/schema";
+import { type WorkflowFile, walkNodes } from "@path/schema";
 import { findById } from "./edit-tree.js";
 
 /**
@@ -33,7 +33,9 @@ function direction(from: number, to: number): GotoDirection {
  */
 export function gotoTargetOptions(file: WorkflowFile, gotoId: string): GotoTargetOption[] {
   const from = firstLevelIndex(file, gotoId);
-  return file.body.flatMap((node, index) => (node.id === gotoId ? [] : [{ name: node.name, direction: direction(from, index) }]));
+  return file.body.flatMap((node, index) =>
+    node.id === gotoId ? [] : [{ name: node.name, direction: direction(from, index) }],
+  );
 }
 
 /** The direction glyph a goto's chip wears, or `null` when its target names no first-level node. */

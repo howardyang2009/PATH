@@ -23,7 +23,10 @@ export interface ParseJsonFieldOptions {
  * unfound `workflow_path` — and those come back as a `400` the form surfaces (#233). Reimplementing
  * that here would be a second, drifting copy of the contract.
  */
-export function parseJsonField(text: string, { allowEmpty }: ParseJsonFieldOptions): JsonFieldResult {
+export function parseJsonField(
+  text: string,
+  { allowEmpty }: ParseJsonFieldOptions,
+): JsonFieldResult {
   const trimmed = text.trim();
   if (trimmed === "") {
     return allowEmpty
@@ -35,7 +38,11 @@ export function parseJsonField(text: string, { allowEmpty }: ParseJsonFieldOptio
   try {
     parsed = JSON.parse(trimmed) as JsonValue;
   } catch (error) {
-    return { ok: false, empty: false, message: error instanceof Error ? error.message : "invalid JSON" };
+    return {
+      ok: false,
+      empty: false,
+      message: error instanceof Error ? error.message : "invalid JSON",
+    };
   }
 
   if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {

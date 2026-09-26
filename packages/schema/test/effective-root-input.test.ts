@@ -28,11 +28,17 @@ describe("effectiveRootInput", () => {
 
 describe("launchInput", () => {
   it("records a non-empty override beside the effective input it becomes", () => {
-    expect(launchInput({ topic: "x" }, { topic: "file" })).toEqual({ input: { topic: "x" }, operatorInput: { topic: "x" } });
+    expect(launchInput({ topic: "x" }, { topic: "file" })).toEqual({
+      input: { topic: "x" },
+      operatorInput: { topic: "x" },
+    });
   });
 
   it("records no override when none, or an empty one, was sent — the file seed is the input", () => {
-    expect(launchInput(undefined, { topic: "file" })).toEqual({ input: { topic: "file" }, operatorInput: undefined });
+    expect(launchInput(undefined, { topic: "file" })).toEqual({
+      input: { topic: "file" },
+      operatorInput: undefined,
+    });
     expect(launchInput({}, undefined)).toEqual({ input: {}, operatorInput: undefined });
   });
 });

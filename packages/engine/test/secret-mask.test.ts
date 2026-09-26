@@ -21,19 +21,25 @@ describe("collectSecrets", () => {
   });
 
   it("collects secrets nested at any depth under a dotted key path", () => {
-    const masker = collectSecrets([{ creds: { headers: { auth: { $secret: "deep-secret-value" } } } }]);
+    const masker = collectSecrets([
+      { creds: { headers: { auth: { $secret: "deep-secret-value" } } } },
+    ]);
     expect(masker.maskString("x=deep-secret-value")).toBe("x=[secret:creds.headers.auth]");
   });
 
   it("resolves a duplicate value to the first key it was collected under", () => {
-    const masker = collectSecrets([{ primary: { $secret: "same-secret-value" }, alias: { $secret: "same-secret-value" } }]);
+    const masker = collectSecrets([
+      { primary: { $secret: "same-secret-value" }, alias: { $secret: "same-secret-value" } },
+    ]);
     expect(masker.maskString("same-secret-value")).toBe("[secret:primary]");
   });
 
   it("earlier config sources win the token key for a duplicated value", () => {
     const operator: ConfigObject = { opKey: { $secret: "shared-secret-value" } };
     const file: ConfigObject = { fileKey: { $secret: "shared-secret-value" } };
-    expect(collectSecrets([operator, file]).maskString("shared-secret-value")).toBe("[secret:opKey]");
+    expect(collectSecrets([operator, file]).maskString("shared-secret-value")).toBe(
+      "[secret:opKey]",
+    );
   });
 
   it("warns about a suspiciously short secret but still masks it", () => {
@@ -51,7 +57,10 @@ describe("collectSecrets", () => {
   });
 
   it("masks the longer of two overlapping secrets before its substring", () => {
-    const masker = collectSecrets([{ full: { $secret: "abc123def" } }, { part: { $secret: "abc" } }]);
+    const masker = collectSecrets([
+      { full: { $secret: "abc123def" } },
+      { part: { $secret: "abc" } },
+    ]);
     expect(masker.maskString("abc123def and abc")).toBe("[secret:full] and [secret:part]");
   });
 });

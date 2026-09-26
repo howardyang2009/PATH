@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
+import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
  * The target chooser for a new `workflow`-ref (#391, designer-spec § Nested `workflow`-ref creation).
@@ -34,14 +34,29 @@ export function RefTargetDialog({
   const [mode, setMode] = useState<"choose" | "existing">("choose");
 
   if (mode === "existing") {
-    return <ExistingPicker discovery={discovery} excludePath={excludePath} onPick={onPickExisting} onBack={() => setMode("choose")} onCancel={onCancel} />;
+    return (
+      <ExistingPicker
+        discovery={discovery}
+        excludePath={excludePath}
+        onPick={onPickExisting}
+        onBack={() => setMode("choose")}
+        onCancel={onCancel}
+      />
+    );
   }
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Add a workflow reference">
+    <div
+      className="dialog-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Add a workflow reference"
+    >
       <div className="dialog ref-target-dialog">
         <h2 className="dialog-title">Add a workflow reference</h2>
-        <p className="dialog-hint">Point this reference at an existing workflow, or create a new one to author now.</p>
+        <p className="dialog-hint">
+          Point this reference at an existing workflow, or create a new one to author now.
+        </p>
         <div className="ref-target-choices">
           <button type="button" className="ref-target-existing" onClick={() => setMode("existing")}>
             Reference an existing workflow
@@ -77,10 +92,21 @@ function ExistingPicker({
   // `null` until a scan lands: still discovering. A failed scan with nothing behind it reads as empty, so
   // the picker shows its "no workflows" note rather than an indefinite spinner.
   const discovered = discoveredWorkflows(discovery);
-  const paths = discovered === null ? null : discovered.map((wf) => wf.relative_path).filter((path) => path !== excludePath).sort();
+  const paths =
+    discovered === null
+      ? null
+      : discovered
+          .map((wf) => wf.relative_path)
+          .filter((path) => path !== excludePath)
+          .sort();
 
   return (
-    <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Reference an existing workflow">
+    <div
+      className="dialog-scrim"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Reference an existing workflow"
+    >
       <div className="dialog ref-existing-dialog">
         <h2 className="dialog-title">Reference an existing workflow</h2>
         <p className="dialog-hint">Choose the workflow this reference runs as a nested run.</p>

@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
-import { PathApiClient, type FetchLike } from "../src/api-client.js";
-import { connectRunViewModel } from "../src/connect.js";
 import type { WireRunRecord } from "@path/schema";
+import { describe, expect, it } from "vitest";
+import { type FetchLike, PathApiClient } from "../src/api-client.js";
+import { connectRunViewModel } from "../src/connect.js";
 
 const ROOT = "root-1";
 const CHILD = "child-1";
@@ -36,7 +36,9 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
 const ROOT_ROW = record({ run_id: ROOT, parent_run_id: null, node_id: null, node_name: null });
 
 function frame(event: Record<string, unknown>): Uint8Array {
-  return new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`);
+  return new TextEncoder().encode(
+    `id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`,
+  );
 }
 
 /** An SSE body that stays open, as the server's does until the root run goes terminal. */
@@ -66,7 +68,10 @@ class EventStream {
 }
 
 /** Serves a fresh tree per `GET /v0/runs/:id` — `trees.shift()` models the run moving on. */
-function stubFetch(trees: WireRunRecord[][], stream: EventStream): { fetch: FetchLike; treeReads: number } {
+function stubFetch(
+  trees: WireRunRecord[][],
+  stream: EventStream,
+): { fetch: FetchLike; treeReads: number } {
   const state = { treeReads: 0 };
   const fetch: FetchLike = async (input) => {
     if (input.endsWith("/events")) {
@@ -74,10 +79,13 @@ function stubFetch(trees: WireRunRecord[][], stream: EventStream): { fetch: Fetc
     }
     state.treeReads += 1;
     const runs = trees.length > 1 ? trees.shift()! : trees[0]!;
-    return new Response(JSON.stringify({ root_run_id: ROOT, status: "running", output: null, runs }), {
-      status: 200,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify({ root_run_id: ROOT, status: "running", output: null, runs }),
+      {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   };
   return {
     fetch,
@@ -92,8 +100,14 @@ function waitFor(predicate: () => boolean): Promise<void> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const tick = (): void => {
-      if (predicate()) return resolve();
-      if (Date.now() - started > 2000) return reject(new Error("timed out waiting for condition"));
+      if (predicate()) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 2000) {
+        reject(new Error("timed out waiting for condition"));
+        return;
+      }
       setTimeout(tick, 5);
     };
     tick();
@@ -136,7 +150,15 @@ describe("connectRunViewModel", () => {
     const client = new PathApiClient({ baseUrl: "", fetch: stub.fetch });
 
     const connected = await connectRunViewModel({ client, rootRunId: ROOT });
-    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", node_name: "draft", status: "succeeded" });
+    stream.push({
+      type: "step-finished",
+      seq: 1,
+      ts: "t1",
+      run_id: CHILD,
+      node_id: "draft",
+      node_name: "draft",
+      status: "succeeded",
+    });
     // The re-read decision is made in the same callback turn as the fold, so once the status has
     // moved, a re-read would already have been issued — `treeReads` staying 1 is decided by then.
     await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "succeeded");
@@ -192,7 +214,15 @@ describe("connectRunViewModel", () => {
     });
 
     // A leaf parks awaiting, then the server ends the stream (quiescent, root still running).
-    stream.push({ type: "step-awaiting", seq: 1, ts: "t1", run_id: CHILD, node_id: "draft", node_name: "draft", assignee: null });
+    stream.push({
+      type: "step-awaiting",
+      seq: 1,
+      ts: "t1",
+      run_id: CHILD,
+      node_id: "draft",
+      node_name: "draft",
+      assignee: null,
+    });
     await waitFor(() => connected.model.getState().runs.get(CHILD)?.status === "awaiting");
     stream.end();
 
@@ -201,7 +231,15 @@ describe("connectRunViewModel", () => {
     expect(connected.model.getState().stream).toBe("waiting");
 
     // A completion arrives on the next poll: the leaf finishes, the stream reads live again.
-    stream.push({ type: "step-finished", seq: 2, ts: "t2", run_id: CHILD, node_id: "draft", node_name: "draft", status: "succeeded" });
+    stream.push({
+      type: "step-finished",
+      seq: 2,
+      ts: "t2",
+      run_id: CHILD,
+      node_id: "draft",
+      node_name: "draft",
+      status: "succeeded",
+    });
     await waitFor(() => connected.model.getState().stream === "live");
 
     expect(phases).toEqual(["live", "waiting", "live"]);
@@ -218,7 +256,15 @@ describe("connectRunViewModel", () => {
     await waitFor(() => connected.model.getState().stream === "live");
 
     // The implicit root step finishing (`node_id: null`) is what closes the stream for good.
-    stream.push({ type: "step-finished", seq: 1, ts: "t1", run_id: ROOT, node_id: null, node_name: null, status: "succeeded" });
+    stream.push({
+      type: "step-finished",
+      seq: 1,
+      ts: "t1",
+      run_id: ROOT,
+      node_id: null,
+      node_name: null,
+      status: "succeeded",
+    });
     // The end below is a completion, not a drop, only if the terminal event was seen first — and the
     // subscription records terminality before handing the event to the fold, so the root status
     // moving means the stream already knows.

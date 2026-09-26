@@ -33,7 +33,9 @@ afterEach(async () => {
 });
 
 /** Spawns the real `path-server` bin (dev-mode, via tsx) and resolves once it prints its URL. */
-function startBin(args: string[]): Promise<{ url: string; process: ChildProcessWithoutNullStreams }> {
+function startBin(
+  args: string[],
+): Promise<{ url: string; process: ChildProcessWithoutNullStreams }> {
   return new Promise((resolvePromise, reject) => {
     const proc = spawn(tsxBin, [bin, ...args], { cwd: packageRoot });
     child = proc;
@@ -51,7 +53,9 @@ function startBin(args: string[]): Promise<{ url: string; process: ChildProcessW
     proc.stderr.on("data", (chunk: Buffer) => {
       stderr += chunk.toString();
     });
-    proc.once("exit", (code) => reject(new Error(`path-server exited (code ${code}) before printing its URL: ${stderr}`)));
+    proc.once("exit", (code) =>
+      reject(new Error(`path-server exited (code ${code}) before printing its URL: ${stderr}`)),
+    );
     proc.once("error", reject);
   });
 }
@@ -74,7 +78,9 @@ describe("path-server bin (real dev-mode process, no packaging)", () => {
         const match = /Listening on (http:\/\/localhost:\d+)/.exec(stdout);
         if (match) resolvePromise(match[1]!);
       });
-      child!.once("exit", (code) => reject(new Error(`exited (code ${code}) before printing its URL`)));
+      child!.once("exit", (code) =>
+        reject(new Error(`exited (code ${code}) before printing its URL`)),
+      );
       child!.once("error", reject);
     });
 

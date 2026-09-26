@@ -1,9 +1,9 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LogEvent } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LogEvent } from "@path/schema";
 import { createDbLogBackend, getLogEventsForRoot } from "../../src/logging/db-backend.js";
 import { openDb } from "../../src/persistence/db.js";
 
@@ -21,7 +21,15 @@ afterEach(() => {
 });
 
 function finished(seq: number, runId = "root-1"): LogEvent {
-  return { type: "step-finished", seq, ts: "t", run_id: runId, node_id: null, node_name: null, status: "succeeded" };
+  return {
+    type: "step-finished",
+    seq,
+    ts: "t",
+    run_id: runId,
+    node_id: null,
+    node_name: null,
+    status: "succeeded",
+  };
 }
 
 /** A backend already open on the given root run — the only way a row reaches `log_events`. */

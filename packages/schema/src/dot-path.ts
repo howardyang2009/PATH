@@ -58,11 +58,14 @@ export type DotPathResolution = { found: true; value: JsonValue } | { found: fal
  * path, because the caller already knows the path and frames the failure its own way — the
  * condition evaluator as a trace leaf, interpolation as a thrown `InterpolationError`.
  */
-export function resolveDotPath(roots: { readonly [root: string]: JsonValue }, path: string): DotPathResolution {
+export function resolveDotPath(
+  roots: { readonly [root: string]: JsonValue },
+  path: string,
+): DotPathResolution {
   const segments = path.split(".");
   const root = segments[0];
 
-  if (root === undefined || !Object.prototype.hasOwnProperty.call(roots, root)) {
+  if (root === undefined || !Object.hasOwn(roots, root)) {
     return { found: false, error: `unknown root "${root ?? ""}"` };
   }
 
@@ -77,7 +80,7 @@ export function resolveDotPath(roots: { readonly [root: string]: JsonValue }, pa
         return { found: false, error: `index "${segment}" is out of bounds` };
       }
       current = current[index] as JsonValue;
-    } else if (Object.prototype.hasOwnProperty.call(current, segment)) {
+    } else if (Object.hasOwn(current, segment)) {
       current = (current as { [key: string]: JsonValue })[segment] as JsonValue;
     } else {
       return { found: false, error: `key "${segment}" not found` };

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import {
   configString,
   dropNodeKey,
@@ -21,7 +21,13 @@ import {
 
 /** A minimal `binary` leaf for the transforms to act on (cast once; the union carries no index signature). */
 function binaryNode(extra: Record<string, unknown> = {}): WorkflowNode {
-  return { id: "n1", name: "step", type: "binary", command: "echo", ...extra } as unknown as WorkflowNode;
+  return {
+    id: "n1",
+    name: "step",
+    type: "binary",
+    command: "echo",
+    ...extra,
+  } as unknown as WorkflowNode;
 }
 
 /** Read a result node as an open record — the union has no index signature, so a test read casts through `unknown`. */
@@ -31,15 +37,32 @@ function asRec(node: WorkflowNode): Record<string, unknown> {
 
 describe("nodePayload / mergeNodePayload", () => {
   it("nodePayload returns only the non-envelope keys", () => {
-    const node = binaryNode({ command: "echo", args: ["hi"], config: { model: "x" }, publish: { out: "${output.x}" } });
+    const node = binaryNode({
+      command: "echo",
+      args: ["hi"],
+      config: { model: "x" },
+      publish: { out: "${output.x}" },
+    });
     expect(nodePayload(node)).toEqual({ command: "echo", args: ["hi"] });
   });
 
   it("mergeNodePayload keeps the envelope and never lets a payload leak an envelope key", () => {
     const node = binaryNode({ command: "echo", config: { model: "x" } });
     // The payload tries to smuggle in `id` and `config` (envelope keys) — both must be ignored.
-    const next = mergeNodePayload(node, { command: "run", args: ["a"], id: "hacked", config: { model: "y" } });
-    expect(next).toEqual({ id: "n1", name: "step", type: "binary", config: { model: "x" }, command: "run", args: ["a"] });
+    const next = mergeNodePayload(node, {
+      command: "run",
+      args: ["a"],
+      id: "hacked",
+      config: { model: "y" },
+    });
+    expect(next).toEqual({
+      id: "n1",
+      name: "step",
+      type: "binary",
+      config: { model: "x" },
+      command: "run",
+      args: ["a"],
+    });
   });
 
   it("round-trips: mergeNodePayload(node, nodePayload(node)) is the same node", () => {

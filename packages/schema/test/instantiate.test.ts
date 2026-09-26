@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { instantiate, instantiateWorkflow } from "../src/instantiate.js";
-import { FORMAT_VERSION, type WorkflowFile } from "../src/workflow-file-type.js";
-import { walkNodes } from "../src/node-walk.js";
 import type { WorkflowNode } from "../src/node-type.js";
+import { walkNodes } from "../src/node-walk.js";
+import { FORMAT_VERSION, type WorkflowFile } from "../src/workflow-file-type.js";
 
 // A UUIDv4 the fixtures reuse for every authored id — inner ids are authoring ids, and instantiation
 // re-mints every one, so the source value never survives into the output.
@@ -69,13 +69,19 @@ describe("instantiate — detached copy", () => {
     const prompt = out[0] as Extract<WorkflowNode, { type: "prompt" }>;
     expect(prompt.prompt).toBe("Do the thing");
     const branch = out[1] as Extract<WorkflowNode, { type: "branch" }>;
-    expect(branch.arms[0]!.when).toEqual({ type: "equals", path: "context.activity.status", value: "ok" });
+    expect(branch.arms[0]!.when).toEqual({
+      type: "equals",
+      path: "context.activity.status",
+      value: "ok",
+    });
     // The arm's condition still names `activity` by value — instantiation never rewires.
     expect((branch.arms[0]!.when as { path: string }).path).toBe("context.activity.status");
   });
 
   it("keeps a `workflow` ref string verbatim while re-minting its node id", () => {
-    const body: WorkflowNode[] = [{ type: "workflow", id: UUID, name: "sub", ref: "../other.workflow.json" } as WorkflowNode];
+    const body: WorkflowNode[] = [
+      { type: "workflow", id: UUID, name: "sub", ref: "../other.workflow.json" } as WorkflowNode,
+    ];
     const out = instantiate(body);
     const node = out[0] as Extract<WorkflowNode, { type: "workflow" }>;
     expect(node.ref).toBe("../other.workflow.json");
@@ -84,7 +90,13 @@ describe("instantiate — detached copy", () => {
 
   it("deep-copies nested objects — mutating an output node leaves the source untouched", () => {
     const body: WorkflowNode[] = [
-      { type: "prompt", id: UUID, name: "step", prompt: "x", publish: { out: { nested: 1 } } } as WorkflowNode,
+      {
+        type: "prompt",
+        id: UUID,
+        name: "step",
+        prompt: "x",
+        publish: { out: { nested: 1 } },
+      } as WorkflowNode,
     ];
     const out = instantiate(body);
     const outPublish = (out[0] as unknown as { publish: { out: { nested: number } } }).publish;
@@ -141,7 +153,9 @@ describe("instantiate — insert socket", () => {
   });
 
   it("inserts a one-node body bare into a single-node slot", () => {
-    const body: WorkflowNode[] = [{ type: "prompt", id: UUID, name: "solo", prompt: "x" } as WorkflowNode];
+    const body: WorkflowNode[] = [
+      { type: "prompt", id: UUID, name: "solo", prompt: "x" } as WorkflowNode,
+    ];
     const out = instantiate(body, { socket: "single" });
     expect(out).toHaveLength(1);
     expect(out[0]!.type).toBe("prompt");

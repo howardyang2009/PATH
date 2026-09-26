@@ -1,6 +1,11 @@
-import { type Observation, ObserverError, type RunObserver, type RunOutcome } from "../run-observer.js";
-import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
 import { type LogEvent, LogEventSchema } from "@path/schema";
+import {
+  type Observation,
+  ObserverError,
+  type RunObserver,
+  type RunOutcome,
+} from "../run-observer.js";
+import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
 
 // Every workflow-run is its file's implicit root step (invariant 2), so its lifecycle events
 // report this step_type: the root run with `node_id: null`, a nested workflow-step's run (#22)
@@ -18,7 +23,13 @@ interface ManagedBackend {
 }
 
 /** The shared log-event envelope (mvp spec §8.1) — `seq` is the ordering truth per root run. */
-type Envelope = { seq: number; ts: string; run_id: string; node_id: string | null; node_name: string | null };
+type Envelope = {
+  seq: number;
+  ts: string;
+  run_id: string;
+  node_id: string | null;
+  node_name: string | null;
+};
 
 /** A node's two-part identity (ADR 0007) as control events pass it through the projection. */
 type NodeIdentity = { id: string; name: string };
@@ -49,15 +60,28 @@ function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
  * `envelope` is a factory rather than a value because the choice of `node_id`/`node_name` is part of
  * the projection: control-node events carry the control node's own identity, lifecycle events the run's.
  */
-export function toLogEvent(o: Observation, envelope: (o: Observation) => Envelope): LogEvent | null {
+export function toLogEvent(
+  o: Observation,
+  envelope: (o: Observation) => Envelope,
+): LogEvent | null {
   switch (o.type) {
     case "run-started":
       // A workflow-run is its file's implicit root step (invariant 2) and runs a nested run, not a
       // worker (ADR 0021 sub-14) — so its log event's `worker_name` is the step type itself,
       // `"workflow"`, the one string a workflow-shaped step can honestly name here.
-      return { type: "step-started", ...envelope(o), step_type: WORKFLOW_STEP_TYPE, worker_name: WORKFLOW_STEP_TYPE };
+      return {
+        type: "step-started",
+        ...envelope(o),
+        step_type: WORKFLOW_STEP_TYPE,
+        worker_name: WORKFLOW_STEP_TYPE,
+      };
     case "step-started":
-      return { type: "step-started", ...envelope(o), step_type: o.stepType, worker_name: o.workerName };
+      return {
+        type: "step-started",
+        ...envelope(o),
+        step_type: o.stepType,
+        worker_name: o.workerName,
+      };
     case "step-finished":
     case "run-finished":
       return finishedEvent(envelope(o), o);
@@ -160,8 +184,15 @@ export interface LoggingObserverOptions {
   append?: boolean;
 }
 
-export function createLoggingObserver(backends: LogBackend[], options: LoggingObserverOptions = {}): RunObserver {
-  const managed: ManagedBackend[] = backends.map((backend) => ({ backend, active: true, tail: Promise.resolve() }));
+export function createLoggingObserver(
+  backends: LogBackend[],
+  options: LoggingObserverOptions = {},
+): RunObserver {
+  const managed: ManagedBackend[] = backends.map((backend) => ({
+    backend,
+    active: true,
+    tail: Promise.resolve(),
+  }));
   // `seq` continues from `startSeq` on a re-invocation (0 on a launch), so a Complete's appended
   // events keep the per-root ordering monotonic instead of restarting at 1 and colliding.
   let seq = options.startSeq ?? 0;
@@ -174,7 +205,14 @@ export function createLoggingObserver(backends: LogBackend[], options: LoggingOb
   // observer keeps no per-run state and its output cannot depend on the order or completeness of the
   // stream it was handed.
   function envelope(o: Observation): Envelope {
-    return { seq: (seq += 1), ts: new Date().toISOString(), run_id: o.runId, node_id: o.nodeId, node_name: o.nodeName };
+    seq += 1;
+    return {
+      seq,
+      ts: new Date().toISOString(),
+      run_id: o.runId,
+      node_id: o.nodeId,
+      node_name: o.nodeName,
+    };
   }
 
   // Serialize an op onto a backend's queue: it runs only after that backend's previous op settles,
@@ -199,21 +237,30 @@ export function createLoggingObserver(backends: LogBackend[], options: LoggingOb
     results.forEach((result, i) => {
       if (result.status === "rejected") {
         targets[i]!.active = false;
-        reasons.push(result.reason instanceof Error ? result.reason.message : String(result.reason));
+        reasons.push(
+          result.reason instanceof Error ? result.reason.message : String(result.reason),
+        );
       }
     });
-    if (!bestEffort && reasons.length > 0) throw new ObserverError(`${label}: ${reasons.join("; ")}`);
+    if (!bestEffort && reasons.length > 0)
+      throw new ObserverError(`${label}: ${reasons.join("; ")}`);
   }
 
   async function openAll(runId: string): Promise<void> {
-    await fanOut((mb) => mb.backend.open({ runId, format: LOG_FORMAT, append }), { label: "log backend open failed", bestEffort: false });
+    await fanOut((mb) => mb.backend.open({ runId, format: LOG_FORMAT, append }), {
+      label: "log backend open failed",
+      bestEffort: false,
+    });
   }
 
   // Deliver one already-assembled, schema-valid event to every active backend. `terminal` events
   // (§8.2) are best-effort: failures still drop the backend but never reject the run.
   async function emit(event: LogEvent, terminal: boolean): Promise<void> {
     const parsed = LogEventSchema.parse(event); // uphold "every event validates against the schema"
-    await fanOut((mb) => mb.backend.write(parsed), { label: "log backend write failed", bestEffort: terminal });
+    await fanOut((mb) => mb.backend.write(parsed), {
+      label: "log backend write failed",
+      bestEffort: terminal,
+    });
   }
 
   return {
@@ -240,7 +287,8 @@ export function createLoggingObserver(backends: LogBackend[], options: LoggingOb
       const event = toLogEvent(o, envelope);
       if (event !== null) await emit(event, terminal);
 
-      if (terminal) await Promise.allSettled(managed.map((mb) => enqueue(mb, () => mb.backend.close())));
+      if (terminal)
+        await Promise.allSettled(managed.map((mb) => enqueue(mb, () => mb.backend.close())));
     },
   };
 }

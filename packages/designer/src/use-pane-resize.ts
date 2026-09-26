@@ -53,7 +53,11 @@ export interface PaneWidths {
   handleProps: (index: 0 | 1) => PaneHandleProps;
 }
 
-function loadWidths(key: string, defaults: readonly [number, number], min: number): [number, number] {
+function loadWidths(
+  key: string,
+  defaults: readonly [number, number],
+  min: number,
+): [number, number] {
   if (typeof localStorage === "undefined") return [defaults[0], defaults[1]];
   try {
     const parsed = JSON.parse(localStorage.getItem(key) ?? "");
@@ -72,7 +76,9 @@ function loadWidths(key: string, defaults: readonly [number, number], min: numbe
 
 export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
   const { storageKey, defaults, min, fluidMin, separatorSpan, containerRef, grow } = opts;
-  const [widths, setWidths] = useState<[number, number]>(() => loadWidths(storageKey, defaults, min));
+  const [widths, setWidths] = useState<[number, number]>(() =>
+    loadWidths(storageKey, defaults, min),
+  );
   // Mirror `grow` in a ref so the drag callbacks below can read it without depending on its identity.
   // A caller commonly passes an inline `[1, -1]` literal, so `grow` is a new array every render; if the
   // pointer-move/end-drag callbacks depended on it they would be rebuilt on the first `setWidth`
@@ -115,7 +121,10 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
     (e: PointerEvent) => {
       const drag = dragRef.current;
       if (!drag) return;
-      setWidth(drag.index, drag.startWidth + (e.clientX - drag.startX) * growRef.current[drag.index]);
+      setWidth(
+        drag.index,
+        drag.startWidth + (e.clientX - drag.startX) * growRef.current[drag.index],
+      );
     },
     [setWidth],
   );
@@ -135,7 +144,11 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
         dragRef.current = { index, startX: e.clientX, startWidth: widths[index] };
         // The shared transport captures the pointer on the handle (past the canvas's `stopPropagation`),
         // holds the col-resize cursor, and clears the drag ref on pointer up.
-        stopRef.current = beginDrag(e, { cursor: "col-resize", onMove: onPointerMove, onEnd: () => (dragRef.current = null) });
+        stopRef.current = beginDrag(e, {
+          cursor: "col-resize",
+          onMove: onPointerMove,
+          onEnd: () => (dragRef.current = null),
+        });
       },
       onKeyDown: (e) => {
         // Sign the step by `grow` so the separator tracks the arrow whichever edge it sits on.

@@ -1,4 +1,4 @@
-import { isEnvWrapper, isSecretWrapper, type ConfigValue, type EnvWrapper } from "@path/schema";
+import { type ConfigValue, type EnvWrapper, isEnvWrapper, isSecretWrapper } from "@path/schema";
 
 /**
  * The pure algebra of a single **config value's shape** in the properties pane (#370, designer-spec
@@ -41,7 +41,9 @@ export function envNameOf(value: ConfigValue): string {
  */
 export function referenceLabel(value: ConfigValue): string | null {
   if (isSecretWrapper(value)) {
-    return isEnvWrapper(value.$secret) ? `$secret · $env · ${value.$secret.$env}` : "$secret · ••••••";
+    return isEnvWrapper(value.$secret)
+      ? `$secret · $env · ${value.$secret.$env}`
+      : "$secret · ••••••";
   }
   if (isEnvWrapper(value)) return `$env · ${value.$env}`;
   return null;

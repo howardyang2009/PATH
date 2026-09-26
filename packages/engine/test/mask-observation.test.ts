@@ -12,77 +12,140 @@ const workerName = "spawn";
 
 /** Every observation type, so a member added without a masking decision fails to compile here. */
 const SAMPLES: { [K in Observation["type"]]: Extract<Observation, { type: K }> } = {
-  "run-started": { type: "run-started", ...ids, parentRunId: null, nodeId: null, nodeName: null, input: { k: "s3cret-value" } },
+  "run-started": {
+    type: "run-started",
+    ...ids,
+    parentRunId: null,
+    nodeId: null,
+    nodeName: null,
+    input: { k: "s3cret-value" },
+  },
   "step-started": {
     type: "step-started",
     ...ids,
     parentRunId: "r0",
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     stepType: "binary",
     workerName,
     input: { k: "s3cret-value" },
   },
   "step-stderr": { type: "step-stderr", ...ids, stderr: "boom s3cret-value" },
-  "step-usage": { type: "step-usage", ...ids, usage: { in: 1, note: "s3cret-value" }, estimatedCostUsd: 0.01 },
-  "step-finished": { type: "step-finished", ...ids, status: "succeeded", output: { k: "s3cret-value" } },
+  "step-usage": {
+    type: "step-usage",
+    ...ids,
+    usage: { in: 1, note: "s3cret-value" },
+    estimatedCostUsd: 0.01,
+  },
+  "step-finished": {
+    type: "step-finished",
+    ...ids,
+    status: "succeeded",
+    output: { k: "s3cret-value" },
+  },
   "context-changed": { type: "context-changed", ...ids, context: { k: "s3cret-value" } },
   "step-context": { type: "step-context", ...ids, context: { k: "s3cret-value" } },
-  "join-applied": { type: "join-applied", ...ids, nodeId: "n1", nodeName: "n1", branches: ["a"], publishedKeys: ["k"] },
-  "run-cancelled": { type: "run-cancelled", ...ids, nodeId: "n1", nodeName: "n1", cause: "operator", causeRunId: null },
-  "run-finished": { type: "run-finished", ...ids, nodeId: null, nodeName: null, status: "succeeded", output: { k: "s3cret-value" } },
+  "join-applied": {
+    type: "join-applied",
+    ...ids,
+    nodeId: "n1",
+    nodeName: "n1",
+    branches: ["a"],
+    publishedKeys: ["k"],
+  },
+  "run-cancelled": {
+    type: "run-cancelled",
+    ...ids,
+    nodeId: "n1",
+    nodeName: "n1",
+    cause: "operator",
+    causeRunId: null,
+  },
+  "run-finished": {
+    type: "run-finished",
+    ...ids,
+    nodeId: null,
+    nodeName: null,
+    status: "succeeded",
+    output: { k: "s3cret-value" },
+  },
   "checkpoint-evaluated": {
     type: "checkpoint-evaluated",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     passed: false,
     trace: { type: "equals", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
   "branch-taken": {
     type: "branch-taken",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     arm: 0,
     trace: { type: "equals", path: "context.k", outcome: "true", value: "s3cret-value" },
   },
   "branch-no-match": {
     type: "branch-no-match",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     traces: [{ type: "equals", path: "context.k", outcome: "false", value: "s3cret-value" }],
   },
   "iteration-started": {
     type: "iteration-started",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     iteration: 1,
     trace: { type: "exists", path: "context.k", outcome: "true", value: "s3cret-value" },
   },
   "loop-exited": {
     type: "loop-exited",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
+    nodeId: "n1",
+    nodeName: "n1",
     reason: "condition-false",
     iterations: 2,
     trace: { type: "exists", path: "context.k", outcome: "false", value: "s3cret-value" },
   },
-  "reuse-marker": { type: "reuse-marker", ...ids, nodeId: "n1", nodeName: "n1", originalRunId: "orig-run" },
+  "reuse-marker": {
+    type: "reuse-marker",
+    ...ids,
+    nodeId: "n1",
+    nodeName: "n1",
+    originalRunId: "orig-run",
+  },
   "pass-started": { type: "pass-started", ...ids, nodeId: "n1", nodeName: "n1", pass: 2 },
   "goto-taken": {
     type: "goto-taken",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
-    targetNodeId: "n2", targetNodeName: "n2",
-    jump: 1, maxJumps: 3, pass: 2,
+    nodeId: "n1",
+    nodeName: "n1",
+    targetNodeId: "n2",
+    targetNodeName: "n2",
+    jump: 1,
+    maxJumps: 3,
+    pass: 2,
   },
   "goto-exhausted": {
     type: "goto-exhausted",
     ...ids,
-    nodeId: "n1", nodeName: "n1",
-    targetNodeId: "n2", targetNodeName: "n2",
-    maxJumps: 3, pass: 4,
+    nodeId: "n1",
+    nodeName: "n1",
+    targetNodeId: "n2",
+    targetNodeName: "n2",
+    maxJumps: 3,
+    pass: 4,
   },
   // `assignee` is an interpolated author value (#488), so it can reach a secret and must be scrubbed.
-  "step-awaiting": { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1", assignee: "s3cret-value" },
+  "step-awaiting": {
+    type: "step-awaiting",
+    ...ids,
+    nodeId: "n1",
+    nodeName: "n1",
+    assignee: "s3cret-value",
+  },
 };
 
 /**
@@ -112,7 +175,9 @@ describe("maskObservation", () => {
   it("proves each sweep is real: every maskable sample carries the secret before masking", () => {
     for (const [type, sample] of Object.entries(SAMPLES)) {
       if (CANNOT_CARRY_A_SECRET.has(type as Observation["type"])) continue;
-      expect(JSON.stringify(sample), `sample for "${type}" carries no secret to mask`).toContain("s3cret-value");
+      expect(JSON.stringify(sample), `sample for "${type}" carries no secret to mask`).toContain(
+        "s3cret-value",
+      );
     }
   });
 
@@ -151,15 +216,28 @@ describe("maskObservation", () => {
   });
 
   it("masks stderr and context", () => {
-    expect(maskObservation(masker, SAMPLES["step-stderr"])).toMatchObject({ stderr: `boom ${TOKEN}` });
-    expect(maskObservation(masker, SAMPLES["context-changed"])).toMatchObject({ context: { k: TOKEN } });
-    expect(maskObservation(masker, SAMPLES["step-context"])).toMatchObject({ context: { k: TOKEN } });
+    expect(maskObservation(masker, SAMPLES["step-stderr"])).toMatchObject({
+      stderr: `boom ${TOKEN}`,
+    });
+    expect(maskObservation(masker, SAMPLES["context-changed"])).toMatchObject({
+      context: { k: TOKEN },
+    });
+    expect(maskObservation(masker, SAMPLES["step-context"])).toMatchObject({
+      context: { k: TOKEN },
+    });
   });
 
   it("masks a succeeded output and a failed error, and leaves a cancelled outcome alone", () => {
-    expect(maskObservation(masker, SAMPLES["step-finished"])).toMatchObject({ output: { k: TOKEN } });
+    expect(maskObservation(masker, SAMPLES["step-finished"])).toMatchObject({
+      output: { k: TOKEN },
+    });
 
-    const failed: Observation = { type: "run-finished", ...ids, status: "failed", error: "died on s3cret-value" };
+    const failed: Observation = {
+      type: "run-finished",
+      ...ids,
+      status: "failed",
+      error: "died on s3cret-value",
+    };
     expect(maskObservation(masker, failed)).toMatchObject({ error: `died on ${TOKEN}` });
 
     const cancelled: Observation = { type: "step-finished", ...ids, status: "cancelled" };
@@ -169,7 +247,13 @@ describe("maskObservation", () => {
   it("masks an interpolated assignee on step-awaiting, and leaves a null assignee alone (#488)", () => {
     expect(maskObservation(masker, SAMPLES["step-awaiting"])).toMatchObject({ assignee: TOKEN });
 
-    const none: Observation = { type: "step-awaiting", ...ids, nodeId: "n1", nodeName: "n1", assignee: null };
+    const none: Observation = {
+      type: "step-awaiting",
+      ...ids,
+      nodeId: "n1",
+      nodeName: "n1",
+      assignee: null,
+    };
     expect(maskObservation(masker, none)).toEqual(none);
   });
 
@@ -185,8 +269,16 @@ describe("maskObservation", () => {
       type: "all",
       outcome: "false",
       of: [
-        { type: "not", outcome: "false", of: { type: "equals", path: "context.a", outcome: "true", value: "s3cret-value" } },
-        { type: "any", outcome: "false", of: [{ type: "exists", path: "context.b", outcome: "false", message: "no s3cret-value" }] },
+        {
+          type: "not",
+          outcome: "false",
+          of: { type: "equals", path: "context.a", outcome: "true", value: "s3cret-value" },
+        },
+        {
+          type: "any",
+          outcome: "false",
+          of: [{ type: "exists", path: "context.b", outcome: "false", message: "no s3cret-value" }],
+        },
       ],
     };
     const masked = maskObservation(masker, { ...SAMPLES["checkpoint-evaluated"], trace: nested });
@@ -195,13 +287,21 @@ describe("maskObservation", () => {
   });
 
   it("masks every trace of a branch-no-match, and the one a taken arm recorded", () => {
-    expect(maskObservation(masker, SAMPLES["branch-no-match"])).toMatchObject({ traces: [{ value: TOKEN }] });
-    expect(maskObservation(masker, SAMPLES["branch-taken"])).toMatchObject({ trace: { value: TOKEN } });
+    expect(maskObservation(masker, SAMPLES["branch-no-match"])).toMatchObject({
+      traces: [{ value: TOKEN }],
+    });
+    expect(maskObservation(masker, SAMPLES["branch-taken"])).toMatchObject({
+      trace: { value: TOKEN },
+    });
   });
 
   // The else arm has no condition, so it records no trace (#21) — masking must not build one.
   it("tolerates the null trace an else arm carries", () => {
-    const masked = maskObservation(masker, { ...SAMPLES["branch-taken"], arm: "else", trace: null });
+    const masked = maskObservation(masker, {
+      ...SAMPLES["branch-taken"],
+      arm: "else",
+      trace: null,
+    });
 
     expect(masked).toMatchObject({ arm: "else", trace: null });
   });
@@ -211,7 +311,11 @@ describe("maskObservation", () => {
   it("masks the usage a worker reported, without disturbing its counts", () => {
     const masked = maskObservation(masker, SAMPLES["step-usage"]);
 
-    expect(masked).toMatchObject({ type: "step-usage", usage: { in: 1, note: TOKEN }, estimatedCostUsd: 0.01 });
+    expect(masked).toMatchObject({
+      type: "step-usage",
+      usage: { in: 1, note: TOKEN },
+      estimatedCostUsd: 0.01,
+    });
   });
 
   it("leaves a null usage null rather than masking it into something", () => {

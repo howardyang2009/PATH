@@ -43,7 +43,14 @@ export interface RunDetailProps {
  * connection is held by the app rather than by this pane, because the node-I/O pane reads the same
  * snapshot to know when the run it is showing has written its output.
  */
-export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun, workflowFiles = [] }: RunDetailProps) {
+export function RunDetail({
+  client,
+  load,
+  rootRunId,
+  selectedRunId,
+  onSelectRun,
+  workflowFiles = [],
+}: RunDetailProps) {
   const detailRef = useRef<HTMLDivElement>(null);
   const [treeHeight, setTreeHeight] = useState<number>(loadTreeHeight);
   const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
@@ -161,9 +168,8 @@ export function RunDetail({ client, load, rootRunId, selectedRunId, onSelectRun,
         />
       </section>
 
-      <div
+      <hr
         className="row-resizer"
-        role="separator"
         aria-orientation="horizontal"
         aria-label="Resize run tree"
         aria-valuenow={Math.round(treeHeight)}

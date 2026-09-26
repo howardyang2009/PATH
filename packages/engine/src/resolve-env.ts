@@ -1,4 +1,10 @@
-import { mapEnv, mapSecrets, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
+import {
+  type ConfigObject,
+  type ConfigValue,
+  type JsonValue,
+  mapEnv,
+  mapSecrets,
+} from "@path/schema";
 import { mergeConfig } from "./merge-config.js";
 
 /**
@@ -115,7 +121,11 @@ export function resolveEffectiveConfig(merged: ConfigObject, env: EnvSource): Co
  * wins, then `$env` is resolved and `$secret` unwrapped. The one spelling of "a file's config under
  * its incoming config" and "a step's config under its file's", for the executor and the ref-tree walk.
  */
-export function effectiveConfig(base: ConfigObject, override: ConfigObject | undefined, env: EnvSource): ConfigObject {
+export function effectiveConfig(
+  base: ConfigObject,
+  override: ConfigObject | undefined,
+  env: EnvSource,
+): ConfigObject {
   return resolveEffectiveConfig(mergeConfig(base, override), env);
 }
 
@@ -123,7 +133,10 @@ export function effectiveConfig(base: ConfigObject, override: ConfigObject | und
 function unwrapSecrets(config: ConfigObject): ConfigObject {
   const resolved: ConfigObject = {};
   for (const [key, value] of Object.entries(config)) {
-    resolved[key] = mapSecrets(value as unknown as JsonValue, (secret) => secret) as unknown as ConfigValue;
+    resolved[key] = mapSecrets(
+      value as unknown as JsonValue,
+      (secret) => secret,
+    ) as unknown as ConfigValue;
   }
   return resolved;
 }
@@ -161,7 +174,9 @@ export function resolveRunEnv(configs: ConfigObject[], env: EnvSource): RunEnvRe
  * first step. "Cannot start" would contradict the run row the operator is reading it off.
  */
 export function describeUnsetEnv(unset: UnsetEnvVar[]): string {
-  const list = unset.map((variable) => `"${variable.name}" (config key "${variable.key}")`).join(", ");
+  const list = unset
+    .map((variable) => `"${variable.name}" (config key "${variable.key}")`)
+    .join(", ");
   return unset.length === 1
     ? `run failed before its first step: environment variable ${list} is not set`
     : `run failed before its first step: ${unset.length} environment variables are not set: ${list}`;

@@ -1,5 +1,5 @@
 import type { PathApiClient } from "./api-client.js";
-import { subscribeRunEvents, type RunEventSubscription } from "./sse-client.js";
+import { type RunEventSubscription, subscribeRunEvents } from "./sse-client.js";
 import { RunViewModel } from "./view-model.js";
 
 /**

@@ -1,7 +1,7 @@
-import { PathApiClient, type FetchLike } from "@path/client-core";
+import { type FetchLike, PathApiClient } from "@path/client-core";
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { useRunView, type RunViewLoad } from "../src/use-run-view.js";
+import { type RunViewLoad, useRunView } from "../src/use-run-view.js";
 
 const ROOT = "run_root";
 

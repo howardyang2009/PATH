@@ -1,7 +1,7 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { loadStepPluginRegistry, openProject, type LoadedStepPluginRegistry } from "@path/engine";
+import { type LoadedStepPluginRegistry, loadStepPluginRegistry, openProject } from "@path/engine";
 import { sendError } from "./http-json.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
@@ -79,7 +79,8 @@ async function handleRequest(
       if (viewerSuffix !== undefined && serveStatic(staticDir, viewerSuffix, res)) return;
 
       const designerSuffix = mountSuffix(DESIGNER_PREFIX, pathname);
-      if (designerSuffix !== undefined && serveStatic(designerStaticDir, designerSuffix, res)) return;
+      if (designerSuffix !== undefined && serveStatic(designerStaticDir, designerSuffix, res))
+        return;
     }
 
     sendError(res, 404, "not found");

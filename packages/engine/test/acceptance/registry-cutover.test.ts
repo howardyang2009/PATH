@@ -24,7 +24,12 @@ function scriptedAnthropic(calls: StepRequest[]): WorkerDescriptor {
     needsProcessorSlot: true,
     run: async (request: StepRequest): Promise<StepResult> => {
       calls.push(request);
-      return { status: "succeeded", output: `SUMMARY of: ${String(request.input)}`, usage: { input_tokens: 5 }, estimatedCostUsd: 0.01 };
+      return {
+        status: "succeeded",
+        output: `SUMMARY of: ${String(request.input)}`,
+        usage: { input_tokens: 5 },
+        estimatedCostUsd: 0.01,
+      };
     },
   };
 }

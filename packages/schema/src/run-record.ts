@@ -151,7 +151,11 @@ export const RUN_RECORD_FIELDS: Record<keyof RunRecord, true> = {
  * node starts as before a tree read or a `step-started`/`step-finished` fills it (view-model.ts).
  * Built from `RUN_RECORD_FIELDS`, so it can never fall out of step with the record's own fields.
  */
-export function blankRunRecord(seed: Partial<RunRecord> & Pick<RunRecord, "runId" | "rootRunId">): RunRecord {
-  const blank = Object.fromEntries(Object.keys(RUN_RECORD_FIELDS).map((key) => [key, null])) as unknown as RunRecord;
+export function blankRunRecord(
+  seed: Partial<RunRecord> & Pick<RunRecord, "runId" | "rootRunId">,
+): RunRecord {
+  const blank = Object.fromEntries(
+    Object.keys(RUN_RECORD_FIELDS).map((key) => [key, null]),
+  ) as unknown as RunRecord;
   return { ...blank, status: "pending", ...seed };
 }

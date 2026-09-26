@@ -25,14 +25,37 @@ function openFile(): Record<string, unknown> {
     name: "flow",
     body: [
       { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { z: "${output.a}" } },
-      { type: "while-do", id: uuid(3), name: "loop", condition: { type: "exists", path: "context.z" }, max_iterations: 2, node: { type: "prompt", id: uuid(4), name: "body", prompt: "l" } },
-      { type: "parallel", id: uuid(5), name: "fan", join: "collect", branches: [{ type: "prompt", id: uuid(6), name: "p1", prompt: "x" }] },
+      {
+        type: "while-do",
+        id: uuid(3),
+        name: "loop",
+        condition: { type: "exists", path: "context.z" },
+        max_iterations: 2,
+        node: { type: "prompt", id: uuid(4), name: "body", prompt: "l" },
+      },
+      {
+        type: "parallel",
+        id: uuid(5),
+        name: "fan",
+        join: "collect",
+        branches: [{ type: "prompt", id: uuid(6), name: "p1", prompt: "x" }],
+      },
     ],
   };
 }
 
 function summary(name: string, overrides: Partial<TemplateSummary> = {}): TemplateSummary {
-  return { id: `${name}-id`, name, description: `${name} blurb`, kind: "step", origin: "shipped", read_only: true, valid: true, error: null, ...overrides };
+  return {
+    id: `${name}-id`,
+    name,
+    description: `${name} blurb`,
+    kind: "step",
+    origin: "shipped",
+    read_only: true,
+    valid: true,
+    error: null,
+    ...overrides,
+  };
 }
 
 /** The template GUIDs the envelopes carry — they must never reach the workflow (no back-link). */
@@ -44,7 +67,11 @@ const TWO_NODE_BODY = [
   { type: "prompt", id: TEMPLATE_NODE_IDS[1], name: "judge", prompt: "judge it" },
 ];
 
-function envelope(name: string, body: unknown, overrides: Record<string, unknown> = {}): Record<string, unknown> {
+function envelope(
+  name: string,
+  body: unknown,
+  overrides: Record<string, unknown> = {},
+): Record<string, unknown> {
   return {
     id: `${name}-id`,
     name,
@@ -67,14 +94,26 @@ const TEMPLATES = {
 
 const BODIES = {
   "draft-judge-id": envelope("draft-judge", TWO_NODE_BODY),
-  "gate-check-id": envelope("gate-check", [{ type: "checkpoint", id: TEMPLATE_NODE_IDS[2], name: "gate", condition: { type: "exists", path: "context.z" } }]),
+  "gate-check-id": envelope("gate-check", [
+    {
+      type: "checkpoint",
+      id: TEMPLATE_NODE_IDS[2],
+      name: "gate",
+      condition: { type: "exists", path: "context.z" },
+    },
+  ]),
 };
 
 async function openApp(templateBodies: Record<string, unknown> = BODIES) {
   const calls = makeCalls();
   render(
     <App
-      client={stubClient({ files: { [PATH]: JSON.stringify(openFile()) }, templates: TEMPLATES, templateBodies, calls })}
+      client={stubClient({
+        files: { [PATH]: JSON.stringify(openFile()) },
+        templates: TEMPLATES,
+        templateBodies,
+        calls,
+      })}
       initialPath={PATH}
     />,
   );
@@ -146,8 +185,12 @@ describe("Insert a Template into a workflow (#578)", () => {
     await armTemplate(palette, "gate-check");
 
     expect(within(canvas).getByRole("button", { name: /add gate-check here/ })).toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /swap for gate-check/ })).not.toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /add gate-check branch/ })).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /swap for gate-check/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /add gate-check branch/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("inserts ordinary nodes the pane edits like any other", async () => {
@@ -157,7 +200,9 @@ describe("Insert a Template into a workflow (#578)", () => {
 
     fireEvent.click(within(canvas).getByText("judge").closest(".node-block") as HTMLElement);
     const pane = screen.getByRole("region", { name: "Properties" });
-    fireEvent.change(within(pane).getByLabelText("prompt"), { target: { value: "judge it harder" } });
+    fireEvent.change(within(pane).getByLabelText("prompt"), {
+      target: { value: "judge it harder" },
+    });
 
     const body = await savedBody(calls);
     expect(body.find((node) => node["name"] === "judge")!["prompt"]).toBe("judge it harder");
@@ -168,7 +213,9 @@ describe("Insert a Template into a workflow (#578)", () => {
     const card = await armTemplate(palette, "draft-judge");
     fireEvent.click(card);
     expect(card).toHaveAttribute("aria-pressed", "false");
-    expect(within(canvas).queryByRole("button", { name: /add draft-judge here/ })).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /add draft-judge here/ }),
+    ).not.toBeInTheDocument();
 
     await armTemplate(palette, "draft-judge");
     fireEvent.click(within(canvas).getByRole("button", { name: /add draft-judge here/ }));
@@ -177,12 +224,17 @@ describe("Insert a Template into a workflow (#578)", () => {
 
   it("does not arm a template the server reports invalid, and says why", async () => {
     const { canvas, palette } = await openApp({
-      "draft-judge-id": envelope("draft-judge", TWO_NODE_BODY, { valid: false, error: { message: 'unregistered step type "api-call"' } }),
+      "draft-judge-id": envelope("draft-judge", TWO_NODE_BODY, {
+        valid: false,
+        error: { message: 'unregistered step type "api-call"' },
+      }),
     });
     const card = await within(palette).findByRole("button", { name: /draft-judge/ });
     fireEvent.click(card);
 
-    expect(await within(palette).findByRole("alert")).toHaveTextContent('unregistered step type "api-call"');
+    expect(await within(palette).findByRole("alert")).toHaveTextContent(
+      'unregistered step type "api-call"',
+    );
     expect(card).toHaveAttribute("aria-pressed", "false");
     expect(within(canvas).queryByRole("button", { name: /draft-judge/ })).not.toBeInTheDocument();
   });
@@ -199,7 +251,9 @@ describe("Insert a Template into a workflow (#578)", () => {
     fireEvent.click(await within(panel).findByRole("button", { name: /draft-judge/ }));
 
     expect(await within(panel).findByRole("alert")).toHaveTextContent(/draft-judge/);
-    expect(within(canvas).queryByRole("button", { name: /add prompt here/ })).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /add prompt here/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("reports a failed template read", async () => {

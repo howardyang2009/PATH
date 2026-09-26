@@ -1,6 +1,13 @@
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
-import { blobRef, dbFilePath, pathDir, rootRunTreeDir, runBlobDir, runsDir } from "../../src/persistence/paths.js";
+import {
+  blobRef,
+  dbFilePath,
+  pathDir,
+  rootRunTreeDir,
+  runBlobDir,
+  runsDir,
+} from "../../src/persistence/paths.js";
 
 describe("persistence paths", () => {
   const project = "/tmp/some-project";
@@ -22,8 +29,12 @@ describe("persistence paths", () => {
   });
 
   it("keys a run's blob directory by root-run-id then run-id, even for the root run itself", () => {
-    expect(runBlobDir(project, "root-1", "root-1")).toBe(join(project, ".path", "runs", "root-1", "root-1"));
-    expect(runBlobDir(project, "root-1", "child-2")).toBe(join(project, ".path", "runs", "root-1", "child-2"));
+    expect(runBlobDir(project, "root-1", "root-1")).toBe(
+      join(project, ".path", "runs", "root-1", "root-1"),
+    );
+    expect(runBlobDir(project, "root-1", "child-2")).toBe(
+      join(project, ".path", "runs", "root-1", "child-2"),
+    );
   });
 
   // The one non-obvious rule in this file: a ref is a *stored string*, read back on any OS, so it

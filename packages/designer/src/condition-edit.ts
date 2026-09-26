@@ -1,4 +1,9 @@
-import { ConditionSchema, LEAF_CONDITION_TYPES, type Condition, type JsonScalar } from "@path/schema";
+import {
+  type Condition,
+  ConditionSchema,
+  type JsonScalar,
+  LEAF_CONDITION_TYPES,
+} from "@path/schema";
 
 /**
  * The pure edit vocabulary the typed `Condition` builder is built on (#370, designer-spec § Canvas
@@ -17,7 +22,10 @@ import { ConditionSchema, LEAF_CONDITION_TYPES, type Condition, type JsonScalar 
 export const COMBINATOR_CONDITION_TYPES = ["all", "any", "not"] as const;
 
 /** Every operator a builder row offers, leaves first then combinators, in the menu order the pane shows. */
-export const CONDITION_TYPES: readonly Condition["type"][] = [...LEAF_CONDITION_TYPES, ...COMBINATOR_CONDITION_TYPES];
+export const CONDITION_TYPES: readonly Condition["type"][] = [
+  ...LEAF_CONDITION_TYPES,
+  ...COMBINATOR_CONDITION_TYPES,
+];
 
 /** True for a leaf predicate (one that reads a `path`), false for a combinator (`all` / `any` / `not`). */
 export function isLeafConditionType(type: Condition["type"]): boolean {
@@ -106,7 +114,10 @@ export function changeConditionType(prev: Condition, next: Condition["type"]): C
 
   if (next === "not") {
     if (prev.type === "not") return prev;
-    return { type: "not", of: prev.type === "all" || prev.type === "any" ? (prev.of[0] ?? defaultLeaf()) : prev };
+    return {
+      type: "not",
+      of: prev.type === "all" || prev.type === "any" ? (prev.of[0] ?? defaultLeaf()) : prev,
+    };
   }
 
   // `all` / `any`: carry the child list from another combinator, else wrap/seed.

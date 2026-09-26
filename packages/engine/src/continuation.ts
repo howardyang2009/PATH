@@ -1,7 +1,7 @@
 import {
+  type ConfigObject,
   isReuseRow,
   isRootRun,
-  type ConfigObject,
   type JsonValue,
   type LaunchFacts,
   type RerunFromNodePathEntry,
@@ -11,10 +11,10 @@ import {
 import type Database from "better-sqlite3";
 import { descendNodePath } from "./descend-node-path.js";
 import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
-import { recordedChild } from "./resume-plan.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
-import { runBlobDir, RUN_BLOB_FILE } from "./persistence/paths.js";
+import { RUN_BLOB_FILE, runBlobDir } from "./persistence/paths.js";
 import { getRun } from "./persistence/run-store.js";
+import { recordedChild } from "./resume-plan.js";
 import type { ContinueState, RunContext } from "./run-context.js";
 import type { RunObserver } from "./run-observer.js";
 
@@ -62,8 +62,11 @@ export function sourceRuns(db: Database.Database, rows: readonly RunRecord[]): R
  * row reads the **source** tree and a re-entered run reads its own. The continuation's only door into
  * the tree it continues, and it is read-only (resume-restore-semantics.md §4).
  */
-export function continuationBlobReader(projectDir: string): (run: RunRecord, filename: string) => JsonValue {
-  return (run, filename) => readJsonBlob(runBlobDir(projectDir, run.rootRunId, run.runId), filename);
+export function continuationBlobReader(
+  projectDir: string,
+): (run: RunRecord, filename: string) => JsonValue {
+  return (run, filename) =>
+    readJsonBlob(runBlobDir(projectDir, run.rootRunId, run.runId), filename);
 }
 
 /** The launch facts a continuation restores, as the run options the engine executes with. */
@@ -96,14 +99,18 @@ export interface ContinuationOptions {
  * `rerunFromRunId` is consumed before this: it selects the **Rerun boundary** for a Resume and is
  * meaningless to a Complete, so it never rides into the run's options.
  */
-export function continuationRunOptions<T extends { rerunFromRunId?: string; operatorConfig?: ConfigObject }>(
-  opts: T,
-  frozen: LaunchFacts | undefined,
-): Omit<T, "rerunFromRunId"> & ContinuationOptions {
+export function continuationRunOptions<
+  T extends { rerunFromRunId?: string; operatorConfig?: ConfigObject },
+>(opts: T, frozen: LaunchFacts | undefined): Omit<T, "rerunFromRunId"> & ContinuationOptions {
   const { rerunFromRunId: _boundary, ...runOpts } = opts;
   const suppliedConfig =
-    runOpts.operatorConfig === undefined ? undefined : wrapSecretsAtPaths(runOpts.operatorConfig, frozen?.secretKeys ?? []);
-  const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(frozen, suppliedConfig);
+    runOpts.operatorConfig === undefined
+      ? undefined
+      : wrapSecretsAtPaths(runOpts.operatorConfig, frozen?.secretKeys ?? []);
+  const { config: recoveredConfig, missingSecretKeys } = recoverLaunchConfig(
+    frozen,
+    suppliedConfig,
+  );
 
   return {
     ...runOpts,
@@ -135,11 +142,13 @@ export function successorCapture(): SuccessorCapture {
   return {
     observer: {
       observe(observation) {
-        if (observation.type === "run-started" && isRootRun(observation)) rootRunId = observation.runId;
+        if (observation.type === "run-started" && isRootRun(observation))
+          rootRunId = observation.runId;
       },
     },
     rootRunId() {
-      if (rootRunId === undefined) throw new Error("internal error: resumed run emitted no root run-started");
+      if (rootRunId === undefined)
+        throw new Error("internal error: resumed run emitted no root run-started");
       return rootRunId;
     },
   };
@@ -206,7 +215,11 @@ function resumeContinuation(resume: RunContext["resume"]): Continuation {
       if (iteration !== undefined) return { kind: "fresh" };
       const original = resume?.plan.get(node.id);
       if (!resume || !original) return { kind: "fresh" };
-      return { kind: "reuse", output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output), reusedFrom: original.runId };
+      return {
+        kind: "reuse",
+        output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output),
+        reusedFrom: original.runId,
+      };
     },
   };
 }
@@ -226,9 +239,13 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
     disposition(node, iteration) {
       // The one row under this parent answering the node (and, for a loop container, its ordinal):
       // within one tree a single match or none; more than one is a corrupt tree and runs fresh.
-      const existing = recordedChild(state.existingRuns, parentRunId, { nodeId: node.id, iteration });
+      const existing = recordedChild(state.existingRuns, parentRunId, {
+        nodeId: node.id,
+        iteration,
+      });
       if (!existing) return { kind: "fresh" };
-      if (existing.status === "succeeded") return { kind: "reuse", output: () => readExistingOutput(state, existing) };
+      if (existing.status === "succeeded")
+        return { kind: "reuse", output: () => readExistingOutput(state, existing) };
       if (existing.status === "awaiting") {
         return existing.runId === state.target.stepRunId
           ? { kind: "complete", runId: existing.runId, output: state.target.output }
@@ -246,14 +263,22 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
  * neither — and a plain forward run gets the Resume adapter over an undefined plan, which answers
  * `fresh` for every node.
  */
-export function continuationOf(run: Pick<RunContext, "continue" | "resume" | "identity">): Continuation {
-  return run.continue ? completeContinuation(run.continue, run.identity.runId) : resumeContinuation(run.resume);
+export function continuationOf(
+  run: Pick<RunContext, "continue" | "resume" | "identity">,
+): Continuation {
+  return run.continue
+    ? completeContinuation(run.continue, run.identity.runId)
+    : resumeContinuation(run.resume);
 }
 
 /** Whether the parked leaf being Completed sits somewhere under `ancestorRunId` in this tree. */
 export function targetLeafUnder(state: ContinueState, ancestorRunId: string): boolean {
   const byId = new Map(state.existingRuns.map((r) => [r.runId, r]));
-  for (let run = byId.get(state.target.stepRunId); run; run = run.parentRunId === null ? undefined : byId.get(run.parentRunId)) {
+  for (
+    let run = byId.get(state.target.stepRunId);
+    run;
+    run = run.parentRunId === null ? undefined : byId.get(run.parentRunId)
+  ) {
     if (run.parentRunId === ancestorRunId) return true;
   }
   return false;
@@ -292,6 +317,10 @@ export function resolveRerunFromNodePath(
   // A level whose K sits in a goto pass names the pass too (ADR 0054 §6).
   return rerunFromNodePath.map((id, level) => {
     const pass = rerunFromPasses[level] ?? null;
-    return { nodeId: id, nodeName: levels[level]?.node?.name ?? id, ...(pass !== null ? { pass } : {}) };
+    return {
+      nodeId: id,
+      nodeName: levels[level]?.node?.name ?? id,
+      ...(pass !== null ? { pass } : {}),
+    };
   });
 }

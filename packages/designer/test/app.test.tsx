@@ -34,7 +34,12 @@ function rootFile(): Record<string, unknown> {
         type: "branch",
         id: uuid(6),
         name: "gate",
-        arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: uuid(7), name: "arm-a", prompt: "a" } }],
+        arms: [
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: uuid(7), name: "arm-a", prompt: "a" },
+          },
+        ],
         else: { type: "prompt", id: uuid(8), name: "fallback", prompt: "f" },
       },
       {
@@ -47,7 +52,14 @@ function rootFile(): Record<string, unknown> {
           type: "sequence",
           id: uuid(10),
           name: "seq",
-          body: [{ type: "checkpoint", id: uuid(11), name: "chk", condition: { type: "exists", path: "output.z" } }],
+          body: [
+            {
+              type: "checkpoint",
+              id: uuid(11),
+              name: "chk",
+              condition: { type: "exists", path: "output.z" },
+            },
+          ],
         },
       },
       { type: "workflow", id: uuid(12), name: "sub", ref: "sub/child.workflow.json" },
@@ -88,7 +100,10 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
       expect(within(steps).getByText(label)).toBeInTheDocument();
     }
     const controllers = within(palette).getByRole("region", { name: "Controller" });
-    expect(within(controllers).getByRole("tab", { name: "Structure" })).toHaveAttribute("aria-selected", "true");
+    expect(within(controllers).getByRole("tab", { name: "Structure" })).toHaveAttribute(
+      "aria-selected",
+      "true",
+    );
     const structure = within(controllers).getByRole("tabpanel", { name: "Structure" });
     for (const label of ["Parallel", "Branch", "While-do", "Sequence", "Checkpoint"]) {
       expect(within(structure).getByText(label)).toBeInTheDocument();
@@ -118,7 +133,19 @@ describe("Designer open + render (#367)", () => {
     // Node names across nested blocks. A parallel branch's name shows twice — once as the block's own
     // name, once as the branch caption (spec: each branch is captioned by its own node name) — so match
     // one-or-more rather than exactly one.
-    for (const name of ["draft", "fan", "build", "review", "gate", "arm-a", "fallback", "loop", "seq", "chk", "sub"]) {
+    for (const name of [
+      "draft",
+      "fan",
+      "build",
+      "review",
+      "gate",
+      "arm-a",
+      "fallback",
+      "loop",
+      "seq",
+      "chk",
+      "sub",
+    ]) {
       expect(within(canvas).getAllByText(name).length).toBeGreaterThan(0);
     }
     // Read-only summaries.
@@ -164,7 +191,14 @@ describe("Designer open + render (#367)", () => {
     const client = stubClient({
       files: filesWith(rootFile()),
       runs: { runs: [runRow] },
-      tree: { root_run_id: "root-1", status: "succeeded", output: null, runs: [{ ...runRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null }] },
+      tree: {
+        root_run_id: "root-1",
+        status: "succeeded",
+        output: null,
+        runs: [
+          { ...runRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null },
+        ],
+      },
     });
     render(<App client={client} initialPath={ROOT_PATH} />);
     await screen.findByText("draft");
@@ -173,13 +207,17 @@ describe("Designer open + render (#367)", () => {
     fireEvent.click(screen.getByTestId("run-dock-toggle"));
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
     const badge = await screen.findByTestId("workflow-run-badge");
-    expect(within(badge.closest(".crumb-wrap") as HTMLElement).getByText("root-flow")).toBeInTheDocument();
+    expect(
+      within(badge.closest(".crumb-wrap") as HTMLElement).getByText("root-flow"),
+    ).toBeInTheDocument();
 
     // Descend into the child. The badge stays glued to the root crumb — it must not follow the now-active
     // child crumb.
     fireEvent.doubleClick(screen.getByText("sub/child.workflow.json").closest('[role="button"]')!);
     await screen.findByText("child-step");
-    const wrapAfter = (await screen.findByTestId("workflow-run-badge")).closest(".crumb-wrap") as HTMLElement;
+    const wrapAfter = (await screen.findByTestId("workflow-run-badge")).closest(
+      ".crumb-wrap",
+    ) as HTMLElement;
     expect(within(wrapAfter).getByText("root-flow")).toBeInTheDocument();
     expect(within(wrapAfter).queryByText("child-flow")).not.toBeInTheDocument();
   });
@@ -205,10 +243,26 @@ describe("Designer open + render (#367)", () => {
         status: "failed",
         output: null,
         runs: [
-          { ...rootRow, root_run_id: "root-1", parent_run_id: null, node_id: null, node_name: null },
+          {
+            ...rootRow,
+            root_run_id: "root-1",
+            parent_run_id: null,
+            node_id: null,
+            node_name: null,
+          },
           // The `workflow` node's sub-run: keyed by the node's id, so it projects onto that node — and onto
           // the crumb descended through it.
-          { ...rootRow, run_id: "sub-1", root_run_id: "root-1", parent_run_id: "root-1", node_id: uuid(12), node_name: "sub", iteration: null, pass: null, status: "failed" },
+          {
+            ...rootRow,
+            run_id: "sub-1",
+            root_run_id: "root-1",
+            parent_run_id: "root-1",
+            node_id: uuid(12),
+            node_name: "sub",
+            iteration: null,
+            pass: null,
+            status: "failed",
+          },
         ],
       },
     });
@@ -227,12 +281,20 @@ describe("Designer open + render (#367)", () => {
     const childBadge = within(childWrap).getByTestId("workflow-run-badge");
     expect(childBadge).toHaveAttribute("data-run-status", "failed");
     const rootWrap = within(crumbs).getByText("root-flow").closest(".crumb-wrap") as HTMLElement;
-    expect(within(rootWrap).getByTestId("workflow-run-badge")).toHaveAttribute("data-run-status", "failed");
+    expect(within(rootWrap).getByTestId("workflow-run-badge")).toHaveAttribute(
+      "data-run-status",
+      "failed",
+    );
   });
 
   it("refuses a file naming an unregistered step type, with the aggregate recoverable error", async () => {
     const file = rootFile();
-    (file.body as unknown[]).push({ type: "api-call", id: uuid(50), name: "call-a", endpoint: "x" });
+    (file.body as unknown[]).push({
+      type: "api-call",
+      id: uuid(50),
+      name: "call-a",
+      endpoint: "x",
+    });
     render(<App client={stubClient({ files: filesWith(file) })} initialPath={ROOT_PATH} />);
 
     const alert = await screen.findByRole("alert");
@@ -268,7 +330,12 @@ describe("Designer open + render (#367)", () => {
   });
 
   it("surfaces a registry failure rather than a broken canvas", async () => {
-    render(<App client={stubClient({ pluginsStatus: 500, files: filesWith(rootFile()) })} initialPath={ROOT_PATH} />);
+    render(
+      <App
+        client={stubClient({ pluginsStatus: 500, files: filesWith(rootFile()) })}
+        initialPath={ROOT_PATH}
+      />,
+    );
     expect(await screen.findByText("Registry unavailable")).toBeInTheDocument();
   });
 });

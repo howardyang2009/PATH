@@ -1,4 +1,9 @@
-import { connectRunViewModel, type ConnectedRun, type PathApiClient, type RunViewState } from "@path/client-core";
+import {
+  type ConnectedRun,
+  connectRunViewModel,
+  type PathApiClient,
+  type RunViewState,
+} from "@path/client-core";
 import { useEffect, useState } from "react";
 import { errorMessage, type Load } from "./load-state.js";
 
@@ -45,7 +50,9 @@ export function useRunView(client: PathApiClient, rootRunId: string | null): Run
         }
         connection = connected;
         // Subscribe before reading the snapshot, so an event landing between the two is not lost.
-        unsubscribe = connected.model.subscribe((state) => setLoad({ phase: "ready", value: state }));
+        unsubscribe = connected.model.subscribe((state) =>
+          setLoad({ phase: "ready", value: state }),
+        );
         setLoad({ phase: "ready", value: connected.model.getState() });
       })
       .catch((error: unknown) => {

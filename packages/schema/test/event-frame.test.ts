@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { createEventFrameDecoder, encodeEventFrame, eventStreamHeaders } from "../src/event-frame.js";
+import {
+  createEventFrameDecoder,
+  encodeEventFrame,
+  eventStreamHeaders,
+} from "../src/event-frame.js";
 import type { LogEvent } from "../src/log-event.js";
 
 function stepStarted(seq: number): LogEvent {
@@ -75,9 +79,11 @@ describe("createEventFrameDecoder", () => {
     const decoder = createEventFrameDecoder();
     const whole = encodeEventFrame(stepStarted(5));
 
-    expect(decoder.push(`${encodeEventFrame(stepStarted(4))}${whole.slice(0, 10)}`).map((f) => f.event.seq)).toEqual([
-      4,
-    ]);
+    expect(
+      decoder
+        .push(`${encodeEventFrame(stepStarted(4))}${whole.slice(0, 10)}`)
+        .map((f) => f.event.seq),
+    ).toEqual([4]);
     expect(decoder.push(whole.slice(10)).map((frame) => frame.event.seq)).toEqual([5]);
   });
 
@@ -94,7 +100,9 @@ describe("createEventFrameDecoder", () => {
     const decoder = createEventFrameDecoder();
 
     expect(decoder.push(": keep-alive\n\n")).toEqual([]);
-    expect(decoder.push(encodeEventFrame(stepStarted(1))).map((frame) => frame.event.seq)).toEqual([1]);
+    expect(decoder.push(encodeEventFrame(stepStarted(1))).map((frame) => frame.event.seq)).toEqual([
+      1,
+    ]);
   });
 
   it("reports no id when the peer omitted the line, rather than inventing one", () => {

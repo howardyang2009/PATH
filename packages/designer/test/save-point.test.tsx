@@ -18,7 +18,12 @@ function uuid(n: number): string {
 
 /** A fully-id'd file; `canonical()` renders the on-disk bytes a prior Designer save would have written. */
 function file(): Record<string, unknown> {
-  return { format: FORMAT_VERSION, id: uuid(1), name: "flow", body: [{ type: "prompt", id: uuid(2), name: "draft", prompt: "hi" }] };
+  return {
+    format: FORMAT_VERSION,
+    id: uuid(1),
+    name: "flow",
+    body: [{ type: "prompt", id: uuid(2), name: "draft", prompt: "hi" }],
+  };
 }
 
 /** The canonical (fixed-point) on-disk bytes of a fixture — what the Designer itself writes on save. */
@@ -64,7 +69,8 @@ describe("save-point: clean is content-equality to the baseline (ADR 0030)", () 
   it("goes dirty on an edit and clean again on a no-op round-trip edit", async () => {
     const hook = await openSession(canonical(file()));
     const original = buffer(hook);
-    const withName = (name: string): WorkflowFile => ({ ...original, body: [{ ...original.body[0]!, name }] } as WorkflowFile);
+    const withName = (name: string): WorkflowFile =>
+      ({ ...original, body: [{ ...original.body[0]!, name }] }) as WorkflowFile;
 
     // Rename the step → dirty.
     const renamed = withName("renamed");
@@ -83,7 +89,8 @@ describe("save-point: clean is content-equality to the baseline (ADR 0030)", () 
     const hook = await openSession(canonical(file()), { calls });
 
     const original = buffer(hook);
-    const withPrompt = (prompt: string): WorkflowFile => ({ ...original, body: [{ ...original.body[0]!, prompt }] } as WorkflowFile);
+    const withPrompt = (prompt: string): WorkflowFile =>
+      ({ ...original, body: [{ ...original.body[0]!, prompt }] }) as WorkflowFile;
     const edited = withPrompt("changed");
     act(() => hook.result.current.applyEdit(edited));
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);

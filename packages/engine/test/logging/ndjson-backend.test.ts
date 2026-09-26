@@ -1,8 +1,8 @@
 import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { describe, expect, it } from "vitest";
 import { LogEventSchema } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import { createNdjsonBackend, readNdjsonLog } from "../../src/logging/ndjson-backend.js";
 import { rootRunTreeDir } from "../../src/persistence/paths.js";
 
@@ -21,11 +21,23 @@ describe("createNdjsonBackend", () => {
     try {
       const backend = createNdjsonBackend(projectDir);
       await backend.open({ runId: "root-1", format: "path/log@0" });
-      await backend.write({ type: "step-finished", seq: 1, ts: "t", run_id: "root-1", node_id: null, node_name: null, status: "succeeded" });
+      await backend.write({
+        type: "step-finished",
+        seq: 1,
+        ts: "t",
+        run_id: "root-1",
+        node_id: null,
+        node_name: null,
+        status: "succeeded",
+      });
       await backend.close();
 
       const lines = readLog(projectDir, "root-1");
-      expect(JSON.parse(lines[0]!)).toEqual({ type: "log-header", format: "path/log@0", run_id: "root-1" });
+      expect(JSON.parse(lines[0]!)).toEqual({
+        type: "log-header",
+        format: "path/log@0",
+        run_id: "root-1",
+      });
       // Every non-header line validates against the event schema.
       expect(() => LogEventSchema.parse(JSON.parse(lines[1]!))).not.toThrow();
       expect(lines).toHaveLength(2);
@@ -40,7 +52,15 @@ describe("createNdjsonBackend", () => {
       const backend = createNdjsonBackend(projectDir);
       await backend.open({ runId: "root-1", format: "path/log@0" });
       for (let seq = 1; seq <= 5; seq += 1) {
-        await backend.write({ type: "step-finished", seq, ts: "t", run_id: "root-1", node_id: null, node_name: null, status: "succeeded" });
+        await backend.write({
+          type: "step-finished",
+          seq,
+          ts: "t",
+          run_id: "root-1",
+          node_id: null,
+          node_name: null,
+          status: "succeeded",
+        });
       }
       await backend.close();
 
@@ -61,7 +81,15 @@ describe("readNdjsonLog", () => {
       const backend = createNdjsonBackend(projectDir);
       await backend.open({ runId: "root-1", format: "path/log@0" });
       for (let seq = 1; seq <= 3; seq += 1) {
-        await backend.write({ type: "step-finished", seq, ts: "t", run_id: "root-1", node_id: null, node_name: null, status: "succeeded" });
+        await backend.write({
+          type: "step-finished",
+          seq,
+          ts: "t",
+          run_id: "root-1",
+          node_id: null,
+          node_name: null,
+          status: "succeeded",
+        });
       }
       await backend.close();
 
@@ -84,14 +112,31 @@ describe("readNdjsonLog", () => {
         join(dir, "run.log"),
         [
           JSON.stringify({ type: "log-header", format: "path/log@0", run_id: "root-1" }),
-          JSON.stringify({ type: "run-cancelled", seq: 1, ts: "t", run_id: "step-1", node_id: "sleeper", node_name: "sleeper", cause_run_id: "step-2" }),
+          JSON.stringify({
+            type: "run-cancelled",
+            seq: 1,
+            ts: "t",
+            run_id: "step-1",
+            node_id: "sleeper",
+            node_name: "sleeper",
+            cause_run_id: "step-2",
+          }),
           "",
         ].join("\n"),
       );
 
       const events = readNdjsonLog(projectDir, "root-1");
       expect(events).toEqual([
-        { type: "run-cancelled", seq: 1, ts: "t", run_id: "step-1", node_id: "sleeper", node_name: "sleeper", cause: "sibling-failed", cause_run_id: "step-2" },
+        {
+          type: "run-cancelled",
+          seq: 1,
+          ts: "t",
+          run_id: "step-1",
+          node_id: "sleeper",
+          node_name: "sleeper",
+          cause: "sibling-failed",
+          cause_run_id: "step-2",
+        },
       ]);
     } finally {
       rmSync(projectDir, { recursive: true, force: true });

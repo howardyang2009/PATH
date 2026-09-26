@@ -31,7 +31,9 @@ export type LoadedStepPluginRegistry = Record<string, StepPlugin>;
  * sub-8): a cwd-relative resolution would make the set of valid step types depend on the operator's
  * shell directory. From `src/plugin/scan.ts`, the plugins root is two directories up, under `plugin/step-plugin/`.
  */
-export const STEP_PLUGINS_DIR = fileURLToPath(new URL("../../plugin/step-plugin/", import.meta.url));
+export const STEP_PLUGINS_DIR = fileURLToPath(
+  new URL("../../plugin/step-plugin/", import.meta.url),
+);
 
 // The folder name becomes a `z.literal` and a `type` value in author-written JSON, so it must look like
 // a core type name (ADR 0019 sub-13). Every core name already matches this shape.
@@ -56,7 +58,9 @@ const PLUGIN_EXPORT = "stepPlugin";
  * reserved-name checks run *before* the import, so a folder named `while-do` reports the reserved name
  * even when its own `index.ts` would also throw (ADR 0019 sub-14).
  */
-export async function scanStepPlugins(dir: string = STEP_PLUGINS_DIR): Promise<LoadedStepPluginRegistry> {
+export async function scanStepPlugins(
+  dir: string = STEP_PLUGINS_DIR,
+): Promise<LoadedStepPluginRegistry> {
   const entries = await readdir(dir, { withFileTypes: true });
   const folders = entries
     .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
@@ -89,7 +93,7 @@ export async function scanStepPlugins(dir: string = STEP_PLUGINS_DIR): Promise<L
 async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
   const entry = join(folder, ENTRY_FILE);
 
-  let entryStat;
+  let entryStat: Awaited<ReturnType<typeof stat>>;
   try {
     entryStat = await stat(entry);
   } catch (err) {
@@ -98,7 +102,9 @@ async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(`step plugin "${name}": no ${ENTRY_FILE} in ${folder}`);
     }
-    throw new Error(`step plugin "${name}": cannot read ${ENTRY_FILE} in ${folder} — ${describeError(err)}`);
+    throw new Error(
+      `step plugin "${name}": cannot read ${ENTRY_FILE} in ${folder} — ${describeError(err)}`,
+    );
   }
   if (!entryStat.isFile()) {
     throw new Error(`step plugin "${name}": ${ENTRY_FILE} in ${folder} is not a file`);
@@ -115,7 +121,9 @@ async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
 
   const plugin = mod[PLUGIN_EXPORT];
   if (plugin === undefined) {
-    throw new Error(`step plugin "${name}": ${ENTRY_FILE} has no named \`${PLUGIN_EXPORT}\` export`);
+    throw new Error(
+      `step plugin "${name}": ${ENTRY_FILE} has no named \`${PLUGIN_EXPORT}\` export`,
+    );
   }
   if (!isStepPluginShape(plugin)) {
     throw new Error(
@@ -142,7 +150,10 @@ async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
  * the mechanism the freshness contract rests on. Whether a new token *re-executes* is Node's ESM-cache
  * behavior, not the scanner's.
  */
-export async function entryImportUrl(folder: string, entry: string = join(folder, ENTRY_FILE)): Promise<string> {
+export async function entryImportUrl(
+  folder: string,
+  entry: string = join(folder, ENTRY_FILE),
+): Promise<string> {
   // Floor to integer milliseconds: a fractional token would put a `.` in the query, and an ESM loader
   // that sniffs the specifier's extension reads the trailing digits as one. Millisecond resolution is
   // ample for a cache key — two edits inside one millisecond are one edit as far as the module map cares.

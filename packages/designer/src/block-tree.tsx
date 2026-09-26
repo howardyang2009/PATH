@@ -1,13 +1,13 @@
-import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import type { WorkflowNode } from "@path/schema";
+import type { CSSProperties, KeyboardEvent, MouseEvent, ReactNode } from "react";
 import { summarizeCondition } from "./condition-summary.js";
-import { leafChip, leafGlyph, nodeHue } from "./node-kind.js";
 import { ConflictMarker } from "./conflict-context.js";
-import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
-import type { EditorApi } from "./editor-api.js";
 import type { SingleSlot } from "./edit-tree.js";
-import { RUN_STATUS_GLYPH } from "./run/run-status.js";
+import type { EditorApi } from "./editor-api.js";
+import { IncomingBadge, useGotoChip, useIsGotoTarget } from "./goto-context.js";
+import { leafChip, leafGlyph, nodeHue } from "./node-kind.js";
 import { useGotoJumpsSpent, useNodeRunStatus } from "./run/run-projection.js";
+import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 
 /**
@@ -42,10 +42,15 @@ interface TreeProps {
 }
 
 /** The file body (or a `sequence` body): a vertical stack of blocks, with the list's tail add-socket. */
-export function BlockTree({ nodes, onDescend, editor, socket }: TreeProps & { socket?: ListSocket }): JSX.Element {
+export function BlockTree({
+  nodes,
+  onDescend,
+  editor,
+  socket,
+}: TreeProps & { socket?: ListSocket }): JSX.Element {
   return (
     <div className="block-stack-wrap">
-      <ul className="block-stack" role="list">
+      <ul className="block-stack">
         {nodes.map((node) => (
           <li key={node.id}>
             <NodeBlock node={node} onDescend={onDescend} editor={editor} />
@@ -58,10 +63,20 @@ export function BlockTree({ nodes, onDescend, editor, socket }: TreeProps & { so
 }
 
 /** The tail add-affordance of a list socket, shown only while the grammar admits the armed kind. */
-function TailSocket({ socket, editor }: { socket: ListSocket; editor?: EditorApi }): JSX.Element | null {
+function TailSocket({
+  socket,
+  editor,
+}: {
+  socket: ListSocket;
+  editor?: EditorApi;
+}): JSX.Element | null {
   if (!editor || !editor.socketOpen(socket.flavor, socket.ownerId)) return null;
   return (
-    <button type="button" className="socket socket-tail" onClick={() => editor.placeIntoList(socket.ownerId)}>
+    <button
+      type="button"
+      className="socket socket-tail"
+      onClick={() => editor.placeIntoList(socket.ownerId)}
+    >
       + add {editor.armedLabel} here
     </button>
   );
@@ -74,27 +89,53 @@ function hueStyle(node: WorkflowNode): CSSProperties {
 }
 
 /** The per-node structure controls: reorder, duplicate, delete (§ Reordering, deleting). Only when editable. */
-function NodeControls({ node, editor }: { node: WorkflowNode; editor?: EditorApi }): JSX.Element | null {
+function NodeControls({
+  node,
+  editor,
+}: {
+  node: WorkflowNode;
+  editor?: EditorApi;
+}): JSX.Element | null {
   if (!editor) return null;
   return (
     <span className="node-controls">
       {editor.canMove(node.id) ? (
         <>
-          <button type="button" className="ctl" aria-label={`Move ${node.name} up`} onClick={() => editor.move(node.id, -1)}>
+          <button
+            type="button"
+            className="ctl"
+            aria-label={`Move ${node.name} up`}
+            onClick={() => editor.move(node.id, -1)}
+          >
             ▲
           </button>
-          <button type="button" className="ctl" aria-label={`Move ${node.name} down`} onClick={() => editor.move(node.id, 1)}>
+          <button
+            type="button"
+            className="ctl"
+            aria-label={`Move ${node.name} down`}
+            onClick={() => editor.move(node.id, 1)}
+          >
             ▼
           </button>
         </>
       ) : null}
       {editor.canDuplicate(node.id) ? (
-        <button type="button" className="ctl" aria-label={`Duplicate ${node.name}`} onClick={() => editor.duplicate(node.id)}>
+        <button
+          type="button"
+          className="ctl"
+          aria-label={`Duplicate ${node.name}`}
+          onClick={() => editor.duplicate(node.id)}
+        >
           ⧉
         </button>
       ) : null}
       {editor.canRemove(node.id) ? (
-        <button type="button" className="ctl ctl-del" aria-label={`Delete ${node.name}`} onClick={() => editor.remove(node.id)}>
+        <button
+          type="button"
+          className="ctl ctl-del"
+          aria-label={`Delete ${node.name}`}
+          onClick={() => editor.remove(node.id)}
+        >
           ×
         </button>
       ) : null}
@@ -166,7 +207,15 @@ function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
   );
 }
 
-function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function NodeBlock({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: WorkflowNode;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   switch (node.type) {
     case "workflow":
       return <RefChip node={node} onDescend={onDescend} editor={editor} />;
@@ -191,6 +240,7 @@ function NodeBlock({ node, onDescend, editor }: { node: WorkflowNode; onDescend:
 function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }): JSX.Element {
   const glyph = leafGlyph(node.type);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
       className="node-block leaf"
       style={hueStyle(node)}
@@ -215,15 +265,28 @@ function LeafStep({ node, editor }: { node: WorkflowNode; editor?: EditorApi }):
 }
 
 /** A `workflow`-ref — its own-hue chip showing the ref path, the one block a double-click descends across. */
-function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "workflow" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function RefChip({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "workflow" }>;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   return (
+    // biome-ignore lint/a11y/useSemanticElements: blocks host their own socket buttons, so a real
     <div
       className="node-block leaf ref-chip"
       style={hueStyle(node)}
       data-node-type="workflow"
       role="button"
       tabIndex={0}
-      title={node.ref ? "Double-click to open the referenced file" : "Double-click to choose or create this reference's target"}
+      title={
+        node.ref
+          ? "Double-click to open the referenced file"
+          : "Double-click to choose or create this reference's target"
+      }
       onDoubleClick={() => onDescend(node)}
       onKeyDown={deleteKeyHandler(node, editor)}
       {...useSelectable(node)}
@@ -240,8 +303,15 @@ function RefChip({ node, onDescend, editor }: { node: Extract<WorkflowNode, { ty
 }
 
 /** A `checkpoint` — a leaf block inline in the stack, showing its `assert <cond>` summary. */
-function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "checkpoint" }>; editor?: EditorApi }): JSX.Element {
+function CheckpointBlock({
+  node,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "checkpoint" }>;
+  editor?: EditorApi;
+}): JSX.Element {
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
       className="node-block leaf"
       style={hueStyle(node)}
@@ -265,11 +335,19 @@ function CheckpointBlock({ node, editor }: { node: Extract<WorkflowNode, { type:
  * A watched run's jumps spent by one goto, `<spent>/<max_jumps>` (#620). A goto runs for no time, so it
  * takes no status badge; this is its whole run view. Absent when no run is watched.
  */
-function GotoJumpsBadge({ node }: { node: Extract<WorkflowNode, { type: "goto" }> }): JSX.Element | null {
+function GotoJumpsBadge({
+  node,
+}: {
+  node: Extract<WorkflowNode, { type: "goto" }>;
+}): JSX.Element | null {
   const spent = useGotoJumpsSpent(node.id);
   if (spent === null) return null;
   return (
-    <span className="goto-jumps" data-testid={`goto-jumps-${node.id}`} title="Jumps spent in the watched run">
+    <span
+      className="goto-jumps"
+      data-testid={`goto-jumps-${node.id}`}
+      title="Jumps spent in the watched run"
+    >
       {spent}/{node.max_jumps}
     </span>
   );
@@ -279,9 +357,16 @@ function GotoJumpsBadge({ node }: { node: Extract<WorkflowNode, { type: "goto" }
  * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge (#619).
  * Hovering it highlights its target. In a watched run it shows its jumps spent instead of a status badge.
  */
-function GotoBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "goto" }>; editor?: EditorApi }): JSX.Element {
+function GotoBlock({
+  node,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "goto" }>;
+  editor?: EditorApi;
+}): JSX.Element {
   const { chip, hover } = useGotoChip(node);
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
       className="node-block leaf"
       style={hueStyle(node)}
@@ -303,8 +388,19 @@ function GotoBlock({ node, editor }: { node: Extract<WorkflowNode, { type: "goto
 }
 
 /** The C-block shell: a titled head (hue + name + controls) over a mouth that nests children. */
-function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JSX.Element; editor?: EditorApi; children: ReactNode }): JSX.Element {
+function CBlock({
+  node,
+  head,
+  editor,
+  children,
+}: {
+  node: WorkflowNode;
+  head: JSX.Element;
+  editor?: EditorApi;
+  children: ReactNode;
+}): JSX.Element {
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: selectable block; its socket buttons own the actions.
     <div
       className="node-block c-block"
       style={hueStyle(node)}
@@ -326,7 +422,13 @@ function CBlock({ node, head, editor, children }: { node: WorkflowNode; head: JS
 }
 
 /** The single-slot swap affordance: an armed, single-legal kind can replace an occupant (§ Replace). */
-function SlotSwap({ target, editor }: { target: SingleSlot; editor?: EditorApi }): JSX.Element | null {
+function SlotSwap({
+  target,
+  editor,
+}: {
+  target: SingleSlot;
+  editor?: EditorApi;
+}): JSX.Element | null {
   if (!editor || !editor.socketOpen("single", target.ownerId)) return null;
   return (
     <button type="button" className="socket socket-swap" onClick={() => editor.swapSingle(target)}>
@@ -336,7 +438,15 @@ function SlotSwap({ target, editor }: { target: SingleSlot; editor?: EditorApi }
 }
 
 /** `parallel` — a C-block, its N branches side by side in the mouth, with a `join:` badge on the head. */
-function ParallelBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "parallel" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function ParallelBlock({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "parallel" }>;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   const branchSocketOpen = editor?.socketOpen("branches", node.id) ?? false;
   return (
     <CBlock
@@ -359,7 +469,11 @@ function ParallelBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode
         ))}
         {branchSocketOpen ? (
           <div className="c-column">
-            <button type="button" className="socket socket-tail" onClick={() => editor!.placeIntoList(node.id)}>
+            <button
+              type="button"
+              className="socket socket-tail"
+              onClick={() => editor!.placeIntoList(node.id)}
+            >
               + add {editor!.armedLabel} branch
             </button>
           </div>
@@ -370,7 +484,15 @@ function ParallelBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode
 }
 
 /** `branch` — a C-block, its N arms side by side (each `when <cond>`), then `else`, then the add affordances. */
-function BranchBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "branch" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function BranchBlock({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "branch" }>;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   return (
     <CBlock
       node={node}
@@ -415,7 +537,15 @@ function BranchBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, 
 }
 
 /** `while-do` — a C-block wrapping one body node, with a `while <cond> · max N` summary on the head. */
-function WhileBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "while-do" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function WhileBlock({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "while-do" }>;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   return (
     <CBlock
       node={node}
@@ -437,7 +567,15 @@ function WhileBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, {
 }
 
 /** `sequence` — a vertical inline stack of its body nodes (its own level, not collapsed). */
-function SequenceBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode, { type: "sequence" }>; onDescend: DescendHandler; editor?: EditorApi }): JSX.Element {
+function SequenceBlock({
+  node,
+  onDescend,
+  editor,
+}: {
+  node: Extract<WorkflowNode, { type: "sequence" }>;
+  onDescend: DescendHandler;
+  editor?: EditorApi;
+}): JSX.Element {
   return (
     <CBlock
       node={node}
@@ -449,7 +587,12 @@ function SequenceBlock({ node, onDescend, editor }: { node: Extract<WorkflowNode
         </>
       }
     >
-      <BlockTree nodes={node.body} onDescend={onDescend} editor={editor} socket={{ ownerId: node.id, flavor: "sequence" }} />
+      <BlockTree
+        nodes={node.body}
+        onDescend={onDescend}
+        editor={editor}
+        socket={{ ownerId: node.id, flavor: "sequence" }}
+      />
     </CBlock>
   );
 }

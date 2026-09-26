@@ -4,10 +4,10 @@ import {
   isRootRun,
   isTerminal,
   nodeLabel,
-  runBlobSource,
   type PathApiClient,
   type RunNodeState,
   type RunViewFacts,
+  runBlobSource,
   type WorkflowFile,
 } from "@path/client-core";
 import { useState } from "react";
@@ -15,7 +15,7 @@ import { AwaitingActions } from "./awaiting-actions.js";
 import { JsonView } from "./json-view.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { StatusPill } from "./status-pill.js";
-import { useRunBlob, type BlobLoad } from "./use-run-blob.js";
+import { type BlobLoad, useRunBlob } from "./use-run-blob.js";
 
 export interface NodeIoProps {
   client: PathApiClient;
@@ -215,10 +215,18 @@ export function NodeIo({ client, run, view, workflowFiles = [] }: NodeIoProps) {
               bare launch adds nothing here. `config` is shown masked — the `[secret:<key>]` token is the
               truth of what the run stored, not something to hide. */}
           {launchFacts.input !== undefined && (
-            <FactBlock title="Override Input" testId="node-io-override-input" value={launchFacts.input} />
+            <FactBlock
+              title="Override Input"
+              testId="node-io-override-input"
+              value={launchFacts.input}
+            />
           )}
           {launchFacts.config !== undefined && (
-            <FactBlock title="Override Config" testId="node-io-override-config" value={launchFacts.config} />
+            <FactBlock
+              title="Override Config"
+              testId="node-io-override-config"
+              value={launchFacts.config}
+            />
           )}
           {launchFacts.workerDefaults !== undefined && (
             <FactBlock

@@ -1,5 +1,5 @@
-import { describe, expect, it } from "vitest";
 import { blankRunRecord, type RunRecord } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import { runBlobSource } from "../src/blob-source.js";
 
 /**
@@ -40,7 +40,11 @@ describe("runBlobSource — input", () => {
     // Only the successor *root* reaches back; a nested row's predecessor is its tree's, not its own.
     const nested = run({ parentRunId: "root-1", resumedFromRootRunId: "root-0" });
 
-    expect(runBlobSource(nested, "input")).toMatchObject({ rootRunId: "root-1", runId: "run-1", resumedFrom: null });
+    expect(runBlobSource(nested, "input")).toMatchObject({
+      rootRunId: "root-1",
+      runId: "run-1",
+      resumedFrom: null,
+    });
   });
 });
 

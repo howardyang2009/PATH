@@ -1,4 +1,10 @@
-import { validateOutputSchema, type ConfigObject, type JsonValue, type OutputValidation, type WorkflowFile } from "@path/schema";
+import {
+  type ConfigObject,
+  type JsonValue,
+  type OutputValidation,
+  validateOutputSchema,
+  type WorkflowFile,
+} from "@path/schema";
 import { InterpolationError, interpolateValue } from "./interpolate.js";
 import { resolveNode } from "./ref-tree.js";
 import type { EnvSource } from "./resolve-env.js";
@@ -22,7 +28,12 @@ export type OutputCheck =
   /** The node was deleted or retyped mid-wait: the leaf can never validly complete (409). */
   | { ok: false; reason: "node-gone"; message: string }
   /** The schema could not be built, or the output does not satisfy it (400, leaf untouched). */
-  | { ok: false; reason: "output-invalid"; message: string; details?: Extract<OutputValidation, { ok: false }>["issues"] };
+  | {
+      ok: false;
+      reason: "output-invalid";
+      message: string;
+      details?: Extract<OutputValidation, { ok: false }>["issues"];
+    };
 
 export function checkCompletedOutput(args: {
   rootFile: WorkflowFile;
@@ -39,7 +50,11 @@ export function checkCompletedOutput(args: {
   const resolved =
     args.nodeId === null
       ? undefined
-      : resolveNode(args.rootFile, args.workflowDir, args.nodeId, { files: args.files, operatorConfig: args.operatorConfig, env: args.env });
+      : resolveNode(args.rootFile, args.workflowDir, args.nodeId, {
+          files: args.files,
+          operatorConfig: args.operatorConfig,
+          env: args.env,
+        });
   // The node union is the closed core set; a plugin leaf type is a runtime string outside it.
   if (resolved === undefined || (resolved.node.type as string) !== AWAITING_STEP_TYPE) {
     return {
@@ -57,11 +72,20 @@ export function checkCompletedOutput(args: {
     schema = interpolateValue(rawSchema, { config: resolved.config as unknown as JsonValue });
   } catch (err) {
     if (!(err instanceof InterpolationError)) throw err;
-    return { ok: false, reason: "output-invalid", message: `output schema for step run "${stepRunId}" could not be resolved: ${err.message}` };
+    return {
+      ok: false,
+      reason: "output-invalid",
+      message: `output schema for step run "${stepRunId}" could not be resolved: ${err.message}`,
+    };
   }
   const validation = validateOutputSchema(schema, args.output);
   if (!validation.ok) {
-    return { ok: false, reason: "output-invalid", message: "output does not match the step's outputSchema", details: validation.issues };
+    return {
+      ok: false,
+      reason: "output-invalid",
+      message: "output does not match the step's outputSchema",
+      details: validation.issues,
+    };
   }
   return { ok: true };
 }

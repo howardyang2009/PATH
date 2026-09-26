@@ -1,4 +1,10 @@
-import { mapSecrets, type ConfigObject, type ConfigValue, type JsonValue, type LaunchFacts } from "@path/schema";
+import {
+  type ConfigObject,
+  type ConfigValue,
+  type JsonValue,
+  type LaunchFacts,
+  mapSecrets,
+} from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Observation } from "./run-observer.js";
 
@@ -62,7 +68,8 @@ function collectFromValue(path: string, value: ConfigValue, into: Map<string, Se
   mapSecrets(
     value as unknown as JsonValue,
     (secret, secretPath) => {
-      if (!into.has(secret)) into.set(secret, { key: secretPath, value: secret, token: `[secret:${secretPath}]` });
+      if (!into.has(secret))
+        into.set(secret, { key: secretPath, value: secret, token: `[secret:${secretPath}]` });
       return secret;
     },
     path,
@@ -162,7 +169,11 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
       return {
         ...o,
         input: masker.maskValue(o.input),
-        ...(o.launchFacts === undefined ? {} : { launchFacts: masker.maskValue(o.launchFacts as unknown as JsonValue) as LaunchFacts }),
+        ...(o.launchFacts === undefined
+          ? {}
+          : {
+              launchFacts: masker.maskValue(o.launchFacts as unknown as JsonValue) as LaunchFacts,
+            }),
       };
     case "step-started":
       return { ...o, input: masker.maskValue(o.input) };
@@ -174,7 +185,8 @@ export function maskObservation(masker: SecretMasker, o: Observation): Observati
     case "step-finished":
     case "run-finished":
       if (o.status === "succeeded") return { ...o, output: masker.maskValue(o.output) };
-      if (o.status === "failed" && o.error !== undefined) return { ...o, error: masker.maskString(o.error) };
+      if (o.status === "failed" && o.error !== undefined)
+        return { ...o, error: masker.maskString(o.error) };
       return o;
     case "checkpoint-evaluated":
     case "iteration-started":

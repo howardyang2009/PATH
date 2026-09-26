@@ -77,7 +77,11 @@ export function checkPrecondition(
  * kept) and write it. A create uses `wx`, so a file that raced into existence fails `exists` rather
  * than being clobbered; intermediate directories are created. Returns the new bytes' strong ETag.
  */
-export function writeArtifact(absPath: string, raw: unknown, opts: { create: false }): { ok: true; etag: string };
+export function writeArtifact(
+  absPath: string,
+  raw: unknown,
+  opts: { create: false },
+): { ok: true; etag: string };
 export function writeArtifact(
   absPath: string,
   raw: unknown,
@@ -93,7 +97,8 @@ export function writeArtifact(
     mkdirSync(dirname(absPath), { recursive: true });
     writeFileSync(absPath, serialized, opts.create ? { flag: "wx" } : undefined);
   } catch (err) {
-    if (opts.create && (err as NodeJS.ErrnoException).code === "EEXIST") return { ok: false, conflict: "exists" };
+    if (opts.create && (err as NodeJS.ErrnoException).code === "EEXIST")
+      return { ok: false, conflict: "exists" };
     throw err;
   }
   return { ok: true, etag: strongEtag(Buffer.from(serialized, "utf8")) };

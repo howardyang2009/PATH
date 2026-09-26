@@ -61,7 +61,8 @@ export function mapEnv(
     value,
     (node, path) => {
       if (isEnvWrapper(node)) return visit(node.$env, path);
-      if (isPlainObject(node) && hasOnlyKey(node, "$secret")) return { $secret: mapEnv(node.$secret, visit, path) };
+      if (isPlainObject(node) && hasOnlyKey(node, "$secret"))
+        return { $secret: mapEnv(node.$secret, visit, path) };
       return undefined;
     },
     basePath,

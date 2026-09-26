@@ -136,7 +136,14 @@ export type Observation =
       input: JsonValue;
     }
   /** A binary step's captured stderr — never passed downstream (format doc §4.2), audit only. */
-  | { type: "step-stderr"; runId: string; rootRunId: string; nodeId: string; nodeName: string; stderr: string }
+  | {
+      type: "step-stderr";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      stderr: string;
+    }
   /**
    * What one LLM step run spent (#25, mvp spec §5.7, §7): `usage` is the worker's real token counts,
    * `estimatedCostUsd` the SDK's client-side estimate at API list prices. Reported **leaf-only**, on
@@ -154,9 +161,22 @@ export type Observation =
       estimatedCostUsd: number | null;
     }
   /** A leaf step run finished. */
-  | ({ type: "step-finished"; runId: string; rootRunId: string; nodeId: string; nodeName: string } & RunOutcome)
+  | ({
+      type: "step-finished";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+    } & RunOutcome)
   /** A workflow-run's context changed, after a publish landed — each workflow-run has its own. */
-  | { type: "context-changed"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null; context: JsonValue }
+  | {
+      type: "context-changed";
+      runId: string;
+      rootRunId: string;
+      nodeId: string | null;
+      nodeName: string | null;
+      context: JsonValue;
+    }
   /**
    * A leaf step run's snapshot of the enclosing workflow-run's context, taken right after the step
    * finished and its publish (if any) landed — so the step's own directory records the context as it
@@ -164,7 +184,14 @@ export type Observation =
    * the leaf step run's own id (not the workflow-run's), so persistence writes it under that step's
    * directory alongside its `input.json`/`output.json`. Persistence-only, never narrated.
    */
-  | { type: "step-context"; runId: string; rootRunId: string; nodeId: string; nodeName: string; context: JsonValue }
+  | {
+      type: "step-context";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      context: JsonValue;
+    }
   /**
    * A `parallel` join applied at block end. For `collect` (#24) all branches succeeded and their
    * buffered publishes landed in branch declaration order; for `wait-one` (wait-one-join.md §5) the
@@ -200,7 +227,13 @@ export type Observation =
       causeRunId: string | null;
     }
   /** A workflow-run finished (root or nested). */
-  | ({ type: "run-finished"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null } & RunOutcome)
+  | ({
+      type: "run-finished";
+      runId: string;
+      rootRunId: string;
+      nodeId: string | null;
+      nodeName: string | null;
+    } & RunOutcome)
   /**
    * A resumed tree reused a node's recorded work instead of re-running it (#172,
    * resume-restore-semantics.md §6). No `step-started`/`step-finished` is emitted for the reused
@@ -211,14 +244,28 @@ export type Observation =
    * single event, never one per descendant. Narrated to the log alone (see logging/logging-observer);
    * persistence writes nothing for it (there is no run of its own — invariant 1's spirit).
    */
-  | { type: "reuse-marker"; runId: string; rootRunId: string; nodeId: string; nodeName: string; originalRunId: string }
+  | {
+      type: "reuse-marker";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      originalRunId: string;
+    }
   /**
    * A leaf step run entered the `awaiting` status (#462): the engine suspended it. `assignee` (#488)
    * is who the offline activity is for — an informational string the worker echoed from its node
    * (`null` when the node named none), on the record so an `awaiting`/Complete cycle reconstructs
    * from the log alone. It is an interpolated author value, so it is secret-masked like any other.
    */
-  | { type: "step-awaiting"; runId: string; rootRunId: string; nodeId: string; nodeName: string; assignee: string | null }
+  | {
+      type: "step-awaiting";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      assignee: string | null;
+    }
   /**
    * A `checkpoint` node was evaluated (#21). Control-node observations are attributed to the
    * enclosing workflow-step's run (`runId`) + the control node's `nodeId` — a checkpoint has no run
@@ -226,7 +273,15 @@ export type Observation =
    * `passed: false` with the error surfaced as an error leaf inside `trace`. Logging (#19) splits
    * this into the `checkpoint-passed`/`checkpoint-failed` events.
    */
-  | { type: "checkpoint-evaluated"; runId: string; rootRunId: string; nodeId: string; nodeName: string; passed: boolean; trace: Trace }
+  | {
+      type: "checkpoint-evaluated";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      passed: boolean;
+      trace: Trace;
+    }
   /**
    * A `branch` arm won (#21): `arm` is the winning arm's index, or `"else"` for the fallback (which
    * has no condition, so `trace` is null).
@@ -244,12 +299,27 @@ export type Observation =
    * No `branch` arm matched and there was no `else` (#21) — this fails the run (§5.2). Carries every
    * arm's `trace`.
    */
-  | { type: "branch-no-match"; runId: string; rootRunId: string; nodeId: string; nodeName: string; traces: Trace[] }
+  | {
+      type: "branch-no-match";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      traces: Trace[];
+    }
   /**
    * A `while-do` iteration is about to run (#23): `iteration` is 1-based; `trace` is the condition
    * check that passed (true) leading to this iteration.
    */
-  | { type: "iteration-started"; runId: string; rootRunId: string; nodeId: string; nodeName: string; iteration: number; trace: Trace }
+  | {
+      type: "iteration-started";
+      runId: string;
+      rootRunId: string;
+      nodeId: string;
+      nodeName: string;
+      iteration: number;
+      trace: Trace;
+    }
   /**
    * A `while-do` loop exited (#23): `reason` is `condition-false` (the normal exit) or
    * `max-iterations-exceeded` (which fails the run — spec §5.2/§5.6); `iterations` is the number of
@@ -270,7 +340,14 @@ export type Observation =
    * A goto pass opened (ADR 0054, spec docs/spec/goto.md §7): `pass` is its 1-based ordinal. `runId`
    * is the workflow-run; `nodeId`/`nodeName` name the goto that opened it, both null for pass 1.
    */
-  | { type: "pass-started"; runId: string; rootRunId: string; nodeId: string | null; nodeName: string | null; pass: number }
+  | {
+      type: "pass-started";
+      runId: string;
+      rootRunId: string;
+      nodeId: string | null;
+      nodeName: string | null;
+      pass: number;
+    }
   /**
    * A goto jumped (ADR 0061): `jump` is this goto's 1-based count in the workflow-run, this one
    * included; `maxJumps` the resolved bound; `pass` the ordinal of the pass the jump opens.
@@ -330,7 +407,6 @@ export type Observation =
 export interface RunObserver {
   observe(o: Observation): void | Promise<void>;
 }
-
 
 /**
  * Fans one observation out to several observers in argument order, awaiting each — the dumb ordered

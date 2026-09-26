@@ -20,7 +20,8 @@ export interface JsonToken {
  * carries, CONTEXT.md §Secret) is never mistaken for a key separator. The trailing `\s*:` group is
  * what promotes a string to a key; it is emitted as plain text so the join stays lossless.
  */
-const TOKEN_PATTERN = /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;
+const TOKEN_PATTERN =
+  /("(?:[^"\\]|\\.)*")(\s*:)?|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|\b(true|false|null)\b/g;
 
 export function tokenizeJson(json: string): JsonToken[] {
   const tokens: JsonToken[] = [];

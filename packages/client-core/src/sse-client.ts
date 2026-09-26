@@ -116,7 +116,13 @@ export function subscribeRunEvents(options: SubscribeRunEventsOptions): RunEvent
   const run = async (): Promise<void> => {
     while (!closed) {
       try {
-        const res = await openStream(doFetch, baseUrl, options.rootRunId, lastSeq, controller.signal);
+        const res = await openStream(
+          doFetch,
+          baseUrl,
+          options.rootRunId,
+          lastSeq,
+          controller.signal,
+        );
         if (!res.ok || !res.body) {
           throw new Error(`event stream request failed with status ${res.status}`);
         }

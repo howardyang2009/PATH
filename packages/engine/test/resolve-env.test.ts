@@ -1,10 +1,18 @@
 import type { ConfigObject } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { describeUnsetEnv, resolveConfigEnv, resolveEffectiveConfig, resolveRunEnv } from "../src/resolve-env.js";
+import {
+  describeUnsetEnv,
+  resolveConfigEnv,
+  resolveEffectiveConfig,
+  resolveRunEnv,
+} from "../src/resolve-env.js";
 
 describe("resolveConfigEnv", () => {
   it("replaces a wrapper with the variable's value", () => {
-    const { config, unset } = resolveConfigEnv({ token: { $env: "TOKEN" } }, { TOKEN: "real-value" });
+    const { config, unset } = resolveConfigEnv(
+      { token: { $env: "TOKEN" } },
+      { TOKEN: "real-value" },
+    );
     expect(config).toEqual({ token: "real-value" });
     expect(unset).toEqual([]);
   });
@@ -17,7 +25,10 @@ describe("resolveConfigEnv", () => {
   });
 
   it("resolves inside a $secret wrapper, leaving the marking standing over the value", () => {
-    const { config } = resolveConfigEnv({ token: { $secret: { $env: "TOKEN" } } }, { TOKEN: "real-value" });
+    const { config } = resolveConfigEnv(
+      { token: { $secret: { $env: "TOKEN" } } },
+      { TOKEN: "real-value" },
+    );
     expect(config).toEqual({ token: { $secret: "real-value" } });
   });
 
@@ -52,12 +63,17 @@ describe("resolveConfigEnv", () => {
 describe("resolveEffectiveConfig", () => {
   it("resolves $env and unwraps $secret in one call — what validation, interpolation and the worker all read", () => {
     const config: ConfigObject = { token: { $secret: { $env: "TOKEN" } }, model: "claude" };
-    expect(resolveEffectiveConfig(config, { TOKEN: "real-value" })).toEqual({ token: "real-value", model: "claude" });
+    expect(resolveEffectiveConfig(config, { TOKEN: "real-value" })).toEqual({
+      token: "real-value",
+      model: "claude",
+    });
   });
 
   it("unwraps a $secret nested inside objects and arrays, not only at the top level", () => {
     const config: ConfigObject = { creds: { headers: [{ auth: { $secret: "sk-nested" } }] } };
-    expect(resolveEffectiveConfig(config, {})).toEqual({ creds: { headers: [{ auth: "sk-nested" }] } });
+    expect(resolveEffectiveConfig(config, {})).toEqual({
+      creds: { headers: [{ auth: "sk-nested" }] },
+    });
   });
 
   it("leaves a config object's own $secret-named field alone", () => {
@@ -66,14 +82,19 @@ describe("resolveEffectiveConfig", () => {
   });
 
   it("is idempotent, so an already-effective config crossing into a nested run is untouched", () => {
-    const once = resolveEffectiveConfig({ token: { $secret: { $env: "TOKEN" } } }, { TOKEN: "real-value" });
+    const once = resolveEffectiveConfig(
+      { token: { $secret: { $env: "TOKEN" } } },
+      { TOKEN: "real-value" },
+    );
     expect(resolveEffectiveConfig(once, { TOKEN: "real-value" })).toEqual(once);
   });
 });
 
 describe("resolveRunEnv", () => {
   it("answers both halves of the run-start reading from one walk", () => {
-    const { configs, unset } = resolveRunEnv([{ a: { $env: "SET" } }, { b: { $env: "MISSING" } }], { SET: "v" });
+    const { configs, unset } = resolveRunEnv([{ a: { $env: "SET" } }, { b: { $env: "MISSING" } }], {
+      SET: "v",
+    });
     expect(configs).toEqual([{ a: "v" }, { b: { $env: "MISSING" } }]);
     expect(unset).toEqual([{ name: "MISSING", key: "b" }]);
   });

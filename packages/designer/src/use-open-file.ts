@@ -1,37 +1,54 @@
-import { useCallback, useEffect, useRef, useState } from "react";
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
 import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
 import { errorMessage } from "@path/viewer";
-import { loadDocument, writeDocument, type DocumentWrite } from "./document.js";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { type DocumentWrite, loadDocument, writeDocument } from "./document.js";
 import type { EditCommit, EditKey } from "./edit-key.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
+  type EditMode,
+  type Frame,
   IDLE,
   initialSessionState,
   planDelete,
   planNewFileSave,
-  planSave,
   planNewTemplateSave,
+  planSave,
   planTemplateSaveAs,
   planWorkflowSaveAs,
   reduceSession,
-  stemName,
-  type EditMode,
-  type Frame,
   type SaveState,
   type SessionAction,
   type SessionState,
+  stemName,
   type TemplateSource,
 } from "./session-reducer.js";
 
+export type {
+  EditMode,
+  Frame,
+  FrameState,
+  History,
+  OpenedResult,
+  SaveState,
+  SessionAction,
+  SessionState,
+  TemplateSource,
+} from "./session-reducer.js";
 // The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) => state`
 // testable with no React and no stub server. This hook is the thin adapter: it fetches the step-plugin
 // registry, asks the reducer what an action decides (via `apply`'s returned state), performs the
 // `client` I/O that decision calls for, and dispatches the outcome as an action. Re-export the frame
 // types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
 // the tests that import them from here.
-export { planDelete, openedResultOf, frameDirty, frameHasUnsavedWork, frameCanUndo, frameCanRedo } from "./session-reducer.js";
-export type { EditMode, Frame, FrameState, History, SaveState, OpenedResult, SessionState, SessionAction, TemplateSource } from "./session-reducer.js";
+export {
+  frameCanRedo,
+  frameCanUndo,
+  frameDirty,
+  frameHasUnsavedWork,
+  openedResultOf,
+  planDelete,
+} from "./session-reducer.js";
 
 /**
  * The Designer's open-and-navigate session (#367): fetch the step-plugin registry once, open a file against
@@ -166,6 +183,19 @@ export interface OpenSession {
   saveState: SaveState;
 }
 
+/**
+ * The frame a just-applied loading action put in flight, when it is the one this request is for. The
+ * reducer's verdict read back as I/O intent: a `descend` that re-entered the frame ahead (or a `reload`
+ * that decided nothing was reloadable) leaves no frame awaiting `seq`, so there is nothing to fetch.
+ *
+ * Module scope: it reads only its arguments, so naming it never invalidates a callback that calls it.
+ */
+function pendingFetch(state: SessionState, seq: number): { frame: Frame; depth: number } | null {
+  const depth = state.activeIndex;
+  const frame = state.frames[depth];
+  return frame && frame.loadSeq === seq ? { frame, depth } : null;
+}
+
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
   const [registry, setRegistry] = useState<RegistryLoad>({ phase: "loading" });
   const [session, setSession] = useState<SessionState>(initialSessionState);
@@ -225,17 +255,6 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply, client],
   );
 
-  /**
-   * The frame a just-applied loading action put in flight, when it is the one this request is for. The
-   * reducer's verdict read back as I/O intent: a `descend` that re-entered the frame ahead (or a `reload`
-   * that decided nothing was reloadable) leaves no frame awaiting `seq`, so there is nothing to fetch.
-   */
-  const pendingFetch = (state: SessionState, seq: number): { frame: Frame; depth: number } | null => {
-    const depth = state.activeIndex;
-    const frame = state.frames[depth];
-    return frame && frame.loadSeq === seq ? { frame, depth } : null;
-  };
-
   const open = useCallback(
     (path: string): void => {
       if (!pluginsRef.current) return;
@@ -262,9 +281,12 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     apply({ type: "newFile" });
   }, [apply]);
 
-  const switchMode = useCallback((mode: EditMode): void => {
-    apply({ type: "switchMode", mode });
-  }, [apply]);
+  const switchMode = useCallback(
+    (mode: EditMode): void => {
+      apply({ type: "switchMode", mode });
+    },
+    [apply],
+  );
 
   const newTemplate = useCallback((): void => {
     apply({ type: "newTemplate" });
@@ -327,7 +349,12 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           : client.deleteWorkflowFile({ path: plan.path, ifMatch: plan.ifMatch, sessionId });
       request
         .then(() => apply({ type: "deleted", plan }))
-        .catch((error: unknown) => apply({ type: "setSaveState", saveState: { phase: "delete-error", message: errorMessage(error) } }));
+        .catch((error: unknown) =>
+          apply({
+            type: "setSaveState",
+            saveState: { phase: "delete-error", message: errorMessage(error) },
+          }),
+        );
     },
     [apply, client],
   );
@@ -350,7 +377,13 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
    * is returned for the caller to map; the spine leaves the `saving` phase for it to replace.
    */
   const commitSave = useCallback(
-    async (write: DocumentWrite, successAction: (result: { etag: string; relativePath: string; id: string }, savedBytes: string) => SessionAction) => {
+    async (
+      write: DocumentWrite,
+      successAction: (
+        result: { etag: string; relativePath: string; id: string },
+        savedBytes: string,
+      ) => SessionAction,
+    ) => {
       apply({ type: "saveStarted" });
       const outcome = await writeDocument(client, write);
       // `savedBytes` is the canonical serialization of the exact buffer the server wrote and hashed; the
@@ -371,7 +404,13 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     if (!plan) return;
     const write: DocumentWrite =
       plan.kind === "template"
-        ? { to: "template", id: plan.id, ifMatch: plan.ifMatch, description: plan.template.description, file: plan.file }
+        ? {
+            to: "template",
+            id: plan.id,
+            ifMatch: plan.ifMatch,
+            description: plan.template.description,
+            file: plan.file,
+          }
         : { to: "workflow", path: plan.path, ifMatch: plan.ifMatch, file: plan.file };
     void commitSave(write, (result, savedBytes) =>
       plan.kind === "template"
@@ -387,7 +426,10 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         outcome.conflict === null
           ? { phase: "error", message: outcome.message }
           : plan.kind === "create"
-            ? { phase: "error", message: `A workflow already exists at ${plan.path}. Choose a different target for the reference.` }
+            ? {
+                phase: "error",
+                message: `A workflow already exists at ${plan.path}. Choose a different target for the reference.`,
+              }
             : { phase: "conflict", message: outcome.message };
       apply({ type: "setSaveState", saveState });
     });
@@ -398,14 +440,21 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       const request = saveAsRequest(sessionRef.current, intent);
       if (typeof request === "string") return { status: "error", message: request };
       const outcome = await commitSave(request.write, request.successAction);
-      if (outcome.ok) return { status: "created", path: request.write.to === "workflow" ? outcome.relativePath : null };
+      if (outcome.ok)
+        return {
+          status: "created",
+          path: request.write.to === "workflow" ? outcome.relativePath : null,
+        };
       // A taken name is the dialog's to show, not the toolbar's: drop the transient saving phase back to
       // idle for it. Any other refusal is the save error it is.
       if (outcome.conflict === "exists") {
         apply({ type: "setSaveState", saveState: IDLE });
         return { status: "exists" };
       }
-      apply({ type: "setSaveState", saveState: intent.kind === "new-file" ? { phase: "error", message: outcome.message } : IDLE });
+      apply({
+        type: "setSaveState",
+        saveState: intent.kind === "new-file" ? { phase: "error", message: outcome.message } : IDLE,
+      });
       return { status: "error", message: outcome.message };
     },
     [apply, commitSave],
@@ -421,7 +470,28 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     }
   }, [registry, initialPath, open]);
 
-  return { registry, mode: session.mode, switchMode, newTemplate, frames, activeIndex, open, openTemplate, newFile, descend, descendNewUnbound, goTo, applyEdit, undo, redo, save, saveAs, reloadActive, deleteActive, saveState };
+  return {
+    registry,
+    mode: session.mode,
+    switchMode,
+    newTemplate,
+    frames,
+    activeIndex,
+    open,
+    openTemplate,
+    newFile,
+    descend,
+    descendNewUnbound,
+    goTo,
+    applyEdit,
+    undo,
+    redo,
+    save,
+    saveAs,
+    reloadActive,
+    deleteActive,
+    saveState,
+  };
 }
 
 /**
@@ -431,7 +501,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 function saveAsRequest(
   state: SessionState,
   intent: SaveAsIntent,
-): string | { write: DocumentWrite; successAction: (result: { etag: string; relativePath: string; id: string }, savedBytes: string) => SessionAction } {
+):
+  | string
+  | {
+      write: DocumentWrite;
+      successAction: (
+        result: { etag: string; relativePath: string; id: string },
+        savedBytes: string,
+      ) => SessionAction;
+    } {
   switch (intent.kind) {
     case "new-file": {
       // Only a from-scratch **root** buffer (unwritten, no path) picks its path here; a create-new child and
@@ -441,7 +519,13 @@ function saveAsRequest(
       if (!plan) return "No new-file buffer to save.";
       return {
         write: { to: "workflow", path: intent.path, ifMatch: undefined, file: plan.file },
-        successAction: (result, savedBytes) => ({ type: "newFileSaved", depth: plan.depth, etag: result.etag, savedBytes, relativePath: result.relativePath }),
+        successAction: (result, savedBytes) => ({
+          type: "newFileSaved",
+          depth: plan.depth,
+          etag: result.etag,
+          savedBytes,
+          relativePath: result.relativePath,
+        }),
       };
     }
     case "workflow-copy": {
@@ -450,30 +534,61 @@ function saveAsRequest(
       const file: WorkflowFile = { ...instantiateWorkflow(plan.file), name: stemName(intent.path) };
       return {
         write: { to: "workflow", path: intent.path, ifMatch: undefined, file },
-        successAction: (result) => ({ type: "detachedSaved", depth: plan.depth, fromId: plan.file.id, file, relativePath: result.relativePath, etag: result.etag }),
+        successAction: (result) => ({
+          type: "detachedSaved",
+          depth: plan.depth,
+          fromId: plan.file.id,
+          file,
+          relativePath: result.relativePath,
+          etag: result.etag,
+        }),
       };
     }
     case "workflow-as-template": {
       const plan = planWorkflowSaveAs(state);
       if (!plan) return "No workflow to save.";
       // Only the body survives; the workflow-level fields are dropped.
-      const file: WorkflowFile = { format: plan.file.format, id: crypto.randomUUID(), name: intent.name, body: plan.file.body };
+      const file: WorkflowFile = {
+        format: plan.file.format,
+        id: crypto.randomUUID(),
+        name: intent.name,
+        body: plan.file.body,
+      };
       return {
         write: { to: "new-template", name: intent.name, description: intent.description, file },
-        successAction: () => ({ type: "setSaveState", saveState: { phase: "saved-as-template", name: intent.name } }),
+        successAction: () => ({
+          type: "setSaveState",
+          saveState: { phase: "saved-as-template", name: intent.name },
+        }),
       };
     }
     case "new-template":
     case "template-copy": {
       const copy = intent.kind === "template-copy" ? planTemplateSaveAs(state) : null;
       const plan = intent.kind === "template-copy" ? copy : planNewTemplateSave(state);
-      if (!plan) return intent.kind === "new-template" ? "No new template to save." : "No template source to save.";
+      if (!plan)
+        return intent.kind === "new-template"
+          ? "No new template to save."
+          : "No template source to save.";
       const fromId = copy?.template.id ?? null;
       const file: WorkflowFile = { ...plan.file, id: crypto.randomUUID() };
-      const template: TemplateSource = { id: file.id, kind: "step", name: intent.name, description: intent.description, readOnly: false };
+      const template: TemplateSource = {
+        id: file.id,
+        kind: "step",
+        name: intent.name,
+        description: intent.description,
+        readOnly: false,
+      };
       return {
         write: { to: "new-template", name: intent.name, description: intent.description, file },
-        successAction: (result) => ({ type: "templateSavedAs", depth: plan.depth, fromId, template: { ...template, id: result.id }, file, etag: result.etag }),
+        successAction: (result) => ({
+          type: "templateSavedAs",
+          depth: plan.depth,
+          fromId,
+          template: { ...template, id: result.id },
+          file,
+          etag: result.etag,
+        }),
       };
     }
   }

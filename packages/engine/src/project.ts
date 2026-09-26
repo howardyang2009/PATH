@@ -10,7 +10,12 @@ import {
 } from "@path/schema";
 import type Database from "better-sqlite3";
 import { checkCompletedOutput } from "./complete-output.js";
-import { continuationBlobReader, continuationRunOptions, sourceRuns, successorCapture } from "./continuation.js";
+import {
+  continuationBlobReader,
+  continuationRunOptions,
+  sourceRuns,
+  successorCapture,
+} from "./continuation.js";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
 import { createLoggingObserver } from "./logging/logging-observer.js";
@@ -20,11 +25,22 @@ import { openDb, SchemaVersionError } from "./persistence/db.js";
 import { ensurePathDirGitignore } from "./persistence/gitignore.js";
 import { dbFilePath, pathDir } from "./persistence/paths.js";
 import { createPersistedObserver } from "./persistence/persisted-observer.js";
-import { cancelNonTerminalRuns, getLaunchFacts, getRun, getRunsForRoot } from "./persistence/run-store.js";
-import { resolveLegalK, type LegalKContainer, type LegalKReasonCode } from "./resume-legal-k.js";
+import {
+  cancelNonTerminalRuns,
+  getLaunchFacts,
+  getRun,
+  getRunsForRoot,
+} from "./persistence/run-store.js";
+import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./resume-legal-k.js";
 import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
-import { type ContinueInput, type ResumeInput, type RunOptions, type RunResult, runWorkflow } from "./run-workflow.js";
+import {
+  type ContinueInput,
+  type ResumeInput,
+  type RunOptions,
+  type RunResult,
+  runWorkflow,
+} from "./run-workflow.js";
 import { type EngineSettings, loadEngineSettings } from "./settings/engine-settings.js";
 
 /**
@@ -81,7 +97,12 @@ export interface Project {
    * run id and the run outcome. (An engine-invariant breach — a resumed run that emits no root
    * `run-started` — throws rather than masquerading as `found: false`; it is not reachable from input.)
    */
-  resume(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, opts?: ProjectRunOptions): Promise<ResumeResult>;
+  resume(
+    rootFile: WorkflowFile,
+    rootRunId: string,
+    workflowDir: string,
+    opts?: ProjectRunOptions,
+  ): Promise<ResumeResult>;
   /**
    * The `--list-eligible` dry-run of resume (#446): compute, but do not launch, the per-node eligibility
    * of the source tree rooted at `rootRunId`, evaluated against `rootFile`. Launches nothing — no
@@ -93,7 +114,12 @@ export interface Project {
    * refuses the whole command (`found: false`) rather than yielding a per-row verdict; `files` supplies
    * the nested-workflow tree the descent resolves refs against, exactly as `resume` receives it.
    */
-  listEligible(rootFile: WorkflowFile, rootRunId: string, workflowDir: string, files?: Map<string, WorkflowFile>): ListEligibleResult;
+  listEligible(
+    rootFile: WorkflowFile,
+    rootRunId: string,
+    workflowDir: string,
+    files?: Map<string, WorkflowFile>,
+  ): ListEligibleResult;
   /**
    * Complete a parked `awaiting` leaf (ADR 0041): a fresh engine invocation that replays the leaf's
    * tree **from the root**, reusing every `succeeded` row read-only, restoring re-entered runs'
@@ -114,7 +140,13 @@ export interface Project {
    * file or relocated store must still resolve for the replay. Returns a discriminated result and never
    * throws on operator input; an engine-invariant breach still throws.
    */
-  complete(rootFile: WorkflowFile, stepRunId: string, output: JsonValue, workflowDir: string, opts?: ProjectRunOptions): Promise<CompleteResult>;
+  complete(
+    rootFile: WorkflowFile,
+    stepRunId: string,
+    output: JsonValue,
+    workflowDir: string,
+    opts?: ProjectRunOptions,
+  ): Promise<CompleteResult>;
   /**
    * Cancel a **parked** `awaiting` tree at the store (ADR 0039/0041). A person-activity park tears the
    * engine down, so there is no live process to abort — a tree whose only non-terminal work is an
@@ -143,7 +175,11 @@ export interface Project {
  * parked the walk again (park-at-join).
  */
 export type CompleteResult =
-  | { ok: false; reason: "not-found" | "not-awaiting" | "lease-held" | "node-gone"; message: string }
+  | {
+      ok: false;
+      reason: "not-found" | "not-awaiting" | "lease-held" | "node-gone";
+      message: string;
+    }
   | { ok: false; reason: "output-invalid"; message: string; details?: unknown[] }
   | {
       ok: true;
@@ -228,7 +264,9 @@ export type ListEligibleResult =
  * case plain Resume already had (a 404 / `no run found` on the server), while `non-terminal` is a state
  * conflict the server answers 409 with the message intact — both exit 1 on the CLI.
  */
-type ResumeSourceProblem = { kind: "not-found"; message: string } | { kind: "non-terminal"; message: string };
+type ResumeSourceProblem =
+  | { kind: "not-found"; message: string }
+  | { kind: "non-terminal"; message: string };
 
 function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourceProblem | undefined {
   const root = findRootRun(rows);
@@ -236,7 +274,10 @@ function checkResumeSource(rows: RunRecord[], rootRunId: string): ResumeSourcePr
     return { kind: "not-found", message: `no run found with root run id "${rootRunId}"` };
   }
   if (!isTerminal(root.status)) {
-    return { kind: "non-terminal", message: `run "${rootRunId}" is still ${root.status}; resume needs a terminal source run` };
+    return {
+      kind: "non-terminal",
+      message: `run "${rootRunId}" is still ${root.status}; resume needs a terminal source run`,
+    };
   }
   return undefined;
 }
@@ -314,7 +355,8 @@ export function openProject(dir: string): OpenProjectResult {
   try {
     db = openDb(dbFilePath(absDir));
   } catch (err) {
-    const error = err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
+    const error =
+      err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
     return { success: false, kind: "db", error };
   }
 
@@ -334,7 +376,13 @@ export function openProject(dir: string): OpenProjectResult {
     appendObservers: RunObserver[],
     continueInput?: ContinueInput,
   ): Promise<RunResult> {
-    const { logBackends, processorConcurrency, extraBackends = [], extraObservers = [], ...runOptions } = opts;
+    const {
+      logBackends,
+      processorConcurrency,
+      extraBackends = [],
+      extraObservers = [],
+      ...runOptions
+    } = opts;
 
     // Nearest wins, one rule for every caller: explicit override (a CLI flag, a request field)
     // beats `.path/settings.json`, which beats the built-in default.
@@ -374,7 +422,11 @@ export function openProject(dir: string): OpenProjectResult {
       dir: absDir,
       archive: createRunArchive(db, absDir),
       settings,
-      run(rootFile: WorkflowFile, workflowDir: string, opts: ProjectRunOptions = {}): Promise<RunResult> {
+      run(
+        rootFile: WorkflowFile,
+        workflowDir: string,
+        opts: ProjectRunOptions = {},
+      ): Promise<RunResult> {
         return execute(rootFile, workflowDir, opts, undefined, []);
       },
       async resume(
@@ -411,7 +463,13 @@ export function openProject(dir: string): OpenProjectResult {
           // The loaded file tree and the root file's own directory let legal-K descend a nested K one
           // level per path element (ADR 0036), resolving each intermediate `workflow` ref against the
           // same tree the run resolves refs against. A top-level K never reads them.
-          const verdict = resolveLegalK(rootFile, directRuns, rerunFromRunId, runOpts.files ?? new Map(), workflowDir);
+          const verdict = resolveLegalK(
+            rootFile,
+            directRuns,
+            rerunFromRunId,
+            runOpts.files ?? new Map(),
+            workflowDir,
+          );
           if (!verdict.ok) return { found: false, refusal: verdict.refusal };
           rerunFromNodePath = verdict.nodePath;
           rerunFromPasses = verdict.passes;
@@ -478,7 +536,11 @@ export function openProject(dir: string): OpenProjectResult {
             verdict: verdict.ok
               ? { eligible: true }
               : verdict.refusal.container !== undefined
-                ? { eligible: false, reason: verdict.refusal.reason, container: verdict.refusal.container }
+                ? {
+                    eligible: false,
+                    reason: verdict.refusal.reason,
+                    container: verdict.refusal.container,
+                  }
                 : { eligible: false, reason: verdict.refusal.reason },
           };
         });
@@ -497,10 +559,18 @@ export function openProject(dir: string): OpenProjectResult {
         // the lease below makes the swap single-writer so the check cannot be raced within a process.
         const leaf = getRun(db, stepRunId);
         if (leaf === undefined) {
-          return { ok: false, reason: "not-found", message: `no step run found with id "${stepRunId}"` };
+          return {
+            ok: false,
+            reason: "not-found",
+            message: `no step run found with id "${stepRunId}"`,
+          };
         }
         if (leaf.status !== "awaiting") {
-          return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${leaf.status}, not awaiting` };
+          return {
+            ok: false,
+            reason: "not-awaiting",
+            message: `step run "${stepRunId}" is ${leaf.status}, not awaiting`,
+          };
         }
         const rootRunId = leaf.rootRunId;
         // The appendable window closes the instant the tree reaches a terminal status (ADR 0041): a
@@ -510,7 +580,11 @@ export function openProject(dir: string): OpenProjectResult {
         // a settled tree.
         const rootRow = getRun(db, rootRunId);
         if (rootRow !== undefined && isTerminal(rootRow.status)) {
-          return { ok: false, reason: "not-awaiting", message: `run "${rootRunId}" already finished with status "${rootRow.status}"` };
+          return {
+            ok: false,
+            reason: "not-awaiting",
+            message: `run "${rootRunId}" already finished with status "${rootRow.status}"`,
+          };
         }
 
         // Validation runs before the lease (§4.4): it is per-leaf and the lease per-tree, so a bad submit
@@ -534,14 +608,22 @@ export function openProject(dir: string): OpenProjectResult {
         // lease rejects (`lease-held` → 409) rather than queueing.
         const lease = acquireCompleteLease(absDir, rootRunId);
         if (lease === null) {
-          return { ok: false, reason: "lease-held", message: `run "${rootRunId}" is being completed in another invocation` };
+          return {
+            ok: false,
+            reason: "lease-held",
+            message: `run "${rootRunId}" is being completed in another invocation`,
+          };
         }
         try {
           // Re-read under the lease to close the TOCTOU against a concurrent Complete that already
           // flipped this leaf between the check above and the lease grant.
           const fresh = getRun(db, stepRunId);
           if (fresh === undefined || fresh.status !== "awaiting") {
-            return { ok: false, reason: "not-awaiting", message: `step run "${stepRunId}" is ${fresh?.status ?? "gone"}, not awaiting` };
+            return {
+              ok: false,
+              reason: "not-awaiting",
+              message: `step run "${stepRunId}" is ${fresh?.status ?? "gone"}, not awaiting`,
+            };
           }
 
           // The same continuation recipe `resume` uses (`continuation.ts`): the tree's rows with every

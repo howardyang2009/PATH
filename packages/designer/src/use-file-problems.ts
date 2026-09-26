@@ -1,7 +1,7 @@
-import { useMemo } from "react";
 import type { WorkflowFile } from "@path/schema";
-import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
-import { fileProblems, refLookupFor, type Problem } from "./problems.js";
+import { useMemo } from "react";
+import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
+import { fileProblems, type Problem, refLookupFor } from "./problems.js";
 
 /**
  * The active file's cross-node problem list (#388, #392), behind one seam. The App used to hand-wire a

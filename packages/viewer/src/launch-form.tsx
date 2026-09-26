@@ -1,4 +1,4 @@
-import { parseJsonField, type PathApiClient, type WireStepPlugin } from "@path/client-core";
+import { type PathApiClient, parseJsonField, type WireStepPlugin } from "@path/client-core";
 import { useState } from "react";
 import { JsonField } from "./json-field.js";
 import { errorMessage } from "./load-state.js";
@@ -223,7 +223,8 @@ export function LaunchForm({
 
       {warningCount > 0 && gate === null && (
         <p className="run-warning" data-testid={`${testIdPrefix}-warning`} role="note">
-          {warningCount} unresolved {warningCount === 1 ? "warning" : "warnings"} — the run may fail at start.
+          {warningCount} unresolved {warningCount === 1 ? "warning" : "warnings"} — the run may fail
+          at start.
         </p>
       )}
 

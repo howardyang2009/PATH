@@ -34,11 +34,17 @@ describe("resolveDotPath", () => {
   });
 
   it("reports an unknown root", () => {
-    expect(resolveDotPath(roots, "config.anything")).toEqual({ found: false, error: 'unknown root "config"' });
+    expect(resolveDotPath(roots, "config.anything")).toEqual({
+      found: false,
+      error: 'unknown root "config"',
+    });
   });
 
   it("reports a missing key, an out-of-bounds index, and a walk into a non-object", () => {
-    expect(resolveDotPath(roots, "context.nope")).toEqual({ found: false, error: 'key "nope" not found' });
+    expect(resolveDotPath(roots, "context.nope")).toEqual({
+      found: false,
+      error: 'key "nope" not found',
+    });
     expect(resolveDotPath(roots, "context.nested.deep.9")).toEqual({
       found: false,
       error: 'index "9" is out of bounds',
@@ -50,7 +56,10 @@ describe("resolveDotPath", () => {
   });
 
   it("does not resolve inherited properties", () => {
-    expect(resolveDotPath(roots, "context.toString")).toEqual({ found: false, error: 'key "toString" not found' });
+    expect(resolveDotPath(roots, "context.toString")).toEqual({
+      found: false,
+      error: 'key "toString" not found',
+    });
   });
 
   // `error` names the segment, never the whole path: the caller already knows the path and frames

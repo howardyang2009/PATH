@@ -1,6 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, relative, resolve } from "node:path";
-import { makeStepTemplateSchema, NameSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
+import {
+  makeStepTemplateSchema,
+  NameSchema,
+  safeParseStepTemplateWith,
+  type WireTemplateWriteResponse,
+} from "@path/schema";
 import { z } from "zod";
 import { writeArtifact } from "../artifact-file.js";
 import { readRequestBody, sendError } from "../http-json.js";
@@ -60,7 +65,11 @@ export async function handlePostTemplates(
     return;
   }
   const { etag } = written;
-  const reply: WireTemplateWriteResponse = { id: envelopeId, relative_path: relative(projectDir, absPath), etag };
+  const reply: WireTemplateWriteResponse = {
+    id: envelopeId,
+    relative_path: relative(projectDir, absPath),
+    etag,
+  };
   res.writeHead(201, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

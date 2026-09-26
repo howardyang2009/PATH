@@ -27,13 +27,25 @@ describe("isCrossOriginWrite", () => {
 
     it("ignores Origin when Sec-Fetch-Site says same-origin", () => {
       expect(
-        isCrossOriginWrite(req({ "sec-fetch-site": "same-origin", origin: "http://evil.com", host: "localhost:5173" })),
+        isCrossOriginWrite(
+          req({
+            "sec-fetch-site": "same-origin",
+            origin: "http://evil.com",
+            host: "localhost:5173",
+          }),
+        ),
       ).toBe(false);
     });
 
     it("rejects on Sec-Fetch-Site even if an Origin happens to match Host", () => {
       expect(
-        isCrossOriginWrite(req({ "sec-fetch-site": "cross-site", origin: "http://localhost:5173", host: "localhost:5173" })),
+        isCrossOriginWrite(
+          req({
+            "sec-fetch-site": "cross-site",
+            origin: "http://localhost:5173",
+            host: "localhost:5173",
+          }),
+        ),
       ).toBe(true);
     });
   });
@@ -44,15 +56,21 @@ describe("isCrossOriginWrite", () => {
     });
 
     it("allows an Origin whose host matches Host", () => {
-      expect(isCrossOriginWrite(req({ origin: "http://localhost:5173", host: "localhost:5173" }))).toBe(false);
+      expect(
+        isCrossOriginWrite(req({ origin: "http://localhost:5173", host: "localhost:5173" })),
+      ).toBe(false);
     });
 
     it("rejects an Origin whose host differs from Host", () => {
-      expect(isCrossOriginWrite(req({ origin: "http://evil.com", host: "localhost:5173" }))).toBe(true);
+      expect(isCrossOriginWrite(req({ origin: "http://evil.com", host: "localhost:5173" }))).toBe(
+        true,
+      );
     });
 
     it("rejects an Origin on the same host but a different port", () => {
-      expect(isCrossOriginWrite(req({ origin: "http://localhost:9999", host: "localhost:5173" }))).toBe(true);
+      expect(
+        isCrossOriginWrite(req({ origin: "http://localhost:9999", host: "localhost:5173" })),
+      ).toBe(true);
     });
 
     it('rejects the opaque-origin sentinel "null"', () => {
@@ -66,7 +84,9 @@ describe("isCrossOriginWrite", () => {
 
   describe("header arrays (duplicate headers) take the first value", () => {
     it("reads the first Sec-Fetch-Site of an array", () => {
-      expect(isCrossOriginWrite(req({ "sec-fetch-site": ["cross-site", "same-origin"] }))).toBe(true);
+      expect(isCrossOriginWrite(req({ "sec-fetch-site": ["cross-site", "same-origin"] }))).toBe(
+        true,
+      );
     });
   });
 });

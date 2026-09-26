@@ -1,19 +1,66 @@
 #!/bin/sh
 #
-# Refuse to commit on main. main is protected on GitHub — a direct push is
-# rejected there anyway, so a commit landing here is work stranded on the
-# wrong branch. Catch it before it happens rather than after.
+# Two guards, in order:
+#
+# 1. Refuse to commit on main. main is protected on GitHub — a direct push is
+#    rejected there anyway, so a commit landing here is work stranded on the
+#    wrong branch. Catch it before it happens rather than after.
+#
+# 2. Check the staged TypeScript for lint and formatting, so an unformatted
+#    file never reaches CI.
 #
 # Escape hatches, in order of preference:
 #   git switch -c <branch>          move to a branch, then commit
-#   ALLOW_COMMIT_ON_MAIN=1 git ...  one-off override
+#   ALLOW_COMMIT_ON_MAIN=1 git ...  one-off override (skips both guards)
+#   SKIP_LINT=1 git ...             skip only the lint check
 #   git commit --no-verify          skip every hook
+
+# The staged TypeScript files, as paths Biome can check.
+staged_typescript() {
+	git diff --cached --name-only --diff-filter=ACMR -z |
+		xargs -0 -r printf '%s\n' |
+		grep -E '\.(ts|tsx|mts|cts)$'
+}
+
+lint_staged() {
+	if [ -n "$SKIP_LINT" ]; then
+		echo "pre-commit: skipping lint (SKIP_LINT set)" >&2
+		return 0
+	fi
+
+	files=$(staged_typescript)
+	[ -n "$files" ] || return 0
+
+	# The workspace-installed binary; a fresh clone has it after `pnpm install`.
+	if [ ! -x node_modules/.bin/biome ]; then
+		echo "pre-commit: node_modules/.bin/biome missing; run pnpm install" >&2
+		return 1
+	fi
+
+	echo "$files" | xargs node_modules/.bin/biome check --no-errors-on-unmatched && return 0
+
+	cat >&2 <<'EOF'
+
+  pre-commit: staged TypeScript is not formatted, or has lint errors.
+
+  Fix it in place, then re-stage:
+
+      pnpm format <file>   # or: pnpm format
+
+  To commit without this check: SKIP_LINT=1 git commit ...
+
+EOF
+	return 1
+}
 
 branch=$(git symbolic-ref --quiet --short HEAD) || exit 0
 
 case "$branch" in
 main | master) ;;
-*) exit 0 ;;
+*)
+	lint_staged || exit 1
+	exit 0
+	;;
 esac
 
 if [ -n "$ALLOW_COMMIT_ON_MAIN" ]; then

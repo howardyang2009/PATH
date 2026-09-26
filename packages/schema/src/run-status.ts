@@ -7,13 +7,24 @@ import { z } from "zod";
  * `cancelled` is deliberately distinct from `failed`: an operator stopping a run, or a parallel
  * branch killing its in-flight siblings, is not the workflow breaking (§5.6).
  */
-export const RUN_STATUSES = ["pending", "running", "awaiting", "succeeded", "failed", "cancelled"] as const;
+export const RUN_STATUSES = [
+  "pending",
+  "running",
+  "awaiting",
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export const RunStatusSchema = z.enum(RUN_STATUSES);
 
 /** The three statuses a run can end on. A terminal run never moves again. */
-export const TERMINAL_RUN_STATUSES = ["succeeded", "failed", "cancelled"] as const satisfies readonly RunStatus[];
+export const TERMINAL_RUN_STATUSES = [
+  "succeeded",
+  "failed",
+  "cancelled",
+] as const satisfies readonly RunStatus[];
 export type TerminalRunStatus = (typeof TERMINAL_RUN_STATUSES)[number];
 
 export const TerminalRunStatusSchema = z.enum(TERMINAL_RUN_STATUSES);

@@ -13,9 +13,10 @@ const ID = "11111111-1111-4111-8111-111111111111";
 
 describe("step nodes", () => {
   it("validates a minimal prompt step", () => {
-    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "summarize", prompt: "Summarize this." }).success).toBe(
-      true,
-    );
+    expect(
+      NodeSchema.safeParse({ type: "prompt", id: ID, name: "summarize", prompt: "Summarize this." })
+        .success,
+    ).toBe(true);
   });
 
   it("requires prompt on a prompt step", () => {
@@ -25,7 +26,8 @@ describe("step nodes", () => {
   it("validates a full prompt step with common step fields", () => {
     const result = NodeSchema.safeParse({
       type: "prompt",
-      id: ID, name: "summarize",
+      id: ID,
+      name: "summarize",
       worker: "anthropic",
       config: { model: "claude-sonnet-5", temperature: 0 },
       input: { raw_changes: "${context.raw_changes}" },
@@ -37,49 +39,87 @@ describe("step nodes", () => {
   });
 
   it("accepts an omitted worker (the type default) and the type's own worker name (`@3` §4)", () => {
-    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", prompt: "hi" }).success).toBe(true);
-    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "anthropic", prompt: "hi" }).success).toBe(true);
-    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "spawn", command: "git" }).success).toBe(true);
+    expect(NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", prompt: "hi" }).success).toBe(
+      true,
+    );
+    expect(
+      NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "anthropic", prompt: "hi" })
+        .success,
+    ).toBe(true);
+    expect(
+      NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "spawn", command: "git" })
+        .success,
+    ).toBe(true);
   });
 
   it("rejects a worker name the step type does not ship, listing the valid names (ADR 0021 sub-8)", () => {
-    const promptResult = NodeSchema.safeParse({ type: "prompt", id: ID, name: "a", worker: "spawn", prompt: "hi" });
+    const promptResult = NodeSchema.safeParse({
+      type: "prompt",
+      id: ID,
+      name: "a",
+      worker: "spawn",
+      prompt: "hi",
+    });
     expect(promptResult.success).toBe(false);
     if (!promptResult.success) {
       expect(JSON.stringify(promptResult.error.issues)).toContain("anthropic");
     }
     // `binary` ships `spawn`, not `anthropic` — a step type's worker names are its own (the pair is the identity).
-    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "b", worker: "anthropic", command: "git" }).success).toBe(false);
+    expect(
+      NodeSchema.safeParse({
+        type: "binary",
+        id: ID,
+        name: "b",
+        worker: "anthropic",
+        command: "git",
+      }).success,
+    ).toBe(false);
   });
 
   it("rejects a worker on a workflow step — a workflow step runs a nested run, not a worker (`@3` §4)", () => {
     expect(
-      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./child.workflow.json", worker: "anthropic" }).success,
+      NodeSchema.safeParse({
+        type: "workflow",
+        id: ID,
+        name: "revise",
+        ref: "./child.workflow.json",
+        worker: "anthropic",
+      }).success,
     ).toBe(false);
   });
 
   it("rejects an unknown field on a step (strict)", () => {
     expect(
-      NodeSchema.safeParse({ type: "prompt", id: ID, name: "summarize", prompt: "hi", bogus: true }).success,
+      NodeSchema.safeParse({ type: "prompt", id: ID, name: "summarize", prompt: "hi", bogus: true })
+        .success,
     ).toBe(false);
   });
 
   it("validates a minimal binary step", () => {
     expect(
-      NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "git", args: ["log"] }).success,
+      NodeSchema.safeParse({
+        type: "binary",
+        id: ID,
+        name: "gather",
+        command: "git",
+        args: ["log"],
+      }).success,
     ).toBe(true);
   });
 
   it("requires command on a binary step, args/cwd are optional", () => {
     expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "gather" }).success).toBe(false);
-    expect(NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "git" }).success).toBe(true);
+    expect(
+      NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "git" }).success,
+    ).toBe(true);
   });
 
   it("validates interpolable command/args/cwd", () => {
     expect(
       NodeSchema.safeParse({
         type: "binary",
-        id: ID, name: "gather",
+        id: ID,
+        name: "gather",
         command: "git",
         args: ["log", "${config.commit_range}"],
         cwd: "${config.repo_path}",
@@ -94,20 +134,31 @@ describe("step nodes", () => {
     // the engine still interpolates it at run time (#337). Root-scoped positions the *core* grammar
     // owns (a `while-do` `max_iterations`, the file `output` map) are still validated.
     expect(
-      NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "${output.cmd}" }).success,
+      NodeSchema.safeParse({ type: "binary", id: ID, name: "gather", command: "${output.cmd}" })
+        .success,
     ).toBe(true);
   });
 
   it("validates a minimal workflow step", () => {
     expect(
-      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./revise-cycle.workflow.json" }).success,
+      NodeSchema.safeParse({
+        type: "workflow",
+        id: ID,
+        name: "revise",
+        ref: "./revise-cycle.workflow.json",
+      }).success,
     ).toBe(true);
   });
 
   it("requires ref on a workflow step and rejects absolute paths", () => {
     expect(NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise" }).success).toBe(false);
     expect(
-      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "/etc/passwd.workflow.json" }).success,
+      NodeSchema.safeParse({
+        type: "workflow",
+        id: ID,
+        name: "revise",
+        ref: "/etc/passwd.workflow.json",
+      }).success,
     ).toBe(false);
   });
 
@@ -115,7 +166,12 @@ describe("step nodes", () => {
     // A literal string containing `${` is fine since ref is inert — not run through
     // interpolation-syntax checking.
     expect(
-      NodeSchema.safeParse({ type: "workflow", id: ID, name: "revise", ref: "./${literal}.workflow.json" }).success,
+      NodeSchema.safeParse({
+        type: "workflow",
+        id: ID,
+        name: "revise",
+        ref: "./${literal}.workflow.json",
+      }).success,
     ).toBe(true);
   });
 });
@@ -125,7 +181,8 @@ describe("controllers reject step-only fields", () => {
     expect(
       NodeSchema.safeParse({
         type: "checkpoint",
-        id: ID, name: "gate",
+        id: ID,
+        name: "gate",
         condition: { type: "exists", path: "context.x" },
         worker: "spawn",
       }).success,
@@ -136,7 +193,8 @@ describe("controllers reject step-only fields", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
-        id: ID, name: "p",
+        id: ID,
+        name: "p",
         join: "collect",
         branches: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
         publish: { x: "${output}" },
@@ -148,7 +206,8 @@ describe("controllers reject step-only fields", () => {
     expect(
       NodeSchema.safeParse({
         type: "sequence",
-        id: ID, name: "s",
+        id: ID,
+        name: "s",
         body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
         worker: "anthropic",
       }).success,
@@ -161,7 +220,8 @@ describe("checkpoint node", () => {
     expect(
       NodeSchema.safeParse({
         type: "checkpoint",
-        id: ID, name: "have-changes",
+        id: ID,
+        name: "have-changes",
         condition: { type: "matches", path: "context.raw_changes", pattern: "\\S" },
       }).success,
     ).toBe(true);
@@ -172,7 +232,8 @@ describe("parallel node", () => {
   it("validates a parallel block whose branches are nodes carrying id + name", () => {
     const result = NodeSchema.safeParse({
       type: "parallel",
-      id: ID, name: "summarize",
+      id: ID,
+      name: "summarize",
       join: "collect",
       branches: [
         { type: "prompt", id: ID, name: "features", prompt: "hi" },
@@ -185,7 +246,8 @@ describe("parallel node", () => {
   it("validates a parallel block with the wait-one join", () => {
     const result = NodeSchema.safeParse({
       type: "parallel",
-      id: ID, name: "race",
+      id: ID,
+      name: "race",
       join: "wait-one",
       branches: [
         { type: "prompt", id: ID, name: "fast", prompt: "hi" },
@@ -199,7 +261,8 @@ describe("parallel node", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
-        id: ID, name: "race",
+        id: ID,
+        name: "race",
         join: "wait-one",
         branches: [{ type: "prompt", id: ID, name: "only", prompt: "hi" }],
       }).success,
@@ -209,7 +272,8 @@ describe("parallel node", () => {
   it("validates a parallel block with the do-not-wait join", () => {
     const result = NodeSchema.safeParse({
       type: "parallel",
-      id: ID, name: "fire",
+      id: ID,
+      name: "fire",
       join: "do-not-wait",
       branches: [
         { type: "prompt", id: ID, name: "notify", prompt: "hi" },
@@ -223,12 +287,14 @@ describe("parallel node", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
-        id: ID, name: "p",
+        id: ID,
+        name: "p",
         join: "collect",
         branches: [
           {
             type: "sequence",
-            id: ID, name: "gather-then-summarize",
+            id: ID,
+            name: "gather-then-summarize",
             body: [
               { type: "binary", id: ID, name: "gather", command: "git" },
               { type: "prompt", id: ID, name: "summarize", prompt: "hi" },
@@ -245,9 +311,12 @@ describe("parallel node", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
-        id: ID, name: "p",
+        id: ID,
+        name: "p",
         join: "collect",
-        branches: [{ id: ID, name: "a", body: [{ type: "prompt", id: ID, name: "x", prompt: "hi" }] }],
+        branches: [
+          { id: ID, name: "a", body: [{ type: "prompt", id: ID, name: "x", prompt: "hi" }] },
+        ],
       }).success,
     ).toBe(false);
   });
@@ -256,7 +325,8 @@ describe("parallel node", () => {
     expect(
       NodeSchema.safeParse({
         type: "parallel",
-        id: ID, name: "p",
+        id: ID,
+        name: "p",
         join: "first-done",
         branches: [{ type: "prompt", id: ID, name: "x", prompt: "hi" }],
       }).success,
@@ -264,9 +334,10 @@ describe("parallel node", () => {
   });
 
   it("rejects empty branches array", () => {
-    expect(NodeSchema.safeParse({ type: "parallel", id: ID, name: "p", join: "collect", branches: [] }).success).toBe(
-      false,
-    );
+    expect(
+      NodeSchema.safeParse({ type: "parallel", id: ID, name: "p", join: "collect", branches: [] })
+        .success,
+    ).toBe(false);
   });
 });
 
@@ -274,7 +345,8 @@ describe("branch node", () => {
   it("validates arms with when/node and an optional single-node else", () => {
     const result = NodeSchema.safeParse({
       type: "branch",
-      id: ID, name: "pick",
+      id: ID,
+      name: "pick",
       arms: [
         {
           when: { type: "equals", path: "context.fmt", value: "short" },
@@ -290,8 +362,14 @@ describe("branch node", () => {
     expect(
       NodeSchema.safeParse({
         type: "branch",
-        id: ID, name: "pick",
-        arms: [{ when: { type: "exists", path: "context.x" }, body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }] }],
+        id: ID,
+        name: "pick",
+        arms: [
+          {
+            when: { type: "exists", path: "context.x" },
+            body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
+          },
+        ],
       }).success,
     ).toBe(false);
   });
@@ -300,22 +378,31 @@ describe("branch node", () => {
     expect(
       NodeSchema.safeParse({
         type: "branch",
-        id: ID, name: "pick",
-        arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: ID, name: "a", prompt: "hi" } }],
+        id: ID,
+        name: "pick",
+        arms: [
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: ID, name: "a", prompt: "hi" },
+          },
+        ],
         else: [{ type: "prompt", id: ID, name: "b", prompt: "hi" }],
       }).success,
     ).toBe(false);
   });
 
   it("requires at least one arm", () => {
-    expect(NodeSchema.safeParse({ type: "branch", id: ID, name: "pick", arms: [] }).success).toBe(false);
+    expect(NodeSchema.safeParse({ type: "branch", id: ID, name: "pick", arms: [] }).success).toBe(
+      false,
+    );
   });
 });
 
 describe("while-do node", () => {
   const loop = (extra: Record<string, unknown>) => ({
     type: "while-do",
-    id: ID, name: "loop",
+    id: ID,
+    name: "loop",
     condition: { type: "equals", path: "context.pass", value: false },
     node: { type: "prompt", id: ID, name: "a", prompt: "hi" },
     ...extra,
@@ -326,7 +413,9 @@ describe("while-do node", () => {
   });
 
   it("accepts an interpolable string max_iterations", () => {
-    expect(NodeSchema.safeParse(loop({ max_iterations: "${config.max_revisions}" })).success).toBe(true);
+    expect(NodeSchema.safeParse(loop({ max_iterations: "${config.max_revisions}" })).success).toBe(
+      true,
+    );
   });
 
   it("rejects a non-positive max_iterations", () => {
@@ -341,7 +430,8 @@ describe("while-do node", () => {
     expect(
       NodeSchema.safeParse({
         type: "while-do",
-        id: ID, name: "loop",
+        id: ID,
+        name: "loop",
         condition: { type: "equals", path: "context.pass", value: false },
         max_iterations: 3,
         body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
@@ -355,7 +445,8 @@ describe("sequence node", () => {
     expect(
       NodeSchema.safeParse({
         type: "sequence",
-        id: ID, name: "gather-then-summarize",
+        id: ID,
+        name: "gather-then-summarize",
         body: [
           { type: "binary", id: ID, name: "gather", command: "git" },
           { type: "prompt", id: ID, name: "summarize", prompt: "hi" },
@@ -368,31 +459,39 @@ describe("sequence node", () => {
     expect(
       NodeSchema.safeParse({
         type: "sequence",
-        id: ID, name: "one",
+        id: ID,
+        name: "one",
         body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
       }).success,
     ).toBe(true);
   });
 
   it("rejects an empty body (an empty sequence is a load error)", () => {
-    expect(NodeSchema.safeParse({ type: "sequence", id: ID, name: "empty", body: [] }).success).toBe(false);
+    expect(
+      NodeSchema.safeParse({ type: "sequence", id: ID, name: "empty", body: [] }).success,
+    ).toBe(false);
   });
 
   it("requires id + name", () => {
-    expect(NodeSchema.safeParse({ type: "sequence", body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }] }).success).toBe(
-      false,
-    );
+    expect(
+      NodeSchema.safeParse({
+        type: "sequence",
+        body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
+      }).success,
+    ).toBe(false);
   });
 
   it("nests — a sequence may hold a sequence", () => {
     expect(
       NodeSchema.safeParse({
         type: "sequence",
-        id: ID, name: "outer",
+        id: ID,
+        name: "outer",
         body: [
           {
             type: "sequence",
-            id: ID, name: "inner",
+            id: ID,
+            name: "inner",
             body: [{ type: "prompt", id: ID, name: "a", prompt: "hi" }],
           },
         ],
@@ -405,21 +504,29 @@ describe("recursive nesting", () => {
   it("supports deeply nested container slots (single nodes throughout)", () => {
     const nested = {
       type: "parallel",
-      id: ID, name: "outer",
+      id: ID,
+      name: "outer",
       join: "collect",
       branches: [
         {
           type: "while-do",
-          id: ID, name: "loop",
+          id: ID,
+          name: "loop",
           condition: { type: "exists", path: "context.x" },
           max_iterations: 2,
           node: {
             type: "branch",
-            id: ID, name: "inner-branch",
+            id: ID,
+            name: "inner-branch",
             arms: [
               {
                 when: { type: "exists", path: "context.y" },
-                node: { type: "checkpoint", id: ID, name: "gate", condition: { type: "exists", path: "context.y" } },
+                node: {
+                  type: "checkpoint",
+                  id: ID,
+                  name: "gate",
+                  condition: { type: "exists", path: "context.y" },
+                },
               },
             ],
           },
@@ -440,14 +547,17 @@ describe("NodeArraySchema", () => {
   });
 
   it("rejects a node missing id (the GUID) or name", () => {
-    expect(NodeSchema.safeParse({ type: "prompt", name: "summarize", prompt: "hi" }).success).toBe(false);
-    expect(
-      NodeSchema.safeParse({ type: "prompt", id: ID, prompt: "hi" }).success,
-    ).toBe(false);
+    expect(NodeSchema.safeParse({ type: "prompt", name: "summarize", prompt: "hi" }).success).toBe(
+      false,
+    );
+    expect(NodeSchema.safeParse({ type: "prompt", id: ID, prompt: "hi" }).success).toBe(false);
   });
 
   it("rejects a node whose id is not a UUIDv4", () => {
-    expect(NodeSchema.safeParse({ type: "prompt", id: "summarize", name: "summarize", prompt: "hi" }).success).toBe(false);
+    expect(
+      NodeSchema.safeParse({ type: "prompt", id: "summarize", name: "summarize", prompt: "hi" })
+        .success,
+    ).toBe(false);
   });
 
   it("rejects a node with a malformed name", () => {

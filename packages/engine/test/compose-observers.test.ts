@@ -1,15 +1,29 @@
 import { describe, expect, it, vi } from "vitest";
-import { composeObservers, type Observation, ObserverError, type RunObserver } from "../src/run-observer.js";
+import {
+  composeObservers,
+  type Observation,
+  ObserverError,
+  type RunObserver,
+} from "../src/run-observer.js";
 
 const started: Observation = {
   type: "run-started",
   runId: "r",
   rootRunId: "r",
   parentRunId: null,
-  nodeId: null, nodeName: null,
+  nodeId: null,
+  nodeName: null,
   input: {},
 };
-const finished: Observation = { type: "step-finished", runId: "r", rootRunId: "r", nodeId: "n", nodeName: "n", status: "succeeded", output: {} };
+const finished: Observation = {
+  type: "step-finished",
+  runId: "r",
+  rootRunId: "r",
+  nodeId: "n",
+  nodeName: "n",
+  status: "succeeded",
+  output: {},
+};
 
 describe("composeObservers", () => {
   it("fans every observation out to every observer, in argument order", async () => {
@@ -36,7 +50,9 @@ describe("composeObservers", () => {
         throw new ObserverError("backend down");
       },
     };
-    await expect(composeObservers({ observe: () => {} }, boom).observe(finished)).rejects.toBeInstanceOf(ObserverError);
+    await expect(
+      composeObservers({ observe: () => {} }, boom).observe(finished),
+    ).rejects.toBeInstanceOf(ObserverError);
   });
 
   // The ordering contract composeObservers documents: persistence must have run before a logging
@@ -49,7 +65,9 @@ describe("composeObservers", () => {
         throw new ObserverError("backend down");
       },
     };
-    await expect(composeObservers({ observe: before }, boom, { observe: after }).observe(finished)).rejects.toThrow();
+    await expect(
+      composeObservers({ observe: before }, boom, { observe: after }).observe(finished),
+    ).rejects.toThrow();
     expect(before).toHaveBeenCalledOnce();
     expect(after).not.toHaveBeenCalled();
   });

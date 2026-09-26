@@ -1,9 +1,14 @@
-import { PathApiError, type JsonValue, type PathApiClient, type WireStepPlugin } from "@path/client-core";
+import {
+  type JsonValue,
+  type PathApiClient,
+  PathApiError,
+  type WireStepPlugin,
+} from "@path/client-core";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { openWorkflowFile } from "./open-workflow.js";
 import { canonicalSerialize } from "./serialize.js";
-import { openedResultOf, type Frame, type SessionState } from "./session-reducer.js";
+import { type Frame, openedResultOf, type SessionState } from "./session-reducer.js";
 
 /**
  * The Designer's **open document**, as the two kinds of file it edits: a workflow file, path-addressed
@@ -42,19 +47,33 @@ function opened(text: string, plugins: WireStepPlugin[], etag: string | null): L
  * re-orders therefore opens dirty, as a hand-authored workflow does. A fetch failure (404, …) becomes a
  * frame error. `null` for a frame with nothing to fetch (a from-scratch buffer).
  */
-export async function loadDocument(client: PathApiClient, frame: Frame, plugins: WireStepPlugin[]): Promise<LoadedDocument | null> {
+export async function loadDocument(
+  client: PathApiClient,
+  frame: Frame,
+  plugins: WireStepPlugin[],
+): Promise<LoadedDocument | null> {
   const { path, template } = frame;
   if (!template && path === null) return null;
   try {
     if (template) {
       const envelope = await client.getTemplate(template.id);
-      const file: WorkflowFile = { format: FORMAT_VERSION, id: envelope.id, name: envelope.name, body: envelope.body as WorkflowNode[] };
+      const file: WorkflowFile = {
+        format: FORMAT_VERSION,
+        id: envelope.id,
+        name: envelope.name,
+        body: envelope.body as WorkflowNode[],
+      };
       return opened(canonicalSerialize(file), plugins, envelope.etag);
     }
     const raw = await client.getWorkflowFile(path!);
     return opened(raw.text, plugins, raw.etag);
   } catch (error) {
-    return { frameState: { phase: "fetch-error", message: errorMessage(error) }, etag: null, baseline: "", openedBytes: "" };
+    return {
+      frameState: { phase: "fetch-error", message: errorMessage(error) },
+      etag: null,
+      baseline: "",
+      openedBytes: "",
+    };
   }
 }
 
@@ -88,22 +107,41 @@ export type WriteOutcome =
  * workflow create's `412` and a template create's `409` are both **exists** — the two doors spell the
  * same collision differently (ADR 0016, ADR 0050 decision 6), and no caller has to know which.
  */
-export async function writeDocument(client: PathApiClient, write: DocumentWrite): Promise<WriteOutcome> {
+export async function writeDocument(
+  client: PathApiClient,
+  write: DocumentWrite,
+): Promise<WriteOutcome> {
   try {
     // The whole authored model, ids and all — the server preserves every `id` it is sent (ADR 0015).
     const result =
       write.to === "workflow"
-        ? await client.putWorkflow({ workflowPath: write.path, workflow: write.file as unknown as JsonValue, ifMatch: write.ifMatch })
+        ? await client.putWorkflow({
+            workflowPath: write.path,
+            workflow: write.file as unknown as JsonValue,
+            ifMatch: write.ifMatch,
+          })
         : write.to === "template"
-          ? await client.putTemplate({ id: write.id, body: templateBody(write.description, write.file) as JsonValue, ifMatch: write.ifMatch })
-          : await client.createTemplate({ kind: "step", name: write.name, description: write.description, body: templateBody(write.description, write.file) });
+          ? await client.putTemplate({
+              id: write.id,
+              body: templateBody(write.description, write.file) as JsonValue,
+              ifMatch: write.ifMatch,
+            })
+          : await client.createTemplate({
+              kind: "step",
+              name: write.name,
+              description: write.description,
+              body: templateBody(write.description, write.file),
+            });
     return { ok: true, ...result };
   } catch (error) {
     const message = errorMessage(error);
     if (error instanceof PathApiError) {
-      const creates = write.to === "new-template" || (write.to === "workflow" && write.ifMatch === undefined);
-      if (error.status === 412) return { ok: false, conflict: creates ? "exists" : "stale", message };
-      if (error.status === 409 && write.to === "new-template") return { ok: false, conflict: "exists", message };
+      const creates =
+        write.to === "new-template" || (write.to === "workflow" && write.ifMatch === undefined);
+      if (error.status === 412)
+        return { ok: false, conflict: creates ? "exists" : "stale", message };
+      if (error.status === 409 && write.to === "new-template")
+        return { ok: false, conflict: "exists", message };
     }
     return { ok: false, conflict: null, message };
   }
@@ -128,12 +166,20 @@ export interface DocumentPolicy {
   leasedPaths: string[];
 }
 
-export function documentPolicy(state: Pick<SessionState, "mode" | "frames" | "activeIndex">): DocumentPolicy {
+export function documentPolicy(
+  state: Pick<SessionState, "mode" | "frames" | "activeIndex">,
+): DocumentPolicy {
   const active = state.frames[state.activeIndex];
   const isOpen = openedResultOf(active) !== null;
   const hasIdentity = Boolean(active?.path || active?.template);
   return {
-    saveDoor: !isOpen ? null : hasIdentity ? "save" : state.mode === "template" ? "new-template-dialog" : "new-workflow-dialog",
+    saveDoor: !isOpen
+      ? null
+      : hasIdentity
+        ? "save"
+        : state.mode === "template"
+          ? "new-template-dialog"
+          : "new-workflow-dialog",
     canSaveAs: isOpen && hasIdentity,
     leasedPaths: state.frames
       .filter((frame) => openedResultOf(frame) !== null && frame.written && frame.path !== null)

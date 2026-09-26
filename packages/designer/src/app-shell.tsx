@@ -37,7 +37,15 @@ export interface AppShellProps {
  * The brand strip says `designer`, then the Workflow | Template edit-mode switch, so the author sees the
  * surface and the mode at a glance.
  */
-export function AppShell({ palette, canvas, pane, modeSwitch, title, toolbar, runDock }: AppShellProps) {
+export function AppShell({
+  palette,
+  canvas,
+  pane,
+  modeSwitch,
+  title,
+  toolbar,
+  runDock,
+}: AppShellProps) {
   const panesRef = useRef<HTMLDivElement | null>(null);
   // Palette (handle on its right edge, grow +1) and properties (handle on its left edge, grow -1); the
   // canvas stage between them takes the remainder — the same model as the run dock's three panes.
@@ -65,27 +73,22 @@ export function AppShell({ palette, canvas, pane, modeSwitch, title, toolbar, ru
         <section className="rail" aria-label="Palette" style={{ width: `${widths[0]}px` }}>
           {palette}
         </section>
-        <div
+        <hr
           className="rail-vresizer"
-          aria-label="Resize palette"
+          aria-valuetext="Resize palette"
           data-testid="shell-vresizer-0"
           {...handleProps(0)}
         />
         <main className="stage">{canvas}</main>
-        <div
+        <hr
           className="rail-vresizer"
-          aria-label="Resize properties"
+          aria-valuetext="Resize properties"
           data-testid="shell-vresizer-1"
           {...handleProps(1)}
         />
-        <aside
-          className="pane-rail"
-          role="region"
-          aria-label="Properties"
-          style={{ width: `${widths[1]}px` }}
-        >
+        <section className="pane-rail" aria-label="Properties" style={{ width: `${widths[1]}px` }}>
           {pane}
-        </aside>
+        </section>
       </div>
       {runDock ?? null}
     </div>

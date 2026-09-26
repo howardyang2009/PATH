@@ -4,15 +4,15 @@ import { join } from "node:path";
 import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
-import type { Observation } from "../src/run-observer.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
 import { RUN_BLOB_FILE, runBlobDir } from "../src/persistence/paths.js";
 import { createPersistedObserver } from "../src/persistence/persisted-observer.js";
 import { getRunsForRoot } from "../src/persistence/run-store.js";
-import { fakeObserver, type FakeObserver } from "./fake-observer.js";
-import { runWorkflow, type ResumeInput } from "../src/run-workflow.js";
+import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
+import type { Observation } from "../src/run-observer.js";
+import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
+import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
@@ -24,7 +24,9 @@ import { stampNames } from "./stamp-names.js";
  */
 
 // A run row of the original tree, with the fields planReuse and the seed load read.
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "orig-root",
     nodeName: overrides.nodeId,
@@ -85,11 +87,19 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
   // stampNames keeps each node's human id in place (so resume matching by id still works) and mirrors
   // it to `name`; runWorkflow takes the object directly, so no UUIDs are needed here.
-  return stampNames({ format: "path/workflow@5", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
+  return stampNames({
+    format: "path/workflow@5",
+    name: "resumed",
+    config: { model: "m" },
+    body,
+    ...(output ? { output } : {}),
+  });
 }
 
 function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
-  return observer.all().filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
+  return observer
+    .all()
+    .filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
 }
 
 function startedNodeIds(observer: FakeObserver): (string | null)[] {
@@ -117,9 +127,27 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
-          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "a-run",
+            parentRunId: "orig-root",
+            nodeId: "a",
+            nodeName: "a",
+            status: "succeeded",
+          }),
+          run({
+            runId: "b-run",
+            parentRunId: "orig-root",
+            nodeId: "b",
+            nodeName: "b",
+            status: "failed",
+          }),
         ],
         readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
@@ -148,22 +176,52 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // A person-activity gate that succeeded originally, then a later prompt K that failed. Resuming
     // must reuse the human decision (marker, no step-started) rather than re-park at the gate — the
     // check-git-result-before-draft-notes scenario, at node grain.
-    const gate = { type: "person-activity", id: "gate", name: "gate", description: "check", publish: { fromGate: "${output}" } } as unknown as WorkflowFile["body"][number];
-    const file = tree([gate, { type: "prompt", id: "b", name: "b", prompt: "b", publish: { fromB: "${output}" } }], {
-      gate: "${context.fromGate}",
-      b: "${context.fromB}",
-    });
+    const gate = {
+      type: "person-activity",
+      id: "gate",
+      name: "gate",
+      description: "check",
+      publish: { fromGate: "${output}" },
+    } as unknown as WorkflowFile["body"][number];
+    const file = tree(
+      [gate, { type: "prompt", id: "b", name: "b", prompt: "b", publish: { fromB: "${output}" } }],
+      {
+        gate: "${context.fromGate}",
+        b: "${context.fromB}",
+      },
+    );
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "gate-run", parentRunId: "orig-root", nodeId: "gate", nodeName: "gate", status: "succeeded" }),
-          run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "failed" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "gate-run",
+            parentRunId: "orig-root",
+            nodeId: "gate",
+            nodeName: "gate",
+            status: "succeeded",
+          }),
+          run({
+            runId: "b-run",
+            parentRunId: "orig-root",
+            nodeId: "b",
+            nodeName: "b",
+            status: "failed",
+          }),
         ],
-        readBlob: reader({ "orig-root/input.json": {}, "gate-run/output.json": "REUSED_GATE" }, reads),
+        readBlob: reader(
+          { "orig-root/input.json": {}, "gate-run/output.json": "REUSED_GATE" },
+          reads,
+        ),
       },
     });
 
@@ -203,8 +261,20 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(worker),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "a-run",
+            parentRunId: "orig-root",
+            nodeId: "a",
+            nodeName: "a",
+            status: "succeeded",
+          }),
         ],
         readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
       },
@@ -219,8 +289,12 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     const reads: string[] = [];
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
-    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner" }], { r: "${output}" });
-    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" }]);
+    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner" }], {
+      r: "${output}",
+    });
+    const file = tree([
+      { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json" },
+    ]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -228,12 +302,33 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "sub-run",
+            parentRunId: "orig-root",
+            nodeId: "sub",
+            nodeName: "sub",
+            status: "succeeded",
+          }),
           // A descendant inside the collapsed subtree: it must never be walked, so its blob is never read.
-          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
+          run({
+            runId: "inner-run",
+            parentRunId: "sub-run",
+            nodeId: "inner",
+            nodeName: "inner",
+            status: "succeeded",
+          }),
         ],
-        readBlob: reader({ "orig-root/input.json": {}, "sub-run/output.json": { r: "SUB" } }, reads),
+        readBlob: reader(
+          { "orig-root/input.json": {}, "sub-run/output.json": { r: "SUB" } },
+          reads,
+        ),
       },
     });
 
@@ -256,7 +351,15 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       { type: "prompt", id: "x", name: "x", prompt: "x", publish: { fromX: "${output}" } },
       { type: "prompt", id: "y", name: "y", prompt: "y" },
     ]);
-    const file = tree([{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { restored: "CTX" } }]);
+    const file = tree([
+      {
+        type: "workflow",
+        id: "sub",
+        name: "sub",
+        ref: "./nested.workflow.json",
+        input: { restored: "CTX" },
+      },
+    ]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
@@ -264,11 +367,35 @@ describe("resume — reusing a node's recorded output (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ y: "FRESH_Y" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
           // sub failed originally, so it re-enters rather than reusing — its succeeded child x reuses.
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "failed" }),
-          run({ runId: "x-run", parentRunId: "sub-run", nodeId: "x", nodeName: "x", status: "succeeded" }),
-          run({ runId: "y-run", parentRunId: "sub-run", nodeId: "y", nodeName: "y", status: "failed" }),
+          run({
+            runId: "sub-run",
+            parentRunId: "orig-root",
+            nodeId: "sub",
+            nodeName: "sub",
+            status: "failed",
+          }),
+          run({
+            runId: "x-run",
+            parentRunId: "sub-run",
+            nodeId: "x",
+            nodeName: "x",
+            status: "succeeded",
+          }),
+          run({
+            runId: "y-run",
+            parentRunId: "sub-run",
+            nodeId: "y",
+            nodeName: "y",
+            status: "failed",
+          }),
         ],
         readBlob: reader(
           {
@@ -286,13 +413,21 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     // The nested run re-entered: there is a run-started for the `sub` node with a fresh run id.
     const subStarted = observer
       .all()
-      .find((o): o is Extract<Observation, { type: "run-started" }> => o.type === "run-started" && o.nodeId === "sub");
+      .find(
+        (o): o is Extract<Observation, { type: "run-started" }> =>
+          o.type === "run-started" && o.nodeId === "sub",
+      );
     expect(subStarted).toBeDefined();
 
     // x's reuse-marker is attributed to the nested run, not the root — the nearest re-entered ancestor.
     const m = markers(observer);
     expect(m).toHaveLength(1);
-    expect(m[0]).toMatchObject({ nodeId: "x", nodeName: "x", originalRunId: "x-run", runId: subStarted!.runId });
+    expect(m[0]).toMatchObject({
+      nodeId: "x",
+      nodeName: "x",
+      originalRunId: "x-run",
+      runId: subStarted!.runId,
+    });
 
     // The nested run seeds from its own input (replay from seed, ADR 0062), never from a recorded
     // blob of its counterpart: `restored` comes from the `workflow` node's input, and `fromX` proves
@@ -300,7 +435,10 @@ describe("resume — reusing a node's recorded output (#172)", () => {
     expect(reads.some((key) => key.startsWith("sub-run/"))).toBe(false);
     const nestedContexts = observer
       .all()
-      .filter((o): o is Extract<Observation, { type: "context-changed" }> => o.type === "context-changed" && o.runId === subStarted!.runId)
+      .filter(
+        (o): o is Extract<Observation, { type: "context-changed" }> =>
+          o.type === "context-changed" && o.runId === subStarted!.runId,
+      )
       .map((o) => o.context);
     expect(nestedContexts.length).toBeGreaterThan(0);
     expect(nestedContexts.at(-1)).toEqual({ restored: "CTX", fromX: "REUSED_X" });
@@ -361,10 +499,28 @@ describe("resume — the original tree is read-only (#172)", () => {
       workerOverrides: promptOverride(recordingWorker({ b: "FRESH_B" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "a-run",
+            parentRunId: "orig-root",
+            nodeId: "a",
+            nodeName: "a",
+            status: "succeeded",
+          }),
         ],
-        readBlob: (record, filename) => JSON.parse(readFileSync(join(runBlobDir(origDir, record.rootRunId, record.runId), filename), "utf8")) as JsonValue,
+        readBlob: (record, filename) =>
+          JSON.parse(
+            readFileSync(
+              join(runBlobDir(origDir, record.rootRunId, record.runId), filename),
+              "utf8",
+            ),
+          ) as JsonValue,
       },
     });
 
@@ -373,7 +529,11 @@ describe("resume — the original tree is read-only (#172)", () => {
     expect(snapshot(origDir)).toEqual(before);
 
     // The successor got its own tree under the new project dir, keyed on a fresh root run id.
-    const newRootId = (newDb.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id LIMIT 1").get() as { root_run_id: string } | undefined)?.root_run_id;
+    const newRootId = (
+      newDb.prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id LIMIT 1").get() as
+        | { root_run_id: string }
+        | undefined
+    )?.root_run_id;
     expect(newRootId).toBeDefined();
     expect(newRootId).not.toBe("orig-root");
     expect(getRunsForRoot(newDb, newRootId!).length).toBeGreaterThan(0);
@@ -388,11 +548,26 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     [
       {
         type: "parallel",
-        id: "race", name: "race",
+        id: "race",
+        name: "race",
         join: "wait-one",
         branches: [
-          { type: "sequence", id: "fast", name: "fast", body: [{ type: "prompt", id: "f", name: "f", prompt: "f", publish: { answer: "${output}" } }] },
-          { type: "sequence", id: "slow", name: "slow", body: [{ type: "prompt", id: "s", name: "s", prompt: "s", publish: { answer: "${output}" } }] },
+          {
+            type: "sequence",
+            id: "fast",
+            name: "fast",
+            body: [
+              { type: "prompt", id: "f", name: "f", prompt: "f", publish: { answer: "${output}" } },
+            ],
+          },
+          {
+            type: "sequence",
+            id: "slow",
+            name: "slow",
+            body: [
+              { type: "prompt", id: "s", name: "s", prompt: "s", publish: { answer: "${output}" } },
+            ],
+          },
         ],
       },
     ],
@@ -409,9 +584,27 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "f-run", parentRunId: "orig-root", nodeId: "f", nodeName: "f", status: "succeeded" }),
-          run({ runId: "s-run", parentRunId: "orig-root", nodeId: "s", nodeName: "s", status: "cancelled" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "f-run",
+            parentRunId: "orig-root",
+            nodeId: "f",
+            nodeName: "f",
+            status: "succeeded",
+          }),
+          run({
+            runId: "s-run",
+            parentRunId: "orig-root",
+            nodeId: "s",
+            nodeName: "s",
+            status: "cancelled",
+          }),
         ],
         // Only the winner's blob exists; a read of the loser's would throw, proving it is never reused.
         readBlob: reader({ "orig-root/input.json": {}, "f-run/output.json": "REUSED_F" }, reads),
@@ -430,7 +623,11 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     expect(reads).not.toContain("s-run/output.json");
 
     // The join re-evaluated to a win naming the reused winner; no loser run means no run-cancelled.
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ nodeId: "race", nodeName: "race", winner: "fast" });
+    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({
+      nodeId: "race",
+      nodeName: "race",
+      winner: "fast",
+    });
     expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);
   });
 
@@ -445,13 +642,40 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       [
         {
           type: "parallel",
-          id: "race", name: "race",
+          id: "race",
+          name: "race",
           join: "wait-one",
           branches: [
             // Declared first, but finished *later* (t2) — the loser of the photo-finish.
-            { type: "sequence", id: "late", name: "late", body: [{ type: "prompt", id: "l", name: "l", prompt: "l", publish: { answer: "${output}" } }] },
+            {
+              type: "sequence",
+              id: "late",
+              name: "late",
+              body: [
+                {
+                  type: "prompt",
+                  id: "l",
+                  name: "l",
+                  prompt: "l",
+                  publish: { answer: "${output}" },
+                },
+              ],
+            },
             // Declared second, finished *first* (t1) — the recorded winner.
-            { type: "sequence", id: "early", name: "early", body: [{ type: "prompt", id: "e", name: "e", prompt: "e", publish: { answer: "${output}" } }] },
+            {
+              type: "sequence",
+              id: "early",
+              name: "early",
+              body: [
+                {
+                  type: "prompt",
+                  id: "e",
+                  name: "e",
+                  prompt: "e",
+                  publish: { answer: "${output}" },
+                },
+              ],
+            },
           ],
         },
       ],
@@ -463,9 +687,29 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "l-run", parentRunId: "orig-root", nodeId: "l", nodeName: "l", status: "succeeded", finishedAt: "2026-08-09T00:00:02.000Z" }),
-          run({ runId: "e-run", parentRunId: "orig-root", nodeId: "e", nodeName: "e", status: "succeeded", finishedAt: "2026-08-09T00:00:01.000Z" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "l-run",
+            parentRunId: "orig-root",
+            nodeId: "l",
+            nodeName: "l",
+            status: "succeeded",
+            finishedAt: "2026-08-09T00:00:02.000Z",
+          }),
+          run({
+            runId: "e-run",
+            parentRunId: "orig-root",
+            nodeId: "e",
+            nodeName: "e",
+            status: "succeeded",
+            finishedAt: "2026-08-09T00:00:01.000Z",
+          }),
         ],
         readBlob: reader(
           { "orig-root/input.json": {}, "e-run/output.json": "EARLY", "l-run/output.json": "LATE" },
@@ -479,7 +723,9 @@ describe("resume — wait-one join re-evaluates and short-circuits the losers (�
     // The earlier-finishing (second-declared) branch is the winner, not the first-declared one.
     expect(result.output).toEqual({ answer: "EARLY" });
     expect(markers(observer).map((m) => m.nodeId)).toEqual(["e"]);
-    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({ winner: "early" });
+    expect(observer.all().find((o) => o.type === "join-applied")).toMatchObject({
+      winner: "early",
+    });
     // The losing-but-succeeded branch was neither started nor reused.
     expect(startedNodeIds(observer)).not.toContain("l");
     expect(reads).not.toContain("l-run/output.json");
@@ -504,10 +750,16 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
       { type: "prompt", id: "pre", name: "pre", prompt: "pre", publish: { seed: "${output}" } },
       {
         type: "parallel",
-        id: "fire", name: "fire",
+        id: "fire",
+        name: "fire",
         join: "do-not-wait",
         branches: [
-          { type: "sequence", id: "detached", name: "detached", body: [{ type: "prompt", id: "d", name: "d", prompt: "d" }] },
+          {
+            type: "sequence",
+            id: "detached",
+            name: "detached",
+            body: [{ type: "prompt", id: "d", name: "d", prompt: "d" }],
+          },
         ],
       },
     ],
@@ -535,13 +787,34 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
       workerOverrides: promptOverride(failingBranchWorker(ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-          run({ runId: "pre-run", parentRunId: "orig-root", nodeId: "pre", nodeName: "pre", status: "succeeded" }),
-          run({ runId: "d-run", parentRunId: "orig-root", nodeId: "d", nodeName: "d", status: "failed" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "failed",
+          }),
+          run({
+            runId: "pre-run",
+            parentRunId: "orig-root",
+            nodeId: "pre",
+            nodeName: "pre",
+            status: "succeeded",
+          }),
+          run({
+            runId: "d-run",
+            parentRunId: "orig-root",
+            nodeId: "d",
+            nodeName: "d",
+            status: "failed",
+          }),
         ],
         // The detached branch's blob is deliberately absent: any attempt to *reuse* it would throw,
         // catching a short-circuit that tried to restore it instead of re-running.
-        readBlob: reader({ "orig-root/input.json": {}, "pre-run/output.json": "REUSED_PRE" }, reads),
+        readBlob: reader(
+          { "orig-root/input.json": {}, "pre-run/output.json": "REUSED_PRE" },
+          reads,
+        ),
       },
     });
 
@@ -559,14 +832,20 @@ describe("resume — do-not-wait re-fires a non-`succeeded` detached branch; no 
     // reused (no marker for `d`) nor short-circuited away (a wait-one loser never starts; this one does).
     expect(startedNodeIds(observer)).toContain("d");
     expect(markerIds).not.toContain("d");
-    const dRunId = observer.all().find((o) => o.type === "step-started" && o.nodeName === "d")!.runId;
-    expect(observer.all().find((o) => o.type === "step-finished" && o.runId === dRunId)).toMatchObject({ status: "failed" });
+    const dRunId = observer
+      .all()
+      .find((o) => o.type === "step-started" && o.nodeName === "d")!.runId;
+    expect(
+      observer.all().find((o) => o.type === "step-finished" && o.runId === dRunId),
+    ).toMatchObject({ status: "failed" });
     // Its recorded output was never read: resume re-executed it rather than restoring it.
     expect(reads).not.toContain("d-run/output.json");
 
     // No wait-one machinery: the join fires (spec §9) but crowns no winner, and nothing was cancelled —
     // there is no reused winner making the branch pointless, so nothing to short-circuit.
-    const joinApplied = observer.all().find((o) => o.type === "join-applied" && o.nodeName === "fire");
+    const joinApplied = observer
+      .all()
+      .find((o) => o.type === "join-applied" && o.nodeName === "fire");
     expect(joinApplied).toBeDefined();
     expect(joinApplied).not.toHaveProperty("winner");
     expect(observer.all().some((o) => o.type === "run-cancelled")).toBe(false);

@@ -4,7 +4,14 @@ import type Database from "better-sqlite3";
 import type { RunObserver, RunOutcome } from "../run-observer.js";
 import { writeBlobFile, writeRunBlob } from "./blob-store.js";
 import { RUN_BLOB_FILE, runBlobDir } from "./paths.js";
-import { finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunStatus, setRunUsage } from "./run-store.js";
+import {
+  finishRun,
+  insertReuseRun,
+  insertRun,
+  setRunOutputRef,
+  setRunStatus,
+  setRunUsage,
+} from "./run-store.js";
 
 /**
  * A `RunObserver` (see run-observer.ts) that records every run row and blob under `.path/`
@@ -70,7 +77,20 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
     },
     seedsContext: boolean,
   ): void {
-    const { runId, rootRunId, parentRunId, nodeId, nodeName, workerName, iteration, pass, input, resumedFromRootRunId, rerunFromNodePath, launchFacts } = fact;
+    const {
+      runId,
+      rootRunId,
+      parentRunId,
+      nodeId,
+      nodeName,
+      workerName,
+      iteration,
+      pass,
+      input,
+      resumedFromRootRunId,
+      rerunFromNodePath,
+      launchFacts,
+    } = fact;
     const inputRef = writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.input, input);
     if (seedsContext) writeRunBlob(projectDir, rootRunId, runId, RUN_BLOB_FILE.context, input);
     insertRun(db, {
@@ -122,7 +142,11 @@ export function createPersistedObserver(db: Database.Database, projectDir: strin
         // Always written, even empty — captured for audit, never passed downstream (format §4.2).
         // Not a JSON blob and not referenced by a row column, so it goes through the raw writer.
         case "step-stderr":
-          writeBlobFile(runBlobDir(projectDir, o.rootRunId, o.runId), RUN_BLOB_FILE.stderr, o.stderr);
+          writeBlobFile(
+            runBlobDir(projectDir, o.rootRunId, o.runId),
+            RUN_BLOB_FILE.stderr,
+            o.stderr,
+          );
           return;
 
         // Leaf-only (mvp spec §5.7): the row where the tokens were actually spent.

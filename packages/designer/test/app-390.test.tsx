@@ -12,7 +12,18 @@ import { makeCalls, stubClient } from "./stub-server.js";
  */
 
 /** Discovery body giving the picker a real subdirectory beside the always-present project root. */
-const DISCOVERY = { workflows: [{ relative_path: "flows/existing.workflow.json", id: null, name: null, valid: true, is_root: true, error: null }] };
+const DISCOVERY = {
+  workflows: [
+    {
+      relative_path: "flows/existing.workflow.json",
+      id: null,
+      name: null,
+      valid: true,
+      is_root: true,
+      error: null,
+    },
+  ],
+};
 
 /** Arm a palette entry, then place it into the empty body's tail socket — the smallest built body. */
 function buildAPromptBody(): void {
@@ -32,12 +43,16 @@ describe("#390 from-scratch buffer — no path, no lease until first save", () =
     await screen.findByRole("region", { name: "Start a body" });
     expect(screen.getByRole("button", { name: "Save" })).toBeEnabled();
     // No lease is taken for a never-saved buffer (it has no path to lock).
-    await waitFor(() => expect(screen.getByRole("region", { name: "Workflow canvas" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.getByRole("region", { name: "Workflow canvas" })).toBeInTheDocument(),
+    );
     expect(calls.lock).toHaveLength(0);
 
     // Launch is gated on the first save — there is no path for the server to load.
     fireEvent.click(screen.getByTestId("run-dock-toggle"));
-    expect(screen.getByTestId("run-launch-gate")).toHaveTextContent("Save this new workflow before you can run it.");
+    expect(screen.getByTestId("run-launch-gate")).toHaveTextContent(
+      "Save this new workflow before you can run it.",
+    );
   });
 });
 
@@ -57,10 +72,14 @@ describe("#390 first-save placement dialog", () => {
     const directory = within(dialog).getByLabelText<HTMLSelectElement>("Directory");
     expect(directory.value).toBe("");
     expect(within(dialog).getByRole("option", { name: "(project root)" })).toBeInTheDocument();
-    await waitFor(() => expect(within(dialog).getByRole("option", { name: "flows" })).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(dialog).getByRole("option", { name: "flows" })).toBeInTheDocument(),
+    );
     // A retyped stem keeps the enforced suffix in the composed target.
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "my-flow" } });
-    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent("my-flow.workflow.json");
+    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent(
+      "my-flow.workflow.json",
+    );
   });
 
   it("enforces the suffix without doubling it and keeps the directory picker the sole placement control", async () => {
@@ -72,11 +91,17 @@ describe("#390 first-save placement dialog", () => {
     const dialog = await screen.findByRole("dialog", { name: "Save new workflow" });
     fireEvent.change(within(dialog).getByLabelText("Directory"), { target: { value: "flows" } });
     // A stem that already carries the suffix must not double it.
-    fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "my-flow.workflow.json" } });
-    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent("flows/my-flow.workflow.json");
+    fireEvent.change(within(dialog).getByLabelText("Filename"), {
+      target: { value: "my-flow.workflow.json" },
+    });
+    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent(
+      "flows/my-flow.workflow.json",
+    );
     // A stem cannot smuggle path separators past the directory picker.
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "../escape" } });
-    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent("flows/escape.workflow.json");
+    expect(within(dialog).getByTestId("new-file-target")).toHaveTextContent(
+      "flows/escape.workflow.json",
+    );
   });
 
   it("creates the file with an exclusive PUT (no If-Match), then acquires the lease and enables launch", async () => {
@@ -96,10 +121,14 @@ describe("#390 first-save placement dialog", () => {
     expect(calls.put[0]!.body.workflow_path).toBe("flows/my-flow.workflow.json");
     expect(calls.put[0]!.ifMatch).toBeNull();
     // The dialog closes on success and the save-point confirmation shows.
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Save new workflow" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Save new workflow" })).not.toBeInTheDocument(),
+    );
     expect(await screen.findByText("Saved")).toBeInTheDocument();
     // The lease is acquired for the freshly written path.
-    await waitFor(() => expect(calls.lock.map((c) => c.workflow_path)).toContain("flows/my-flow.workflow.json"));
+    await waitFor(() =>
+      expect(calls.lock.map((c) => c.workflow_path)).toContain("flows/my-flow.workflow.json"),
+    );
     // Launch behaves as for any saved file: the gate is gone and the run button is live.
     fireEvent.click(screen.getByTestId("run-dock-toggle"));
     expect(screen.queryByTestId("run-launch-gate")).not.toBeInTheDocument();
@@ -111,8 +140,14 @@ describe("#390 first-save placement dialog", () => {
     // The server rejects a no-precondition create against an existing path with a 412 (ADR 0016).
     const onPut = (_b: unknown, ifMatch: string | null): Response =>
       ifMatch === null
-        ? new Response(JSON.stringify({ error: { message: "exists" } }), { status: 412, headers: { "Content-Type": "application/json" } })
-        : new Response(JSON.stringify({ relative_path: "x", id: "i", etag: '"e"' }), { status: 200, headers: { "Content-Type": "application/json" } });
+        ? new Response(JSON.stringify({ error: { message: "exists" } }), {
+            status: 412,
+            headers: { "Content-Type": "application/json" },
+          })
+        : new Response(JSON.stringify({ relative_path: "x", id: "i", etag: '"e"' }), {
+            status: 200,
+            headers: { "Content-Type": "application/json" },
+          });
     render(<App client={stubClient({ calls, onPut })} />);
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     buildAPromptBody();

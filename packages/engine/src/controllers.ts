@@ -2,7 +2,11 @@ import type { BranchNode, CheckpointNode, GotoNode, JsonValue, WhileDoNode } fro
 import { openContainerRun } from "./child-run.js";
 import { describeConditionFailure, evaluateCondition, type Trace } from "./condition.js";
 import { continuationOf } from "./continuation.js";
-import { describeInterpolationError, interpolateToString, interpolationScope } from "./interpolate.js";
+import {
+  describeInterpolationError,
+  interpolateToString,
+  interpolationScope,
+} from "./interpolate.js";
 import { enterIteration } from "./resume-plan.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
@@ -27,11 +31,17 @@ export async function runCheckpointNode(
   incomingOutput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: incomingOutput });
+  const { outcome, trace } = evaluateCondition(node.condition, {
+    context: exec.context,
+    output: incomingOutput,
+  });
   const passed = outcome === "true";
   await run.emitter.checkpointEvaluated(node, { passed, trace });
   if (!passed) {
-    return { status: "failed", error: `checkpoint "${node.name}" failed: ${describeConditionFailure(trace)}` };
+    return {
+      status: "failed",
+      error: `checkpoint "${node.name}" failed: ${describeConditionFailure(trace)}`,
+    };
   }
   return { status: "succeeded", output: incomingOutput };
 }
@@ -54,7 +64,10 @@ export async function runBranchNode(
     const { outcome, trace } = evaluateCondition(arm.when, roots);
     traces.push(trace);
     if (outcome === "error") {
-      return { status: "failed", error: `branch "${node.name}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}` };
+      return {
+        status: "failed",
+        error: `branch "${node.name}" arm ${index}: condition evaluation error: ${describeConditionFailure(trace)}`,
+      };
     }
     if (outcome === "true") {
       await run.emitter.branchTaken(node, { arm: index, trace });
@@ -67,7 +80,10 @@ export async function runBranchNode(
     return exec.walk(run, [node.else], incomingOutput, exec);
   }
   await run.emitter.branchNoMatch(node, { traces });
-  return { status: "failed", error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)` };
+  return {
+    status: "failed",
+    error: `branch "${node.name}": no arm matched and there is no else (spec §5.2)`,
+  };
 }
 
 /**
@@ -108,7 +124,8 @@ async function runLoopIteration(
   if (outcome.status === "awaiting") return outcome;
   // The load placement rule refuses a goto under `while-do` (spec docs/spec/goto.md §2.2), so a jump
   // never reaches an iteration container.
-  if (outcome.status === "goto") throw new Error(`while-do "${node.name}": a goto jumped out of its body`);
+  if (outcome.status === "goto")
+    throw new Error(`while-do "${node.name}": a goto jumped out of its body`);
   await container.finish(outcome);
   return outcome;
 }
@@ -133,9 +150,15 @@ export async function runWhileDoNode(
   let iterationOutput = incomingOutput;
   let iterations = 0; // completed iterations
   for (;;) {
-    const { outcome, trace } = evaluateCondition(node.condition, { context: exec.context, output: iterationOutput });
+    const { outcome, trace } = evaluateCondition(node.condition, {
+      context: exec.context,
+      output: iterationOutput,
+    });
     if (outcome === "error") {
-      return { status: "failed", error: `while-do "${node.name}": condition evaluation error: ${describeConditionFailure(trace)}` };
+      return {
+        status: "failed",
+        error: `while-do "${node.name}": condition evaluation error: ${describeConditionFailure(trace)}`,
+      };
     }
     if (outcome === "false") {
       await run.emitter.loopExited(node, { reason: "condition-false", iterations, trace });
@@ -145,7 +168,10 @@ export async function runWhileDoNode(
     // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
     if (iterations >= maxIterations) {
       await run.emitter.loopExited(node, { reason: "max-iterations-exceeded", iterations, trace });
-      return { status: "failed", error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)` };
+      return {
+        status: "failed",
+        error: `while-do "${node.name}": condition still true after max_iterations (${maxIterations}) — the run fails (spec §5.2)`,
+      };
     }
     iterations += 1;
     await run.emitter.iterationStarted(node, { iteration: iterations, trace });
@@ -167,7 +193,8 @@ export function resolveBound(
   node: WhileDoNode | GotoNode,
   exec: NodeExecContext,
 ): number | Extract<SeqOutcome, { status: "failed" }> {
-  const [field, value] = node.type === "goto" ? ["max_jumps", node.max_jumps] : ["max_iterations", node.max_iterations];
+  const [field, value] =
+    node.type === "goto" ? ["max_jumps", node.max_jumps] : ["max_iterations", node.max_iterations];
   if (typeof value === "number") return value;
   let resolved: string;
   try {
@@ -177,7 +204,10 @@ export function resolveBound(
   }
   const parsed = Number(resolved);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    return { status: "failed", error: `${node.type} "${node.name}": ${field} resolved to "${resolved}", which is not a positive integer` };
+    return {
+      status: "failed",
+      error: `${node.type} "${node.name}": ${field} resolved to "${resolved}", which is not a positive integer`,
+    };
   }
   return parsed;
 }
@@ -187,10 +217,15 @@ export function resolveBound(
  * target first-level node by GUID and passes its incoming output through unchanged, for the target to
  * read (§4). The file's top-level walk consumes the jump; every walker in between hands it up.
  */
-export function runGotoNode(run: RunContext, node: GotoNode, incomingOutput: JsonValue): SeqOutcome {
+export function runGotoNode(
+  run: RunContext,
+  node: GotoNode,
+  incomingOutput: JsonValue,
+): SeqOutcome {
   const target = run.file.body.find((candidate) => candidate.name === node.target);
   // The load check (`@path/schema` goto rules) refuses a file whose target is not a first-level node,
   // so a miss is a caller that skipped the load.
-  if (!target) return { status: "failed", error: `goto target "${node.target}" not found in this file` };
+  if (!target)
+    return { status: "failed", error: `goto target "${node.target}" not found in this file` };
   return { status: "goto", goto: node.id, target: target.id, output: incomingOutput };
 }

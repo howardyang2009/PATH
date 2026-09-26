@@ -1,9 +1,8 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-
 import type { JsonValue } from "@path/engine/plugin";
-import type { StepRequest } from "../../../src/plugin/seam.js";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runDeepseekWorker } from "../../../plugin/step-plugin/prompt/deepseek-worker.js";
-import type { PromptFields, PromptConfig } from "../../../plugin/step-plugin/prompt/index.js";
+import type { PromptConfig, PromptFields } from "../../../plugin/step-plugin/prompt/index.js";
+import type { StepRequest } from "../../../src/plugin/seam.js";
 
 // The `deepseek` worker, tested at its own boundary: a stubbed `fetch` stands in for the API, so every
 // case asserts what PATH *sends* and how it reads what comes back. Nothing here touches the network.
@@ -18,7 +17,9 @@ interface RecordedCall {
   body: Record<string, unknown>;
 }
 
-function stubFetch(response: { ok?: boolean; status?: number; body: string }): { calls: RecordedCall[] } {
+function stubFetch(response: { ok?: boolean; status?: number; body: string }): {
+  calls: RecordedCall[];
+} {
   const calls: RecordedCall[] = [];
   vi.stubGlobal("fetch", async (url: string, init: RequestInit) => {
     calls.push({ url, init, body: JSON.parse(String(init.body)) as Record<string, unknown> });
@@ -43,7 +44,16 @@ function completion(content: string, usage?: unknown, finishReason = "stop"): st
 }
 
 /** The worker's request, typed by the plugin's own fragments — the same shape the engine builds. */
-function request(overrides: { prompt?: string; model?: string; options?: Record<string, unknown>; apiKey?: string; input?: JsonValue; signal?: AbortSignal } = {}): StepRequest<PromptFields, PromptConfig> {
+function request(
+  overrides: {
+    prompt?: string;
+    model?: string;
+    options?: Record<string, unknown>;
+    apiKey?: string;
+    input?: JsonValue;
+    signal?: AbortSignal;
+  } = {},
+): StepRequest<PromptFields, PromptConfig> {
   return {
     fields: { prompt: overrides.prompt ?? "Judge the draft." },
     config: {
@@ -118,7 +128,17 @@ describe("the deepseek worker's request", () => {
     const { calls } = stubFetch({ body: completion("answer") });
 
     await runDeepseekWorker(
-      request({ input: "", options: { systemPrompt: "You are terse.", maxTokens: 512, temperature: 0, thinking: { type: "disabled" }, mcpServers: { x: {} }, skills: ["a"] } }),
+      request({
+        input: "",
+        options: {
+          systemPrompt: "You are terse.",
+          maxTokens: 512,
+          temperature: 0,
+          thinking: { type: "disabled" },
+          mcpServers: { x: {} },
+          skills: ["a"],
+        },
+      }),
     );
 
     expect(calls[0]!.body).toMatchObject({
@@ -138,9 +158,13 @@ describe("the deepseek worker's request", () => {
   it("omits a non-string system prompt rather than sending a shape the API would reject", async () => {
     const { calls } = stubFetch({ body: completion("answer") });
 
-    await runDeepseekWorker(request({ input: "", options: { systemPrompt: { type: "preset", preset: "claude_code" } } }));
+    await runDeepseekWorker(
+      request({ input: "", options: { systemPrompt: { type: "preset", preset: "claude_code" } } }),
+    );
 
-    expect(calls[0]!.body.messages).toEqual([{ role: "user", content: "Judge the draft.\n\nInput object:\n" }]);
+    expect(calls[0]!.body.messages).toEqual([
+      { role: "user", content: "Judge the draft.\n\nInput object:\n" },
+    ]);
   });
 
   it("drops a non-numeric max_tokens or temperature instead of failing remotely", async () => {
@@ -170,7 +194,11 @@ describe("the deepseek worker's response handling", () => {
   it("estimates cost from the cache-aware counters at the peak rate", async () => {
     // deepseek-flash peak: 0.3/1M cache-miss input, 1.2/1M output.
     stubFetch({
-      body: completion("answer", { prompt_cache_hit_tokens: 0, prompt_cache_miss_tokens: 1_000_000, completion_tokens: 1_000_000 }),
+      body: completion("answer", {
+        prompt_cache_hit_tokens: 0,
+        prompt_cache_miss_tokens: 1_000_000,
+        completion_tokens: 1_000_000,
+      }),
     });
 
     const result = await runDeepseekWorker(request());
@@ -181,7 +209,11 @@ describe("the deepseek worker's response handling", () => {
   it("prices a cache hit at the cheaper input rate", async () => {
     // 1M cache-hit input is 0.006, so a run of hits must not be billed at the miss rate.
     stubFetch({
-      body: completion("answer", { prompt_cache_hit_tokens: 1_000_000, prompt_cache_miss_tokens: 0, completion_tokens: 0 }),
+      body: completion("answer", {
+        prompt_cache_hit_tokens: 1_000_000,
+        prompt_cache_miss_tokens: 0,
+        completion_tokens: 0,
+      }),
     });
 
     const result = await runDeepseekWorker(request());
@@ -190,7 +222,12 @@ describe("the deepseek worker's response handling", () => {
   });
 
   it("omits a cost estimate for a model it holds no price for, rather than claiming zero", async () => {
-    stubFetch({ body: completion("answer", { prompt_cache_miss_tokens: 1_000_000, completion_tokens: 1_000_000 }) });
+    stubFetch({
+      body: completion("answer", {
+        prompt_cache_miss_tokens: 1_000_000,
+        completion_tokens: 1_000_000,
+      }),
+    });
 
     const result = await runDeepseekWorker(request({ model: "some-other-model" }));
 
@@ -232,7 +269,11 @@ describe("the deepseek worker's response handling", () => {
 
     const result = await runDeepseekWorker(request());
 
-    expect(result).toMatchObject({ status: "succeeded", output: "partial", stderr: "response was cut off at max_tokens" });
+    expect(result).toMatchObject({
+      status: "succeeded",
+      output: "partial",
+      stderr: "response was cut off at max_tokens",
+    });
   });
 
   it("fails a non-2xx with the status in the error and the provider's body as stderr", async () => {
@@ -250,7 +291,10 @@ describe("the deepseek worker's response handling", () => {
 
     const result = await runDeepseekWorker(request());
 
-    expect(result).toMatchObject({ status: "failed", error: "DeepSeek API returned a body that is not JSON" });
+    expect(result).toMatchObject({
+      status: "failed",
+      error: "DeepSeek API returned a body that is not JSON",
+    });
   });
 
   it("fails a body carrying no choice", async () => {
@@ -258,7 +302,10 @@ describe("the deepseek worker's response handling", () => {
 
     const result = await runDeepseekWorker(request());
 
-    expect(result).toMatchObject({ status: "failed", error: "DeepSeek API returned no completion choice" });
+    expect(result).toMatchObject({
+      status: "failed",
+      error: "DeepSeek API returned no completion choice",
+    });
   });
 
   it("reports a transport failure rather than throwing out of the worker", async () => {
@@ -314,7 +361,8 @@ describe("the deepseek worker's credential handling", () => {
 
     expect(result).toMatchObject({
       status: "failed",
-      error: "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
+      error:
+        "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
     });
     expect(fetchSpy).not.toHaveBeenCalled();
   });

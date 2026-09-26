@@ -2,9 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   isTerminal,
   RUN_STATUSES,
+  type RunStatus,
   RunStatusSchema,
   TERMINAL_RUN_STATUSES,
-  type RunStatus,
 } from "../src/run-status.js";
 
 /**

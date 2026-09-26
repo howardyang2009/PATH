@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { pathDir, rootRunTreeDir } from "@path/engine";
 import { afterEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -72,7 +72,10 @@ describe("POST /v0/runs — engine settings", () => {
 
   it("lets the request field beat the settings file", async () => {
     await startWithSettings({ "log.backends": ["db"] });
-    const rootRunId = await runAndWait({ workflow_path: "two-binary-steps.workflow.json", log_backends: ["db", "ndjson"] });
+    const rootRunId = await runAndWait({
+      workflow_path: "two-binary-steps.workflow.json",
+      log_backends: ["db", "ndjson"],
+    });
     expect(hasRunLog(rootRunId)).toBe(true);
   });
 
@@ -80,7 +83,11 @@ describe("POST /v0/runs — engine settings", () => {
     projectDir = mkdtempSync(join(tmpdir(), "path-server-settings-test-"));
     cpSync(fixturesDir, projectDir, { recursive: true });
     mkdirSync(pathDir(projectDir), { recursive: true });
-    writeFileSync(join(pathDir(projectDir), "settings.json"), JSON.stringify({ "log.backends": ["nope"] }), "utf8");
+    writeFileSync(
+      join(pathDir(projectDir), "settings.json"),
+      JSON.stringify({ "log.backends": ["nope"] }),
+      "utf8",
+    );
 
     await expect(startPathServer(projectDir)).rejects.toThrow(/invalid engine-settings file/);
   });

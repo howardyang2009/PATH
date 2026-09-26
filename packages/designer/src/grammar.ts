@@ -1,4 +1,4 @@
-import { childBodies, walkNodes, type WorkflowNode } from "@path/schema";
+import { childBodies, type WorkflowNode, walkNodes } from "@path/schema";
 
 /**
  * The block grammar as the canvas enforces it (#368, designer-spec § Canvas interaction model): a
@@ -29,7 +29,14 @@ export type SocketFlavor =
   | "branches";
 
 /** The six controller kinds fixed by the grammar, five Structure Controllers and the one Graph Controller (`goto`, ADR 0057) (§ What is authorable); leaf step kinds arrive from the registry. */
-export const CONTROLLER_KINDS = ["parallel", "branch", "while-do", "sequence", "checkpoint", "goto"] as const;
+export const CONTROLLER_KINDS = [
+  "parallel",
+  "branch",
+  "while-do",
+  "sequence",
+  "checkpoint",
+  "goto",
+] as const;
 export type ControllerKind = (typeof CONTROLLER_KINDS)[number];
 
 /**
@@ -80,11 +87,16 @@ export function bodyInsertSocket(flavor: SocketFlavor): "list" | "single" {
  * body inserts bare, and a fresh `sequence` (legal everywhere) when a 2+-node body is wrapped. An empty
  * body places nothing, so it opens no socket.
  */
-export function socketAcceptsBody(flavor: SocketFlavor, body: readonly WorkflowNode[], barred = false): boolean {
+export function socketAcceptsBody(
+  flavor: SocketFlavor,
+  body: readonly WorkflowNode[],
+  barred = false,
+): boolean {
   if (body.length === 0) return false;
   // A goto at any depth of the body lands under the socket's barrier, wrapped or spliced alike.
   if (barred && [...walkNodes([...body])].some((node) => node.type === "goto")) return false;
-  if (bodyInsertSocket(flavor) === "list") return body.every((node) => socketAcceptsKind(flavor, node.type));
+  if (bodyInsertSocket(flavor) === "list")
+    return body.every((node) => socketAcceptsKind(flavor, node.type));
   return body.length >= 2 || socketAcceptsKind(flavor, body[0]!.type);
 }
 

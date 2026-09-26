@@ -32,7 +32,11 @@ export interface ChildRunKey {
  * The identity of a run opened under `parent`. `existingRunId` re-enters a recorded `running` row in
  * place (ADR 0041); without it the run is fresh and mints its own id.
  */
-export function childIdentity(parent: RunIdentity, key: ChildRunKey, existingRunId?: string): RunIdentity {
+export function childIdentity(
+  parent: RunIdentity,
+  key: ChildRunKey,
+  existingRunId?: string,
+): RunIdentity {
   const identity: RunIdentity = {
     runId: existingRunId ?? randomUUID(),
     rootRunId: parent.rootRunId,

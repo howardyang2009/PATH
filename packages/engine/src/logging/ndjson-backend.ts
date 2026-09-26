@@ -1,8 +1,8 @@
 import { closeSync, existsSync, mkdirSync, openSync, readFileSync, writeSync } from "node:fs";
 import { join } from "node:path";
+import { type LogEvent, LogEventSchema } from "@path/schema";
 import { rootRunTreeDir } from "../persistence/paths.js";
 import type { LogBackend } from "./log-backend.js";
-import { LogEventSchema, type LogEvent } from "@path/schema";
 
 /**
  * The NDJSON log backend (mvp spec §8.1–8.2): one `run.log` per root run at the run-tree root,

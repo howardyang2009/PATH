@@ -4,16 +4,21 @@ import { validateWorkflowFile } from "@path/engine";
 import {
   identityIssues,
   nodeIdentityOccurrences,
-  workflowIdentityOccurrence,
   type WirePutWorkflowResponse,
   type WorkflowFile,
+  workflowIdentityOccurrence,
 } from "@path/schema";
 import { z } from "zod";
+import {
+  checkPrecondition,
+  PRECONDITION_FAILED,
+  readArtifact,
+  writeArtifact,
+} from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
-import { checkPrecondition, PRECONDITION_FAILED, readArtifact, writeArtifact } from "../artifact-file.js";
-import { isTemplatePath } from "../template-store.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
+import { isTemplatePath } from "../template-store.js";
 import type { RouteContext } from "./route-context.js";
 
 /**
@@ -64,7 +69,11 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
  * client's workflow object deterministically (`JSON.stringify(wf, null, 2)` + a trailing newline,
  * author key order preserved) and owns the on-disk bytes.
  */
-export async function handlePutWorkflow(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
+export async function handlePutWorkflow(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): Promise<void> {
   const body = await readRequestBody(req, res, PutWorkflowBodySchema);
   if (!body) return;
   const { workflow_path: workflowPath } = body.data;
@@ -84,7 +93,9 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
   // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink is
   // refused regardless of what the body says. The two 404 causes fold into one response, as the read
   // door does.
-  const absPath = confineToProjectRoot(resolve(ctx.project.dir), workflowPath, { allowMissingTail: true });
+  const absPath = confineToProjectRoot(resolve(ctx.project.dir), workflowPath, {
+    allowMissingTail: true,
+  });
   if (absPath === undefined) {
     sendError(res, 404, "not found");
     return;
@@ -103,8 +114,14 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
 
   // Precondition and write are one synchronous block (`artifact-file.ts`, ADR 0016): `If-Match`
   // present is overwrite-only, absent is create-only, and every conflict is a `412` here.
-  const precondition = checkPrecondition(readArtifact(absPath), firstHeader(req.headers["if-match"]), "create-or-overwrite");
-  const written = precondition.ok ? writeArtifact(absPath, rawWorkflow, { create: precondition.create }) : precondition;
+  const precondition = checkPrecondition(
+    readArtifact(absPath),
+    firstHeader(req.headers["if-match"]),
+    "create-or-overwrite",
+  );
+  const written = precondition.ok
+    ? writeArtifact(absPath, rawWorkflow, { create: precondition.create })
+    : precondition;
   if (!written.ok) {
     sendError(res, 412, PRECONDITION_FAILED[written.conflict]);
     return;
@@ -113,7 +130,11 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
   const existed = precondition.ok && !precondition.create;
   const relativePath = relative(resolve(ctx.project.dir), absPath);
   // The reply is the shared wire shape the client decodes, so a renamed field is a compile error here.
-  const reply: WirePutWorkflowResponse = { relative_path: relativePath, id: validation.file.id, etag };
+  const reply: WirePutWorkflowResponse = {
+    relative_path: relativePath,
+    id: validation.file.id,
+    etag,
+  };
   res.writeHead(existed ? 200 : 201, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

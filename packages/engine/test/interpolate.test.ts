@@ -56,7 +56,10 @@ describe("resolveDotPath", () => {
       config: { auth: { token: { $secret: "sk-nested" }, plain: "ok" } },
       context: {},
     };
-    expect(resolveDotPath(withNestedSecret, "config.auth")).toEqual({ token: "sk-nested", plain: "ok" });
+    expect(resolveDotPath(withNestedSecret, "config.auth")).toEqual({
+      token: "sk-nested",
+      plain: "ok",
+    });
     expect(resolveDotPath(withNestedSecret, "config")).toEqual({
       auth: { token: "sk-nested", plain: "ok" },
     });
@@ -118,7 +121,9 @@ describe("interpolateString", () => {
    */
   it("throws on an unclosed placeholder rather than silently truncating it", () => {
     expect(() => interpolateString("${config.name", scope)).toThrow(InterpolationError);
-    expect(() => interpolateString("${config.name", scope)).toThrow(/unclosed placeholder starting at index 0/);
+    expect(() => interpolateString("${config.name", scope)).toThrow(
+      /unclosed placeholder starting at index 0/,
+    );
   });
 
   it("throws on an unclosed placeholder that follows a valid one", () => {
@@ -159,7 +164,11 @@ describe("interpolateValue", () => {
   });
 
   it("recurses through arrays", () => {
-    expect(interpolateValue(["${config.x}", "literal", "${context.y}"], scope)).toEqual([1, "literal", "hi"]);
+    expect(interpolateValue(["${config.x}", "literal", "${context.y}"], scope)).toEqual([
+      1,
+      "literal",
+      "hi",
+    ]);
   });
 
   it("recurses through nested objects", () => {

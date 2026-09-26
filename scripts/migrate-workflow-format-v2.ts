@@ -50,7 +50,8 @@ class MigrationRefused extends Error {}
  * here (its slots were min 1 too) and this codemod validates nothing on the way in, so the input is
  * hand-broken — refuse it rather than write an unloadable file.
  */
-const EMPTY_SLOT_REASON = "an empty slot has no @2 shape (a `sequence` body is min 1) — file left unchanged";
+const EMPTY_SLOT_REASON =
+  "an empty slot has no @2 shape (a `sequence` body is min 1) — file left unchanged";
 
 function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -101,7 +102,8 @@ function mintName(base: string, ctx: Ctx): string {
  */
 function toSingleNode(nodes: unknown[], baseName: string, ctx: Ctx): unknown {
   const migrated = migrateNodeArray(nodes, ctx);
-  if (migrated.length === 0) throw new MigrationRefused(`the slot behind "${baseName}" is empty — ${EMPTY_SLOT_REASON}`);
+  if (migrated.length === 0)
+    throw new MigrationRefused(`the slot behind "${baseName}" is empty — ${EMPTY_SLOT_REASON}`);
   if (migrated.length === 1) return migrated[0];
   return { type: "sequence", id: randomUUID(), name: mintName(baseName, ctx), body: migrated };
 }
@@ -112,7 +114,9 @@ function unwrapBranch(branch: unknown, ctx: Ctx): unknown {
   const wrapperName = branch.name;
   const migratedBody = Array.isArray(branch.body) ? migrateNodeArray(branch.body, ctx) : [];
   if (migratedBody.length === 0) {
-    throw new MigrationRefused(`branch "${asName(wrapperName)}" holds no nodes — ${EMPTY_SLOT_REASON}`);
+    throw new MigrationRefused(
+      `branch "${asName(wrapperName)}" holds no nodes — ${EMPTY_SLOT_REASON}`,
+    );
   }
   if (migratedBody.length === 1 && isObject(migratedBody[0])) {
     // The single occupant *is* the branch. Rename it to the wrapper's name to preserve the collect key.
@@ -169,7 +173,8 @@ function migrateChildBodies(node: JsonObject, ctx: Ctx): void {
       return arm;
     });
   }
-  if (Array.isArray(node.else)) node.else = toSingleNode(node.else, `${asName(node.name)}-else`, ctx);
+  if (Array.isArray(node.else))
+    node.else = toSingleNode(node.else, `${asName(node.name)}-else`, ctx);
   if (node.type === "while-do" && Array.isArray(node.body)) {
     node.node = toSingleNode(node.body, `${asName(node.name)}-body`, ctx);
     delete node.body;
@@ -200,7 +205,9 @@ function migrateDocument(doc: unknown): JsonObject | null {
   if (Array.isArray(migrated.body)) migrated.body = migrateNodeArray(migrated.body, ctx);
   const collision = findDuplicateName(migrated);
   if (collision !== null) {
-    throw new MigrationRefused(`unwrapping a branch to "${collision}" would collide with an existing name — file left unchanged`);
+    throw new MigrationRefused(
+      `unwrapping a branch to "${collision}" would collide with an existing name — file left unchanged`,
+    );
   }
   return migrated;
 }
@@ -218,7 +225,8 @@ function discoverWorkflowFiles(dir: string): string[] {
 
 function main(): void {
   const args = process.argv.slice(2);
-  const files = args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
+  const files =
+    args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
 
   let migrated = 0;
   let skipped = 0;
@@ -243,7 +251,9 @@ function main(): void {
     migrated += 1;
     console.log(`migrated ${file}`);
   }
-  console.log(`\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @1 workflow file).`);
+  console.log(
+    `\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @1 workflow file).`,
+  );
   if (refused.length > 0) {
     console.error(`\n${refused.length} refused:`);
     for (const line of refused) console.error(`  ${line}`);

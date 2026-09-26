@@ -5,7 +5,7 @@ import type { LoadedStepPluginRegistry } from "@path/engine";
 import type { StepPluginsResponse } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { z } from "zod";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let handle: PathServerHandle;

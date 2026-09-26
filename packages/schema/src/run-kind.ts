@@ -43,7 +43,9 @@ export function isReuseRow<T extends Pick<RunKindFields, "reusedFromRunId">>(
 }
 
 /** The tree's top run (invariant 2): no parent, so its own id is the root run id. A type guard. */
-export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T): run is T & { parentRunId: null } {
+export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(
+  run: T,
+): run is T & { parentRunId: null } {
   return run.parentRunId === null;
 }
 
@@ -52,7 +54,9 @@ export function isRootRun<T extends Pick<RunKindFields, "parentRunId">>(run: T):
  * 1-based `iteration` ordinal, which no other kind carries. A type guard, so the branch that knows a
  * row is an iteration also knows its `iteration` is set.
  */
-export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(run: T): run is T & { iteration: number } {
+export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(
+  run: T,
+): run is T & { iteration: number } {
   return run.iteration !== null;
 }
 
@@ -61,6 +65,8 @@ export function isIterationRun<T extends Pick<RunKindFields, "iteration">>(run: 
  * told apart by its 1-based `pass` ordinal, which no other kind carries. A type guard, so the branch
  * that knows a row is a pass also knows its `pass` is set.
  */
-export function isPassRun<T extends Pick<RunKindFields, "pass">>(run: T): run is T & { pass: number } {
+export function isPassRun<T extends Pick<RunKindFields, "pass">>(
+  run: T,
+): run is T & { pass: number } {
   return run.pass !== null;
 }

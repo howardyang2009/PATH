@@ -34,6 +34,10 @@ export function withOptionalKey<T extends object>(value: T, key: string, next: u
  * is found by. An id the body does not hold is `editFile`'s documented no-op: the same file comes back,
  * so a stale commit is nothing to write rather than a crash.
  */
-export function replaceNode(file: WorkflowFile, node: WorkflowNode, at: string = node.id): WorkflowFile {
+export function replaceNode(
+  file: WorkflowFile,
+  node: WorkflowNode,
+  at: string = node.id,
+): WorkflowFile {
   return unwrapEdit(editFile(file, { kind: "replace", id: at, node }));
 }

@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
 import type { PathApiClient } from "@path/client-core";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { LeaseController, type LeaseMap } from "./lease-client.js";
 
 /**

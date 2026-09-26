@@ -1,5 +1,5 @@
-export { startPathServer, type PathServerHandle } from "./create-server.js";
-export { parseServerArgs, type ParsedServerArgs, type ParseServerArgsResult } from "./cli.js";
+export { type ParsedServerArgs, type ParseServerArgsResult, parseServerArgs } from "./cli.js";
+export { type PathServerHandle, startPathServer } from "./create-server.js";
 export { serveStatic } from "./serve-static.js";
 
 // `LiveRuns` is not exported: it owns a run's live event channel and its cancel controller together,

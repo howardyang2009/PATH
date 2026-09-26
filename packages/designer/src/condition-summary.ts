@@ -22,9 +22,13 @@ export function summarizeCondition(condition: Condition): string {
     case "valid-json":
       return `valid-json ${condition.path}`;
     case "all":
-      return condition.of.length === 0 ? "true" : `(${condition.of.map(summarizeCondition).join(" and ")})`;
+      return condition.of.length === 0
+        ? "true"
+        : `(${condition.of.map(summarizeCondition).join(" and ")})`;
     case "any":
-      return condition.of.length === 0 ? "false" : `(${condition.of.map(summarizeCondition).join(" or ")})`;
+      return condition.of.length === 0
+        ? "false"
+        : `(${condition.of.map(summarizeCondition).join(" or ")})`;
     case "not":
       return `not ${summarizeCondition(condition.of)}`;
   }

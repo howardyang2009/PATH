@@ -1,6 +1,6 @@
+import type { RunStatus } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { buildRunTree, displayStatusByRun } from "../src/run-tree.js";
-import type { RunStatus } from "@path/schema";
 import type { RunNodeState } from "../src/view-model.js";
 
 function run(
@@ -40,7 +40,9 @@ function mapOf(...runs: RunNodeState[]): ReadonlyMap<string, RunNodeState> {
 }
 
 /** The tree as ids, so a shape assertion reads as a shape. */
-function shape(node: { run: RunNodeState; children: { run: RunNodeState; children: unknown[] }[] } | null): unknown {
+function shape(
+  node: { run: RunNodeState; children: { run: RunNodeState; children: unknown[] }[] } | null,
+): unknown {
   if (!node) return null;
   return { id: node.run.runId, children: node.children.map((child) => shape(child as never)) };
 }
@@ -92,7 +94,11 @@ describe("buildRunTree", () => {
   it("sorts a run that has not started yet last, however the map is ordered", () => {
     const tree = buildRunTree(
       "root",
-      mapOf(run("root", null), run("waiting", "root", null), run("started", "root", "2026-07-25T10:00:01.000Z")),
+      mapOf(
+        run("root", null),
+        run("waiting", "root", null),
+        run("started", "root", "2026-07-25T10:00:01.000Z"),
+      ),
     );
 
     expect(shape(tree)).toEqual({
@@ -107,7 +113,10 @@ describe("buildRunTree", () => {
   // Two renders of the same data must agree, and two runs can share a start timestamp.
   it("breaks a tie on the run id, so the order is stable", () => {
     const same = "2026-07-25T10:00:01.000Z";
-    const tree = buildRunTree("root", mapOf(run("root", null), run("b", "root", same), run("a", "root", same)));
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("b", "root", same), run("a", "root", same)),
+    );
 
     expect(shape(tree)).toEqual({
       id: "root",
@@ -131,7 +140,11 @@ describe("displayStatusByRun", () => {
   const ts = "2026-07-25T10:00:00.000Z";
 
   it("returns `awaiting` for a running run with an awaiting run anywhere below it", () => {
-    const runs = mapOf(run("root", null), run("mid", "root", ts), run("leaf", "mid", ts, "awaiting"));
+    const runs = mapOf(
+      run("root", null),
+      run("mid", "root", ts),
+      run("leaf", "mid", ts, "awaiting"),
+    );
     const display = displayStatusByRun(runs);
 
     // Both running ancestors read awaiting through the one shared derivation.
@@ -174,7 +187,10 @@ describe("displayStatusByRun", () => {
   });
 
   it("carries the display status onto each tree node", () => {
-    const tree = buildRunTree("root", mapOf(run("root", null), run("leaf", "root", ts, "awaiting")));
+    const tree = buildRunTree(
+      "root",
+      mapOf(run("root", null), run("leaf", "root", ts, "awaiting")),
+    );
 
     expect(tree?.displayStatus).toBe("awaiting");
     expect(tree?.children[0]?.displayStatus).toBe("awaiting");

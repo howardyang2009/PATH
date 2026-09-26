@@ -1,14 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  type IdentityOccurrence,
   identityIssues,
   nodeIdentityIssues,
   nodeIdentityOccurrences,
   workflowIdentityOccurrence,
-  type IdentityOccurrence,
 } from "../src/node-identity.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
-import { builtinRegistry } from "./builtin-registry.js";
 import type { WorkflowFile } from "../src/workflow-file-type.js";
+import { builtinRegistry } from "./builtin-registry.js";
 
 /**
  * Node identity's one rule (#architecture-deepening): `identityIssues` is what the load refinement's
@@ -32,7 +32,12 @@ const nested: WorkflowFile = {
       type: "branch",
       id: OTHER_ID,
       name: "route",
-      arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "binary", id: OTHER_ID, name: "arm", command: "echo" } }],
+      arms: [
+        {
+          when: { type: "exists", path: "context.x" },
+          node: { type: "binary", id: OTHER_ID, name: "arm", command: "echo" },
+        },
+      ],
       else: { type: "binary", id: OTHER_ID, name: "fallback", command: "echo" },
     },
     {
@@ -61,16 +66,28 @@ describe("nodeIdentityOccurrences", () => {
   });
 
   it("does not include the workflow's own row — a door that wants it says so", () => {
-    expect(workflowIdentityOccurrence(nested)).toEqual({ id: WORKFLOW_ID, name: "nested", path: [] });
+    expect(workflowIdentityOccurrence(nested)).toEqual({
+      id: WORKFLOW_ID,
+      name: "nested",
+      path: [],
+    });
   });
 });
 
 describe("identityIssues", () => {
-  const occurrence = (id: unknown, name: unknown, path: (string | number)[]): IdentityOccurrence => ({ id, name, path });
+  const occurrence = (
+    id: unknown,
+    name: unknown,
+    path: (string | number)[],
+  ): IdentityOccurrence => ({ id, name, path });
 
   it("reports each duplicate after the first, naming the holder as firstPath", () => {
     const issues = identityIssues(
-      [occurrence(NODE_ID, "dup", ["body", 0]), occurrence(NODE_ID, "dup", ["body", 1]), occurrence(NODE_ID, "dup", ["body", 2])],
+      [
+        occurrence(NODE_ID, "dup", ["body", 0]),
+        occurrence(NODE_ID, "dup", ["body", 1]),
+        occurrence(NODE_ID, "dup", ["body", 2]),
+      ],
       ["duplicate-name"],
     );
 
@@ -81,19 +98,34 @@ describe("identityIssues", () => {
   });
 
   it("groups one id shared by the workflow row and a node, so a door can render either shape", () => {
-    const file: WorkflowFile = { ...nested, body: [{ type: "binary", id: WORKFLOW_ID, name: "same", command: "echo" }] };
-    const issues = identityIssues([workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)], ["duplicate-id"]);
+    const file: WorkflowFile = {
+      ...nested,
+      body: [{ type: "binary", id: WORKFLOW_ID, name: "same", command: "echo" }],
+    };
+    const issues = identityIssues(
+      [workflowIdentityOccurrence(file), ...nodeIdentityOccurrences(file)],
+      ["duplicate-id"],
+    );
 
-    expect(issues).toEqual([{ rule: "duplicate-id", value: WORKFLOW_ID, path: ["body", 0], firstPath: [] }]);
+    expect(issues).toEqual([
+      { rule: "duplicate-id", value: WORKFLOW_ID, path: ["body", 0], firstPath: [] },
+    ]);
   });
 
   it("flags a present-but-invalid id and ignores an absent one, which is repaired rather than refused", () => {
     const issues = identityIssues(
-      [occurrence(undefined, "a", ["body", 0]), occurrence("not-a-uuid", "b", ["body", 1]), occurrence(42, "c", ["body", 2])],
+      [
+        occurrence(undefined, "a", ["body", 0]),
+        occurrence("not-a-uuid", "b", ["body", 1]),
+        occurrence(42, "c", ["body", 2]),
+      ],
       ["invalid-id"],
     );
 
-    expect(issues.map((issue) => issue.path)).toEqual([["body", 1], ["body", 2]]);
+    expect(issues.map((issue) => issue.path)).toEqual([
+      ["body", 1],
+      ["body", 2],
+    ]);
     expect(issues.map((issue) => issue.value)).toEqual(["not-a-uuid", 42]);
   });
 
@@ -110,13 +142,18 @@ describe("identityIssues", () => {
 describe("the identity rules each door enforces (ADR 0015)", () => {
   it("the load refinement refuses a duplicate name at the offending name field", () => {
     const result = safeParseWorkflowFile(
-      { ...nested, body: [nested.body[0], { type: "binary", id: OTHER_ID, name: "first", command: "echo" }] },
+      {
+        ...nested,
+        body: [nested.body[0], { type: "binary", id: OTHER_ID, name: "first", command: "echo" }],
+      },
       builtinRegistry,
     );
 
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.errors.join("\n")).toContain('body.1.name: duplicate name "first": names must be unique across the whole file');
+    expect(result.errors.join("\n")).toContain(
+      'body.1.name: duplicate name "first": names must be unique across the whole file',
+    );
   });
 
   it("the load refinement accepts a duplicate id — that refusal belongs to the write door and the Designer", () => {
@@ -129,6 +166,8 @@ describe("the identity rules each door enforces (ADR 0015)", () => {
     };
 
     expect(safeParseWorkflowFile(shared, builtinRegistry).success).toBe(true);
-    expect(nodeIdentityIssues(shared, ["duplicate-id"]).map((issue) => issue.path)).toEqual([["body", 1]]);
+    expect(nodeIdentityIssues(shared, ["duplicate-id"]).map((issue) => issue.path)).toEqual([
+      ["body", 1],
+    ]);
   });
 });

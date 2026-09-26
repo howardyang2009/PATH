@@ -50,25 +50,43 @@ export interface EditLease {
  * traverse a symlink — the write door's confinement (ADR 0017 decision 7). The marker itself may not
  * exist yet.
  */
-export function editLease(projectDir: string, workflowPath: string, now: () => number = Date.now): EditLease | undefined {
-  const markerPath = confineToProjectRoot(resolve(projectDir), `${workflowPath}${MARKER_SUFFIX}`, { allowMissingTail: true });
+export function editLease(
+  projectDir: string,
+  workflowPath: string,
+  now: () => number = Date.now,
+): EditLease | undefined {
+  const markerPath = confineToProjectRoot(resolve(projectDir), `${workflowPath}${MARKER_SUFFIX}`, {
+    allowMissingTail: true,
+  });
   if (markerPath === undefined) return undefined;
 
-  const isLive = (lease: Lease | undefined): lease is Lease => lease !== undefined && now() <= Date.parse(lease.expires_at);
-  const window = (at: number) => ({ heartbeat_at: new Date(at).toISOString(), expires_at: new Date(at + TTL_MS).toISOString() });
+  const isLive = (lease: Lease | undefined): lease is Lease =>
+    lease !== undefined && now() <= Date.parse(lease.expires_at);
+  const window = (at: number) => ({
+    heartbeat_at: new Date(at).toISOString(),
+    expires_at: new Date(at + TTL_MS).toISOString(),
+  });
 
   return {
     acquire(sessionId, takeover) {
       const { fileExists, lease } = readLease(markerPath);
       const live = isLive(lease);
       if (live && lease.session_id !== sessionId && !takeover) {
-        return { ok: false, held: { error: { message: "workflow is being edited in another session" }, held_by_other: true, expires_at: lease.expires_at } };
+        return {
+          ok: false,
+          held: {
+            error: { message: "workflow is being edited in another session" },
+            held_by_other: true,
+            expires_at: lease.expires_at,
+          },
+        };
       }
       // Re-acquiring one's own live lease keeps its `acquired_at`; every other grant starts a new window.
       const at = now();
       const granted: Lease = {
         session_id: sessionId,
-        acquired_at: live && lease.session_id === sessionId ? lease.acquired_at : new Date(at).toISOString(),
+        acquired_at:
+          live && lease.session_id === sessionId ? lease.acquired_at : new Date(at).toISOString(),
         ...window(at),
       };
       // A fresh grant uses `wx`, so a marker another OS process created since the read fails rather
@@ -82,7 +100,11 @@ export function editLease(projectDir: string, workflowPath: string, now: () => n
         const raced = readLease(markerPath).lease;
         return {
           ok: false,
-          held: { error: { message: "workflow was just locked in another session" }, held_by_other: true, expires_at: raced?.expires_at as string },
+          held: {
+            error: { message: "workflow was just locked in another session" },
+            held_by_other: true,
+            expires_at: raced?.expires_at as string,
+          },
         };
       }
       return { ok: true, lease: granted };

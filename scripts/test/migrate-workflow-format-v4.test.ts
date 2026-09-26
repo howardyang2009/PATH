@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { safeParseWorkflowFile } from "@path/schema";
-import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { builtinRegistry } from "./builtin-registry.js";
 import { runCodemod } from "./run-codemod.js";
 
 /**

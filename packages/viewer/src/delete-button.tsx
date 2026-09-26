@@ -58,7 +58,9 @@ export function DeleteButton({ client, run, onDeleted }: DeleteButtonProps) {
 
   return (
     <div className="delete-form" data-testid="delete-form">
-      <p className="delete-warning">Permanently delete this run's data from the database and blobs? This cannot be undone.</p>
+      <p className="delete-warning">
+        Permanently delete this run's data from the database and blobs? This cannot be undone.
+      </p>
       <dl className="delete-identity" data-testid="delete-identity">
         <dt>root run id</dt>
         <dd className="run-id">{run.run_id}</dd>

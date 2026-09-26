@@ -21,7 +21,11 @@ import type { RouteContext } from "./route-context.js";
  * no body — and stays an opaque `/`-bearing string. The three 404 causes collapse to one response:
  * the file is not there, `path` escapes the root, or a path component is a symlink.
  */
-export function handleGetWorkflowFile(res: ServerResponse, ctx: RouteContext, path: string | null): void {
+export function handleGetWorkflowFile(
+  res: ServerResponse,
+  ctx: RouteContext,
+  path: string | null,
+): void {
   if (path === null || path === "") {
     sendError(res, 404, "not found");
     return;

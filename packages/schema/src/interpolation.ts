@@ -89,7 +89,10 @@ export function checkInterpolationSyntax(
 ): InterpolationCheckResult {
   for (const token of tokenizeInterpolation(value)) {
     if (token.kind === "unclosed") {
-      return { ok: false, error: `unclosed placeholder starting at index ${token.index} in "${value}"` };
+      return {
+        ok: false,
+        error: `unclosed placeholder starting at index ${token.index} in "${value}"`,
+      };
     }
     if (token.kind !== "placeholder") continue;
 
@@ -113,7 +116,9 @@ export function interpolableString(allowedRoots: readonly InterpolationRoot[]) {
   });
 }
 
-export function interpolatedJsonValue(allowedRoots: readonly InterpolationRoot[]): z.ZodType<JsonValue> {
+export function interpolatedJsonValue(
+  allowedRoots: readonly InterpolationRoot[],
+): z.ZodType<JsonValue> {
   const schema: z.ZodType<JsonValue> = z.lazy(() =>
     z.union([
       interpolableString(allowedRoots),

@@ -1,4 +1,13 @@
-import { childBodies, gotoIssues, mapChildBodies, walkNodes, type BranchArm, type Condition, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import {
+  type BranchArm,
+  type Condition,
+  childBodies,
+  gotoIssues,
+  mapChildBodies,
+  type WorkflowFile,
+  type WorkflowNode,
+  walkNodes,
+} from "@path/schema";
 
 /**
  * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
@@ -55,7 +64,8 @@ export function editFile(file: WorkflowFile, op: EditOp): EditResult {
   // Only a goto this edit misplaced refuses it: a draft that already held one is not made uneditable.
   const before = new Set(placedWrong(file));
   const misplaced = placedWrong(result.file).find((id) => !before.has(id));
-  if (misplaced !== undefined) return { ok: false, reason: "a goto may not sit under a while-do or a parallel" };
+  if (misplaced !== undefined)
+    return { ok: false, reason: "a goto may not sit under a while-do or a parallel" };
   return result;
 }
 
@@ -173,7 +183,11 @@ function siteFromPath(ownerId: string, path: (string | number)[], index: number)
  * down to that node is rebuilt; every other node keeps its reference (and its id). `fn` returns a
  * same-identity node, so single-node slots stay length-1 — this is an update primitive, not an insert.
  */
-function updateNode(body: WorkflowNode[], ownerId: string, fn: (node: WorkflowNode) => WorkflowNode): WorkflowNode[] {
+function updateNode(
+  body: WorkflowNode[],
+  ownerId: string,
+  fn: (node: WorkflowNode) => WorkflowNode,
+): WorkflowNode[] {
   return body.map((node) => {
     if (node.id === ownerId) return fn(node);
     // Descend through the one grammar-descent owner (`@path/schema` `mapChildBodies`, the write
@@ -210,11 +224,19 @@ function listSiteOf(site: Site): ListSite | null {
 function listOf(file: WorkflowFile, ownerId: string | null): WorkflowNode[] | null {
   if (ownerId === null) return file.body;
   const owner = findById(file.body, ownerId);
-  return owner?.type === "sequence" ? owner.body : owner?.type === "parallel" ? owner.branches : null;
+  return owner?.type === "sequence"
+    ? owner.body
+    : owner?.type === "parallel"
+      ? owner.branches
+      : null;
 }
 
 /** The file with the list `ownerId` holds rebuilt by `fn`; a non-list owner is left unchanged. */
-function withList(file: WorkflowFile, ownerId: string | null, fn: (list: WorkflowNode[]) => WorkflowNode[]): WorkflowFile {
+function withList(
+  file: WorkflowFile,
+  ownerId: string | null,
+  fn: (list: WorkflowNode[]) => WorkflowNode[],
+): WorkflowFile {
   if (ownerId === null) return withBody(file, fn(file.body));
   return withBody(
     file,
@@ -247,7 +269,10 @@ function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): Workfl
   const previous = findById(file.body, id);
   if (!previous) return file;
   const body = updateNode(file.body, id, () => next);
-  return withBody(file, renames(file, previous, next) ? retarget(body, previous.name, next.name) : body);
+  return withBody(
+    file,
+    renames(file, previous, next) ? retarget(body, previous.name, next.name) : body,
+  );
 }
 
 /** Is replacing `previous` by `next` a rename whose gotos can safely follow it? */
@@ -260,9 +285,14 @@ function renames(file: WorkflowFile, previous: WorkflowNode, next: WorkflowNode)
 
 /** Point every goto whose `target` is `from` at `to`. A body with no such goto comes back unchanged. */
 function retarget(body: WorkflowNode[], from: string, to: string): WorkflowNode[] {
-  if (![...walkNodes(body)].some((node) => node.type === "goto" && node.target === from)) return body;
+  if (![...walkNodes(body)].some((node) => node.type === "goto" && node.target === from))
+    return body;
   return body.map((node) =>
-    node.type === "goto" ? (node.target === from ? { ...node, target: to } : node) : mapChildBodies(node, (child) => retarget(child, from, to)),
+    node.type === "goto"
+      ? node.target === from
+        ? { ...node, target: to }
+        : node
+      : mapChildBodies(node, (child) => retarget(child, from, to)),
   );
 }
 
@@ -273,7 +303,12 @@ function retarget(body: WorkflowNode[], from: string, to: string): WorkflowNode[
  * `arms[armIndex].when`, not on the selected node. A missing branch, a non-branch owner, or an
  * out-of-range arm is a no-op.
  */
-function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when: Condition): WorkflowFile {
+function setArmWhen(
+  file: WorkflowFile,
+  branchId: string,
+  armIndex: number,
+  when: Condition,
+): WorkflowFile {
   return withBody(
     file,
     updateNode(file.body, branchId, (owner) => {
@@ -329,7 +364,9 @@ function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: WorkflowNo
 function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): WorkflowFile {
   return withBody(
     file,
-    updateNode(file.body, branchId, (owner) => (owner.type === "branch" ? { ...owner, arms: [...owner.arms, arm] } : owner)),
+    updateNode(file.body, branchId, (owner) =>
+      owner.type === "branch" ? { ...owner, arms: [...owner.arms, arm] } : owner,
+    ),
   );
 }
 
@@ -337,7 +374,9 @@ function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): WorkflowF
 function addElse(file: WorkflowFile, branchId: string, node: WorkflowNode): WorkflowFile {
   return withBody(
     file,
-    updateNode(file.body, branchId, (owner) => (owner.type === "branch" && !owner.else ? { ...owner, else: node } : owner)),
+    updateNode(file.body, branchId, (owner) =>
+      owner.type === "branch" && !owner.else ? { ...owner, else: node } : owner,
+    ),
   );
 }
 
@@ -371,15 +410,26 @@ function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): WorkflowFile {
   if (listSite) {
     const list = listOf(file, listSite.ownerId);
     if (!list || listSite.index + delta < 0 || listSite.index + delta >= list.length) return file;
-    return withList(file, listSite.ownerId, (l) => swapAt(l, listSite.index, listSite.index + delta) ?? l);
+    return withList(
+      file,
+      listSite.ownerId,
+      (l) => swapAt(l, listSite.index, listSite.index + delta) ?? l,
+    );
   }
   if (site.where === "arm") {
     const owner = findById(file.body, site.ownerId);
-    if (owner?.type !== "branch" || site.armIndex + delta < 0 || site.armIndex + delta >= owner.arms.length) return file;
+    if (
+      owner?.type !== "branch" ||
+      site.armIndex + delta < 0 ||
+      site.armIndex + delta >= owner.arms.length
+    )
+      return file;
     return withBody(
       file,
       updateNode(file.body, site.ownerId, (o) =>
-        o.type === "branch" ? { ...o, arms: swapAt(o.arms, site.armIndex, site.armIndex + delta) ?? o.arms } : o,
+        o.type === "branch"
+          ? { ...o, arms: swapAt(o.arms, site.armIndex, site.armIndex + delta) ?? o.arms }
+          : o,
       ),
     );
   }
@@ -419,7 +469,8 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
       const { ownerId, index } = listSiteOf(site)!;
       const list = listOf(file, ownerId);
       if (ownerId !== null && list !== null && list.length <= 1) {
-        if (site.where === "list" && site.listKind === "branches") return { ok: false, reason: "a parallel must keep at least one branch" };
+        if (site.where === "list" && site.listKind === "branches")
+          return { ok: false, reason: "a parallel must keep at least one branch" };
         return deleteNode(file, ownerId);
       }
       return { ok: true, file: withList(file, ownerId, (l) => removeAt(l, index)) };
@@ -440,12 +491,15 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
 /** Remove arm `armIndex` from a `branch`, refusing when it is the last arm (a branch must keep ≥1). */
 function removeArm(file: WorkflowFile, branchId: string, armIndex: number): EditResult {
   const owner = findById(file.body, branchId);
-  if (owner?.type === "branch" && owner.arms.length <= 1) return { ok: false, reason: "a branch must keep at least one arm" };
+  if (owner?.type === "branch" && owner.arms.length <= 1)
+    return { ok: false, reason: "a branch must keep at least one arm" };
   return {
     ok: true,
     file: withBody(
       file,
-      updateNode(file.body, branchId, (o) => (o.type === "branch" ? { ...o, arms: removeAt(o.arms, armIndex) } : o)),
+      updateNode(file.body, branchId, (o) =>
+        o.type === "branch" ? { ...o, arms: removeAt(o.arms, armIndex) } : o,
+      ),
     ),
   };
 }

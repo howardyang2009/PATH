@@ -1,3 +1,4 @@
+import type { WorkflowSummary } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
   buildWorkflowTree,
@@ -5,15 +6,21 @@ import {
   isFolderOnOpenChain,
   nextOpenFolder,
   parentFolderPath,
-  workflowBaseName,
   type WorkflowTreeFolder,
   type WorkflowTreeNode,
+  workflowBaseName,
 } from "../src/workflow-tree.js";
-import type { WorkflowSummary } from "@path/schema";
 
 /** A discovery row where only `relative_path` steers the tree; the rest is filled to a valid shape. */
 function wf(relativePath: string): WorkflowSummary {
-  return { relative_path: relativePath, id: null, name: null, valid: true, is_root: true, error: null };
+  return {
+    relative_path: relativePath,
+    id: null,
+    name: null,
+    valid: true,
+    is_root: true,
+    error: null,
+  };
 }
 
 /** Narrow a node to a folder for assertions, failing loudly if it is a file. */
@@ -52,12 +59,9 @@ describe("buildWorkflowTree", () => {
       wf("alpha-dir/one.workflow.json"),
     ]);
     // alpha-dir + zeta (folders) come first, alpha + beta (files) after — each group alphabetical.
-    expect(tree.map((n) => (n.kind === "folder" ? n.name : workflowBaseName(n.workflow.relative_path)))).toEqual([
-      "alpha-dir",
-      "zeta",
-      "alpha.workflow.json",
-      "beta.workflow.json",
-    ]);
+    expect(
+      tree.map((n) => (n.kind === "folder" ? n.name : workflowBaseName(n.workflow.relative_path))),
+    ).toEqual(["alpha-dir", "zeta", "alpha.workflow.json", "beta.workflow.json"]);
   });
 
   it("counts every workflow under a folder, however deep", () => {

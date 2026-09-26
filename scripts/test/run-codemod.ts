@@ -17,11 +17,19 @@ export interface CodemodResult {
  * the discovery test's `cwd` is a temp dir outside any pnpm project, where `pnpm` would fail before
  * the codemod ever started. Everything else about the invocation is the documented CLI shape.
  */
-export function runCodemod(args: string[], cwd: string, script = "migrate-workflow-format-v2.ts"): CodemodResult {
-  const result = spawnSync(join(repoRoot, "node_modules/.bin/tsx"), [join(repoRoot, "scripts", script), ...args], {
-    cwd,
-    encoding: "utf8",
-  });
+export function runCodemod(
+  args: string[],
+  cwd: string,
+  script = "migrate-workflow-format-v2.ts",
+): CodemodResult {
+  const result = spawnSync(
+    join(repoRoot, "node_modules/.bin/tsx"),
+    [join(repoRoot, "scripts", script), ...args],
+    {
+      cwd,
+      encoding: "utf8",
+    },
+  );
   if (result.error) throw result.error;
   return { status: result.status ?? -1, stdout: result.stdout, stderr: result.stderr };
 }

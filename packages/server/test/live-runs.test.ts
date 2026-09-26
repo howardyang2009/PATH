@@ -38,7 +38,10 @@ async function startFixture(filename: string, runs = live): Promise<StartedRun> 
   const loaded = await loadWorkflowTree(join(projectDir, filename));
   if (!loaded.success) throw new Error(loaded.errors.join("\n"));
   const { workflow } = loaded;
-  return runs.start(workflow.rootFile, workflow.workflowDir, { files: workflow.files, registry: workflow.registry });
+  return runs.start(workflow.rootFile, workflow.workflowDir, {
+    files: workflow.files,
+    registry: workflow.registry,
+  });
 }
 
 /** Waits for the root row to reach a terminal status, then lets the run promise's settle handler run. */
@@ -76,7 +79,9 @@ describe("LiveRuns — start resolves on run-started, not on finish", () => {
       run: () => Promise.reject(new Error("engine bug")),
     };
 
-    await expect(startFixture("slow-step.workflow.json", createLiveRuns(crashing))).rejects.toThrow("engine bug");
+    await expect(startFixture("slow-step.workflow.json", createLiveRuns(crashing))).rejects.toThrow(
+      "engine bug",
+    );
   });
 
   // The one link `POST /v0/runs`'s own route test cannot cover with a mocked `LiveRuns`: that `start`
@@ -194,7 +199,10 @@ describe("LiveRuns — idle drains in-flight runs (#439)", () => {
   });
 
   it("waits for every concurrent run, not just the first to finish", async () => {
-    await Promise.all([startFixture("slow-step.workflow.json"), startFixture("two-slow-steps.workflow.json")]);
+    await Promise.all([
+      startFixture("slow-step.workflow.json"),
+      startFixture("two-slow-steps.workflow.json"),
+    ]);
     expect(live.cancellable).toBe(2);
 
     await live.idle();

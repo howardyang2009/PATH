@@ -20,7 +20,13 @@ function editableFile(): Record<string, unknown> {
     body: [
       // alpha publishes the context keys the branch/while conditions below read, so the fixture carries
       // no #388 dangling-context warning — these #368 structure-edit tests assert only on structure.
-      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" } },
+      {
+        type: "prompt",
+        id: uuid(2),
+        name: "alpha",
+        prompt: "a",
+        publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" },
+      },
       { type: "prompt", id: uuid(3), name: "beta", prompt: "b" },
       {
         type: "parallel",
@@ -37,12 +43,25 @@ function editableFile(): Record<string, unknown> {
         id: uuid(7),
         name: "gate",
         arms: [
-          { when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: uuid(8), name: "arm1", prompt: "1" } },
-          { when: { type: "exists", path: "context.y" }, node: { type: "prompt", id: uuid(9), name: "arm2", prompt: "2" } },
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: uuid(8), name: "arm1", prompt: "1" },
+          },
+          {
+            when: { type: "exists", path: "context.y" },
+            node: { type: "prompt", id: uuid(9), name: "arm2", prompt: "2" },
+          },
         ],
         else: { type: "prompt", id: uuid(10), name: "els", prompt: "e" },
       },
-      { type: "while-do", id: uuid(11), name: "loop", condition: { type: "exists", path: "context.z" }, max_iterations: 2, node: { type: "prompt", id: uuid(12), name: "body", prompt: "l" } },
+      {
+        type: "while-do",
+        id: uuid(11),
+        name: "loop",
+        condition: { type: "exists", path: "context.z" },
+        max_iterations: 2,
+        node: { type: "prompt", id: uuid(12), name: "body", prompt: "l" },
+      },
     ],
   };
 }
@@ -75,8 +94,12 @@ describe("#368 add — a block snaps only into a grammar-legal socket", () => {
     // (checkpoint is unsnappable there) and neither does a single slot.
     arm("Checkpoint");
     expect(within(canvas).getByRole("button", { name: /add checkpoint here/ })).toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /add checkpoint branch/ })).not.toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /swap for checkpoint/ })).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /add checkpoint branch/ }),
+    ).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /swap for checkpoint/ }),
+    ).not.toBeInTheDocument();
   });
 
   it("opens a parallel branch socket for a legal kind", async () => {
@@ -89,7 +112,8 @@ describe("#368 add — a block snaps only into a grammar-legal socket", () => {
 describe("#368 reorder — within a container, preserving structure", () => {
   it("moves a top-level node down", async () => {
     const canvas = await openEditable();
-    const names = () => within(canvas).getByRole("list").querySelectorAll(":scope > li > .node-block .node-name");
+    const names = () =>
+      within(canvas).getByRole("list").querySelectorAll(":scope > li > .node-block .node-name");
     fireEvent.click(within(canvas).getByRole("button", { name: "Move alpha down" }));
     const order = [...names()].map((el) => el.textContent);
     expect(order.slice(0, 2)).toEqual(["beta", "alpha"]);

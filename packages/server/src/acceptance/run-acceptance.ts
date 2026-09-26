@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { readNdjsonLog } from "@path/engine";
-import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 import type { JsonValue } from "@path/schema";
+import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 
 /**
  * The §5 acceptance harness (server-api-spec.md §5): drives the four acceptance criteria for a
@@ -71,7 +71,8 @@ async function readFrames(
     for (;;) {
       const { done, value } = await reader.read();
       if (done) return { frames, ended: true };
-      for (const frame of decoder.push(text.decode(value, { stream: true }))) frames.push(frame.event);
+      for (const frame of decoder.push(text.decode(value, { stream: true })))
+        frames.push(frame.event);
       if (until && until(frames)) {
         controller?.abort();
         return { frames, ended: false };
@@ -84,8 +85,16 @@ async function readFrames(
   }
 }
 
-async function openEventStream(url: string, rootRunId: string, lastEventId: number | undefined, signal: AbortSignal | undefined): Promise<Response> {
-  return fetch(`${url}/v0/runs/${rootRunId}/events`, { headers: eventStreamHeaders(lastEventId), signal });
+async function openEventStream(
+  url: string,
+  rootRunId: string,
+  lastEventId: number | undefined,
+  signal: AbortSignal | undefined,
+): Promise<Response> {
+  return fetch(`${url}/v0/runs/${rootRunId}/events`, {
+    headers: eventStreamHeaders(lastEventId),
+    signal,
+  });
 }
 
 interface RunTreeBody {
@@ -120,15 +129,26 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   const postRes = await fetch(`${opts.url}/v0/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workflow_path: opts.workflowPath, input: opts.input, config: opts.config }),
+    body: JSON.stringify({
+      workflow_path: opts.workflowPath,
+      input: opts.input,
+      config: opts.config,
+    }),
   });
-  const postBody = (await postRes.json().catch(() => ({}))) as { root_run_id?: string; run_id?: string; error?: unknown };
+  const postBody = (await postRes.json().catch(() => ({}))) as {
+    root_run_id?: string;
+    run_id?: string;
+    error?: unknown;
+  };
   const rootRunId = postBody.root_run_id;
   criteria.push({
     id: "1",
     title: "POST /v0/runs starts the pipeline and returns a root_run_id",
     pass: postRes.status === 202 && typeof rootRunId === "string",
-    detail: postRes.status === 202 && rootRunId ? `202 Accepted, root_run_id=${rootRunId}` : `unexpected response ${postRes.status}: ${JSON.stringify(postBody)}`,
+    detail:
+      postRes.status === 202 && rootRunId
+        ? `202 Accepted, root_run_id=${rootRunId}`
+        : `unexpected response ${postRes.status}: ${JSON.stringify(postBody)}`,
   });
   if (postRes.status !== 202 || !rootRunId) {
     return { rootRunId, status: undefined, narrativeSeqs: [], criteria, passed: false };
@@ -162,7 +182,8 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   // exactly what the reconnect must have replayed, so the seam is real (not vacuously empty).
   const diskEvents = readNdjsonLog(projectDir, rootRunId);
   const expectedTail = diskEvents.filter((e) => e.seq > lastSeqA).length;
-  const reconnectFilledSeam = framesB.length === expectedTail && (expectedTail === 0 || firstBSeq === lastSeqA + 1);
+  const reconnectFilledSeam =
+    framesB.length === expectedTail && (expectedTail === 0 || firstBSeq === lastSeqA + 1);
   criteria.push({
     id: "4",
     title: "disconnect mid-run, reconnect with Last-Event-ID, no gap in the narrative",
@@ -181,7 +202,11 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   criteria.push({
     id: "3",
     title: "GET /v0/runs/:id reports succeeded with the same run tree on disk",
-    pass: succeeded && rootRow?.run_id === rootRunId && tree.runs.every((r) => r.status === "succeeded") && treeCoversDisk,
+    pass:
+      succeeded &&
+      rootRow?.run_id === rootRunId &&
+      tree.runs.every((r) => r.status === "succeeded") &&
+      treeCoversDisk,
     detail: `status=${tree.status}, ${tree.runs.length} run row(s); ${diskRunIds.length} run(s) in run.log ${treeCoversDisk ? "all present in tree" : "MISSING from tree"}${succeeded ? "" : " (expected succeeded)"}`,
   });
 
@@ -198,5 +223,11 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   });
 
   criteria.sort((a, b) => a.id.localeCompare(b.id));
-  return { rootRunId, status: tree.status, narrativeSeqs, criteria, passed: criteria.every((c) => c.pass) };
+  return {
+    rootRunId,
+    status: tree.status,
+    narrativeSeqs,
+    criteria,
+    passed: criteria.every((c) => c.pass),
+  };
 }

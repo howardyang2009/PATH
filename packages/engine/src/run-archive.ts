@@ -1,12 +1,28 @@
 import { existsSync } from "node:fs";
 import { join, resolve } from "node:path";
-import { findRootRun, isReuseRow, subtree, type JsonValue, type LaunchFacts, type LogEvent, type RunRecord, type RunStatus } from "@path/schema";
+import {
+  findRootRun,
+  isReuseRow,
+  type JsonValue,
+  type LaunchFacts,
+  type LogEvent,
+  type RunRecord,
+  type RunStatus,
+  subtree,
+} from "@path/schema";
 import type Database from "better-sqlite3";
 import { reuseMarkerReferences } from "./logging/db-backend.js";
 import { openRunLog } from "./logging/run-log.js";
 import { dirExists, readJsonBlob, removeDir } from "./persistence/blob-store.js";
 import { openDb, SchemaVersionError } from "./persistence/db.js";
-import { blobRef, dbFilePath, RUN_BLOB_FILE, rootRunTreeDir, runBlobDir, runsDir } from "./persistence/paths.js";
+import {
+  blobRef,
+  dbFilePath,
+  RUN_BLOB_FILE,
+  rootRunTreeDir,
+  runBlobDir,
+  runsDir,
+} from "./persistence/paths.js";
 import {
   deleteAllRuns,
   deleteRunsForRoot,
@@ -183,7 +199,12 @@ export function createRunArchive(db: Database.Database, projectDir: string): Run
       if (runs.length === 0) return null;
       // Resolve each reuse row's provenance once here (#257), so every reader downstream — `blob()`,
       // the wire encoder, the viewer — reads a record that no longer lies about what it has.
-      return makeTree(db, dir, rootRunId, runs.map((run) => resolveReuseRow(db, run)));
+      return makeTree(
+        db,
+        dir,
+        rootRunId,
+        runs.map((run) => resolveReuseRow(db, run)),
+      );
     },
 
     rootRunIdOf(runId: string): string | null {
@@ -276,7 +297,12 @@ function resolveReuseRow(db: Database.Database, run: RunRecord): RunRecord {
   };
 }
 
-function makeTree(db: Database.Database, projectDir: string, rootRunId: string, runs: RunRecord[]): RunTree {
+function makeTree(
+  db: Database.Database,
+  projectDir: string,
+  rootRunId: string,
+  runs: RunRecord[],
+): RunTree {
   const root = findRootRun(runs) ?? null;
 
   function readBlobAt(blobDir: string, name: RunBlobName): JsonValue | undefined {
@@ -294,7 +320,10 @@ function makeTree(db: Database.Database, projectDir: string, rootRunId: string, 
     // source since `rm`'d left `reusedFromRootRunId` null, which reads as "no blob" like an absent file.
     if (isReuseRow(record)) {
       if (record.reusedFromRootRunId === null) return undefined;
-      return readBlobAt(runBlobDir(projectDir, record.reusedFromRootRunId, record.reusedFromRunId), name);
+      return readBlobAt(
+        runBlobDir(projectDir, record.reusedFromRootRunId, record.reusedFromRunId),
+        name,
+      );
     }
     return readBlobAt(runBlobDir(projectDir, rootRunId, runId), name);
   }
@@ -306,7 +335,8 @@ function makeTree(db: Database.Database, projectDir: string, rootRunId: string, 
     has: (runId) => runs.some((run) => run.runId === runId),
     // `outputRef` is the row's own record that the blob was written, so a succeeded root without
     // one has no output to read rather than a missing file to explain.
-    output: () => (root?.status === "succeeded" && root.outputRef ? blob(root.runId, "output") : undefined),
+    output: () =>
+      root?.status === "succeeded" && root.outputRef ? blob(root.runId, "output") : undefined,
     blob,
     events(afterSeq?: number): LogEvent[] {
       // One owner for "where did this run's narrative go" (`logging/run-log.ts`): the same rule the
@@ -340,7 +370,8 @@ export function openRunArchive(projectDir: string): OpenRunArchiveResult {
   try {
     db = openDb(existsSync(dbFile) ? dbFile : ":memory:");
   } catch (err) {
-    const error = err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
+    const error =
+      err instanceof SchemaVersionError ? err.message : `cannot open .path/path.db: ${String(err)}`;
     return { success: false, error };
   }
 

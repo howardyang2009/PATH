@@ -88,7 +88,12 @@ describe("publishSetIssues — the one publish-set rule, as data", () => {
 
 describe("publishKeysOf", () => {
   it("reads a node's publish keys by presence, so a plugin leaf's count too", () => {
-    expect(publishKeysOf(pub(2, "a", { k1: "${output.a}", k2: "${output.b}" }))).toEqual(["k1", "k2"]);
-    expect(publishKeysOf({ type: "prompt", id: uuid(3), name: "b", prompt: "x" } as never)).toEqual([]);
+    expect(publishKeysOf(pub(2, "a", { k1: "${output.a}", k2: "${output.b}" }))).toEqual([
+      "k1",
+      "k2",
+    ]);
+    expect(publishKeysOf({ type: "prompt", id: uuid(3), name: "b", prompt: "x" } as never)).toEqual(
+      [],
+    );
   });
 });

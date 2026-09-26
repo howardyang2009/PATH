@@ -1,4 +1,10 @@
-import type { AcquireLockInput, AcquireLockResult, HeartbeatResult, LeaseOpInput, WorkflowLease } from "@path/client-core";
+import type {
+  AcquireLockInput,
+  AcquireLockResult,
+  HeartbeatResult,
+  LeaseOpInput,
+  WorkflowLease,
+} from "@path/client-core";
 import { describe, expect, it } from "vitest";
 import { LeaseController, type LeaseMap, type LeaseScheduler } from "../src/lease-client.js";
 
@@ -46,7 +52,11 @@ class FakeLockClient {
 }
 
 /** A scheduler whose one heartbeat callback is fired by hand, so a "beat" is deterministic. */
-function manualScheduler(): { scheduler: LeaseScheduler; beats: Map<unknown, () => void>; fire: (handle: unknown) => void } {
+function manualScheduler(): {
+  scheduler: LeaseScheduler;
+  beats: Map<unknown, () => void>;
+  fire: (handle: unknown) => void;
+} {
   const beats = new Map<unknown, () => void>();
   let next = 1;
   const scheduler: LeaseScheduler = {
@@ -74,7 +84,10 @@ function watch(controller: LeaseController): LeaseMap[] {
 
 describe("LeaseController (#371 edit-lock client)", () => {
   it("acquires a lease for each open path and starts beating", async () => {
-    const client = new FakeLockClient().onAcquire("a.workflow.json", { status: "granted", lease: lease("t30") });
+    const client = new FakeLockClient().onAcquire("a.workflow.json", {
+      status: "granted",
+      lease: lease("t30"),
+    });
     const { scheduler, beats } = manualScheduler();
     const controller = new LeaseController(client, "s1", scheduler);
 
@@ -82,7 +95,10 @@ describe("LeaseController (#371 edit-lock client)", () => {
     await flush();
 
     expect(client.acquireCalls).toEqual([{ workflowPath: "a.workflow.json", sessionId: "s1" }]);
-    expect(controller.snapshot().get("a.workflow.json")).toEqual({ phase: "held", expiresAt: "t30" });
+    expect(controller.snapshot().get("a.workflow.json")).toEqual({
+      phase: "held",
+      expiresAt: "t30",
+    });
     expect(beats.size).toBe(1); // a heartbeat timer is running
   });
 
@@ -103,7 +119,10 @@ describe("LeaseController (#371 edit-lock client)", () => {
   });
 
   it("a 409 on acquire is held-by-other with the holder's expiry — no beat", async () => {
-    const client = new FakeLockClient().onAcquire("a", { status: "held-by-other", expiresAt: "t99" });
+    const client = new FakeLockClient().onAcquire("a", {
+      status: "held-by-other",
+      expiresAt: "t99",
+    });
     const { scheduler, beats } = manualScheduler();
     const controller = new LeaseController(client, "s1", scheduler);
 
@@ -135,7 +154,11 @@ describe("LeaseController (#371 edit-lock client)", () => {
 
   it("a 409 on heartbeat loses the lease, stops beating, and re-acquire recovers it", async () => {
     const client = new FakeLockClient()
-      .onAcquire("a", { status: "granted", lease: lease("t30") }, { status: "granted", lease: lease("t90") })
+      .onAcquire(
+        "a",
+        { status: "granted", lease: lease("t30") },
+        { status: "granted", lease: lease("t90") },
+      )
       .onHeartbeat("a", { status: "lost" });
     const { scheduler, beats, fire } = manualScheduler();
     const controller = new LeaseController(client, "s1", scheduler);

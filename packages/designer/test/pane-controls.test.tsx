@@ -1,7 +1,7 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { useState } from "react";
 import { describe, expect, it, vi } from "vitest";
-import { IdRow, NumberField, TextField, fillPlaceholderOnTab } from "../src/pane-controls.js";
+import { fillPlaceholderOnTab, IdRow, NumberField, TextField } from "../src/pane-controls.js";
 
 /**
  * The pane's generic field vocabulary (`pane-controls.tsx`), lifted out of `properties-pane.tsx`. These
@@ -35,8 +35,14 @@ describe("TextField", () => {
 function TabHarness({ placeholder }: { placeholder: string }): JSX.Element {
   const [value, setValue] = useState("");
   return (
+    // biome-ignore lint/a11y/noStaticElementInteractions: harness delegating Tab to its input.
     <div onKeyDown={fillPlaceholderOnTab}>
-      <input aria-label="field" placeholder={placeholder} value={value} onChange={(e) => setValue(e.target.value)} />
+      <input
+        aria-label="field"
+        placeholder={placeholder}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+      />
     </div>
   );
 }

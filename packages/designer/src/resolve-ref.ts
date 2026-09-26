@@ -34,7 +34,10 @@ export function basename(path: string): string {
  * stored ref lands back on `toPath`.
  */
 export function relativeRefPath(fromPath: string, toPath: string): string {
-  const fromDir = fromPath.split("/").filter((s) => s !== "").slice(0, -1);
+  const fromDir = fromPath
+    .split("/")
+    .filter((s) => s !== "")
+    .slice(0, -1);
   const to = toPath.split("/").filter((s) => s !== "");
   let common = 0;
   while (common < fromDir.length && common < to.length && fromDir[common] === to[common]) common++;

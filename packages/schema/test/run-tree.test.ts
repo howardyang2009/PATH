@@ -18,8 +18,18 @@ const complete: Row[] = [
 describe("childrenByParent", () => {
   it("groups non-root rows under their parent, and omits the root as a key", () => {
     const byParent = childrenByParent(complete);
-    expect(byParent.get("root")!.map((r) => r.runId).sort()).toEqual(["a", "b"]);
-    expect(byParent.get("a")!.map((r) => r.runId).sort()).toEqual(["a1", "a2"]);
+    expect(
+      byParent
+        .get("root")!
+        .map((r) => r.runId)
+        .sort(),
+    ).toEqual(["a", "b"]);
+    expect(
+      byParent
+        .get("a")!
+        .map((r) => r.runId)
+        .sort(),
+    ).toEqual(["a1", "a2"]);
     // The root is never filed as a child, so no key resolves to it.
     expect([...byParent.values()].flat().some((r) => r.runId === "root")).toBe(false);
   });
@@ -43,7 +53,11 @@ describe("childrenByParent", () => {
 
 describe("subtree", () => {
   it("returns the start row and every transitive descendant, flat", () => {
-    expect(subtree(complete, "a").map((r) => r.runId).sort()).toEqual(["a", "a1", "a2"]);
+    expect(
+      subtree(complete, "a")
+        .map((r) => r.runId)
+        .sort(),
+    ).toEqual(["a", "a1", "a2"]);
   });
 
   it("returns just the start row for a leaf", () => {
@@ -51,7 +65,11 @@ describe("subtree", () => {
   });
 
   it("returns the whole tree from the root", () => {
-    expect(subtree(complete, "root").map((r) => r.runId).sort()).toEqual(["a", "a1", "a2", "b", "root"]);
+    expect(
+      subtree(complete, "root")
+        .map((r) => r.runId)
+        .sort(),
+    ).toEqual(["a", "a1", "a2", "b", "root"]);
   });
 
   it("is empty when no row has the start id", () => {

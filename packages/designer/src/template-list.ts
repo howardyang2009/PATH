@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from "react";
 import type { PathApiClient, TemplateSummary } from "@path/client-core";
+import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
@@ -17,7 +17,10 @@ export type TemplateListLoad =
   | { phase: "error"; message: string }
   | { phase: "ready"; templates: readonly TemplateSummary[] };
 
-export function useTemplateList(client: PathApiClient, savePhase: SaveState["phase"]): TemplateListLoad {
+export function useTemplateList(
+  client: PathApiClient,
+  savePhase: SaveState["phase"],
+): TemplateListLoad {
   const listTemplates = useCallback(async () => (await client.listTemplates()).templates, [client]);
   const load = useScanOnSave(listTemplates, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.

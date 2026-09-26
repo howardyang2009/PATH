@@ -1,14 +1,14 @@
 import {
+  type Condition,
+  type GotoIssueRule,
   gotoIssues,
+  type JsonValue,
   publishKeysOf,
   publishSetIssues,
   tokenizeInterpolation,
-  walkNodes,
-  type Condition,
-  type GotoIssueRule,
-  type JsonValue,
   type WorkflowFile,
   type WorkflowNode,
+  walkNodes,
 } from "@path/schema";
 import { resolveRefPath } from "./resolve-ref.js";
 
@@ -45,7 +45,12 @@ import { resolveRefPath } from "./resolve-ref.js";
  */
 
 /** Which cross-node check produced a problem, for the panel's grouping and the row's tint. */
-export type ProblemKind = "publish-conflict" | "dangling-interpolation" | "dangling-condition" | "dangling-ref" | GotoIssueRule;
+export type ProblemKind =
+  | "publish-conflict"
+  | "dangling-interpolation"
+  | "dangling-condition"
+  | "dangling-ref"
+  | GotoIssueRule;
 
 /**
  * What the dangling-`workflow`-ref check needs beyond the file itself: the referring file's own
@@ -193,10 +198,21 @@ export function fileProblems(file: WorkflowFile, refs?: RefLookup): Problem[] {
   for (const node of walkNodes(file.body)) {
     const conflict = conflicts.get(node.id);
     if (conflict) {
-      problems.push({ nodeId: node.id, nodeName: node.name, kind: "publish-conflict", message: conflict });
+      problems.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        kind: "publish-conflict",
+        message: conflict,
+      });
     }
     const jump = gotos.get(node.id);
-    if (jump) problems.push({ nodeId: node.id, nodeName: node.name, kind: jump.rule, message: jump.message });
+    if (jump)
+      problems.push({
+        nodeId: node.id,
+        nodeName: node.name,
+        kind: jump.rule,
+        message: jump.message,
+      });
 
     const readSeen = new Set<string>();
     for (const path of nodePlaceholderPaths(node)) {

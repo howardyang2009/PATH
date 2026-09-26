@@ -1,7 +1,12 @@
-import { useEffect, useState, type ReactNode } from "react";
+import { type ReactNode, useEffect, useState } from "react";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
-import { frameHasUnsavedWork, openedResultOf, TEMPLATE_SUFFIX, type Frame } from "./session-reducer.js";
+import {
+  type Frame,
+  frameHasUnsavedWork,
+  openedResultOf,
+  TEMPLATE_SUFFIX,
+} from "./session-reducer.js";
 import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
 
 const MODES: readonly { key: EditMode; label: string }[] = [
@@ -19,7 +24,11 @@ export function WorkflowFileName({ path }: { path: string | undefined }): JSX.El
     return <span className="author-mode-tag">New workflow (not saved)</span>;
   }
   return (
-    <span className="author-mode-tag" data-testid="workflow-file-name" title="Save writes back to this file">
+    <span
+      className="author-mode-tag"
+      data-testid="workflow-file-name"
+      title="Save writes back to this file"
+    >
       <code>{path}</code>
     </span>
   );
@@ -36,8 +45,15 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
     return <span className="author-mode-tag">New template (not saved)</span>;
   }
   return (
-    <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
-      <code>{template.name}{TEMPLATE_SUFFIX}</code>
+    <span
+      className="author-mode-tag"
+      data-testid="author-mode"
+      title="Save writes back to this template"
+    >
+      <code>
+        {template.name}
+        {TEMPLATE_SUFFIX}
+      </code>
       {template.readOnly ? " (shipped, read-only)" : null}
     </span>
   );
@@ -66,7 +82,11 @@ export function FileStatus({
 }): JSX.Element | null {
   if (saveState.phase === "conflict") {
     return (
-      <span className="file-status file-status-failed" role="alert" title="This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits.">
+      <span
+        className="file-status file-status-failed"
+        role="alert"
+        title="This file changed on disk since you opened it. Your save was refused to avoid overwriting that change. Reload to get the latest, then re-apply your edits."
+      >
         Save refused: this file changed on disk since you opened it
         <button type="button" className="file-status-action" onClick={onReload}>
           Reload file
@@ -102,7 +122,9 @@ export function FileStatus({
     const pristine = canonicalSerialize(opened.file) === frame!.openedBytes;
     return (
       <span className="file-status file-status-unsaved" role="status">
-        {opened.idsStamped && pristine ? "Ids stamped on import — unsaved (ADR 0015)" : "Unsaved edits"}
+        {opened.idsStamped && pristine
+          ? "Ids stamped on import — unsaved (ADR 0015)"
+          : "Unsaved edits"}
       </span>
     );
   }
@@ -124,20 +146,27 @@ export function FileStatus({
  * `If-Match` precondition is what actually guards the bytes (ADR 0017).
  */
 /** The **Workflow | Template** edit-mode switch: a segmented radio group in the top bar, after the brand. */
-export function ModeSwitch({ mode, onSwitch }: { mode: EditMode; onSwitch: (mode: EditMode) => void }): JSX.Element {
+export function ModeSwitch({
+  mode,
+  onSwitch,
+}: {
+  mode: EditMode;
+  onSwitch: (mode: EditMode) => void;
+}): JSX.Element {
   return (
     <div className="mode-switch" role="radiogroup" aria-label="Edit mode">
       {MODES.map(({ key, label }) => (
-        <button
-          key={key}
-          type="button"
-          role="radio"
-          className="mode-switch-option"
-          aria-checked={mode === key}
-          onClick={() => mode !== key && onSwitch(key)}
-        >
+        <label key={key} className="mode-switch-option">
+          <input
+            type="radio"
+            name="edit-mode"
+            value={key}
+            checked={mode === key}
+            aria-label={label}
+            onChange={() => mode !== key && onSwitch(key)}
+          />
           {label}
-        </button>
+        </label>
       ))}
     </div>
   );
@@ -201,21 +230,48 @@ export function EditingToolbar({
       </button>
       {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
-      <button type="button" className="toolbar-btn" aria-label="Undo" onClick={onUndo} disabled={!canUndo}>
+      <button
+        type="button"
+        className="toolbar-btn"
+        aria-label="Undo"
+        onClick={onUndo}
+        disabled={!canUndo}
+      >
         ↶ Undo
       </button>
-      <button type="button" className="toolbar-btn" aria-label="Redo" onClick={onRedo} disabled={!canRedo}>
+      <button
+        type="button"
+        className="toolbar-btn"
+        aria-label="Redo"
+        onClick={onRedo}
+        disabled={!canRedo}
+      >
         ↷ Redo
       </button>
       {/* Disabled in `conflict`: re-sending the same stale ETag would only 412 again — the author must
           reload first. Otherwise enabled only for a dirty buffer. */}
-      <button type="button" className="save-btn" onClick={onSave} disabled={saving || conflict || !dirty}>
+      <button
+        type="button"
+        className="save-btn"
+        onClick={onSave}
+        disabled={saving || conflict || !dirty}
+      >
         {saveState.phase === "saving" ? "Saving…" : "Save"}
       </button>
-      <button type="button" className="toolbar-btn" onClick={onSaveAs} disabled={saving || !canSaveAs}>
+      <button
+        type="button"
+        className="toolbar-btn"
+        onClick={onSaveAs}
+        disabled={saving || !canSaveAs}
+      >
         Save as…
       </button>
-      <button type="button" className="toolbar-btn toolbar-btn-danger" onClick={onDelete} disabled={saving || !canDelete}>
+      <button
+        type="button"
+        className="toolbar-btn toolbar-btn-danger"
+        onClick={onDelete}
+        disabled={saving || !canDelete}
+      >
         {saveState.phase === "deleting" ? "Deleting…" : "Delete"}
       </button>
       <LeaseBanner lease={lease} onTakeover={onTakeover} onReacquire={onReacquire} />
@@ -239,7 +295,14 @@ function LeaseBanner({
     return (
       <div className="lease-banner lease-held-by-other" role="alert">
         <span>
-          Another session is editing this file{lease.expiresAt ? <> — its lease expires in <Countdown expiresAt={lease.expiresAt} /></> : null}.
+          Another session is editing this file
+          {lease.expiresAt ? (
+            <>
+              {" "}
+              — its lease expires in <Countdown expiresAt={lease.expiresAt} />
+            </>
+          ) : null}
+          .
         </span>
         {confirming ? (
           <>

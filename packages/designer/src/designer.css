@@ -1316,6 +1316,8 @@ body {
 }
 
 .mode-switch-option {
+  display: inline-flex;
+  align-items: center;
   padding: 4px 12px;
   font: inherit;
   font-weight: 600;
@@ -1325,11 +1327,20 @@ body {
   cursor: pointer;
 }
 
+/* The native radio carries the semantics; the segmented look stays the label's. */
+.mode-switch-option input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
 .mode-switch-option + .mode-switch-option {
   border-left: 1px solid var(--border);
 }
 
-.mode-switch-option[aria-checked="true"] {
+.mode-switch-option:has(input:checked) {
   color: var(--surface);
   background: var(--accent);
 }

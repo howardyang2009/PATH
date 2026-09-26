@@ -1,15 +1,24 @@
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { toWireRunRecord, type WorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
-import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
-import { blobRef, dbFilePath, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import type { LogBackend } from "../src/logging/log-backend.js";
-import type { WorkerDescriptor } from "../src/plugin/seam.js";
+import { readNdjsonLog } from "../src/logging/ndjson-backend.js";
 import { openDb } from "../src/persistence/db.js";
+import { blobRef, dbFilePath, pathDir, rootRunTreeDir } from "../src/persistence/paths.js";
 import { getLaunchWorkerDefaults } from "../src/persistence/run-store.js";
+import type { WorkerDescriptor } from "../src/plugin/seam.js";
 import { openProject, type Project } from "../src/project.js";
 import type { Observation, RunObserver } from "../src/run-observer.js";
 import { stampGuids, stampNames } from "./stamp-names.js";
@@ -39,14 +48,29 @@ const oneStep: WorkflowFile = stampNames({
   format: "path/workflow@5",
   id: "wf-id",
   name: "one-step",
-  body: [{ type: "binary", id: "only", name: "only", command: "node", args: ["-e", "process.stdout.write('ok')"] }],
+  body: [
+    {
+      type: "binary",
+      id: "only",
+      name: "only",
+      command: "node",
+      args: ["-e", "process.stdout.write('ok')"],
+    },
+  ],
 });
 
 // A binary step that emits `text` on stdout, or (when `text` is undefined) exits 1 — the two halves
 // of a run driven to a stopping point and then resumed past it.
 function emit(id: string, text?: string): WorkflowFile["body"][number] {
   const script = text !== undefined ? `process.stdout.write('${text}')` : "process.exit(1)";
-  return { type: "binary", id, name: id, command: "node", args: ["-e", script], publish: { [`from_${id}`]: "${output}" } };
+  return {
+    type: "binary",
+    id,
+    name: id,
+    command: "node",
+    args: ["-e", script],
+    publish: { [`from_${id}`]: "${output}" },
+  };
 }
 
 describe("openProject", () => {
@@ -161,7 +185,7 @@ describe("Project.run — observer assembly", () => {
       const spy: RunObserver = {
         observe(o: Observation) {
           if (o.type !== "run-started") return;
-          rowsWhenSeen.push((project.archive.tree(o.rootRunId)?.runs.length ?? 0));
+          rowsWhenSeen.push(project.archive.tree(o.rootRunId)?.runs.length ?? 0);
         },
       };
 
@@ -250,7 +274,10 @@ describe("Project.resume (#173)", () => {
     const project = open();
     try {
       const result = await project.resume(v2, "no-such-root", dir);
-      expect(result).toEqual({ found: false, error: 'no run found with root run id "no-such-root"' });
+      expect(result).toEqual({
+        found: false,
+        error: 'no run found with root run id "no-such-root"',
+      });
     } finally {
       project.close();
     }
@@ -298,7 +325,9 @@ describe("Project.resume (#173)", () => {
       // ordinary executed row with no reuse pointer.
       const aRow = successor.runs.find((r) => r.nodeId === "a")!;
       const bRow = successor.runs.find((r) => r.nodeId === "b")!;
-      const originalARun = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.runId;
+      const originalARun = project.archive
+        .tree(originalRootId)!
+        .runs.find((r) => r.nodeId === "a")!.runId;
       expect(aRow.status).toBe("succeeded");
       expect(aRow.reusedFromRunId).toBe(originalARun);
       // The archive resolves the source's tree root too (#257), the other half of the provenance pair,
@@ -318,7 +347,9 @@ describe("Project.resume (#173)", () => {
       expect(successor.blob(aRow.runId, "output")).toEqual("A_OUT");
       // And its narrative still carries the reuse-marker alongside the row (the marker stays the
       // cost/`rm`-guard record); no step-started/step-finished for the reused node.
-      const reuseEvents = readNdjsonLog(dir, result.rootRunId).filter((e) => e.type === "reuse-marker");
+      const reuseEvents = readNdjsonLog(dir, result.rootRunId).filter(
+        (e) => e.type === "reuse-marker",
+      );
       expect(reuseEvents).toHaveLength(1);
 
       // The successor's root row records the lineage; the predecessor's does not.
@@ -342,7 +373,10 @@ describe("Project.resume (#173)", () => {
       output: { a: "${context.from_a}", b: "${context.from_b}", c: "${context.from_c}" },
     };
     const c2: WorkflowFile = { ...c1, body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c")] };
-    const c3: WorkflowFile = { ...c1, body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c", "C_OUT")] };
+    const c3: WorkflowFile = {
+      ...c1,
+      body: [emit("a", "A_OUT"), emit("b", "B_OUT"), emit("c", "C_OUT")],
+    };
 
     const project = open();
     try {
@@ -421,7 +455,9 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       expect(first.status).toBe("succeeded");
       const originalRootId = project.archive.listRoots()[0]!.runId;
       // K = b, named by its own run id — the one unambiguous handle (ADR 0032).
-      const bRunId = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "b")!.runId;
+      const bRunId = project.archive
+        .tree(originalRootId)!
+        .runs.find((r) => r.nodeId === "b")!.runId;
 
       // A succeeded source is a valid Resume-from-K target — the already-succeeded gate is a route
       // concern, relaxed there; `Project.resume` itself just resolves and re-runs.
@@ -438,7 +474,9 @@ describe("Project.resume — Resume-from-K (#444)", () => {
 
       // The boundary is persisted root-only as {nodeId, nodeName}[], and rides the read wire (#418).
       expect(successor.root!.rerunFromNodePath).toEqual([{ nodeId: "b", nodeName: "b" }]);
-      expect(toWireRunRecord(successor.root!).rerun_from_node_path).toEqual([{ nodeId: "b", nodeName: "b" }]);
+      expect(toWireRunRecord(successor.root!).rerun_from_node_path).toEqual([
+        { nodeId: "b", nodeName: "b" },
+      ]);
       // A nested/executed row carries none.
       expect(successor.runs.find((r) => r.nodeId === "b")!.rerunFromNodePath).toBeNull();
     } finally {
@@ -469,7 +507,9 @@ describe("Project.resume — Resume-from-K (#444)", () => {
       const originalRootId = project.archive.listRoots()[0]!.runId;
       const before = project.archive.listRoots().length;
 
-      const result = await project.resume(kabc, originalRootId, dir, { rerunFromRunId: "not-a-run" });
+      const result = await project.resume(kabc, originalRootId, dir, {
+        rerunFromRunId: "not-a-run",
+      });
       expect(result.found).toBe(false);
       if (result.found || !("refusal" in result)) throw new Error("expected a refusal");
       expect(result.refusal.status).toBe(400);
@@ -486,22 +526,30 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
   function writeNested(): void {
     writeFileSync(
       join(dir, "child.workflow.json"),
-      JSON.stringify(stampGuids({
-        format: "path/workflow@5",
-        id: "child-id",
-        name: "child",
-        body: [emit("p", "P_OUT"), emit("k", "K_OUT"), emit("q", "Q_OUT")],
-      })),
+      JSON.stringify(
+        stampGuids({
+          format: "path/workflow@5",
+          id: "child-id",
+          name: "child",
+          body: [emit("p", "P_OUT"), emit("k", "K_OUT"), emit("q", "Q_OUT")],
+        }),
+      ),
       "utf8",
     );
     writeFileSync(
       join(dir, "parent.workflow.json"),
-      JSON.stringify(stampGuids({
-        format: "path/workflow@5",
-        id: "parent-id",
-        name: "parent",
-        body: [emit("a", "A_OUT"), { type: "workflow", id: "sub", name: "sub", ref: "./child.workflow.json", input: {} }, emit("d", "D_OUT")],
-      })),
+      JSON.stringify(
+        stampGuids({
+          format: "path/workflow@5",
+          id: "parent-id",
+          name: "parent",
+          body: [
+            emit("a", "A_OUT"),
+            { type: "workflow", id: "sub", name: "sub", ref: "./child.workflow.json", input: {} },
+            emit("d", "D_OUT"),
+          ],
+        }),
+      ),
       "utf8",
     );
   }
@@ -519,9 +567,14 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
       const originalRootId = project.archive.listRoots()[0]!.runId;
       // The disk fixture's ids are real GUIDs (name holds the human label), so nodes are found by name.
       // K = k, named by its own nested run id — the one handle that tells the nested ref apart (ADR 0032).
-      const kRunId = project.archive.tree(originalRootId)!.runs.find((r) => r.nodeName === "k")!.runId;
+      const kRunId = project.archive
+        .tree(originalRootId)!
+        .runs.find((r) => r.nodeName === "k")!.runId;
 
-      const result = await project.resume(rootFile, originalRootId, workflowDir, { files, rerunFromRunId: kRunId });
+      const result = await project.resume(rootFile, originalRootId, workflowDir, {
+        files,
+        rerunFromRunId: kRunId,
+      });
       if (!result.found) throw new Error(`expected found:true, got ${JSON.stringify(result)}`);
       expect(result.status).toBe("succeeded");
 
@@ -563,7 +616,10 @@ describe("Project.resume — nested Resume-from-K (#445)", () => {
 
       // Now resume the second tree from K = that reuse row p: a reuse row is a legal K, and K re-runs
       // fresh — the successor's own p is an executed row, not a reuse row.
-      const r3 = await project.resume(rootFile, r2.rootRunId, workflowDir, { files, rerunFromRunId: p2.runId });
+      const r3 = await project.resume(rootFile, r2.rootRunId, workflowDir, {
+        files,
+        rerunFromRunId: p2.runId,
+      });
       if (!r3.found) throw new Error(`expected found:true, got ${JSON.stringify(r3)}`);
       expect(r3.status).toBe("succeeded");
       const t3 = project.archive.tree(r3.rootRunId)!;
@@ -597,7 +653,10 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
     return { type: "prompt", id, name: id, prompt: id, publish: { [`from_${id}`]: "${output}" } };
   }
 
-  function launchFile(body: WorkflowFile["body"], workerDefaults?: { [type: string]: string }): WorkflowFile {
+  function launchFile(
+    body: WorkflowFile["body"],
+    workerDefaults?: { [type: string]: string },
+  ): WorkflowFile {
     return stampNames({
       format: "path/workflow@5",
       id: "wf-launch",
@@ -620,7 +679,9 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
       expect(first.status).toBe("failed");
       const originalRootId = project.archive.listRoots()[0]!.runId;
       // The recorded worker proves the launch tier resolved both un-pinned steps at launch.
-      expect(project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.workerName).toBe("deepseek");
+      expect(
+        project.archive.tree(originalRootId)!.runs.find((r) => r.nodeId === "a")!.workerName,
+      ).toBe("deepseek");
 
       // Resume against a v2 whose *file* default names the other worker. The launch default is frozen
       // with the run, so it outranks the live file default for the re-run step — exactly as at launch.
@@ -664,7 +725,9 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
       const result = await project.resume(v2, originalRootId, dir, { workerOverrides: stubs([]) });
       if (!result.found) throw new Error("expected found:true");
       expect(result.status).toBe("succeeded");
-      expect(project.archive.tree(result.rootRunId)!.runs.find((r) => r.nodeId === "b")!.workerName).toBe("deepseek");
+      expect(
+        project.archive.tree(result.rootRunId)!.runs.find((r) => r.nodeId === "b")!.workerName,
+      ).toBe("deepseek");
     } finally {
       project.close();
     }
@@ -674,7 +737,10 @@ describe("Project.resume — launch worker-default determinism (ADR 0044, #519)"
 describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
   // As in the block above: prompt workers stubbed to distinguishable outputs, and here also capturing
   // the *config* each step received, so a test can read what the run actually handed a worker.
-  function capturingStubs(seen: { label: string; config: Record<string, unknown> }[], failing?: string) {
+  function capturingStubs(
+    seen: { label: string; config: Record<string, unknown> }[],
+    failing?: string,
+  ) {
     const make = (workerName: string): WorkerDescriptor => ({
       meters: false,
       needsProcessorSlot: true,
@@ -693,7 +759,13 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
   }
 
   function fileWith(body: WorkflowFile["body"]): WorkflowFile {
-    return stampNames({ format: "path/workflow@5", id: "wf-facts", name: "facts", config: { model: "m" }, body });
+    return stampNames({
+      format: "path/workflow@5",
+      id: "wf-facts",
+      name: "facts",
+      config: { model: "m" },
+      body,
+    });
   }
 
   it("freezes the operator's launch facts on the root row, masking a $secret config value", async () => {
@@ -743,7 +815,9 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
       expect(resumed.status).toBe("succeeded");
 
       // The re-run step saw the recovered non-secret key and the re-entered secret as a real value.
-      expect(seen).toEqual([{ label: "b", config: { model: "m", greeting: "hi", apiKey: "sk-2" } }]);
+      expect(seen).toEqual([
+        { label: "b", config: { model: "m", greeting: "hi", apiKey: "sk-2" } },
+      ]);
 
       // The successor's own frozen copy carries it masked again — the plain re-entry was re-marked
       // before anything read the config, so the credential never lands on disk in the clear.
@@ -772,7 +846,9 @@ describe("Project — frozen launch facts across Resume (ADR 0046)", () => {
       const originalRootId = project.archive.listRoots()[0]!.runId;
 
       seen.length = 0;
-      const resumed = await project.resume(wf, originalRootId, dir, { workerOverrides: capturingStubs(seen) });
+      const resumed = await project.resume(wf, originalRootId, dir, {
+        workerOverrides: capturingStubs(seen),
+      });
       if (!resumed.found) throw new Error("expected found:true");
 
       // The frozen copy holds a token where the credential was, so the run ends on a named key rather
@@ -793,12 +869,22 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
     mkdirSync(sub, { recursive: true });
     writeFileSync(
       join(sub, "child.workflow.json"),
-      JSON.stringify(stampGuids({
-        format: "path/workflow@5",
-        id: "wf-id",
-        name: "child",
-        body: [{ type: "binary", id: "inner", name: "inner", command: "node", args: ["-e", "process.stdout.write('inner')"] }],
-      })),
+      JSON.stringify(
+        stampGuids({
+          format: "path/workflow@5",
+          id: "wf-id",
+          name: "child",
+          body: [
+            {
+              type: "binary",
+              id: "inner",
+              name: "inner",
+              command: "node",
+              args: ["-e", "process.stdout.write('inner')"],
+            },
+          ],
+        }),
+      ),
       "utf8",
     );
     const parent: WorkflowFile = stampGuids({
@@ -815,7 +901,9 @@ describe("Project — the projectDir / workflowDir distinction (#59)", () => {
       if (!loaded.success) throw new Error(loaded.errors.join("\n"));
 
       // `dir` is the project (where `.path/` is); `sub` is the workflow's own directory.
-      const result = await project.run(loaded.workflow.rootFile, sub, { files: loaded.workflow.files });
+      const result = await project.run(loaded.workflow.rootFile, sub, {
+        files: loaded.workflow.files,
+      });
 
       expect(result.status).toBe("succeeded");
       // ...and the run was still recorded under the project's `.path/`, not the subdirectory's.

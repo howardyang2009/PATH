@@ -19,5 +19,7 @@ export function createLogBackends(
   ids: readonly LogBackendId[],
   deps: { db: Database.Database; projectDir: string },
 ): LogBackend[] {
-  return ids.map((id) => (id === "db" ? createDbLogBackend(deps.db) : createNdjsonBackend(deps.projectDir)));
+  return ids.map((id) =>
+    id === "db" ? createDbLogBackend(deps.db) : createNdjsonBackend(deps.projectDir),
+  );
 }

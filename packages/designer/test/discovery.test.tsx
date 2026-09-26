@@ -1,4 +1,4 @@
-import { PathApiClient, type FetchLike } from "@path/client-core";
+import { type FetchLike, PathApiClient } from "@path/client-core";
 import { renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { discoveredWorkflows, useWorkflowDiscovery } from "../src/discovery.js";
@@ -10,7 +10,10 @@ import type { SaveState } from "../src/session-reducer.js";
  * the `null`-versus-`[]` distinction, keep-last on failure, and one re-scan per save that lands.
  */
 
-function clientOver(responses: (() => Promise<Response>)[]): { client: PathApiClient; calls: () => number } {
+function clientOver(responses: (() => Promise<Response>)[]): {
+  client: PathApiClient;
+  calls: () => number;
+} {
   let calls = 0;
   const fetch: FetchLike = () => responses[Math.min(calls++, responses.length - 1)]!();
   return { client: new PathApiClient({ baseUrl: "", fetch }), calls: () => calls };
@@ -21,7 +24,10 @@ const workflow = (relative_path: string) => ({ relative_path }) as never;
 function ok(paths: string[]): () => Promise<Response> {
   return () =>
     Promise.resolve(
-      new Response(JSON.stringify({ workflows: paths.map(workflow) }), { status: 200, headers: { "Content-Type": "application/json" } }),
+      new Response(JSON.stringify({ workflows: paths.map(workflow) }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
     );
 }
 
@@ -31,9 +37,12 @@ function fail(): Promise<Response> {
 
 /** Render the hook with a save phase the test can change, the way the App's session drives it. */
 function renderDiscovery(client: PathApiClient, phase: SaveState["phase"] = "idle") {
-  return renderHook(({ savePhase }: { savePhase: SaveState["phase"] }) => useWorkflowDiscovery(client, savePhase), {
-    initialProps: { savePhase: phase },
-  });
+  return renderHook(
+    ({ savePhase }: { savePhase: SaveState["phase"] }) => useWorkflowDiscovery(client, savePhase),
+    {
+      initialProps: { savePhase: phase },
+    },
+  );
 }
 
 describe("useWorkflowDiscovery", () => {
@@ -46,7 +55,9 @@ describe("useWorkflowDiscovery", () => {
     expect(discoveredWorkflows(hook.result.current)).toBeNull();
 
     await waitFor(() => expect(hook.result.current.phase).toBe("ready"));
-    expect(discoveredWorkflows(hook.result.current)?.map((wf) => wf.relative_path)).toEqual(["a.workflow.json"]);
+    expect(discoveredWorkflows(hook.result.current)?.map((wf) => wf.relative_path)).toEqual([
+      "a.workflow.json",
+    ]);
   });
 
   it("reports a failed first scan, and still distinguishes it from an empty project", async () => {
@@ -71,7 +82,9 @@ describe("useWorkflowDiscovery", () => {
     hook.rerender({ savePhase: "saved" });
 
     await waitFor(() => expect(hook.result.current.phase).toBe("error"));
-    expect(discoveredWorkflows(hook.result.current)?.map((wf) => wf.relative_path)).toEqual(["a.workflow.json"]);
+    expect(discoveredWorkflows(hook.result.current)?.map((wf) => wf.relative_path)).toEqual([
+      "a.workflow.json",
+    ]);
   });
 
   it("re-scans when a save lands, and not for the transient saving phase", async () => {

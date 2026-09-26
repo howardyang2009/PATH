@@ -29,7 +29,14 @@ export function effectiveRootInput(
 export function launchInput(
   override: { [key: string]: JsonValue } | undefined,
   fileInput: { [key: string]: JsonValue } | undefined,
-): { input: { [key: string]: JsonValue }; operatorInput: { [key: string]: JsonValue } | undefined } {
+): {
+  input: { [key: string]: JsonValue };
+  operatorInput: { [key: string]: JsonValue } | undefined;
+} {
   const input = effectiveRootInput(override, fileInput);
-  return { input, operatorInput: override !== undefined && Object.keys(override).length > 0 ? override : undefined };
+  return {
+    input,
+    operatorInput:
+      override !== undefined && Object.keys(override).length > 0 ? override : undefined,
+  };
 }

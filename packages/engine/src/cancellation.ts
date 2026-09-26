@@ -52,7 +52,10 @@ export interface BlockCancellation {
  * operator aborting the root — this block's controller aborts too, so the block's own in-flight steps
  * are killed rather than left running under a tree that is already coming down.
  */
-export function blockCancellation(parent: Cancellation | undefined, outside: AbortSignal | undefined): BlockCancellation {
+export function blockCancellation(
+  parent: Cancellation | undefined,
+  outside: AbortSignal | undefined,
+): BlockCancellation {
   const controller = new AbortController();
   const chain = (): void => controller.abort();
   if (outside) {
@@ -101,6 +104,9 @@ export function blockCancellation(parent: Cancellation | undefined, outside: Abo
  * tree (a test or an embedder building its own `RunContext`); every run the engine starts has a root
  * authority, so in production this is the authority's own answer.
  */
-export function stopCause(cancellation: Cancellation | undefined): { cause: CancelCause; causeRunId: string | null } {
+export function stopCause(cancellation: Cancellation | undefined): {
+  cause: CancelCause;
+  causeRunId: string | null;
+} {
   return { cause: cancellation?.cause ?? "operator", causeRunId: cancellation?.causeRunId ?? null };
 }

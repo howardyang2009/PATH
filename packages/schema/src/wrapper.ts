@@ -62,7 +62,8 @@ export function mapWrappers(
 ): JsonValue {
   const matched = match(value, basePath);
   if (matched !== undefined) return matched;
-  if (Array.isArray(value)) return value.map((item, i) => mapWrappers(item, match, childPath(basePath, i)));
+  if (Array.isArray(value))
+    return value.map((item, i) => mapWrappers(item, match, childPath(basePath, i)));
   if (isPlainObject(value)) {
     const result: { [key: string]: JsonValue } = {};
     for (const [key, item] of Object.entries(value)) {

@@ -1,6 +1,5 @@
-import { eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
+import { eventMessage, eventOutcome, type LogEvent, type StreamPhase } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
-import { eventMessage } from "@path/client-core";
 import { formatClockTime } from "./format-time.js";
 import { STATUS_GLYPH } from "./status-glyph.js";
 
@@ -23,6 +22,7 @@ export function Narrative({ events, stream }: NarrativeProps) {
 
   const newestSeq = events.at(-1)?.seq;
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: a new event's seq is the trigger to re-pin.
   useEffect(() => {
     if (!following) return;
     const list = listRef.current;
@@ -52,7 +52,12 @@ export function Narrative({ events, stream }: NarrativeProps) {
         <StreamIndicator phase={stream} />
         <span className="card-count">{countLabel(events)}</span>
         {!following && (
-          <button type="button" className="card-action" data-testid="narrative-follow" onClick={follow}>
+          <button
+            type="button"
+            className="card-action"
+            data-testid="narrative-follow"
+            onClick={follow}
+          >
             Jump to newest
           </button>
         )}
@@ -81,7 +86,12 @@ export function Narrative({ events, stream }: NarrativeProps) {
 function EventRow({ event }: { event: LogEvent }) {
   const outcome = eventOutcome(event);
   return (
-    <li className="event-row" data-type={event.type} data-status={outcome ?? undefined} data-seq={event.seq}>
+    <li
+      className="event-row"
+      data-type={event.type}
+      data-status={outcome ?? undefined}
+      data-seq={event.seq}
+    >
       <span className="event-seq" data-testid={`event-seq-${event.seq}`}>
         {event.seq}
       </span>
@@ -107,7 +117,12 @@ function EventRow({ event }: { event: LogEvent }) {
  */
 function StreamIndicator({ phase }: { phase: StreamPhase }) {
   return (
-    <span className="stream-indicator" data-phase={phase} data-testid="stream-indicator" role="status">
+    <span
+      className="stream-indicator"
+      data-phase={phase}
+      data-testid="stream-indicator"
+      role="status"
+    >
       {phase !== "closed" && <span className="stream-dot" aria-hidden="true" />}
       {STREAM_LABEL[phase]}
     </span>

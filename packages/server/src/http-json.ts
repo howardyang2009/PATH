@@ -3,8 +3,17 @@ import { formatIssues } from "@path/schema";
 import type { z } from "zod";
 
 /** Shared error shape (server-api-v0.md §1) for every non-2xx response. */
-export function sendError(res: ServerResponse, status: number, message: string, details?: unknown): void {
-  sendJson(res, status, details === undefined ? { error: { message } } : { error: { message, details } });
+export function sendError(
+  res: ServerResponse,
+  status: number,
+  message: string,
+  details?: unknown,
+): void {
+  sendJson(
+    res,
+    status,
+    details === undefined ? { error: { message } } : { error: { message, details } },
+  );
 }
 
 export function sendJson(res: ServerResponse, status: number, body: unknown): void {
@@ -13,7 +22,9 @@ export function sendJson(res: ServerResponse, status: number, body: unknown): vo
 }
 
 /** Reads and JSON-parses a request body; `null` marks a body that isn't valid JSON. */
-export function readJsonBody(req: IncomingMessage): Promise<{ ok: true; value: unknown } | { ok: false }> {
+export function readJsonBody(
+  req: IncomingMessage,
+): Promise<{ ok: true; value: unknown } | { ok: false }> {
   return new Promise((resolve) => {
     const chunks: Buffer[] = [];
     req.on("data", (chunk: Buffer) => chunks.push(chunk));

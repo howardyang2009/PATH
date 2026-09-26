@@ -1,10 +1,10 @@
-import { describe, expect, it } from "vitest";
 import type { JsonValue } from "@path/schema";
-import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
-import type { Cancellation, RunIdentity } from "../src/run-context.js";
-import type { Observation } from "../src/run-observer.js";
+import { describe, expect, it } from "vitest";
+import { type SettleStepResult, settleStepResult } from "../src/leaf-step.js";
 import type { StepResult } from "../src/plugin/seam.js";
-import { settleStepResult, type SettleStepResult } from "../src/leaf-step.js";
+import type { Cancellation, RunIdentity } from "../src/run-context.js";
+import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
+import type { Observation } from "../src/run-observer.js";
 
 /**
  * The engine-owned mapping from a worker's `StepResult` to a leaf step's terminal outcome, tested on
@@ -15,7 +15,13 @@ import { settleStepResult, type SettleStepResult } from "../src/leaf-step.js";
  * this, and it is one place.
  */
 
-const IDENTITY: RunIdentity = { runId: "wf-run", rootRunId: "root-run", parentRunId: null, nodeId: null, nodeName: null };
+const IDENTITY: RunIdentity = {
+  runId: "wf-run",
+  rootRunId: "root-run",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+};
 const NODE = { id: "step-node-guid", name: "do-thing" };
 
 // A real step emitter over a recording sink: `seen` is every wire `Observation` the mapping produced,
@@ -27,8 +33,16 @@ function harness(): { step: StepEmitter; seen: Observation[] } {
   return { step, seen };
 }
 
-function settle(over: Partial<SettleStepResult> & { result: StepResult; step: StepEmitter }): ReturnType<typeof settleStepResult> {
-  return settleStepResult({ node: NODE, meters: false, signal: undefined, cancellation: undefined, ...over });
+function settle(
+  over: Partial<SettleStepResult> & { result: StepResult; step: StepEmitter },
+): ReturnType<typeof settleStepResult> {
+  return settleStepResult({
+    node: NODE,
+    meters: false,
+    signal: undefined,
+    cancellation: undefined,
+    ...over,
+  });
 }
 
 describe("settleStepResult — success", () => {
@@ -38,29 +52,53 @@ describe("settleStepResult — success", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { answer: 42 } });
     expect(seen).toEqual([
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", status: "succeeded", output: { answer: 42 } },
+      {
+        type: "step-finished",
+        runId: step.runId,
+        rootRunId: "root-run",
+        nodeId: "step-node-guid",
+        nodeName: "do-thing",
+        status: "succeeded",
+        output: { answer: 42 },
+      },
     ]);
   });
 
   it('applies parse: "json" to a string result', async () => {
     const { step, seen } = harness();
-    const outcome = await settle({ step, node: { ...NODE, parse: "json" }, result: { status: "succeeded", output: '{"n":1}' } });
+    const outcome = await settle({
+      step,
+      node: { ...NODE, parse: "json" },
+      result: { status: "succeeded", output: '{"n":1}' },
+    });
 
     expect(outcome).toEqual({ status: "succeeded", output: { n: 1 } });
-    expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "succeeded", output: { n: 1 } });
+    expect(seen.at(-1)).toMatchObject({
+      type: "step-finished",
+      status: "succeeded",
+      output: { n: 1 },
+    });
   });
 
   it('leaves a non-string output un-parsed even under parse: "json"', async () => {
     const { step } = harness();
     const already: JsonValue = { n: 1 };
-    const outcome = await settle({ step, node: { ...NODE, parse: "json" }, result: { status: "succeeded", output: already } });
+    const outcome = await settle({
+      step,
+      node: { ...NODE, parse: "json" },
+      result: { status: "succeeded", output: already },
+    });
 
     expect(outcome).toEqual({ status: "succeeded", output: already });
   });
 
   it('fails the step, with its own run as the cause, when parse: "json" cannot parse the string', async () => {
     const { step, seen } = harness();
-    const outcome = await settle({ step, node: { ...NODE, parse: "json" }, result: { status: "succeeded", output: "not json" } });
+    const outcome = await settle({
+      step,
+      node: { ...NODE, parse: "json" },
+      result: { status: "succeeded", output: "not json" },
+    });
 
     expect(outcome.status).toBe("failed");
     expect(outcome).toMatchObject({ status: "failed", causeRunId: step.runId });
@@ -72,11 +110,26 @@ describe("settleStepResult — success", () => {
 describe("settleStepResult — failure", () => {
   it("prefixes the node name onto the worker error and names its own run the cause", async () => {
     const { step, seen } = harness();
-    const outcome = await settle({ step, result: { status: "failed", error: "exited with code 2" } });
+    const outcome = await settle({
+      step,
+      result: { status: "failed", error: "exited with code 2" },
+    });
 
-    expect(outcome).toEqual({ status: "failed", error: 'step "do-thing": exited with code 2', causeRunId: step.runId });
+    expect(outcome).toEqual({
+      status: "failed",
+      error: 'step "do-thing": exited with code 2',
+      causeRunId: step.runId,
+    });
     expect(seen).toEqual([
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", status: "failed", error: 'step "do-thing": exited with code 2' },
+      {
+        type: "step-finished",
+        runId: step.runId,
+        rootRunId: "root-run",
+        nodeId: "step-node-guid",
+        nodeName: "do-thing",
+        status: "failed",
+        error: 'step "do-thing": exited with code 2',
+      },
     ]);
   });
 });
@@ -86,7 +139,11 @@ describe("settleStepResult — cancelled outranks the worker's verdict", () => {
     const { step, seen } = harness();
     const controller = new AbortController();
     controller.abort();
-    const outcome = await settle({ step, signal: controller.signal, result: { status: "succeeded", output: "would-have-published" } });
+    const outcome = await settle({
+      step,
+      signal: controller.signal,
+      result: { status: "succeeded", output: "would-have-published" },
+    });
 
     expect(outcome).toEqual({ status: "cancelled" });
     // The kill pair, in order: run-cancelled (with the cause) then the cancelled step-finished.
@@ -98,10 +155,22 @@ describe("settleStepResult — cancelled outranks the worker's verdict", () => {
     const { step, seen } = harness();
     const controller = new AbortController();
     controller.abort();
-    const cancellation = { cause: "sibling-failed", causeRunId: "the-failing-sibling" } as unknown as Cancellation;
-    await settle({ step, signal: controller.signal, cancellation, result: { status: "failed", error: "killed mid-flight" } });
+    const cancellation = {
+      cause: "sibling-failed",
+      causeRunId: "the-failing-sibling",
+    } as unknown as Cancellation;
+    await settle({
+      step,
+      signal: controller.signal,
+      cancellation,
+      result: { status: "failed", error: "killed mid-flight" },
+    });
 
-    expect(seen[0]).toMatchObject({ type: "run-cancelled", cause: "sibling-failed", causeRunId: "the-failing-sibling" });
+    expect(seen[0]).toMatchObject({
+      type: "run-cancelled",
+      cause: "sibling-failed",
+      causeRunId: "the-failing-sibling",
+    });
   });
 
   it("reads operator / null cause when there is no enclosing cancellation", async () => {
@@ -119,7 +188,14 @@ describe("settleStepResult — stderr rides every outcome", () => {
     const { step, seen } = harness();
     await settle({ step, result: { status: "succeeded", output: "ok", stderr: "a warning" } });
 
-    expect(seen[0]).toEqual({ type: "step-stderr", runId: step.runId, rootRunId: "root-run", nodeId: "step-node-guid", nodeName: "do-thing", stderr: "a warning" });
+    expect(seen[0]).toEqual({
+      type: "step-stderr",
+      runId: step.runId,
+      rootRunId: "root-run",
+      nodeId: "step-node-guid",
+      nodeName: "do-thing",
+      stderr: "a warning",
+    });
     expect(seen.at(-1)).toMatchObject({ type: "step-finished", status: "succeeded" });
   });
 
@@ -127,7 +203,11 @@ describe("settleStepResult — stderr rides every outcome", () => {
     const { step, seen } = harness();
     const controller = new AbortController();
     controller.abort();
-    await settle({ step, signal: controller.signal, result: { status: "failed", error: "boom", stderr: "the tail" } });
+    await settle({
+      step,
+      signal: controller.signal,
+      result: { status: "failed", error: "boom", stderr: "the tail" },
+    });
 
     expect(seen.map((o) => o.type)).toEqual(["step-stderr", "run-cancelled", "step-finished"]);
   });
@@ -136,15 +216,27 @@ describe("settleStepResult — stderr rides every outcome", () => {
 describe("settleStepResult — usage is leaf-only and metering-gated", () => {
   it("emits step-usage before the finish for a metering worker, on success", async () => {
     const { step, seen } = harness();
-    await settle({ step, meters: true, result: { status: "succeeded", output: "ok", usage: { in: 10 }, estimatedCostUsd: 0.01 } });
+    await settle({
+      step,
+      meters: true,
+      result: { status: "succeeded", output: "ok", usage: { in: 10 }, estimatedCostUsd: 0.01 },
+    });
 
     expect(seen.map((o) => o.type)).toEqual(["step-usage", "step-finished"]);
-    expect(seen[0]).toMatchObject({ type: "step-usage", usage: { in: 10 }, estimatedCostUsd: 0.01 });
+    expect(seen[0]).toMatchObject({
+      type: "step-usage",
+      usage: { in: 10 },
+      estimatedCostUsd: 0.01,
+    });
   });
 
   it("emits usage for a failed metering step too — a step that died mid-conversation still spent tokens", async () => {
     const { step, seen } = harness();
-    await settle({ step, meters: true, result: { status: "failed", error: "mid-flight", usage: { in: 5 } } });
+    await settle({
+      step,
+      meters: true,
+      result: { status: "failed", error: "mid-flight", usage: { in: 5 } },
+    });
 
     expect(seen.map((o) => o.type)).toEqual(["step-usage", "step-finished"]);
     expect(seen[0]).toMatchObject({ type: "step-usage", usage: { in: 5 }, estimatedCostUsd: null });
@@ -152,7 +244,11 @@ describe("settleStepResult — usage is leaf-only and metering-gated", () => {
 
   it("never emits usage for a non-metering worker, even when the result carries figures", async () => {
     const { step, seen } = harness();
-    await settle({ step, meters: false, result: { status: "succeeded", output: "ok", usage: { in: 9 }, estimatedCostUsd: 0.5 } });
+    await settle({
+      step,
+      meters: false,
+      result: { status: "succeeded", output: "ok", usage: { in: 9 }, estimatedCostUsd: 0.5 },
+    });
 
     expect(seen.map((o) => o.type)).toEqual(["step-finished"]);
   });
@@ -169,7 +265,14 @@ describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", (
     expect(outcome).toEqual({ status: "awaiting" });
     expect(seen.map((o) => o.type)).toEqual(["step-awaiting"]);
     // A park that named no assignee carries `assignee: null` on the record (#488).
-    expect(seen[0]).toEqual({ type: "step-awaiting", runId: step.runId, rootRunId: "root-run", nodeId: NODE.id, nodeName: NODE.name, assignee: null });
+    expect(seen[0]).toEqual({
+      type: "step-awaiting",
+      runId: step.runId,
+      rootRunId: "root-run",
+      nodeId: NODE.id,
+      nodeName: NODE.name,
+      assignee: null,
+    });
   });
 
   it("carries the worker's echoed assignee on the step-awaiting record (#488)", async () => {
@@ -188,7 +291,11 @@ describe("settleStepResult — awaiting parks and tears down (ADR 0039/0041)", (
     const controller = new AbortController();
     controller.abort();
 
-    const outcome = await settle({ step, result: { status: "awaiting" }, signal: controller.signal });
+    const outcome = await settle({
+      step,
+      result: { status: "awaiting" },
+      signal: controller.signal,
+    });
 
     // The signal-derived cancel outranks the worker's awaiting verdict: no `step-awaiting` is emitted,
     // and the kill pair lands instead. This is what makes Cancel work on an awaiting-bound step.

@@ -159,7 +159,11 @@ export function useDragSize(opts: DragSizeOptions): DragSize {
       onPointerDown: (e) => {
         e.preventDefault();
         dragRef.current = { start: axis === "x" ? e.clientX : e.clientY, startSize: size };
-        stopRef.current = beginDrag(e, { cursor, onMove: onPointerMove, onEnd: () => (dragRef.current = null) });
+        stopRef.current = beginDrag(e, {
+          cursor,
+          onMove: onPointerMove,
+          onEnd: () => (dragRef.current = null),
+        });
       },
       onKeyDown: (e) => {
         // Sign the step by `grow` so the separator tracks the arrow whichever edge it sits on. The

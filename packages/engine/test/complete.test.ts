@@ -33,7 +33,10 @@ function open(): Project {
 }
 
 /** A person-activity leaf: parks the run until Completed. `publish` exposes its output downstream. */
-function person(id: string, opts?: { publish?: { [k: string]: string }; assignee?: string }): WorkflowFile["body"][number] {
+function person(
+  id: string,
+  opts?: { publish?: { [k: string]: string }; assignee?: string },
+): WorkflowFile["body"][number] {
   return {
     type: "person-activity",
     id,
@@ -46,11 +49,23 @@ function person(id: string, opts?: { publish?: { [k: string]: string }; assignee
 
 /** A trivial binary step that succeeds, so a tail after the parked leaf is observable as a real run. */
 function marker(id: string): WorkflowFile["body"][number] {
-  return { type: "binary", id, name: id, command: "node", args: ["-e", `process.stdout.write('${id}')`] };
+  return {
+    type: "binary",
+    id,
+    name: id,
+    command: "node",
+    args: ["-e", `process.stdout.write('${id}')`],
+  };
 }
 
 function workflow(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@5", id: "wf-complete", name: "complete-wf", body, ...(output ? { output } : {}) });
+  return stampNames({
+    format: "path/workflow@5",
+    id: "wf-complete",
+    name: "complete-wf",
+    body,
+    ...(output ? { output } : {}),
+  });
 }
 
 /** The one `awaiting` leaf of a tree — the parked person-activity step run. */
@@ -91,7 +106,10 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
   it("writes the leaf output, reuses the succeeded prefix, and runs the tail once in the same tree", async () => {
     const project = open();
     try {
-      const wf = workflow([person("approve", { publish: { decision: "${output}" } }), marker("after")], { result: "${context.decision}" });
+      const wf = workflow(
+        [person("approve", { publish: { decision: "${output}" } }), marker("after")],
+        { result: "${context.decision}" },
+      );
       await project.run(wf, dir);
       const [root] = project.archive.listRoots();
       const rootRunId = root!.runId;
@@ -126,7 +144,10 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
       const wf = workflow([person("approve"), marker("after")]);
       await project.run(wf, dir);
       const rootRunId = project.archive.listRoots()[0]!.runId;
-      const seqsAfterLaunch = project.archive.tree(rootRunId)!.events().map((e) => e.seq);
+      const seqsAfterLaunch = project.archive
+        .tree(rootRunId)!
+        .events()
+        .map((e) => e.seq);
       const leaf = awaitingLeaf(project, rootRunId);
 
       await project.complete(wf, leaf.runId, { ok: true }, dir);
@@ -156,7 +177,11 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
       // The park is narrated with the leaf's node id and its assignee, before any Complete.
       const parked = project.archive.tree(rootRunId)!.events();
       const awaiting = parked.find((e) => e.type === "step-awaiting");
-      expect(awaiting).toMatchObject({ type: "step-awaiting", node_id: "approve", assignee: "alex" });
+      expect(awaiting).toMatchObject({
+        type: "step-awaiting",
+        node_id: "approve",
+        assignee: "alex",
+      });
 
       await project.complete(wf, leaf.runId, { ok: true }, dir);
 
@@ -170,7 +195,10 @@ describe("Complete replays from the root, resolves the leaf, and continues forwa
         .filter((e) => e.run_id === leaf.runId)
         .map((e) => e.type);
       expect(forLeaf).toEqual(["step-started", "step-awaiting", "step-finished"]);
-      const finished = project.archive.tree(rootRunId)!.events().find((e) => e.run_id === leaf.runId && e.type === "step-finished");
+      const finished = project.archive
+        .tree(rootRunId)!
+        .events()
+        .find((e) => e.run_id === leaf.runId && e.type === "step-finished");
       expect(finished).toMatchObject({ type: "step-finished", status: "succeeded" });
     } finally {
       project.close();
@@ -332,10 +360,18 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
         return { status: "succeeded", output: `${workerName}-ran` };
       },
     });
-    return { overrides: { prompt: { anthropic: make("anthropic"), deepseek: make("deepseek") } }, ran };
+    return {
+      overrides: { prompt: { anthropic: make("anthropic"), deepseek: make("deepseek") } },
+      ran,
+    };
   }
 
-  const after: WorkflowFile["body"][number] = { type: "prompt", id: "after", name: "after", prompt: "after" };
+  const after: WorkflowFile["body"][number] = {
+    type: "prompt",
+    id: "after",
+    name: "after",
+    prompt: "after",
+  };
 
   it("resolves the re-run tail from the frozen launch table, over the live file default", async () => {
     const project = open();
@@ -345,7 +381,10 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
         config: { model: "m" },
       };
       const { overrides, ran } = stubs();
-      const first = await project.run(launched, dir, { launchWorkerDefaults: { prompt: "deepseek" }, workerOverrides: overrides });
+      const first = await project.run(launched, dir, {
+        launchWorkerDefaults: { prompt: "deepseek" },
+        workerOverrides: overrides,
+      });
       expect(first.status).toBe("awaiting");
       const rootRunId = project.archive.listRoots()[0]!.runId;
       const leaf = awaitingLeaf(project, rootRunId);
@@ -353,7 +392,9 @@ describe("Complete replays the tail from the frozen launch default (ADR 0044, #5
       // The file handed to Complete carries a *different* live file default; the frozen launch default
       // must still win for the tail, reconstructing the same worker set the launch resolved (ADR 0044).
       const changed = { ...launched, worker_defaults: { prompt: "anthropic" } };
-      const done = await project.complete(changed, leaf.runId, { approved: true }, dir, { workerOverrides: overrides });
+      const done = await project.complete(changed, leaf.runId, { approved: true }, dir, {
+        workerOverrides: overrides,
+      });
       expect(done.ok).toBe(true);
       if (!done.ok) throw new Error("expected ok");
       expect(done.status).toBe("succeeded");
@@ -385,7 +426,9 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
     const project = open();
     try {
       const wf = echoingWorkflow();
-      const first = await project.run(wf, dir, { operatorConfig: { greeting: "launched-with-this" } });
+      const first = await project.run(wf, dir, {
+        operatorConfig: { greeting: "launched-with-this" },
+      });
       expect(first.status).toBe("awaiting");
       const rootRunId = project.archive.listRoots()[0]!.runId;
       const leaf = awaitingLeaf(project, rootRunId);
@@ -408,7 +451,9 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
     const project = open();
     try {
       const wf = workflow([person("approve"), configEcho], { seen: "${context.seen}" });
-      await project.run(wf, dir, { operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } } });
+      await project.run(wf, dir, {
+        operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } },
+      });
       const firstRoot = project.archive.listRoots()[0]!.runId;
 
       // Nothing supplied this time: the frozen credential is a token, so the continuation ends on a
@@ -419,11 +464,19 @@ describe("Complete — the frozen launch config (ADR 0046)", () => {
       expect(refused.status).toBe("failed");
       expect(refused.error).toContain('launch config secret "apiKey" was not supplied again');
 
-      await project.run(wf, dir, { operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } } });
-      const secondRoot = project.archive.listRoots()[0]!.runId;
-      const supplied = await project.complete(wf, awaitingLeaf(project, secondRoot).runId, {}, dir, {
-        operatorConfig: { apiKey: "sk-2" },
+      await project.run(wf, dir, {
+        operatorConfig: { greeting: "hi", apiKey: { $secret: "sk-1" } },
       });
+      const secondRoot = project.archive.listRoots()[0]!.runId;
+      const supplied = await project.complete(
+        wf,
+        awaitingLeaf(project, secondRoot).runId,
+        {},
+        dir,
+        {
+          operatorConfig: { apiKey: "sk-2" },
+        },
+      );
       expect(supplied.ok).toBe(true);
       if (!supplied.ok) throw new Error("expected ok");
       expect(supplied.status).toBe("succeeded");

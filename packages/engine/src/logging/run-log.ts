@@ -1,5 +1,5 @@
-import type Database from "better-sqlite3";
 import type { LogEvent } from "@path/schema";
+import type Database from "better-sqlite3";
 import { getLogEventsForRoot, maxLogSeqForRoot } from "./db-backend.js";
 import { readNdjsonLog } from "./ndjson-backend.js";
 
@@ -45,6 +45,10 @@ export function openRunLog(projectDir: string, db: Database.Database, rootRunId:
   return {
     events,
     read: (afterSeq) => events().filter((event) => event.seq > afterSeq),
-    lastSeq: () => Math.max(maxLogSeqForRoot(db, rootRunId), events().reduce((max, event) => Math.max(max, event.seq), 0)),
+    lastSeq: () =>
+      Math.max(
+        maxLogSeqForRoot(db, rootRunId),
+        events().reduce((max, event) => Math.max(max, event.seq), 0),
+      ),
   };
 }

@@ -1,9 +1,9 @@
-import { formatIssues, walkNodes, type ConfigObject, type WorkflowFile } from "@path/schema";
+import { type ConfigObject, formatIssues, type WorkflowFile, walkNodes } from "@path/schema";
 import { z } from "zod";
 import { describeMissingLaunchSecrets } from "./launch-facts.js";
-import { scanStepPlugins, type LoadedStepPluginRegistry } from "./plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin/scan.js";
 import { walkRefTree } from "./ref-tree.js";
-import { describeUnsetEnv, resolveRunEnv, type EnvSource } from "./resolve-env.js";
+import { describeUnsetEnv, type EnvSource, resolveRunEnv } from "./resolve-env.js";
 import type { RunOptions, WorkerOverrides } from "./run-workflow.js";
 import { collectSecrets, type SecretMasker } from "./secret-mask.js";
 
@@ -113,7 +113,14 @@ export function analyzeRunStart(
       ? describeUnsetEnv(unset)
       : (options.unresolvedLaunchSecrets?.length ?? 0) > 0
         ? describeMissingLaunchSecrets(options.unresolvedLaunchSecrets as string[])
-        : validateRunStartConfig(file, fileDir, options.files, options.operatorConfig ?? {}, env, registry);
+        : validateRunStartConfig(
+            file,
+            fileDir,
+            options.files,
+            options.operatorConfig ?? {},
+            env,
+            registry,
+          );
   return { masker, runStartFailure };
 }
 
@@ -141,7 +148,11 @@ function validateRunStartConfig(
   // One descent of the loaded ref tree (`walkRefTree`), so this gate reads the very `stepConfig` the
   // executor materializes. A file reached under two parents is validated once per incoming config, each
   // against what actually reaches it (format §8) — the walk carries that, not this fold.
-  for (const { node, stepConfig } of walkRefTree(rootFile, rootDir, { files, operatorConfig, env })) {
+  for (const { node, stepConfig } of walkRefTree(rootFile, rootDir, {
+    files,
+    operatorConfig,
+    env,
+  })) {
     if (node.type === "workflow") continue; // grammar-fixed, never a registry leaf; the walk descends it
     const plugin = registry[node.type];
     if (!plugin) continue; // the schema already rejects a type no registry contributes

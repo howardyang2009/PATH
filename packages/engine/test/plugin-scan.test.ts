@@ -1,11 +1,10 @@
 import { mkdir, mkdtemp, rm, utimes, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { makeWorkflowFileSchema } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeWorkflowFileSchema } from "@path/schema";
-
-import { entryImportUrl, scanStepPlugins, STEP_PLUGINS_DIR } from "../src/plugin/scan.js";
+import { entryImportUrl, STEP_PLUGINS_DIR, scanStepPlugins } from "../src/plugin/scan.js";
 
 // The engine-side plugin discovery scanner (#335, ADR 0019 sub-decisions 7–17). These tests drive it
 // against fixture directories built at run time under `test/`, so a fixture plugin's `index.ts` resolves
@@ -157,7 +156,10 @@ describe("scanStepPlugins — broken plugins are hard failures", () => {
 
   it("fails a malformed `stepPlugin` export", async () => {
     // Shape missing `defaultWorker` — a plain value where the seam wants a name.
-    await writePlugin("malformed", "export const stepPlugin = { fields: {}, config: {}, workers: {} };\n");
+    await writePlugin(
+      "malformed",
+      "export const stepPlugin = { fields: {}, config: {}, workers: {} };\n",
+    );
 
     await expect(scanStepPlugins(root)).rejects.toThrow(/`stepPlugin` export is malformed/);
   });

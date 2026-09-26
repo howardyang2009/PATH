@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
-import { findById } from "./edit-tree.js";
+import { useState } from "react";
 import { replaceNode } from "./edit-target.js";
+import { findById } from "./edit-tree.js";
 import { relativeRefPath } from "./resolve-ref.js";
 import type { OpenSession } from "./use-open-file.js";
 
@@ -43,14 +43,23 @@ export interface RefAuthoring {
  * the active file has one. Returns the edited file, or `null` if the node is gone or not a `workflow`.
  * The node splice is `replaceNode`'s (`edit-target.ts`), the same one the pane's field commits use.
  */
-function fileWithNodeRef(file: WorkflowFile, activePath: string, nodeId: string, targetPath: string): WorkflowFile | null {
+function fileWithNodeRef(
+  file: WorkflowFile,
+  activePath: string,
+  nodeId: string,
+  targetPath: string,
+): WorkflowFile | null {
   const node = findById(file.body, nodeId);
   if (!node || node.type !== "workflow") return null;
   const ref = relativeRefPath(activePath, targetPath);
   return replaceNode(file, { ...node, ref } as WorkflowNode);
 }
 
-export function useRefAuthoring(session: OpenSession, openedFile: WorkflowFile | null, activePath: string | undefined): RefAuthoring {
+export function useRefAuthoring(
+  session: OpenSession,
+  openedFile: WorkflowFile | null,
+  activePath: string | undefined,
+): RefAuthoring {
   // The id of the empty `workflow` node whose target is being chosen, or `null`. `setNodeId` is stable, so
   // the `onAuthorRef` handle the pane and canvas receive is stable while the active file keeps a path.
   const [nodeId, setNodeId] = useState<string | null>(null);
@@ -75,7 +84,8 @@ export function useRefAuthoring(session: OpenSession, openedFile: WorkflowFile |
 
   return {
     onAuthorRef: activePath === undefined ? undefined : setNodeId,
-    target: nodeId !== null && activePath !== undefined ? { nodeId, excludePath: activePath } : null,
+    target:
+      nodeId !== null && activePath !== undefined ? { nodeId, excludePath: activePath } : null,
     pickExisting,
     createNew,
     cancel,

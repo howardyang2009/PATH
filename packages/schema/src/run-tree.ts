@@ -66,7 +66,9 @@ export function subtree<T extends RunTreeFields>(rows: Iterable<T>, startId: str
 }
 
 /** The tree's root row — the one with no parent (invariant 2) — or `undefined` when it is absent. */
-export function findRootRun<T extends { parentRunId: string | null }>(rows: Iterable<T>): T | undefined {
+export function findRootRun<T extends { parentRunId: string | null }>(
+  rows: Iterable<T>,
+): T | undefined {
   for (const row of rows) {
     if (isRootRun(row)) return row;
   }

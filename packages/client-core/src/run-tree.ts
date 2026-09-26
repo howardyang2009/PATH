@@ -31,7 +31,10 @@ export interface RunTreeNode {
  * A second consumer reaching different answers would be showing a different run tree, not a
  * differently styled one.
  */
-export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNodeState>): RunTreeNode | null {
+export function buildRunTree(
+  rootRunId: string,
+  runs: ReadonlyMap<string, RunNodeState>,
+): RunTreeNode | null {
   const root = runs.get(rootRunId);
   if (!root) return null;
 
@@ -68,7 +71,9 @@ export function buildRunTree(rootRunId: string, runs: ReadonlyMap<string, RunNod
  * not `running` (a finished run has no live descendant). A caller with no descendants loaded passes a
  * map that holds only the run itself, and gets its record status back unchanged.
  */
-export function displayStatusByRun(runs: ReadonlyMap<string, RunNodeState>): Map<string, RunStatus> {
+export function displayStatusByRun(
+  runs: ReadonlyMap<string, RunNodeState>,
+): Map<string, RunStatus> {
   const display = new Map<string, RunStatus>();
   for (const run of runs.values()) display.set(run.runId, run.status);
 

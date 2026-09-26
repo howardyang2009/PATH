@@ -24,16 +24,25 @@ describe("parseServerArgs", () => {
 
   it("rejects a non-integer --port", () => {
     const result = parseServerArgs(["--port", "not-a-number"]);
-    expect(result).toMatchObject({ success: false, error: expect.stringContaining("--port requires") });
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--port requires"),
+    });
   });
 
   it("rejects a --port outside the valid range", () => {
     const result = parseServerArgs(["--port", "70000"]);
-    expect(result).toMatchObject({ success: false, error: expect.stringContaining("--port requires") });
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining("--port requires"),
+    });
   });
 
   it("rejects a second positional argument", () => {
     const result = parseServerArgs(["/a", "/b"]);
-    expect(result).toMatchObject({ success: false, error: expect.stringContaining('unrecognized argument "/b"') });
+    expect(result).toMatchObject({
+      success: false,
+      error: expect.stringContaining('unrecognized argument "/b"'),
+    });
   });
 });

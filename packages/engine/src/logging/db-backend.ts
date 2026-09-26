@@ -26,7 +26,9 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
     },
     async write(event) {
       if (rootRunId === null) {
-        throw new Error("db log backend: write before open — no root run id to scope the event under");
+        throw new Error(
+          "db log backend: write before open — no root run id to scope the event under",
+        );
       }
       db.prepare(
         `INSERT INTO log_events (root_run_id, seq, ts, type, run_id, node_id, node_name, event)
@@ -54,7 +56,9 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
  * collide with the existing `(root_run_id, seq)` rows.
  */
 export function maxLogSeqForRoot(db: Database.Database, rootRunId: string): number {
-  const row = db.prepare(`SELECT MAX(seq) AS maxSeq FROM log_events WHERE root_run_id = @rootRunId`).get({ rootRunId }) as {
+  const row = db
+    .prepare(`SELECT MAX(seq) AS maxSeq FROM log_events WHERE root_run_id = @rootRunId`)
+    .get({ rootRunId }) as {
     maxSeq: number | null;
   };
   return row.maxSeq ?? 0;
@@ -80,7 +84,9 @@ export function getLogEventsForRoot(db: Database.Database, rootRunId: string): L
  * marker back-references. `runs rm` resolves the latter against the tree it is about to delete to know
  * whether a live successor still depends on that tree's data. Project-wide: the `type` column is
  * denormalized precisely so this scan need not open every tree's log. */
-export function reuseMarkerReferences(db: Database.Database): { holderRootRunId: string; originalRunId: string }[] {
+export function reuseMarkerReferences(
+  db: Database.Database,
+): { holderRootRunId: string; originalRunId: string }[] {
   const rows = db
     .prepare(`SELECT root_run_id, event FROM log_events WHERE type = 'reuse-marker'`)
     .all() as { root_run_id: string; event: string }[];

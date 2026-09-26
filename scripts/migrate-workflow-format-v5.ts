@@ -22,9 +22,9 @@
  *   `node_modules`) and under its `.path/template/`.
  */
 import { existsSync, readdirSync, readFileSync, writeFileSync } from "node:fs";
-import { isDeepStrictEqual } from "node:util";
 import { join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { isDeepStrictEqual } from "node:util";
 
 const LEGACY_FORMAT = "path/workflow@4";
 const NEXT_FORMAT = "path/workflow@5";
@@ -66,7 +66,10 @@ function main(): void {
   const files =
     args.length > 0
       ? args.map((a) => resolve(a))
-      : [...discoverFiles(process.cwd()), ...(existsSync(templateDir) ? discoverFiles(templateDir) : [])];
+      : [
+          ...discoverFiles(process.cwd()),
+          ...(existsSync(templateDir) ? discoverFiles(templateDir) : []),
+        ];
 
   let migrated = 0;
   let skipped = 0;

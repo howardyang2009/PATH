@@ -1,4 +1,4 @@
-import { useState, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { type KeyboardEvent as ReactKeyboardEvent, useState } from "react";
 
 /**
  * The properties pane's generic field vocabulary: the label/input/select/textarea atoms, the id row, and
@@ -24,7 +24,8 @@ export function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
   if (!(el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement)) return;
   if (el.value !== "" || el.placeholder === "") return;
   e.preventDefault();
-  const proto = el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
+  const proto =
+    el instanceof HTMLTextAreaElement ? HTMLTextAreaElement.prototype : HTMLInputElement.prototype;
   const setValue = Object.getOwnPropertyDescriptor(proto, "value")?.set;
   setValue?.call(el, el.placeholder);
   el.dispatchEvent(new Event("input", { bubbles: true }));
@@ -35,7 +36,15 @@ export function fillPlaceholderOnTab(e: ReactKeyboardEvent<HTMLElement>): void {
  * because it mints a new id, which breaks resume plan-reuse (ADR 0015) — so the button first arms a
  * confirm/cancel, and only Confirm commits the new id.
  */
-export function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; what: string }): JSX.Element {
+export function IdRow({
+  id,
+  onReKey,
+  what,
+}: {
+  id: string;
+  onReKey: () => void;
+  what: string;
+}): JSX.Element {
   const [confirming, setConfirming] = useState(false);
   return (
     <div className="pane-field pane-field-row">
@@ -73,25 +82,59 @@ export function IdRow({ id, onReKey, what }: { id: string; onReKey: () => void; 
   );
 }
 
-export function TextField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
+export function TextField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}): JSX.Element {
   return (
     <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
-      <input className="pane-input" type="text" value={value} onChange={(e) => onChange(e.target.value)} />
+      <input
+        className="pane-input"
+        type="text"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }
 
-export function TextAreaField({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }): JSX.Element {
+export function TextAreaField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}): JSX.Element {
   return (
     <label className="pane-field pane-field-row pane-field-multiline">
       <span className="pane-label">{label}</span>
-      <textarea className="pane-input" rows={5} value={value} onChange={(e) => onChange(e.target.value)} />
+      <textarea
+        className="pane-input"
+        rows={5}
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+      />
     </label>
   );
 }
 
-export function NumberField({ label, value, onChange }: { label: string; value: number | null; onChange: (v: number | null) => void }): JSX.Element {
+export function NumberField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | null;
+  onChange: (v: number | null) => void;
+}): JSX.Element {
   return (
     <label className="pane-field pane-field-row">
       <span className="pane-label">{label}</span>
@@ -105,7 +148,15 @@ export function NumberField({ label, value, onChange }: { label: string; value: 
   );
 }
 
-export function CheckboxField({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }): JSX.Element {
+export function CheckboxField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  onChange: (v: boolean) => void;
+}): JSX.Element {
   return (
     <label className="pane-field pane-field-inline">
       <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} />
@@ -114,7 +165,15 @@ export function CheckboxField({ label, value, onChange }: { label: string; value
   );
 }
 
-export function StringListField({ label, values, onChange }: { label: string; values: string[]; onChange: (v: string[]) => void }): JSX.Element {
+export function StringListField({
+  label,
+  values,
+  onChange,
+}: {
+  label: string;
+  values: string[];
+  onChange: (v: string[]) => void;
+}): JSX.Element {
   // The textarea keeps its own raw text, so a just-typed Enter (a trailing or blank line) survives the
   // keystroke instead of being erased. The parent only ever sees the non-empty lines; we resync the draft
   // when the parent's canonical value diverges — a different node selected, an external edit — but not on

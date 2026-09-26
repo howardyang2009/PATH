@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { checkInterpolationSyntax, interpolableString, interpolatedJsonValue } from "../src/interpolation.js";
+import {
+  checkInterpolationSyntax,
+  interpolableString,
+  interpolatedJsonValue,
+} from "../src/interpolation.js";
 
 describe("checkInterpolationSyntax", () => {
   it("accepts a plain literal string with no placeholders", () => {
@@ -15,16 +19,24 @@ describe("checkInterpolationSyntax", () => {
   });
 
   it("accepts a splice of literal text and placeholders", () => {
-    expect(checkInterpolationSyntax("Hello ${context.name}!", ["config", "context"])).toEqual({ ok: true });
-    expect(checkInterpolationSyntax("${context.a}-${context.b}", ["config", "context"])).toEqual({ ok: true });
+    expect(checkInterpolationSyntax("Hello ${context.name}!", ["config", "context"])).toEqual({
+      ok: true,
+    });
+    expect(checkInterpolationSyntax("${context.a}-${context.b}", ["config", "context"])).toEqual({
+      ok: true,
+    });
   });
 
   it("accepts numeric segments as array indices", () => {
-    expect(checkInterpolationSyntax("${context.items.0.name}", ["config", "context"])).toEqual({ ok: true });
+    expect(checkInterpolationSyntax("${context.items.0.name}", ["config", "context"])).toEqual({
+      ok: true,
+    });
   });
 
   it("treats $${ as an escaped literal ${ and does not parse a placeholder", () => {
-    expect(checkInterpolationSyntax("cost is $${100} exactly", ["config", "context"])).toEqual({ ok: true });
+    expect(checkInterpolationSyntax("cost is $${100} exactly", ["config", "context"])).toEqual({
+      ok: true,
+    });
   });
 
   it("rejects an unclosed placeholder", () => {

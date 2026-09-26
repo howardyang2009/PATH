@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tokenizeInterpolation, type InterpolationToken } from "../src/interpolation.js";
+import { type InterpolationToken, tokenizeInterpolation } from "../src/interpolation.js";
 
 /**
  * The one place the `${}` grammar is implemented (#68). It was implemented twice — here to
@@ -71,7 +71,15 @@ describe("tokenizeInterpolation", () => {
   });
 
   it("reassembles the original string from its tokens", () => {
-    for (const value of ["", "plain", "a ${x.y} b", "${x.y}", "$${esc}", "costs $5", "${a.b}${c.d}"]) {
+    for (const value of [
+      "",
+      "plain",
+      "a ${x.y} b",
+      "${x.y}",
+      "$${esc}",
+      "costs $5",
+      "${a.b}${c.d}",
+    ]) {
       const rebuilt = tokens(value)
         .map((t) => {
           switch (t.kind) {
@@ -83,6 +91,8 @@ describe("tokenizeInterpolation", () => {
               return `\${${t.path}}`;
             case "unclosed":
               return value.slice(t.index);
+            default:
+              return JSON.stringify(t);
           }
         })
         .join("");

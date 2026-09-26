@@ -7,7 +7,13 @@ import { rerunBoundaryIndex, rerunDisposition } from "../src/rerun-disposition.j
  * re-derive it — from overlapping sets, and from raw index math. This is its own test surface now.
  */
 
-const step = (id: string): WorkflowNode => ({ type: "binary", id, name: id, command: "node", args: ["-e", ""] });
+const step = (id: string): WorkflowNode => ({
+  type: "binary",
+  id,
+  name: id,
+  command: "node",
+  args: ["-e", ""],
+});
 
 // body: a, b, c at top level. B is the rerun boundary's head at this level.
 const body: WorkflowNode[] = [step("a"), step("b"), step("c")];
@@ -58,14 +64,25 @@ describe("rerunBoundaryIndex", () => {
   });
 
   it("throws the one invariant error for a head the body does not hold", () => {
-    expect(() => rerunBoundaryIndex(body, ["nope"])).toThrow('resume: rerun boundary node "nope" is not a top-level node of the workflow');
+    expect(() => rerunBoundaryIndex(body, ["nope"])).toThrow(
+      'resume: rerun boundary node "nope" is not a top-level node of the workflow',
+    );
   });
 });
 
 describe("rerunDisposition — a sequence body is transparent (ADR 0064)", () => {
-  const seq = (id: string, inner: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body: inner });
+  const seq = (id: string, inner: WorkflowNode[]): WorkflowNode => ({
+    type: "sequence",
+    id,
+    name: id,
+    body: inner,
+  });
   // body: a, s{b, c, d}, e — the serial order is a, b, c, d, e. B = c.
-  const staged: WorkflowNode[] = [step("a"), seq("s", [step("b"), step("c"), step("d")]), step("e")];
+  const staged: WorkflowNode[] = [
+    step("a"),
+    seq("s", [step("b"), step("c"), step("d")]),
+    step("e"),
+  ];
 
   it("indexes the boundary in serial order", () => {
     expect(rerunBoundaryIndex(staged, ["c"])).toBe(2);

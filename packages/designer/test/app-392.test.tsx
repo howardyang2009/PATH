@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, stubClient, type DesignerStubOptions } from "./stub-server.js";
+import { DEFAULT_PLUGINS, type DesignerStubOptions, stubClient } from "./stub-server.js";
 
 /**
  * #392 — launch warning badge + dangling-`workflow`-ref marker. A create-new child ref (#391) points the
@@ -25,7 +25,14 @@ function parentFile(withId: boolean): Record<string, unknown> {
     format: FORMAT_VERSION,
     ...(withId ? { id: uuid(1) } : {}),
     name: "parent",
-    body: [{ type: "workflow", ...(withId ? { id: uuid(2) } : {}), name: "child", ref: "child.workflow.json" }],
+    body: [
+      {
+        type: "workflow",
+        ...(withId ? { id: uuid(2) } : {}),
+        name: "child",
+        ref: "child.workflow.json",
+      },
+    ],
   };
 }
 
@@ -38,7 +45,14 @@ function canonical(f: Record<string, unknown>): string {
 
 /** A discovery summary row for a path (only `relative_path` matters to the dangling-ref check). */
 function summary(relativePath: string) {
-  return { relative_path: relativePath, id: null, name: null, valid: true, is_root: null, error: null };
+  return {
+    relative_path: relativePath,
+    id: null,
+    name: null,
+    valid: true,
+    is_root: null,
+    error: null,
+  };
 }
 
 async function openParent(options: DesignerStubOptions) {
@@ -70,7 +84,9 @@ describe("#392 dangling-`workflow`-ref marker + launch badge", () => {
       workflows: { workflows: [summary(PARENT_PATH), summary(CHILD_PATH)] },
     });
     // Discovery lists the child, so the ref is not dangling — no panel, no marker.
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument(),
+    );
   });
 
   it("badges launch with the dangling-ref count, and still lets the run launch", async () => {
@@ -99,6 +115,8 @@ describe("#392 dangling-`workflow`-ref marker + launch badge", () => {
     options.workflows = { workflows: [summary(PARENT_PATH), summary(CHILD_PATH)] };
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
-    await waitFor(() => expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("region", { name: "Problems" })).not.toBeInTheDocument(),
+    );
   });
 });

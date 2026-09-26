@@ -1,5 +1,5 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
 import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { createContext, type ReactNode, useContext, useMemo, useState } from "react";
 import { findById } from "./edit-tree.js";
 import { directionGlyph, gotoDirection, incomingGotos } from "./goto-view.js";
 import { useSelection } from "./selection-context.js";
@@ -23,11 +23,21 @@ interface GotoView {
 
 const GotoContext = createContext<GotoView | null>(null);
 
-export function GotoProvider({ file, children }: { file: WorkflowFile; children: ReactNode }): JSX.Element {
+export function GotoProvider({
+  file,
+  children,
+}: {
+  file: WorkflowFile;
+  children: ReactNode;
+}): JSX.Element {
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const incoming = useMemo(() => incomingGotos(file), [file]);
   const firstLevel = useMemo(() => new Set(file.body.map((node) => node.id)), [file]);
-  return <GotoContext.Provider value={{ file, incoming, firstLevel, hoveredId, setHoveredId }}>{children}</GotoContext.Provider>;
+  return (
+    <GotoContext.Provider value={{ file, incoming, firstLevel, hoveredId, setHoveredId }}>
+      {children}
+    </GotoContext.Provider>
+  );
 }
 
 /** The target name of the goto `id` in `file`, or `null` when `id` names no goto. */
@@ -42,7 +52,8 @@ export function useIsGotoTarget(node: WorkflowNode): boolean {
   const view = useContext(GotoContext);
   const selection = useSelection();
   if (!view || !view.firstLevel.has(node.id)) return false;
-  const target = targetOf(view.file, view.hoveredId) ?? targetOf(view.file, selection?.selectedId ?? null);
+  const target =
+    targetOf(view.file, view.hoveredId) ?? targetOf(view.file, selection?.selectedId ?? null);
   return target !== null && target === node.name;
 }
 
@@ -68,14 +79,22 @@ export function useGotoChip(node: Extract<WorkflowNode, { type: "goto" }>): {
   const direction = view ? gotoDirection(view.file, node.id) : null;
   const chip = (
     <span className="goto-chip">
-      <span className="goto-target">{node.target === "" ? "→ (no target)" : `→ ${node.target}`}</span>
+      <span className="goto-target">
+        {node.target === "" ? "→ (no target)" : `→ ${node.target}`}
+      </span>
       {direction ? (
-        <span className="goto-direction" aria-label={direction}>
+        <span className="goto-direction" aria-hidden="true">
           {directionGlyph(direction)}
         </span>
       ) : null}
     </span>
   );
   if (!view) return { chip, hover: {} };
-  return { chip, hover: { onMouseEnter: () => view.setHoveredId(node.id), onMouseLeave: () => view.setHoveredId(null) } };
+  return {
+    chip,
+    hover: {
+      onMouseEnter: () => view.setHoveredId(node.id),
+      onMouseLeave: () => view.setHoveredId(null),
+    },
+  };
 }

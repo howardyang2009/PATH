@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { main, type CliIo } from "../../src/cli.js";
+import { type CliIo, main } from "../../src/cli.js";
 import { loadWorkflowTree } from "../../src/load-workflow-tree.js";
 import { openProject } from "../../src/project.js";
 import type { Observation, RunObserver } from "../../src/run-observer.js";
@@ -83,7 +83,9 @@ function signalPath(): string {
 /** The count of "fired" lines the detached branch has written — 0 if it never ran. */
 function firedCount(): number {
   if (!existsSync(signalPath())) return 0;
-  return readFileSync(signalPath(), "utf8").split("\n").filter((line) => line === "fired").length;
+  return readFileSync(signalPath(), "utf8")
+    .split("\n")
+    .filter((line) => line === "fired").length;
 }
 
 interface RunRow {
@@ -110,12 +112,18 @@ function readRuns(): RunRow[] {
 }
 
 function rowFor(nodeName: string, rootRunId?: string): RunRow {
-  const rows = readRuns().filter((row) => row.node_name === nodeName && (rootRunId === undefined || row.root_run_id === rootRunId));
+  const rows = readRuns().filter(
+    (row) =>
+      row.node_name === nodeName && (rootRunId === undefined || row.root_run_id === rootRunId),
+  );
   return rows[0]!;
 }
 
 function rootRow(rootRunId?: string): RunRow {
-  return readRuns().find((row) => row.parent_run_id === null && (rootRunId === undefined || row.root_run_id === rootRunId))!;
+  return readRuns().find(
+    (row) =>
+      row.parent_run_id === null && (rootRunId === undefined || row.root_run_id === rootRunId),
+  )!;
 }
 
 describe("acceptance: do-not-wait launch-and-continue + barrier (issue #216, spec §2)", () => {
@@ -286,7 +294,9 @@ describe("acceptance: do-not-wait resume re-fires the detached branch (issue #21
     // carrying a `reused_from_run_id` pointer rather than re-executing — while the non-`succeeded`
     // branch re-runs, so the side effect fired a *second* time.
     const successorRows = readRuns().filter((row) => row.root_run_id === successorRootRunId);
-    expect(successorRows.some((row) => row.node_name === "post-signal" && row.status === "succeeded")).toBe(true);
+    expect(
+      successorRows.some((row) => row.node_name === "post-signal" && row.status === "succeeded"),
+    ).toBe(true);
     const afterRow = successorRows.find((row) => row.node_name === "after")!;
     expect(afterRow.status).toBe("succeeded");
     expect(afterRow.reused_from_run_id).not.toBeNull();

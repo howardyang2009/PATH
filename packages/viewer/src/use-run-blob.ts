@@ -1,4 +1,10 @@
-import { planBlobRead, resolveBlobError, type BlobContent, type BlobName, type PathApiClient } from "@path/client-core";
+import {
+  type BlobContent,
+  type BlobName,
+  type PathApiClient,
+  planBlobRead,
+  resolveBlobError,
+} from "@path/client-core";
 import { useEffect, useState } from "react";
 import { errorMessage, type Load } from "./load-state.js";
 
@@ -45,6 +51,7 @@ export function useRunBlob({
 }: RunBlobRequest): BlobLoad {
   const [load, setLoad] = useState<BlobLoad>({ phase: "loading" });
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadToken is the caller's re-read signal.
   useEffect(() => {
     const plan = planBlobRead(ref, settled);
     if (!plan.read) {

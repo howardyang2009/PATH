@@ -36,12 +36,16 @@ function mapOf(...runs: RunNodeState[]): Map<string, RunNodeState> {
 
 describe("projectRunStatus (#372 canvas projection)", () => {
   it("keys the projection by a run's node id", () => {
-    const projected = projectRunStatus(mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" })));
+    const projected = projectRunStatus(
+      mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" })),
+    );
     expect(projected.get("node-a")).toBe("succeeded");
   });
 
   it("ignores the implicit root run, which has no node id", () => {
-    const projected = projectRunStatus(mapOf(run({ runId: "root", nodeId: null, status: "running" })));
+    const projected = projectRunStatus(
+      mapOf(run({ runId: "root", nodeId: null, status: "running" })),
+    );
     expect(projected.size).toBe(0);
   });
 
@@ -49,8 +53,18 @@ describe("projectRunStatus (#372 canvas projection)", () => {
     // Iteration 1 finished, iteration 2 is still going — the node reads as running.
     const projected = projectRunStatus(
       mapOf(
-        run({ runId: "iter1", nodeId: "loop", status: "succeeded", startedAt: "2026-01-01T00:00:00Z" }),
-        run({ runId: "iter2", nodeId: "loop", status: "running", startedAt: "2026-01-01T00:00:05Z" }),
+        run({
+          runId: "iter1",
+          nodeId: "loop",
+          status: "succeeded",
+          startedAt: "2026-01-01T00:00:00Z",
+        }),
+        run({
+          runId: "iter2",
+          nodeId: "loop",
+          status: "running",
+          startedAt: "2026-01-01T00:00:05Z",
+        }),
       ),
     );
     expect(projected.get("loop")).toBe("running");
@@ -60,8 +74,18 @@ describe("projectRunStatus (#372 canvas projection)", () => {
     // A later iteration failed after an earlier one succeeded — the node reads as failed.
     const projected = projectRunStatus(
       mapOf(
-        run({ runId: "iter1", nodeId: "loop", status: "succeeded", startedAt: "2026-01-01T00:00:00Z" }),
-        run({ runId: "iter2", nodeId: "loop", status: "failed", startedAt: "2026-01-01T00:00:05Z" }),
+        run({
+          runId: "iter1",
+          nodeId: "loop",
+          status: "succeeded",
+          startedAt: "2026-01-01T00:00:00Z",
+        }),
+        run({
+          runId: "iter2",
+          nodeId: "loop",
+          status: "failed",
+          startedAt: "2026-01-01T00:00:05Z",
+        }),
       ),
     );
     expect(projected.get("loop")).toBe("failed");
@@ -85,11 +109,43 @@ describe("goto passes in the canvas projection (#620)", () => {
   // A goto-holding file's top-level walk: pass 1 (opened by nothing), then two passes opened by goto `g`.
   // Each pass is a container row; the steps it ran are its children, so a step revisited runs in two passes.
   const passRuns = mapOf(
-    run({ runId: "p1", parentRunId: "root", pass: 1, status: "succeeded", startedAt: "2026-01-01T00:00:00Z" }),
-    run({ runId: "s1", parentRunId: "p1", nodeId: "step", status: "failed", startedAt: "2026-01-01T00:00:01Z" }),
-    run({ runId: "p2", parentRunId: "root", nodeId: "g", pass: 2, status: "succeeded", startedAt: "2026-01-01T00:00:02Z" }),
-    run({ runId: "s2", parentRunId: "p2", nodeId: "step", status: "succeeded", startedAt: "2026-01-01T00:00:03Z" }),
-    run({ runId: "p3", parentRunId: "root", nodeId: "g", pass: 3, status: "running", startedAt: "2026-01-01T00:00:04Z" }),
+    run({
+      runId: "p1",
+      parentRunId: "root",
+      pass: 1,
+      status: "succeeded",
+      startedAt: "2026-01-01T00:00:00Z",
+    }),
+    run({
+      runId: "s1",
+      parentRunId: "p1",
+      nodeId: "step",
+      status: "failed",
+      startedAt: "2026-01-01T00:00:01Z",
+    }),
+    run({
+      runId: "p2",
+      parentRunId: "root",
+      nodeId: "g",
+      pass: 2,
+      status: "succeeded",
+      startedAt: "2026-01-01T00:00:02Z",
+    }),
+    run({
+      runId: "s2",
+      parentRunId: "p2",
+      nodeId: "step",
+      status: "succeeded",
+      startedAt: "2026-01-01T00:00:03Z",
+    }),
+    run({
+      runId: "p3",
+      parentRunId: "root",
+      nodeId: "g",
+      pass: 3,
+      status: "running",
+      startedAt: "2026-01-01T00:00:04Z",
+    }),
   );
 
   it("skips pass rows, so the goto that opened them takes no status", () => {
@@ -107,6 +163,8 @@ describe("goto passes in the canvas projection (#620)", () => {
   });
 
   it("counts no jumps in a goto-free run", () => {
-    expect(projectJumpsSpent(mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" }))).size).toBe(0);
+    expect(
+      projectJumpsSpent(mapOf(run({ runId: "r1", nodeId: "node-a", status: "succeeded" }))).size,
+    ).toBe(0);
   });
 });

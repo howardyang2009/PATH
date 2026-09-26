@@ -1,9 +1,9 @@
 import {
-  classifyLevelK,
-  selectBoundary,
   type ControlBlockKind,
+  classifyLevelK,
   type LegalKLevelReason,
   type RunRecord,
+  selectBoundary,
   type WorkflowFile,
 } from "@path/schema";
 import { descendNodePath } from "./descend-node-path.js";
@@ -70,8 +70,16 @@ export type LegalKResult =
   | { ok: true; nodePath: string[]; passes: (number | null)[] }
   | { ok: false; refusal: LegalKRefusal };
 
-function refuse(status: number, message: string, reason: LegalKReasonCode, container?: LegalKContainer): LegalKResult {
-  return { ok: false, refusal: container ? { status, message, reason, container } : { status, message, reason } };
+function refuse(
+  status: number,
+  message: string,
+  reason: LegalKReasonCode,
+  container?: LegalKContainer,
+): LegalKResult {
+  return {
+    ok: false,
+    refusal: container ? { status, message, reason, container } : { status, message, reason },
+  };
 }
 
 /**
@@ -103,7 +111,11 @@ export function resolveLegalK(
         "pass-run",
       );
     case "root-run":
-      return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
+      return refuse(
+        400,
+        `run "${runId}" is the root run, which is never a rerun boundary`,
+        "root-run",
+      );
   }
   const { levels } = selection;
   const nodePath = levels.map((level) => level.run.nodeId!); // non-null: the levels exclude the root and pass runs
@@ -125,7 +137,11 @@ export function resolveLegalK(
     // so `levelInfo` is present here; treat its absence as a file divergence rather than assume it.
     const levelInfo = descent.levels[level];
     if (!levelInfo) {
-      return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
+      return refuse(
+        409,
+        `run "${runId}" resolves to node "${label}", which is no longer in the workflow`,
+        "not-in-file",
+      );
     }
 
     // The per-level §5 taxonomy — locate (#2/#3), the leaf's own success (#4), the prefix's success
@@ -144,7 +160,11 @@ export function resolveLegalK(
     if (!levelResult.ok) {
       switch (levelResult.reason) {
         case "not-in-file":
-          return refuse(409, `run "${runId}" resolves to node "${label}", which is no longer in the workflow`, "not-in-file");
+          return refuse(
+            409,
+            `run "${runId}" resolves to node "${label}", which is no longer in the workflow`,
+            "not-in-file",
+          );
         case "in-body":
           return refuse(
             400,

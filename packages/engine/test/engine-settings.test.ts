@@ -32,7 +32,10 @@ describe("loadEngineSettings", () => {
     writeSettings(JSON.stringify({ "log.backends": ["ndjson"], "processor.concurrency": 7 }));
 
     const result = loadEngineSettings(projectDir);
-    expect(result).toEqual({ success: true, settings: { logBackends: ["ndjson"], processorConcurrency: 7 } });
+    expect(result).toEqual({
+      success: true,
+      settings: { logBackends: ["ndjson"], processorConcurrency: 7 },
+    });
   });
 
   it("reads an empty log.backends list as 'no backends', not as an absent setting", () => {

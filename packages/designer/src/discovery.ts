@@ -1,5 +1,5 @@
-import { useCallback, useMemo } from "react";
 import type { PathApiClient, WorkflowSummary } from "@path/client-core";
+import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
@@ -40,13 +40,17 @@ export function discoveredWorkflows(load: DiscoveryLoad): readonly WorkflowSumma
  * A failed scan is **best-effort**: it keeps the last successful list rather than reading as "none
  * discovered", because a read blip must not empty every picker or flag every ref dangling (#388, #392).
  */
-export function useWorkflowDiscovery(client: PathApiClient, savePhase: SaveState["phase"]): DiscoveryLoad {
+export function useWorkflowDiscovery(
+  client: PathApiClient,
+  savePhase: SaveState["phase"],
+): DiscoveryLoad {
   const listWorkflows = useCallback(async () => (await client.listWorkflows()).workflows, [client]);
   const load = useScanOnSave(listWorkflows, savePhase, RESCAN_ON);
   // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
   return useMemo(() => {
     if (load.phase === "ready") return { phase: "ready", workflows: load.value };
-    if (load.phase === "error") return { phase: "error", message: load.message, workflows: load.lastGood };
+    if (load.phase === "error")
+      return { phase: "error", message: load.message, workflows: load.lastGood };
     return load;
   }, [load]);
 }

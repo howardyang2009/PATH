@@ -36,11 +36,7 @@ export function handleDeleteRun(
   }
 
   if (!isTerminal(rootRow.status)) {
-    sendError(
-      res,
-      409,
-      `run "${rootRunId}" is still ${rootRow.status}; cancel it before deleting`,
-    );
+    sendError(res, 409, `run "${rootRunId}" is still ${rootRow.status}; cancel it before deleting`);
     return;
   }
 

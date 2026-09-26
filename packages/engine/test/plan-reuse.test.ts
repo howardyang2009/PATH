@@ -1,4 +1,13 @@
-import type { BinaryStep, CheckpointNode, PromptStep, RunRecord, RunStatus, WorkflowFile, WorkflowNode, WorkflowStep } from "@path/schema";
+import type {
+  BinaryStep,
+  CheckpointNode,
+  PromptStep,
+  RunRecord,
+  RunStatus,
+  WorkflowFile,
+  WorkflowNode,
+  WorkflowStep,
+} from "@path/schema";
 import { FORMAT_VERSION } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { pickReusedWaitOneWinner, planReuse, type ReusePlan } from "../src/plan-reuse.js";
@@ -6,7 +15,9 @@ import { pickReusedWaitOneWinner, planReuse, type ReusePlan } from "../src/plan-
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
 
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "root",
     nodeName: overrides.nodeId,
@@ -30,7 +41,15 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
   };
 }
 
-const root = (overrides: Partial<RunRecord> = {}) => run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded", ...overrides });
+const root = (overrides: Partial<RunRecord> = {}) =>
+  run({
+    runId: "root",
+    parentRunId: null,
+    nodeId: null,
+    nodeName: null,
+    status: "succeeded",
+    ...overrides,
+  });
 
 function tree(body: WorkflowNode[]): WorkflowFile {
   return { format: FORMAT_VERSION, id: "11111111-1111-4111-8111-111111111111", name: "t", body };
@@ -56,19 +75,42 @@ function checkpoint(id: string): CheckpointNode {
 // own tests do. It mints exactly one run per node id (its row flips awaiting→succeeded), so it is a
 // node-grain reuse candidate (resume-from-k.md).
 function person(id: string): WorkflowNode {
-  return { type: "person-activity", id, name: id, description: `do ${id}` } as unknown as WorkflowNode;
+  return {
+    type: "person-activity",
+    id,
+    name: id,
+    description: `do ${id}`,
+  } as unknown as WorkflowNode;
 }
 
 describe("planReuse (#170)", () => {
   it("reuses an unchanged node id with succeeded status", () => {
-    const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status: "succeeded" })];
+    const originalRuns = [
+      root(),
+      run({
+        runId: "greet",
+        parentRunId: "root",
+        nodeId: "greet",
+        nodeName: "greet",
+        status: "succeeded",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([prompt("greet")]));
 
     expect(plan.get("greet")).toBe(originalRuns[1]);
   });
 
   it("leaves a renamed or removed node id unmatched, so it reruns fresh", () => {
-    const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status: "succeeded" })];
+    const originalRuns = [
+      root(),
+      run({
+        runId: "greet",
+        parentRunId: "root",
+        nodeId: "greet",
+        nodeName: "greet",
+        status: "succeeded",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([prompt("greeting")]));
 
     expect(plan.has("greeting")).toBe(false);
@@ -76,7 +118,16 @@ describe("planReuse (#170)", () => {
   });
 
   it("leaves an added node id unmatched, so it runs fresh", () => {
-    const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status: "succeeded" })];
+    const originalRuns = [
+      root(),
+      run({
+        runId: "greet",
+        parentRunId: "root",
+        nodeId: "greet",
+        nodeName: "greet",
+        status: "succeeded",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([prompt("greet"), prompt("summarize")]));
 
     expect(plan.has("greet")).toBe(true);
@@ -99,7 +150,10 @@ describe("planReuse (#170)", () => {
   it.each(["pending", "running", "cancelled", "failed"] as RunStatus[])(
     "reruns a %s node identically to every other non-succeeded status",
     (status) => {
-      const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status })];
+      const originalRuns = [
+        root(),
+        run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status }),
+      ];
       const plan = planReuse(originalRuns, tree([prompt("greet")]));
 
       expect(plan.has("greet")).toBe(false);
@@ -109,11 +163,23 @@ describe("planReuse (#170)", () => {
   it("a succeeded workflow-run collapses its whole subtree without inspecting descendants", () => {
     const originalRuns = [
       root(),
-      run({ runId: "revise-run", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
+      run({
+        runId: "revise-run",
+        parentRunId: "root",
+        nodeId: "revise",
+        nodeName: "revise",
+        status: "succeeded",
+      }),
       // Same node id as a *different* top-level step below, but nested inside the collapsed
       // workflow-run's own subtree (parentRunId is the workflow-run, not root) — ids are unique
       // only within one file, so this must never satisfy the top-level lookup for "greet".
-      run({ runId: "nested-greet", parentRunId: "revise-run", nodeId: "greet", nodeName: "greet", status: "succeeded" }),
+      run({
+        runId: "nested-greet",
+        parentRunId: "revise-run",
+        nodeId: "greet",
+        nodeName: "greet",
+        status: "succeeded",
+      }),
     ];
     const plan = planReuse(originalRuns, tree([prompt("greet"), workflow("revise")]));
 
@@ -122,8 +188,20 @@ describe("planReuse (#170)", () => {
   });
 
   it("matches on node id and status alone — config/step-body changes reaching a succeeded node change nothing", () => {
-    const originalRuns = [root(), run({ runId: "greet", parentRunId: "root", nodeId: "greet", nodeName: "greet", status: "succeeded" })];
-    const changed = prompt("greet", { prompt: "a completely different prompt", config: { model: "different" } });
+    const originalRuns = [
+      root(),
+      run({
+        runId: "greet",
+        parentRunId: "root",
+        nodeId: "greet",
+        nodeName: "greet",
+        status: "succeeded",
+      }),
+    ];
+    const changed = prompt("greet", {
+      prompt: "a completely different prompt",
+      config: { model: "different" },
+    });
     const plan = planReuse(originalRuns, tree([changed]));
 
     expect(plan.get("greet")).toBe(originalRuns[1]);
@@ -132,14 +210,50 @@ describe("planReuse (#170)", () => {
   it("walks into branch/parallel/while-do bodies, which never have a run row of their own", () => {
     const originalRuns = [
       root(),
-      run({ runId: "a-run", parentRunId: "root", nodeId: "in-branch", nodeName: "in-branch", status: "succeeded" }),
-      run({ runId: "b-run", parentRunId: "root", nodeId: "in-parallel", nodeName: "in-parallel", status: "succeeded" }),
-      run({ runId: "c-run", parentRunId: "root", nodeId: "in-loop", nodeName: "in-loop", status: "succeeded" }),
+      run({
+        runId: "a-run",
+        parentRunId: "root",
+        nodeId: "in-branch",
+        nodeName: "in-branch",
+        status: "succeeded",
+      }),
+      run({
+        runId: "b-run",
+        parentRunId: "root",
+        nodeId: "in-parallel",
+        nodeName: "in-parallel",
+        status: "succeeded",
+      }),
+      run({
+        runId: "c-run",
+        parentRunId: "root",
+        nodeId: "in-loop",
+        nodeName: "in-loop",
+        status: "succeeded",
+      }),
     ];
     const nested = tree([
-      { type: "branch", id: "b1", name: "b1", arms: [{ when: { type: "exists", path: "context.x" }, node: prompt("in-branch") }] },
-      { type: "parallel", id: "p1", name: "p1", join: "collect", branches: [{ type: "sequence", id: "br1", name: "br1", body: [binary("in-parallel")] }] },
-      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, node: prompt("in-loop") },
+      {
+        type: "branch",
+        id: "b1",
+        name: "b1",
+        arms: [{ when: { type: "exists", path: "context.x" }, node: prompt("in-branch") }],
+      },
+      {
+        type: "parallel",
+        id: "p1",
+        name: "p1",
+        join: "collect",
+        branches: [{ type: "sequence", id: "br1", name: "br1", body: [binary("in-parallel")] }],
+      },
+      {
+        type: "while-do",
+        id: "w1",
+        name: "w1",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 3,
+        node: prompt("in-loop"),
+      },
       checkpoint("cp1"),
     ]);
 
@@ -157,18 +271,46 @@ describe("planReuse (#170)", () => {
   it("does not reuse a node id with more than one succeeded row — a while-do body's id repeats per iteration, so which attempt answers it is undefined", () => {
     const originalRuns = [
       root(),
-      run({ runId: "iter-1", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
-      run({ runId: "iter-2", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
+      run({
+        runId: "iter-1",
+        parentRunId: "root",
+        nodeId: "revise",
+        nodeName: "revise",
+        status: "succeeded",
+      }),
+      run({
+        runId: "iter-2",
+        parentRunId: "root",
+        nodeId: "revise",
+        nodeName: "revise",
+        status: "succeeded",
+      }),
     ];
     const loop = tree([
-      { type: "while-do", id: "w1", name: "w1", condition: { type: "exists", path: "context.x" }, max_iterations: 3, node: prompt("revise") },
+      {
+        type: "while-do",
+        id: "w1",
+        name: "w1",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 3,
+        node: prompt("revise"),
+      },
     ]);
 
     expect(planReuse(originalRuns, loop).has("revise")).toBe(false);
   });
 
   it("reuses a succeeded person-activity, so a completed human decision is not re-asked (resume-from-k.md)", () => {
-    const originalRuns = [root(), run({ runId: "gate-run", parentRunId: "root", nodeId: "gate", nodeName: "gate", status: "succeeded" })];
+    const originalRuns = [
+      root(),
+      run({
+        runId: "gate-run",
+        parentRunId: "root",
+        nodeId: "gate",
+        nodeName: "gate",
+        status: "succeeded",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([person("gate"), prompt("after")]));
 
     expect(plan.get("gate")).toBe(originalRuns[1]);
@@ -178,15 +320,38 @@ describe("planReuse (#170)", () => {
     // The same shape as `person`, one folder over: a plugin type the schema never names. It mints one
     // run per node id like any step, so a Resume must reuse it; only an allowlist of built-in names
     // would skip it.
-    const apiCall = { type: "api-call", id: "fetch", name: "fetch", endpoint: "https://example.test" } as unknown as WorkflowNode;
-    const originalRuns = [root(), run({ runId: "fetch-run", parentRunId: "root", nodeId: "fetch", nodeName: "fetch", status: "succeeded" })];
+    const apiCall = {
+      type: "api-call",
+      id: "fetch",
+      name: "fetch",
+      endpoint: "https://example.test",
+    } as unknown as WorkflowNode;
+    const originalRuns = [
+      root(),
+      run({
+        runId: "fetch-run",
+        parentRunId: "root",
+        nodeId: "fetch",
+        nodeName: "fetch",
+        status: "succeeded",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([apiCall]));
 
     expect(plan.get("fetch")).toBe(originalRuns[1]);
   });
 
   it("does not reuse a person-activity still parked (awaiting) — it re-runs and re-awaits (resume-from-k.md)", () => {
-    const originalRuns = [root(), run({ runId: "gate-run", parentRunId: "root", nodeId: "gate", nodeName: "gate", status: "awaiting" })];
+    const originalRuns = [
+      root(),
+      run({
+        runId: "gate-run",
+        parentRunId: "root",
+        nodeId: "gate",
+        nodeName: "gate",
+        status: "awaiting",
+      }),
+    ];
     const plan = planReuse(originalRuns, tree([person("gate")]));
 
     expect(plan.has("gate")).toBe(false);
@@ -207,13 +372,19 @@ function waitOne(branches: ParallelBranch[]): ParallelNode {
   return { type: "parallel", id: "p1", name: "p1", join: "wait-one", branches };
 }
 
-
 describe("pickReusedWaitOneWinner — replaying a decided wait-one race (§7)", () => {
   // A branch reuses iff its lone run-producing node is in the plan; a plan holds the recorded run
   // (with its `finishedAt`) the branch's step reused.
   const reused = (nodeId: string, finishedAt: string | null): [string, RunRecord] => [
     nodeId,
-    run({ runId: `${nodeId}-run`, parentRunId: "root", nodeId, nodeName: nodeId, status: "succeeded", finishedAt }),
+    run({
+      runId: `${nodeId}-run`,
+      parentRunId: "root",
+      nodeId,
+      nodeName: nodeId,
+      status: "succeeded",
+      finishedAt,
+    }),
   ];
 
   it("returns the sole reused winner directly; the losers left no plan entry", () => {

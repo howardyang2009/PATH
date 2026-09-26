@@ -45,7 +45,8 @@ export function WorkerDefaultsEditor({
 
   const entries = Object.entries(value);
   const usedTypes = new Set(entries.map(([type]) => type));
-  const pluginOf = (type: string): WireStepPlugin | undefined => plugins.find((p) => p.name === type);
+  const pluginOf = (type: string): WireStepPlugin | undefined =>
+    plugins.find((p) => p.name === type);
 
   // Retyping a row moves it to a different type; its worker resets to the new type's default, since a
   // worker name is meaningless across types (CONTEXT.md invariant 5).
@@ -60,7 +61,8 @@ export function WorkerDefaultsEditor({
     onChange(next);
   };
 
-  const setWorkerAt = (type: string, worker: string): void => onChange({ ...value, [type]: worker });
+  const setWorkerAt = (type: string, worker: string): void =>
+    onChange({ ...value, [type]: worker });
   const removeAt = (type: string): void =>
     onChange(Object.fromEntries(entries.filter(([entryType]) => entryType !== type)));
   const addRow = (): void => {
@@ -78,13 +80,19 @@ export function WorkerDefaultsEditor({
         // A type appears once: offer this row's own type plus every candidate no other row uses.
         const typeOptions = [
           type,
-          ...candidates.map((candidate) => candidate.name).filter((name) => name !== type && !usedTypes.has(name)),
+          ...candidates
+            .map((candidate) => candidate.name)
+            .filter((name) => name !== type && !usedTypes.has(name)),
         ];
         return (
           <div key={type} className="worker-default-row">
             <label className="worker-default-field">
               <span className="field-label">type</span>
-              <select className="field" value={type} onChange={(event) => setTypeAt(type, event.target.value)}>
+              <select
+                className="field"
+                value={type}
+                onChange={(event) => setTypeAt(type, event.target.value)}
+              >
                 {typeOptions.map((option) => (
                   <option key={option} value={option}>
                     {option}
@@ -94,7 +102,11 @@ export function WorkerDefaultsEditor({
             </label>
             <label className="worker-default-field">
               <span className="field-label">worker</span>
-              <select className="field" value={worker} onChange={(event) => setWorkerAt(type, event.target.value)}>
+              <select
+                className="field"
+                value={worker}
+                onChange={(event) => setWorkerAt(type, event.target.value)}
+              >
                 {workerOptions.map((option) => (
                   <option key={option} value={option}>
                     {plugin && option === plugin.default_worker ? `${option} (default)` : option}

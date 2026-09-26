@@ -1,18 +1,17 @@
-import { useState } from "react";
 import type { Condition, JsonScalar } from "@path/schema";
+import type { ReactNode } from "react";
+import { useState } from "react";
 import {
   CONDITION_TYPES,
   changeConditionType,
   defaultScalar,
   isLeafConditionType,
+  type ScalarKind,
   scalarKind,
   validateCondition,
-  type ScalarKind,
 } from "./condition-edit.js";
 import type { EditKey } from "./edit-key.js";
 import { useDraft } from "./validated-draft.js";
-
-import type { ReactNode } from "react";
 
 /**
  * The typed `Condition` builder (#370, designer-spec § Canvas interaction model, ADR 0022). It edits the
@@ -93,14 +92,24 @@ function ConditionNode({
   if (isLeafConditionType(value.type)) {
     return (
       <div className="cond-node cond-leaf">
-        <ConditionOperands value={value} suggestions={suggestions} onChange={onChange} operator={operator} />
+        <ConditionOperands
+          value={value}
+          suggestions={suggestions}
+          onChange={onChange}
+          operator={operator}
+        />
       </div>
     );
   }
   return (
     <div className="cond-node">
       {operator}
-      <ConditionOperands value={value} suggestions={suggestions} onChange={onChange} operator={null} />
+      <ConditionOperands
+        value={value}
+        suggestions={suggestions}
+        onChange={onChange}
+        operator={null}
+      />
     </div>
   );
 }
@@ -123,22 +132,37 @@ function ConditionOperands({
     case "valid-json":
       return (
         <>
-          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          <PathField
+            path={value.path}
+            suggestions={suggestions}
+            onChange={(path) => onChange({ ...value, path })}
+          />
           {operator}
         </>
       );
     case "equals":
       return (
         <>
-          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          <PathField
+            path={value.path}
+            suggestions={suggestions}
+            onChange={(path) => onChange({ ...value, path })}
+          />
           {operator}
-          <ScalarField value={value.value} onChange={(scalar) => onChange({ ...value, value: scalar })} />
+          <ScalarField
+            value={value.value}
+            onChange={(scalar) => onChange({ ...value, value: scalar })}
+          />
         </>
       );
     case "matches":
       return (
         <>
-          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          <PathField
+            path={value.path}
+            suggestions={suggestions}
+            onChange={(path) => onChange({ ...value, path })}
+          />
           {operator}
           <label className="cond-operand">
             <span className="pane-label">pattern</span>
@@ -154,26 +178,49 @@ function ConditionOperands({
     case "range":
       return (
         <>
-          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          <PathField
+            path={value.path}
+            suggestions={suggestions}
+            onChange={(path) => onChange({ ...value, path })}
+          />
           {operator}
           <div className="cond-range">
-            <OptionalNumber label="min" value={value.min} onChange={(n) => onChange(withBound(value, "min", n))} />
-            <OptionalNumber label="max" value={value.max} onChange={(n) => onChange(withBound(value, "max", n))} />
+            <OptionalNumber
+              label="min"
+              value={value.min}
+              onChange={(n) => onChange(withBound(value, "min", n))}
+            />
+            <OptionalNumber
+              label="max"
+              value={value.max}
+              onChange={(n) => onChange(withBound(value, "max", n))}
+            />
           </div>
         </>
       );
     case "one-of":
       return (
         <>
-          <PathField path={value.path} suggestions={suggestions} onChange={(path) => onChange({ ...value, path })} />
+          <PathField
+            path={value.path}
+            suggestions={suggestions}
+            onChange={(path) => onChange({ ...value, path })}
+          />
           {operator}
-          <ScalarListField values={value.values} onChange={(values) => onChange({ ...value, values })} />
+          <ScalarListField
+            values={value.values}
+            onChange={(values) => onChange({ ...value, values })}
+          />
         </>
       );
     case "not":
       return (
         <div className="cond-children">
-          <ConditionNode value={value.of} suggestions={suggestions} onChange={(child) => onChange({ ...value, of: child })} />
+          <ConditionNode
+            value={value.of}
+            suggestions={suggestions}
+            onChange={(child) => onChange({ ...value, of: child })}
+          />
         </div>
       );
     case "all":
@@ -194,15 +241,27 @@ function CombinatorChildren({
 }): JSX.Element {
   const setChild = (index: number, child: Condition): void =>
     onChange({ ...value, of: value.of.map((c, i) => (i === index ? child : c)) });
-  const removeChild = (index: number): void => onChange({ ...value, of: value.of.filter((_, i) => i !== index) });
-  const addChild = (): void => onChange({ ...value, of: [...value.of, { type: "exists", path: "context.value" }] });
+  const removeChild = (index: number): void =>
+    onChange({ ...value, of: value.of.filter((_, i) => i !== index) });
+  const addChild = (): void =>
+    onChange({ ...value, of: [...value.of, { type: "exists", path: "context.value" }] });
   return (
     <div className="cond-children">
       {value.of.map((child, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: condition nodes carry no id; position is identity.
         <div className="cond-child" key={index}>
-          <ConditionNode value={child} suggestions={suggestions} onChange={(c) => setChild(index, c)} />
+          <ConditionNode
+            value={child}
+            suggestions={suggestions}
+            onChange={(c) => setChild(index, c)}
+          />
           {value.of.length > 1 ? (
-            <button type="button" className="pane-btn cond-remove" aria-label="Remove condition" onClick={() => removeChild(index)}>
+            <button
+              type="button"
+              className="pane-btn cond-remove"
+              aria-label="Remove condition"
+              onClick={() => removeChild(index)}
+            >
               ×
             </button>
           ) : null}
@@ -216,12 +275,26 @@ function CombinatorChildren({
 }
 
 /** A leaf predicate's dot-path, with autocomplete against the file's referenceable `context.`/`output.` paths. */
-function PathField({ path, suggestions, onChange }: { path: string; suggestions: string[]; onChange: (path: string) => void }): JSX.Element {
+function PathField({
+  path,
+  suggestions,
+  onChange,
+}: {
+  path: string;
+  suggestions: string[];
+  onChange: (path: string) => void;
+}): JSX.Element {
   const listId = `cond-paths-${useListId()}`;
   return (
     <label className="cond-operand">
       <span className="pane-label">path</span>
-      <input className="pane-input" type="text" value={path} list={listId} onChange={(e) => onChange(e.target.value)} />
+      <input
+        className="pane-input"
+        type="text"
+        value={path}
+        list={listId}
+        onChange={(e) => onChange(e.target.value)}
+      />
       <datalist id={listId}>
         {suggestions.map((s) => (
           <option key={s} value={s} />
@@ -232,7 +305,13 @@ function PathField({ path, suggestions, onChange }: { path: string; suggestions:
 }
 
 /** A typed JSON-scalar operand: a kind menu (`string`/`number`/`boolean`/`null`) and the value control. */
-function ScalarField({ value, onChange }: { value: JsonScalar; onChange: (value: JsonScalar) => void }): JSX.Element {
+function ScalarField({
+  value,
+  onChange,
+}: {
+  value: JsonScalar;
+  onChange: (value: JsonScalar) => void;
+}): JSX.Element {
   const kind = scalarKind(value);
   return (
     <div className="cond-operand cond-scalar">
@@ -256,7 +335,15 @@ function ScalarField({ value, onChange }: { value: JsonScalar; onChange: (value:
 }
 
 /** The value control matched to a scalar kind: text, number, a boolean menu, or nothing for `null`. */
-function ScalarValue({ kind, value, onChange }: { kind: ScalarKind; value: JsonScalar; onChange: (value: JsonScalar) => void }): JSX.Element | null {
+function ScalarValue({
+  kind,
+  value,
+  onChange,
+}: {
+  kind: ScalarKind;
+  value: JsonScalar;
+  onChange: (value: JsonScalar) => void;
+}): JSX.Element | null {
   if (kind === "null") return null;
   if (kind === "boolean") {
     return (
@@ -294,16 +381,29 @@ function ScalarValue({ kind, value, onChange }: { kind: ScalarKind; value: JsonS
 }
 
 /** A `one-of` value set: a typed scalar per row, with add and remove (keeps at least one). */
-function ScalarListField({ values, onChange }: { values: JsonScalar[]; onChange: (values: JsonScalar[]) => void }): JSX.Element {
-  const setAt = (index: number, scalar: JsonScalar): void => onChange(values.map((v, i) => (i === index ? scalar : v)));
+function ScalarListField({
+  values,
+  onChange,
+}: {
+  values: JsonScalar[];
+  onChange: (values: JsonScalar[]) => void;
+}): JSX.Element {
+  const setAt = (index: number, scalar: JsonScalar): void =>
+    onChange(values.map((v, i) => (i === index ? scalar : v)));
   const removeAt = (index: number): void => onChange(values.filter((_, i) => i !== index));
   return (
     <div className="cond-list">
       {values.map((v, index) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: scalar list rows carry no id; position is identity.
         <div className="cond-list-row" key={index}>
           <ScalarField value={v} onChange={(scalar) => setAt(index, scalar)} />
           {values.length > 1 ? (
-            <button type="button" className="pane-btn cond-remove" aria-label="Remove value" onClick={() => removeAt(index)}>
+            <button
+              type="button"
+              className="pane-btn cond-remove"
+              aria-label="Remove value"
+              onClick={() => removeAt(index)}
+            >
               ×
             </button>
           ) : null}
@@ -317,7 +417,15 @@ function ScalarListField({ values, onChange }: { values: JsonScalar[]; onChange:
 }
 
 /** An optional numeric bound (`min` / `max`), blank when unset. */
-function OptionalNumber({ label, value, onChange }: { label: string; value: number | undefined; onChange: (n: number | null) => void }): JSX.Element {
+function OptionalNumber({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: number | undefined;
+  onChange: (n: number | null) => void;
+}): JSX.Element {
   return (
     <label className="cond-operand">
       <span className="pane-label">{label}</span>
@@ -332,7 +440,11 @@ function OptionalNumber({ label, value, onChange }: { label: string; value: numb
 }
 
 /** Set or clear one bound of a `range`, rebuilding the operand so a cleared bound drops its key. */
-function withBound(value: Extract<Condition, { type: "range" }>, key: "min" | "max", n: number | null): Condition {
+function withBound(
+  value: Extract<Condition, { type: "range" }>,
+  key: "min" | "max",
+  n: number | null,
+): Condition {
   const next: Extract<Condition, { type: "range" }> = { type: "range", path: value.path };
   const min = key === "min" ? (n ?? undefined) : value.min;
   const max = key === "max" ? (n ?? undefined) : value.max;

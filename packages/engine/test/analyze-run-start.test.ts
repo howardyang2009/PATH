@@ -1,6 +1,6 @@
-import { beforeAll, describe, expect, it } from "vitest";
 import type { ConfigObject, WorkflowFile } from "@path/schema";
-import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
+import { beforeAll, describe, expect, it } from "vitest";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin/scan.js";
 import { analyzeRunStart } from "../src/run-start.js";
 import { stampNames } from "./stamp-names.js";
 
@@ -54,7 +54,13 @@ describe("analyzeRunStart — the masker", () => {
   });
 
   it("yields an empty masker when no config carries a secret", () => {
-    const { masker, runStartFailure } = analyzeRunStart(binaryFile({ plain: "value" }), "/tmp", {}, {}, registry);
+    const { masker, runStartFailure } = analyzeRunStart(
+      binaryFile({ plain: "value" }),
+      "/tmp",
+      {},
+      {},
+      registry,
+    );
     expect(runStartFailure).toBeUndefined();
     expect(masker.isEmpty).toBe(true);
   });
@@ -62,7 +68,13 @@ describe("analyzeRunStart — the masker", () => {
 
 describe("analyzeRunStart — the run-start gate", () => {
   it("proceeds when a prompt step's required model resolves", () => {
-    const { runStartFailure } = analyzeRunStart(promptFile({ model: "claude-x" }), "/tmp", {}, {}, registry);
+    const { runStartFailure } = analyzeRunStart(
+      promptFile({ model: "claude-x" }),
+      "/tmp",
+      {},
+      {},
+      registry,
+    );
     expect(runStartFailure).toBeUndefined();
   });
 

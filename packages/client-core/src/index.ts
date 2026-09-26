@@ -14,21 +14,21 @@
 // format — so this package no longer depends on `@path/engine` at all, and a browser surface no
 // longer sits one import away from SQLite, child processes and the Agent SDK.
 export {
+  type BlobName,
+  type CompleteRunRequest,
+  type CompleteRunResponse,
+  type ConfigObject,
+  type GetTemplateResponse,
   isIterationRun,
   isPassRun,
   isReuseRow,
   isRootRun,
   isTerminal,
-  type BlobName,
-  type ConfigObject,
-  type GetTemplateResponse,
   type JsonValue,
   type ListRunsResponse,
   type ListTemplatesResponse,
   type ListWorkflowsResponse,
   type LogBackendId,
-  type CompleteRunRequest,
-  type CompleteRunResponse,
   type LogEvent,
   type RootRunSummary,
   type RunRecord,
@@ -47,49 +47,105 @@ export {
 } from "@path/schema";
 
 export {
-  PathApiClient,
-  PathApiError,
-  type PathApiClientOptions,
-  type ListRunsQuery,
-  type StartRunOptions,
-  type WorkflowFileRaw,
-  type FetchLike,
-  type WorkflowLease,
   type AcquireLockInput,
-  type LeaseOpInput,
   type AcquireLockResult,
+  type CreateTemplateInput,
+  type FetchLike,
   type HeartbeatResult,
+  type LeaseOpInput,
+  type ListRunsQuery,
+  PathApiClient,
+  type PathApiClientOptions,
+  PathApiError,
+  type PutTemplateInput,
   type PutWorkflowInput,
   type PutWorkflowResult,
-  type CreateTemplateInput,
-  type PutTemplateInput,
+  type StartRunOptions,
   type TemplateWriteResult,
+  type WorkflowFileRaw,
+  type WorkflowLease,
 } from "./api-client.js";
-
+// The Viewer/Designer awaiting surface (issue #486, ADR 0040): the `person-activity` node read from the
+// workflow file by id, and the framework-free Complete-form model — field list, value coercion, client
+// pre-check, and the server `400`→field mapping — so both surfaces draw the same form and read the same
+// errors. The React components keep only their own inputs on the other side (spec § Shared seam).
 export {
-  subscribeRunEvents,
-  type SubscribeRunEventsOptions,
-  type RunEventSubscription,
-} from "./sse-client.js";
-
+  AWAITING_STEP_TYPE,
+  type AwaitingNode,
+  awaitingNodeForRun,
+  findAwaitingNode,
+} from "./awaiting-node.js";
 export {
-  RunViewModel,
-  type RunNodeState,
-  type RunViewState,
-  type RunViewListener,
-  type RunViewFacts,
-  type StreamPhase,
-} from "./view-model.js";
-
-export { connectRunViewModel, type ConnectedRun, type ConnectRunOptions } from "./connect.js";
-
+  type BlobContent,
+  type BlobReadPlan,
+  planBlobRead,
+  resolveBlobError,
+} from "./blob-absence.js";
+export { type RunBlobSource, runBlobSource } from "./blob-source.js";
+export {
+  buildCompleteFields,
+  type CompleteField,
+  type CompleteFieldKind,
+  type CompleteFieldValue,
+  coerceCompleteOutput,
+  coerceRawCompleteOutput,
+  type MappedCompleteErrors,
+  mapCompleteErrors,
+  validateCompleteDraft,
+} from "./complete-form.js";
+export { type ConnectedRun, type ConnectRunOptions, connectRunViewModel } from "./connect.js";
+export { eventMessage } from "./event-message.js";
 // What a run's events and rows *mean*, as against how a surface draws them. Both answer questions
 // with one right answer — how an event moves a run's status, whether the root run is finished, and
 // which run spawned which — so a second surface reaching different answers would be showing a
 // different run, not a differently styled one.
 export { eventOutcome, isRootRunFinished, runStatusAfter } from "./event-outcome.js";
+// The framework-free run-logic seam both the Viewer and the Designer read (#359, spec § Shared
+// seam). Each unit has one right answer a second surface must reach identically: how a launch field
+// is gated before a request is spent, how one node is named, what one log event says, and what a
+// missing blob means. The surfaces keep only their own wiring — the launch form's inputs, the run
+// tree's rows, the narrative's list, the blob hook's `useState`/`useEffect` — on the other side.
+export { type JsonFieldResult, type ParseJsonFieldOptions, parseJsonField } from "./launch-json.js";
+// The launch-facts secret-restore contract shared by both continuation surfaces (Resume and Complete,
+// ADR 0046): the config field's show/skeleton state, and the one submit-gate verdict — parse, blank
+// secret paths, whether it may submit, and the block message — so neither surface re-derives it.
+export {
+  blankSecretMessage,
+  blankSecretPaths,
+  type ContinuationVerb,
+  type LaunchSecretResupply,
+  launchSecretResupply,
+  type ResupplyGate,
+  resupplyGate,
+  secretSkeletonJson,
+} from "./launch-secret-resupply.js";
+export { nodeEventLabel, nodeLabel } from "./node-label.js";
+export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
+// The Designer's `Resume from …` button's eager legal-K check (spec § Resume from here, ADR 0033):
+// the client mirror of the engine's one legal-K rule, computed from the run tree + the open file so an
+// illegal K greys before any round-trip; the engine's `refusal` stays the authority for a race.
+export {
+  type ResumeFromContainer,
+  type ResumeFromEligibility,
+  type ResumeFromEligibilityArgs,
+  type ResumeFromReasonCode,
+  resumeFromEligibility,
+  shortRunId,
+} from "./resume-from-eligibility.js";
 export { buildRunTree, displayStatusByRun, type RunTreeNode } from "./run-tree.js";
-
+export {
+  type RunEventSubscription,
+  type SubscribeRunEventsOptions,
+  subscribeRunEvents,
+} from "./sse-client.js";
+export {
+  type RunNodeState,
+  type RunViewFacts,
+  type RunViewListener,
+  RunViewModel,
+  type RunViewState,
+  type StreamPhase,
+} from "./view-model.js";
 // The folder tree behind every workflow picker: one grouping of the flat discovery list both the
 // Viewer's launch panel and the Designer's open dialog draw the same way (#359 shared seam).
 export {
@@ -98,63 +154,8 @@ export {
   isFolderOnOpenChain,
   nextOpenFolder,
   parentFolderPath,
-  workflowBaseName,
   type WorkflowTreeFolder,
   type WorkflowTreeLeaf,
   type WorkflowTreeNode,
+  workflowBaseName,
 } from "./workflow-tree.js";
-
-// The framework-free run-logic seam both the Viewer and the Designer read (#359, spec § Shared
-// seam). Each unit has one right answer a second surface must reach identically: how a launch field
-// is gated before a request is spent, how one node is named, what one log event says, and what a
-// missing blob means. The surfaces keep only their own wiring — the launch form's inputs, the run
-// tree's rows, the narrative's list, the blob hook's `useState`/`useEffect` — on the other side.
-export { parseJsonField, type JsonFieldResult, type ParseJsonFieldOptions } from "./launch-json.js";
-export { runBlobSource, type RunBlobSource } from "./blob-source.js";
-export { nodeLabel, nodeEventLabel } from "./node-label.js";
-export { eventMessage } from "./event-message.js";
-export { planBlobRead, resolveBlobError, type BlobContent, type BlobReadPlan } from "./blob-absence.js";
-
-// The Viewer/Designer awaiting surface (issue #486, ADR 0040): the `person-activity` node read from the
-// workflow file by id, and the framework-free Complete-form model — field list, value coercion, client
-// pre-check, and the server `400`→field mapping — so both surfaces draw the same form and read the same
-// errors. The React components keep only their own inputs on the other side (spec § Shared seam).
-export { AWAITING_STEP_TYPE, awaitingNodeForRun, findAwaitingNode, type AwaitingNode } from "./awaiting-node.js";
-export { loadReachableWorkflowFiles } from "./reachable-workflow-files.js";
-export {
-  buildCompleteFields,
-  coerceCompleteOutput,
-  coerceRawCompleteOutput,
-  mapCompleteErrors,
-  validateCompleteDraft,
-  type CompleteField,
-  type CompleteFieldKind,
-  type CompleteFieldValue,
-  type MappedCompleteErrors,
-} from "./complete-form.js";
-
-// The Designer's `Resume from …` button's eager legal-K check (spec § Resume from here, ADR 0033):
-// the client mirror of the engine's one legal-K rule, computed from the run tree + the open file so an
-// illegal K greys before any round-trip; the engine's `refusal` stays the authority for a race.
-export {
-  resumeFromEligibility,
-  shortRunId,
-  type ResumeFromEligibility,
-  type ResumeFromEligibilityArgs,
-  type ResumeFromReasonCode,
-  type ResumeFromContainer,
-} from "./resume-from-eligibility.js";
-
-// The launch-facts secret-restore contract shared by both continuation surfaces (Resume and Complete,
-// ADR 0046): the config field's show/skeleton state, and the one submit-gate verdict — parse, blank
-// secret paths, whether it may submit, and the block message — so neither surface re-derives it.
-export {
-  launchSecretResupply,
-  resupplyGate,
-  secretSkeletonJson,
-  blankSecretPaths,
-  blankSecretMessage,
-  type ContinuationVerb,
-  type LaunchSecretResupply,
-  type ResupplyGate,
-} from "./launch-secret-resupply.js";

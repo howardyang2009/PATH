@@ -21,8 +21,20 @@ function paneFile(): Record<string, unknown> {
     body: [
       // alpha publishes the context keys the conditions below read, so the file carries no #388
       // dangling-context warning of its own — these #370 tests assert only on their own surfaces.
-      { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", config: { region: "us" }, publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" } },
-      { type: "checkpoint", id: uuid(3), name: "gate", condition: { type: "exists", path: "context.x" } },
+      {
+        type: "prompt",
+        id: uuid(2),
+        name: "alpha",
+        prompt: "a",
+        config: { region: "us" },
+        publish: { x: "${output.a}", y: "${output.a}", z: "${output.a}" },
+      },
+      {
+        type: "checkpoint",
+        id: uuid(3),
+        name: "gate",
+        condition: { type: "exists", path: "context.x" },
+      },
       {
         type: "while-do",
         id: uuid(4),
@@ -35,7 +47,12 @@ function paneFile(): Record<string, unknown> {
         type: "branch",
         id: uuid(6),
         name: "br",
-        arms: [{ when: { type: "exists", path: "context.z" }, node: { type: "prompt", id: uuid(7), name: "arm1", prompt: "1" } }],
+        arms: [
+          {
+            when: { type: "exists", path: "context.z" },
+            node: { type: "prompt", id: uuid(7), name: "arm1", prompt: "1" },
+          },
+        ],
       },
       {
         type: "parallel",
@@ -52,7 +69,12 @@ function paneFile(): Record<string, unknown> {
 }
 
 async function openPane() {
-  render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) } })} initialPath={PATH} />);
+  render(
+    <App
+      client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) } })}
+      initialPath={PATH}
+    />,
+  );
   await screen.findByText("alpha");
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   const pane = screen.getByRole("region", { name: "Properties" });
@@ -77,7 +99,9 @@ describe("#370 the typed condition builder", () => {
     const fieldset = within(pane).getByRole("group", { name: "condition" });
     expect(within(fieldset).getByLabelText("Operator")).toHaveValue("exists");
 
-    fireEvent.change(within(fieldset).getByLabelText("Operator"), { target: { value: "valid-json" } });
+    fireEvent.change(within(fieldset).getByLabelText("Operator"), {
+      target: { value: "valid-json" },
+    });
     // The canvas summary follows the committed assertion.
     expect(within(canvas).getByText(/assert valid-json context\.x/)).toBeInTheDocument();
   });
@@ -114,7 +138,8 @@ describe("#370 the typed condition builder", () => {
 
   it("gathers referenceable paths into one reference section at the end, none under the fields", async () => {
     const { canvas, pane } = await openPane();
-    const referenceText = (): string => pane.querySelector(".pane-reference .pane-suggest")?.textContent ?? "";
+    const referenceText = (): string =>
+      pane.querySelector(".pane-reference .pane-suggest")?.textContent ?? "";
 
     // A checkpoint reads only the condition roots (context / output) — no config in its list.
     selectNode(canvas, "gate");
@@ -124,7 +149,9 @@ describe("#370 the typed condition builder", () => {
     expect(referenceText()).toMatch(/output\./);
     expect(referenceText()).not.toMatch(/config\./);
     // The condition builder no longer carries its own Reference line.
-    expect(within(within(pane).getByRole("group", { name: "condition" })).queryByText(/context\.x/)).not.toBeInTheDocument();
+    expect(
+      within(within(pane).getByRole("group", { name: "condition" })).queryByText(/context\.x/),
+    ).not.toBeInTheDocument();
 
     // A while-do adds max_iterations' step roots, so config joins the list.
     selectNode(canvas, "loop");

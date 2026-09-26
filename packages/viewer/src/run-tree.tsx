@@ -34,7 +34,13 @@ export interface RunTreeProps {
   workflowFiles?: readonly WorkflowFile[];
 }
 
-export function RunTree({ rootRunId, runs, selectedRunId, onSelectRun, workflowFiles = [] }: RunTreeProps) {
+export function RunTree({
+  rootRunId,
+  runs,
+  selectedRunId,
+  onSelectRun,
+  workflowFiles = [],
+}: RunTreeProps) {
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set<string>());
 
   const root = buildRunTree(rootRunId, runs);

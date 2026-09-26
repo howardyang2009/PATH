@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { ListWorkflowsResponse, WorkflowSummary } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let handle: PathServerHandle;
@@ -60,8 +60,16 @@ describe("GET /v0/workflows", () => {
     expect(status).toBe(200);
     const wf = byPath(body);
 
-    expect(wf.get("release-notes.workflow.json")).toMatchObject({ valid: true, is_root: true, name: "release-notes" });
-    expect(wf.get(join("lib", "draft.workflow.json"))).toMatchObject({ valid: true, is_root: false, name: "draft" });
+    expect(wf.get("release-notes.workflow.json")).toMatchObject({
+      valid: true,
+      is_root: true,
+      name: "release-notes",
+    });
+    expect(wf.get(join("lib", "draft.workflow.json"))).toMatchObject({
+      valid: true,
+      is_root: false,
+      name: "draft",
+    });
   });
 
   it("returns an empty list for a project with no workflows", async () => {
@@ -91,7 +99,10 @@ describe("GET /v0/workflows", () => {
   });
 
   it("reports a schema-invalid file as valid: false, is_root: null, with a best-effort id/name", async () => {
-    write("broken.workflow.json", JSON.stringify({ format: "path/workflow@2", id: uuid(), name: "broken", bogus: true }));
+    write(
+      "broken.workflow.json",
+      JSON.stringify({ format: "path/workflow@2", id: uuid(), name: "broken", bogus: true }),
+    );
 
     const broken = byPath((await listWorkflows()).body).get("broken.workflow.json")!;
     expect(broken.valid).toBe(false);
@@ -147,7 +158,10 @@ describe("GET /v0/workflows", () => {
     // surface the nested file under a second path with is_root: true (valid-root-detection.md).
     write("parent.workflow.json", workflow("parent", ["./lib/child.workflow.json"]));
     write("lib/child.workflow.json", workflow("child"));
-    symlinkSync(join(projectDir, "lib", "child.workflow.json"), join(projectDir, "alias.workflow.json"));
+    symlinkSync(
+      join(projectDir, "lib", "child.workflow.json"),
+      join(projectDir, "alias.workflow.json"),
+    );
 
     const { body } = await listWorkflows();
     const paths = body.workflows.map((w) => w.relative_path).sort();

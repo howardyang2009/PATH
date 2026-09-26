@@ -1,16 +1,16 @@
 import {
   buildCompleteFields,
+  type CompleteField,
+  type CompleteFieldValue,
   coerceCompleteOutput,
   coerceRawCompleteOutput,
+  type JsonValue,
   launchSecretResupply,
   mapCompleteErrors,
+  type PathApiClient,
   PathApiError,
   resupplyGate,
   validateCompleteDraft,
-  type CompleteField,
-  type CompleteFieldValue,
-  type JsonValue,
-  type PathApiClient,
 } from "@path/client-core";
 import { useMemo, useState } from "react";
 import { errorMessage } from "./load-state.js";
@@ -163,13 +163,22 @@ export function CompleteForm({
       {showSecrets && <LaunchSecretsControl value={configText} onChange={setConfigText} />}
 
       {gate.blockMessage !== null && (
-        <p className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-secret-error">
+        <p
+          className="pane-note pane-error complete-form-error"
+          role="alert"
+          data-testid="complete-secret-error"
+        >
           {gate.blockMessage}
         </p>
       )}
 
       {formErrors.map((message, index) => (
-        <p key={index} className="pane-note pane-error complete-form-error" role="alert" data-testid="complete-form-error">
+        <p
+          key={message}
+          className="pane-note pane-error complete-form-error"
+          role="alert"
+          data-testid="complete-form-error"
+        >
           {message}
         </p>
       ))}
@@ -206,7 +215,9 @@ function RawOutputControl({ value, onChange }: RawOutputControlProps) {
       <label className="field-label complete-label" htmlFor={id}>
         Output
       </label>
-      <p className="complete-help">Enter any text, or JSON for a structured value. Leave blank to submit an empty output.</p>
+      <p className="complete-help">
+        Enter any text, or JSON for a structured value. Leave blank to submit an empty output.
+      </p>
       <textarea
         id={id}
         className="launch-textarea complete-input"
@@ -268,7 +279,10 @@ function CompleteControl({ field, value, error, onChange }: CompleteControlProps
   const describedBy = invalid ? errId : undefined;
 
   return (
-    <div className={`complete-field${invalid ? " complete-field--invalid" : ""}`} data-testid={`complete-field-${field.key}`}>
+    <div
+      className={`complete-field${invalid ? " complete-field--invalid" : ""}`}
+      data-testid={`complete-field-${field.key}`}
+    >
       {field.kind === "boolean" ? (
         <label className="complete-check" htmlFor={id}>
           <input
@@ -280,14 +294,24 @@ function CompleteControl({ field, value, error, onChange }: CompleteControlProps
           />
           <span className="complete-label-text">
             {field.title}
-            {field.required && <span className="complete-req" aria-hidden="true"> *</span>}
+            {field.required && (
+              <span className="complete-req" aria-hidden="true">
+                {" "}
+                *
+              </span>
+            )}
           </span>
         </label>
       ) : (
         <>
           <label className="field-label complete-label" htmlFor={id}>
             {field.title}
-            {field.required && <span className="complete-req" aria-hidden="true"> *</span>}
+            {field.required && (
+              <span className="complete-req" aria-hidden="true">
+                {" "}
+                *
+              </span>
+            )}
           </label>
           {field.description !== null && <p className="complete-help">{field.description}</p>}
           {field.kind === "enum" ? (

@@ -1,11 +1,10 @@
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { makeWorkflowFileSchema, safeParseWorkflowFileWith, toWireStepPlugins } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { makeWorkflowFileSchema, safeParseWorkflowFileWith, toWireStepPlugins } from "@path/schema";
-
-import { scanStepPlugins, STEP_PLUGINS_DIR } from "../../src/plugin/scan.js";
+import { STEP_PLUGINS_DIR, scanStepPlugins } from "../../src/plugin/scan.js";
 import type { StepRequest, StepResult } from "../../src/plugin/seam.js";
 
 // The end-to-end dogfood of the public surface (#336, ADR 0019 sub-10): the two shipped built-in leaf
@@ -36,8 +35,14 @@ describe("the shipped built-ins load through the scanner", () => {
     const registry = await loadRegistry();
 
     // `prompt`'s `anthropic` needs a processor slot and meters; `binary`'s `spawn` stays uncapped and meters nothing.
-    expect(registry.prompt!.workers.anthropic).toMatchObject({ needsProcessorSlot: true, meters: true });
-    expect(registry.binary!.workers.spawn).toMatchObject({ needsProcessorSlot: false, meters: false });
+    expect(registry.prompt!.workers.anthropic).toMatchObject({
+      needsProcessorSlot: true,
+      meters: true,
+    });
+    expect(registry.binary!.workers.spawn).toMatchObject({
+      needsProcessorSlot: false,
+      meters: false,
+    });
   });
 
   it("exposes no type name on either plugin — the folder name is the type", async () => {
@@ -59,8 +64,14 @@ describe("the `prompt` plugin's two model workers", () => {
   it("gives both workers the same capabilities — each makes one metered processor call per step-run", async () => {
     const registry = await loadRegistry();
 
-    expect(registry.prompt!.workers.anthropic).toMatchObject({ meters: true, needsProcessorSlot: true });
-    expect(registry.prompt!.workers.deepseek).toMatchObject({ meters: true, needsProcessorSlot: true });
+    expect(registry.prompt!.workers.anthropic).toMatchObject({
+      meters: true,
+      needsProcessorSlot: true,
+    });
+    expect(registry.prompt!.workers.deepseek).toMatchObject({
+      meters: true,
+      needsProcessorSlot: true,
+    });
   });
 
   it("declares no vendor field on the node — selecting a provider is the `worker` envelope field", async () => {
@@ -87,7 +98,15 @@ describe("the `prompt` plugin's two model workers", () => {
       format: "path/workflow@5",
       id: UUID_FILE,
       name: "providers",
-      body: [{ type: "prompt", id: UUID_PROMPT, name: "summarize", prompt: "Summarize the diff.", ...(worker === undefined ? {} : { worker }) }],
+      body: [
+        {
+          type: "prompt",
+          id: UUID_PROMPT,
+          name: "summarize",
+          prompt: "Summarize the diff.",
+          ...(worker === undefined ? {} : { worker }),
+        },
+      ],
     });
 
     expect(safeParseWorkflowFileWith(schema, body("deepseek")).success).toBe(true);
@@ -103,7 +122,15 @@ describe("the `prompt` plugin's two model workers", () => {
       format: "path/workflow@5",
       id: UUID_FILE,
       name: "providers",
-      body: [{ type: "prompt", id: UUID_PROMPT, name: "summarize", prompt: "Summarize the diff.", worker: "openai" }],
+      body: [
+        {
+          type: "prompt",
+          id: UUID_PROMPT,
+          name: "summarize",
+          prompt: "Summarize the diff.",
+          worker: "openai",
+        },
+      ],
     });
 
     expect(result.success).toBe(false);
@@ -161,7 +188,10 @@ describe("the `binary` spawn worker", () => {
   });
 
   // Run the real `spawn` worker the scanner loaded, so the assertion covers the shipped code.
-  async function runSpawn(fields: { command: string; args?: string[]; cwd?: string }, cwd: string): Promise<StepResult> {
+  async function runSpawn(
+    fields: { command: string; args?: string[]; cwd?: string },
+    cwd: string,
+  ): Promise<StepResult> {
     const registry = await loadRegistry();
     const request: StepRequest = {
       fields,

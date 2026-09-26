@@ -38,7 +38,10 @@ export const SUPERSEDED_FORMAT_VERSIONS = {
     "scripts/migrate-workflow-format-v4.ts",
     "scripts/migrate-workflow-format-v5.ts",
   ],
-  "path/workflow@3": ["scripts/migrate-workflow-format-v4.ts", "scripts/migrate-workflow-format-v5.ts"],
+  "path/workflow@3": [
+    "scripts/migrate-workflow-format-v4.ts",
+    "scripts/migrate-workflow-format-v5.ts",
+  ],
   "path/workflow@4": ["scripts/migrate-workflow-format-v5.ts"],
 } as const satisfies { [version: string]: readonly string[] };
 

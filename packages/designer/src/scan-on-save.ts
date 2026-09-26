@@ -48,7 +48,11 @@ export function useScanOnSave<T>(
       })
       .catch((error: unknown) => {
         if (!alive.current) return;
-        setLoad({ phase: "error", message: error instanceof Error ? error.message : String(error), lastGood: lastGood.current });
+        setLoad({
+          phase: "error",
+          message: error instanceof Error ? error.message : String(error),
+          lastGood: lastGood.current,
+        });
       });
   }, [fetch]);
 

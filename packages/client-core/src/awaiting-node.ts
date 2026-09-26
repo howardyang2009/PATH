@@ -1,4 +1,10 @@
-import { isPlainObject, walkNodes, type JsonValue, type RunStatus, type WorkflowFile } from "@path/schema";
+import {
+  isPlainObject,
+  type JsonValue,
+  type RunStatus,
+  type WorkflowFile,
+  walkNodes,
+} from "@path/schema";
 
 /**
  * The one awaiting leaf step type v1 ships (ADR 0039). A leaf is completable only while its node is
@@ -43,7 +49,11 @@ export function findAwaitingNode(file: WorkflowFile, nodeId: string): AwaitingNo
   for (const node of walkNodes(file.body)) {
     if (node.id !== nodeId) continue;
     if ((node.type as string) !== AWAITING_STEP_TYPE) return null;
-    const loose = node as unknown as { description?: unknown; assignee?: unknown; outputSchema?: unknown };
+    const loose = node as unknown as {
+      description?: unknown;
+      assignee?: unknown;
+      outputSchema?: unknown;
+    };
     return {
       description: typeof loose.description === "string" ? loose.description : null,
       assignee: typeof loose.assignee === "string" ? loose.assignee : null,

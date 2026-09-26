@@ -7,10 +7,10 @@ import {
   type WorkflowFile,
 } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
+import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
-import { DeleteButton } from "./delete-button.js";
 import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
@@ -39,7 +39,12 @@ type StatusFilter = RunStatus | "all";
  * The affordance a row with no tree behind it carries — a stable empty value, so a rail that never
  * opted in neither allocates per render nor branches at each row.
  */
-const EMPTY_RESUME_FROM: ResumeFromAffordance = { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false };
+const EMPTY_RESUME_FROM: ResumeFromAffordance = {
+  runs: new Map(),
+  selectedRunId: null,
+  rootFile: null,
+  dirty: false,
+};
 
 export interface RunsListProps {
   client: PathApiClient;
@@ -130,7 +135,11 @@ export function RunsList({
     const read = (initial: boolean): void => {
       if (initial) setState({ phase: "loading" });
       client
-        .listRuns({ limit: RUNS_LIMIT, status: statusFilter === "all" ? undefined : statusFilter, workflowId: scope })
+        .listRuns({
+          limit: RUNS_LIMIT,
+          status: statusFilter === "all" ? undefined : statusFilter,
+          workflowId: scope,
+        })
         .then((res) => {
           if (!cancelled) setState({ phase: "ready", value: res.runs });
         })
@@ -244,7 +253,8 @@ export function RunsList({
               // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
               // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033). Suppressed
               // while the run is in flight, like the other two actions.
-              const showResumeFrom = resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
+              const showResumeFrom =
+                resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
                 <li key={run.run_id}>
                   <button
@@ -271,7 +281,10 @@ export function RunsList({
                       {inFlight ? (
                         // A live run has no resume or delete: it never stopped, and the server 409s a
                         // delete on a running run. The panel says why rather than standing empty.
-                        <p className="pane-note">This run is still in flight. Resume and delete become available once it finishes.</p>
+                        <p className="pane-note">
+                          This run is still in flight. Resume and delete become available once it
+                          finishes.
+                        </p>
                       ) : (
                         <>
                           {(showResume || showResumeFrom) && (

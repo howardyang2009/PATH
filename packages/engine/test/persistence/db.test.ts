@@ -25,7 +25,9 @@ describe("openDb", () => {
 
   it("creates the runs table with the documented columns", () => {
     const db = openDb(join(dir, "path.db"));
-    const columns = (db.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map((c) => c.name);
+    const columns = (db.prepare("PRAGMA table_info(runs)").all() as { name: string }[]).map(
+      (c) => c.name,
+    );
     expect(columns).toEqual(
       expect.arrayContaining([
         "run_id",
@@ -48,7 +50,9 @@ describe("openDb", () => {
 
   it("creates the log_events table with the documented columns", () => {
     const db = openDb(join(dir, "path.db"));
-    const columns = (db.prepare("PRAGMA table_info(log_events)").all() as { name: string }[]).map((c) => c.name);
+    const columns = (db.prepare("PRAGMA table_info(log_events)").all() as { name: string }[]).map(
+      (c) => c.name,
+    );
     expect(columns).toEqual(
       expect.arrayContaining(["root_run_id", "seq", "ts", "type", "run_id", "node_id", "event"]),
     );

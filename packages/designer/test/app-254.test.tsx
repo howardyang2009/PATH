@@ -33,7 +33,10 @@ function row(path: string): Record<string, unknown> {
 }
 
 const DISCOVERY = { workflows: [row(BETA_PATH), row(ALPHA_PATH)] };
-const FILES = { [ALPHA_PATH]: JSON.stringify(fileNamed(1, "alpha-flow", "alpha-step")), [BETA_PATH]: JSON.stringify(fileNamed(3, "beta-flow", "beta-step")) };
+const FILES = {
+  [ALPHA_PATH]: JSON.stringify(fileNamed(1, "alpha-flow", "alpha-step")),
+  [BETA_PATH]: JSON.stringify(fileNamed(3, "beta-flow", "beta-step")),
+};
 
 describe("#254 open existing — empty-canvas entry point", () => {
   it("offers Open workflow beside New workflow on the empty canvas", async () => {
@@ -52,7 +55,9 @@ describe("#254 open existing — empty-canvas entry point", () => {
     fireEvent.click(within(dialog).getByRole("button", { name: /flows/ }));
     const list = within(dialog).getByRole("list", { name: "Discovered workflows" });
     // Discovery returned beta-before-alpha; the tree sorts, so alpha lists first — by file name now.
-    const items = within(list).getAllByRole("button").filter((b) => b.textContent?.endsWith(".json"));
+    const items = within(list)
+      .getAllByRole("button")
+      .filter((b) => b.textContent?.endsWith(".json"));
     expect(items.map((b) => b.textContent)).toEqual(["alpha.workflow.json", "beta.workflow.json"]);
 
     fireEvent.click(within(dialog).getByRole("button", { name: "beta.workflow.json" }));
@@ -68,10 +73,14 @@ describe("#254 open existing — empty-canvas entry point", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Open workflow" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a workflow" });
-    expect(await within(dialog).findByText("No workflows discovered in this project yet.")).toBeInTheDocument();
+    expect(
+      await within(dialog).findByText("No workflows discovered in this project yet."),
+    ).toBeInTheDocument();
 
     fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
-    await waitFor(() => expect(screen.queryByRole("dialog", { name: "Open a workflow" })).not.toBeInTheDocument());
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Open a workflow" })).not.toBeInTheDocument(),
+    );
     // Still on the empty canvas — cancel opened nothing.
     expect(screen.getByText("Empty canvas")).toBeInTheDocument();
   });
@@ -79,7 +88,9 @@ describe("#254 open existing — empty-canvas entry point", () => {
 
 describe("#254 open existing — toolbar entry point switches the open file", () => {
   it("opens the picker from the toolbar and swaps the active workflow", async () => {
-    render(<App client={stubClient({ files: FILES, workflows: DISCOVERY })} initialPath={ALPHA_PATH} />);
+    render(
+      <App client={stubClient({ files: FILES, workflows: DISCOVERY })} initialPath={ALPHA_PATH} />,
+    );
 
     // Start on alpha via the deep-link.
     await screen.findByText("alpha-step");

@@ -92,6 +92,8 @@ describe("App", () => {
     fireEvent.click(screen.getByTestId(`run-row-${other}`));
 
     expect(screen.queryByTestId("node-io-head")).toBeNull();
-    expect(screen.getByRole("region", { name: "Node I/O/C/E" })).toHaveTextContent("Select a run in the tree.");
+    expect(screen.getByRole("region", { name: "Node I/O/C/E" })).toHaveTextContent(
+      "Select a run in the tree.",
+    );
   });
 });

@@ -1,4 +1,9 @@
-import { displayStatusByRun, type PathApiClient, type RunNodeState, type WorkflowFile } from "@path/client-core";
+import {
+  displayStatusByRun,
+  type PathApiClient,
+  type RunNodeState,
+  type WorkflowFile,
+} from "@path/client-core";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { NodeIo } from "../src/node-io.js";
@@ -33,9 +38,25 @@ const TREE = {
   status: "running",
   output: null,
   runs: [
-    record({ run_id: ROOT, parent_run_id: null, node_id: null, status: "running", started_at: "2026-07-25T10:00:00.000Z" }),
-    record({ run_id: "run_legal", node_id: "step-legal", node_name: "legal-signoff", status: "awaiting" }),
-    record({ run_id: "run_finance", node_id: "step-finance", node_name: "finance-approval", status: "awaiting" }),
+    record({
+      run_id: ROOT,
+      parent_run_id: null,
+      node_id: null,
+      status: "running",
+      started_at: "2026-07-25T10:00:00.000Z",
+    }),
+    record({
+      run_id: "run_legal",
+      node_id: "step-legal",
+      node_name: "legal-signoff",
+      status: "awaiting",
+    }),
+    record({
+      run_id: "run_finance",
+      node_id: "step-finance",
+      node_name: "finance-approval",
+      status: "awaiting",
+    }),
     record({ run_id: "run_send", node_id: "step-send", node_name: "send", status: "pending" }),
   ],
 };
@@ -51,9 +72,19 @@ const ROOT_FILE = {
       name: "legal-signoff",
       description: "Review the contract for {{client.name}}.",
       assignee: "legal@acme.co",
-      outputSchema: { type: "object", required: ["approved"], properties: { approved: { type: "boolean", title: "Approved" } } },
+      outputSchema: {
+        type: "object",
+        required: ["approved"],
+        properties: { approved: { type: "boolean", title: "Approved" } },
+      },
     },
-    { id: "step-finance", type: "person-activity", name: "finance-approval", description: "Approve the budget.", assignee: "cfo@acme.co" },
+    {
+      id: "step-finance",
+      type: "person-activity",
+      name: "finance-approval",
+      description: "Approve the budget.",
+      assignee: "cfo@acme.co",
+    },
     // A `workflow` step whose ref'd file holds a further person-activity leaf; the run tree carries
     // only that leaf's node id, so its fields are resolved from the sub-file, not this one.
     { id: "step-sub", type: "workflow", name: "sub", ref: "sub.workflow.json" },
@@ -72,14 +103,27 @@ const SUB_FILE = {
       name: "nested-review",
       description: "Nested review for {{client.name}}.",
       assignee: "ops@acme.co",
-      outputSchema: { type: "object", required: ["done"], properties: { done: { type: "boolean", title: "Done" } } },
+      outputSchema: {
+        type: "object",
+        required: ["done"],
+        properties: { done: { type: "boolean", title: "Done" } },
+      },
     },
   ] as unknown as WorkflowFile["body"],
 } satisfies WorkflowFile;
 
 function ConnectedDetail({ client }: { client: PathApiClient }) {
   const load = useRunView(client, ROOT);
-  return <RunDetail client={client} load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={vi.fn()} workflowFiles={[ROOT_FILE]} />;
+  return (
+    <RunDetail
+      client={client}
+      load={load}
+      rootRunId={ROOT}
+      selectedRunId={null}
+      onSelectRun={vi.fn()}
+      workflowFiles={[ROOT_FILE]}
+    />
+  );
 }
 
 /** One run as the tree hands it to the node pane. */
@@ -126,7 +170,10 @@ describe("awaiting rail (RunDetail)", () => {
   });
 
   it("shows no count badge when only one leaf awaits", async () => {
-    const single = { ...TREE, runs: TREE.runs.map((r) => (r.run_id === "run_finance" ? { ...r, status: "pending" } : r)) };
+    const single = {
+      ...TREE,
+      runs: TREE.runs.map((r) => (r.run_id === "run_finance" ? { ...r, status: "pending" } : r)),
+    };
     render(<ConnectedDetail client={stubClient({ tree: single })} />);
     await screen.findByTestId("tree-item-run_legal");
     expect(screen.queryByTestId("awaiting-count-badge")).toBeNull();
@@ -145,7 +192,9 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   it("shows the description callout, the assignee, and the inline Complete form for an awaiting leaf", async () => {
     render(<NodeIo client={stubClient()} run={runState()} workflowFiles={[ROOT_FILE]} />);
 
-    expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Review the contract for {{client.name}}.");
+    expect(screen.getByTestId("awaiting-description")).toHaveTextContent(
+      "Review the contract for {{client.name}}.",
+    );
     // The form is inline in the panel — no button to open a slide-over first.
     const actions = within(screen.getByTestId("awaiting-actions"));
     expect(actions.getByTestId("complete-form")).toBeInTheDocument();
@@ -159,10 +208,16 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     // The leaf's node id (step-nested) is defined in SUB_FILE, reached from the root through a
     // `workflow` step. The app hands the whole reachable set, so the surface resolves it there — the
     // same content as a root leaf: description, assignee, output schema, and the Complete form.
-    const nested = runState({ runId: "run_nested", nodeId: "step-nested", nodeName: "nested-review" });
+    const nested = runState({
+      runId: "run_nested",
+      nodeId: "step-nested",
+      nodeName: "nested-review",
+    });
     render(<NodeIo client={stubClient()} run={nested} workflowFiles={[ROOT_FILE, SUB_FILE]} />);
 
-    expect(screen.getByTestId("awaiting-description")).toHaveTextContent("Nested review for {{client.name}}.");
+    expect(screen.getByTestId("awaiting-description")).toHaveTextContent(
+      "Nested review for {{client.name}}.",
+    );
     const actions = within(screen.getByTestId("awaiting-actions"));
     expect(actions.getByTestId("assignee-chip")).toHaveTextContent("ops@acme.co");
     expect(actions.getByTestId("complete-field-done")).toBeInTheDocument();
@@ -205,7 +260,10 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     fireEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
-      expect(completeBodies[0]).toEqual({ output: { approved: true }, config: { github: { token: "sk-live" } } }),
+      expect(completeBodies[0]).toEqual({
+        output: { approved: true },
+        config: { github: { token: "sk-live" } },
+      }),
     );
   });
 
@@ -216,7 +274,14 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
         body: {
           error: {
             message: "output does not match the step's outputSchema",
-            details: [{ instancePath: "", keyword: "required", params: { missingProperty: "approved" }, message: "must have required property 'approved'" }],
+            details: [
+              {
+                instancePath: "",
+                keyword: "required",
+                params: { missingProperty: "approved" },
+                message: "must have required property 'approved'",
+              },
+            ],
           },
         },
       },
@@ -228,12 +293,24 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
     fireEvent.click(screen.getByTestId("complete-submit"));
 
     await waitFor(() =>
-      expect(screen.getByTestId("complete-field-approved")).toHaveTextContent("must have required property 'approved'"),
+      expect(screen.getByTestId("complete-field-approved")).toHaveTextContent(
+        "must have required property 'approved'",
+      ),
     );
   });
 
   it("shows an empty output schema and a raw-JSON control for a node with no outputSchema", () => {
-    render(<NodeIo client={stubClient()} run={runState({ runId: "run_finance", nodeId: "step-finance", nodeName: "finance-approval" })} workflowFiles={[ROOT_FILE]} />);
+    render(
+      <NodeIo
+        client={stubClient()}
+        run={runState({
+          runId: "run_finance",
+          nodeId: "step-finance",
+          nodeName: "finance-approval",
+        })}
+        workflowFiles={[ROOT_FILE]}
+      />,
+    );
 
     // The schema block is a fixed slot: it shows even when the node authored none.
     expect(screen.getByTestId("awaiting-output-schema")).toBeInTheDocument();
@@ -245,7 +322,13 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
   it("degrades to a schema-less submit when the node is in no loaded file (the sub-file failed to read)", () => {
     // step-nested lives in SUB_FILE; with only the root loaded (a since-moved or unreadable ref) the
     // reachable set cannot resolve it, so the surface degrades rather than inventing a form.
-    render(<NodeIo client={stubClient()} run={runState({ nodeId: "step-nested" })} workflowFiles={[ROOT_FILE]} />);
+    render(
+      <NodeIo
+        client={stubClient()}
+        run={runState({ nodeId: "step-nested" })}
+        workflowFiles={[ROOT_FILE]}
+      />,
+    );
     expect(screen.getByTestId("awaiting-unresolved")).toBeInTheDocument();
     expect(screen.getByTestId("complete-raw-output")).toBeInTheDocument();
     expect(screen.getByTestId("complete-submit")).toBeInTheDocument();
@@ -253,13 +336,29 @@ describe("awaiting detail panel — inline Complete (NodeIo)", () => {
 
   it("shows awaiting in the node I/O head for a running run with an awaiting descendant, but no Complete form", () => {
     const runs = new Map<string, RunNodeState>([
-      ["run_root", runState({ runId: "run_root", parentRunId: null, nodeId: null, nodeName: null, status: "running" })],
+      [
+        "run_root",
+        runState({
+          runId: "run_root",
+          parentRunId: null,
+          nodeId: null,
+          nodeName: null,
+          status: "running",
+        }),
+      ],
       ["run_legal", runState()],
     ]);
     // The view publishes the derived fact (the shared derivation, exercised here through the real
     // function); the pane only renders what it is given.
     const view = { displayStatus: displayStatusByRun(runs), lastError: new Map<string, string>() };
-    render(<NodeIo client={stubClient()} run={runs.get("run_root")!} view={view} workflowFiles={[ROOT_FILE]} />);
+    render(
+      <NodeIo
+        client={stubClient()}
+        run={runs.get("run_root")!}
+        view={view}
+        workflowFiles={[ROOT_FILE]}
+      />,
+    );
 
     // The head reads awaiting (shared derivation), yet the running root is not itself awaiting, so it
     // gets no Complete surface — that stays keyed on the real status.

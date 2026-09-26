@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ConfigObjectSchema, type ConfigObject, type JsonValue } from "@path/schema";
+import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
@@ -32,7 +32,9 @@ import type { RouteContext } from "./route-context.js";
  * only as its token — this is the door an operator supplies it again through. It carries the same
  * ADR 0012 `$env` reject as §2 and §4.3.
  */
-const CompleteBodySchema = z.object({ output: z.unknown(), config: ConfigObjectSchema.optional() }).strict();
+const CompleteBodySchema = z
+  .object({ output: z.unknown(), config: ConfigObjectSchema.optional() })
+  .strict();
 
 export async function handleCompleteRun(
   req: IncomingMessage,
@@ -98,14 +100,21 @@ export async function handleCompleteRun(
   }
   const { workflow } = prepared;
 
-  const result = await ctx.live.complete(workflow.rootFile, rootRunId, stepRunId, output, workflow.workflowDir, {
-    files: workflow.files,
-    // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
-    registry: workflow.registry,
-    // The override, if any: the engine merges it over the config the launch froze (ADR 0046), which is
-    // how a `$secret` the launch stored as a token gets its value back for the tail.
-    operatorConfig: config,
-  });
+  const result = await ctx.live.complete(
+    workflow.rootFile,
+    rootRunId,
+    stepRunId,
+    output,
+    workflow.workflowDir,
+    {
+      files: workflow.files,
+      // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
+      registry: workflow.registry,
+      // The override, if any: the engine merges it over the config the launch froze (ADR 0046), which is
+      // how a `$secret` the launch stored as a token gets its value back for the tail.
+      operatorConfig: config,
+    },
+  );
 
   if (!result.ok) {
     // `not-found` → 404; `output-invalid` → 400 with the validator's issues; `not-awaiting` (a submit

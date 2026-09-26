@@ -1,7 +1,13 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeStepTemplateSchema, safeParseStepTemplateWith, type StepPluginRegistry, type TemplateSummary, type WireError } from "@path/schema";
+import {
+  makeStepTemplateSchema,
+  type StepPluginRegistry,
+  safeParseStepTemplateWith,
+  type TemplateSummary,
+  type WireError,
+} from "@path/schema";
 
 // The Template store (ADR 0050, ADR 0051): the Server-owned, engine-blind discovery of the
 // shipped∪user authoring templates. A template is typed by its file **suffix**, never its bytes

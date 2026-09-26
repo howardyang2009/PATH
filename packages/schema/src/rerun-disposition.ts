@@ -36,12 +36,17 @@ export type RerunDisposition = "reuse" | "descend" | "rerun-entire";
  * rather than silently degraded — never "no boundary", which would reuse the very work the operator
  * asked to drop.
  */
-export function rerunBoundaryIndex(body: WorkflowNode[], suffix: readonly string[]): number | undefined {
+export function rerunBoundaryIndex(
+  body: WorkflowNode[],
+  suffix: readonly string[],
+): number | undefined {
   if (suffix.length === 0) return undefined;
   const head = suffix[0]!;
   const index = serialOrder(body).findIndex((node) => node.id === head);
   if (index < 0) {
-    throw new Error(`resume: rerun boundary node "${head}" is not a top-level node of the workflow`);
+    throw new Error(
+      `resume: rerun boundary node "${head}" is not a top-level node of the workflow`,
+    );
   }
   return index;
 }
@@ -52,7 +57,11 @@ export function rerunBoundaryIndex(body: WorkflowNode[], suffix: readonly string
  *
  * A `nodeId` that is not in the serial order degrades to `rerun-entire` (re-run, never mis-reuse).
  */
-export function rerunDisposition(body: WorkflowNode[], suffix: string[], nodeId: string): RerunDisposition {
+export function rerunDisposition(
+  body: WorkflowNode[],
+  suffix: string[],
+  nodeId: string,
+): RerunDisposition {
   const bIndex = rerunBoundaryIndex(body, suffix);
   if (bIndex === undefined) return "reuse";
   const nodeIndex = serialOrder(body).findIndex((node) => node.id === nodeId);

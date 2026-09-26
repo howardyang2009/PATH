@@ -25,10 +25,18 @@ function parentFile(): WorkflowFile {
 }
 
 /** A session whose two transitions the seam calls; the rest is unused here. */
-function stubSession(): { session: OpenSession; applyEdit: ReturnType<typeof vi.fn>; descendNewUnbound: ReturnType<typeof vi.fn> } {
+function stubSession(): {
+  session: OpenSession;
+  applyEdit: ReturnType<typeof vi.fn>;
+  descendNewUnbound: ReturnType<typeof vi.fn>;
+} {
   const applyEdit = vi.fn();
   const descendNewUnbound = vi.fn();
-  return { session: { applyEdit, descendNewUnbound } as unknown as OpenSession, applyEdit, descendNewUnbound };
+  return {
+    session: { applyEdit, descendNewUnbound } as unknown as OpenSession,
+    applyEdit,
+    descendNewUnbound,
+  };
 }
 
 describe("useRefAuthoring", () => {

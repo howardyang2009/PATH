@@ -1,5 +1,10 @@
-import { createContext, useContext, useMemo, type ReactNode } from "react";
-import { displayStatusByRun, isPassRun, type RunNodeState, type RunStatus } from "@path/client-core";
+import {
+  displayStatusByRun,
+  isPassRun,
+  type RunNodeState,
+  type RunStatus,
+} from "@path/client-core";
+import { createContext, type ReactNode, useContext, useMemo } from "react";
 
 /**
  * The canvas projection (surface 6, ADR 0025): live run status folded onto the workflow's nodes. One
@@ -39,7 +44,7 @@ export function projectRunStatus(runs: ReadonlyMap<string, RunNodeState>): Map<s
   for (const [nodeId, group] of byNode) {
     const running = group.find((run) => display.get(run.runId) === "running");
     const latest = mostRecent(group);
-    projected.set(nodeId, running ? "running" : display.get(latest.runId) ?? latest.status);
+    projected.set(nodeId, running ? "running" : (display.get(latest.runId) ?? latest.status));
   }
   return projected;
 }
@@ -82,8 +87,13 @@ export function RunProjectionProvider({
   runs: ReadonlyMap<string, RunNodeState> | null;
   children: ReactNode;
 }): JSX.Element {
-  const projected = useMemo(() => (runs ? { status: projectRunStatus(runs), jumpsSpent: projectJumpsSpent(runs) } : null), [runs]);
-  return <RunProjectionContext.Provider value={projected}>{children}</RunProjectionContext.Provider>;
+  const projected = useMemo(
+    () => (runs ? { status: projectRunStatus(runs), jumpsSpent: projectJumpsSpent(runs) } : null),
+    [runs],
+  );
+  return (
+    <RunProjectionContext.Provider value={projected}>{children}</RunProjectionContext.Provider>
+  );
 }
 
 /** The projected status for one node id, or `null` when nothing is being watched or the node has no run yet. */
@@ -102,5 +112,5 @@ export function useRunProjection(): ReadonlyMap<string, RunStatus> | null {
 /** A goto's jumps spent in the watched run (0 when it never jumped), or `null` when nothing is watched. */
 export function useGotoJumpsSpent(nodeId: string): number | null {
   const projection = useContext(RunProjectionContext);
-  return projection ? projection.jumpsSpent.get(nodeId) ?? 0 : null;
+  return projection ? (projection.jumpsSpent.get(nodeId) ?? 0) : null;
 }

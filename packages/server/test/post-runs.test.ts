@@ -4,9 +4,9 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
+import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 import { handlePostRuns } from "../src/routes/post-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
-import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 
 /**
  * `POST /v0/runs` carries the operator's **launch worker-default** table (ADR 0044, #517): a top-level
@@ -32,7 +32,9 @@ function recordingLive(): { live: LiveRuns; started: StartRunOptions[] } {
 
 /** A request body streamed the way `readJsonBody` consumes it — `data` then `end`. */
 function fakeReq(body: unknown) {
-  return Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as Parameters<typeof handlePostRuns>[0];
+  return Readable.from([Buffer.from(JSON.stringify(body))]) as unknown as Parameters<
+    typeof handlePostRuns
+  >[0];
 }
 
 /** A response sink capturing the status the handler writes and its JSON body. */
@@ -79,13 +81,21 @@ describe("POST /v0/runs input resolution", () => {
 
   it("treats an empty override as no override", async () => {
     const { live, started } = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: {} }), fakeRes().res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WITH_INPUT, input: {} }),
+      fakeRes().res,
+      context(live),
+    );
     expect(started[0]!.input).toEqual(FILE_SEED);
   });
 
   it("lets a non-empty override win over the file seed", async () => {
     const { live, started } = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WITH_INPUT, input: { ticket: 9 } }), fakeRes().res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WITH_INPUT, input: { ticket: 9 } }),
+      fakeRes().res,
+      context(live),
+    );
     expect(started[0]!.input).toEqual({ ticket: 9 });
   });
 
@@ -104,7 +114,11 @@ describe("POST /v0/runs operatorInput (ADR 0046)", () => {
     const { live, started } = recordingLive();
     const { res, result } = fakeRes();
 
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: { ticket: 9 } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, input: { ticket: 9 } }),
+      res,
+      context(live),
+    );
 
     expect(result.status).toBe(202);
     expect(started[0]!.operatorInput).toEqual({ ticket: 9 });
@@ -112,7 +126,11 @@ describe("POST /v0/runs operatorInput (ADR 0046)", () => {
 
   it("records no override for an empty object or an absent field", async () => {
     const empty = recordingLive();
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, input: {} }), fakeRes().res, context(empty.live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, input: {} }),
+      fakeRes().res,
+      context(empty.live),
+    );
     expect(empty.started[0]!.operatorInput).toBeUndefined();
 
     const absent = recordingLive();
@@ -126,7 +144,11 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     const { live, started } = recordingLive();
     const { res, result } = fakeRes();
 
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "spawn" } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "spawn" } }),
+      res,
+      context(live),
+    );
 
     expect(result.status).toBe(202);
     expect(started).toHaveLength(1);
@@ -139,7 +161,11 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
 
     // Dispatch never reads `config` for worker selection, so a table smuggled inside it is inert. The
     // launch table must come from the top-level field alone.
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, config: { worker_defaults: { binary: "spawn" } } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, config: { worker_defaults: { binary: "spawn" } } }),
+      res,
+      context(live),
+    );
 
     expect(started).toHaveLength(1);
     expect(started[0]!.launchWorkerDefaults).toBeUndefined();
@@ -159,7 +185,11 @@ describe("POST /v0/runs worker_defaults (ADR 0044, #517)", () => {
     const { live, started } = recordingLive();
     const { res, result } = fakeRes();
 
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "" } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { binary: "" } }),
+      res,
+      context(live),
+    );
 
     expect(result.status).toBe(400);
     expect(started).toHaveLength(0);
@@ -180,7 +210,11 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { live, started } = recordingLive();
     const { res, result } = fakeRes();
 
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, worker_defaults: { badtype: "x" } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { badtype: "x" } }),
+      res,
+      context(live),
+    );
 
     expect(result.status).toBe(400);
     expect(started).toHaveLength(0);
@@ -196,7 +230,11 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { live, started } = recordingLive();
     const { res, result } = fakeRes();
 
-    await handlePostRuns(fakeReq({ workflow_path: WORKFLOW, worker_defaults: { prompt: "nosuchworker" } }), res, context(live));
+    await handlePostRuns(
+      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { prompt: "nosuchworker" } }),
+      res,
+      context(live),
+    );
 
     expect(result.status).toBe(400);
     expect(started).toHaveLength(0);
@@ -211,7 +249,10 @@ describe("POST /v0/runs worker_defaults registry validation (ADR 0044, #518)", (
     const { res, result } = fakeRes();
 
     await handlePostRuns(
-      fakeReq({ workflow_path: WORKFLOW, worker_defaults: { badtype: "x", prompt: "nosuchworker" } }),
+      fakeReq({
+        workflow_path: WORKFLOW,
+        worker_defaults: { badtype: "x", prompt: "nosuchworker" },
+      }),
       res,
       context(live),
     );
