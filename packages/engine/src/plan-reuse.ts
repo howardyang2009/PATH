@@ -55,28 +55,6 @@ export function planReuse(
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
 
-/**
- * The original nested workflow-run a non-reused `workflow` node re-enters on resume (#172), or
- * undefined to start fresh. Matched by (parent run, node id) within the original tree:
- * `counterpartRunId` is the re-entering run's own original counterpart (the top-level call passes the
- * original root run id; the engine passes a re-entered nested run's counterpart when it recurses).
- * Exactly one match re-enters and restores; zero (a node added since) or more than one both start
- * fresh, mirroring `planReuse`'s refusal to guess among multiple candidates. Since ADR 0037 (#454) a
- * `while-do` body's workflow step is matched within its per-iteration container (`counterpartRunId` is
- * that container), so it has one run per scope and no longer trips the more-than-one case. A node that
- * *reused* never reaches here: the executor short-circuits it before dispatch, so this only runs for a
- * genuinely re-entered run.
- */
-export function findNestedCounterpart(
-  originalRuns: RunRecord[],
-  counterpartRunId: string | undefined,
-  nodeId: string,
-): RunRecord | undefined {
-  if (counterpartRunId === undefined) return undefined;
-  const matches = originalRuns.filter((r) => r.parentRunId === counterpartRunId && r.nodeId === nodeId);
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
 // True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
 // i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
 // no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does

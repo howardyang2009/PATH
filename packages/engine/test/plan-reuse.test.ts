@@ -1,7 +1,7 @@
 import type { BinaryStep, CheckpointNode, PromptStep, RunRecord, RunStatus, WorkflowFile, WorkflowNode, WorkflowStep } from "@path/schema";
 import { FORMAT_VERSION } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { findNestedCounterpart, pickReusedWaitOneWinner, planReuse, type ReusePlan } from "../src/plan-reuse.js";
+import { pickReusedWaitOneWinner, planReuse, type ReusePlan } from "../src/plan-reuse.js";
 
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
@@ -207,33 +207,6 @@ function waitOne(branches: ParallelBranch[]): ParallelNode {
   return { type: "parallel", id: "p1", name: "p1", join: "wait-one", branches };
 }
 
-describe("findNestedCounterpart (#172)", () => {
-  const originalRuns = [
-    root(),
-    run({ runId: "revise-run", parentRunId: "root", nodeId: "revise", nodeName: "revise", status: "succeeded" }),
-    run({ runId: "greet-run", parentRunId: "revise-run", nodeId: "greet", nodeName: "greet", status: "succeeded" }),
-  ];
-
-  it("re-enters the one run matching (counterpart, node id)", () => {
-    expect(findNestedCounterpart(originalRuns, "revise-run", "greet")).toBe(originalRuns[2]);
-  });
-
-  it("starts fresh (undefined) when the re-entering run has no counterpart", () => {
-    expect(findNestedCounterpart(originalRuns, undefined, "greet")).toBeUndefined();
-  });
-
-  it("starts fresh when the node id was added since — no match under this counterpart", () => {
-    expect(findNestedCounterpart(originalRuns, "revise-run", "summarize")).toBeUndefined();
-  });
-
-  it("starts fresh when more than one run shares (counterpart, node id) — which attempt is undefined", () => {
-    const perIteration = [
-      ...originalRuns,
-      run({ runId: "greet-run-2", parentRunId: "revise-run", nodeId: "greet", nodeName: "greet", status: "succeeded" }),
-    ];
-    expect(findNestedCounterpart(perIteration, "revise-run", "greet")).toBeUndefined();
-  });
-});
 
 describe("pickReusedWaitOneWinner — replaying a decided wait-one race (§7)", () => {
   // A branch reuses iff its lone run-producing node is in the plan; a plan holds the recorded run
