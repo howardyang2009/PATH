@@ -45,12 +45,33 @@ async function landWaitOneWinner(
   winner: WaitOneWinner,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  const landed = winner.buffer;
+  const publishedKeys = await landAtJoin(exec, winner.buffer);
+  await run.emitter.joinApplied(node, { branches: [winner.branch.name], publishedKeys, winner: winner.branch.name });
+  return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
+}
+
+/**
+ * A branch's view of the context (§5.3): a snapshot copy taken now, so siblings never see each other's
+ * writes, with its publishes written to the copy (later nodes of the same branch see them) and buffered
+ * for the join — never touching the enclosing context until the join lands them.
+ */
+function branchView(
+  exec: NodeExecContext,
+  overrides: Pick<NodeExecContext, "signal" | "cancellation"> | Record<string, never> = {},
+): { exec: NodeExecContext; buffer: { [key: string]: JsonValue } } {
+  const buffer: { [key: string]: JsonValue } = {};
+  return {
+    exec: { ...exec, ...overrides, context: { ...exec.context }, onPublish: async (updates) => void Object.assign(buffer, updates) },
+    buffer,
+  };
+}
+
+/** Land buffered publishes into the enclosing context at the join, returning the keys that landed. */
+async function landAtJoin(exec: NodeExecContext, landed: { [key: string]: JsonValue }): Promise<string[]> {
   const publishedKeys = Object.keys(landed);
   Object.assign(exec.context, landed);
   if (publishedKeys.length > 0) await exec.onPublish(landed);
-  await run.emitter.joinApplied(node, { branches: [winner.branch.name], publishedKeys, winner: winner.branch.name });
-  return { status: "succeeded", output: { winner: { name: winner.branch.name, output: winner.output } } };
+  return publishedKeys;
 }
 
 // Drain the owning workflow-run's detached `do-not-wait` branches to terminal (do-not-wait-join.md
@@ -79,11 +100,8 @@ async function launchDoNotWait(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   for (const branch of node.branches) {
-    const branchRun = exec.walk(run, [branch], seedInput, {
-      ...exec,
-      context: { ...exec.context },
-      onPublish: async () => {},
-    }).then(() => {});
+    // A detached branch may not publish (load-rejected, §4), so its buffer is never landed.
+    const branchRun = exec.walk(run, [branch], seedInput, branchView(exec).exec).then(() => {});
     run.detached.push(branchRun);
   }
   await run.emitter.joinApplied(node, { branches: node.branches.map((branch) => branch.name), publishedKeys: [] });
@@ -130,16 +148,12 @@ export async function runParallelNode(
   if (node.join === "wait-one" && run.resume) {
     const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
     if (reusedWinner) {
-      const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await exec.walk(run, [reusedWinner], seedInput, {
-        ...exec,
-        context: { ...exec.context },
-        onPublish: async (updates) => void Object.assign(buffer, updates),
-      });
+      const view = branchView(exec);
+      const outcome = await exec.walk(run, [reusedWinner], seedInput, view.exec);
       // The winner reused as `succeeded` in the original tree; its replay reuses those runs and so
       // cannot do otherwise. A non-success here would be an engine bug, not a data-flow outcome.
       if (outcome.status !== "succeeded") return outcome;
-      return landWaitOneWinner(run, node, { branch: reusedWinner, output: outcome.output, buffer }, exec);
+      return landWaitOneWinner(run, node, { branch: reusedWinner, output: outcome.output, buffer: view.buffer }, exec);
     }
   }
 
@@ -155,20 +169,8 @@ export async function runParallelNode(
 
   const branchResults: BranchResult[] = await Promise.all(
     node.branches.map(async (branch) => {
-      // Each branch runs against a snapshot copy of context (§5.3): its publishes go to the copy
-      // (so later nodes in the same branch see them) and buffer for the join — never touching the
-      // parent context until the join lands them.
-      const branchContext: { [key: string]: JsonValue } = { ...exec.context };
-      const buffer: { [key: string]: JsonValue } = {};
-      const outcome = await exec.walk(run, [branch], seedInput, {
-        ...exec,
-        context: branchContext,
-        signal: cancellation.signal,
-        cancellation,
-        onPublish: async (updates) => {
-          Object.assign(buffer, updates);
-        },
-      });
+      const { exec: branchExec, buffer } = branchView(exec, { signal: cancellation.signal, cancellation });
+      const outcome = await exec.walk(run, [branch], seedInput, branchExec);
       if (node.join === "collect") {
         if (outcome.status === "failed") {
           cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
@@ -227,16 +229,7 @@ export async function runParallelNode(
 
   // All branches succeeded: land their buffered publishes at the join, in branch declaration
   // order (§5.3). Duplicate keys across siblings are already a load-time error, so no key clashes.
-  const landed: { [key: string]: JsonValue } = {};
-  const publishedKeys: string[] = [];
-  for (const { buffer } of branchResults) {
-    for (const [key, value] of Object.entries(buffer)) {
-      landed[key] = value;
-      publishedKeys.push(key);
-    }
-  }
-  Object.assign(exec.context, landed);
-  if (publishedKeys.length > 0) await exec.onPublish(landed);
+  const publishedKeys = await landAtJoin(exec, Object.assign({}, ...branchResults.map((r) => r.buffer)));
   await run.emitter.joinApplied(node, { branches: branchResults.map((r) => r.branch.name), publishedKeys });
 
   // Collect output: keyed by branch name in declaration order, deterministic regardless of
