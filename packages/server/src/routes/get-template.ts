@@ -1,8 +1,7 @@
 import type { ServerResponse } from "node:http";
-import { resolve } from "node:path";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
-import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
+import { templateSummary, templatesOf } from "../template-store.js";
 import type { RouteContext } from "./route-context.js";
 
 /**
@@ -14,27 +13,14 @@ import type { RouteContext } from "./route-context.js";
  * `error`, and its `body`, so author-mode can open it to repair it; an unknown id is `404`.
  */
 export function handleGetTemplate(res: ServerResponse, ctx: RouteContext, id: string): void {
-  const { byId } = discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
-  const entry = byId.get(id);
+  const entry = templatesOf(ctx).byId.get(id);
   if (entry === undefined) {
     sendError(res, 404, "not found");
     return;
   }
 
   const etag = strongEtag(entry.bytes);
-  const body = {
-    id: entry.id,
-    name: entry.name,
-    kind: entry.kind,
-    origin: entry.origin,
-    read_only: entry.readOnly,
-    format: entry.format,
-    description: entry.description,
-    body: entry.body,
-    valid: entry.valid,
-    error: entry.error,
-    etag,
-  };
+  const body = { ...templateSummary(entry), format: entry.format, body: entry.body, etag };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(body));
 }

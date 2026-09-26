@@ -14,6 +14,18 @@ import { strongEtag } from "./etag.js";
  * one block with no `await` between leaves only an *external* writer to guard, which the ETag detects.
  */
 
+/**
+ * The `412` wording for each precondition conflict, at every artifact door — workflow write and
+ * delete, template update (ADR 0016/0050). `required` arises only under the `overwrite` rule, where an
+ * `If-Match` must be sent.
+ */
+export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
+  missing: "precondition failed: the file no longer exists",
+  changed: "precondition failed: the file changed since it was read",
+  exists: "precondition failed: the file already exists (send If-Match to overwrite)",
+  required: "precondition failed: send If-Match with the ETag you last read",
+};
+
 /** Why a precondition or a create failed. */
 export type ArtifactConflict =
   /** `If-Match` sent, but the file is gone. */

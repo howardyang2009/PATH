@@ -1,6 +1,6 @@
-import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
+import { readArtifact } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
@@ -33,12 +33,10 @@ export function handleGetWorkflowFile(res: ServerResponse, ctx: RouteContext, pa
     return;
   }
 
-  let bytes: Buffer;
-  try {
-    bytes = readFileSync(absPath);
-  } catch {
-    // Confinement passed but the read failed — the file vanished between the two, or the path names a
-    // directory. Either way there is no file to serve: the same 404.
+  // Confinement passed but the read can still fail — the file vanished between the two, or the path
+  // names a directory. Either way there is no file to serve: the same 404.
+  const bytes = readArtifact(absPath);
+  if (bytes === undefined) {
     sendError(res, 404, "not found");
     return;
   }

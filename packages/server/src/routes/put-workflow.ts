@@ -1,8 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { join, relative, resolve, sep } from "node:path";
+import { relative, resolve } from "node:path";
 import { validateWorkflowFile } from "@path/engine";
 import {
-  formatIssues,
   identityIssues,
   nodeIdentityOccurrences,
   workflowIdentityOccurrence,
@@ -11,7 +10,8 @@ import {
 } from "@path/schema";
 import { z } from "zod";
 import { confineToProjectRoot } from "../confine.js";
-import { checkPrecondition, readArtifact, writeArtifact, type ArtifactConflict } from "../artifact-file.js";
+import { checkPrecondition, PRECONDITION_FAILED, readArtifact, writeArtifact } from "../artifact-file.js";
+import { isTemplatePath } from "../template-store.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import type { RouteContext } from "./route-context.js";
@@ -48,25 +48,6 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
     const first = [...(issue.firstPath ?? []), "id"].join(".");
     return `${path}: duplicate id "${String(issue.value)}": id already used at ${first}`;
   });
-}
-
-/** The `412` wording for each precondition conflict at the workflow-file doors, write and delete (ADR 0016). */
-export const PRECONDITION_FAILED: Record<ArtifactConflict, string> = {
-  missing: "precondition failed: the file no longer exists",
-  changed: "precondition failed: the file changed since it was read",
-  exists: "precondition failed: the file already exists (send If-Match to overwrite)",
-  required: "precondition failed: send If-Match to delete",
-};
-
-/**
- * Whether `workflowPath` addresses a template, which `PUT /v0/workflows` refuses (§10.6): anything
- * lexically under `.path/template/`. The prefix test resolves the path first, so a `../` detour into the
- * template tree is caught as well.
- */
-export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
-  const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
-  const templateDir = join(".path", "template");
-  return relFromRoot === templateDir || relFromRoot.startsWith(`${templateDir}${sep}`);
 }
 
 /**

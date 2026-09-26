@@ -1,12 +1,12 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { confineToProjectRoot } from "../confine.js";
-import { checkPrecondition, deleteArtifact, readArtifact } from "../artifact-file.js";
+import { checkPrecondition, deleteArtifact, PRECONDITION_FAILED, readArtifact } from "../artifact-file.js";
 import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
+import { isTemplatePath } from "../template-store.js";
 import { firstHeader } from "../origin-gate.js";
 import type { RouteContext } from "./route-context.js";
-import { isTemplatePath, PRECONDITION_FAILED } from "./put-workflow.js";
 
 /**
  * `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` (server-api-v0.md §7.2): remove one
