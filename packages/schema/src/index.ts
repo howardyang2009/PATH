@@ -96,7 +96,7 @@ export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
 // The root-input fallback every launch door resolves the same way (format @4 §1a): a non-empty
 // operator override, else the file's own top-level `input`, else `{}`. It sits here so `path run` and
 // `POST /v0/runs` cannot disagree about which seed a run records.
-export { effectiveRootInput } from "./effective-root-input.js";
+export { effectiveRootInput, launchInput } from "./effective-root-input.js";
 
 // `outputSchema` validation (ADR 0040), shared by the two adapters that enforce it: the Complete route
 // (which refuses the submit) and the browser's Complete form (which pre-checks the same output).

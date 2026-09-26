@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { effectiveRootInput, RUN_STATUSES, validateLaunchWorkerDefaults, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
+import { launchInput, RUN_STATUSES, validateLaunchWorkerDefaults, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { WorkerOverrides } from "./run-workflow.js";
@@ -645,16 +645,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   try {
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
       ...projectOptions,
-      // The effective root input, resolved by the one rule every launch door shares (format @4 §1a): a
-      // non-empty `--context`/`--set-context` seed wins over the file's own top-level `input`, else the
-      // file seed, else `{}`. The CLI is a launch door like `POST /v0/runs`, so it must not treat the
-      // operator's seed as the only source — a file that declares `input` has to run the same way
-      // wherever it is launched.
-      input: effectiveRootInput(contextSeed.context, workflow.rootFile.input),
-      // The operator's own seed, recorded beside the effective input as a launch fact (ADR 0046): `input`
-      // above is what the root context seeds from, this is what a reader is shown as the launch's input.
-      // A seedless run records none, the same "empty is no override" rule the server launch applies.
-      operatorInput: Object.keys(contextSeed.context).length > 0 ? contextSeed.context : undefined,
+      // The effective root input and the recorded override, by the one rule every launch door shares
+      // (format @4 §1a, ADR 0046): a non-empty `--context`/`--set-context` seed wins over the file's own
+      // top-level `input`, so a file that declares `input` runs the same way wherever it is launched.
+      ...launchInput(contextSeed.context, workflow.rootFile.input),
     });
   } finally {
     sigint.dispose();
