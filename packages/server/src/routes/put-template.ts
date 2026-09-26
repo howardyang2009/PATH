@@ -1,13 +1,11 @@
-import { writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
 import { makeStepTemplateSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
-import { strongEtag } from "../etag.js";
+import { checkPrecondition, writeArtifact } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import { discoverTemplates } from "../template-store.js";
+import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
-import { shippedTemplateDir } from "./template-common.js";
 
 /**
  * `PUT /v0/templates/:id` (server-api-v0.md §10.4, ADR 0050 decision 7): **update-only** and
@@ -42,15 +40,11 @@ export async function handlePutTemplate(
   }
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required. Absent or stale is a
-  // `412`. The read-then-write below is a single synchronous block — no `await` between the etag check
-  // and the write — so only an *external* writer can invalidate the token, which is what it guards.
-  const ifMatch = firstHeader(req.headers["if-match"]);
-  if (ifMatch === undefined) {
-    sendError(res, 412, "precondition failed: If-Match required");
-    return;
-  }
-  if (ifMatch !== strongEtag(entry.bytes)) {
-    sendError(res, 412, "precondition failed: the template changed since it was read");
+  // `412`. The etag check through the write below is a single synchronous block — no `await` between
+  // them — so only an *external* writer can invalidate the token, which is what it guards.
+  const precondition = checkPrecondition(entry.bytes, firstHeader(req.headers["if-match"]), "overwrite");
+  if (!precondition.ok) {
+    sendError(res, 412, precondition.conflict === "required" ? "precondition failed: If-Match required" : "precondition failed: the template changed since it was read");
     return;
   }
 
@@ -66,10 +60,7 @@ export async function handlePutTemplate(
     return;
   }
 
-  const serialized = `${JSON.stringify(rawBody, null, 2)}\n`;
-  writeFileSync(entry.absPath, serialized);
-
-  const etag = strongEtag(Buffer.from(serialized, "utf8"));
+  const { etag } = writeArtifact(entry.absPath, rawBody, { create: false });
   const reply: WireTemplateWriteResponse = { id, relative_path: relative(projectDir, entry.absPath), etag };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));

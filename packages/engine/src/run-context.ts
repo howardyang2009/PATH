@@ -2,10 +2,9 @@ import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/sch
 import type { LoadedStepPluginRegistry } from "./plugin/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { Emitter } from "./run-emitter.js";
-import type { ReusePlan } from "./plan-reuse.js";
 import type { EnvSource } from "./resolve-env.js";
 import type { Observation } from "./run-observer.js";
-import type { ResumeInput } from "./run-workflow.js";
+import type { RunResume } from "./resume-plan.js";
 
 /**
  * The vocabulary one run tree threads through its walk, shared by the executor (`run-workflow.ts`)
@@ -13,8 +12,8 @@ import type { ResumeInput } from "./run-workflow.js";
  * the shape every node runner reads and writes — so they live apart from either module that acts on
  * them, and neither has to import the other to name them.
  *
- * `ResumeInput` is imported back from `run-workflow.ts` as a type only (`RunResume.input`); the edge
- * erases at compile time, so it is not a runtime cycle.
+ * `RunResume` is imported from `resume-plan.ts` as a type only; the edge erases at compile time, so it
+ * is not a runtime cycle.
  */
 
 /**
@@ -221,33 +220,5 @@ export interface ContinueState {
   target: { stepRunId: string; output: JsonValue };
 }
 
-/**
- * One workflow-run's resume state (#172): the whole-tree read inputs, this run's own original
- * counterpart, and the reuse plan computed for *this* run's direct children. `runNode` consults
- * `plan` to decide whether a node reuses; `runWorkflowNode` uses `input`/`counterpart` to find a
- * non-reused nested workflow-run's own counterpart before recursing into it.
- */
-export interface RunResume {
-  input: ResumeInput;
-  /** The original run this successor workflow-run corresponds to, or undefined for a fresh (added) run. */
-  counterpart: RunRecord | undefined;
-  /** Node ids of this run's direct children that reuse, each pointing at the original run it reuses. */
-  plan: ReusePlan;
-  /**
-   * The Resume-from-K rerun boundary as a **per-level remaining descent path** (ADR 0036): the tail of
-   * `ResumeInput.rerunFromNodePath` from this level down, whose head is *this* level's path-node B.
-   * `[]` = off-path / plain Resume. Threaded structurally: the root run carries the whole path, each
-   * descent into the path-node hands its child `suffix.slice(1)`, and every off-path sibling hands `[]`
-   * — so on-path-ness is by construction and a nested id collision can never suppress the wrong node.
-   * Producer A (`buildSuppressSet` → `planReuse`) drops B-and-after run-producing ids from the reuse
-   * plan. The per-node verdict the descent site reads — reuse / descend / rerun-entire — is
-   * `@path/schema`'s `rerunDisposition` over this body and this head, the one authority both the
-   * `workflow`-child descent and the `while-do` loop consult.
-   */
-  rerunSuffix: string[];
-  /**
-   * Beside `rerunSuffix`, level for level (ADR 0054 §6): the goto pass this level's path-node B sits
-   * in, or `null` when this level's file holds no goto. Sliced in step with `rerunSuffix`.
-   */
-  rerunPasses: (number | null)[];
-}
+/** One workflow-run's resume state (#172) — owned by the Resume plan module (`resume-plan.ts`). */
+export type { RunResume } from "./resume-plan.js";

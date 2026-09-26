@@ -1,9 +1,8 @@
-import { mkdirSync, writeFileSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { dirname, join, relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { formatIssues, makeStepTemplateSchema, NameSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
-import { strongEtag } from "../etag.js";
+import { writeArtifact } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
@@ -62,21 +61,14 @@ export async function handlePostTemplates(
 
   const projectDir = resolve(ctx.project.dir);
   const absPath = join(userTemplateRoot(projectDir), kindDirFor(kind), `${name}${suffixFor(kind)}`);
-  const serialized = `${JSON.stringify(rawBody, null, 2)}\n`;
-  try {
-    mkdirSync(dirname(absPath), { recursive: true });
-    // `wx` is the create-only guard: a name that already exists fails `EEXIST`, never a blind
-    // overwrite (ADR 0050 decision 6) — that is the `409` below.
-    writeFileSync(absPath, serialized, { flag: "wx" });
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code === "EEXIST") {
-      sendError(res, 409, `a ${kind} template named "${name}" already exists`);
-      return;
-    }
-    throw err;
+  // Create-only (`wx`): a name that already exists is never a blind overwrite (ADR 0050 decision 6),
+  // and that conflict is this door's `409`.
+  const written = writeArtifact(absPath, rawBody, { create: true });
+  if (!written.ok) {
+    sendError(res, 409, `a ${kind} template named "${name}" already exists`);
+    return;
   }
-
-  const etag = strongEtag(Buffer.from(serialized, "utf8"));
+  const { etag } = written;
   const reply: WireTemplateWriteResponse = { id: envelopeId, relative_path: relative(projectDir, absPath), etag };
   res.writeHead(201, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));

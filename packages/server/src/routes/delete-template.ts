@@ -2,9 +2,8 @@ import { unlinkSync } from "node:fs";
 import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { sendError } from "../http-json.js";
-import { discoverTemplates } from "../template-store.js";
+import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
 import type { RunsRouteContext } from "./post-runs.js";
-import { shippedTemplateDir } from "./template-common.js";
 
 /**
  * `DELETE /v0/templates/:id` (server-api-v0.md §10.5, ADR 0050 decision 9): remove a user template.

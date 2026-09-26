@@ -224,7 +224,10 @@ export type { LaunchFacts } from "./launch-facts.js";
 export { isIterationRun, isPassRun, isReuseRow, isRootRun, type RunKindFields } from "./run-kind.js";
 export { childrenByParent, findRootRun, pathToRoot, subtree, type RunTreeFields } from "./run-tree.js";
 export {
+  boundaryLevels,
   classifyLevelK,
+  type BoundaryLevel,
+  type BoundaryLevelRun,
   type ClassifyLevelKArgs,
   type LegalKLevelReason,
   type LegalKLevelResult,

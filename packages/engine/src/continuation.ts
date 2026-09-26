@@ -1,12 +1,6 @@
 import {
-  isPassRun,
   isReuseRow,
   isRootRun,
-  isStepType,
-  rerunBoundaryIndex,
-  rerunDisposition,
-  serialOrder,
-  walkNodes,
   type ConfigObject,
   type JsonValue,
   type LaunchFacts,
@@ -17,13 +11,12 @@ import {
 import type Database from "better-sqlite3";
 import { descendNodePath } from "./descend-node-path.js";
 import { recoverLaunchConfig, wrapSecretsAtPaths } from "./launch-facts.js";
-import { findNestedCounterpart } from "./plan-reuse.js";
+import { recordedChild } from "./resume-plan.js";
 import { readJsonBlob } from "./persistence/blob-store.js";
 import { runBlobDir, RUN_BLOB_FILE } from "./persistence/paths.js";
 import { getRun } from "./persistence/run-store.js";
 import type { ContinueState, RunContext } from "./run-context.js";
 import type { RunObserver } from "./run-observer.js";
-import type { ResumeInput } from "./run-workflow.js";
 
 // A node of a workflow body — the same structural alias `run-workflow.ts` uses; a disposition is
 // asked for one node of one file's body.
@@ -222,7 +215,9 @@ function resumeContinuation(resume: RunContext["resume"]): Continuation {
 function completeContinuation(state: ContinueState, parentRunId: string): Continuation {
   return {
     disposition(node, iteration) {
-      const existing = findExistingChild(state.existingRuns, parentRunId, node.id, iteration);
+      // The one row under this parent answering the node (and, for a loop container, its ordinal):
+      // within one tree a single match or none; more than one is a corrupt tree and runs fresh.
+      const existing = recordedChild(state.existingRuns, parentRunId, { nodeId: node.id, iteration });
       if (!existing) return { kind: "fresh" };
       if (existing.status === "succeeded") return { kind: "succeeded", existing };
       if (existing.status === "awaiting") {
@@ -244,45 +239,6 @@ export function continuationOf(run: RunContext): Continuation {
   return run.continue ? completeContinuation(run.continue, run.identity.runId) : resumeContinuation(run.resume);
 }
 
-/**
- * The one existing run of the tree being Completed that answers a given node (ADR 0041): the row whose
- * parent run is this workflow-run and whose `nodeId` matches — plus, for a `while-do` iteration
- * container, whose `iteration` ordinal matches. Within one tree a node under one parent has exactly one
- * such row (a loop body one per iteration), so a single match or none is the only outcome; more than
- * one would be a corrupt tree, so it is treated as none and the node runs fresh rather than guessing.
- */
-function findExistingChild(
-  existingRuns: RunRecord[],
-  parentRunId: string,
-  nodeId: string,
-  iteration?: number,
-): RunRecord | undefined {
-  const matches = existingRuns.filter(
-    (r) =>
-      r.parentRunId === parentRunId &&
-      r.nodeId === nodeId &&
-      (iteration === undefined || r.iteration === iteration),
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
-
-/**
- * The goto **pass** rows a Complete replay finds under one workflow-run (ADR 0060), in ordinal order.
- * Empty for a goto-free run and for a run appended fresh past the parked leaf. A pass's `nodeId` names
- * the goto that opened it (null for pass 1), so these rows are also the run's jump counts.
- */
-export function recordedPasses(state: ContinueState, parentRunId: string): RunRecord[] {
-  return state.existingRuns.filter((r) => r.parentRunId === parentRunId && isPassRun(r)).sort((a, b) => a.pass! - b.pass!);
-}
-
-/**
- * The first recorded child of a pass: the node the pass opened at. `existingRuns` is in start order
- * (`getRunsForRoot`: `started_at`, ties by insertion), so the first match is the earliest.
- */
-export function firstRecordedChild(state: ContinueState, passRunId: string): RunRecord | undefined {
-  return state.existingRuns.find((r) => r.parentRunId === passRunId);
-}
-
 /** Whether the parked leaf being Completed sits somewhere under `ancestorRunId` in this tree. */
 export function targetLeafUnder(state: ContinueState, ancestorRunId: string): boolean {
   const byId = new Map(state.existingRuns.map((r) => [r.runId, r]));
@@ -301,62 +257,7 @@ export function readExistingOutput(state: ContinueState, run: RunRecord): JsonVa
   return run.outputRef ? state.readBlob(run, RUN_BLOB_FILE.output) : {};
 }
 
-// ── Resume-from-K rerun boundary: the two boundary producers and its descent crumbs ──────────────
-
-/**
- * Producer A (ADR 0035): this on-path level's **suppress** set — the rerun-boundary head B and every
- * serialized-later run-producing node id, over this file's own nested walk of its serial order
- * (`serialOrder(body).slice(indexOf(B))`, ADR 0064: a sequence body is transparent).
- * `planReuse` drops these from the reuse plan, so B and after-B re-run instead of reusing. `undefined`
- * off-path / plain Resume (empty suffix).
- *
- * This is the reuse-plan *mechanism* only. The per-node three-way verdict the descent readers consult —
- * reuse / descend / rerun-entire — lives in `@path/schema`'s `rerunDisposition`, the one authority they
- * share; this stays the flat set `planReuse` needs. Which index B sits at, and the invariant throw for a
- * head this body does not hold, is `rerunBoundaryIndex`'s answer — the same one `rerunDisposition` reads,
- * so the two producers cannot disagree about where the boundary is.
- */
-export function buildSuppressSet(file: WorkflowFile, suffix: string[]): Set<string> | undefined {
-  const bIndex = rerunBoundaryIndex(file.body, suffix);
-  if (bIndex === undefined) return undefined;
-  const suppress = new Set<string>();
-  for (const node of walkNodes(serialOrder(file.body).slice(bIndex))) {
-    if (isStepType(node.type)) suppress.add(node.id);
-  }
-  return suppress;
-}
-
-/**
- * The resume state a child `workflow` run inherits (Producer B, ADR 0036), computed from this run's
- * own suffix. Undefined when this run is not resuming. For a resuming run one of three dispositions:
- *
- * - **descend** — `nodeId` is this level's path-node B and B is intermediate (a longer tail follows):
- *   re-enter B's original counterpart and hand it `S.slice(1)`, so B reuses its inner prefix and applies
- *   its own boundary one level down.
- * - **rerun-entire** — `nodeId` is after B, or is B == K (a leaf `workflow` node): no counterpart, so
- *   the child seeds fresh and its whole subtree re-runs. Cascade-up is this rule per level.
- * - **reuse / off-path** — `nodeId` is before B, or this run is off-path (empty suffix): re-enter the
- *   counterpart exactly as plain Resume, tail `[]`. (A before-B node that reused short-circuits before
- *   dispatch and never reaches here; one that did not — added since, or unsucceeded — re-enters plain.)
- */
-export function childResumeState(
-  run: RunContext,
-  nodeId: string,
-): { input: ResumeInput; counterpart: RunRecord | undefined; rerunSuffix: string[]; rerunPasses: (number | null)[] } | undefined {
-  const resume = run.resume;
-  if (!resume) return undefined;
-  const suffix = resume.rerunSuffix;
-  // The one authority for the three-way verdict (`@path/schema/rerunDisposition`): rerun-entire drops
-  // the counterpart so the child's whole subtree re-runs; reuse / descend re-enter it; only descend
-  // carries the tail one level down.
-  const disposition = rerunDisposition(run.file.body, suffix, nodeId);
-  const counterpart =
-    disposition === "rerun-entire"
-      ? undefined
-      : findNestedCounterpart(resume.input.originalRuns, resume.counterpart?.runId, nodeId);
-  const descend = disposition === "descend";
-  return { input: resume.input, counterpart, rerunSuffix: descend ? suffix.slice(1) : [], rerunPasses: descend ? resume.rerunPasses.slice(1) : [] };
-}
+// ── Resume-from-K rerun boundary: its descent crumbs ─────────────────────────────────────────────
 
 /**
  * The persisted denormalization of the rerun boundary path (ADR 0032/0036): each node id paired with

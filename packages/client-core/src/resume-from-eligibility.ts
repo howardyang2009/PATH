@@ -1,7 +1,8 @@
 import {
+  boundaryLevels,
   classifyLevelK,
-  isPassRun,
   isRootRun,
+  type BoundaryLevel,
   type ControlBlockKind,
   type LegalKLevelReason,
   type RunRecord,
@@ -71,14 +72,15 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   const selected = runs.get(selectedRunId);
   if (!selected || isRootRun(selected) || selected.nodeId === null) return noSelection();
 
-  // (2) An illegal K. A root-level K (a direct child of the root run, or of a goto pass run of the root,
-  // ADR 0054) is located in the open file's body — the exact engine mirror. A nested K sits in a file
-  // the Designer does not hold, so only its own success is checked here and the engine backstops the rest.
+  // (2) An illegal K. A root-level K (one descent level: a direct child of the root run, or of a goto
+  // pass run of the root, ADR 0054) is located in the open file's body — the exact engine mirror. A
+  // nested K sits in a file the Designer does not hold, so only its own success is checked here and the
+  // engine backstops the rest.
   const nodeName = selected.nodeName ?? selected.nodeId;
-  const parent = selected.parentRunId === null ? undefined : runs.get(selected.parentRunId);
-  const passRun = parent && isPassRun(parent) && parent.parentRunId === rootRunId ? parent : undefined;
-  if ((selected.parentRunId === rootRunId || passRun) && rootFile !== null) {
-    const illegal = classifyTopLevel(rootFile, runs, rootRunId, passRun, selected, nodeName);
+  const levels = boundaryLevels(runs.values(), selected.runId);
+  const topLevel = levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
+  if (topLevel && rootFile !== null) {
+    const illegal = classifyTopLevel(rootFile, runs, levels[0]!, selected, nodeName);
     if (illegal) return illegal;
   } else if (selected.status !== "succeeded") {
     // A nested K whose own run did not succeed is illegal on any level (engine #4); the engine owns the
@@ -110,18 +112,14 @@ function noSelection(): ResumeFromEligibility {
 function classifyTopLevel(
   rootFile: WorkflowFile,
   runs: ReadonlyMap<string, RunRecord>,
-  rootRunId: string,
-  passRun: (RunRecord & { pass: number }) | undefined,
+  { scopeRunId, earlierPassRunIds }: BoundaryLevel<RunRecord>,
   selected: RunRecord,
   nodeName: string,
 ): Extract<ResumeFromEligibility, { ok: false }> | null {
-  const earlierPassRunIds = passRun
-    ? [...runs.values()].filter((r) => r.parentRunId === rootRunId && isPassRun(r) && r.pass < passRun.pass).map((r) => r.runId)
-    : [];
   const level = classifyLevelK({
     body: rootFile.body,
     rows: runs.values(),
-    scopeRunId: passRun?.runId ?? rootRunId,
+    scopeRunId,
     nodeId: selected.nodeId!,
     leafStatus: selected.status,
     earlierPassRunIds,

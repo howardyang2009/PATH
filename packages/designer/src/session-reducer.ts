@@ -91,9 +91,7 @@ export interface Frame {
 }
 
 /** The file suffix a template carries on disk: `*.step-template.json`, one kind only (ADR 0063). */
-export function templateSuffix(_kind: TemplateSource["kind"]): string {
-  return ".step-template.json";
-}
+export const TEMPLATE_SUFFIX = ".step-template.json";
 
 /** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {

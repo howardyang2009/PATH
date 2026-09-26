@@ -1,12 +1,12 @@
-import { readFileSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { confineToProjectRoot } from "../confine.js";
-import { strongEtag } from "../etag.js";
+import { checkPrecondition, deleteArtifact, readArtifact } from "../artifact-file.js";
 import { sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import type { RunsRouteContext } from "./post-runs.js";
-import { isTemplatePath } from "./put-workflow.js";
+import { isTemplatePath, PRECONDITION_FAILED } from "./put-workflow.js";
 import { readLease, resolveMarker } from "./workflow-lock.js";
 
 /**
@@ -44,21 +44,14 @@ export function handleDeleteWorkflow(
   }
 
   // Read-decide-delete is one synchronous block (no `await`), the write door's concurrency stance.
-  let currentBytes: Buffer;
-  try {
-    currentBytes = readFileSync(absPath);
-  } catch {
+  const currentBytes = readArtifact(absPath);
+  if (currentBytes === undefined) {
     sendError(res, 404, "not found");
     return;
   }
-
-  const ifMatch = firstHeader(req.headers["if-match"]);
-  if (ifMatch === undefined) {
-    sendError(res, 412, "precondition failed: send If-Match to delete");
-    return;
-  }
-  if (ifMatch !== strongEtag(currentBytes)) {
-    sendError(res, 412, "precondition failed: the file changed since it was read");
+  const precondition = checkPrecondition(currentBytes, firstHeader(req.headers["if-match"]), "overwrite");
+  if (!precondition.ok) {
+    sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
     return;
   }
 
@@ -68,7 +61,7 @@ export function handleDeleteWorkflow(
     return;
   }
 
-  rmSync(absPath);
+  deleteArtifact(absPath);
   rmSync(markerPath, { force: true });
   res.writeHead(204);
   res.end();

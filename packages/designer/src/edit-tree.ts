@@ -187,6 +187,45 @@ function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
   return { ...file, body };
 }
 
+// ── List sockets: the file body, a `sequence` body, a `parallel` branch list ─────────────────────────
+
+/**
+ * A position in a node list: the file body (`ownerId` `null`), or the list a `sequence` (`body`) or a
+ * `parallel` (`branches`) owns. The one place that says which key holds which owner's list, so add,
+ * move, duplicate and delete address a list position without spelling the owner types again.
+ */
+interface ListSite {
+  ownerId: string | null;
+  index: number;
+}
+
+/** The list site of a located node, or `null` for a single-node slot (an arm, an `else`, a loop body). */
+function listSiteOf(site: Site): ListSite | null {
+  if (site.where === "file-body") return { ownerId: null, index: site.index };
+  if (site.where === "list") return { ownerId: site.ownerId, index: site.index };
+  return null;
+}
+
+/** The node list `ownerId` holds, or `null` when it is no list owner. */
+function listOf(file: WorkflowFile, ownerId: string | null): WorkflowNode[] | null {
+  if (ownerId === null) return file.body;
+  const owner = findById(file.body, ownerId);
+  return owner?.type === "sequence" ? owner.body : owner?.type === "parallel" ? owner.branches : null;
+}
+
+/** The file with the list `ownerId` holds rebuilt by `fn`; a non-list owner is left unchanged. */
+function withList(file: WorkflowFile, ownerId: string | null, fn: (list: WorkflowNode[]) => WorkflowNode[]): WorkflowFile {
+  if (ownerId === null) return withBody(file, fn(file.body));
+  return withBody(
+    file,
+    updateNode(file.body, ownerId, (owner) => {
+      if (owner.type === "sequence") return { ...owner, body: fn(owner.body) };
+      if (owner.type === "parallel") return { ...owner, branches: fn(owner.branches) };
+      return owner;
+    }),
+  );
+}
+
 // ── Replace a node's content in place ───────────────────────────────────────────────────────────
 
 /**
@@ -253,15 +292,7 @@ function setArmWhen(file: WorkflowFile, branchId: string, armIndex: number, when
  * kind (`grammar.socketAcceptsKind`); an illegal kind never reaches here.
  */
 function addToList(file: WorkflowFile, ownerId: string | null, node: WorkflowNode): WorkflowFile {
-  if (ownerId === null) return withBody(file, [...file.body, node]);
-  return withBody(
-    file,
-    updateNode(file.body, ownerId, (owner) => {
-      if (owner.type === "sequence") return { ...owner, body: [...owner.body, node] };
-      if (owner.type === "parallel") return { ...owner, branches: [...owner.branches, node] };
-      return owner;
-    }),
-  );
+  return withList(file, ownerId, (list) => [...list, node]);
 }
 
 // ── Swap a single-node slot ───────────────────────────────────────────────────────────────────────
@@ -334,25 +365,13 @@ function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): WorkflowFile {
   const site = locate(file, id);
   if (!site) return file;
 
-  if (site.where === "file-body") {
-    const swapped = swapAt(file.body, site.index, site.index + delta);
-    return swapped ? withBody(file, swapped) : file;
-  }
-  // For a list/arm move, guard the bounds against the owner *before* rebuilding — an off-the-end move
-  // must return the same file reference, so it never marks the buffer edited (the caller commits any
-  // new reference `moveNode` hands back).
-  if (site.where === "list") {
-    const owner = findById(file.body, site.ownerId);
-    const list = owner?.type === "sequence" ? owner.body : owner?.type === "parallel" ? owner.branches : null;
-    if (!list || site.index + delta < 0 || site.index + delta >= list.length) return file;
-    return withBody(
-      file,
-      updateNode(file.body, site.ownerId, (o) => {
-        if (o.type === "sequence") return { ...o, body: swapAt(o.body, site.index, site.index + delta) ?? o.body };
-        if (o.type === "parallel") return { ...o, branches: swapAt(o.branches, site.index, site.index + delta) ?? o.branches };
-        return o;
-      }),
-    );
+  // Guard the bounds against the list *before* rebuilding — an off-the-end move must return the same file
+  // reference, so it never marks the buffer edited (the caller commits any new reference it hands back).
+  const listSite = listSiteOf(site);
+  if (listSite) {
+    const list = listOf(file, listSite.ownerId);
+    if (!list || listSite.index + delta < 0 || listSite.index + delta >= list.length) return file;
+    return withList(file, listSite.ownerId, (l) => swapAt(l, listSite.index, listSite.index + delta) ?? l);
   }
   if (site.where === "arm") {
     const owner = findById(file.body, site.ownerId);
@@ -394,13 +413,17 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
 
   switch (site.where) {
     case "file-body":
-      return { ok: true, file: withBody(file, removeAt(file.body, site.index)) };
-
-    case "list":
-      if (site.listKind === "branches") {
-        return removeFromOwnerList(file, site.ownerId, site.index, "parallel", "a parallel must keep at least one branch");
+    case "list": {
+      // The list rules: the file body may empty; a `parallel` must keep one branch; an emptied `sequence`
+      // is itself deleted (cascading up).
+      const { ownerId, index } = listSiteOf(site)!;
+      const list = listOf(file, ownerId);
+      if (ownerId !== null && list !== null && list.length <= 1) {
+        if (site.where === "list" && site.listKind === "branches") return { ok: false, reason: "a parallel must keep at least one branch" };
+        return deleteNode(file, ownerId);
       }
-      return removeFromSequence(file, site.ownerId, site.index);
+      return { ok: true, file: withList(file, ownerId, (l) => removeAt(l, index)) };
+    }
 
     case "arm":
       return removeArm(file, site.ownerId, site.armIndex);
@@ -412,34 +435,6 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
       // Deleting the body deletes the loop — recurse on the `while-do` node itself.
       return deleteNode(file, site.ownerId);
   }
-}
-
-/** Remove index `i` from a `parallel`/`sequence` owner's list, refusing when it would leave the list empty. */
-function removeFromOwnerList(file: WorkflowFile, ownerId: string, index: number, ownerType: "parallel", reason: string): EditResult {
-  const owner = findById(file.body, ownerId);
-  if (owner?.type === ownerType && owner.branches.length <= 1) return { ok: false, reason };
-  return {
-    ok: true,
-    file: withBody(
-      file,
-      updateNode(file.body, ownerId, (o) => (o.type === "parallel" ? { ...o, branches: removeAt(o.branches, index) } : o)),
-    ),
-  };
-}
-
-/** Remove index `i` from a `sequence` body; if that empties the sequence, delete the sequence itself (cascade). */
-function removeFromSequence(file: WorkflowFile, sequenceId: string, index: number): EditResult {
-  const owner = findById(file.body, sequenceId);
-  if (owner?.type === "sequence" && owner.body.length <= 1) {
-    return deleteNode(file, sequenceId);
-  }
-  return {
-    ok: true,
-    file: withBody(
-      file,
-      updateNode(file.body, sequenceId, (o) => (o.type === "sequence" ? { ...o, body: removeAt(o.body, index) } : o)),
-    ),
-  };
 }
 
 /** Remove arm `armIndex` from a `branch`, refusing when it is the last arm (a branch must keep ≥1). */
@@ -482,19 +477,9 @@ export function findById(body: WorkflowNode[], id: string): WorkflowNode | null 
  */
 function insertAfter(file: WorkflowFile, id: string, clone: WorkflowNode): WorkflowFile {
   const site = locate(file, id);
-  if (!site) return file;
-  if (site.where === "file-body") return withBody(file, spliceAfter(file.body, site.index, clone));
-  if (site.where === "list") {
-    return withBody(
-      file,
-      updateNode(file.body, site.ownerId, (owner) => {
-        if (owner.type === "sequence") return { ...owner, body: spliceAfter(owner.body, site.index, clone) };
-        if (owner.type === "parallel") return { ...owner, branches: spliceAfter(owner.branches, site.index, clone) };
-        return owner;
-      }),
-    );
-  }
-  return file;
+  const listSite = site && listSiteOf(site);
+  if (!listSite) return file;
+  return withList(file, listSite.ownerId, (list) => spliceAfter(list, listSite.index, clone));
 }
 
 /** A copy of `list` with `item` inserted just after index `i`. */
@@ -507,5 +492,5 @@ function spliceAfter<T>(list: T[], i: number, item: T): T[] {
 /** Can the node `id` be duplicated? Only list nodes (they have a list to grow into). */
 export function isDuplicable(file: WorkflowFile, id: string): boolean {
   const site = locate(file, id);
-  return site?.where === "file-body" || site?.where === "list";
+  return site !== null && listSiteOf(site) !== null;
 }
