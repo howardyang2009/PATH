@@ -610,3 +610,11 @@ describe("PathApiClient", () => {
     await expect(client.getRun("nope")).rejects.toBeInstanceOf(PathApiError);
   });
 });
+
+describe("PathApiClient — PathApiError is the only failure", () => {
+  it("raises a malformed 2xx JSON reply as a PathApiError, not a bare SyntaxError", async () => {
+    const stub = stubFetch(() => new Response("<html>proxy page</html>", { status: 200 }));
+    const client = new PathApiClient({ baseUrl: "http://x", fetch: stub.fetch });
+    await expect(client.listWorkflows()).rejects.toBeInstanceOf(PathApiError);
+  });
+});
