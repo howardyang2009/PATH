@@ -1,4 +1,4 @@
-import { isSecretWrapper, mapSecrets, type ConfigObject, type JsonValue, type LaunchFacts } from "@path/schema";
+import { isEnvWrapper, isSecretWrapper, mapSecrets, updateAtConfigPath, valueAtConfigPath, type ConfigObject, type JsonValue, type LaunchFacts } from "@path/schema";
 import { mergeConfig } from "./merge-config.js";
 import { resolveEffectiveConfig, type EnvSource } from "./resolve-env.js";
 
@@ -70,24 +70,6 @@ export function buildLaunchFacts(
   };
 }
 
-/** Reads a dot-path (`a.b`, array segments numeric) out of a config object; `undefined` when absent. */
-export function valueAtPath(config: ConfigObject | undefined, path: string): JsonValue | undefined {
-  if (config === undefined) return undefined;
-  let current: JsonValue | undefined = config as unknown as JsonValue;
-  for (const segment of path.split(".")) {
-    if (current === null || typeof current !== "object") return undefined;
-    if (Array.isArray(current)) {
-      const index = Number(segment);
-      if (!Number.isInteger(index)) return undefined;
-      current = current[index] as JsonValue | undefined;
-    } else {
-      current = (current as { [key: string]: JsonValue })[segment];
-    }
-    if (current === undefined) return undefined;
-  }
-  return current;
-}
-
 /** What a continuation gets back from the frozen facts plus whatever the caller supplied this time. */
 export interface RecoveredLaunch {
   /** The config to run with: the frozen one, the supplied one, or the supplied merged over frozen. */
@@ -110,7 +92,9 @@ export function recoverLaunchConfig(
   const frozenConfig = frozen?.config;
   const config =
     frozenConfig === undefined ? supplied : supplied === undefined ? frozenConfig : mergeConfig(frozenConfig, supplied);
-  const missingSecretKeys = (frozen?.secretKeys ?? []).filter((path) => valueAtPath(supplied, path) === undefined);
+  const missingSecretKeys = (frozen?.secretKeys ?? []).filter(
+    (path) => valueAtConfigPath(supplied as unknown as JsonValue | undefined, path) === undefined,
+  );
   return { config, missingSecretKeys };
 }
 
@@ -122,33 +106,19 @@ export function recoverLaunchConfig(
  * wrappers, so without this the successor would record the re-entered credential in the clear, on disk.
  * Wrapping each supplied value at a recorded secret path restores the marking, so the credential is
  * masked at the same choke point as on the launch, while the worker still receives the real value
- * (`resolveEffectiveConfig` unwraps it). A value already wrapped is left alone, as is a non-string one,
- * which a `$secret` wrapper cannot hold.
+ * (`resolveEffectiveConfig` unwraps it). A path through an array reads its numeric segment as the
+ * index, exactly as `mapSecrets` wrote it, so a secret inside a list is re-marked too.
  */
 export function wrapSecretsAtPaths(config: ConfigObject, paths: readonly string[]): ConfigObject {
-  let wrapped: ConfigObject = config;
-  for (const path of paths) wrapped = wrapPath(wrapped as unknown as JsonValue, path.split(".")) as ConfigObject;
-  return wrapped;
-}
-
-function wrapPath(value: JsonValue, segments: readonly string[]): JsonValue {
-  const [head, ...rest] = segments;
-  if (head === undefined || value === null || typeof value !== "object" || Array.isArray(value)) return value;
-  const object = value as { [key: string]: JsonValue };
-  if (!(head in object)) return value;
-  if (rest.length === 0) {
-    const leaf = object[head];
-    if (isSecretWrapper(leaf) || (typeof leaf !== "string" && !isEnvLike(leaf))) return value;
-    return { ...object, [head]: { $secret: leaf } as unknown as JsonValue };
+  let wrapped = config as unknown as JsonValue;
+  for (const path of paths) {
+    wrapped = updateAtConfigPath(wrapped, path, (leaf) =>
+      // Already marked, or a value a `$secret` cannot hold: left alone. An `$env` wrapper is marked too —
+      // `{"$secret": {"$env": …}}` is the composed form (ADR 0022).
+      isSecretWrapper(leaf) || (typeof leaf !== "string" && !isEnvWrapper(leaf)) ? leaf : ({ $secret: leaf } as unknown as JsonValue),
+    );
   }
-  return { ...object, [head]: wrapPath(object[head] as JsonValue, rest) };
-}
-
-/** An `{"$env": "NAME"}` value is already wrapper-shaped, so it needs no `$secret` laid over it. */
-function isEnvLike(value: JsonValue | undefined): boolean {
-  return (
-    value !== null && typeof value === "object" && !Array.isArray(value) && typeof (value as { $env?: unknown }).$env === "string"
-  );
+  return wrapped as unknown as ConfigObject;
 }
 
 /**
