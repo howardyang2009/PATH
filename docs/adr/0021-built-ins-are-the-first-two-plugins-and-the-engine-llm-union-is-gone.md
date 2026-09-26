@@ -129,7 +129,7 @@ test, not by a shipped plugin.
     edited in place (the wire is still `v0`; only a field changed, sub-decision 14).
 
 12. **A codemod migrates `@2` files and refuses every case it cannot rewrite honestly.** New
-    `scripts/migrate-workflow-format-v3.ts`, following its `v1`/`v2` predecessors — a hard
+    `scripts/archive/migrate-workflow-format-v3.ts`, following its `v1`/`v2` predecessors — a hard
     bump-and-break, no compat read (PATH has never carried one, and a compat read would have to invent
     `config.model` behind the author's back). The rewrite:
 

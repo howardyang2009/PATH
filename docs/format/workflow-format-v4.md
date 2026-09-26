@@ -90,7 +90,7 @@ is a **no-op format stamp**: it rewrites `format` to `path/workflow@4`, changes 
 nothing, and is idempotent. Run it with:
 
 ```
-pnpm tsx scripts/migrate-workflow-format-v4.ts [file …]
+pnpm tsx scripts/archive/migrate-workflow-format-v4.ts [file …]
 ```
 
 With no arguments it discovers every `*.workflow.json` under the repo root. The engine reads `@4` only —

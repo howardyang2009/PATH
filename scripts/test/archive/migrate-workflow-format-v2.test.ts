@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeParseWorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { builtinRegistry } from "./builtin-registry.js";
-import { runCodemod } from "./run-codemod.js";
+import { builtinRegistry } from "../builtin-registry.js";
+import { runCodemod } from "../run-codemod.js";
 
 /**
  * The `@1` → `@2` codemod, black-box (#287).
@@ -23,7 +23,7 @@ import { runCodemod } from "./run-codemod.js";
  * importing it would run the codemod against `cwd`. The subprocess also reaches what a unit test of
  * `migrateDocument` cannot — the `process.exitCode = 1` and the stderr report on a refusal.
  */
-const scriptsDir = dirname(dirname(fileURLToPath(import.meta.url)));
+const scriptsRoot = dirname(dirname(dirname(fileURLToPath(import.meta.url))));
 
 let dir: string;
 
@@ -70,9 +70,9 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
-  runCodemod([copy], scriptsDir, "migrate-workflow-format-v3.ts");
-  runCodemod([copy], scriptsDir, "migrate-workflow-format-v4.ts");
-  runCodemod([copy], scriptsDir, "migrate-workflow-format-v5.ts");
+  runCodemod([copy], scriptsRoot, "archive/migrate-workflow-format-v3.ts");
+  runCodemod([copy], scriptsRoot, "archive/migrate-workflow-format-v4.ts");
+  runCodemod([copy], scriptsRoot, "migrate-workflow-format-v5.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   if (!result.success)
     throw new Error(`migrated file is not schema-valid @5:\n${result.errors.join("\n")}`);
@@ -95,7 +95,7 @@ describe("migrate-workflow-format-v2 — parallel branch wrappers", () => {
       ]),
     );
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
     expect(result.status).toBe(0);
     expectSchemaValid(file);
 
@@ -124,7 +124,7 @@ describe("migrate-workflow-format-v2 — parallel branch wrappers", () => {
       ]),
     );
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expectSchemaValid(file);
 
     const parallel = (read(file).body as Record<string, unknown>[])[0]!;
@@ -160,7 +160,7 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
       ]),
     );
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expectSchemaValid(file);
 
     const [branch, loop] = read(file).body as Record<string, unknown>[];
@@ -195,7 +195,7 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
       ]),
     );
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expectSchemaValid(file);
 
     const [branch, loop] = read(file).body as Record<string, unknown>[];
@@ -236,7 +236,7 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
       ]),
     );
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expectSchemaValid(file);
 
     const branch = (read(file).body as Record<string, unknown>[])[1]!;
@@ -247,7 +247,7 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
   it("leaves the file's top-level body an array (§0 — the one slot it must not touch)", () => {
     const file = write("top.workflow.json", legacyFile([step("a"), step("b")]));
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expectSchemaValid(file);
 
     const body = read(file).body;
@@ -273,7 +273,7 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
     );
     const before = bytes(file);
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
 
     expect(result.status).toBe(1);
     expect(bytes(file)).toBe(before); // byte-unchanged: a refusal writes nothing
@@ -294,7 +294,7 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
     );
     const before = bytes(file);
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
 
     expect(result.status).toBe(1);
     expect(bytes(file)).toBe(before);
@@ -317,7 +317,7 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
     );
     const before = bytes(file);
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
 
     expect(result.status).toBe(1);
     expect(bytes(file)).toBe(before);
@@ -340,7 +340,7 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
       ]),
     );
 
-    const result = runCodemod([bad, good], scriptsDir);
+    const result = runCodemod([bad, good], scriptsRoot);
 
     expect(result.status).toBe(1);
     expect(read(good).format).toBe("path/workflow@2");
@@ -359,7 +359,7 @@ describe("migrate-workflow-format-v2 — idempotency", () => {
     });
     const before = bytes(file);
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
 
     expect(result.status).toBe(0);
     expect(bytes(file)).toBe(before);
@@ -375,7 +375,7 @@ describe("migrate-workflow-format-v2 — idempotency", () => {
     });
     const before = bytes(file);
 
-    const result = runCodemod([file], scriptsDir);
+    const result = runCodemod([file], scriptsRoot);
 
     expect(result.status).toBe(0);
     expect(bytes(file)).toBe(before);
@@ -395,9 +395,9 @@ describe("migrate-workflow-format-v2 — idempotency", () => {
       ]),
     );
 
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     const afterFirst = bytes(file);
-    expect(runCodemod([file], scriptsDir).status).toBe(0);
+    expect(runCodemod([file], scriptsRoot).status).toBe(0);
     expect(bytes(file)).toBe(afterFirst);
   });
 });

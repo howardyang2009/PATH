@@ -34,7 +34,7 @@
  *
  * Idempotent: a file already at `@3` (or still at `@0`/`@1`) is left untouched.
  *
- * Usage:  pnpm tsx scripts/migrate-workflow-format-v3.ts [file ...]
+ * Usage:  pnpm tsx scripts/archive/migrate-workflow-format-v3.ts [file ...]
  *   With no arguments it discovers every tracked `*.workflow.json` under the repo root.
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";

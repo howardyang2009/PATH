@@ -18,28 +18,30 @@ export const FORMAT_VERSION = "path/workflow@5";
 // Each entry names its codemod chain **in order**: a codemod migrates exactly one step and skips
 // anything else silently (`LEGACY_FORMAT`), so an `@0` file must run v1 through v5 in order, and
 // naming only the last would send the author to a script that reports "skipped" and leaves the file
-// exactly as unreadable as it was — a message naming a fix that is not one.
+// exactly as unreadable as it was — a message naming a fix that is not one. Only the current step,
+// v5, sits at the top of `scripts/`; v1–v4 live in `scripts/archive/` because no file written today
+// starts from the formats they lift, but they stay runnable for one still carrying those strings.
 export const SUPERSEDED_FORMAT_VERSIONS = {
   "path/workflow@0": [
-    "scripts/migrate-workflow-format-v1.ts",
-    "scripts/migrate-workflow-format-v2.ts",
-    "scripts/migrate-workflow-format-v3.ts",
-    "scripts/migrate-workflow-format-v4.ts",
+    "scripts/archive/migrate-workflow-format-v1.ts",
+    "scripts/archive/migrate-workflow-format-v2.ts",
+    "scripts/archive/migrate-workflow-format-v3.ts",
+    "scripts/archive/migrate-workflow-format-v4.ts",
     "scripts/migrate-workflow-format-v5.ts",
   ],
   "path/workflow@1": [
-    "scripts/migrate-workflow-format-v2.ts",
-    "scripts/migrate-workflow-format-v3.ts",
-    "scripts/migrate-workflow-format-v4.ts",
+    "scripts/archive/migrate-workflow-format-v2.ts",
+    "scripts/archive/migrate-workflow-format-v3.ts",
+    "scripts/archive/migrate-workflow-format-v4.ts",
     "scripts/migrate-workflow-format-v5.ts",
   ],
   "path/workflow@2": [
-    "scripts/migrate-workflow-format-v3.ts",
-    "scripts/migrate-workflow-format-v4.ts",
+    "scripts/archive/migrate-workflow-format-v3.ts",
+    "scripts/archive/migrate-workflow-format-v4.ts",
     "scripts/migrate-workflow-format-v5.ts",
   ],
   "path/workflow@3": [
-    "scripts/migrate-workflow-format-v4.ts",
+    "scripts/archive/migrate-workflow-format-v4.ts",
     "scripts/migrate-workflow-format-v5.ts",
   ],
   "path/workflow@4": ["scripts/migrate-workflow-format-v5.ts"],

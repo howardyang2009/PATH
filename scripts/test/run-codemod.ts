@@ -11,7 +11,8 @@ export interface CodemodResult {
 }
 
 /**
- * Run a codemod as the operator would, in a child process.
+ * Run a codemod as the operator would, in a child process. `script` is a path under `scripts/`, so a
+ * superseded codemod reads `archive/migrate-workflow-format-v2.ts` and the current one its bare name.
  *
  * `tsx` is invoked by its binary rather than through `pnpm tsx` so the run works from any `cwd` —
  * the discovery test's `cwd` is a temp dir outside any pnpm project, where `pnpm` would fail before
@@ -20,7 +21,7 @@ export interface CodemodResult {
 export function runCodemod(
   args: string[],
   cwd: string,
-  script = "migrate-workflow-format-v2.ts",
+  script = "archive/migrate-workflow-format-v2.ts",
 ): CodemodResult {
   const result = spawnSync(
     join(repoRoot, "node_modules/.bin/tsx"),

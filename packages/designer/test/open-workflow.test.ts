@@ -161,6 +161,6 @@ describe("openWorkflowFile", () => {
     const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
     expect(result.status).toBe("invalid");
     if (result.status !== "invalid") return;
-    expect(result.message).toContain("migrate-workflow-format-v3.ts");
+    expect(result.message).toContain("scripts/archive/migrate-workflow-format-v3.ts");
   });
 });

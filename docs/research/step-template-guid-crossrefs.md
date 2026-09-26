@@ -96,7 +96,7 @@ through the context-key string, e.g. an upstream `publish: { verdict: "${output}
 
 ### The #459.1 person-switch example is a value match, not a GUID reference — confirmed
 
-The real workflow `w1.workflow.json` (root of the repo) shows the exact pattern:
+The real workflow `w1.workflow.json` (now in `examples/`) shows the exact pattern:
 
 - `w1.workflow.json` `judge-draft` step publishes `verdict: "${output}"` (writes `context.verdict`),
   and the downstream `pick-format` **branch** arms compare `path: "context.verdict.suggested_format"`

@@ -16,7 +16,7 @@
  *     in a minted `sequence` (§3.1, §4.3).
  *   - leaves the two node-array slots alone: the file's top-level `body` and a `sequence`'s `body` (§0).
  *
- * Unlike its `@0`→`@1` predecessor `scripts/migrate-workflow-format-v1.ts`, this codemod **preserves
+ * Unlike its `@0`→`@1` predecessor `scripts/archive/migrate-workflow-format-v1.ts`, this codemod **preserves
  * ids** — every node already carries its durable GUID (ADR 0006, fill-once), so nothing is
  * regenerated. Only minted `sequence` nodes get a fresh `randomUUID()`.
  *
@@ -29,7 +29,7 @@
  *
  * Idempotent: a file already at `@2` (or still at `@0`) is left untouched.
  *
- * Usage:  pnpm tsx scripts/migrate-workflow-format-v2.ts [file ...]
+ * Usage:  pnpm tsx scripts/archive/migrate-workflow-format-v2.ts [file ...]
  *   With no arguments it discovers every tracked `*.workflow.json` under the repo root.
  */
 import { randomUUID } from "node:crypto";

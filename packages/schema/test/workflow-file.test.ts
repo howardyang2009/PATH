@@ -737,7 +737,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
       ]);
     }
   });
@@ -747,7 +747,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
       ]);
     }
   });
@@ -757,7 +757,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@2 is no longer read — run scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@2 is no longer read — run scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
       ]);
     }
   });
@@ -767,7 +767,7 @@ describe("safeParseWorkflowFile — actionable errors", () => {
     expect(result.success).toBe(false);
     if (!result.success) {
       expect(result.errors).toEqual([
-        "path/workflow@3 is no longer read — run scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
+        "path/workflow@3 is no longer read — run scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5",
       ]);
     }
   });

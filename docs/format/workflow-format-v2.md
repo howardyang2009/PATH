@@ -3,7 +3,7 @@
 > **Superseded by [`workflow-format-v3.md`](workflow-format-v3.md).** `path/workflow@2` is no longer
 > read by the engine — a worker is a name now, and `model`/`options` moved to config (ADR 0021). This
 > document is retained because the CHANGELOG and closed issues link it; migrate `@2` files with
-> [`scripts/migrate-workflow-format-v3.ts`](../../scripts/migrate-workflow-format-v3.ts).
+> [`scripts/archive/migrate-workflow-format-v3.ts`](../../scripts/archive/migrate-workflow-format-v3.ts).
 
 This is the normative definition of `path/workflow@2`. `@path/schema` implements it as zod schemas. The
 engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
@@ -50,19 +50,19 @@ records the trade this change makes and the alternatives weighed. This document 
   ADR 0007 precedent. It is never a generic zod "invalid literal" on `format`:
 
   ```
-  path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2
+  path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2
   ```
 
   The engine reads `@2` only. There is no dual reader. Migration is the one-time repo script
-  [`scripts/migrate-workflow-format-v2.ts`](../../scripts/migrate-workflow-format-v2.ts) (§11), which
-  follows its `@0`-to-`@1` predecessor `scripts/migrate-workflow-format-v1.ts`.
+  [`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts) (§11), which
+  follows its `@0`-to-`@1` predecessor `scripts/archive/migrate-workflow-format-v1.ts`.
 
   An `@0` file names **both** scripts, in the order they must run, because the `@2` codemod migrates
   `@1` and nothing else. Handed an `@0` file, it reports "skipped" and leaves it untouched. So to name
   it alone would name a fix that is not one:
 
   ```
-  path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2
+  path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts to migrate this file to path/workflow@2
   ```
 
 ## 2. Top-level workflow object
@@ -515,7 +515,7 @@ trees. Conditions appear on `branch` arm `when`s, `while-do` `condition`, and `c
 ## 11. Migration from `@1`
 
 The one-time repo script
-[`scripts/migrate-workflow-format-v2.ts`](../../scripts/migrate-workflow-format-v2.ts) migrates `@1`
+[`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts) migrates `@1`
 files, following its `@0`-to-`@1` predecessor. It is a committed repo-internal script, not a shipped
 `path migrate` command. Pre-1.0 there are no external stored workflow files.
 

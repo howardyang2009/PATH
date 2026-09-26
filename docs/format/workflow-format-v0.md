@@ -4,7 +4,7 @@
 > This document describes `path/workflow@1` (despite its `v0` filename). It is **superseded by**
 > [`workflow-format-v2.md`](workflow-format-v2.md), the normative definition of `path/workflow@2`. The
 > engine reads `@2` only. It rejects `@1` and `@0` files at load (run
-> [`scripts/migrate-workflow-format-v2.ts`](../../scripts/migrate-workflow-format-v2.ts)). This file is
+> [`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts)). This file is
 > kept because the CHANGELOG and several closed issues link it.
 
 This spec resolves wayfinder ticket [#10](https://github.com/howardyang2009/PATH/issues/10). This

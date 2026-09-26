@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { safeParseWorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { builtinRegistry } from "./builtin-registry.js";
-import { runCodemod } from "./run-codemod.js";
+import { builtinRegistry } from "../builtin-registry.js";
+import { runCodemod } from "../run-codemod.js";
 
 /**
  * The `@3` → `@4` codemod, black-box (#514, ADR 0044). `worker_defaults` is a file-level envelope
@@ -13,7 +13,7 @@ import { runCodemod } from "./run-codemod.js";
  * unlike its predecessors it holds no rewrite and no refusal — the only thing to pin is that it stamps
  * the version, touches nothing else, and is idempotent.
  */
-const V4 = "migrate-workflow-format-v4.ts";
+const V4 = "archive/migrate-workflow-format-v4.ts";
 
 let dir: string;
 
