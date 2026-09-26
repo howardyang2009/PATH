@@ -1,7 +1,6 @@
 import {
-  boundaryLevels,
   classifyLevelK,
-  isPassRun,
+  selectBoundary,
   type ControlBlockKind,
   type LegalKLevelReason,
   type RunRecord,
@@ -90,32 +89,23 @@ export function resolveLegalK(
   files: Map<string, WorkflowFile>,
   rootDir: string,
 ): LegalKResult {
-  // 1. The run id must name a run of the source tree.
-  const byRunId = new Map(sourceRows.map((r) => [r.runId, r]));
-  const selected = byRunId.get(runId);
-  if (!selected) {
-    return refuse(400, `run id "${runId}" is not in the run tree being resumed`, "not-in-tree");
+  // 1. The run id must name a run of the source tree, and name a node's run: a goto pass is a
+  // container (ADR 0054 §3) and the root run owns no node (invariant 2). The selection rule is shared
+  // with the client's eager mirror (`selectBoundary`), and so are the descent levels it carries.
+  const selection = selectBoundary(sourceRows, runId);
+  switch (selection.kind) {
+    case "not-in-tree":
+      return refuse(400, `run id "${runId}" is not in the run tree being resumed`, "not-in-tree");
+    case "pass-run":
+      return refuse(
+        400,
+        `run "${runId}" is pass ${selection.pass}, a goto pass container, which is never a rerun boundary; choose a node inside it`,
+        "pass-run",
+      );
+    case "root-run":
+      return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
   }
-
-  // A goto pass is a container, not a node (ADR 0054 §3): the boundary is a first-level node inside it.
-  if (isPassRun(selected)) {
-    return refuse(
-      400,
-      `run "${runId}" is pass ${selected.pass}, a goto pass container, which is never a rerun boundary; choose a node inside it`,
-      "pass-run",
-    );
-  }
-
-  // The root run is never a rerun boundary (it owns no node — a top-level workflow-step, invariant 2).
-  // A succeeded root run's only resume is plain Resume, not Resume-from-K.
-  if (selected.parentRunId === null || selected.nodeId === null) {
-    return refuse(400, `run "${runId}" is the root run, which is never a rerun boundary`, "root-run");
-  }
-
-  // The descent levels root→…→K, top-down (`boundaryLevels`, shared with the client's eager mirror):
-  // each level's path-node run, the goto pass it ran in (ADR 0054 §6), and the scope its prefix
-  // succeeded under. `getRunsForRoot` gives one whole tree, so the walk reaches the root.
-  const levels = boundaryLevels(sourceRows, runId);
+  const { levels } = selection;
   const nodePath = levels.map((level) => level.run.nodeId!); // non-null: the levels exclude the root and pass runs
   const passes = levels.map((level) => level.passRun?.pass ?? null);
 

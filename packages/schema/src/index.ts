@@ -226,8 +226,10 @@ export { childrenByParent, findRootRun, pathToRoot, subtree, type RunTreeFields 
 export {
   boundaryLevels,
   classifyLevelK,
+  selectBoundary,
   type BoundaryLevel,
   type BoundaryLevelRun,
+  type BoundarySelection,
   type ClassifyLevelKArgs,
   type LegalKLevelReason,
   type LegalKLevelResult,
