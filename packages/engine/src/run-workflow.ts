@@ -4,15 +4,14 @@ import { z } from "zod";
 import { resolveChildRef, walkRefTree } from "./ref-tree.js";
 import {
   continuationOf,
-  firstRecordedChild,
   readExistingOutput,
-  recordedPasses,
   resolveRerunFromNodePath,
   targetLeafUnder,
 } from "./continuation.js";
 import { rootCancellation, stopCause } from "./cancellation.js";
 import { buildLaunchFacts, describeMissingLaunchSecrets } from "./launch-facts.js";
-import { enterIteration, enterNested, passResumer, resolveResume, resumeSeed, rootResumeEntry, type ResumeEntry } from "./resume-plan.js";
+import { passWalkStart } from "./goto-pass.js";
+import { enterIteration, enterNested, resolveResume, resumeSeed, rootResumeEntry, type ResumeEntry } from "./resume-plan.js";
 import { descendNodePath } from "./descend-node-path.js";
 import { runParallelNode, settleDetached } from "./run-parallel.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
@@ -1445,47 +1444,12 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
   if (gotos.size === 0) return runSequence(run, body, seedInput, exec);
   const indexById = new Map(body.map((node, index) => [node.id, index]));
 
-  const jumpsSpent = new Map<string, number>();
-  let pass = 1;
-  let opener: GotoNode | null = null;
-  let start = 0;
-  let carried = seedInput;
-  // Resume pairing (spec §8.1): each pass pairs with its predecessor counterpart until the first
-  // mismatch leaves the record (`passResumer` holds that state).
-  const passResume = run.resume && passResumer(run.resume, run.file);
-  // Complete (ADR 0060, spec §8.2): follow the record. Every recorded pass counts one jump for the goto
-  // that opened it, and the walk re-enters the one `running` pass in place. Closed passes are facts,
-  // not re-walked: no condition, goto or event of theirs is replayed.
-  let reentered: RunRecord | undefined;
-  if (run.continue) {
-    const passes = recordedPasses(run.continue, run.identity.runId);
-    for (const recorded of passes) {
-      if (recorded.nodeId !== null) jumpsSpent.set(recorded.nodeId, (jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
-    }
-    reentered = passes.find((recorded) => recorded.status === "running");
-  }
-  if (reentered && run.continue) {
-    pass = reentered.pass!;
-    carried = run.continue.readBlob(reentered, RUN_BLOB_FILE.input);
-    if (pass > 1) {
-      // Pass N starts at its opening goto's target in the reloaded file, which must be the node the
-      // pass recorded first; else the tail would no longer match the pass's rows.
-      const goto = reentered.nodeId === null ? undefined : gotos.get(reentered.nodeId);
-      const target = goto && body.find((candidate) => candidate.name === goto.target);
-      // A `sequence` records no row of its own, so a sequence target's first recorded node is its first leaf.
-      let firstNode: WorkflowNode | undefined = target;
-      while (firstNode?.type === "sequence" && firstNode.body.length > 0) firstNode = firstNode.body[0];
-      const recordedFirst = firstRecordedChild(run.continue, reentered.runId);
-      if (!target || firstNode!.id !== recordedFirst?.nodeId) {
-        const error =
-          `Complete replay diverged: pass ${pass} was opened by goto "${goto?.name ?? reentered.nodeName}" ` +
-          `whose target is now "${goto?.target ?? "(none)"}", recorded "${recordedFirst?.nodeName ?? "(none)"}"`;
-        return failDivergedPass(run, reentered, error);
-      }
-      opener = goto!;
-      start = indexById.get(target.id)!;
-    }
-  }
+  // Where the walk starts, and how each pass resumes, is the pass module's answer (`goto-pass.ts`):
+  // pass 1 for a launch or a Resume, the recorded running pass for a Complete (ADR 0060).
+  const walk = passWalkStart(run, gotos, seedInput);
+  if ("diverged" in walk) return failDivergedPass(run, walk.diverged, walk.error);
+  const { jumpsSpent, resumeFor } = walk;
+  let { pass, opener, start, carried, reentered } = walk;
   for (;;) {
     const passIdentity: RunIdentity = {
       runId: reentered?.runId ?? randomUUID(),
@@ -1503,7 +1467,7 @@ async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: Node
       await run.emitter.passStarted(opener, { pass });
     }
     reentered = undefined;
-    const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter, resume: passResume?.(pass, opener?.id ?? null) };
+    const passRun: RunContext = { ...run, identity: passIdentity, emitter: passEmitter, resume: resumeFor(pass, opener) };
 
     const outcome = await runSequence(passRun, body.slice(start), carried, exec);
     // A parked leaf keeps its pass `running`, like the workflow-run around it (ADR 0041).

@@ -1,5 +1,4 @@
 import {
-  isPassRun,
   isReuseRow,
   isRootRun,
   type ConfigObject,
@@ -238,23 +237,6 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
  */
 export function continuationOf(run: RunContext): Continuation {
   return run.continue ? completeContinuation(run.continue, run.identity.runId) : resumeContinuation(run.resume);
-}
-
-/**
- * The goto **pass** rows a Complete replay finds under one workflow-run (ADR 0060), in ordinal order.
- * Empty for a goto-free run and for a run appended fresh past the parked leaf. A pass's `nodeId` names
- * the goto that opened it (null for pass 1), so these rows are also the run's jump counts.
- */
-export function recordedPasses(state: ContinueState, parentRunId: string): RunRecord[] {
-  return state.existingRuns.filter((r) => r.parentRunId === parentRunId && isPassRun(r)).sort((a, b) => a.pass! - b.pass!);
-}
-
-/**
- * The first recorded child of a pass: the node the pass opened at. `existingRuns` is in start order
- * (`getRunsForRoot`: `started_at`, ties by insertion), so the first match is the earliest.
- */
-export function firstRecordedChild(state: ContinueState, passRunId: string): RunRecord | undefined {
-  return state.existingRuns.find((r) => r.parentRunId === passRunId);
 }
 
 /** Whether the parked leaf being Completed sits somewhere under `ancestorRunId` in this tree. */
