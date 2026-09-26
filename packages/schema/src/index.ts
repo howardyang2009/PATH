@@ -142,6 +142,7 @@ export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathReso
 export {
   CONTROL_CHILD_SLOTS,
   childBodies,
+  childNodePath,
   enclosingControlBlock,
   serialOrder,
   isStepType,

@@ -1,4 +1,4 @@
-import { childBodies, walkNodes } from "./node-walk.js";
+import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
@@ -61,42 +61,37 @@ function subtreePublishKeys(node: WorkflowNode): Set<string> {
 function siblingRaceIssues(file: WorkflowFile): PublishSetIssue[] {
   const issues: PublishSetIssue[] = [];
 
-  const walk = (nodes: WorkflowNode[], basePath: (string | number)[]): void => {
-    nodes.forEach((node, index) => {
-      const nodePath = [...basePath, index];
-      const raceAllowed = node.type === "parallel" && node.join === "wait-one";
+  const visit = (node: WorkflowNode, nodePath: (string | number)[]): void => {
+    const raceAllowed = node.type === "parallel" && node.join === "wait-one";
 
-      // Only *concurrent* siblings can race: branch arms are alternatives (one runs) and while-do
-      // iterations are sequential, so neither collides with itself — `concurrent` is the rule.
-      const firstSeenIn = new Map<string, number>();
-      childBodies(node).forEach((child, childIndex) => {
+    // Only *concurrent* siblings can race: branch arms are alternatives (one runs) and while-do
+    // iterations are sequential, so neither collides with itself — `concurrent` is the rule.
+    const firstSeenIn = new Set<string>();
+    for (const child of childBodies(node)) {
+      child.nodes.forEach((each, index) => {
+        const childPath = [...nodePath, ...childNodePath(child, index)];
+        // A concurrent slot is a `parallel` branch — exactly one node (`@2` §4.3), and its path lands
+        // on the branch itself, so a collision points at the offending branch directly.
         if (child.concurrent && !raceAllowed) {
-          // A concurrent slot is a `parallel` branch — exactly one node (`@2` §4.3), and the schema
-          // requires the branch list non-empty. A hand-built empty slot races nothing.
-          const branch = child.nodes[0];
-          if (branch) {
-            for (const key of new Set(subtreePublishKeys(branch))) {
-              if (firstSeenIn.has(key)) {
-                // `child.path` already lands on the branch node itself (`["branches", i]`, `@2` §4.3),
-                // so the collision points at the offending branch directly — no trailing segment.
-                issues.push({
-                  rule: "sibling-race",
-                  nodeId: branch.id,
-                  path: [...nodePath, ...child.path],
-                  message: `duplicate publish key "${key}": sibling parallel branches must not publish the same context key`,
-                });
-              } else {
-                firstSeenIn.set(key, childIndex);
-              }
+          for (const key of subtreePublishKeys(each)) {
+            if (!firstSeenIn.has(key)) {
+              firstSeenIn.add(key);
+              continue;
             }
+            issues.push({
+              rule: "sibling-race",
+              nodeId: each.id,
+              path: childPath,
+              message: `duplicate publish key "${key}": sibling parallel branches must not publish the same context key`,
+            });
           }
         }
-        walk(child.nodes, [...nodePath, ...child.path]);
+        visit(each, childPath);
       });
-    });
+    }
   };
 
-  walk(file.body, ["body"]);
+  file.body.forEach((node, index) => visit(node, ["body", index]));
   return issues;
 }
 
@@ -108,27 +103,24 @@ function siblingRaceIssues(file: WorkflowFile): PublishSetIssue[] {
 function detachedPublishIssues(file: WorkflowFile): PublishSetIssue[] {
   const issues: PublishSetIssue[] = [];
 
-  const walk = (nodes: WorkflowNode[], basePath: (string | number)[], insideDoNotWait: boolean): void => {
-    nodes.forEach((node, index) => {
-      const nodePath = [...basePath, index];
-      if (insideDoNotWait) {
-        for (const key of publishKeysOf(node)) {
-          issues.push({
-            rule: "detached-publish",
-            nodeId: node.id,
-            path: [...nodePath, "publish", key],
-            message: `publish "${key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
-          });
-        }
+  const visit = (node: WorkflowNode, nodePath: (string | number)[], insideDoNotWait: boolean): void => {
+    if (insideDoNotWait) {
+      for (const key of publishKeysOf(node)) {
+        issues.push({
+          rule: "detached-publish",
+          nodeId: node.id,
+          path: [...nodePath, "publish", key],
+          message: `publish "${key}" inside a do-not-wait branch: a fire-and-forget branch runs past the join and may not publish (do-not-wait-join.md §4)`,
+        });
       }
-      const detached = insideDoNotWait || (node.type === "parallel" && node.join === "do-not-wait");
-      for (const child of childBodies(node)) {
-        walk(child.nodes, [...nodePath, ...child.path], detached);
-      }
-    });
+    }
+    const detached = insideDoNotWait || (node.type === "parallel" && node.join === "do-not-wait");
+    for (const child of childBodies(node)) {
+      child.nodes.forEach((each, index) => visit(each, [...nodePath, ...childNodePath(child, index)], detached));
+    }
   };
 
-  walk(file.body, ["body"], false);
+  file.body.forEach((node, index) => visit(node, ["body", index], false));
   return issues;
 }
 

@@ -74,8 +74,8 @@ describe("publishSetIssues — the one publish-set rule, as data", () => {
       rule: "detached-publish",
       nodeId: uuid(2),
       // The path lands on the key, not the node — the loader points at the offending `publish` field,
-      // through the branch slot, the sequence node, and the sequence's own `body` index.
-      path: ["body", 0, "branches", 0, 0, "body", 0, "publish", "k"],
+      // through the branch (which is the sequence node itself) and the sequence's own `body` index.
+      path: ["body", 0, "branches", 0, "body", 0, "publish", "k"],
     });
     expect(issues[0]!.message).toContain("inside a do-not-wait branch");
   });

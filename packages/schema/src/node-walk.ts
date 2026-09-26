@@ -12,10 +12,23 @@ export interface NodeChildBody {
    * node, wrapped in a one-element array so every caller walks a list (`@2` §3.1).
    */
   nodes: WorkflowNode[];
-  /** JSON path segments from the owning node to this body, for error reporting. */
+  /**
+   * JSON path segments from the owning node to this slot. A single-node slot and a `parallel` branch
+   * already land on the node (`["arms", 0, "node"]`, `["branches", 1]`); a `sequence` body lands on its
+   * array (`["body"]`). Use {@link childNodePath} for one node's path.
+   */
   path: (string | number)[];
   /** True for `parallel` branches: siblings that run at once, and so can race to publish. */
   concurrent: boolean;
+}
+
+/**
+ * The JSON path of `child.nodes[index]` relative to its owning node. Only a `sequence` body indexes an
+ * array; every other slot's path already names its one node. The one spelling of that rule for every
+ * walker that reports a node's position.
+ */
+export function childNodePath(child: NodeChildBody, index: number): (string | number)[] {
+  return child.path[0] === "body" ? [...child.path, index] : child.path;
 }
 
 /**

@@ -1,4 +1,4 @@
-import { childBodies, walkNodes } from "./node-walk.js";
+import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { GotoNode, WorkflowNode } from "./node-type.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
@@ -40,10 +40,7 @@ export function gotoIssues(file: WorkflowFile): GotoIssue[] {
     if (node.type === "goto") issues.push(...issuesFor(node, nodePath, barrier));
     const inner = node.type === "while-do" || node.type === "parallel" ? node : barrier;
     for (const child of childBodies(node)) {
-      // A `sequence` body is a node array, so each child gets its index. A single-node slot and a
-      // parallel branch already land on the node (`@2` §4.3): the path is the node's own JSON path.
-      if (node.type === "sequence") child.nodes.forEach((each, index) => visit(each, [...nodePath, ...child.path, index], inner));
-      else for (const each of child.nodes) visit(each, [...nodePath, ...child.path], inner);
+      child.nodes.forEach((each, index) => visit(each, [...nodePath, ...childNodePath(child, index)], inner));
     }
   };
 
