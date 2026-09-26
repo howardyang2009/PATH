@@ -16,14 +16,15 @@ import { descendNodePath } from "./descend-node-path.js";
  * **rerun boundary (K)** node-id descent path and validates it against the current file — so a `--from`
  * value and the `--list-eligible` verdict can never disagree.
  *
- * K may be a **top-level node of the root file** (a length-1 path, ADR 0035) or a node inside a nested
+ * K may be a **node in the serial order of the root file** (first level, or inside sequences only —
+ * ADR 0064; a length-1 path, ADR 0035) or a node inside a nested
  * `workflow` file, reached by a descent path root→…→K (ADR 0036). The path is resolved by walking the
  * source run's `parentRunId` chain to root; each on-path level is validated against its own file. The
  * refusal taxonomy is checked in dependency order, first failure wins (spec §5):
  *
  *   1. run id in no run of the source tree               — 400
  *   2. resolves to a since-deleted node                  — 409
- *   3. illegal locus (inside a loop/parallel/branch body) — 400
+ *   3. illegal locus (inside a loop/parallel/branch body) — 400; a sequence body is transparent (ADR 0064)
  *   4. K node not succeeded                              — 409
  *   5. prefix `<K` not fully succeeded                   — 409
  *
@@ -181,7 +182,7 @@ export function resolveLegalK(
         case "in-body":
           return refuse(
             400,
-            `run "${runId}" resolves to node "${label}", which is inside a loop, parallel, or branch body and cannot be a rerun boundary`,
+            `run "${runId}" resolves to node "${label}", which is inside a ${levelResult.container ?? "loop, parallel, or branch"} body and cannot be a rerun boundary`,
             "in-body",
             levelResult.container,
           );

@@ -1,11 +1,12 @@
-import { enclosingControlBlock, isStepType, walkNodes, type ControlBlockKind } from "./node-walk.js";
+import { enclosingControlBlock, isStepType, serialOrder, walkNodes, type ControlBlockKind } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
 import type { RunStatus } from "./run-status.js";
 
 /**
  * The **legal-K** taxonomy, at the grain of one descent level, as a shared primitive (spec §5, ADR
  * 0032/0036). A rerun boundary (K) is legal when, at every level of its root→…→K descent, the node is
- * a top-level run-producing node of that level's file, the leaf K's own run succeeded, and the prefix
+ * a run-producing node in the serial order of that level's file (first level, or inside sequences only,
+ * ADR 0064), the leaf K's own run succeeded, and the prefix
  * before K succeeded. Those per-level reasons — since-deleted (#2), inside-a-body (#3), the leaf's own
  * success (#4), the prefix's success (#5) — used to be spelled twice: once in the engine's authority
  * (`resolveLegalK`) and once in the client's eager Designer mirror (`resumeFromEligibility`), kept
@@ -21,7 +22,7 @@ import type { RunStatus } from "./run-status.js";
  */
 export type LegalKLevelReason =
   | "not-in-file" // #2 — resolves to a node no longer in this level's file (rename/move survive by id)
-  | "in-body" // #3 — present, but inside a loop / parallel / branch (/ sequence) body
+  | "in-body" // #3 — present, but inside a loop / parallel / branch body (a sequence is transparent, ADR 0064)
   | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
   | "prefix-unsucceeded"; // #5 — a node before K at K's level ran and did not succeed
 
@@ -68,10 +69,12 @@ export interface ClassifyLevelKArgs {
 export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
   const { body, rows, scopeRunId, nodeId, leafStatus, earlierPassRunIds = [] } = args;
 
-  // #2 / #3 — locate the node at this level. A top-level, run-producing node is the only legal locus;
-  // anything else splits into since-deleted (#2) and illegal-locus (#3).
-  const topLevelIndex = body.findIndex((node) => node.id === nodeId);
-  if (topLevelIndex < 0) {
+  // #2 / #3 — locate the node at this level. A node in the body's serial order (first level, or inside
+  // sequences only, ADR 0064) is the only legal locus; anything else splits into since-deleted (#2) and
+  // illegal-locus (#3).
+  const order = serialOrder(body);
+  const serialIndex = order.findIndex((node) => node.id === nodeId);
+  if (serialIndex < 0) {
     const presentSomewhere = [...walkNodes(body)].some((node) => node.id === nodeId);
     if (!presentSomewhere) return { ok: false, reason: "not-in-file" };
     const container = enclosingControlBlock(body, nodeId);
@@ -100,7 +103,7 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
     return false;
   };
   if (earlierPassRunIds.some((passRunId) => prefixBroken(passRunId, body))) return { ok: false, reason: "prefix-unsucceeded" };
-  if (prefixBroken(scopeRunId, body.slice(0, topLevelIndex))) return { ok: false, reason: "prefix-unsucceeded" };
+  if (prefixBroken(scopeRunId, order.slice(0, serialIndex))) return { ok: false, reason: "prefix-unsucceeded" };
 
   return { ok: true };
 }

@@ -1,10 +1,10 @@
-import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { serialOrder, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { resolveChildRef } from "./ref-tree.js";
 
 /** Why a descent could not reach the next level of a node-id path. */
 export type NodePathMiss =
   | "no-file-tree" // the caller supplied no loaded file map, so no `ref` can resolve
-  | "node-missing" // the path-node id is not a top-level node of this level's file
+  | "node-missing" // the path-node id is not in this level's serial order (ADR 0064)
   | "not-workflow" // the path-node is present but is not a nested `workflow` node to descend into
   | "ref-unresolved"; // the `workflow` node's `ref` names a file not in the loaded tree
 
@@ -16,7 +16,7 @@ export interface NodePathLevel {
   dir: string;
   /** This level's path-node id. */
   nodeId: string;
-  /** The top-level node with that id in this level's file, or `undefined` when the file no longer holds it. */
+  /** The node with that id in this level's serial order, or `undefined` when the serial order no longer holds it. */
   node: WorkflowNode | undefined;
 }
 
@@ -37,8 +37,8 @@ export interface NodePathDescent {
  * `ref` any more.
  *
  * Eager and total: it returns every level it could reach plus the `miss` that stopped it, so a caller
- * reads levels and never re-walks. It descends only through a top-level `workflow` node whose `ref` is
- * in `files`; anything else ends the descent with the matching `miss` at that level's index. It
+ * reads levels and never re-walks. It descends only through a `workflow` node in the level's serial
+ * order (first level, or inside sequences only, ADR 0064) whose `ref` is in `files`; anything else ends the descent with the matching `miss` at that level's index. It
  * validates nothing about run status or locus — that is `classifyLevelK`'s job over each level's
  * `file.body`. It lives in the engine, not `@path/schema`, because `@path/schema` owns no filesystem
  * concern (not even path math); ref-relative resolution is the engine's.
@@ -54,7 +54,7 @@ export function descendNodePath(
   let dir = rootDir;
   for (let index = 0; index < nodePath.length; index++) {
     const nodeId = nodePath[index]!;
-    const node = file.body.find((n) => n.id === nodeId);
+    const node = serialOrder(file.body).find((n) => n.id === nodeId);
     levels.push({ file, dir, nodeId, node });
 
     if (index === nodePath.length - 1) break; // the leaf level needs no descent

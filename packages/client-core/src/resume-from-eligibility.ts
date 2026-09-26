@@ -1,5 +1,6 @@
 import {
   classifyLevelK,
+  isPassRun,
   isRootRun,
   type ControlBlockKind,
   type LegalKLevelReason,
@@ -70,12 +71,14 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   const selected = runs.get(selectedRunId);
   if (!selected || isRootRun(selected) || selected.nodeId === null) return noSelection();
 
-  // (2) An illegal K. A top-level K (a direct child of the root run) is located in the open file's body
-  // — the exact engine mirror. A nested K sits in a file the Designer does not hold, so only its own
-  // success is checked here and the engine backstops the rest.
+  // (2) An illegal K. A root-level K (a direct child of the root run, or of a goto pass run of the root,
+  // ADR 0054) is located in the open file's body — the exact engine mirror. A nested K sits in a file
+  // the Designer does not hold, so only its own success is checked here and the engine backstops the rest.
   const nodeName = selected.nodeName ?? selected.nodeId;
-  if (selected.parentRunId === rootRunId && rootFile !== null) {
-    const illegal = classifyTopLevel(rootFile, runs, rootRunId, selected, nodeName);
+  const parent = selected.parentRunId === null ? undefined : runs.get(selected.parentRunId);
+  const passRun = parent && isPassRun(parent) && parent.parentRunId === rootRunId ? parent : undefined;
+  if ((selected.parentRunId === rootRunId || passRun) && rootFile !== null) {
+    const illegal = classifyTopLevel(rootFile, runs, rootRunId, passRun, selected, nodeName);
     if (illegal) return illegal;
   } else if (selected.status !== "succeeded") {
     // A nested K whose own run did not succeed is illegal on any level (engine #4); the engine owns the
@@ -98,7 +101,8 @@ function noSelection(): ResumeFromEligibility {
 
 /**
  * The root-level taxonomy check: the shared `classifyLevelK` predicate (`@path/schema`) run over the
- * open root file at the root scope, with the selected run as the leaf. Returns the first illegal reason
+ * open root file at the root scope (or, under a goto, at K's pass run with the earlier passes as prefix,
+ * as the engine does), with the selected run as the leaf. Returns the first illegal reason
  * worded for the button, or `null` when the top-level K is legal. The rule body — locate (#2/#3), the
  * leaf's own success (#4), the prefix's success (#5) — is the one the engine authority runs; only the
  * message wording is the client's.
@@ -107,15 +111,20 @@ function classifyTopLevel(
   rootFile: WorkflowFile,
   runs: ReadonlyMap<string, RunRecord>,
   rootRunId: string,
+  passRun: (RunRecord & { pass: number }) | undefined,
   selected: RunRecord,
   nodeName: string,
 ): Extract<ResumeFromEligibility, { ok: false }> | null {
+  const earlierPassRunIds = passRun
+    ? [...runs.values()].filter((r) => r.parentRunId === rootRunId && isPassRun(r) && r.pass < passRun.pass).map((r) => r.runId)
+    : [];
   const level = classifyLevelK({
     body: rootFile.body,
     rows: runs.values(),
-    scopeRunId: rootRunId,
+    scopeRunId: passRun?.runId ?? rootRunId,
     nodeId: selected.nodeId!,
     leafStatus: selected.status,
+    earlierPassRunIds,
   });
   if (level.ok) return null;
   switch (level.reason) {

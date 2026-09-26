@@ -113,7 +113,8 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(400);
-    expect(verdict.refusal.message).toContain("loop, parallel, or branch");
+    // The message names the actual enclosing controller (ADR 0064), not a fixed list.
+    expect(verdict.refusal.message).toContain("inside a loop body");
   });
 
   it("reason 4: an unsucceeded K node is 409", () => {
@@ -372,5 +373,63 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
       run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
     ];
     expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"], passes: [null] });
+  });
+});
+
+describe("resolveLegalK — a sequence body is transparent (ADR 0064)", () => {
+  const seq = (id: string, body: WorkflowFile["body"]): WorkflowFile["body"][number] => ({ type: "sequence", id, name: id, body });
+  const prompt = (id: string): WorkflowFile["body"][number] => ({ type: "prompt", id, name: id, prompt: id });
+
+  it("resolves K inside a sequence to its length-1 node path", () => {
+    const file = tree([prompt("a"), seq("s", [prompt("b"), prompt("c")])]);
+    expect(resolveLegalK(file, abcRows(), "c-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["c"], passes: [null] });
+  });
+
+  it("counts an earlier sibling in the same sequence as prefix", () => {
+    const file = tree([prompt("a"), seq("s", [prompt("b"), prompt("c")])]);
+    const verdict = resolveLegalK(file, abcRows({ b: "failed" }), "c-run", new Map(), "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal.reason).toBe("prefix-unsucceeded");
+  });
+
+  it("descends through an intermediate workflow path-node inside a sequence", () => {
+    const file = tree([seq("s", [prompt("a"), { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} }]), prompt("d")]);
+    expect(resolveLegalK(file, nestedRows(), "k-run", nestedFiles, "/tmp")).toEqual({ ok: true, nodePath: ["sub", "k"], passes: [null, null] });
+  });
+
+  it("refuses K inside a sequence inside a loop, naming the loop", () => {
+    const file = tree([
+      prompt("a"),
+      {
+        type: "while-do",
+        id: "loop",
+        name: "loop",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 3,
+        node: seq("s", [prompt("b")]),
+      },
+    ]);
+    const verdict = resolveLegalK(file, abcRows(), "b-run", new Map(), "/tmp");
+    expect(verdict.ok).toBe(false);
+    if (verdict.ok) throw new Error("unreachable");
+    expect(verdict.refusal).toMatchObject({ status: 400, reason: "in-body", container: "loop" });
+    expect(verdict.refusal.message).toContain("inside a loop body");
+  });
+
+  it("resolves K inside a sequence under a goto pass (the #638 repro shape)", () => {
+    // Root [a, test{b, c}]; pass 1 ran a, b, c; pass 2 re-entered and ran b, c. K = c in pass 2.
+    const file = tree([prompt("a"), seq("test", [prompt("b"), prompt("c")])]);
+    const rows = [
+      run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
+      run({ runId: "pass-1", parentRunId: "root", nodeId: "g", nodeName: "g", pass: 1, status: "succeeded" }),
+      run({ runId: "a-1", parentRunId: "pass-1", nodeId: "a", status: "succeeded" }),
+      run({ runId: "b-1", parentRunId: "pass-1", nodeId: "b", status: "succeeded" }),
+      run({ runId: "c-1", parentRunId: "pass-1", nodeId: "c", status: "succeeded" }),
+      run({ runId: "pass-2", parentRunId: "root", nodeId: "g", nodeName: "g", pass: 2, status: "failed" }),
+      run({ runId: "b-2", parentRunId: "pass-2", nodeId: "b", status: "succeeded" }),
+      run({ runId: "c-2", parentRunId: "pass-2", nodeId: "c", status: "succeeded" }),
+    ];
+    expect(resolveLegalK(file, rows, "c-2", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["c"], passes: [2] });
   });
 });

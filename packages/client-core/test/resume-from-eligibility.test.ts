@@ -267,3 +267,65 @@ describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one
     expect(result).toMatchObject({ ok: false, reason: "prefix-unsucceeded" });
   });
 });
+
+describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", () => {
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body }) as unknown as WorkflowNode;
+  const loop = (id: string, node: WorkflowNode): WorkflowNode =>
+    ({ type: "while-do", id, name: id, condition: { type: "exists", path: "context.x" }, max_iterations: 2, node }) as unknown as WorkflowNode;
+
+  it("enables K inside a sequence at the root level", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(rootRow(), run("a"), run("b")),
+      rootFile: file([leaf("a"), seq("s", [leaf("b")])]),
+      selectedRunId: "b",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: true, runId: "b" });
+  });
+
+  // Root [a, test{b, c}] under goto: pass 1 ran a, b, c; pass 2 ran b, c. Selections sit under a pass run.
+  const passRows = (over: { c1?: RunStatus } = {}) => [
+    rootRow(),
+    run("pass-1", { nodeId: "g", nodeName: "g", pass: 1 }),
+    run("a-1", { parentRunId: "pass-1", nodeId: "a", nodeName: "a" }),
+    run("b-1", { parentRunId: "pass-1", nodeId: "b", nodeName: "b" }),
+    run("c-1", { parentRunId: "pass-1", nodeId: "c", nodeName: "c", status: over.c1 ?? "succeeded" }),
+    run("pass-2", { nodeId: "g", nodeName: "g", pass: 2, status: "failed" }),
+    run("b-2", { parentRunId: "pass-2", nodeId: "b", nodeName: "b" }),
+    run("c-2", { parentRunId: "pass-2", nodeId: "c", nodeName: "c" }),
+  ];
+
+  it("enables K inside a sequence under a goto pass run", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(...passRows()),
+      rootFile: file([leaf("a"), seq("test", [leaf("b"), leaf("c")])]),
+      selectedRunId: "c-2",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: true, runId: "c-2" });
+  });
+
+  it("checks the locus under a goto pass run: K inside a loop is disabled, as the engine refuses it", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(...passRows()),
+      rootFile: file([leaf("a"), loop("spin", seq("test", [leaf("b"), leaf("c")]))]),
+      selectedRunId: "c-2",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "in-body", container: "loop" });
+  });
+
+  it("counts earlier passes as prefix under a goto pass run", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(...passRows({ c1: "failed" })),
+      rootFile: file([leaf("a"), seq("test", [leaf("b"), leaf("c")])]),
+      selectedRunId: "b-2",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "prefix-unsucceeded" });
+  });
+});
