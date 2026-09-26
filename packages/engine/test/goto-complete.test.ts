@@ -53,9 +53,11 @@ function step(name: string) {
 
 /**
  * `[a, review, guard]`: `review` is a person-activity leaf publishing its output as `last`; the guard
- * jumps back to `target` while `last` is `"again"`, else runs `done`.
+ * jumps back to `target` while `last` is `"again"`, else runs `done`. `wrapReview` nests `review` in a
+ * `stage` sequence.
  */
-function loop(opts: { target?: string; maxJumps?: number } = {}): WorkflowFile {
+function loop(opts: { target?: string; maxJumps?: number; wrapReview?: boolean } = {}): WorkflowFile {
+  const review = { type: "person-activity", id: "review", description: "review it", publish: { last: "${output}" } };
   return stampNames({
     format: "path/workflow@5",
     id: "wf-id",
@@ -63,7 +65,7 @@ function loop(opts: { target?: string; maxJumps?: number } = {}): WorkflowFile {
     config: { model: "m" },
     body: [
       step("a"),
-      { type: "person-activity", id: "review", description: "review it", publish: { last: "${output}" } },
+      opts.wrapReview ? { type: "sequence", id: "stage", body: [review] } : review,
       {
         type: "branch",
         id: "guard",
@@ -159,6 +161,27 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
         [1, "succeeded"],
         [2, "succeeded"],
         [3, "succeeded"],
+      ]);
+    } finally {
+      project.close();
+    }
+  });
+
+  it("Complete re-enters a pass whose goto target is a sequence: the sequence's first leaf is the pass's first row", async () => {
+    const project = open();
+    try {
+      const ran: string[] = [];
+      const file = loop({ target: "stage", wrapReview: true });
+      const rootRunId = await parkedInPass2(project, file, ran);
+
+      const done = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "ok", dir, { workerOverrides: scripted(ran) });
+      if (!done.ok) throw new Error(`expected ok, got ${JSON.stringify(done)}`);
+      expect(done.error).toBeUndefined();
+      expect(done.status).toBe("succeeded");
+      expect(ran).toEqual(["a", "done"]);
+      expect(passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status])).toEqual([
+        [1, "succeeded"],
+        [2, "succeeded"],
       ]);
     } finally {
       project.close();
