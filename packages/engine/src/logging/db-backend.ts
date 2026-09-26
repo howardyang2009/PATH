@@ -3,19 +3,13 @@ import type Database from "better-sqlite3";
 import type { LogBackend } from "./log-backend.js";
 
 /**
- * The db log backend (mvp spec §8.2): one row per event in the `log_events` table, stamped with the
- * root run id captured from `open()`. Shares the project's `Database` handle with run-row
- * persistence (better-sqlite3 is synchronous, single-connection), so the async seam here resolves
- * synchronously.
+ * The db log backend (mvp spec §8.2): one row per event in `log_events`, stamped with the root run id
+ * captured from `open()`. Shares the project's synchronous, single-connection `Database` handle.
  *
- * The SQL lives here rather than in a store of its own, so that `write` is the only way a row
- * reaches `log_events`. That is what the §8.2 failure policy rests on: the engine assembles the
- * envelope, the `seq` and the masking before the seam, and a backend is a dumb sink — an insert
- * reachable around the sink could carry an event none of that had been applied to.
- *
- * Envelope columns are denormalized for queryability; the whole event is stored as JSON in `event`
- * so a read round-trips back through `LogEventSchema`. `seq` is monotonic per root run, so the
- * (root_run_id, seq) primary key doubles as the ordering key.
+ * The SQL lives here so `write` is the only way a row reaches `log_events`: the engine assembles the
+ * envelope, `seq` and masking before the seam, and an insert around the sink could carry an event none
+ * of that was applied to. Envelope columns are denormalized; the whole event is also stored as JSON so
+ * a read round-trips through `LogEventSchema`.
  */
 export function createDbLogBackend(db: Database.Database): LogBackend {
   let rootRunId: string | null = null;
@@ -45,16 +39,12 @@ export function createDbLogBackend(db: Database.Database): LogBackend {
       });
     },
     async close() {
-      // The shared db handle is owned and closed by the caller (cli.ts) — nothing to flush here.
+      // The shared db handle is owned and closed by the caller — nothing to flush here.
     },
   };
 }
 
-/**
- * The highest `seq` recorded for a root run's narrative, or 0 when none — the point a Complete
- * re-invocation continues the monotonic per-root `seq` from (ADR 0041), so its appended events do not
- * collide with the existing `(root_run_id, seq)` rows.
- */
+// Where a Complete re-invocation continues the per-root `seq` from (ADR 0041).
 export function maxLogSeqForRoot(db: Database.Database, rootRunId: string): number {
   const row = db
     .prepare(`SELECT MAX(seq) AS maxSeq FROM log_events WHERE root_run_id = @rootRunId`)
@@ -64,13 +54,8 @@ export function maxLogSeqForRoot(db: Database.Database, rootRunId: string): numb
   return row.maxSeq ?? 0;
 }
 
-/**
- * Reads one root run's narrative back in `seq` order, revalidating each stored event.
- *
- * `RunArchive.events()` reaches for this when a run has no `run.log` to replay — the ndjson backend
- * was off — so the table is both the audit record §8.2 rests on and the second source SSE replay
- * can be served from. Events were masked before reaching `write`, so what comes back is masked.
- */
+// Reads one root run's narrative back in `seq` order, revalidating each stored event. The fallback when
+// a run has no `run.log` to replay; events were masked before `write`, so what comes back is masked.
 export function getLogEventsForRoot(db: Database.Database, rootRunId: string): LogEvent[] {
   const rows = db
     .prepare(`SELECT event FROM log_events WHERE root_run_id = @rootRunId ORDER BY seq`)
@@ -78,12 +63,8 @@ export function getLogEventsForRoot(db: Database.Database, rootRunId: string): L
   return rows.map((row) => LogEventSchema.parse(JSON.parse(row.event)));
 }
 
-/** One reuse-marker as the `rm` guard reads it (#175): which root run holds it, and which run in the
- * *original* tree its data lives in. `holderRootRunId` is the marker's own `root_run_id` column — the
- * successor tree that reused the node — and `originalRunId` its `original_run_id` payload, the run the
- * marker back-references. `runs rm` resolves the latter against the tree it is about to delete to know
- * whether a live successor still depends on that tree's data. Project-wide: the `type` column is
- * denormalized precisely so this scan need not open every tree's log. */
+// One reuse-marker as the `rm` guard reads it: which successor root run holds it, and which run in the
+// *original* tree its data lives in — what `runs rm` resolves to see if a live successor still needs it.
 export function reuseMarkerReferences(
   db: Database.Database,
 ): { holderRootRunId: string; originalRunId: string }[] {

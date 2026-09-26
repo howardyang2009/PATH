@@ -15,13 +15,8 @@ import { useSelection } from "./selection-context.js";
 import type { Armed } from "./use-armed.js";
 import { type Frame, frameDirty, type OpenSession } from "./use-open-file.js";
 
-/**
- * The canvas region: the centre surface a `path/workflow` body renders on. Read-only in #367;
- * **editable** in #368 (designer-spec § Canvas interaction model). It shows one of: the empty affordance
- * when nothing is open, a registry/fetch problem, a legible refusal (ADR 0026 / ADR 0015), or the
- * block-grammar render under a breadcrumb — now with the palette's armed value driving which sockets
- * open, and structure edits committed through the session's `applyEdit`.
- */
+/** The canvas region: the centre surface a `path/workflow` body renders on. It shows one of: the empty
+ * affordance, a registry/fetch problem, a legible refusal, or the block-grammar render under a breadcrumb. */
 export function Canvas({
   session,
   plugins,
@@ -37,29 +32,24 @@ export function Canvas({
   plugins: WireStepPlugin[];
   armed: Armed | null;
   onArm: (armed: Armed | null) => void;
-  /** The active file's cross-node problems (#388, #392), derived once by the App and shared with the
-   *  launch button's warning count — the canvas renders them as per-node markers and the problems panel. */
+  /** The active file's cross-node problems, derived once by the App and shared with the launch button's count. */
   problems: Problem[];
   /** Start a new workflow or a new template, by the session's mode — the empty canvas's first entry point. */
   onNew: () => void;
-  /** Open the pick-an-existing dialog for the mode (a workflow, #254, or a template) — the second entry point. */
+  /** Open the pick-an-existing dialog for the mode (a workflow or a template) — the second entry point. */
   onOpenExisting: () => void;
-  /** Open the ref-target chooser for an unset `workflow` block, keyed by its node id (#391) — the
-   *  double-click entry that mirrors the pane's "Add a workflow reference". Absent for a from-scratch root
-   *  (no path to store a relative ref against), which leaves an empty-ref double-click inert. */
+  /** Open the ref-target chooser for an unset `workflow` block; absent for a from-scratch root, which has
+   *  no path to store a relative ref against and so leaves an empty-ref double-click inert. */
   onAuthorRef?: (nodeId: string) => void;
-  /** The watched run's workflow-level (root run) status — the implicit root run has no `nodeId`, so it
-   *  projects onto no canvas node (surface 6); instead it badges the workflow-name line on the breadcrumb.
-   *  `null` when no run is watched, which draws no badge. */
+  /** The watched run's root-run status, badged on the workflow-name crumb; `null` when no run is watched. */
   workflowRunStatus: RunStatus | null;
 }): JSX.Element {
   const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
   const selection = useSelection();
 
   // A double-click on a `workflow` block: a set ref descends across the boundary; an unset ref opens the
-  // ref-target chooser instead (#391), so a freshly swapped-in `workflow` block is authorable rather than
-  // a dead descent into `""`. The chooser is only offered when the active file has a path to store a
-  // relative ref against, so an empty ref with no `onAuthorRef` is inert.
+  // ref-target chooser instead, so a freshly swapped-in block is authorable rather than a dead descent
+  // into `""`.
   const onDescend: DescendHandler = (node) => {
     if (node.ref) descend(node.ref, node.id);
     else onAuthorRef?.(node.id);
@@ -116,16 +106,11 @@ export function Canvas({
   );
 }
 
-/**
- * The scrolling canvas body. A click that reaches it — i.e. the background, not a block, which stops
- * the click's propagation — deselects, so the properties pane falls back to the file's own properties
- * (#369, § Pane layout: an empty-canvas click shows the file's own properties).
- */
+/** The scrolling canvas body. A click that reaches it is the background — blocks stop the click's
+ * propagation — so it deselects and the pane falls back to the file's own properties. */
 function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
   const selection = useSelection();
-  // Deselect only on a true background click. A block stops its own click's propagation, so what
-  // reaches here is either the bare background or a bubbled control/socket button press — and a
-  // structure edit (reorder, delete, add) must not also drop the selection, so ignore button clicks.
+  // Deselect only on a true background click: a control/socket button press must not also drop the selection.
   const onClick = (event: MouseEvent): void => {
     if ((event.target as HTMLElement).closest("button")) return;
     selection?.onSelect(null);
@@ -139,13 +124,9 @@ function CanvasBody({ children }: { children: JSX.Element }): JSX.Element {
   );
 }
 
-/**
- * The file breadcrumb: one crumb per trail frame. The **active** one (`activeIndex`) is marked current;
- * clicking it deselects, so the properties pane falls back to the workflow's own properties (a click on
- * the open file's name goes back to its property panel). Frames on either side are buttons — ancestors
- * ascend, and a frame ahead of the active one (kept alive because an ascend no longer discards it, #391)
- * is a forward re-entry back down the same trail.
- */
+/** The file breadcrumb: one crumb per trail frame. The active one is marked current, and clicking it
+ * deselects so the pane falls back to the workflow's own properties. Frames on either side are buttons:
+ * ancestors ascend, and a frame ahead of the active one is a forward re-entry back down the same trail. */
 function Breadcrumb({
   frames,
   activeIndex,
@@ -158,14 +139,13 @@ function Breadcrumb({
   onCrumb: (index: number) => void;
   /** Deselect to the file's own properties, or `undefined` when the tree renders read-only (no selection wired). */
   onSelectFile?: (id: string | null) => void;
-  /** The watched run's workflow-level (root run) status, badged on the **root** crumb — the run's own file.
-   *  A nested descent crumb badges its own descent node's projected status instead (below); `null` draws
-   *  nothing on the root. */
+  /** The watched run's root-run status, badged on the **root** crumb; a nested descent crumb badges its
+   *  own descent node's projected status instead, and `null` draws nothing on the root. */
   workflowRunStatus: RunStatus | null;
 }): JSX.Element {
-  // The projection folds each node's runs to one status (surface 6). A descent crumb reads the status of the
-  // `workflow` block it descended through — the sub-workflow's own verdict — so the trail badges every level,
-  // e.g. `parent failed / child failed`, not only the root. Looked up once here; a per-id hook cannot loop.
+  // The projection folds each node's runs to one status. A descent crumb reads the status of the
+  // `workflow` block it descended through — the sub-workflow's own verdict — so the trail badges every
+  // level, e.g. `parent failed / child failed`, not only the root. Looked up once here; a per-id hook cannot loop.
   const projection = useRunProjection();
   return (
     <nav className="breadcrumb" aria-label="File breadcrumb">
@@ -188,8 +168,7 @@ function Breadcrumb({
               </span>
             ) : null}
             {current ? (
-              // The current crumb is the open file's name. Clicking it shows the workflow's own properties
-              // (deselect), which is a no-op when nothing is wired to select. It stays marked current.
+              // The current crumb is the open file's name; clicking it deselects (a no-op when nothing is wired).
               <button
                 type="button"
                 className="crumb crumb-current"
@@ -217,12 +196,9 @@ function Breadcrumb({
   );
 }
 
-/**
- * The workflow-level run projection on the breadcrumb (surface 6): the watched run's root-run status as a
- * glyph + label badge on the workflow-name line. The implicit root run has no `nodeId`, so it lands on no
- * canvas node; this is where its verdict shows. It reuses the node badge's run-tint language so both canvas
- * surfaces read the same. `data-run-status` tints it from the stylesheet.
- */
+/** The workflow-level run projection on the breadcrumb: the watched run's root-run status as a glyph +
+ * label badge on the workflow-name line. The implicit root run has no `nodeId`, so it lands on no canvas
+ * node; this is where its verdict shows. `data-run-status` tints it from the stylesheet. */
 function WorkflowRunBadge({ status }: { status: RunStatus }): JSX.Element {
   return (
     <span className="node-run-badge" data-run-status={status} data-testid="workflow-run-badge">
@@ -280,12 +256,10 @@ function FrameView({
         () => onArm(null),
         defaultLeafKind(plugins),
       );
-      // Dirty is content-equality against the baseline (ADR 0030), read through the one shared relation so
-      // it cannot drift from launch/Save. Its note ("Unsaved edits") shows in the top bar, not here.
+      // Dirty is content-equality against the baseline, read through the one shared relation so it cannot
+      // drift from launch/Save. Its note ("Unsaved edits") shows in the top bar, not here.
       const dirty = frameDirty(frame);
-      // `problems` is the App's single cross-node pass (#388, #392), the same array the launch button's
-      // warning count reads. Its marker map feeds the per-node ⚠ and its flat list feeds the problems
-      // panel — two coupled surfaces onto one derivation, so a marker and the count cannot disagree.
+      // The App's single cross-node pass: its marker map feeds the per-node ⚠ and its flat list the panel.
       return (
         <div className="opened" data-dirty={dirty ? "true" : "false"}>
           <ConflictProvider value={problemMarks(problems)}>
@@ -317,10 +291,8 @@ function FrameView({
   }
 }
 
-/**
- * The empty-body affordance (§ Adding … and the empty canvas): a start-a-body prompt plus the file
- * body's own open socket. Arm a kind in the palette and the socket appears; click it to seed the body.
- */
+/** The empty-body affordance: a start-a-body prompt plus the file body's own open socket. Arm a kind in
+ * the palette and the socket appears; click it to seed the body. */
 function StartBody({ editor }: { editor: EditorApi }): JSX.Element {
   return (
     <section className="start-body" aria-label="Start a body">
@@ -350,11 +322,8 @@ function Refusal({ heading, message }: { heading: string; message: string }): JS
   );
 }
 
-/**
- * The centred empty/loading affordance, reusing the tracer bullet's card. It deliberately carries no
- * `region`/`Workflow canvas` label — that landmark belongs to the *open* canvas, so a test (and a
- * screen reader) can wait for the real surface rather than matching this placeholder first.
- */
+/** The centred empty/loading affordance. It carries no `region`/`Workflow canvas` label — that landmark
+ * belongs to the *open* canvas, so a test or screen reader waits for the real surface, not this placeholder. */
 function CanvasNote({
   title,
   hint,

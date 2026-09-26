@@ -1,11 +1,9 @@
 import type { Condition, JsonScalar } from "@path/schema";
 
 /**
- * A one-line, read-only plain-text summary of a structured `Condition` (designer-spec § Structure on
- * the canvas, content in the pane): the text the canvas shows on a branch arm's `when`, a `while-do`'s
- * `condition`, and a `checkpoint`'s `assert`. It is a *summary*, never an editor — the typed condition
- * builder is a later ticket (§ Still open). The output favours legibility over round-trip fidelity: it
- * reads like the predicate, not like the JSON.
+ * A one-line, read-only plain-text summary of a structured `Condition`: the text the canvas shows on a
+ * branch arm's `when`, a `while-do`'s `condition`, and a `checkpoint`'s `assert`. It is a *summary*,
+ * never an editor, and favours legibility over round-trip fidelity — it reads like the predicate.
  */
 export function summarizeCondition(condition: Condition): string {
   switch (condition.type) {

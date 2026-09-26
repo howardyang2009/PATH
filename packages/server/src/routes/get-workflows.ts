@@ -6,19 +6,16 @@ import { sendJson } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * Every `*.workflow.json` under `root`, as absolute paths, sorted for a deterministic response.
- * Skips `.path/`, `node_modules`, and any dot-directory (server-api-v0.md §6). Symlinks — whether to
- * a file or a directory — are neither followed nor listed: the loader canonicalizes lexically
- * (`resolve`, not `realpath`), so following one here would alias a nested file as a discovered root
- * (valid-root-detection.md).
+ * Every `*.workflow.json` under `root`, as absolute paths, sorted. Skips `.path/`, `node_modules`, and
+ * any dot-directory. Symlinks are neither followed nor listed: the loader canonicalizes lexically
+ * (`resolve`, not `realpath`), so following one would alias a nested file as a discovered root.
  */
 function scanWorkflowFiles(root: string): string[] {
   const found: string[] = [];
 
   function walk(dir: string): void {
     for (const entry of readdirSync(dir, { withFileTypes: true })) {
-      // Checked before isDirectory()/isFile(): a symlink reports neither, so this both avoids
-      // following a symlinked dir and drops a symlinked file rather than aliasing it.
+      // Checked before isDirectory()/isFile(): a symlink reports neither.
       if (entry.isSymbolicLink()) continue;
       if (entry.isDirectory()) {
         if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
@@ -33,11 +30,8 @@ function scanWorkflowFiles(root: string): string[] {
   return found.sort();
 }
 
-/**
- * Best-effort top-level `id`/`name` for a file that failed to load, so an invalid entry stays
- * human-legible in the list (server-api-v0.md §6). `null` for either field the shallow parse can't
- * recover — a syntactically broken file yields `{ id: null, name: null }`.
- */
+/** Best-effort top-level `id`/`name` so an invalid entry stays human-legible in the list; `null` when
+ * the shallow parse cannot recover either field. */
 function shallowIdentity(absPath: string): { id: string | null; name: string | null } {
   try {
     const raw = JSON.parse(readFileSync(absPath, "utf8")) as Record<string, unknown>;
@@ -52,31 +46,20 @@ function shallowIdentity(absPath: string): { id: string | null; name: string | n
 
 /**
  * `GET /v0/workflows` (server-api-v0.md §6): discover every workflow under the project root, each
- * flagged whether it is a root or also reachable as another workflow's nested `workflow` ref. Pure
- * read — no engine exec path. Fresh scan each call, no pagination or cache.
- *
- * Two passes over the discovered files. The first loads each with `loadWorkflowTree` and, for every
- * one that loads, folds its nested-ref set — `keys(workflow.files) \ {itself}`, all absolute — into a
- * shared `referenced` set. The second builds the response: a file that loaded is `is_root: false`
- * exactly when some valid root referenced it (ADR 0011 — list all, flag roots), `is_root: true`
- * otherwise; a file that failed to load carries `is_root: null` (a failed load has no `workflow.files`,
- * so it cannot be classified) with the shared error envelope and a best-effort id/name.
+ * flagged `is_root`. A file that loaded is `is_root: false` exactly when some valid root referenced it,
+ * `true` otherwise; a file that failed to load carries `is_root: null` (no ref set) and its error.
  */
 export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void> {
-  // Canonicalized so scan paths (`join` off this root) match `loadWorkflowTree`'s keys (`resolve`)
-  // exactly — the map lookups below assume that equality. `project.dir` is already `resolve`d today
-  // (openProject); resolving again is a cheap belt-and-braces that keeps the assumption local.
+  // `resolve`d so scan paths (`join` off this root) match `loadWorkflowTree`'s keys exactly; the map
+  // lookups below assume that equality.
   const projectDir = resolve(ctx.project.dir);
   const absPaths = scanWorkflowFiles(projectDir);
 
-  // `loadWorkflowTree` is async now (ADR 0019 sub-15): the N per-call loads run concurrently, one
-  // `Promise.all`, rather than one blocking scan+parse after another.
   const loaded = await Promise.all(
     absPaths.map(async (absPath) => ({ absPath, result: await loadWorkflowTree(absPath) })),
   );
 
-  // A discovered file reachable as a *valid* root's nested ref. Only successful loads contribute:
-  // a file whose own load failed carries no ref set, and its own `is_root` is null regardless.
+  // A discovered file reachable as a *valid* root's nested ref.
   const referenced = new Set<string>();
   for (const { absPath, result } of loaded) {
     if (!result.success) continue;
@@ -88,7 +71,6 @@ export async function handleGetWorkflows({ res, ctx }: ApiRequest): Promise<void
   const workflows: WorkflowSummary[] = loaded.map(({ absPath, result }) => {
     const relativePath = relative(projectDir, absPath);
     if (result.success) {
-      // The root of this file's own load is the file itself — its parsed id/name.
       const file = result.workflow.rootFile;
       return {
         relative_path: relativePath,

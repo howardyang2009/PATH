@@ -2,24 +2,17 @@ import type { Condition, WorkflowNode } from "@path/schema";
 import { childBodies, uniqueName } from "@path/schema";
 
 /**
- * Minting new nodes for the canvas (#368, designer-spec § Adding; ADR 0015 node identity). Every node
- * this module makes carries a **client-minted UUIDv4** `id` and a **file-unique** `name`. A block is
- * born with its minimal legal occupants pre-filled by a default leaf step, so a freshly placed
- * `while-do`, `branch`, `parallel`, or `sequence` is already grammar-shaped rather than a slot the
- * author must remember to fill. Duplicating a node clones its whole subtree with **fresh** ids and
- * names, because a paste is a new node, not an alias (ADR 0015: a duplicate gets a fresh id).
- *
- * Names must be unique across the whole file (`workflow-file.ts`), so every mint takes the set of names
- * already in use and derives a free one; a name it hands out is added to that set, so several nodes made
- * in one call (a block and its default occupants) never collide with each other either.
+ * Minting new nodes for the canvas (designer-spec § Adding; ADR 0015): every node carries a client-minted
+ * UUIDv4 `id` and a file-unique `name`, and a block is born with its minimal legal occupants pre-filled
+ * by a default leaf. A name handed out is added to `used`, so a block and its occupants never collide.
  */
 
-/** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited in the pane later. */
+/** A default placeholder condition for a new `branch` arm, `while-do`, or `checkpoint`; edited later. */
 function defaultCondition(): Condition {
   return { type: "exists", path: "context.value" };
 }
 
-/** A fresh leaf step of `type`, with the type's own required field(s) stubbed empty for the pane to fill. */
+/** A fresh leaf of `type`, with the type's own required field stubbed empty for the pane to fill. */
 function makeLeaf(type: string, used: Set<string>): WorkflowNode {
   const base = { id: crypto.randomUUID(), name: uniqueName(type, used), type };
   switch (type) {
@@ -30,21 +23,19 @@ function makeLeaf(type: string, used: Set<string>): WorkflowNode {
     case "workflow":
       return { ...base, ref: "" } as WorkflowNode;
     case "person-activity":
-      // Its `description` is the one required field (the pane fills the rest); stub it empty so a freshly
-      // placed person-activity is strict-shaped like `prompt`/`binary`, not a generic empty-payload leaf.
-      // Cast through `unknown` because `person-activity` is a plugin leaf outside the core node union.
+      // Its `description` is the required field; the cast is needed because a plugin leaf sits outside
+      // the core node union.
       return { ...base, description: "" } as unknown as WorkflowNode;
     default:
-      // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the pane fills its
-      // fields. The working model tolerates the empty payload — save-time validation is a later ticket.
+      // A generic registry leaf (e.g. `api-call`): only the envelope is minted; the engine tolerates the
+      // empty payload, so no field is stubbed here.
       return base as unknown as WorkflowNode;
   }
 }
 
 /**
- * A fresh node of `kind`, ready to place. A leaf step kind (`prompt`, `binary`, `workflow`, or a
- * registry plugin type) makes a leaf; a block makes its shell with a default leaf occupant (`defaultLeaf`,
- * the palette's first Steps entry, else `prompt`) filling each minimal-legal slot.
+ * A fresh node of `kind`, ready to place. A leaf kind makes a leaf; a block makes its shell with a
+ * default leaf occupant (`defaultLeaf`, the palette's first Steps entry, else `prompt`) in each slot.
  */
 export function createNode(kind: string, used: Set<string>, defaultLeaf = "prompt"): WorkflowNode {
   switch (kind) {
@@ -87,8 +78,8 @@ export function createNode(kind: string, used: Set<string>, defaultLeaf = "promp
         condition: defaultCondition(),
       };
     case "goto":
-      // Born pointing nowhere (`""`): the pane's target picker shows it as `missing:` until the author
-      // picks one, and `max_jumps` is pre-filled `3` because the field is mandatory (designer-spec § goto).
+      // Born pointing nowhere (`""`): the pane shows it as `missing:` until the author picks one, and
+      // `max_jumps` is mandatory (designer-spec § goto).
       return {
         id: crypto.randomUUID(),
         name: uniqueName("goto", used),
@@ -110,9 +101,8 @@ export function createArm(
 }
 
 /**
- * A deep clone of `node` with **fresh** identity throughout: every node in the subtree gets a new
- * UUIDv4 `id` and a new file-unique `name` (the original's name with a `-copy` suffix, uniquified).
- * This is the paste/duplicate case — a copy is a new node, never an alias of the source (ADR 0015).
+ * A deep clone with fresh identity throughout: new UUIDv4 `id`s and `-copy` names; a copy is never an alias (ADR
+ * 0015).
  */
 export function cloneWithFreshIdentity(node: WorkflowNode, used: Set<string>): WorkflowNode {
   const clone = structuredClone(node) as WorkflowNode;

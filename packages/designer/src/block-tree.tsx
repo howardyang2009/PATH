@@ -11,13 +11,11 @@ import { RUN_STATUS_GLYPH } from "./run/run-status.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The block-grammar render of a `path/workflow` body. Read-only in #367; **editable** in #368 when an
- * `editor` is threaded through (designer-spec § Structure on the canvas). Structure edits live on the
- * canvas, so the block carries the structure affordances — reorder (▲/▼), duplicate, delete (×, or the
- * Delete key), the tail add-socket of each list, the single-slot swap, and a branch's add-arm /
- * add-`else`. Where the grammar refuses the armed kind, no socket opens, so an illegal drop is
- * unreachable rather than rejected on save. Content (names, conditions, payloads) stays read-only here —
- * it graduates to the properties pane in a later ticket.
+ * The block-grammar render of a `path/workflow` body: read-only, or **editable** when an `editor` is
+ * threaded through. Structure edits live on the canvas, so the block carries the structure affordances —
+ * reorder (▲/▼), duplicate, delete (×, or the Delete key), the tail add-socket of each list, the
+ * single-slot swap, and a branch's add-arm / add-`else`. Where the grammar refuses the armed kind, no
+ * socket opens, so an illegal drop is unreachable rather than rejected on save. Content stays read-only here.
  */
 
 /**
@@ -37,7 +35,7 @@ interface ListSocket {
 interface TreeProps {
   nodes: WorkflowNode[];
   onDescend: DescendHandler;
-  /** Present when the canvas is editable (#368); absent for a pure read-only render. */
+  /** Present when the canvas is editable; absent for a pure read-only render. */
   editor?: EditorApi;
 }
 
@@ -147,8 +145,8 @@ function NodeControls({
 function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
   return (event: KeyboardEvent): void => {
     if (!editor) return;
-    // Delete or Backspace (#389): the undo stack now backs a destructive subtree delete, so Backspace —
-    // withheld before for want of an undo — is unlocked and is itself undoable (via `editor.remove`).
+    // Delete or Backspace: the undo stack backs a destructive subtree delete, so Backspace is unlocked
+    // and is itself undoable (via `editor.remove`).
     if (event.key !== "Delete" && event.key !== "Backspace") return;
     if (event.target !== event.currentTarget) return; // ignore keys bubbling from a nested control
     if (!editor.canRemove(node.id)) return;
@@ -158,10 +156,10 @@ function deleteKeyHandler(node: WorkflowNode, editor?: EditorApi) {
 }
 
 /**
- * The single-click selection props for a block (#369): a click reports the node's id to the selection
- * context (populating the properties pane), unless it landed on a control or socket button — those own
- * their action and must not also select. A selected block carries `data-selected` for the highlight. On
- * a read-only render (no selection context, e.g. #367) it returns nothing, so the block stays inert.
+ * The single-click selection props for a block: a click reports the node's id to the selection context
+ * (populating the properties pane), unless it landed on a control or socket button — those own their
+ * action and must not also select. A selected block carries `data-selected`. On a read-only render (no
+ * selection context) it returns nothing, so the block stays inert.
  */
 function useSelectable(node: WorkflowNode): {
   "data-node-id": string;
@@ -171,10 +169,10 @@ function useSelectable(node: WorkflowNode): {
 } {
   const selection = useSelection();
   // A goto draws no edge, so its target's block is highlighted instead while the goto is selected or
-  // hovered (#619). It rides with the selection props because every block already spreads them.
+  // hovered. It rides with the selection props because every block already spreads them.
   const gotoTarget = useIsGotoTarget(node) ? ("true" as const) : undefined;
   // `data-node-id` rides on every block regardless of edit mode, so the problems panel's jump-to-node
-  // (#388) can scroll the offending block into view whether or not it is the selected one.
+  // can scroll the offending block into view whether or not it is the selected one.
   if (!selection) return { "data-node-id": node.id, "data-goto-target": gotoTarget };
   return {
     "data-node-id": node.id,
@@ -189,10 +187,9 @@ function useSelectable(node: WorkflowNode): {
 }
 
 /**
- * The canvas run projection for one node (#372, surface 6): a status glyph+label badge when the watched
- * run touched this node. One node produces many runs, so the fold is `run-projection.ts`'s; this only
- * draws the folded status. Absent when no run is watched or the node has not run — the block then reads
- * exactly as it did before a run was selected. `data-run-status` tints the badge from the stylesheet.
+ * The canvas run projection for one node: a status glyph+label badge when the watched run touched this
+ * node. One node produces many runs, so the fold is `run-projection.ts`'s; this only draws the folded
+ * status. Absent when no run is watched or the node has not run. `data-run-status` tints the badge.
  */
 function NodeRunBadge({ id }: { id: string }): JSX.Element | null {
   const status = useNodeRunStatus(id);
@@ -332,8 +329,8 @@ function CheckpointBlock({
 }
 
 /**
- * A watched run's jumps spent by one goto, `<spent>/<max_jumps>` (#620). A goto runs for no time, so it
- * takes no status badge; this is its whole run view. Absent when no run is watched.
+ * A watched run's jumps spent by one goto, `<spent>/<max_jumps>`. A goto runs for no time, so it takes
+ * no status badge; this is its whole run view. Absent when no run is watched.
  */
 function GotoJumpsBadge({
   node,
@@ -354,7 +351,7 @@ function GotoJumpsBadge({
 }
 
 /**
- * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge (#619).
+ * A `goto` — a leaf block with a `→ <target>` chip and a direction glyph instead of an edge.
  * Hovering it highlights its target. In a watched run it shows its jumps spent instead of a status badge.
  */
 function GotoBlock({

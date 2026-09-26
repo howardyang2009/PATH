@@ -3,37 +3,19 @@ import { LaunchForm } from "@path/viewer";
 
 export interface RunLaunchProps {
   client: PathApiClient;
-  /**
-   * The received step-plugin registry (`GET /v0/step-plugins`), passed straight through to the shared
-   * form's **launch worker-default** field (ADR 0044): the Designer's dock launches a run, so it offers
-   * the same operator door the Viewer's launch panel does.
-   */
+  /** The received step-plugin registry, passed through to the shared form's launch worker-default field (ADR 0044). */
   plugins: readonly WireStepPlugin[];
-  /** The file open on the canvas — the launch target. `null` for a brand-new, never-saved buffer. */
+  /** The file open on the canvas; `null` for a never-saved buffer. */
   workflowPath: string | null;
-  /** The active buffer's dirty flag: a launch runs the bytes on disk, so a dirty buffer gates it (ADR 0025). */
+  /** A launch runs the bytes on disk, so a dirty buffer gates it (ADR 0025). */
   dirty: boolean;
-  /**
-   * The open file's soft cross-node warning count (#388). Launch is **badged, not blocked**: a
-   * saved-with-warnings file is clean, so launch is enabled; the count only tells the author the run
-   * may surface the truth at run-start (an unresolved interpolation, an unset `$env`).
-   */
+  /** Soft cross-node warning count; launch is badged, not blocked. */
   warningCount: number;
-  /** Called with the new run's `root_run_id` once a launch is accepted (202) — the app watches it. */
   onLaunched: (rootRunId: string) => void;
 }
 
-/**
- * The Designer's launch surface (surface 2, ADR 0025), **save-first**. It is the shared
- * {@link LaunchForm} (reused from `@path/viewer`, the same form the Viewer's launch panel mounts)
- * wired to the Designer's one difference: there is no picker — the target is the file open on the
- * canvas, and a launch runs the **bytes on disk** (the server loads `workflow_path` through
- * `prepareWorkflow`, never the client's buffer). So a dirty or never-saved buffer gates launch until
- * it is saved; the shared form disables the button and shows the gate reason, and enables once clean.
- *
- * The **launch worker-default** field rides along with it (ADR 0044): it is operator input for this
- * launch, not file data, so it belongs to the launch door — and this dock is one.
- */
+/** Save-first launch (ADR 0025): the shared {@link LaunchForm} with no picker; it runs the bytes on disk, so
+ * a dirty or never-saved buffer gates it. The worker-default field rides along (ADR 0044). */
 export function RunLaunch({
   client,
   plugins,
@@ -42,8 +24,6 @@ export function RunLaunch({
   warningCount,
   onLaunched,
 }: RunLaunchProps): JSX.Element {
-  // A launch runs the file on disk, so an unsaved or dirty buffer must save first (#371, ADR 0025). A
-  // brand-new buffer has no path for `prepareWorkflow` to load, so its first save creates the target.
   const gate =
     workflowPath === null
       ? "Save this new workflow before you can run it."

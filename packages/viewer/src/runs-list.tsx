@@ -16,29 +16,21 @@ import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
 
 /**
- * How many root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3),
- * so this is a "latest N" window, not pagination — the viewer is a monitor, and paging back through
- * run history is not one of its four read surfaces (map #40). Sent explicitly (it happens to equal
- * the server's own default) so the window the pane renders is the window the pane asked for.
+ * Root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3), so this is
+ * a "latest N" window, not pagination.
  */
 const RUNS_LIMIT = 50;
 
 /**
- * How often the pane re-reads `GET /v0/runs` (#50). The list is the one surface with no live feed
- * behind it — there is a stream per root run, none for the set of them — so a periodic re-read is
- * what keeps the rail from contradicting the live centre pane, or missing a run launched from the
- * CLI while the page was open. Seconds, not milliseconds: a status settling a moment late costs
- * nothing, and this is a monitor, not a dashboard people stare at.
+ * How often the pane re-reads `GET /v0/runs`: there is a stream per root run, none for the set of
+ * them, so polling is what catches a run launched from the CLI.
  */
 export const RUNS_REFRESH_MS = 5000;
 
-/** The pane's status filter: one `RunStatus`, or `"all"` for the unfiltered list. */
+/** One `RunStatus`, or `"all"` for the unfiltered list. */
 type StatusFilter = RunStatus | "all";
 
-/**
- * The affordance a row with no tree behind it carries — a stable empty value, so a rail that never
- * opted in neither allocates per render nor branches at each row.
- */
+/** Stable empty affordance, so a rail that never opted in neither allocates per render nor branches. */
 const EMPTY_RESUME_FROM: ResumeFromAffordance = {
   runs: new Map(),
   selectedRunId: null,
@@ -49,10 +41,8 @@ const EMPTY_RESUME_FROM: ResumeFromAffordance = {
 export interface RunsListProps {
   client: PathApiClient;
   /**
-   * Optional `workflow_id` scope (server-api-v0.md §3). `undefined` is the Viewer's cross-workflow
-   * rail — every root run. A string scopes the list to one workflow's history (the Designer, watching
-   * the run history of the file it has open). `null` means a scoped surface with nothing open yet: the
-   * list shows an idle note and reads nothing.
+   * Optional `workflow_id` scope (server-api-v0.md §3). `undefined` is the cross-workflow rail; a
+   * string scopes to one workflow's history; `null` is a scoped surface with nothing open yet.
    */
   workflowId?: string | null;
   /** The run the app currently has selected — owned above, so the detail pane sees the same id. */
@@ -60,42 +50,26 @@ export interface RunsListProps {
   onSelectRootRun: (rootRunId: string) => void;
   /**
    * Switches the app to watch the successor of a resumed run — the same transition a launch makes.
-   * The Resume affordance lives here, under the selected run's row, mirroring how the launch form
-   * expands under a workflow row: a run is resumed from the same rail it is selected in.
+   * The Resume affordance lives under the selected run's row.
    */
   onResumed: (successorRootRunId: string) => void;
   /**
-   * Called after a run is deleted (its row's Delete affordance), so the app can drop the selection if
-   * it was watching that run and force an immediate re-read — the delete's mirror of {@link onResumed}.
+   * Called after a run is deleted, so the app can drop the selection if it was watching that run and
+   * force an immediate re-read.
    */
   onDeleted: (rootRunId: string) => void;
-  /**
-   * Bumped by the app after an inline launch (#233) to force an immediate re-read, so the run just
-   * started appears in the rail now rather than at the next {@link RUNS_REFRESH_MS} tick — the same
-   * one-shot read, triggered a beat early.
-   */
   reloadNonce?: number;
-  /**
-   * The `Resume from …` K-selection affordance, passed only when the surface wants that action in the
-   * selected row's panel (`@path/viewer`'s `ResumeFromAffordance`). When omitted, the panel offers only
-   * plain Resume/Delete. One value rather than the four correlated props it replaces: the tree, the K
-   * selected in it, and the open buffer the eager legal-K check reads are only meaningful together.
-   */
+  /** The `Resume from …` K-selection affordance; omitted, the panel offers only Resume/Delete. */
   resumeFrom?: ResumeFromAffordance;
   /**
-   * The watched run's published display status, keyed by run id — the same fact the detail head, the
-   * run tree and the node pane read off `RunViewState` (`displayStatusByRun`). A row the map holds shows
-   * that status, so the watched root whose leaf is parked reads `awaiting` although its summary stays
-   * `running` (view-only, ADR 0038); every other row has no tree loaded and keeps its summary status.
+   * The watched run's published display status, keyed by run id, so a watched root whose leaf is
+   * parked reads `awaiting` although its summary stays `running` (view-only, ADR 0038). Rows absent
+   * from the map keep their summary status.
    */
   displayStatus?: ReadonlyMap<string, RunStatus>;
 }
 
-/**
- * The runs-list read surface (issue #46): root runs with status, the left pane of the pinned
- * three-pane console (#44 Variant A). Read-only — no launch or edit affordances (map #40) — and
- * formatting-only: `@path/client-core` owns the wire shapes, this renders them.
- */
+/** The runs-list read surface: root runs with status, read-only and formatting-only. */
 export function RunsList({
   client,
   workflowId,
@@ -107,31 +81,23 @@ export function RunsList({
   resumeFrom,
   displayStatus,
 }: RunsListProps) {
-  // The scope sent to the wire: a string scopes to one workflow, `undefined` leaves the list
-  // cross-workflow. `null` (a scoped surface with nothing open) never reaches a query — the effects
-  // below short-circuit on it and the render shows an idle note.
+  // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
   const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
-  // Which row's action panel is expanded, or none — a single-open toggle exactly like the launch
-  // form's `expanded` (launch-panel.tsx): clicking a row opens its panel, clicking it again closes
-  // it, clicking another row moves the expand there. Independent of `selectedRootRunId`, so
-  // collapsing the panel never stops the centre pane watching the run.
+  // The expanded row's action panel, or none. Independent of `selectedRootRunId`, so collapsing the
+  // panel never stops the centre pane watching the run.
   const [openFor, setOpenFor] = useState<string | null>(null);
 
-  // The current filter, read by the nonce effect without making it a dependency: a launch re-reads
-  // the same window the pane is showing, and should not itself be a reason to re-read on filter change.
+  // A ref, not a dependency: a launch re-reads the same window, and a filter change should not be a
+  // reason for the nonce effect to re-read.
   const statusFilterRef = useRef(statusFilter);
   statusFilterRef.current = statusFilter;
 
   useEffect(() => {
-    // A scoped surface with nothing open reads nothing — the idle note stands until a workflow opens.
     if (workflowId === null) return;
     let cancelled = false;
 
-    // A refresh replaces the rows in place: no `loading` phase, so an already-rendered list never
-    // flashes back to "Loading runs…" every few seconds. A *failing* refresh does surface — a frozen
-    // list that still looks healthy is the worse lie.
     const read = (initial: boolean): void => {
       if (initial) setState({ phase: "loading" });
       client
@@ -158,9 +124,8 @@ export function RunsList({
     };
   }, [client, statusFilter, workflowId, scope]);
 
-  // A launch (#233) bumps `reloadNonce`; re-read once, in place — no loading flash, because the rail
-  // is already populated and only one row is being added. The first run (mount) is skipped so this
-  // never doubles the initial fetch above; an unset `reloadNonce` opts out entirely.
+  // A launch bumps `reloadNonce`: re-read once, in place. Mount is skipped so this never doubles the
+  // initial fetch; an unset `reloadNonce` opts out.
   const nonceStarted = useRef(false);
   useEffect(() => {
     if (reloadNonce === undefined) return;
@@ -212,8 +177,7 @@ export function RunsList({
             </option>
           ))}
         </select>
-        {/* The row count, as in the #44 prototype's pane header: with a capped window, "how many am
-            I looking at" is not answerable by eye. */}
+        {/* With a capped window, "how many am I looking at" is not answerable by eye. */}
         {state.phase === "ready" && <span className="runs-count">{state.value.length}</span>}
       </div>
 
@@ -221,38 +185,26 @@ export function RunsList({
       {state.phase === "error" && <PaneError what="runs" message={state.message} />}
       {state.phase === "ready" &&
         (state.value.length === 0 ? (
-          // Two empty states, not one: "No runs yet." is only true of an unfiltered list, and an
-          // operator who has just narrowed the filter needs to know which of the two they hit.
+          // Two empty states: "No runs yet." is only true of an unfiltered list, and an operator who
+          // narrowed the filter needs to know which of the two they hit.
           <p className="pane-note">
             {statusFilter === "all" ? "No runs yet." : `No ${statusFilter} runs.`}
           </p>
         ) : (
           <ul className="runs">
             {state.value.map((run) => {
-              // The row shows the published display status when the app is watching that run — a running
-              // root whose leaf is parked reads `awaiting` (view-only, ADR 0038). The list holds only
-              // summaries, so a row the view does not hold (every run but the watched one) keeps its
-              // summary status; the derivation itself lives in `@path/client-core`.
+              // The watched run shows its published display status, so a parked leaf reads `awaiting`;
+              // rows with no tree behind them keep their summary.
               const rowStatus = displayStatus?.get(run.run_id) ?? run.status;
-              // A run still in flight — `running`, or a `running` root reading `awaiting` because a leaf
-              // is parked (ADR 0038) — offers no run action at all: it cannot be resumed (it never
-              // stopped) and cannot be deleted (the server 409s a live run). This is the same gate plain
-              // Resume already applies; Delete and `Resume from …` follow it, so the whole action panel
-              // is quiet while the run is alive.
+              // A live run offers no action: it cannot be resumed, and the server 409s a delete on it.
               const inFlight = rowStatus === "running" || rowStatus === "awaiting";
-              // Every finished row expands an action panel under itself — the rail's mirror of the launch
-              // form under a workflow row (#233). It offers Delete, and plain Resume: enabled on a
-              // `cancelled`/`failed` run (`canResume`), greyed on a `succeeded` one — kept visible, not
-              // hidden, so its pairing with `Resume from …` reads. Rendered as a sibling of the row
-              // button, never inside it (a button cannot nest the panel's own buttons).
+              // Plain Resume stays visible but greyed on a `succeeded` run, so its pairing with
+              // `Resume from …` reads. The panel is a sibling of the row button, never inside it.
               const canResume = run.status === "cancelled" || run.status === "failed";
               const showResume = isTerminal(run.status);
               const open = openFor === run.run_id;
-              // `Resume from …` (K-selection) shows in the watched run's own panel — the only row with a
-              // loaded tree behind it — when the surface opted in by passing `resumeFrom`. It sits below
-              // plain Resume, and stands alone on a succeeded run (which has no plain Resume): a
-              // succeeded run's one way back in is a rerun from a chosen boundary (ADR 0033). Suppressed
-              // while the run is in flight, like the other two actions.
+              // `Resume from …` needs a loaded tree, so only the watched run offers it — the one way back
+              // into a succeeded run (rerun from a chosen boundary, ADR 0033).
               const showResumeFrom =
                 resumeFrom !== undefined && run.run_id === selectedRootRunId && !inFlight;
               return (
@@ -267,7 +219,7 @@ export function RunsList({
                     aria-expanded={open}
                     onClick={() => {
                       onSelectRootRun(run.run_id);
-                      // Toggle this row's action panel, single-open, like the launch form.
+                      // Single-open toggle: the same row closes it, another row moves it.
                       setOpenFor((current) => (current === run.run_id ? null : run.run_id));
                     }}
                   >
@@ -279,8 +231,6 @@ export function RunsList({
                   {open && (
                     <div className="run-actions" data-testid={`run-actions-${run.run_id}`}>
                       {inFlight ? (
-                        // A live run has no resume or delete: it never stopped, and the server 409s a
-                        // delete on a running run. The panel says why rather than standing empty.
                         <p className="pane-note">
                           This run is still in flight. Resume and delete become available once it
                           finishes.
@@ -295,12 +245,10 @@ export function RunsList({
                               plainResumable={canResume}
                               showResumeFrom={showResumeFrom}
                               resumeFrom={resumeFrom ?? EMPTY_RESUME_FROM}
-                              // The summary's masked launch secrets (ADR 0046), so the form can ask for
-                              // them before the submit rather than letting the engine refuse the resume.
+                              // Masked launch secrets (ADR 0046), asked for before submit rather than
+                              // letting the engine refuse the resume.
                               launchSecretKeys={run.launch_secret_keys}
                               onResumed={(successorRootRunId) => {
-                                // Collapse on success, as the launch form does on launch — then hand the
-                                // successor to the app to select and watch.
                                 setOpenFor(null);
                                 onResumed(successorRootRunId);
                               }}

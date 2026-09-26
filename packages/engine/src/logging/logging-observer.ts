@@ -7,22 +7,18 @@ import {
 } from "../run-observer.js";
 import { LOG_FORMAT, type LogBackend } from "./log-backend.js";
 
-// Every workflow-run is its file's implicit root step (invariant 2), so its lifecycle events
-// report this step_type: the root run with `node_id: null`, a nested workflow-step's run (#22)
-// with the `workflow` node's real id.
+// A workflow-run is its file's implicit root step, so its lifecycle events report this step_type.
 const WORKFLOW_STEP_TYPE = "workflow";
 
-// A backend plus the engine-side bookkeeping the seam requires: an `active` flag (a backend is
-// dropped after its first write failure — surviving backends still receive terminal events) and a
-// `tail` promise so writes to one backend never run concurrently (mvp spec §8.2: one write queue
-// per backend).
+// A backend plus its bookkeeping: `active` drops it after a write failure while the survivors still
+// get terminal events, and `tail` is its one write queue (mvp spec §8.2).
 interface ManagedBackend {
   backend: LogBackend;
   active: boolean;
   tail: Promise<void>;
 }
 
-/** The shared log-event envelope (mvp spec §8.1) — `seq` is the ordering truth per root run. */
+/** The shared log-event envelope (mvp spec §8.1); `seq` is the ordering truth per root run. */
 type Envelope = {
   seq: number;
   ts: string;
@@ -31,10 +27,9 @@ type Envelope = {
   node_name: string | null;
 };
 
-/** A node's two-part identity (ADR 0007) as control events pass it through the projection. */
 type NodeIdentity = { id: string; name: string };
 
-// A `cancelled` step-finished (#24) carries no error — the cause is narrated by run-cancelled.
+// A `cancelled` step-finished carries no error — the cause is narrated by run-cancelled.
 function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
   return outcome.status === "failed" && outcome.error !== undefined
     ? { type: "step-finished", ...env, status: "failed", error: outcome.error }
@@ -42,23 +37,12 @@ function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
 }
 
 /**
- * Project one observation onto the log narrative (#62), or `null` when it is not narrated.
- *
- * This function is where "what the log stream is" lives. Three kinds of difference between the two
- * unions are resolved here, and nowhere else:
- *
- * - **Payloads are dropped.** `input`, `output` and `context` reach the log only as blob refs on the
- *   run row (mvp spec §6), so the events carry none of them.
- * - **Four observations are never narrated.** `step-stderr`, `step-usage`, `context-changed` and `step-context`
- *   exist for persistence alone; they return `null`.
- * - **The shapes are not 1:1.** `run-started` and `step-started` both become `step-started`
- *   (a workflow-run is its file's implicit root step, invariant 2); `run-finished` and
- *   `step-finished` both become `step-finished`; and `checkpoint-evaluated` splits into
- *   `checkpoint-passed`/`checkpoint-failed`.
- *
- * The `never` guard means a new `Observation` member forces a decision about whether it is narrated.
- * `envelope` is a factory rather than a value because the choice of `node_id`/`node_name` is part of
- * the projection: control-node events carry the control node's own identity, lifecycle events the run's.
+ * Project one observation onto the log narrative, or `null` when it is not narrated. Payloads are
+ * dropped (`input`/`output`/`context` reach the log only as blob refs, mvp spec §6); four observations
+ * are persistence-only and return `null`; and the shapes are not 1:1 — `run-started` and
+ * `step-started` both become `step-started`, as do `run-finished` and `step-finished`, while
+ * `checkpoint-evaluated` splits in two. The `never` guard forces a decision on each new member.
+ * `envelope` is a factory because the choice of `node_id`/`node_name` is part of the projection.
  */
 export function toLogEvent(
   o: Observation,
@@ -66,9 +50,7 @@ export function toLogEvent(
 ): LogEvent | null {
   switch (o.type) {
     case "run-started":
-      // A workflow-run is its file's implicit root step (invariant 2) and runs a nested run, not a
-      // worker (ADR 0021 sub-14) — so its log event's `worker_name` is the step type itself,
-      // `"workflow"`, the one string a workflow-shaped step can honestly name here.
+      // Its `worker_name` is the step type itself, the one string a workflow-shaped step can name.
       return {
         type: "step-started",
         ...envelope(o),
@@ -127,8 +109,7 @@ export function toLogEvent(
         pass: o.pass,
       };
     case "join-applied":
-      // A control-node observation (mvp spec §8.1): run_id is the enclosing workflow-run, node_id
-      // the `parallel` node — never a run of its own (a controller has no run, invariant 1).
+      // A controller has no run of its own (invariant 1): run_id is the enclosing run, node_id the node.
       return {
         type: "join-applied",
         ...envelope(o),
@@ -138,19 +119,16 @@ export function toLogEvent(
         winner: o.winner,
       };
     case "run-cancelled":
-      // Paired with a `cancelled` step-finished for the same run. `cause` distinguishes a failing
-      // sibling branch from an operator stopping the root run (#52).
+      // Paired with a `cancelled` step-finished; `cause` distinguishes a sibling from an operator stop.
       return { type: "run-cancelled", ...envelope(o), cause: o.cause, cause_run_id: o.causeRunId };
     case "step-awaiting":
-      // `assignee` (#488) rides the log so an `awaiting`/Complete cycle reconstructs from the stream
-      // alone — who the offline activity was for, `null` when the node named none.
+      // Rides the log so an `awaiting`/Complete cycle reconstructs who the activity was for.
       return { type: "step-awaiting", ...envelope(o), assignee: o.assignee };
     case "reuse-marker":
-      // A reused node's whole narrative (#172): the log carries it where no step-lifecycle pair does,
-      // node_id being the reused node's own id and original_run_id the back-reference to the run that
-      // holds the real data in the original tree.
+      // A reused node's whole narrative, where no step-lifecycle pair carries it: node_id is the
+      // reused node's own id and original_run_id back-references the tree holding the real data.
       return { type: "reuse-marker", ...envelope(o), original_run_id: o.originalRunId };
-    // Persistence-only: no log event exists for these (see Observation's docblock).
+    // Persistence-only: no log event exists for these.
     case "step-stderr":
     case "step-usage":
     case "context-changed":
@@ -164,20 +142,11 @@ export function toLogEvent(
 }
 
 /**
- * A `RunObserver` (see run-observer.ts) that turns run/step lifecycle hooks into the typed log-event
- * stream (mvp spec §8.1) and fans it out to every backend. Envelope assembly, `seq`, and (later,
- * #20) masking happen here, engine-side — backends are dumb sinks.
+ * A `RunObserver` that turns run/step lifecycle hooks into the typed log-event stream (mvp spec §8.1)
+ * and fans it out to every backend; envelope assembly, `seq` and masking happen here, engine-side.
  *
- * Failure policy (§8.2, audit-first): any *active* backend write failure rejects the hook so
- * `runWorkflow` fails the run; the failed backend is dropped, and terminal events (the root
- * `step-finished` + `close`) are still emitted best-effort to the survivors. Terminal emission never
- * rejects — the run is already ending.
- */
-/**
- * Options for a **re-invocation** over an existing tree (ADR 0041, Complete). A launch passes none.
- * `startSeq` seeds the monotonic per-root `seq` from where the tree left off, so the appended events
- * do not collide with the existing `(root_run_id, seq)` rows; `append` tells the backends to add to
- * the existing `run.log` rather than truncate it and re-write its header.
+ * Failure policy (§8.2): any *active* backend write failure rejects the hook so `runWorkflow` fails the
+ * run, and the failed backend is dropped; terminal events are still emitted best-effort to survivors.
  */
 export interface LoggingObserverOptions {
   startSeq?: number;
@@ -193,17 +162,14 @@ export function createLoggingObserver(
     active: true,
     tail: Promise.resolve(),
   }));
-  // `seq` continues from `startSeq` on a re-invocation (0 on a launch), so a Complete's appended
-  // events keep the per-root ordering monotonic instead of restarting at 1 and colliding.
+  // `startSeq` keeps a Complete's appended events monotonic instead of colliding at 1.
   let seq = options.startSeq ?? 0;
   const append = options.append ?? false;
   let opened = false;
   let terminated = false;
 
-  // The log envelope is a rename of the observation's own: every observation carries the node identity
-  // it is about (ADR 0007), the run tier's from its identity and the step tier's from its node, so this
-  // observer keeps no per-run state and its output cannot depend on the order or completeness of the
-  // stream it was handed.
+  // Every observation carries the node identity it is about (ADR 0007), so this observer keeps no
+  // per-run state and its output cannot depend on the order of the stream it was handed.
   function envelope(o: Observation): Envelope {
     seq += 1;
     return {
@@ -215,18 +181,16 @@ export function createLoggingObserver(
     };
   }
 
-  // Serialize an op onto a backend's queue: it runs only after that backend's previous op settles,
-  // so a backend never sees concurrent calls. A rejection doesn't poison the chain (the tail keeps
-  // draining), but the returned promise still rejects so the caller can react.
+  // Runs only after that backend's previous op settles, so it never sees concurrent calls. A rejection
+  // doesn't poison the chain, but the returned promise still rejects so the caller can react.
   function enqueue(mb: ManagedBackend, op: () => Promise<void>): Promise<void> {
     const done = mb.tail.then(op);
     mb.tail = done.catch(() => {});
     return done;
   }
 
-  // Run `op` on every still-active backend concurrently (different backends may write in parallel;
-  // only per-backend order is serialized) and drop any that reject. `label` fails the run via
-  // ObserverError unless `best-effort` — terminal events (§8.2) drop failures without rejecting.
+  // Runs `op` on every still-active backend concurrently, dropping any that reject. `label` fails the
+  // run via ObserverError unless `best-effort` — terminal events drop failures without rejecting.
   async function fanOut(
     op: (mb: ManagedBackend) => Promise<void>,
     { label, bestEffort }: { label: string; bestEffort: boolean },
@@ -253,8 +217,7 @@ export function createLoggingObserver(
     });
   }
 
-  // Deliver one already-assembled, schema-valid event to every active backend. `terminal` events
-  // (§8.2) are best-effort: failures still drop the backend but never reject the run.
+  // Delivers one schema-valid event to every active backend. `terminal` events are best-effort (§8.2).
   async function emit(event: LogEvent, terminal: boolean): Promise<void> {
     const parsed = LogEventSchema.parse(event); // uphold "every event validates against the schema"
     await fanOut((mb) => mb.backend.write(parsed), {
@@ -265,19 +228,13 @@ export function createLoggingObserver(
 
   return {
     async observe(o) {
-      // Backends live per root run. On a launch the first observation is the root's `run-started`
-      // (the observer contract guarantees it precedes every other), so opening on the first
-      // observation of the tree is equivalent there — and it also opens for a **Complete
-      // re-invocation** (ADR 0041), whose re-entered root emits no fresh `run-started` yet whose first
-      // observation (a step-finished, a forward step) still carries the root run id to open under.
+      // Opening on the first observation also covers a **Complete re-invocation** (ADR 0041), whose
+      // re-entered root emits no fresh `run-started` but still carries the root run id to open under.
       if (!opened) {
         opened = true;
         await openAll(o.rootRunId);
       }
-      // The root run's own finish is the terminal event: best-effort, idempotent (runWorkflow may
-      // re-drive it while failing), and followed by closing every backend. A *nested* workflow-run
-      // finishing is an ordinary step-finished — the root run continues, so a write failure there
-      // still fails the run and the backends stay open.
+      // The root run's own finish is terminal: best-effort, idempotent, then every backend closes.
       const terminal = o.type === "run-finished" && o.runId === o.rootRunId;
       if (terminal) {
         if (terminated) return;

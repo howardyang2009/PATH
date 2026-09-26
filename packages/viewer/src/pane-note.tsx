@@ -1,11 +1,4 @@
-/**
- * The two notes every read surface shows while a `Load` is not yet a value. Shared so the panes
- * phrase loading and failure identically — the wording, the muted/alert styling and the `role`
- * that announces a failure are decided once, not per surface.
- *
- * `what` names the thing being read, lower-case, and reads inside the sentence: "runs", "run",
- * "input".
- */
+/** The shared loading/failure notes; `what` names the thing read, lower-case ("runs", "run", "input"). */
 export function PaneLoading({ what }: { what: string }) {
   return <p className="pane-note">Loading {what}…</p>;
 }

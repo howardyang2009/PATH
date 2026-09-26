@@ -35,7 +35,7 @@ export function WorkflowFileName({ path }: { path: string | undefined }): JSX.El
 }
 
 /**
- * Template mode's file name, centred in the top bar (#580): the opened template source, whose Save writes
+ * Template mode's file name, centred in the top bar: the opened template source, whose Save writes
  * back to it, or — for a new template not saved yet (`template` `null`) — a note that it has no file yet.
  * A shipped template is read-only: its write-back is the API's 403, and Save as… forks it.
  * {@link FileStatus} replaces it while a status shows.
@@ -60,12 +60,12 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
 }
 
 /**
- * The active file's save status, centred in the top bar in place of the file name (`fileName`, shown
- * only while no status shows), so the toolbar's buttons never shift when it changes. A failed save wins: a `412` stale-write conflict (with its Reload, the
- * recovery) or any other save or delete error. Else "Unsaved edits" for a buffer with unsaved work,
- * "Saved" after a save lands, "Saved as template" after a workflow's Save as template, or
- * "Deleted" once a Delete removed the file. An id-less file opens dirty
- * with no edit (ids stamped on import, ADR 0015), so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
+ * The active file's save status, centred in the top bar in place of the file name (`fileName`, shown only while
+ * no status shows), so the toolbar's buttons never shift when it changes. A failed save wins: a `412` stale-write
+ * conflict (with its Reload, the recovery) or any other save or delete error. Else "Unsaved edits" for a buffer
+ * with unsaved work, "Saved" after a save lands, "Saved as template" after a workflow's Save as template, or
+ * "Deleted" once a Delete removed the file. An id-less file opens dirty with no edit (ids stamped on import, ADR
+ * 0015), so that reason is named instead. An untouched New buffer has no unsaved work, so it shows nothing.
  */
 export function FileStatus({
   frame,
@@ -137,13 +137,16 @@ export function FileStatus({
 }
 
 /**
- * The top-bar editing controls (#371). The **Workflow | Template** switch ({@link ModeSwitch}) picks the
+ *
+ * The top-bar editing controls. The **Workflow | Template** switch ({@link ModeSwitch}) picks the
  * edit mode, and New and Open… act in that mode (a workflow, or a template). Then Undo, Redo, Save and
  * Save as…. Save writes the active buffer under its `If-Match`; a `412` stale-write
- * conflict is shown ({@link FileStatus}, centred in the top bar), not swallowed. The lease affordances are an acquire `409` (someone else holds the
+ * conflict is shown ({@link FileStatus}, centred in the top bar), not swallowed. The lease affordances are an acquire
+ * `409` (someone else holds the
  * file: a countdown and a **confirmation-gated** takeover) and a heartbeat `409` (the lease was lost
  * mid-edit: a warning and a re-acquire). Both leave the buffer intact — the lease is politeness, the
  * `If-Match` precondition is what actually guards the bytes (ADR 0017).
+ *
  */
 /** The **Workflow | Template** edit-mode switch: a segmented radio group in the top bar, after the brand. */
 export function ModeSwitch({
@@ -192,16 +195,16 @@ export function EditingToolbar({
 }: {
   /** Start a new workflow or a new template, by mode. */
   onNew: () => void;
-  /** Open the pick-an-existing dialog for the mode: a workflow (#254) or a template. */
+  /** Open the pick-an-existing dialog for the mode: a workflow or a template. */
   onOpen: () => void;
   /** Is a saved file open on the canvas? Save as… needs one: a new, never-saved buffer has only Save. */
   canSaveAs: boolean;
   saveState: SaveState;
   /** Does the active buffer have unsaved edits (or id-stamps)? Gates the Save button and its label. */
   dirty: boolean;
-  /** Has the active frame an edit to undo (#389)? Gates the Undo button. */
+  /** Has the active frame an edit to undo? Gates the Undo button. */
   canUndo: boolean;
-  /** Has the active frame an undo to redo (#389)? Gates the Redo button. */
+  /** Has the active frame an undo to redo? Gates the Redo button. */
   canRedo: boolean;
   onUndo: () => void;
   onRedo: () => void;
@@ -228,7 +231,7 @@ export function EditingToolbar({
       <button type="button" className="toolbar-btn" onClick={onOpen}>
         Open…
       </button>
-      {/* Undo/redo drive the active frame's own per-file stack (#389). Both survive a save — the save
+      {/* Undo/redo drive the active frame's own per-file stack. Both survive a save — the save
           moves the baseline, not the history — so an undo past the save-point re-dirties the buffer. */}
       <button
         type="button"

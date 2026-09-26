@@ -3,15 +3,8 @@ import { useCallback, useMemo } from "react";
 import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
-/**
- * The palette's **template list** (#577): one `GET /v0/templates` scan when the Designer loads, and one
- * more after each save that lands (`savePhase` becomes `saved`), so a new template shows (#580). The
- * list is thin (no bodies) and carries every entry's registry-relative validity, so the palette can
- * show a broken template unselectable instead of dropping it (ADR 0050 decision 4).
- *
- * A failed scan is its own phase, not an empty list: "no templates" and "could not list templates" read
- * differently to an author, and the palette must not claim the project has none when the read failed.
- */
+/** The palette's template list: one scan at load and one after each save that lands. A failed scan is its
+ * own phase, not an empty list, so the palette never claims the project has none (ADR 0050). */
 export type TemplateListLoad =
   | { phase: "loading" }
   | { phase: "error"; message: string }

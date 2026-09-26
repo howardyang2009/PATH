@@ -1,16 +1,7 @@
 import { isRootRun } from "./run-kind.js";
 
-/**
- * The run tree, as a shared primitive (CONTEXT.md, *run tree*). A workflow-step's run spawns child
- * runs, so the runs of one root form a tree keyed by `parentRunId`. That shape was rebuilt row by row
- * wherever it was needed — the engine's cost SUM walked a subtree, a client view nested the whole
- * tree — each re-deriving the parent→children adjacency. This owns it once, generic over any row that
- * carries a run id and a parent.
- *
- * It stays deliberately low: adjacency and a descendant walk, not a nested render model. A live view's
- * concerns (sort order, a nested node type) sit on top of `childrenByParent`; the engine's subtree sum
- * sits on top of `subtree`. Root detection is `isRootRun` (run-kind.ts), the one place that reads it.
- */
+/** The run tree as a shared primitive (CONTEXT.md, *run tree*): the runs of one root, keyed by `parentRunId`.
+ * Deliberately low — adjacency and a descendant walk, not a nested render model. */
 
 /** The two fields the tree shape is read from — a `RunRecord` or a client `RunNodeState` fits. */
 export interface RunTreeFields {
@@ -18,12 +9,8 @@ export interface RunTreeFields {
   parentRunId: string | null;
 }
 
-/**
- * Group non-root rows by their `parentRunId`. `orphanTo` handles a live, incomplete stream: a row
- * whose parent is not among `rows` (its parent row has not arrived yet) is filed under `orphanTo`
- * instead of a key nothing walks, so a root-down walk still reaches it rather than dropping it. A
- * complete persisted tree omits `orphanTo` — every non-root parent is present, so nothing is orphaned.
- */
+/** Group non-root rows by their `parentRunId`. `orphanTo` handles a live, incomplete stream: a row whose
+ * parent has not arrived is filed there instead of a key nothing walks, so a root-down walk still reaches it. */
 export function childrenByParent<T extends RunTreeFields>(
   rows: Iterable<T>,
   options: { orphanTo?: string } = {},
@@ -32,8 +19,7 @@ export function childrenByParent<T extends RunTreeFields>(
   const ids = new Set(rowArray.map((row) => row.runId));
   const byParent = new Map<string, T[]>();
   for (const row of rowArray) {
-    // A root has no parent to file it under (`isRootRun`); the `=== null` form is what narrows
-    // `parentRunId` to a string for the rest of the loop.
+    // A root has no parent to file under; `=== null` also narrows `parentRunId` to a string below.
     if (row.parentRunId === null) continue;
     let parent = row.parentRunId;
     if (options.orphanTo !== undefined && !ids.has(parent)) parent = options.orphanTo;
@@ -45,10 +31,8 @@ export function childrenByParent<T extends RunTreeFields>(
 }
 
 /**
- * The rows of the subtree rooted at `startId` — `startId`'s own row and every transitive descendant,
- * flat. `[]` when no row has `startId`. Every row has one parent, so the walk terminates: a cycle
- * among parents (which no engine-produced tree contains) is unreachable from `startId` rather than
- * infinite.
+ * The rows of the subtree rooted at `startId`, flat; `[]` when no row has it. Every row has one parent, so the walk
+ * terminates — a parent cycle is unreachable from `startId`.
  */
 export function subtree<T extends RunTreeFields>(rows: Iterable<T>, startId: string): T[] {
   const rowArray = [...rows];
@@ -75,14 +59,8 @@ export function findRootRun<T extends { parentRunId: string | null }>(
   return undefined;
 }
 
-/**
- * The ancestor path from the tree root down to `startId`, top-down and inclusive of both ends —
- * `[root, …, startId]`. The complement of `subtree` (which walks down): this walks the `parentRunId`
- * chain up. `[]` when no row has `startId`. Resume descends this path level by level (root→…→K), so
- * it reads the rerun-boundary chain from one primitive rather than re-walking `parentRunId` by hand.
- * A complete tree reaches a null-parent root; if a parent row is missing (an incomplete stream), the
- * walk stops at the highest reachable ancestor rather than looping.
- */
+/** The ancestor path root→…→`startId`, top-down and inclusive, walking `parentRunId` up — the complement
+ * of `subtree`; `[]` when absent, and an incomplete stream stops at the highest reachable ancestor. */
 export function pathToRoot<T extends RunTreeFields>(rows: Iterable<T>, startId: string): T[] {
   const byId = new Map([...rows].map((row) => [row.runId, row] as const));
   const start = byId.get(startId);

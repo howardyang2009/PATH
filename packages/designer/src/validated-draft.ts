@@ -17,43 +17,19 @@ import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { wireToRegistry } from "./open-workflow.js";
 
 /**
- * The one **draft → validate → commit** protocol behind the properties pane's live-validated fields
- * (#369/#370, designer-spec § Editors, § Input/output wiring, § Context reads and writes). The rule the
- * pane must never break: an author sees a draft while it is invalid, but an invalid draft is **never
- * committed**, so the node (or file) on the canvas stays strict-valid — only the editor's fidelity
- * degrades. That rule used to be re-spelled in each field. Here it has one core and three shapes:
- *
- * - **`useDraft`** — the core: hold a draft of any type, run a pure `validate` on each edit, commit only
- *   the `ok` value, re-seed when the field's **identity** changes (`edit-key.ts`).
- * - **`useValidatedDraft`** — the single-text field (the raw-JSON floor, the input object, the
- *   max-iterations line) as that core over a string.
- * - **`ConditionField`** (`condition-builder.tsx`) — the structured `Condition` builder as the same core
- *   over an AST, so it no longer hand-rolls the hold-validate-commit dance and no longer depends on a
- *   React `key` its caller had to remember.
- * - **`useKeyedRows` / `validRowsToMap`** — the key→value row list (the publish map, the file output
- *   map): the pure guard says whether the rows *can* commit, and the hook commits through the core.
- *
- * The `validate*` functions are pure and unit-tested directly, off the pane's render path.
+ * The **draft → validate → commit** protocol behind the pane's live-validated fields: an author sees an
+ * invalid draft, but it is never committed, so the canvas stays strict-valid. `useDraft` is the core.
  */
 
 /**
- * The outcome of validating one draft: a committable value, or a message to show and not commit. The
- * message is optional, because a field may hold a draft **silently** — a keyed row mid-edit commits
- * nothing and shows no error, where the raw-JSON floor names what is wrong.
+ * A committable value, or a message to show and not commit. The message is optional: a keyed row
+ * mid-edit holds its draft silently.
  */
 export type DraftResult<T> = { ok: true; value: T } | { ok: false; error?: string };
 
 /**
- * The protocol's core, over a draft of `D` that validates into a committable `C`.
- *
- * `initial` seeds the draft (lazily, so a re-seed costs nothing until the identity actually changes);
- * `validate` is the pure per-field rule; `identity` is which field this draft belongs to — when it
- * changes the draft re-seeds, so selecting another node never shows the previous node's value; `commit`
- * receives the `ok` value. An `onEdit` may carry its own `key` for the undo fold (a row edit folds by
- * row index); a field whose whole draft is one edit's subject passes none and lets its `commit` closure
- * name the key, as the text fields do. Taking the identity here is what removed the silent React `key`
- * requirement: the field used to re-seed only because its caller remembered `key={…}`, a second
- * statement of the same fact that a new call site could forget.
+ * The protocol's core over a draft `D` validating into `C`; when `identity` changes the draft re-seeds,
+ * so selecting another node never shows the previous value.
  */
 export interface DraftField<D> {
   draft: D;
@@ -73,8 +49,7 @@ export function useDraft<D, C>(
     error: null,
   });
   const [state, setState] = useState(seed);
-  // Adjusting state during render when the prop-like `identity` changes — React's documented pattern,
-  // and the one reset both folding and re-seeding now read from.
+  // Adjusting state during render when the prop-like `identity` changes — React's documented pattern.
   if (!sameEditKey(state.identity, identity)) setState(seed());
 
   const onEdit = (next: D, key?: EditKey): void => {
@@ -90,13 +65,7 @@ export function useDraft<D, C>(
   return { draft: state.draft, error: state.error, onEdit };
 }
 
-/**
- * Hold a single-text field's draft and error, validating every keystroke and committing only a valid
- * value. `initial` seeds the draft (a value or a lazy initializer); `validate` is the pure per-field
- * rule; `identity` is which field this draft belongs to (`edit-key.ts`) — when it changes the draft
- * re-seeds, so selecting another node never shows the previous node's text; `commit` receives the
- * `ok` value.
- */
+/** A single-text field as the core over a string: validate every keystroke, commit only a valid value. */
 export function useValidatedDraft<T>(
   initial: string | (() => string),
   validate: (text: string) => DraftResult<T>,
@@ -114,9 +83,8 @@ export function useValidatedDraft<T>(
 }
 
 /**
- * The raw-JSON floor's rule (§ Editors, last row): parse the payload JSON, rebuild the node from its
- * envelope plus the parsed payload, and validate the whole one-node file against the registry. An
- * unparseable, non-object, or registry-invalid draft returns its error and is not committed.
+ * Parse the payload JSON, rebuild the node from its envelope plus the payload, and validate the whole
+ * one-node file against the registry (§ Editors); an invalid draft is not committed.
  */
 export function validateJsonPayload(
   node: WorkflowNode,
@@ -146,10 +114,8 @@ export function validateJsonPayload(
 }
 
 /**
- * The input object's rule (§ Input/output wiring): the draft is any JSON value with `${…}` placeholders
- * over the step roots (`config`/`context`). An empty draft or an empty object `{}` means "no input", so
- * the key is dropped; every other value — a bare `${context.x}` whole-string, a literal, an array, a
- * populated object — is kept. An ill-typed placeholder returns its error and is not committed.
+ * The input object's rule (§ Input/output wiring): any JSON value with `${…}` placeholders over the step
+ * roots; empty, or `{}`, drops the key, and an ill-typed placeholder errors.
  */
 export function validateInputDraft(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
   const parsed = parseInputDraft(text, STEP_ROOTS);
@@ -169,12 +135,8 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
 }
 
 /**
- * The file-level **input** seed rule: the workflow's own default root context seed, sent on launch when
- * the operator supplies no override. It is a plain JSON **object** — the root context is seeded from its
- * top-level keys — with no `${…}` interpolation (empty roots: nothing resolves the root seed before it
- * lands in context). An empty draft or an empty object `{}` means "no seed", so the key is dropped; an
- * unparseable, array, or scalar draft returns its error and is not committed, so the file stays
- * strict-valid.
+ * The file-level **input** seed: a plain JSON object with no interpolation. Empty or `{}` drops the key;
+ * an unparseable, array, or scalar draft errors.
  */
 export function validateFileInputDraft(
   file: WorkflowFile,
@@ -192,11 +154,8 @@ export function validateFileInputDraft(
 }
 
 /**
- * The `person-activity` **outputSchema** rule (#487): the field is the JSON Schema object the Complete
- * form is built from (ADR 0040). An empty draft means "no schema" — the key is dropped, and the server
- * then accepts any JSON output. A present draft must parse and be a JSON **object** (`{ … }`), never an
- * array or a scalar — the same shape `findAwaitingNode` keeps and normalises. An unparseable or
- * non-object draft returns its error and is not committed, so the node on the canvas stays strict-valid.
+ * The `person-activity` **outputSchema** rule: the JSON Schema object the Complete form is built from
+ * (ADR 0040); empty drops the key, and a present draft must parse as a JSON object.
  */
 export function validateOutputSchema(node: WorkflowNode, text: string): DraftResult<WorkflowNode> {
   if (text.trim() === "") return { ok: true, value: dropNodeKey(node, "outputSchema") };
@@ -213,9 +172,8 @@ export function validateOutputSchema(node: WorkflowNode, text: string): DraftRes
 }
 
 /**
- * The `while-do` max-iterations rule (§ MaxIterationsField): a run of digits is a literal count (a
- * positive whole number), anything else is checked as a `${config.…}` / `${context.…}` interpolation over
- * the step roots. An empty draft, a count below 1, or an ill-typed interpolation returns its error.
+ * The `while-do` max-iterations rule: a run of digits is a literal count (at least 1), anything else a
+ * `${config.…}` / `${context.…}` interpolation.
  */
 export function validateMaxIterations(text: string): DraftResult<number | string> {
   const trimmed = text.trim();
@@ -242,9 +200,8 @@ export interface KeyedRow {
 }
 
 /**
- * Build the `key → value` map a row list commits, **only** when every named row's value interpolates over
- * `roots`; otherwise report not-ok so the caller drops the commit and the file stays strict-valid.
- * Unnamed rows (a blank key) are the in-progress ones and are skipped, not failed.
+ * Build the `key → value` map a row list commits, **only** when every named row's value interpolates
+ * over `roots`; unnamed rows are in-progress and are skipped.
  */
 export function validRowsToMap(
   rows: KeyedRow[],
@@ -257,7 +214,6 @@ export function validRowsToMap(
   return { ok: true, map };
 }
 
-/** The row-list editor a keyed-row field renders: the current rows, and the three edits over them. */
 export interface KeyedRowsEditor {
   rows: KeyedRow[];
   setRow: (index: number, row: KeyedRow) => void;
@@ -266,20 +222,8 @@ export interface KeyedRowsEditor {
 }
 
 /**
- * The stateful **keyed-row editor** protocol behind the pane's `key → ${…}` map fields — the node's
- * `publish` map and the file's `output` map (#369/#370). It holds the rows as a draft and, on every edit,
- * rebuilds the map through `validRowsToMap`, committing **only** when every named row's value
- * interpolates — so an ill-typed `${…}` never reaches the file and the node (or file) on the canvas stays
- * strict-valid. Both fields used to re-spell this dance inline; here it has one home beside the pure guard
- * it wraps.
- *
- * `identity` is the row list's own field (`edit-key.ts`): the list re-seeds when it changes, so another
- * node's publishes never show here, and a row edit's key is that identity plus the row index — so a
- * keystroke run in one row folds to one undo entry (#389) and two rows cannot fold together. Add and
- * remove pass no key: each is its own entry.
- *
- * `commit` receives the built map (possibly empty — the caller decides whether an empty map drops the
- * whole key, which differs for a node vs the file).
+ * The keyed-row editor behind the pane's `key → ${…}` map fields: every edit commits through
+ * `validRowsToMap` only when all named rows interpolate; a row's undo key adds the row index.
  */
 export function useKeyedRows(
   initial: () => KeyedRow[],
@@ -287,8 +231,6 @@ export function useKeyedRows(
   identity: EditKey,
   commit: (map: Record<string, string>, key?: EditKey) => void,
 ): KeyedRowsEditor {
-  // The rows are the draft and the built map is the committable value — the protocol's core with a
-  // row-index fold key, and a not-ok build that stays silent (the row is mid-edit, not wrong).
   const field = useDraft<KeyedRow[], Record<string, string>>(
     initial,
     (rows) => {

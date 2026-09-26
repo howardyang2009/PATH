@@ -11,20 +11,14 @@ import { enterIteration } from "./resume-plan.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
- * The **Structure Controllers** the engine evaluates itself — `checkpoint`, `branch`, `while-do` — and
- * the Graph Controller's node, `goto` (ADR 0057). None has a run of its own (CONTEXT invariant 1)
- * except a `while-do` iteration's container (ADR 0037). `sequence` needs no runner: it is just a walk,
- * and `parallel` lives in `run-parallel.ts`.
- *
- * A body is always walked through `exec.walk` — the run's own walk, handed in — never an import of it,
- * so this module and the walker cannot form an import cycle.
+ * The Structure Controllers the engine evaluates itself — `checkpoint`, `branch`, `while-do` — and the
+ * Graph Controller's node, `goto`. Only a `while-do` iteration has a run of its own. Bodies walk through
+ * `exec.walk`, the run's own walk handed in, never an import, so the two cannot form an import cycle.
  */
 
-// A `checkpoint` node: assert its condition over the run's `context` (the branch's snapshot copy
-// inside a `parallel`) + the predecessor's `output` (spec §5.2). True → continue; false or a
-// strict evaluation error → the run stops as failed (§5.6). Transparent: forwards its
-// predecessor's output unchanged — the same object its `output` root read (§5.4). The engine has
-// no run for a checkpoint (invariant 1); the event is attributed to this run + the node's id.
+// A `checkpoint`: assert its condition over the run's `context` (or the branch's snapshot inside a
+// `parallel`) + the predecessor's `output`; false or a strict error fails the run. Transparent — the
+// engine keeps no run for it, so the event is attributed to this run + the node's id.
 export async function runCheckpointNode(
   run: RunContext,
   node: CheckpointNode,
@@ -46,12 +40,9 @@ export async function runCheckpointNode(
   return { status: "succeeded", output: incomingOutput };
 }
 
-// A `branch` node: evaluate arms in declaration order, first true `when` wins; else the fallback;
-// no match and no `else` fails the run (silent fall-through hides authoring bugs — spec §5.2). A
-// condition evaluation error in an arm fails the run outright (§5.6). The taken arm's body runs
-// as a nested sequence — transparent to the block's `exec` (same context/cancellation) and seeded
-// by the block's predecessor's output (default-input chain, §5.4); its last node's output becomes
-// the block's output (§5.4).
+// A `branch`: evaluate arms in declaration order, first true `when` wins, else the fallback; an
+// evaluation error, or no match and no `else`, fails the run (spec §5.2). The taken arm's body runs as
+// a nested sequence seeded by the predecessor's output, and its last node's output becomes the block's.
 export async function runBranchNode(
   run: RunContext,
   node: BranchNode,
@@ -87,12 +78,9 @@ export async function runBranchNode(
 }
 
 /**
- * One `while-do` iteration as its own run scope (ADR 0037, #454): a container run under the enclosing
- * run, with the loop body dispatched **inside** it so the body's runs get a unique parent — which is
- * what lets a completed loop reuse across Resume. The container does **not** isolate context: `exec`
- * (the loop's shared blackboard) is threaded through unchanged, so the condition and the cross-iteration
- * default-input chain keep reading and writing the enclosing run's context. This is the one way it
- * differs from a nested `workflow` step's run.
+ * One `while-do` iteration as its own run scope, with the body dispatched inside it so its runs get a
+ * unique parent and a completed loop reuses across Resume. Unlike a nested `workflow` step it does not
+ * isolate context: `exec`, the loop's shared blackboard, is threaded through unchanged.
  */
 async function runLoopIteration(
   run: RunContext,
@@ -101,15 +89,11 @@ async function runLoopIteration(
   iterationInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  // Complete-continue (ADR 0041): the continuation adapter answers what this iteration's recorded row
-  // means — a `succeeded` container is reused read-only (its recorded output threads the loop's
-  // default-input chain and the body is not re-walked), a `running` one is the parked iteration,
-  // re-entered in place (same id, no `run-started`), and none means a fresh iteration appended past
-  // the parked leaf.
+  // Complete-continue: the adapter answers what this iteration's recorded row means — a `succeeded`
+  // container is reused read-only, a `running` one is the parked iteration re-entered in place.
   const disposition = continuationOf(run).disposition(node, iteration);
   if (disposition.kind === "reuse") return { status: "succeeded", output: disposition.output() };
-  // The container shares this run's file, config, env, runtime and continue state, and `exec` (the
-  // loop's shared blackboard) passes through unchanged, so the body publishes into the loop's context.
+  // `exec` passes through unchanged, so the body publishes into the loop's own context.
   const container = await openContainerRun(run, {
     key: { owner: node, iteration },
     existingRunId: disposition.kind === "reenter" ? disposition.existing.runId : undefined,
@@ -118,26 +102,19 @@ async function runLoopIteration(
   });
   // The loop body is a single node (`@2` §4.3), run as a one-node sequence inside the container.
   const outcome = await exec.walk(container.run, [node.node], iterationInput, exec);
-  // The body parked at a person-activity leaf (ADR 0041): the container stays `running` (no terminal
-  // `run-finished`) and the loop stops here, propagating `awaiting` up. A Complete replay re-enters
-  // this iteration container and drives it forward.
+  // The body parked at an awaiting leaf: the container stays `running` (no `run-finished`) and the loop
+  // propagates `awaiting` up; a Complete replay re-enters this container and drives it on.
   if (outcome.status === "awaiting") return outcome;
-  // The load placement rule refuses a goto under `while-do` (spec docs/spec/goto.md §2.2), so a jump
-  // never reaches an iteration container.
+  // The load placement rule refuses a goto under `while-do`, so a jump never reaches an iteration.
   if (outcome.status === "goto")
     throw new Error(`while-do "${node.name}": a goto jumped out of its body`);
   await container.finish(outcome);
   return outcome;
 }
 
-// A `while-do` node: check the condition before every iteration against the run's `context` + the
-// output that seeds the next iteration's first node (spec §5.2, §5.4). Zero iterations is a normal,
-// transparent exit — the block forwards its predecessor's output unchanged. Each iteration's body
-// runs as a nested sequence seeded by the previous iteration's last node's output (the cross-
-// iteration default-input chain, §5.4); iteration 1 is seeded by the block predecessor's output.
-// The block output is the final executed iteration's last node's output. If the condition is still
-// true after `max_iterations` completed iterations the run fails (§5.2/§5.6); a condition
-// evaluation error fails the run outright (§5.6).
+// A `while-do`: check the condition before every iteration against the run's `context` + the output
+// seeding the next iteration; zero iterations exits transparently, and each body runs as a nested
+// sequence seeded by the previous iteration's output. Still true after `max_iterations` fails the run.
 export async function runWhileDoNode(
   run: RunContext,
   node: WhileDoNode,
@@ -164,8 +141,7 @@ export async function runWhileDoNode(
       await run.emitter.loopExited(node, { reason: "condition-false", iterations, trace });
       return { status: "succeeded", output: iterationOutput };
     }
-    // Condition true, but the cap has already been reached: the run fails (post-loop nodes may
-    // assume the condition resolved false, so an exhausted loop is an authoring error, not an exit).
+    // Condition true but the cap is reached: fail — post-loop nodes may assume it resolved false.
     if (iterations >= maxIterations) {
       await run.emitter.loopExited(node, { reason: "max-iterations-exceeded", iterations, trace });
       return {
@@ -175,19 +151,13 @@ export async function runWhileDoNode(
     }
     iterations += 1;
     await run.emitter.iterationStarted(node, { iteration: iterations, trace });
-    // Each iteration is its own run scope (ADR 0037): a container run under this one, with the body
-    // dispatched inside it so its runs get a unique parent and a completed loop reuses across Resume.
     const bodyOutcome = await runLoopIteration(run, node, iterations, iterationOutput, exec);
     if (bodyOutcome.status !== "succeeded") return bodyOutcome;
     iterationOutput = bodyOutcome.output;
   }
 }
 
-/**
- * A loop bound — `while-do`'s `max_iterations` or a goto's `max_jumps` — as a positive integer: taken
- * as written, or interpolated over `config` + `context` now. A failed outcome when it resolves to no
- * positive integer.
- */
+/** A loop bound — `while-do`'s `max_iterations` or a goto's `max_jumps` — taken as written or interpolated. */
 export function resolveBound(
   run: RunContext,
   node: WhileDoNode | GotoNode,
@@ -213,9 +183,8 @@ export function resolveBound(
 }
 
 /**
- * A goto node (ADR 0053, spec docs/spec/goto.md §3.2): no run of its own, only a jump. It names its
- * target first-level node by GUID and passes its incoming output through unchanged, for the target to
- * read (§4). The file's top-level walk consumes the jump; every walker in between hands it up.
+ * A goto (spec docs/spec/goto.md §3.2): no run of its own, only a jump naming its target by GUID and
+ * passing its incoming output through. The file's top-level walk consumes the jump; walkers hand it up.
  */
 export function runGotoNode(
   run: RunContext,
@@ -223,8 +192,7 @@ export function runGotoNode(
   incomingOutput: JsonValue,
 ): SeqOutcome {
   const target = run.file.body.find((candidate) => candidate.name === node.target);
-  // The load check (`@path/schema` goto rules) refuses a file whose target is not a first-level node,
-  // so a miss is a caller that skipped the load.
+  // The load check refuses a file whose target is not a first-level node, so a miss is a skipped load.
   if (!target)
     return { status: "failed", error: `goto target "${node.target}" not found in this file` };
   return { status: "goto", goto: node.id, target: target.id, output: incomingOutput };

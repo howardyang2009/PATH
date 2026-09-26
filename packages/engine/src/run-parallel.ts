@@ -3,42 +3,28 @@ import { blockCancellation } from "./cancellation.js";
 import { pickReusedWaitOneWinner } from "./plan-reuse.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
-/**
- * The `parallel` block — the engine's densest logic, in one module: three join modes (collect,
- * wait-one, do-not-wait), the block-local cancellation cascade it drives through the authority from
- * `cancellation.ts`, and the enclosing-run barrier that drains detached `do-not-wait` branches. Split
- * out of `run-workflow.ts` so the join semantics that carry the spec sit together rather than buried in
- * the executor's leaf-step and sequence code.
- *
- * Each branch is a single node run as a one-node sequence **through the run's own walk**
- * (`NodeExecContext.walk`), handed in rather than imported: this module used to import `runSequence`
- * back from the executor that dispatches it, a `run-parallel.ts → run-workflow.ts → runNode →
- * runParallelNode` function cycle. Detached branches cross the split through `RunContext.detached`:
- * `launchDoNotWait` fills it, `settleDetached` (called by the executor at its exit barrier) drains it.
- */
+/** The `parallel` block: collect/wait-one/do-not-wait joins, the block-local cancellation cascade, and
+ * the barrier draining detached branches. Branches run through `NodeExecContext.walk` (no module cycle). */
 
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
 
-// One branch's run: which branch, how it ended, and the publishes it buffered (landed only if it is
-// the collect join's all-succeeded set, or the wait-one join's winner — wait-one-join.md §4).
+// One branch's run: which branch, how it ended, and the publishes it buffered for the join.
 interface BranchResult {
   branch: ParallelBranch;
   outcome: SeqOutcome;
   buffer: { [key: string]: JsonValue };
 }
 
-// The winning branch of a `wait-one` race, with the output and buffered publishes only it lands (§3, §4).
+// The winning branch of a `wait-one` race, with the output and buffered publishes only it lands.
 interface WaitOneWinner {
   branch: ParallelBranch;
   output: JsonValue;
   buffer: { [key: string]: JsonValue };
 }
 
-// Land the `wait-one` winner's buffered publishes into context and narrate the win. Only the winner
-// lands (wait-one-join.md §4); the block output is the stable `{ winner: { name, output } }` shape so
-// a downstream `input` ref resolves without knowing which branch won (§3), and `join-applied` carries
-// the winner's human `name` (§8, ADR 0007 — output keys and narration use `name`, never the GUID).
+// Land only the winner's buffered publishes and narrate the win; the stable `{ winner: { name, output } }`
+// shape lets a downstream `input` ref resolve without knowing which branch won, keyed by human `name`.
 async function landWaitOneWinner(
   run: RunContext,
   node: ParallelNode,
@@ -57,11 +43,8 @@ async function landWaitOneWinner(
   };
 }
 
-/**
- * A branch's view of the context (§5.3): a snapshot copy taken now, so siblings never see each other's
- * writes, with its publishes written to the copy (later nodes of the same branch see them) and buffered
- * for the join — never touching the enclosing context until the join lands them.
- */
+/** A branch's snapshot of context: siblings never see each other's writes, and publishes buffer until
+ * the join lands them. */
 function branchView(
   exec: NodeExecContext,
   overrides: Pick<NodeExecContext, "signal" | "cancellation"> | Record<string, never> = {},
@@ -89,11 +72,8 @@ async function landAtJoin(
   return publishedKeys;
 }
 
-// Drain the owning workflow-run's detached `do-not-wait` branches to terminal (do-not-wait-join.md
-// §2). A branch's own body may launch a further `do-not-wait` block against the *same* run while this
-// await is in flight, so the loop re-checks: it drains, and any branch pushed meanwhile is caught on
-// the next pass. Branch outcomes are already isolated (§5) — a failure fails nothing here — so the
-// drained promises are awaited only for completion, not for their result.
+// Drain the run's detached `do-not-wait` branches to terminal. A drained branch's body may launch a
+// further detached branch against the same run mid-await, so the loop re-checks after each pass.
 export async function settleDetached(run: RunContext): Promise<void> {
   while (run.detached.length > 0) {
     const pending = run.detached.splice(0);
@@ -101,13 +81,8 @@ export async function settleDetached(run: RunContext): Promise<void> {
   }
 }
 
-// Launch-and-continue (do-not-wait-join.md §2): start every branch and wait for none. Each branch runs
-// against its own context snapshot (§5.3) under the run's ambient signal, so an operator abort still
-// reaches it (§6), but the block does not consult its status — the branch run is pushed to the owning
-// workflow-run's `detached` list and awaited only at that run's exit barrier (§1.1). A branch may not
-// `publish` (load-rejected, §4), so its `onPublish` is a no-op and nothing lands. The block discharges
-// at once with the empty object (§3) and its successor runs immediately; `join-applied` fires here
-// carrying no `winner` and no landed keys (§9).
+// Launch-and-continue (do-not-wait): start every branch and wait for none; each runs against its own
+// context snapshot, pushed to `run.detached` and awaited only at the run's exit barrier. No publishes.
 async function launchDoNotWait(
   run: RunContext,
   node: ParallelNode,
@@ -115,7 +90,6 @@ async function launchDoNotWait(
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
   for (const branch of node.branches) {
-    // A detached branch may not publish (load-rejected, §4), so its buffer is never landed.
     const branchRun = exec.walk(run, [branch], seedInput, branchView(exec).exec).then(() => {});
     run.detached.push(branchRun);
   }
@@ -126,50 +100,31 @@ async function launchDoNotWait(
   return { status: "succeeded", output: {} };
 }
 
-/**
- * Runs a `parallel` block (mvp spec §5.2–5.4, §5.6). Every branch runs concurrently against its own
- * snapshot of context taken at block entry (siblings never see each other's writes), and its
- * publishes buffer rather than touch the parent context mid-run. The `join` decides what lands:
- *
- * - `collect` — waits for *all* branches; a failing branch fails the block and cancels in-flight
- *   siblings (`sibling-failed`); on all-succeed every buffer lands in branch declaration order and
- *   the output is `{ "<branch-name>": <that branch's last node's output> }`.
- * - `wait-one` — races the branches; the first to `succeed` is the winner, and the still-running
- *   losers are cancelled (`sibling-succeeded`); a branch that *fails* cancels nothing and the race
- *   continues; if every branch fails the block fails with a synthetic aggregate error. Only the
- *   winner's buffer lands and the output is `{ winner: { name, output } }` (wait-one-join.md §2–§5).
- * - `do-not-wait` — launches every branch and awaits none at the join; the block discharges at once
- *   with `{}` and the successor runs while the branches keep going, awaited only at the enclosing
- *   run's exit barrier (`launchDoNotWait`, do-not-wait-join.md §2). No resume short-circuit (§7).
- */
+/** Runs a `parallel` block (spec §5.2–5.6): branches run concurrently against their own context
+ * snapshots, and the join decides what lands — `collect` waits for all and fails on first failure,
+ * `wait-one` lands only the first success, `do-not-wait` launches and continues. */
 export async function runParallelNode(
   run: RunContext,
   node: ParallelNode,
   seedInput: JsonValue,
   exec: NodeExecContext,
 ): Promise<SeqOutcome> {
-  // `runId` labels this block as the fallback cause when a `collect` branch fails without naming its
-  // own causing run (below); every observation goes through `run.emitter`, which owns the envelope.
   const { runId } = run.identity;
 
-  // Launch-and-continue is join-mode dispatch, not a race variant: it shares nothing with the
-  // block-local win/fail controller below, and resume is cause-blind for it (re-runs, no
-  // short-circuit — §7), so it branches off before any of that is built.
+  // do-not-wait shares nothing with the win/fail controller below, and resume is cause-blind for it
+  // (re-runs, no short-circuit), so it branches off before any of that is built.
   if (node.join === "do-not-wait") {
     return launchDoNotWait(run, node, seedInput, exec);
   }
 
-  // Resume short-circuit (wait-one-join.md §7): replaying a decided race, the winner's steps reuse as
-  // `succeeded` while the losers were `cancelled`. Cause-blind resume would re-run the losers — pure
-  // waste, and at-least-once it could re-fire their side effects. So the join re-evaluates: find the
-  // reused winner and run *only* it, starting no loser at all.
+  // Resume short-circuit: replaying a decided race reuses the winner and cancels the losers, so find
+  // the reused winner and run only it — cause-blind resume could re-fire a loser's side effects.
   if (node.join === "wait-one" && run.resume) {
     const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
     if (reusedWinner) {
       const view = branchView(exec);
       const outcome = await exec.walk(run, [reusedWinner], seedInput, view.exec);
-      // The winner reused as `succeeded` in the original tree; its replay reuses those runs and so
-      // cannot do otherwise. A non-success here would be an engine bug, not a data-flow outcome.
+      // The winner reused as `succeeded` originally, so a non-success here would be an engine bug.
       if (outcome.status !== "succeeded") return outcome;
       return landWaitOneWinner(
         run,
@@ -180,14 +135,12 @@ export async function runParallelNode(
     }
   }
 
-  // The enclosing execution's signal, for the two "was this block aborted from outside?" checks below
-  // (a `wait-one` outside abort outranks a local win) — and the signal this block's authority chains to.
+  // The enclosing execution's signal: a `wait-one` outside abort outranks a local win.
   const outerSignal = exec.signal;
   const { cancellation, dispose } = blockCancellation(exec.cancellation, outerSignal);
 
-  // The winner of a `wait-one` race: the first branch to complete `succeeded`. Because the event loop
-  // serializes branch completions, the first callback to see `succeeded` here is the lowest-`seq` one
-  // (§6), so no secondary tie-break is needed.
+  // The winner of a `wait-one` race: the first branch to complete `succeeded`. The event loop
+  // serializes completions, so the first to see success is the lowest-`seq` one — no tie-break needed.
   let winner: WaitOneWinner | null = null;
 
   const branchResults: BranchResult[] = await Promise.all(
@@ -199,32 +152,28 @@ export async function runParallelNode(
       const outcome = await exec.walk(run, [branch], seedInput, branchExec);
       if (node.join === "collect") {
         if (outcome.status === "failed") {
-          cancellation.trigger(outcome.causeRunId ?? runId); // cancel in-flight siblings best-effort
+          cancellation.trigger(outcome.causeRunId ?? runId); // best-effort
         }
       } else if (outcome.status === "succeeded" && winner === null) {
-        // First to succeed wins; a losing branch's failure is ignored and cancels nothing (§2).
+        // First to succeed wins; a losing branch's failure cancels nothing.
         winner = { branch, output: outcome.output, buffer };
-        cancellation.triggerWin(); // cancel the still-running losers best-effort
+        cancellation.triggerWin(); // best-effort
       }
       return { branch, outcome, buffer };
     }),
   );
 
-  // Done with the enclosing signal: stop chaining this block's controller to it.
   dispose();
 
   if (node.join === "wait-one") {
-    // An outside abort (an enclosing block failing, an operator cancelling the root run) outranks a
-    // local win: the whole subtree is coming down, so the winner's publishes must not land.
+    // An outside abort outranks a local win: the subtree is coming down, so publishes must not land.
     if (outerSignal?.aborted) return { status: "cancelled" };
     if (winner !== null) return landWaitOneWinner(run, node, winner, exec);
-    // No winner. A cancelled branch means we were aborted from outside; otherwise every branch
-    // failed, and the block fails with a synthetic aggregate distinct from any one branch's error (§2).
+    // No winner: a cancelled branch means an outside abort, otherwise every branch failed and the
+    // block fails with a synthetic aggregate distinct from any one branch's error.
     if (branchResults.some((r) => r.outcome.status === "cancelled")) return { status: "cancelled" };
-    // Park-at-join (ADR 0041): no branch won yet, but a branch parked at a person-activity leaf, so the
-    // race is not decided — the parked branch may still win once it is Completed. The block parks: it
-    // returns `awaiting`, lands nothing, and is reopened by a Complete replay. Only when no branch is
-    // awaiting either is the block a genuine all-failed.
+    // Park-at-join (ADR 0042): a branch parked at a person-activity leaf may still win once Completed,
+    // so the race is undecided — park with `awaiting`. Only with no awaiting branch is it all-failed.
     if (branchResults.some((r) => r.outcome.status === "awaiting")) return { status: "awaiting" };
     return {
       status: "failed",
@@ -232,8 +181,7 @@ export async function runParallelNode(
     };
   }
 
-  // A failing branch fails the block (and thus the run); no publishes land. Report the
-  // first-declared failure for determinism.
+  // A failing branch fails the block and no publishes land; report the first-declared failure.
   for (const { branch, outcome } of branchResults) {
     if (outcome.status === "failed") {
       return {
@@ -242,22 +190,19 @@ export async function runParallelNode(
       };
     }
   }
-  // No local failure but a cancelled branch means the enclosing block aborted us: propagate.
   if (branchResults.some((r) => r.outcome.status === "cancelled")) {
     return { status: "cancelled" };
   }
 
-  // Park-at-join (ADR 0041): a `collect` join waits for *all* branches, so a single parked branch
-  // parks the whole block. No publish lands and no join is applied — the tail after the join is not
-  // reached. A Complete replay re-drives this block: once every parked sibling has been Completed the
-  // join is satisfied on that replay and the tail runs exactly once. Ordered after failed/cancelled so
-  // a real failure still fails the block rather than parking it.
+  // Park-at-join (ADR 0042): `collect` waits for all branches, so one parked branch parks the block —
+  // nothing lands and a Complete replay re-drives it. Ordered after failed/cancelled so a real failure
+  // still fails the block rather than parking it.
   if (branchResults.some((r) => r.outcome.status === "awaiting")) {
     return { status: "awaiting" };
   }
 
-  // All branches succeeded: land their buffered publishes at the join, in branch declaration
-  // order (§5.3). Duplicate keys across siblings are already a load-time error, so no key clashes.
+  // All branches succeeded: land their buffered publishes in declaration order; duplicate keys across
+  // siblings are already a load-time error.
   const publishedKeys = await landAtJoin(
     exec,
     Object.assign({}, ...branchResults.map((r) => r.buffer)),
@@ -267,8 +212,8 @@ export async function runParallelNode(
     publishedKeys,
   });
 
-  // Collect output: keyed by branch name in declaration order, deterministic regardless of
-  // completion order and dot-path addressable (§5.4, ADR 0007 — output keys are the human `name`).
+  // Collect output: keyed by branch name in declaration order, deterministic regardless of completion
+  // order and dot-path addressable (output keys are the human `name`, ADR 0007).
   const output: { [key: string]: JsonValue } = {};
   for (const { branch, outcome } of branchResults) {
     output[branch.name] = outcome.status === "succeeded" ? outcome.output : null;

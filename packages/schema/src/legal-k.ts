@@ -10,30 +10,14 @@ import { isPassRun, type RunKindFields } from "./run-kind.js";
 import type { RunStatus } from "./run-status.js";
 import { findRootRun, pathToRoot, type RunTreeFields } from "./run-tree.js";
 
-/**
- * The **legal-K** taxonomy, at the grain of one descent level, as a shared primitive (spec §5, ADR
- * 0032/0036). A rerun boundary (K) is legal when, at every level of its root→…→K descent, the node is
- * a run-producing node in the serial order of that level's file (first level, or inside sequences only,
- * ADR 0064), the leaf K's own run succeeded, and the prefix
- * before K succeeded. Those per-level reasons — since-deleted (#2), inside-a-body (#3), the leaf's own
- * success (#4), the prefix's success (#5) — used to be spelled twice: once in the engine's authority
- * (`resolveLegalK`) and once in the client's eager Designer mirror (`resumeFromEligibility`), kept
- * equal only by hand. This owns the classification once; each surface keeps only its own wrapper — the
- * engine adds #1/root-run, the HTTP status and the verbatim message; the client adds no-selection and
- * the dirty-buffer save gate. The two callers make the seam real, and the taxonomy can no longer
- * disagree with itself.
- *
- * Three pieces, used in order by both surfaces: {@link selectBoundary} says what the selected run is
- * (never the root run, never a goto pass container), {@link boundaryLevels} walks its descent root→…→K,
- * and {@link classifyLevelK} classifies **one level** against **one file body**. The engine drives the
- * last once per level of a nested descent; the client drives it once, for a top-level K in the open
- * root file (the only level a browser holds). Message wording sits on top, not inside.
- */
+/** The **legal-K** taxonomy at one descent level (spec §5, ADR 0032/0036): legal when every level of the
+ * root→…→K descent is run-producing in serial order (first level or sequences only, ADR 0064), the leaf's
+ * run succeeded, and the prefix before K succeeded. Owned here so engine and client mirror cannot disagree. */
 export type LegalKLevelReason =
-  | "not-in-file" // #2 — resolves to a node no longer in this level's file (rename/move survive by id)
-  | "in-body" // #3 — present, but inside a loop / parallel / branch body (a sequence is transparent, ADR 0064)
-  | "not-succeeded" // #4 — the leaf K's own run did not reach `succeeded`
-  | "prefix-unsucceeded"; // #5 — a node before K at K's level ran and did not succeed
+  | "not-in-file" // no node with this id in this level's file (rename/move survive by id)
+  | "in-body" // present but inside a loop / parallel / branch body (a sequence is transparent, ADR 0064)
+  | "not-succeeded"
+  | "prefix-unsucceeded";
 
 /** A level classification: legal, or the first §5 reason it is not (with the enclosing controller on `in-body`). */
 export type LegalKLevelResult =
@@ -50,37 +34,24 @@ export interface LegalKLevelRun {
 export interface ClassifyLevelKArgs {
   /** This level's file body — the root file's body at level 0, a descended nested `workflow`'s below. */
   body: WorkflowNode[];
-  /** The rows the prefix rule (#5) queries; filtered to `scopeRunId`'s direct children inside. */
+  /** The rows the prefix rule queries; filtered to `scopeRunId`'s direct children inside. */
   rows: Iterable<LegalKLevelRun>;
   /** The run whose direct children are this level's node runs — the root run at level 0, else the path-node's run. */
   scopeRunId: string | undefined;
   /** K's node id at this level. */
   nodeId: string;
-  /**
-   * The selected leaf run's own status when this is the leaf level (gates #4); `null` for an
-   * intermediate path node, which is descended and re-run, not reused, so its own status is not gated.
-   */
+  /** The leaf's own status when this is the leaf level; `null` for an intermediate path node. */
   leafStatus: RunStatus | null;
-  /**
-   * The earlier passes of this level, when K sits in pass N of a file holding a goto (ADR 0054 §6): the
-   * run ids of passes 1 to N-1, each a scope whose rows the prefix rule (#5) also reads. Every node
-   * those passes ran is serialized before K, so the prefix is counted across passes. Absent or empty
-   * for a goto-free level, or for K in pass 1.
-   */
+  /** Under a goto, the run ids of passes 1..N-1 whose rows the prefix rule also reads (ADR 0054 §6). */
   earlierPassRunIds?: readonly string[];
 }
 
-/**
- * Classify one descent level of a legal-K path, in the engine's §5 dependency order (first failure
- * wins): locate the node (#2 since-deleted, #3 illegal locus), then the leaf's own success (#4), then
- * the prefix's success (#5). `{ ok: true }` when this level is legal.
- */
+/** Classifies one descent level in §5 order (first failure wins): node locus, then the leaf's own
+ * success, then the prefix's. `{ ok: true }` when this level is legal. */
 export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
   const { body, rows, scopeRunId, nodeId, leafStatus, earlierPassRunIds = [] } = args;
 
-  // #2 / #3 — locate the node at this level. A node in the body's serial order (first level, or inside
-  // sequences only, ADR 0064) is the only legal locus; anything else splits into since-deleted (#2) and
-  // illegal-locus (#3).
+  // Locate the node: serial order (first level or sequences only, ADR 0064) is the only legal locus.
   const order = serialOrder(body);
   const serialIndex = order.findIndex((node) => node.id === nodeId);
   if (serialIndex < 0) {
@@ -92,18 +63,13 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
       : { ok: false, reason: "in-body" };
   }
 
-  // #4 — the leaf K's own run must have succeeded (a reuse row counts — it is written `succeeded`).
-  // Only the leaf level is gated: an intermediate path-node is descended and re-run, not reused.
+  // The leaf K's own run must have succeeded (a reuse row counts — it is written `succeeded`).
   if (leafStatus !== null && leafStatus !== "succeeded")
     return { ok: false, reason: "not-succeeded" };
 
-  // #5 — every run-producing node in the prefix `<K` that actually ran must have a succeeded run under
-  // this level's scope, so it can be reused. A descendant that produced no run under scope was
-  // legitimately skipped (an untaken branch arm, a zero-iteration `while-do` body) and does not gate
-  // the prefix; only a ran-but-unsucceeded one breaks reuse. A `while-do` body that ran many times
-  // passes on any succeeded iteration row, the same multi-iteration reuse limit plain Resume has.
-  // Under a goto the prefix is counted across passes (ADR 0054 §6): an earlier pass is serialized
-  // before K whole, so every node of the body is its prefix there, not only the nodes before K.
+  // Every run-producing node in the prefix <K that actually ran must have succeeded under this level's
+  // scope. A descendant that produced no run was legitimately skipped and does not gate the prefix;
+  // under a goto the prefix spans earlier passes, which are serialized before K whole (ADR 0054 §6).
   const rowArray = [...rows];
   const prefixBroken = (scope: string | undefined, prefix: WorkflowNode[]): boolean => {
     const ranInScope = (id: string): boolean =>
@@ -129,12 +95,8 @@ export interface BoundaryLevelRun extends RunTreeFields, Pick<RunKindFields, "pa
   nodeId: string | null;
 }
 
-/**
- * One level of the root→…→K descent, as the run tree records it: the path-node's own run, the goto pass
- * it ran in (ADR 0054 §6, `undefined` for a goto-free level) and the scope `classifyLevelK` reads —
- * `scopeRunId` (the pass run under a goto, else the run whose direct children are this level's nodes)
- * and `earlierPassRunIds` (passes 1 to N-1 of the same workflow-run, the prefix counted across passes).
- */
+/** One level of the root→…→K descent: the path-node's run, its goto pass (ADR 0054 §6), the scope
+ * `classifyLevelK` reads, and the earlier passes of the same workflow-run. */
 export interface BoundaryLevel<T extends BoundaryLevelRun> {
   run: T;
   passRun: (T & { pass: number }) | undefined;
@@ -142,13 +104,8 @@ export interface BoundaryLevel<T extends BoundaryLevelRun> {
   earlierPassRunIds: string[];
 }
 
-/**
- * The descent levels root→…→`selectedRunId`, top-down (the root run excluded), read from the run tree
- * alone. A goto pass row on the chain is not a level of its own: it is folded into the level below it as
- * that level's pass. The engine authority (`resolveLegalK`) classifies every level; the client mirror
- * holds only the root file, so it classifies a one-level result and backstops deeper ones to the engine.
- * `[]` when `selectedRunId` is not in `rows` or is the root run.
- */
+/** The descent levels root→…→`selectedRunId`, top-down, the root run excluded. A goto pass row on the
+ * chain folds into the level below as that level's pass; `[]` when the id is not in `rows` or is the root. */
 export function boundaryLevels<T extends BoundaryLevelRun>(
   rows: Iterable<T>,
   selectedRunId: string,
@@ -175,21 +132,16 @@ export function boundaryLevels<T extends BoundaryLevelRun>(
   return levels;
 }
 
-/**
- * What a selected run is, as a candidate rerun boundary. Only a node's run can be one: the root run owns
- * no node (an implicit root step, invariant 2), and a goto pass is a container, not a node (ADR 0054
- * §3) — K is a first-level node inside it. A `node` selection carries its descent levels.
- */
+/** What a selected run is. Only a node's run can be a boundary — the root run owns no node, and a goto
+ * pass is a container, not a node (ADR 0054 §3). A `node` selection carries its descent levels. */
 export type BoundarySelection<T extends BoundaryLevelRun> =
   | { kind: "not-in-tree" }
   | { kind: "pass-run"; pass: number }
   | { kind: "root-run" }
   | { kind: "node"; run: T & { nodeId: string }; levels: BoundaryLevel<T>[] };
 
-/**
- * Classify `selectedRunId` among `rows` before any level is classified. The engine and the client's
- * eager mirror both start here, so neither can accept a selection the other refuses.
- */
+/** Classifies `selectedRunId` among `rows` before any level is classified; engine and client mirror
+ * both start here, so neither can accept a selection the other refuses. */
 export function selectBoundary<T extends BoundaryLevelRun>(
   rows: Iterable<T>,
   selectedRunId: string,

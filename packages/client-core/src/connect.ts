@@ -2,12 +2,8 @@ import type { PathApiClient } from "./api-client.js";
 import { type RunEventSubscription, subscribeRunEvents } from "./sse-client.js";
 import { RunViewModel } from "./view-model.js";
 
-/**
- * End-to-end wiring for one root run (the view-model bullet of the ticket): hydrate the tree from
- * `GET /v0/runs/:root_run_id`, then fold the live SSE narrative into the same `RunViewModel`. The
- * initial `GET` gives the seq high-water mark, so the event subscription resumes from it with
- * `Last-Event-ID` — no gap, no duplicate with what the snapshot already carried. Returns the model
- * (subscribe for updates) and a `close` that tears down the stream.
+/** End-to-end wiring for one root run: hydrate the tree from `GET /v0/runs/:root_run_id`, then fold the live SSE
+ * narrative into the same `RunViewModel`, resuming from the snapshot's seq high-water mark.
  */
 export interface ConnectedRun {
   model: RunViewModel;
@@ -37,10 +33,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
   let closed = false;
   const rehydrate = createRehydrator(client, rootRunId, model, () => closed, options.onError);
 
-  // While the run is quiescent (`waiting`), each slow poll re-opens the stream for an instant. Without
-  // this flag that `onOpen` would flip the indicator back to `live` on every poll, so the pane flickers
-  // `waiting → live → waiting`. Hold `waiting` until a real event arrives, which is the honest signal
-  // the run has resumed.
+  // While the run is quiescent (`waiting`), each slow poll re-opens the stream for an instant; without
+  // this flag that `onOpen` would flip the indicator `waiting → live → waiting` on every poll.
   let quiescent = false;
 
   const subscription: RunEventSubscription = subscribeRunEvents({
@@ -50,11 +44,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
     idlePollMs: options.idlePollMs,
     reconnectDelayMs: options.reconnectDelayMs,
     onEvent: (event) => {
-      // A log event names only the run it happened in — the envelope carries no `parent_run_id`
-      // (mvp spec §8.1). So the first event of a child run started after the last tree read would
-      // otherwise leave that run parentless, flattening the tree exactly while it is being watched.
-      // Re-read the tree to learn where it hangs; `GET /v0/runs/:root_run_id` is the only source of
-      // run structure.
+      // A log event carries no `parent_run_id` (mvp spec §8.1), so a child run started after the last
+      // tree read would stay parentless. Re-read the tree — the only source of run structure.
       if (quiescent) {
         quiescent = false;
         model.setStreamPhase("live");
@@ -63,13 +54,11 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
       model.applyEvent(event);
       if (isNewRun) rehydrate();
     },
-    // Stream liveness is state a viewer renders (a "live · SSE" vs "reconnecting" indicator), so it
-    // lands in the view-model snapshot rather than only in these callbacks — issue #48.
+    // Stream liveness is state a viewer renders, so it lands in the view-model snapshot, not only here.
     onOpen: () => {
       if (!quiescent) model.setStreamPhase("live");
     },
-    // A parked leaf ends the stream cleanly (ADR 0038); the core polls for the continuation, so this is
-    // a calm "waiting", not the alarm of a dropped connection.
+    // A parked leaf ends the stream cleanly (ADR 0038), so this is a calm "waiting", not a drop.
     onWaiting: () => {
       quiescent = true;
       model.setStreamPhase("waiting");
@@ -99,11 +88,8 @@ export async function connectRunViewModel(options: ConnectRunOptions): Promise<C
   };
 }
 
-/**
- * A coalescing tree re-read. Bursts of new runs (a parallel block starting) must not turn into a
- * burst of `GET`s, so one request is in flight at a time and any calls made during it collapse into
- * a single follow-up read. A failed re-read is reported but never fatal: the stream stays live and
- * the next new run tries again.
+/** A coalescing tree re-read: one request in flight at a time, calls made during it collapsing into a single
+ * follow-up. A failed re-read is reported but never fatal.
  */
 function createRehydrator(
   client: PathApiClient,

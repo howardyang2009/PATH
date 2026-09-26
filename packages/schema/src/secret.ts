@@ -4,33 +4,21 @@ import type { JsonValue } from "./json-value.js";
 import { hasOnlyKey, isPlainObject, mapWrappers } from "./wrapper.js";
 
 /**
- * What a `{"$secret": "<value>"}` config value *is* (workflow-format-v0.md §8.3), in one place:
- * the shape, and the fact that one may sit at any depth inside a config value.
- *
- * Both readers of a secret are policies over this walk rather than walks of their own — the engine
- * unwraps them for the worker (`interpolate.ts`) and collects them for the masker
- * (`secret-mask.ts`). They used to spell the predicate identically under two names and walk the
- * structure twice, in two modules, neither importing the schema that already defined the shape;
- * secrecy is an invariant, so the two could disagree about where a wrapper may sit and nothing
- * would say so.
+ * What a `{"$secret": "<value>"}` config value is (docs/format/workflow-format.md §7.3): the shape, and the fact that one may
+ * sit at any depth inside a config value.
  */
 
 /**
- * True when `$secret` is the object's only key — the sole-key rule on its own, regardless of what
- * the key holds. `@path/schema`-internal: it exists so `ConfigValueSchema` can reject a sole-key
- * `$secret` object whose value is not well-formed rather than letting it pass as an ordinary object
- * with an oddly-named key.
+ * True when `$secret` is the object's only key, whatever it holds — so `ConfigValueSchema` can reject a malformed
+ * sole-key `$secret` object.
  */
 export function hasOnlySecretKey(value: object): value is Record<"$secret", JsonValue> {
   return hasOnlyKey(value, "$secret");
 }
 
 /**
- * True when the value is a well-formed wrapper. A multi-key object that merely happens to carry a
- * `$secret` key is a plain object, not a wrapper.
- *
- * The value is a literal secret or an `{"$env": "NAME"}` wrapper naming where to source one — the
- * composed form, which `env.ts` resolves before this walk ever runs.
+ * True when the value is a well-formed wrapper: `$secret` is the only key and holds a literal secret or an `{"$env":
+ * "NAME"}` source wrapper.
  */
 export function isSecretWrapper(value: unknown): value is SecretWrapper {
   if (!isPlainObject(value) || !hasOnlySecretKey(value)) return false;
@@ -38,20 +26,8 @@ export function isSecretWrapper(value: unknown): value is SecretWrapper {
 }
 
 /**
- * Deep-walks a value and replaces every `$secret` wrapper in it with whatever `visit` returns for
- * that secret, leaving every other leaf untouched. `path` is the dot-path the wrapper was found
- * under, extended from `basePath` with object keys and array indices as segments. Where a wrapper
- * may sit is `wrapper.ts`'s descent, shared with `mapEnv`; this states only what to do on reaching
- * one.
- *
- * The wrapper's own string is not walked into — it is the secret, not more structure.
- *
- * A wrapper still holding an unresolved `{"$env": "NAME"}` is handed back as it stands: there is no
- * secret value yet to unwrap or collect, and this walk will not invent one. `env.ts`'s resolution
- * runs first (map #113) precisely so that the masker collects the *resolved* token rather than a
- * variable name — so an unresolved wrapper reaching here means that step was skipped, and what a
- * worker then receives is the wrapper shape either way. Claiming it keeps the two walks agreeing
- * that a composed wrapper is one wrapper, not a plain object with an odd key.
+ * Deep-walks `value` replacing every `$secret` wrapper with `visit`'s result; the wrapper's own string is not
+ * walked into, and an unresolved `{"$env": "NAME"}` wrapper is handed back as it stands.
  */
 export function mapSecrets(
   value: JsonValue,

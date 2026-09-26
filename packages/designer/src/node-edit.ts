@@ -2,25 +2,16 @@ import { type ConfigObject, ENVELOPE_KEYS, type WorkflowNode } from "@path/schem
 import { withoutKey } from "./edit-target.js";
 
 /**
- * The pure **content** edits the properties pane performs on a single `WorkflowNode` (#369) — the
- * counterpart of `edit-tree.ts`, which does the **structure** edits on the file body. Every function
- * here takes a node and returns a **new** node; none touches the tree spine or a node's position. The
- * pane composes these with `edit-tree.replaceNode` to land a content edit in place.
- *
- * A `WorkflowNode` is a closed discriminated union with no index signature, so a payload read or write
- * has to view the node as an open record. `rec` is that **one** cast — the single boundary where the
- * union is opened — so the rest of the module (and the pane) reads and writes payload keys through typed
- * helpers rather than scattering the cast. `nodePayload` / `mergeNodePayload` split the node at the
- * identity/control **envelope** — `ENVELOPE_KEYS`, owned by `@path/schema` where the node shape is
- * defined, so a new envelope field never drifts a hand-kept copy here.
+ * The pure **content** edits the pane performs on one `WorkflowNode` (the counterpart of `edit-tree.ts`'s
+ * structure edits); each returns a new node and none touches the spine. `rec` opens the closed union.
  */
 
-/** A node as an open record — the discriminated union carries no index signature, so every payload read goes through here. */
+/** A node as an open record — the discriminated union carries no index signature. */
 export function rec(node: WorkflowNode): Record<string, unknown> {
   return node as unknown as Record<string, unknown>;
 }
 
-/** The node's payload — every key outside the identity/control envelope (what the raw-JSON floor edits). */
+/** The node's payload — every key outside the identity/control envelope. */
 export function nodePayload(node: WorkflowNode): Record<string, unknown> {
   const out: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(node)) {
@@ -82,12 +73,7 @@ export function applyNodeConfig(
   return config === undefined ? dropNodeKey(node, "config") : ({ ...node, config } as WorkflowNode);
 }
 
-/**
- * Read a string payload/envelope datum off a node (`prompt`, `command`, `cwd`, `ref`, `parse`,
- * `worker`), or `""` when the key is absent or non-string. The one string-payload read the first-class
- * editors share, so each stops re-spelling `typeof rec(node).x === "string" ? … : ""` and the `rec` cast
- * stays here at the module's single open-record boundary.
- */
+/** Read a string payload/envelope datum off a node, or `""` when the key is absent or non-string. */
 export function nodeString(node: WorkflowNode, key: string): string {
   const value = rec(node)[key];
   return typeof value === "string" ? value : "";
@@ -98,17 +84,13 @@ export function configString(node: WorkflowNode, key: string): string {
   return configStringOf(rec(node).config as Record<string, unknown> | undefined, key);
 }
 
-/** Read a string value off a config object (a node's or the file's), or `""` when absent or non-string. */
+/** Read a string value off a config object (a node's or the file's), or `""` when absent. */
 export function configStringOf(config: Record<string, unknown> | undefined, key: string): string {
   const value = config?.[key];
   return typeof value === "string" ? value : "";
 }
 
-/**
- * Write a string config datum on a node, dropping the key (and an emptied `config`) when cleared. This
- * is the single-key config touch #369 owns — the `model` line named in the spec's prompt editor. The
- * full inherited-vs-overridden config editor (§ Config inheritance display) uses `config-inheritance.ts`.
- */
+/** Write a string config datum on a node, dropping the key (and an emptied `config`) when cleared. */
 export function withConfig(node: WorkflowNode, key: string, value: string): WorkflowNode {
   const config: Record<string, unknown> = {
     ...((rec(node).config as Record<string, unknown> | undefined) ?? {}),

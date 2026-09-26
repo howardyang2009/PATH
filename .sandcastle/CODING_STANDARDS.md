@@ -15,7 +15,7 @@
 - camelCase for variables/functions, PascalCase for types and Zod schemas, SCREAMING_SNAKE_CASE for module-level constants.
 - Named exports only; no default exports.
 - Zod schemas are named `XxxSchema` and object schemas are `.strict()` — unknown keys are validation errors.
-- Comments explain constraints, not mechanics, and cite spec sections where relevant (e.g. `workflow-format-v0.md §4.2`).
+- Comments state **what** the code does and any **non-obvious why**, in at most ~3 lines. History ("used to be"), rejected alternatives, and issue numbers (`#123`) do not go in source; they go in the ADR or the commit message. Cite an ADR or spec section (`docs/format/workflow-format.md §4.2`) only when the code would look wrong without it, and never as a comment's only content. Target: comment lines stay under 20% of a package's `src/` (measured per package, so a type-only module may carry proportionally more).
 
 ## Testing
 

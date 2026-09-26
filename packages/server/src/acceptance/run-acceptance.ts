@@ -4,16 +4,9 @@ import type { JsonValue } from "@path/schema";
 import { createEventFrameDecoder, eventStreamHeaders, type LogEvent } from "@path/schema";
 
 /**
- * The §5 acceptance harness (server-api-spec.md §5): drives the four acceptance criteria for a
- * workflow entirely through a *running* `@path/server` over HTTP, and reports pass/fail per
- * criterion. The point of ticket #39 is that the existing engine pipeline becomes reachable over
- * HTTP — so this asserts the *server boundary*, reading `run.log` off disk (via the engine's own
- * `readNdjsonLog`) to confirm the streamed narrative matches what execution actually recorded.
- *
- * No new engine/server capability is exercised: `POST` to start, `GET /events` to stream (with a
- * mid-run disconnect + `Last-Event-ID` reconnect), `GET /:id` for the run tree. Token-free against
- * a binary fixture (proving the mechanics); the human points it at `release-notes.workflow.json`
- * for the real, token-spending run.
+ * §5 acceptance harness (server-api-spec.md §5): drives the four criteria through a *running*
+ * `@path/server` over HTTP, cross-checking the streamed narrative against the `run.log` the engine
+ * actually recorded on disk. Token-free against a binary fixture; point it at a real workflow for the run.
  */
 
 export interface CriterionResult {
@@ -44,19 +37,17 @@ export interface AcceptanceOptions {
   input?: { [key: string]: JsonValue };
   config?: { [key: string]: JsonValue };
   /**
-   * How many SSE frames connection A reads before disconnecting mid-run (§5.4). Default 1 — one
-   * frame proves the client saw live output, then it drops. On the minutes-long real pipeline this
-   * is genuinely mid-run; on a sub-second fixture it still exercises the reconnect path.
+   * How many SSE frames connection A reads before disconnecting mid-run (§5.4). Default 1: one frame
+   * proves the client saw live output, then it drops — genuinely mid-run on a real pipeline, still
+   * exercising the reconnect path on a sub-second fixture.
    */
   disconnectAfterFrames?: number;
 }
 
 /**
- * Reads a response's events until `until` is satisfied (then aborts `controller` to disconnect
- * mid-stream) or the stream ends. The reconnect seq is taken from the event body's `seq`, which the
- * server also echoes as the frame's `id:`. The frame grammar is `@path/schema`'s, the same
- * definition the server encodes with — an acceptance run that decoded the wire its own way could
- * pass while a real client could not read a byte of it.
+ * Reads a response's events until `until` is satisfied (then aborts `controller` to disconnect) or the
+ * stream ends. The frame grammar is `@path/schema`'s own decoder — an acceptance run that decoded the
+ * wire its own way could pass while a real client could read none of it.
  */
 async function readFrames(
   res: Response,
@@ -155,10 +146,8 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
   }
 
   // ── §5.4: connect, disconnect mid-run, reconnect with Last-Event-ID, no gap ────────────────────
-  // Connection A streams live and drops after `disconnectAfter` frames — the deliberate mid-run
-  // disconnect. We then let the run finish and reconnect B from lastSeqA, so B deterministically
-  // replays the *entire* window A missed out of `run.log` (not a timing race): the union of A and B
-  // is the whole narrative iff the reconnect leaves no gap.
+  // Connection A drops after `disconnectAfter` frames; B then replays everything after lastSeqA out of
+  // `run.log`, so A ∪ B is the whole narrative iff the reconnect left no gap.
   const controllerA = new AbortController();
   const streamA = await openEventStream(opts.url, rootRunId, undefined, controllerA.signal);
   const { frames: framesA, ended: endedA } = await readFrames(

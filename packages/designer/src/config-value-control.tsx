@@ -10,11 +10,9 @@ import {
 } from "./config-value.js";
 
 /**
- * The properties pane's **UI adapter** over the config-value algebra (#370, designer-spec § `$env` /
- * `$secret` authoring, map decision 9). `config-value.ts` owns the value-shape reads and the mode
- * transitions; this module renders the controls that drive them — the mode selector and the three
- * mode-specific sub-controls — so the algebra has a real adapter it can be tested against, and the pane
- * calls one control rather than carrying the whole tree inline.
+ * The properties pane's **UI adapter** over the config-value algebra. `config-value.ts` owns the
+ * value-shape reads and the mode transitions; this module renders the controls that drive them — the mode
+ * selector and the three mode-specific sub-controls — so the pane calls one control, not the whole tree.
  */
 
 /** The props the config-value control and its three mode sub-controls share (§ `$env` / `$secret` authoring). */

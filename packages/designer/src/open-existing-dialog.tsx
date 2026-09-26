@@ -10,7 +10,7 @@ import { useMemo, useState } from "react";
 import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
- * The open-existing-workflow picker (#254, designer-spec § Opening a file). A modal over the
+ * The open-existing-workflow picker (designer-spec § Opening a file). A modal over the
  * project's discovered workflows (`GET /v0/workflows`); a choice hands its project-relative path back to
  * the App, which opens it as a fresh root through the session's `open`. This is the in-app peer of the
  * `?path=` deep-link — the same open pipeline (registry-relative parse, the ADR 0026/0015 gates), reached

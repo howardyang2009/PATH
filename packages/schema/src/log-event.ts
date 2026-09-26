@@ -2,24 +2,11 @@ import { z } from "zod";
 import { TerminalRunStatusSchema } from "./run-status.js";
 import { TraceSchema } from "./trace.js";
 
-/**
- * The typed log-event stream (mvp spec §8.1). Every event shares an envelope — `seq` (monotonic
- * per **root run**, the ordering truth since timestamps collide under parallelism), `ts`, `type`
- * (this flat discriminated union), `run_id`, `node_id` (the GUID) and `node_name` (the human label,
- * ADR 0007) — plus a per-type payload.
- *
- * #19 landed the two step-lifecycle events; #21 adds the checkpoint/branch control-node events
- * (each carrying a condition `trace`, §8.1); #24 adds the two parallel-block control events
- * (`join-applied`, `run-cancelled`). Later construct tickets extend the union further
- * (`iteration-started`, …). Because it is a flat discriminated union, adding a
- * member never touches the envelope or existing members.
- *
- * Control events are attributed to the enclosing workflow-step's run (`run_id`) + the control
- * node's own id (`node_id`) — §8.1; the engine has no run for a control node (invariant 1).
- *
- * `node_id`/`node_name` are nullable together: the top-level workflow is wrapped in an implicit root
- * step (invariant 2) that has no node of its own — its lifecycle events carry both null.
- */
+/** The typed log-event stream (mvp spec §8.1): a flat discriminated union sharing an envelope — `seq`
+ * (monotonic per **root run**, the ordering truth since timestamps collide under parallelism), `ts`,
+ * `type`, `run_id`, `node_id` (GUID) and `node_name` (label, ADR 0007) — plus a per-type payload.
+ * Control events are attributed to the enclosing workflow-run + the control node's id; the implicit root
+ * step (invariant 2) has no node, so its lifecycle events carry null ids. */
 const envelope = {
   seq: z.number().int().nonnegative(),
   ts: z.string(),
@@ -33,9 +20,8 @@ const StepStartedSchema = z
     type: z.literal("step-started"),
     ...envelope,
     step_type: z.string(),
-    // The *name* of the worker the step ran on (ADR 0021 sub-14). A leaf step carries its resolved
-    // worker name (`spawn`/`anthropic`); a workflow-run's implicit-root-step event carries `"workflow"`,
-    // the step type itself — a workflow step runs a nested run, not a worker.
+    // The *name* of the worker the step ran on (ADR 0021 sub-14): a leaf carries its resolved name
+    // (`spawn`/`anthropic`); a workflow-run's implicit-root-step event carries `"workflow"`.
     worker_name: z.string(),
   })
   .strict();
@@ -45,14 +31,12 @@ const StepFinishedSchema = z
     type: z.literal("step-finished"),
     ...envelope,
     status: TerminalRunStatusSchema,
-    // Present only on a non-success outcome. For a binary step this message carries the exit code
-    // and a short stderr tail (mvp spec §8.1); the full stderr lives in a blob (§6).
+    // Present only on a non-success outcome; a binary step's carries the exit code and a stderr tail (§8.1).
     error: z.string().optional(),
   })
   .strict();
 
-// Checkpoint asserts (spec §5.2): the condition's `trace` is the whole record — a strict-error
-// evaluation surfaces as an error leaf inside it, `checkpoint-failed` covers both false and error.
+// Checkpoint asserts (spec §5.2): the trace is the whole record — `checkpoint-failed` covers false and error.
 const CheckpointPassedSchema = z
   .object({ type: z.literal("checkpoint-passed"), ...envelope, trace: TraceSchema })
   .strict();
@@ -60,9 +44,8 @@ const CheckpointFailedSchema = z
   .object({ type: z.literal("checkpoint-failed"), ...envelope, trace: TraceSchema })
   .strict();
 
-// Branch routes (§5.2, §5.4). `branch-taken` names the winning arm — its index, or `"else"` (the
-// fallback has no condition, so `trace` is null there); `branch-no-match` carries every arm's
-// trace since none matched and there was no else (which fails the run).
+// Branch routes (§5.2, §5.4): `branch-taken` names the winning arm (its index, or `"else"`, whose
+// trace is null); `branch-no-match` carries every arm's trace since none matched and there was no else.
 const BranchTakenSchema = z
   .object({
     type: z.literal("branch-taken"),
@@ -75,11 +58,8 @@ const BranchNoMatchSchema = z
   .object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) })
   .strict();
 
-// A `parallel` collect join applied at block end (mvp spec §5.2–5.4, §8.1): control events carry
-// the enclosing workflow-step's run id + the `parallel` node's id/name (envelope), plus the branch
-// names in apply order and the context keys those branches published (names, not GUIDs — ADR 0007).
-// `winner` is the winning branch name, present only for a `wait-one` join (wait-one-join.md §8); a
-// `collect` join lands every branch and has no single winner, so it omits the field.
+// A `parallel` collect join applied at block end (§5.2–5.4): branch names in apply order, the context
+// keys they published (names, not GUIDs — ADR 0007), and `winner` only for a `wait-one` join.
 const JoinAppliedSchema = z
   .object({
     type: z.literal("join-applied"),
@@ -90,16 +70,9 @@ const JoinAppliedSchema = z
   })
   .strict();
 
-// A run cancelled best-effort (mvp spec §5.6, §8.1): `run_id`/`node_id` identify the cancelled run
-// and its node. `cause` says why — `sibling-failed` (a `collect` branch failed), `sibling-succeeded`
-// (a `wait-one` branch won the race, so the still-running losers are cancelled — wait-one-join.md §5),
-// or `operator` (a cancel request against the root run, #52). `cause_run_id` is the failing sibling
-// run, non-null exactly for `sibling-failed`; it is null for `sibling-succeeded` and `operator`.
-//
-// `cause` defaults to `sibling-failed`, the only cause that existed before #52: every persisted log
-// line is re-validated on read (readNdjsonLog, getLogEventsForRoot), and that path feeds SSE replay,
-// so a *required* field here would make every already-written `run.log` throw when an operator opens
-// an old run. Old lines keep parsing, and read back as sibling-failed with their `cause_run_id`.
+// A run cancelled best-effort (§5.6, §8.1): `run_id`/`node_id` identify it; `cause_run_id` is the
+// failing sibling run, non-null exactly for `sibling-failed`. `cause` defaults to `sibling-failed`
+// because every persisted line is re-validated on read, so a required field would break old logs.
 const RunCancelledSchema = z
   .object({
     type: z.literal("run-cancelled"),
@@ -109,9 +82,8 @@ const RunCancelledSchema = z
   })
   .strict();
 
-// While-do loops (mvp spec §5.2–5.4, §8.1): `iteration-started` fires before each iteration body
-// with a 1-based `iteration` and the passing (true) condition trace; `loop-exited` fires once at
-// block end with the exit `reason`, the completed `iterations` count, and the final condition trace.
+// While-do loops (§5.2–5.4): `iteration-started` fires before each body with a 1-based `iteration` and
+// the passing trace; `loop-exited` fires once with the exit `reason`, `iterations` count and final trace.
 const IterationStartedSchema = z
   .object({
     type: z.literal("iteration-started"),
@@ -130,14 +102,9 @@ const LoopExitedSchema = z
   })
   .strict();
 
-// Goto passes and jumps (spec docs/spec/goto.md §7, ADR 0054 / 0061): control events the top-level
-// walk emits, `run_id` the workflow-run and `node_id`/`node_name` the goto. `pass-started` fires as a
-// pass opens, pass 1 included — its envelope names the opening goto, both null for pass 1.
-// `goto-taken` records one jump: `jump` is this goto's 1-based count in the workflow-run (this one
-// included), `max_jumps` the resolved bound, `pass` the pass it opens. `goto-exhausted` records a goto
-// reached with its jumps spent, `pass` being the pass that fails; no jump happens, so no `jump`.
-// Payloads are ids, names and integers only. Every persisted line is re-validated on read, so a field
-// added to any of these later needs a default.
+// Goto passes and jumps (docs/spec/goto.md §7, ADR 0054/0061): `pass-started` opens a pass (pass 1
+// included, its envelope naming the opening goto, both ids null); `goto-taken` records a jump's 1-based
+// count, resolved bound and pass; `goto-exhausted` records a goto reached with its jumps spent.
 const PassStartedSchema = z
   .object({ type: z.literal("pass-started"), ...envelope, pass: z.number().int().positive() })
   .strict();
@@ -163,27 +130,16 @@ const GotoExhaustedSchema = z
   })
   .strict();
 
-// A resumed tree reused one node's recorded work instead of re-running it (#172,
-// resume-restore-semantics.md §6): no `step-started`/`step-finished` fires for the node, so this
-// marker is the only place the resumed tree's own log records it happened — §8.1's "complete
-// narrative" would otherwise have a silent gap exactly where the reused subtree is. Fires **once
-// per reuse decision** (a reused workflow-run collapses its whole subtree into this one event, not
-// one per descendant). The envelope's `run_id` is the nearest re-entered workflow-run ancestor in
-// the successor tree, `node_id` the reused node's own id; `original_run_id` back-references the run
-// in the *original* tree that holds the real data, so a reader follows the pointer instead of a gap.
+// A resumed tree reused one node's recorded work instead of re-running it (resume-restore-semantics.md
+// §6): no step events fire, so this marker is the log's only record of the reuse. Fires once per reuse
+// decision; `original_run_id` back-references the run in the *original* tree that holds the real data.
 const ReuseMarkerSchema = z
   .object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() })
   .strict();
 
-// A leaf step entered the `awaiting` status (#462): the worker returned `{ status: "awaiting" }` and
-// the engine suspended the step until an external `complete` call resolves it. The step is still live
-// (not terminal), so this is a distinct event from `step-finished`.
-//
-// `assignee` (#488) names who the offline activity is for — an informational string carried on the
-// record so an `awaiting`/Complete cycle reconstructs from the log alone (`null` when the node named
-// none). It `.default(null)` for the same reason `run-cancelled.cause` does: every persisted NDJSON
-// line is re-validated on read, so a pre-#488 `step-awaiting` line, written before the field existed,
-// must keep parsing — it reads back as `assignee: null`.
+// A leaf step entered `awaiting`: the worker returned `{ status: "awaiting" }` and the engine suspended
+// it until an external `complete` call — still live, so distinct from `step-finished`. `assignee` names
+// who the offline activity is for, `.default(null)` so pre-field persisted lines keep parsing on read.
 const StepAwaitingSchema = z
   .object({
     type: z.literal("step-awaiting"),

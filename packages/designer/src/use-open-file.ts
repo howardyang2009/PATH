@@ -36,11 +36,7 @@ export type {
   TemplateSource,
 } from "./session-reducer.js";
 // The session state and its transitions live in `session-reducer.ts` — a pure `(state, action) => state`
-// testable with no React and no stub server. This hook is the thin adapter: it fetches the step-plugin
-// registry, asks the reducer what an action decides (via `apply`'s returned state), performs the
-// `client` I/O that decision calls for, and dispatches the outcome as an action. Re-export the frame
-// types and predicates so the reducer's split stays invisible to the pane, the canvas, the toolbar, and
-// the tests that import them from here.
+// testable with no React. This hook is the thin adapter around it; the re-exports keep the split invisible.
 export {
   frameCanRedo,
   frameCanUndo,
@@ -51,16 +47,11 @@ export {
 } from "./session-reducer.js";
 
 /**
- * The Designer's open-and-navigate session (#367): fetch the step-plugin registry once, open a file against
- * it, and track a **navigation stack** of files as a `workflow`-ref descent crosses each boundary
- * (designer-spec § The model). The stack is a trail, not a tree parent — a ref'd file can have several
- * parents — so a breadcrumb built from it pops back by index.
- *
- * The rich state — the trail, the per-frame undo history, the save-point advance — is the reducer's
- * (`session-reducer.ts`). Here the registry is fetched once and reused for every file in the session, and a
- * file fetch or open runs as one guarded async step: a stale completion (the author descended, or popped the
- * breadcrumb, before it landed) is dropped by a monotonic token before it dispatches, and by the reducer's
- * own depth+path re-check after.
+ * The Designer's open-and-navigate session: fetch the step-plugin registry once, open files against it,
+ * and track a navigation stack of frames as a `workflow`-ref descent crosses each boundary. The stack is
+ * a trail, not a tree parent — a ref'd file can have several parents. Rich state (trail, undo history,
+ * save-point advance) is the reducer's; a stale completion is dropped by a monotonic token before it
+ * dispatches, and by the reducer's own depth+path re-check after.
  */
 
 /** The registry fetch state — the received `GET /v0/step-plugins` snapshot the open passes are relative to. */
@@ -70,19 +61,10 @@ export type RegistryLoad =
   | { phase: "ready"; plugins: WireStepPlugin[] };
 
 /**
- * One **Save as…** of the active buffer — every door that writes the buffer to a document it does not
- * yet have:
- *
- * - `new-file` — a from-scratch workflow's first save at `path` (#390);
- * - `workflow-copy` — workflow mode's copy to a new `*.workflow.json` at `path`: Instantiation gives it a
- *   fresh workflow id and fresh node ids (ADR 0006), and its `name` is the new file's stem;
- * - `new-template` — a new template's first save (template mode);
- * - `template-copy` — author mode's copy of the opened template (#580);
- * - `workflow-as-template` — a new user template from the active workflow's body (#459.6, ADR 0063); the
- *   workflow stays open and unchanged.
- *
- * A new template is a new identity (ADR 0049 decision 8): only its `id` is minted; node ids stay, since
- * Instantiation re-stamps them on use.
+ * One **Save as…** of the active buffer — every door that writes it to a document it does not yet have.
+ * A workflow copy mints fresh workflow and node ids via Instantiation (ADR 0006); a new template is a
+ * new identity (ADR 0049 decision 8) with only its `id` minted, since Instantiation re-stamps node ids;
+ * `workflow-as-template` (ADR 0063) leaves the workflow open and unchanged.
  */
 export type SaveAsIntent =
   | { kind: "new-file"; path: string }
@@ -92,8 +74,8 @@ export type SaveAsIntent =
   | { kind: "workflow-as-template"; name: string; description: string };
 
 /**
- * The outcome of a Save as…: `created` (with the written path, `null` for a template), `exists` — the
- * target is taken, the dialog's "choose another name", never a silent overwrite — or `error`.
+ * The outcome of a Save as…: `created` (path `null` for a template), `exists` — target taken, the
+ * dialog's "choose another name", never a silent overwrite — or `error`.
  */
 export type SaveAsResult =
   | { status: "created"; path: string | null }
@@ -102,81 +84,48 @@ export type SaveAsResult =
 
 export interface OpenSession {
   registry: RegistryLoad;
-  /**
-   * The navigation **trail**, root file first (#367). The frame the canvas, the pane, and the toolbar all
-   * act on is `frames[activeIndex]`, **not** the tip: ascending the breadcrumb (`goTo`) moves the active
-   * index without discarding the deeper frames, so a descended child keeps its dirty buffer and its beating
-   * lease while the parent is on screen (#391).
-   */
+  /** The navigation trail, root first; the active frame is `frames[activeIndex]`, **not** the tip. */
   frames: Frame[];
   /** The index of the active frame in `frames` — what the canvas renders and every edit/save op targets. */
   activeIndex: number;
   /** Open `path` as a fresh root, discarding any current stack. */
   open: (path: string) => void;
-  /**
-   * Open a `*.step-template.json` itself as a fresh root in **author mode**
-   * (#580), discarding any current stack. It reads `GET /v0/templates/:id`; the frame's Save then writes
-   * back to that template.
-   */
+  /** Open a `*.step-template.json` in **author mode** as a fresh root; the frame's Save writes back to it. */
   openTemplate: (template: TemplateSource) => void;
-  /**
-   * Start a **from-scratch** buffer as a fresh root, discarding any current stack (#390). The frame holds
-   * **no path and no lease**: an empty, editable workflow whose placement is decided at its first
-   * `saveNewFile`. Reads dirty from open, so Save is live at once.
-   */
+  /** Start a **from-scratch** buffer as a fresh root: no path, no lease, dirty from open. */
   newFile: () => void;
-  /** The edit mode (Workflow | Template). */
   mode: EditMode;
   /** Switch the edit mode, discarding any current stack. The canvas is empty in the new mode. */
   switchMode: (mode: EditMode) => void;
   /** Start a new, unsaved template in template mode, discarding any current stack. */
   newTemplate: () => void;
-  /**
-   * Descend across the active file's `workflow`-ref (a relative path), making a child frame active. If the
-   * frame just ahead of the active one already holds that resolved target, it is **reused**; otherwise the
-   * forward trail is truncated and the target is loaded fresh.
-   */
+  /** Descend across the active file's `workflow`-ref; a frame ahead already holding that target is reused. */
   descend: (ref: string, nodeId: string) => void;
   /**
-   * Descend into a **fresh, unwritten, path-less** child buffer for a create-new nested ref (#391), linked
-   * back to the `workflow` node `parentNodeId` in the active (parent) frame. Its first save also **back-fills
-   * the parent node's `ref`** from the path the child is saved to. The forward trail is truncated.
+   * Descend into a fresh, unwritten, path-less child linked to `parentNodeId`; its first save back-fills the parent's
+   * `ref`.
    */
   descendNewUnbound: (parentNodeId: string) => void;
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   goTo: (index: number) => void;
   /**
-   * Commit an edit to the active frame's opened file; dirtiness re-derives (#368, ADR 0030) and an
-   * undo entry is recorded (#389). A structural edit passes no identity (one entry each); a field edit
-   * passes its `EditKey` so a run of keystrokes in that one field folds to a single entry. Any edit
-   * clears the frame's redo stack.
+   * Commit an edit, re-deriving dirtiness; a field edit's `EditKey` folds a keystroke run to one entry. Any edit
+   * clears redo.
    */
   applyEdit: EditCommit<WorkflowFile>;
-  /** Undo the active frame's last edit, re-deriving clean (#389). A no-op when its past stack is empty. */
+  /** Undo the active frame's last edit, re-deriving clean. A no-op when its past stack is empty. */
   undo: () => void;
-  /** Redo the active frame's last undo, re-deriving clean (#389). A no-op when its future stack is empty. */
+  /** Redo the active frame's last undo, re-deriving clean. A no-op when its future stack is empty. */
   redo: () => void;
-  /**
-   * Save the active frame's opened buffer through `PUT /v0/workflows` under its `If-Match` ETag (#371, ADR
-   * 0016). On success the buffer becomes clean (a new save-point) and the frame's ETag advances; a `412`
-   * becomes a `conflict` the author resolves. A no-op when nothing is open.
-   */
+  /** Save the active buffer under its `If-Match` ETag (ADR 0016); a `412` becomes a `conflict` to resolve. */
   save: () => void;
-  /**
-   * Write the active buffer to a document it does not yet have (`SaveAsIntent`). On `created` the session
-   * edits the written document, except `workflow-as-template`, which leaves the workflow open.
-   */
+  /** Write the active buffer to a document it does not yet have; `workflow-as-template` leaves the workflow open. */
   saveAs: (intent: SaveAsIntent) => Promise<SaveAsResult>;
-  /**
-   * Re-fetch the active frame from disk, discarding its unsaved buffer for the on-disk bytes and a fresh
-   * ETag. The stale-write recovery (#371). A no-op with no file open.
-   */
+  /** Re-fetch the active frame from disk, discarding its unsaved buffer — the stale-write recovery. */
   reloadActive: () => void;
   /**
-   * Delete the root file from disk (`planDelete`): a workflow under its read's `If-Match`, naming this
-   * session's edit lease `sessionId` so the server removes it with the file, or a user template by id. On
-   * success the canvas is empty in the `deleted` phase; a refusal is the `delete-error` phase. A no-op when
-   * there is nothing to delete.
+   * Delete the root file (`planDelete`): a workflow under its read's `If-Match` with this session's lease, or a
+   * template by id.
    */
   deleteActive: (sessionId: string) => void;
   /** The active frame's save state — drives the save button and the stale-write conflict banner. */
@@ -184,11 +133,9 @@ export interface OpenSession {
 }
 
 /**
- * The frame a just-applied loading action put in flight, when it is the one this request is for. The
- * reducer's verdict read back as I/O intent: a `descend` that re-entered the frame ahead (or a `reload`
- * that decided nothing was reloadable) leaves no frame awaiting `seq`, so there is nothing to fetch.
- *
- * Module scope: it reads only its arguments, so naming it never invalidates a callback that calls it.
+ * The frame a just-applied loading action put in flight, when it is the one this request is for: the
+ * reducer's verdict read back as I/O intent. A `descend` that re-entered the frame ahead leaves no frame
+ * awaiting `seq`, so there is nothing to fetch. Module scope, so naming it never invalidates a caller.
  */
 function pendingFetch(state: SessionState, seq: number): { frame: Frame; depth: number } | null {
   const depth = state.activeIndex;
@@ -207,11 +154,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
 
-  /**
-   * Apply one session action and return the state it produced. The reducer decides; the hook reads the
-   * verdict off the returned state — a `descend` that re-entered the frame ahead needs no fetch, one that
-   * pushed a loading frame does — instead of working the same thing out a second time.
-   */
+  /** Apply one session action and return the state it produced, so the hook reads the reducer's verdict directly. */
   const apply = useCallback((action: SessionAction): SessionState => {
     const next = reduceSession(sessionRef.current, action);
     sessionRef.current = next;
@@ -240,10 +183,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     };
   }, [client]);
 
-  /**
-   * Fetch the frame at `depth`, which the reducer has just put into its loading state: a workflow file by
-   * its path, or an author-mode template source by its id.
-   */
+  /** Fetch the frame at `depth`, which the reducer has just put into its loading state. */
   const fetchFrame = useCallback(
     (frame: Frame, depth: number, seq: number): void => {
       const plugins = pluginsRef.current;
@@ -276,8 +216,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   );
 
   const newFile = useCallback((): void => {
-    // A from-scratch buffer fetches nothing, and its frame holds no fetch number, so any in-flight load
-    // is dropped by the reducer rather than landing in the discarded stack.
+    // A from-scratch buffer fetches nothing, so any in-flight load is dropped by the reducer.
     apply({ type: "newFile" });
   }, [apply]);
 
@@ -294,8 +233,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const descend = useCallback(
     (ref: string, nodeId: string): void => {
-      // A descent crosses a `workflow`-ref of the active file, so a file must be open and the registry
-      // ready to parse what comes back; the reducer no-ops for a from-scratch frame with no path.
+      // A descent needs a file open and the registry ready to parse what comes back.
       if (!pluginsRef.current) return;
       const seq = ++loadSeq.current;
       const next = apply({ type: "descend", ref, nodeId, loadSeq: seq });
@@ -314,8 +252,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 
   const goTo = useCallback(
     (index: number): void => {
-      // An ascend (or forward re-entry) only moves the active frame — no frame is discarded, so a dirty
-      // descended child keeps its buffer and its beating lease, and a pending load stays the frame's own.
+      // Only the active index moves; no frame is discarded, so a dirty child keeps its buffer and lease.
       apply({ type: "goTo", index });
     },
     [apply],
@@ -328,8 +265,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply],
   );
 
-  // A no-op undo/redo is the reducer's to swallow (it returns the same state), so a standing
-  // "Saved"/conflict phase survives one without the hook pre-checking the stack.
+  // A no-op undo/redo is the reducer's to swallow, so a standing "Saved"/conflict phase survives it.
   const undo = useCallback((): void => {
     apply({ type: "undo" });
   }, [apply]);
@@ -363,18 +299,14 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     if (!pluginsRef.current) return;
     const seq = ++loadSeq.current;
     const next = apply({ type: "reload", loadSeq: seq });
-    // The reducer decided whether anything was reloadable: an unwritten buffer leaves no frame awaiting
-    // this fetch, so the authored buffer is never thrown away for a 404.
+    // An unwritten buffer leaves no frame awaiting this fetch, so it is never thrown away for a 404.
     const pending = pendingFetch(next, seq);
     if (pending) fetchFrame(pending.frame, pending.depth, seq);
   }, [apply, fetchFrame]);
 
   /**
-   * The one **persist-and-advance-the-save-point** spine behind `save` and `saveAs` (ADR 0016, ADR 0030):
-   * set the transient `saving` phase, write the document, and on success dispatch the caller's success
-   * action carrying the write's echo and the canonical bytes just written. The reducer runs the guarded
-   * save-point advance atomically with the `saved` phase, so a save's frame and phase never tear. A refusal
-   * is returned for the caller to map; the spine leaves the `saving` phase for it to replace.
+   * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write, and dispatch the
+   * caller's success action, so the save-point advance and the `saved` phase never tear (ADR 0016, ADR 0030).
    */
   const commitSave = useCallback(
     async (
@@ -386,9 +318,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     ) => {
       apply({ type: "saveStarted" });
       const outcome = await writeDocument(client, write);
-      // `savedBytes` is the canonical serialization of the exact buffer the server wrote and hashed; the
-      // buffer is clean iff it still equals it, so an author who edited *during* the in-flight save stays
-      // dirty against the new baseline, which is correct.
+      // `savedBytes` is the canonical serialization of the exact buffer written; the buffer is clean iff it
+      // still equals it, so an edit during the in-flight save stays dirty against the new baseline.
       if (outcome.ok) apply(successAction(outcome, canonicalSerialize(write.file)));
       return outcome;
     },
@@ -396,10 +327,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   );
 
   const save = useCallback((): void => {
-    // The door is the reducer's choice (`planSave`): `null` for a from-scratch root, which picks its path
-    // in the first-save dialog instead, and otherwise an overwrite under the frame's `If-Match` ETag, an
-    // exclusive create at a create-new child's pre-assigned path (ADR 0016), or author mode's write-back to
-    // the original template by id (#580).
+    // The door is the reducer's choice (`planSave`): `null` for a from-scratch root, otherwise an
+    // overwrite under the frame's `If-Match` ETag, an exclusive create at a create-new child's path,
+    // or author mode's write-back.
     const plan = planSave(sessionRef.current);
     if (!plan) return;
     const write: DocumentWrite =
@@ -418,10 +348,8 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         : { type: "saved", depth: plan.depth, path: plan.path, etag: result.etag, savedBytes },
     ).then((outcome) => {
       if (outcome.ok) return;
-      // A refused overwrite is the stale-write conflict the author reloads from. A create-new child's
-      // refusal is a create collision the author resolves by retargeting the reference, not by reloading.
-      // Which one this is is the plan's own `kind`. A shipped template's `403` is the API's refusal, shown
-      // as the save error it is.
+      // A refused overwrite is the stale-write conflict the author reloads from; a create-new child's
+      // refusal is a collision resolved by retargeting the reference.
       const saveState: SaveState =
         outcome.conflict === null
           ? { phase: "error", message: outcome.message }
@@ -445,8 +373,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
           status: "created",
           path: request.write.to === "workflow" ? outcome.relativePath : null,
         };
-      // A taken name is the dialog's to show, not the toolbar's: drop the transient saving phase back to
-      // idle for it. Any other refusal is the save error it is.
+      // A taken name is the dialog's to show, not the toolbar's: drop back to idle for it.
       if (outcome.conflict === "exists") {
         apply({ type: "setSaveState", saveState: IDLE });
         return { status: "exists" };
@@ -460,8 +387,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply, commitSave],
   );
 
-  // Open the initial deep-link once the registry is ready. Guarded so it fires once, not on every registry
-  // re-render.
+  // Open the initial deep-link once the registry is ready (guarded so it fires once).
   const openedInitial = useRef(false);
   useEffect(() => {
     if (registry.phase === "ready" && initialPath && !openedInitial.current) {
@@ -495,8 +421,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
 }
 
 /**
- * The write and the success action one Save as… runs, from the reducer's plan for it — or the error
- * message when the active frame is not a buffer that intent can save.
+ * The write and success action one Save as… runs, from the reducer's plan — or the error message.
  */
 function saveAsRequest(
   state: SessionState,
@@ -512,9 +437,8 @@ function saveAsRequest(
     } {
   switch (intent.kind) {
     case "new-file": {
-      // Only a from-scratch **root** buffer (unwritten, no path) picks its path here; a create-new child and
-      // a saved frame both go through `save`. The server echoes the resolved `relative_path`, which the frame
-      // adopts as its path — placement decided at this first save, and the parent ref back-filled from it.
+      // Only a from-scratch **root** buffer picks its path here; the server echoes the resolved
+      // `relative_path`, which the frame adopts and the parent ref is back-filled from.
       const plan = planNewFileSave(state);
       if (!plan) return "No new-file buffer to save.";
       return {

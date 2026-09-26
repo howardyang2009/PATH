@@ -9,51 +9,39 @@ import {
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
 
-// Thrown rather than returned as a Result: interpolateValue recurses through arbitrary JSON
-// structure, and threading a Result through that walk is noisier than letting each caller catch
-// this and translate it into its own failed outcome (`describeInterpolationError`).
+// Thrown rather than returned as a Result: callers catch it and translate it into their own outcome.
 export class InterpolationError extends Error {}
 
 /**
  * The scope a node's `${}` expressions resolve against: its effective `config`, the enclosing run's
- * `context`, and — for a `publish` map only — the step's own `output` (format doc §5).
+ * `context`, and — for a `publish` map only — the step's own `output`.
  */
 export function interpolationScope(
   config: ConfigObject,
   context: { [key: string]: JsonValue },
   output?: JsonValue,
 ): InterpolationScope {
-  // ConfigObject and JsonValue are structurally compatible (config's `$secret` wrapper is just a
-  // plain object shape) but not nominally assignable across their recursive unions.
+  // Structurally compatible but not nominally assignable across the recursive unions.
   const scope: InterpolationScope = { config: config as unknown as JsonValue, context };
   if (output !== undefined) scope.output = output;
   return scope;
 }
 
 /**
- * An interpolation failure as a node's failed-outcome message. An error that is not an
- * `InterpolationError` is a bug, not a data-flow failure, so it is re-thrown rather than swallowed.
+ * An interpolation failure as a node's failed-outcome message. Any other error is a bug, not a
+ * data-flow failure, so it is re-thrown rather than swallowed.
  */
 export function describeInterpolationError(nodeName: string, err: unknown): string {
   if (err instanceof InterpolationError) return `node "${nodeName}": ${err.message}`;
   throw err;
 }
 
-/**
- * Resolves a `${}` dot-path against a scope, in the engine's failure mode: interpolation cannot
- * carry on past an unresolvable path, so this throws where the condition evaluator records a trace
- * leaf. The walk itself is @path/schema's — one implementation, one error vocabulary, whether the
- * path came from a placeholder or a predicate.
- *
- * Secrets are unwrapped on the way out (format §8.3): a wrapper may sit at any depth inside the
- * resolved value, and a worker must see real values regardless of how the path addressed them.
- * Where a wrapper may sit is @path/schema's answer (`mapSecrets`); interpolation only says what to
- * do when one is reached — hand back the real value, because masking is a persistence-boundary
- * concern (ticket #20) and not a dataflow restriction.
- */
+/** Resolves a `${}` dot-path, throwing where the condition evaluator records a trace leaf. */
 export function resolveDotPath(scope: InterpolationScope, path: string): JsonValue {
   const resolved = resolvePath(scope, path);
   if (!resolved.found) throw new InterpolationError(`cannot resolve "${path}": ${resolved.error}`);
+  // Secrets are unwrapped on the way out (format §7.3): masking is a persistence-boundary concern,
+  // not a dataflow restriction, so a worker must see real values.
   return mapSecrets(resolved.value, (secret) => secret);
 }
 
@@ -72,11 +60,8 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
     return resolveDotPath(scope, wholePath);
   }
 
-  // The grammar is @path/schema's (tokenizeInterpolation); this only decides what each token
-  // becomes. An `unclosed` token used to be unreachable *by assumption* — load-time validation had
-  // rejected it — but nothing enforced that a string reached here only via a validated workflow
-  // file, so an unvalidated one produced a silently truncated result. Now it is a token, and an
-  // error.
+  // The grammar is @path/schema's (tokenizeInterpolation); this only decides what each token becomes.
+  // An `unclosed` token is an error: a string can reach here from an unvalidated workflow file too.
   let result = "";
   for (const token of tokenizeInterpolation(value)) {
     switch (token.kind) {
@@ -105,9 +90,8 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
   return result;
 }
 
-// Positions like `command`/`cwd`/`args` (format doc §5) must end up as strings even though the
-// whole-string typing rule could otherwise hand back a number/boolean — stringify scalars the
-// same way splicing does; a non-scalar there can never be a sensible command/path.
+// Positions like `command`/`cwd`/`args` (format doc §5) must end up as strings even where the
+// whole-string typing rule would hand back a number/boolean; a non-scalar can never be a command/path.
 export function interpolateToString(value: string, scope: InterpolationScope): string {
   const resolved = interpolateString(value, scope);
   if (typeof resolved === "string") return resolved;

@@ -5,18 +5,9 @@ import {
   LEAF_CONDITION_TYPES,
 } from "@path/schema";
 
-/**
- * The pure edit vocabulary the typed `Condition` builder is built on (#370, designer-spec § Canvas
- * interaction model, ADR 0022). The builder edits the structured `Condition` AST — never free text — so
- * an ill-typed or unparseable condition is *unrepresentable*, the structural analogue of the unsnappable
- * socket. This module owns the two things the builder cannot express as plain React state: a valid
- * default for each operator, and the operator-switch that carries what it can from the previous shape.
- *
- * A condition governs a branch arm's `when`, a `while-do`'s `condition`, and a `checkpoint`'s assertion
- * (§ Per-kind rendering). The builder commits a sub-condition only when the whole condition validates
- * (`validateCondition`), so a half-typed dot-path never reaches the file — the node stays strict-valid,
- * exactly as the raw-JSON floor keeps a leaf strict-valid (#369).
- */
+/** The pure edit vocabulary the typed `Condition` builder is built on: it edits the structured AST, never
+ * free text, so an ill-typed condition is *unrepresentable*. It owns a valid default per operator and the
+ * operator switch that carries what it can from the previous shape. */
 
 /** The three combinators — the operators that compose other conditions rather than reading a `path`. */
 export const COMBINATOR_CONDITION_TYPES = ["all", "any", "not"] as const;
@@ -32,7 +23,7 @@ export function isLeafConditionType(type: Condition["type"]): boolean {
   return (LEAF_CONDITION_TYPES as readonly string[]).includes(type);
 }
 
-/** The default dot-path a fresh leaf predicate reads — matching the node factory's placeholder (#368). */
+/** The default dot-path a fresh leaf predicate reads. */
 const DEFAULT_PATH = "context.value";
 
 /** A fresh, valid leaf predicate — the seed for a new combinator child and the fallback default. */
@@ -95,13 +86,9 @@ function pathOf(condition: Condition): string | undefined {
 }
 
 /**
- * Switch a condition's operator, carrying what the new shape can hold from the old:
- * - **leaf → leaf** keeps the dot-path (the operand the author already chose to read).
- * - **→ `all` / `any`** keeps the child list when the previous was itself an `all`/`any`, else seeds one.
- * - **→ `not`** keeps the single child when the previous was a `not`, else seeds one.
- *
- * The result is always a structurally-valid default of the new type, so the switch itself can never
- * make a condition unrepresentable.
+ * Switch a condition's operator, carrying what the new shape can hold: a leaf → leaf keeps the dot-path,
+ * an `all`/`any` keeps a combinator's children, a `not` keeps its single child. The result is always a
+ * structurally-valid default of the new type, so the switch can never make a condition unrepresentable.
  */
 export function changeConditionType(prev: Condition, next: Condition["type"]): Condition {
   if (next === prev.type) return prev;

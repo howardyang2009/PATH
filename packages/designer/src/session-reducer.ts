@@ -7,85 +7,52 @@ import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
 /**
- * The Designer session's **pure state machine** (#367–#391, extracted from `use-open-file.ts`). Every
- * transition the open-and-navigate session makes — open, descend, edit, undo/redo, and the save-point
- * advance a save lands — is a case of `reduceSession`, a pure `(state, action) => state`. The hook
- * (`useOpenFile`) is the thin adapter around it: it runs the async `client` fetch/PUT, guards a stale
- * completion with a monotonic token, then **dispatches the result as an action**. No promise, no
- * `client`, and no wall-clock timing lives here, so the whole session — the navigation trail, the
- * per-frame undo history, the coalesced field-edit fold, the save-point advance, the create-new ref
- * back-fill — is testable with neither React nor a stub server, the way `validated-draft.ts` made the
- * pane fields testable off the render path.
+ * The Designer session's **pure state machine**: every open/descend/edit/undo/save-point transition is a
+ * case of `reduceSession`, a pure `(state, action) => state`. The `useOpenFile` hook runs the async I/O and
+ * dispatches the results, so no promise, no `client` and no wall-clock timing lives here.
  */
 
 // ── Frame types ────────────────────────────────────────────────────────────────────────────────────
 
 /** One file on the navigation stack: its path, where its fetch-and-open got to, and its save-point. */
 export interface Frame {
-  /**
-   * The file's project-relative path, or **`null`** for a from-scratch buffer that holds no path until
-   * its first save (#390). A `null`-path frame takes no lease and cannot launch; `saveNewFile` chooses
-   * the path at first save, after which it is a saved frame like any other.
-   */
+  /** Project-relative path, or **`null`** for a from-scratch buffer until its first save. */
   path: string | null;
   /**
-   * Has this buffer been **persisted to disk**? A saved file is `true`; a from-scratch buffer (#390) and a
-   * create-new nested child (#391) are `false` until their first save, even though the child already carries
-   * its pre-assigned `path`. It is the discriminator the from-scratch rule reads: an **unwritten** frame
-   * takes no lease and cannot launch, and its first save is an **exclusive create** (no `If-Match`, ADR 0016).
+   * Has this buffer been **persisted to disk**? An unwritten frame takes no lease and cannot launch, and its first
+   * save is an exclusive create (no `If-Match`, ADR 0016).
    */
   written: boolean;
   state: FrameState;
-  /**
-   * The `If-Match` ETag for the next save — the strong ETag of the bytes this frame opened, or of the
-   * bytes the last successful save wrote. `null` when a proxy stripped the read route's `ETag` header.
-   */
+  /** The `If-Match` ETag for the next save; `null` when a proxy stripped the read route's `ETag` header. */
   etag: string | null;
   /**
-   * The **baseline**: the on-disk bytes the frame last synced (ADR 0030) — the raw text this frame opened,
-   * or `canonicalSerialize(buffer)` of the bytes the last `200` save wrote. The buffer is **clean** when
-   * `canonicalSerialize(buffer) === baseline`, **dirty** otherwise. It advances only on a `200` save.
+   * The on-disk bytes last synced (ADR 0030): the buffer is **clean** when `canonicalSerialize(buffer) === baseline`.
+   * Advances only on a `200` save.
    */
   baseline: string;
-  /**
-   * `canonicalSerialize(buffer)` at the last save-point. It only steers the badge's wording (an id-stamp-only
-   * dirty vs an authored edit); dirtiness is the `baseline` comparison. It differs from `baseline` only at
-   * open of a non-canonical file; a save aligns them.
-   */
+  /** `canonicalSerialize(buffer)` at the last save-point; steers only the badge's wording, not dirtiness. */
   openedBytes: string;
-  /** This frame's own undo/redo stack (#389). Independent per open file; survives this frame's saves. */
+  /** This frame's own undo/redo stack; independent per open file and survives this frame's saves. */
   history: History;
   /**
-   * A create-new nested-ref child's back-link to the `workflow` node that spawned it (#391): the parent
-   * frame's `depth` on the trail and that node's `id`. Consumed at the child's **first save**, which
-   * back-fills the parent node's `ref` from the path the child was saved to. `undefined` otherwise.
+   * A create-new nested-ref child's back-link to the `workflow` node that spawned it; consumed at the child's first
+   * save to back-fill the parent's `ref`.
    */
   refParent?: { depth: number; nodeId: string };
   /**
-   * The `workflow` block **in the parent frame** whose ref this frame descended through (#372, run
-   * projection on the breadcrumb): that node's durable `id`. It lets the breadcrumb badge this descent
-   * crumb with the parent node's projected run status — the sub-workflow's own verdict — so a nested run
-   * trail reads `parent failed / child failed`, not just the root. `undefined` on a root frame and on a
-   * create-new child (which carries `refParent` instead until its first save binds it).
+   * The parent frame's `workflow` block whose ref this frame descended through, so the breadcrumb badges this crumb
+   * with the sub-workflow's run status.
    */
   descendedVia?: string;
   /**
-   * The fetch this frame is waiting on, as the monotonic number the hook minted for it — `null` when the
-   * frame is not loading. `loadLanded` patches in **only** when the frame still holds this exact number,
-   * which is the whole staleness verdict: the author may have descended, popped or re-opened while the
-   * fetch was in flight, and a frame that moved on no longer holds the number.
-   *
-   * The hook supplies the number because only it knows a request was made; the **decision** it feeds
-   * (is this result still the one we want?) is here, in the reducer, beside the trail it depends on —
-   * rather than as a wall-clock pre-gate in the hook that the reducer then re-checked.
+   * The fetch this frame awaits, or `null` when idle. `loadLanded` patches in only while the number still matches,
+   * which is the whole staleness verdict.
    */
   loadSeq: number | null;
   /**
-   * The template this frame edits in **author mode** (#580, ADR 0049 decision 8): set when the author
-   * opened a `*.step-template.json` itself, `undefined` for a workflow file. The suffix of the opened
-   * file is the discriminator. A template frame is `written` (it is on disk) but holds no `path`: a
-   * template is id-addressed (ADR 0050), so it takes no lease, cannot launch, and saves through
-   * `PUT /v0/templates/:id` rather than the workflow write door.
+   * The template this frame edits in author mode; a template frame is `written` but path-less, so it takes no lease
+   * and saves by id (ADR 0050).
    */
   template?: TemplateSource;
 }
@@ -96,14 +63,9 @@ export const TEMPLATE_SUFFIX = ".step-template.json";
 /** The template an author-mode frame edits: its id (the route key), kind, file stem, and origin. */
 export interface TemplateSource {
   id: string;
-  /**
-   * Always `step` (ADR 0063): the frame's file is a synthetic workflow around the template's body;
-   * only `body` goes back into the envelope on save.
-   */
+  /** Always `step` (ADR 0063); only `body` goes back into the envelope on save. */
   kind: "step";
-  /** The file stem — the template's name, immutable through the write-back door. */
   name: string;
-  /** The template's description, kept so a template write-back rebuilds its envelope. */
   description: string;
   /** A shipped template: the write-back `PUT` answers `403`, so only the two Save-As doors work. */
   readOnly: boolean;
@@ -115,33 +77,17 @@ export type FrameState =
   | { phase: "fetch-error"; message: string }
   | { phase: "open"; result: OpenResult };
 
-/**
- * The undo/redo history of one frame (#389). The **present** is the frame's open buffer (`state.result.file`),
- * not held here; `past` and `future` are the snapshots either side of it. One entry per structural edit or
- * per **coalesced** field-edit run. It is **per-frame** and **survives a save** (the save advances the
- * baseline, not the history), so undoing past the save-point re-dirties the buffer. Redo is cleared by any
- * new edit.
- */
+/** The undo/redo history of one frame: snapshots either side of the present buffer, which is not held here.
+ * Per-frame, and survives a save, so undoing past the save-point re-dirties. Any new edit clears redo. */
 export interface History {
-  /** Buffers before the present, oldest first; the last is the next undo target. */
   past: WorkflowFile[];
-  /** Buffers ahead of the present (redo), next-redo first; cleared by any new edit. */
   future: WorkflowFile[];
-  /**
-   * The identity of the in-progress field-edit run (`edit-key.ts`), or `undefined` when the last commit
-   * closed a run. A field edit whose identity matches this folds into the current entry; any other
-   * identity, or a structural edit, opens one.
-   */
+  /** Identity of the in-progress field-edit run; a matching field edit folds into the current entry. */
   coalesceKey: EditKey | undefined;
 }
 
-/**
- * The state of the active frame's save (#371, ADR 0016) — a transient UI phase, not the dirty relation:
- * `saved` shows the confirmation after a `200`; `conflict` is the `412` stale-write; `error` is any other
- * write failure. A Delete of the open file rides the same phase: `deleting` while in flight, `deleted`
- * once the file is gone (the canvas is then empty), `delete-error` when the server refused it.
- * `saved-as-template` confirms a workflow-mode Save as template: a copy was created, the workflow stays open.
- */
+/** The active frame's save phase (ADR 0016), a transient UI phase rather than the dirty relation. A Delete
+ * rides the same phase; `saved-as-template` confirms a workflow-mode Save as template. */
 export type SaveState =
   | { phase: "idle" }
   | { phase: "saving" }
@@ -164,25 +110,20 @@ export function freshHistory(): History {
 }
 
 /**
- * The default `name` a from-scratch buffer opens with (#390). It slugs cleanly to a filename
- * (`^[a-z][a-z0-9-]*$`), so the first-save dialog can prefill `untitled.workflow.json`.
+ * The default `name` a from-scratch buffer opens with; it slugs cleanly so the first-save dialog can prefill
+ * `untitled.workflow.json`.
  */
 const NEW_FILE_DEFAULT_NAME = "untitled";
 
-/**
- * A fresh loading frame for `path`: no ETag, an empty save-point, and an empty history until it opens.
- * `descendedVia` carries the parent `workflow` block id through the load (a descent) and through a reload,
- * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open. `loadSeq` is the
- * fetch this frame awaits — see {@link Frame.loadSeq}.
- */
+/** A fresh loading frame for `path`: no ETag, an empty save-point and history until it opens. `descendedVia`
+ * carries the parent `workflow` block id through a descent or reload so the breadcrumb run badge survives. */
 export function loadingFrame(
   path: string | null,
   descendedVia: string | undefined,
   loadSeq: number,
   template?: TemplateSource,
 ): Frame {
-  // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
-  // a still-loading frame is not yet leased regardless. A template frame has no path, only its `template`.
+  // It targets an on-disk file, so it is `written`; a still-loading frame is not yet leased regardless.
   return {
     path,
     written: true,
@@ -197,12 +138,8 @@ export function loadingFrame(
   };
 }
 
-/**
- * A from-scratch buffer's frame: an empty, id-bearing **unwritten** workflow, with no ETag and no lease
- * until its first save. Its `baseline` is the empty string, so the buffer reads dirty from open through
- * `frameDirty`, which keeps Save live. `path` is `null` for a new **root** (#390), or the pre-assigned
- * child path for a create-new nested ref (#391); either way the frame is `written: false`.
- */
+/** A from-scratch buffer's frame: an empty, id-bearing **unwritten** workflow with no ETag and no lease
+ * until its first save. `baseline` is `""`, so it reads dirty from open, which keeps Save live. */
 export function scratchFrame(
   path: string | null = null,
   refParent?: { depth: number; nodeId: string },
@@ -219,87 +156,67 @@ export function scratchFrame(
     openedBytes,
     history: freshHistory(),
     refParent,
-    // A from-scratch buffer fetches nothing, so no in-flight result can ever answer for it.
     loadSeq: null,
   };
 }
 
 /**
- * The default workflow `name` for a create-new child, taken from its filename stem. It falls back to the
- * from-scratch default when a stem does not slug to a legal name (`^[a-z][a-z0-9-]*$`).
+ * The default workflow `name` for a create-new child, from its filename stem (falling back when the stem is not a
+ * legal name).
  */
 export function stemName(path: string): string {
   const stem = basename(path).replace(/\.workflow\.json$/i, "");
   return /^[a-z][a-z0-9-]*$/.test(stem) ? stem : NEW_FILE_DEFAULT_NAME;
 }
 
-/**
- * Advance a frame to a new **save-point** (ADR 0030): the buffer just written becomes the baseline and the
- * write route's fresh ETag becomes the next `If-Match`. `openedBytes` moves too, and `written` flips so a
- * first-saved child acquires its lease and launch enables.
- */
+/** Advance a frame to a new **save-point** (ADR 0030): the written bytes become the baseline, the fresh ETag
+ * the next `If-Match`, and `written` flips so a first-saved child acquires its lease and launch enables. */
 function withSavePoint(frame: Frame, etag: string, savedBytes: string): Frame {
   return { ...frame, written: true, etag, baseline: savedBytes, openedBytes: savedBytes };
 }
 
-/**
- * The opened result of a frame, or `null`. The one predicate — "the frame is open and its open succeeded" —
- * that the canvas, the toolbar, and the save path all ask, kept in one place so the call sites cannot drift.
- */
+/** The frame's opened result, or `null`; the one predicate the canvas, the toolbar and the save path all ask. */
 export function openedResultOf(frame: Frame | undefined): OpenedResult | null {
   if (frame && frame.state.phase === "open" && frame.state.result.status === "opened")
     return frame.state.result;
   return null;
 }
 
-/**
- * The one definition of **dirty** (ADR 0030): an opened frame's buffer is dirty when its canonical
- * serialization no longer equals the frame's `baseline`. Launch (ADR 0025), the Save button, and the dirty
- * badge all read this one content relation, so the three cannot drift.
- */
+/** The one definition of **dirty** (ADR 0030): an opened frame's canonical serialization no longer equals
+ * its `baseline`. Launch, the Save button and the dirty badge all read this, so the three cannot drift. */
 export function frameDirty(frame: Frame | undefined): boolean {
   const opened = openedResultOf(frame);
   if (!frame || !opened) return false;
   return canonicalSerialize(opened.file) !== frame.baseline;
 }
 
-/**
- * Would discarding this frame lose work? A frame dirty by {@link frameDirty}, except a from-scratch buffer
- * still exactly as it opened: it reads dirty only to keep Save live, and holds nothing the author made.
- */
+/** Would discarding this frame lose work? Dirty, except a from-scratch buffer still exactly as it opened
+ * (it reads dirty only to keep Save live, and holds nothing the author made). */
 export function frameHasUnsavedWork(frame: Frame | undefined): boolean {
   if (!frameDirty(frame)) return false;
   return frame!.written || canonicalSerialize(openedResultOf(frame)!.file) !== frame!.openedBytes;
 }
 
-/** Has the active frame an edit to undo (#389)? Drives the toolbar's Undo button and its keyboard peer. */
+/** Has the active frame an edit to undo? Drives the toolbar's Undo button and its keyboard peer. */
 export function frameCanUndo(frame: Frame | undefined): boolean {
   return frame !== undefined && frame.history.past.length > 0;
 }
 
-/** Has the active frame an undo to redo (#389)? Drives the toolbar's Redo button and its keyboard peer. */
+/** Has the active frame an undo to redo? Drives the toolbar's Redo button and its keyboard peer. */
 export function frameCanRedo(frame: Frame | undefined): boolean {
   return frame !== undefined && frame.history.future.length > 0;
 }
 
 // ── The session state and its actions ──────────────────────────────────────────────────────────────
 
-/** The whole open-and-navigate session state the reducer owns: the trail, the active frame, the save phase. */
-/**
- * The Designer's edit mode, picked with the toolbar's Workflow | Template switch. **Workflow** mode edits
- * `*.workflow.json` files; **Template** mode edits template sources (`*.step-template.json`) and
- * new, not-yet-saved templates. Switching mode clears the canvas.
- */
+/** The Designer's edit mode, picked with the toolbar's Workflow | Template switch. Switching clears the canvas. */
 export type EditMode = "workflow" | "template";
 
 export interface SessionState {
-  /** Which kind of file the session edits (see {@link EditMode}). */
   mode: EditMode;
-  /** The navigation **trail**, root file first (#367). The active frame is `frames[activeIndex]`, not the tip. */
+  /** The navigation **trail**, root file first. The active frame is `frames[activeIndex]`, not the tip. */
   frames: Frame[];
-  /** The index of the active frame in `frames` — what the canvas renders and every edit/save op targets. */
   activeIndex: number;
-  /** The active frame's save state — drives the save button and the stale-write conflict banner. */
   saveState: SaveState;
 }
 
@@ -312,58 +229,42 @@ export const initialSessionState: SessionState = {
 };
 
 /**
- * Every transition the session makes. The reducer owns each **decision** — whether a descent re-enters
- * the frame ahead or loads fresh, whether a reload applies at all, whether a landed fetch is still the
- * one wanted, which save door the active frame takes ({@link planSave}) — and the hook performs the I/O
- * those decisions call for: it dispatches the synchronous action, reads the state it produced, and
- * fetches when that state asks for a fetch. `loadSeq` is the request's own number, minted by the hook
- * because only it knows a request was made; the verdict on it is here.
+ * Every transition the session makes. The reducer owns each **decision**; the hook performs the I/O those call for.
  */
 export type SessionAction =
   /** Open `path` as a fresh root, discarding any current stack — one loading frame, active index 0. */
   | { type: "openLoading"; path: string; loadSeq: number }
-  /**
-   * Open a `*.step-template.json` itself as a fresh root in **author mode** (#580), discarding any
-   * current stack — one loading template frame. Its read lands through `loadLanded` with a `null` path.
-   */
+  /** Open a `*.step-template.json` as author mode's root, discarding any current stack. */
   | { type: "openTemplateLoading"; template: TemplateSource; loadSeq: number }
-  /** Start a from-scratch buffer as a fresh root (#390), discarding any current stack. */
+  /** Start a from-scratch buffer as a fresh root, discarding any current stack. */
   | { type: "newFile" }
-  /**
-   * Start a new, unsaved template in template mode, discarding any current stack: an empty buffer with no
-   * template yet. Its kind and name are picked at its first save.
-   */
+  /** Start a new, unsaved template in template mode, discarding any current stack. */
   | { type: "newTemplate" }
   /** Switch the edit mode, discarding any current stack: the canvas is empty in the new mode. */
   | { type: "switchMode"; mode: EditMode }
   /**
-   * Descend across the active file's `workflow`-ref. The reducer decides the whole shape of it: the
-   * target path resolves from the active frame's own path, a frame just ahead that already holds it is
-   * **re-entered** (a live, possibly-dirty child is not reloaded out from under the author), and
-   * anything else truncates the forward trail and pushes a loading frame (#367). A frame with no path
-   * (a from-scratch root) has no ref to resolve, so the action is a no-op.
+   * Descend across the active file's `workflow`-ref: re-enter a frame just ahead that already holds the
+   * target (a live, possibly-dirty child is not reloaded out from under the author), otherwise truncate the
+   * forward trail and push a loading frame. A path-less root has no ref to resolve, so the action is a no-op.
    */
   | { type: "descend"; ref: string; nodeId: string; loadSeq: number }
-  /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId` (#391). */
+  /** Descend into a fresh, unwritten, path-less create-new child linked back to `parentNodeId`. */
   | { type: "descendNewUnbound"; parentNodeId: string }
   /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is discarded. */
   | { type: "goTo"; index: number }
-  /** Commit an edit to the active frame's opened file, folding a run of field edits that share an identity (#389). */
+  /** Commit an edit to the active frame's opened file, folding a run of field edits that share an identity. */
   | { type: "applyEdit"; next: WorkflowFile; key?: EditKey }
-  /** Undo the active frame's last edit (#389). A no-op when its past stack is empty. */
+  /** Undo the active frame's last edit. A no-op when its past stack is empty. */
   | { type: "undo" }
-  /** Redo the active frame's last undo (#389). A no-op when its future stack is empty. */
+  /** Redo the active frame's last undo. A no-op when its future stack is empty. */
   | { type: "redo" }
   /**
-   * Re-fetch the active frame from disk, discarding its buffer for the on-disk bytes (#371). The reducer
-   * decides whether anything is reloadable — an unwritten buffer has no on-disk bytes, and a fetch for a
-   * 404 would throw the authored buffer away — so the hook only fetches when the state asks.
+   * Re-fetch the active frame from disk; a no-op when nothing is reloadable (an unwritten buffer, or a fetch that
+   * would discard the authored buffer).
    */
   | { type: "reload"; loadSeq: number }
-  /**
-   * A file fetch-and-open landed. Patched in **only** when the frame at `depth` still awaits `loadSeq` —
-   * the pure staleness guard that drops a result whose destination the author already left (or replaced).
-   */
+  /** A file fetch-and-open landed. Patched in only when the frame at `depth` still awaits `loadSeq` — the pure
+   * staleness guard that drops a result whose destination the author already left. */
   | {
       type: "loadLanded";
       depth: number;
@@ -376,27 +277,17 @@ export type SessionAction =
     }
   /** A `PUT` is in flight — the transient `saving` phase. */
   | { type: "saveStarted" }
-  /**
-   * A written file's (or create-new child's) save succeeded: advance its save-point, guarded on the frame at
-   * `depth` still holding `path`. Always sets the `saved` phase.
-   */
+  /** A written file's save succeeded: advance its save-point, guarded on the frame at `depth` still holding `path`. */
   | { type: "saved"; depth: number; path: string; etag: string; savedBytes: string }
   /**
-   * A from-scratch root's first save succeeded (#390): the frame adopts the server `relativePath`, drops its
-   * `refParent`, and back-fills a create-new parent's `workflow` node `ref` (#391). Guarded on the frame at
-   * `depth` still being unwritten and path-less. Always sets the `saved` phase.
+   * A from-scratch root's first save succeeded: the frame adopts the server `relativePath`, drops its `refParent`,
+   * and back-fills the parent's `ref`.
    */
   | { type: "newFileSaved"; depth: number; etag: string; savedBytes: string; relativePath: string }
-  /**
-   * An author-mode write-back succeeded (#580): advance the save-point of the frame at `depth`, guarded on
-   * it still editing template `id`. Always sets the `saved` phase.
-   */
+  /** An author-mode write-back succeeded, guarded on the frame at `depth` still editing template `id`. */
   | { type: "templateSaved"; depth: number; id: string; etag: string; savedBytes: string }
-  /**
-   * An author-mode Save-As created a new template (#580): the frame at `depth`, if it still edits
-   * `fromId`, now edits the new `template` and its `file` (the fresh workflow id), clean at `etag`. The
-   * history starts fresh — an undo past the Save-As would restore the old template's id.
-   */
+  /** An author-mode Save-As created a new template: the frame now edits it and its fresh file, clean at `etag`.
+   * The history starts fresh — an undo past the Save-As would restore the old template's id. */
   | {
       type: "templateSavedAs";
       depth: number;
@@ -405,11 +296,7 @@ export type SessionAction =
       file: WorkflowFile;
       etag: string;
     }
-  /**
-   * A workflow-mode Save as… wrote a copy to a new `*.workflow.json` at `relativePath`. If the frame at
-   * `depth` still edits the file with id `fromId`, the session becomes that saved file as a fresh root,
-   * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
-   */
+  /** A workflow-mode Save as… wrote a copy at `relativePath`: the session becomes that saved file as a fresh root. */
   | {
       type: "detachedSaved";
       depth: number;
@@ -418,18 +305,15 @@ export type SessionAction =
       relativePath: string;
       etag: string;
     }
-  /**
-   * The root file named by `plan` was deleted. If the root frame still holds it, the stack clears to an
-   * empty canvas in the same mode, in the `deleted` phase; otherwise only the phase resets.
-   */
+  /** The root file named by `plan` was deleted: clear to an empty canvas if still open, else only reset the phase. */
   | { type: "deleted"; plan: DeletePlan }
-  /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
+  /** Set the transient save phase directly. */
   | { type: "setSaveState"; saveState: SaveState };
 
 /** The save state with nothing in flight and nothing to report. */
 export const IDLE: SaveState = { phase: "idle" };
 
-/** The one pure `(state, action) => state` behind the whole session (see the module header). */
+/** The one pure `(state, action) => state` behind the whole session. */
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
     case "openLoading":
@@ -474,15 +358,13 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // No active frame, or a from-scratch one with no path: there is no file to resolve the ref against.
       if (!active || active.path === null) return state;
       const path = resolveRefPath(active.path, action.ref);
-      // Re-entry down the same trail: the frame just ahead already holds this target, so re-enter it —
-      // the author returns to its live buffer (a dirty descended child is not reloaded out from under
-      // them), and the reused frame keeps the `descendedVia` it was first loaded with.
+      // Re-entry down the same trail: the frame just ahead already holds the target, so return to its live
+      // buffer rather than reloading a dirty child out from under the author.
       const ahead = state.frames[depth + 1];
       if (ahead && ahead.path === path) {
         return { ...state, activeIndex: depth + 1, saveState: IDLE };
       }
-      // Otherwise truncate the forward trail and load the target fresh below the active frame. `nodeId`
-      // is the `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
+      // Otherwise truncate the forward trail and load fresh; `nodeId` feeds the breadcrumb's run badge.
       return {
         mode: state.mode,
         frames: [
@@ -518,11 +400,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
       if (!frame || !opened) return { ...state, saveState: IDLE };
-      // Record an undo entry (#389). A field edit whose identity matches the run in progress **folds** —
-      // the present buffer is the run's intermediate, dropped so undo jumps to where the run began. Any
-      // other identity, or a structural edit (none), pushes the present as a new entry. Either way redo
-      // is cleared. The identity is a value (`edit-key.ts`), compared structurally — the pane cannot
-      // collide two fields into one entry by minting the same string for both.
+      // A field edit whose identity matches the run in progress folds — undo jumps to where the run began.
+      // Any other edit pushes the present as a new entry; either way redo is cleared.
       const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
       return withBuffer(state, depth, frame, action.next, {
@@ -536,14 +415,12 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      // Nothing to undo is a true no-op: returning `state` keeps a standing "Saved"/conflict phase, which
-      // the hook used to guarantee by pre-checking the stack before dispatching.
+      // Nothing to undo is a true no-op, keeping a standing "Saved"/conflict phase.
       if (!frame || !opened || frame.history.past.length === 0) return state;
       const past = frame.history.past.slice();
       const restored = past.pop()!;
-      // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
-      // baseline, so an undo past the save-point re-dirties the buffer for free (ADR 0030). Close any
-      // coalesce run so a following field edit opens a fresh entry rather than folding into the undone one.
+      // The present moves to the redo stack; clean re-derives against the unchanged baseline, so an undo
+      // past the save-point re-dirties for free (ADR 0030). Closing the coalesce run opens a fresh entry next.
       return withBuffer(state, depth, frame, restored, {
         past,
         future: [opened.file, ...frame.history.future],
@@ -568,9 +445,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "reload": {
       const depth = state.activeIndex;
       const frame = state.frames[depth];
-      // An unwritten buffer (a from-scratch root, or a create-new child) has no on-disk bytes to
-      // re-fetch — reload is a no-op for it, and would discard the authored buffer for a 404. A template
-      // frame has no path but is on disk, so it re-reads by its template id.
+      // An unwritten buffer has no on-disk bytes to re-fetch; a template frame has no path but re-reads by id.
       if (!frame || !frame.written || (frame.path === null && !frame.template)) return state;
       const frames = state.frames.slice();
       // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
@@ -580,9 +455,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
 
     case "loadLanded": {
       const { depth, loadSeq } = action;
-      // The pure staleness guard: patch in only when the frame at `depth` still awaits this exact fetch.
-      // A frame the author left, replaced, or that has already landed holds a different number (a landed
-      // or from-scratch frame holds `null`), so its result is dropped rather than patched over newer state.
+      // The staleness guard: patch in only when the frame at `depth` still awaits this exact fetch; a frame
+      // the author left, replaced, or that already landed holds a different number, so its result is dropped.
       if (state.frames[depth]?.loadSeq !== loadSeq) return state;
       const frames = state.frames.slice();
       frames[depth] = {
@@ -593,8 +467,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
         baseline: action.baseline,
         openedBytes: action.openedBytes,
         history: freshHistory(),
-        // Carry the descent origin across the fetch, so the opened child keeps its breadcrumb run badge,
-        // and the template an author-mode read was for.
+        // Carry the descent origin and template across the fetch.
         descendedVia: frames[depth]?.descendedVia,
         loadSeq: null,
         template: frames[depth]?.template,
@@ -605,9 +478,8 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "saveStarted":
       return { ...state, saveState: { phase: "saving" } };
 
-    // A save that lands advances the frame only if it is still the one that was written — an author
-    // who navigated away mid-save must not have another frame re-based. Each case states what "still
-    // the saved frame" means for its door; `landSave` does the rest.
+    // A landing save advances the frame only if it is still the one written; each case below states what
+    // "still the saved frame" means for its door, and `landSave` does the rest.
     case "saved":
       return landSave(
         state,
@@ -695,8 +567,8 @@ function withBuffer(
 }
 
 /**
- * Land a save on the frame at `depth`. The phase is `saved` either way — the write succeeded — but
- * `land` runs only while `stillSaved` holds for the frame there now.
+ * Land a save on the frame at `depth`; the phase is `saved` either way, but `land` runs only while `stillSaved`
+ * holds.
  */
 function landSave(
   state: SessionState,
@@ -731,10 +603,8 @@ function savedBuffer(
 }
 
 /**
- * A create-new child's first save (#391): the child adopts its server path and drops its `refParent`,
- * and the parent's `workflow` node gets its `ref` back-filled from where the child was actually saved.
- * The parent buffer moves off its baseline, so it reads dirty and is saved like any edit. A parent frame
- * or node that is gone is skipped silently, leaving the child standing on its own.
+ * A create-new child's first save: the child adopts its server path and drops its `refParent`, and the parent's
+ * `workflow` node gets its `ref` back-filled.
  */
 function landNewFile(
   state: SessionState,
@@ -772,21 +642,9 @@ function landNewFile(
 
 // ── The save doors, as decisions the hook performs ──────────────────────────────────────────────────
 
-/**
- * What the Save button would do with the active frame, or `null` when it does nothing. The door is the
- * session's own choice, kept here beside the frame fields it reads rather than re-derived in the hook:
- *
- * - **overwrite** — a written file saves under its `If-Match` ETag (ADR 0016);
- * - **create** — an unwritten create-new child creates **exclusively** at its pre-assigned path (ADR
- *   0016), so the server refuses an existing path rather than clobbering it.
- *
- * - **template** — an author-mode frame writes back to its own template by id (`PUT /v0/templates/:id`,
- *   #580) under the read's `If-Match`; a shipped template answers `403`.
- *
- * A from-scratch **root** (unwritten, no path) is `null`: it picks its path in the first-save dialog,
- * which is {@link planNewFileSave}. The `412` each door earns differs for the same reason: an overwrite
- * is a stale-write **conflict** to reload from, a create is a path **collision** to retarget.
- */
+/** What the Save button would do, or `null`. The door is the session's own choice: **overwrite** under the
+ * read's `If-Match` ETag (ADR 0016), **create** exclusively at the pre-assigned path, or **template**
+ * write-back by id (`PUT /v0/templates/:id`). A from-scratch root picks its path in the first-save dialog. */
 export type SavePlan =
   | {
       kind: "overwrite";
@@ -832,17 +690,9 @@ export function planSave(state: SessionState): SavePlan | null {
     : { kind: "create", depth, path: frame.path, file: opened.file, ifMatch: undefined };
 }
 
-/**
- * What the Delete button would remove, or `null` when it does nothing. Delete acts on the **root** file
- * only (the breadcrumb's first entry, while it is active), so a nested file is deleted by opening it:
- *
- * - **workflow** — a written file removed through `DELETE /v0/workflows/file` under the read's `If-Match`
- *   ETag, so it never removes bytes the author has not seen (a refused file can be deleted too);
- * - **template** — a user template removed through `DELETE /v0/templates/:id`. A shipped template is
- *   read-only, so it has no plan.
- *
- * A new buffer that was never saved has nothing on disk, so it has no plan either.
- */
+/** What the Delete button would remove, or `null`. Delete acts on the **root** file only: a written file
+ * through `DELETE /v0/workflows/file` under the read's `If-Match`, a user template through
+ * `DELETE /v0/templates/:id`. A shipped template and a never-saved buffer have no plan. */
 export type DeletePlan =
   | { kind: "workflow"; path: string; ifMatch: string }
   | { kind: "template"; id: string; name: string };
@@ -869,17 +719,13 @@ export function planNewFileSave(state: SessionState): NewFileSavePlan | null {
   const depth = state.activeIndex;
   const frame = state.frames[depth];
   const opened = openedResultOf(frame);
-  // Only a from-scratch **root** buffer (unwritten, no path) picks its path in the dialog; a create-new
-  // child (unwritten, path pre-assigned) and a saved frame both go through `planSave`.
+  // Only a from-scratch root picks its path here; a create-new child and a saved frame go through `planSave`.
   if (!frame || !opened || frame.written || frame.path !== null) return null;
   return { depth, file: opened.file };
 }
 
-/**
- * What the two author-mode Save-As doors (#580) start from: the active template frame's buffer and the
- * template it came from, or `null` when the active frame is not an opened template source. Save-As
- * template and Save-as-workflow each derive their own new identity from `file`.
- */
+/** What the two author-mode Save-As doors start from: the active template frame's buffer and its source, or
+ * `null`. Each door derives its own new identity from `file`. */
 export interface TemplateSaveAsPlan {
   depth: number;
   template: TemplateSource;
@@ -903,8 +749,8 @@ export function planWorkflowSaveAs(state: SessionState): NewFileSavePlan | null 
 }
 
 /**
- * What a new template's first save starts from: the active buffer in template mode that holds no
- * template yet, or `null`. The save dialog picks its kind and name.
+ * What a new template's first save starts from: the active template-mode buffer that holds no template yet, or
+ * `null`.
  */
 export function planNewTemplateSave(state: SessionState): NewFileSavePlan | null {
   const depth = state.activeIndex;

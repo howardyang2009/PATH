@@ -10,52 +10,26 @@ import {
 import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin/scan.js";
 
 /**
- * One workflow, loaded: the entry file itself, where it sits, and every file it reaches.
- *
- * **What this interface exists to own.** It used to be `{ rootPath, files }`, and every caller
- * re-derived the same three facts from the pair: the root file (`files.get(rootPath)`, plus a
- * "missing from the loaded tree" branch none of them could reach), the directory the engine
- * resolves nested `ref`s and binary `cwd`s against (`dirname(rootPath)`), and the store-relative
- * path a root run records as provenance (`relative(storeDir, rootPath)`). Eight sites did it —
- * `cli.ts`, three `@path/server` routes, and four tests — which is what made the project-dir /
- * workflow-dir confusion of #59 available to be made at all.
- *
- * Everything derivable from the load is derived here, once. `files` stays public because the
- * engine genuinely indexes it (`RunOptions.files`, a `workflow` step resolving its `ref`), and
- * `rootPath` because discovery compares it against paths of its own (`get-workflows.ts`).
+ * One workflow, loaded: the entry file itself, where it sits, and every file it reaches. Everything
+ * derivable from the load is derived here, once, so no caller re-derives the root file, the directory
+ * refs resolve against, or the store-relative provenance path.
  */
 export interface LoadedWorkflow {
-  /** Absolute path of the entry file passed to `loadWorkflowTree`. */
   rootPath: string;
-  /**
-   * The parsed entry file — where a run starts. Guaranteed present: a load that could not read or
-   * parse the entry file fails, so no caller carries a missing-root branch of its own.
-   */
   rootFile: WorkflowFile;
   /**
-   * The entry file's **own** directory — what the engine resolves nested `workflow` refs and binary
-   * `cwd`s against (`Project.run`'s `workflowDir`). Never the project directory, whose `.path/` is
-   * a separate question: passing that here is what broke nested refs in #59, and `-C` relocating a
-   * store must not re-root the workflow (ADR 0005).
+   * The entry file's **own** directory, never the project directory: `-C` relocating a store must not
+   * re-root the workflow (ADR 0005).
    */
   workflowDir: string;
-  /** Every file reachable from the root via `workflow` step refs, keyed by absolute path. */
   files: Map<string, WorkflowFile>;
   /**
-   * The frozen step-plugin registry this load scanned to build the schema (ADR 0019 sub-15) — the one
-   * fact the load derived that execution also needs and used to re-derive. `runWorkflow` takes it as
-   * `RunOptions.registry`, so a run dispatches against exactly the registry its file was validated
-   * against: one folder scan per run, and no window in which an edit between load and run makes the
-   * validity verdict and the dispatch disagree. It lives here beside `files` and `workflowDir` — the
-   * rest of what the load derives once — rather than being scanned a second time downstream.
+   * The frozen registry this load scanned to build the schema (ADR 0019 sub-15). `runWorkflow` takes it
+   * as `RunOptions.registry`, so a run dispatches against exactly the registry its file was validated
+   * against, with no window in which an edit between load and run splits verdict from dispatch.
    */
   registry: LoadedStepPluginRegistry;
-  /**
-   * The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (#202,
-   * ADR 0006), which is how a central `-C` store segments runs by the workflow that produced them.
-   * A call rather than a field because the store dir is the caller's (a CLI `-C`, the server's
-   * project root) while the absolute path it is measured from is the load's.
-   */
+  /** The entry file's path relative to `storeDir` — the root run's `workflow_path` provenance (ADR 0006). */
   storeRelativePath(storeDir: string): string;
 }
 
@@ -63,9 +37,8 @@ export type LoadResult =
   | { success: true; workflow: LoadedWorkflow }
   | { success: false; errors: string[] };
 
-// A `workflow` step's ref can sit inside any nesting of control blocks, so this walks the whole
-// body — using @path/schema's descent rather than restating it, which is what let a new block type
-// silently hide a nested file from the loader (#70).
+// A `workflow` step's ref can sit at any nesting depth, so this walks the whole body with
+// @path/schema's descent; restating the descent would let a new block type hide a file.
 function collectWorkflowRefs(nodes: WorkflowNode[]): string[] {
   const refs: string[] = [];
   for (const node of walkNodes(nodes)) {
@@ -78,15 +51,10 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
   const files = new Map<string, WorkflowFile>();
   const errors: string[] = [];
 
-  // The one freeze point (ADR 0018 sub-7, ADR 0019 sub-15): scan the plugin folder into a registry and
-  // build the file schema once, before the first parse. A broken plugin folder throws here and fails
-  // the whole load naming the folder and the reason (ADR 0019 sub-16) — it is not caught into a
-  // per-file error, because a skipped plugin is indistinguishable from a genuinely absent type. The
-  // `visit()` recursion below stays synchronous — `readFileSync`/`JSON.parse` unchanged.
-  //
-  // The registry is the *sole* freeze point for dispatch too: it rides out on `LoadedWorkflow.registry`
-  // and `runWorkflow` executes against it (`RunOptions.registry`), so a run never re-scans the folder
-  // and can never dispatch against a registry other than the one that validated its file.
+  // The one freeze point (ADR 0019 sub-15): scan the plugin folder into a registry and build the file
+  // schema once, before the first parse. A broken plugin folder fails the whole load naming the folder
+  // and the reason (ADR 0019 sub-16) rather than becoming a per-file error, because a skipped plugin is
+  // indistinguishable from a genuinely absent type. `RunOptions.registry` is the same frozen registry.
   const registry = await scanStepPlugins();
   const schema = makeWorkflowFileSchema(registry);
 
@@ -126,9 +94,6 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
     return { success: false, errors };
   }
 
-  // `visit` either records the entry file or pushes an error, and every error path returned above —
-  // so this is unreachable. It stays as the *one* place that says so: it used to be a branch each
-  // caller wrote out, guarding against a state the loader had already ruled out for them.
   const rootFile = files.get(rootPath);
   if (!rootFile) {
     return {

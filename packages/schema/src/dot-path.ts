@@ -1,15 +1,8 @@
 import type { JsonValue } from "./json-value.js";
 
-/**
- * Shared dot-path grammar for both `${}` interpolation (workflow-format-v0.md §5) and the
- * condition language (§9): `root(.segment)*`, segments are identifiers or numeric array indices,
- * no wildcards.
- *
- * Two operations over one grammar, as siblings: `checkDotPath` decides whether a path is *writable*
- * at load time, `resolveDotPath` walks it against real values at run time. They were previously in
- * different packages, and the walk existed twice in the engine — once returning a result for the
- * condition evaluator, once throwing for interpolation — wording identical failures differently.
- */
+/** Shared dot-path grammar for `${}` interpolation (docs/format/workflow-format.md §6) and the condition
+ * language (§9): `root(.segment)*`, identifier or numeric segments, no wildcards. `checkDotPath`
+ * decides load-time writability; `resolveDotPath` walks real values over the same grammar. */
 const SEGMENT_PATTERN = /^(?:[A-Za-z_][A-Za-z0-9_-]*|\d+)$/;
 
 export interface DotPathCheckResult {
@@ -41,23 +34,13 @@ export function checkDotPath(path: string, allowedRoots: readonly string[]): Dot
   return { ok: true };
 }
 
-/**
- * The outcome of walking a path against real values. `found: false` is not necessarily an error —
- * the `exists` condition treats an unresolvable path as a plain `false` (mvp spec §5.2) — so the
- * distinction between "absent" and "a problem" is the caller's to make. `error` always says why the
- * walk stopped, for the caller that does treat it as one.
- */
+/** The walk's outcome. `found: false` is not necessarily an error — the `exists` condition treats an
+ * unresolvable path as a plain `false` (mvp spec §5.2) — so the caller decides; `error` says why. */
 export type DotPathResolution = { found: true; value: JsonValue } | { found: false; error: string };
 
-/**
- * Walks a validated dot-path against a set of roots. Array segments must be in-bounds integer
- * indices; object segments must be own properties, so an inherited or prototype key never resolves.
- *
- * The path's *syntax* is assumed valid (`checkDotPath`, at load time); what this reports on is
- * whether the values are there. `error` names the *segment* that stopped the walk and not the whole
- * path, because the caller already knows the path and frames the failure its own way — the
- * condition evaluator as a trace leaf, interpolation as a thrown `InterpolationError`.
- */
+/** Walks a validated path against `roots`: array segments must be in-bounds integer indices, object
+ * segments own properties, so an inherited key never resolves. `error` names the segment that stopped
+ * the walk, not the whole path — the caller already knows the path and frames the failure itself. */
 export function resolveDotPath(
   roots: { readonly [root: string]: JsonValue },
   path: string,

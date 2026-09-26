@@ -1,13 +1,8 @@
 import type { LogEvent } from "@path/schema";
 import { nodeEventLabel } from "./node-label.js";
 
-/**
- * One log event as one line of the narrative — the presentation half of the log stream (the ordering
- * and dedupe are the view-model's job, on the other side of the seam). Every branch is exhaustive
- * over the `LogEvent` union so a new event type is a compile error here, not a blank row.
- *
- * Condition traces are deliberately not rendered: a `trace` is a per-predicate record (CONTEXT.md,
- * *Trace*) that does not fit one dense line. The verdict is what a watcher reads in the stream.
+/** One log event as one line of the narrative; every branch is exhaustive over the `LogEvent` union, so a new event
+ * type is a compile error. A `trace` is per-predicate and does not fit one dense line, so it is never rendered.
  */
 export function eventMessage(event: LogEvent): string {
   const label = nodeEventLabel(event.node_id, event.node_name);
@@ -38,7 +33,7 @@ export function eventMessage(event: LogEvent): string {
       return `join ${label} applied · branches ${event.branches.join(", ")}${published}`;
     }
     case "run-cancelled":
-      // The operator cause carries no sibling run (#56); naming one for it would print a lie.
+      // The operator cause carries no sibling run; naming one for it would print a lie.
       return event.cause === "operator"
         ? `${label} cancelled by the operator`
         : `${label} cancelled · cause ${event.cause_run_id}`;
@@ -56,8 +51,7 @@ export function eventMessage(event: LogEvent): string {
     case "goto-exhausted":
       return `goto ${label} exhausted · max_jumps ${event.max_jumps} · target ${event.target_node_name}`;
     case "reuse-marker":
-      // A resumed run reused this node's recorded work (#172); the pointer is where the real record
-      // lives, so a watcher can follow it rather than hit a silent gap in the narrative.
+      // A resumed run reused this node's recorded work; the pointer is where the real record lives.
       return `${label} reused from ${event.original_run_id}`;
     default: {
       // Exhaustiveness guard: adding a member to the union fails to compile until it is handled.

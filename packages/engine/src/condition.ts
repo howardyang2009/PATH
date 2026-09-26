@@ -11,10 +11,9 @@ import {
 import { z } from "zod";
 
 /**
- * The condition evaluator (mvp spec §5.2–5.4, §8.1; format §9). Evaluates a zod-validated
- * predicate tree against the roots `context`/`output` with **strict** error semantics, producing
- * a full **trace**: the tree annotated per node with its dot-path, outcome (`true`/`false`/`error`
- * + message), and the actual value read (CONTEXT.md "Trace").
+ * The condition evaluator (mvp spec §5.2–5.4, §8.1). Evaluates a predicate tree against the roots
+ * `context`/`output`, producing a full per-node trace: dot-path, outcome (`true`/`false`/`error` +
+ * message) and the value read. Each leaf's value is post-masking (§8.1).
  *
  * Strict semantics — the distinction between a `false` and an `error` leaf:
  * - `exists` is the *only* predicate for which an unresolvable path is not an error: a missing path
@@ -25,10 +24,6 @@ import { z } from "zod";
  *   and `valid-json` require a string, `range` requires a number.
  * - Errors dominate combination: an `all`/`any` with any `error` child is itself `error`, and
  *   `not` of an `error` is `error`. An overall `error` fails the condition (spec §5.6).
- *
- * The `value` recorded in each leaf is "post-masking" per §8.1 — true since #62, which scrubs traces
- * along with every other observation at the engine's emit. Before that the trace-bearing hooks were
- * among the eight the masking wrapper never implemented, so no run masked one.
  */
 
 // The trace *shape* lives in @path/schema (trace.ts) — it rides the log-event stream, so a reader
@@ -182,9 +177,9 @@ export function evaluateCondition(
 }
 
 /**
- * A concise human reason a condition did not pass, pulled from the trace — the first `error`
- * leaf's message (strict-error case), else the first `false` leaf's, else a generic fallback.
- * Used to phrase checkpoint/branch run-failure messages.
+ * A concise human reason a condition did not pass, pulled from the trace — the first `error` leaf's
+ * message (strict-error case), else the first `false` leaf's, else a generic fallback. Phrases the
+ * checkpoint and branch run-failure messages.
  */
 export function describeConditionFailure(trace: Trace): string {
   const errorLeaf = findLeaf(trace, "error");

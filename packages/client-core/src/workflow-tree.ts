@@ -1,9 +1,6 @@
-// The folder tree behind every workflow picker (#359 shared seam). `GET /v0/workflows` returns a
-// flat list, but each `relative_path` is a real filesystem path, so a nested workflow lives inside
-// its folders. Both the Viewer's launch panel and the Designer's open-a-workflow dialog present the
-// same tree — a level shows only its own children (the files that sit there, plus the folders that
-// hold a workflow below) and folders open one-per-level as an accordion. The model here is pure:
-// each surface keeps only its own rows and click wiring on the React side.
+// The folder tree behind every workflow picker: `GET /v0/workflows` returns a flat list, and each
+// `relative_path` is a real filesystem path, so a nested workflow lives inside its folders. A level
+// shows only its own children; folders open one per level as an accordion.
 
 import type { WorkflowSummary } from "@path/schema";
 
@@ -81,12 +78,9 @@ export function countWorkflowLeaves(folder: WorkflowTreeFolder): number {
   );
 }
 
-/**
- * Accordion open-state, one open folder per level. `openFolder` is the deepest open path; a folder
- * is expanded when it *is* that path or a prefix of it, so opening a sibling collapses the previous
- * one on its own. {@link nextOpenFolder} toggles a folder: a click on the open chain walks back to
- * its parent (collapsing it and everything under it), any other click opens the clicked folder.
- */
+/** Accordion open-state: a folder is expanded when `openFolder` is it or a prefix of it, so one folder
+ * stays open per level. {@link nextOpenFolder} toggles: a click on the open chain walks back to its
+ * parent, any other opens the clicked folder. */
 export function isFolderOnOpenChain(openFolder: string | null, folderPath: string): boolean {
   return openFolder === folderPath || (openFolder?.startsWith(`${folderPath}/`) ?? false);
 }

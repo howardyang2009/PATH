@@ -1,12 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
-/**
- * The one drag-set-dimension seam behind every resizable region of the Designer (the app shell's rails, the
- * run dock's height, and its column widths). It has two exports: `beginDrag`, the shared pointer-drag
- * **transport**, and `useDragSize`, a single persisted, clamped, keyboard-nudgeable scalar built on it. The
- * paired-pane hook (`usePaneWidths`, `use-pane-resize.ts`) drives its own coupled clamp but reuses the same
- * `beginDrag` transport, so the pointer-capture hardening below lives in exactly one place.
- */
+/** The one drag-set-dimension seam behind every resizable region: `beginDrag`, the shared pointer-drag
+ * transport, and `useDragSize`, a persisted, clamped, keyboard-nudgeable scalar built on it. */
 
 /** What a caller feeds `beginDrag`: how a move maps to a size, the teardown, and the body cursor to show. */
 export interface DragTransport {
@@ -14,19 +9,13 @@ export interface DragTransport {
   onMove: (e: PointerEvent) => void;
   /** Run once when the drag ends (pointer up) or the tree unmounts mid-drag — clear the caller's drag ref. */
   onEnd?: () => void;
-  /** The body cursor held for the drag's duration. */
   cursor: "col-resize" | "row-resize";
 }
 
-/**
- * Start a pointer drag from a separator's `pointerdown` and return an idempotent `stop`. It **captures the
- * pointer on the handle** so later moves keep reaching us even when the cursor crosses a region whose own
- * handlers `stopPropagation` on `pointermove` (the canvas), or leaves the element entirely — the window
- * listeners are the transport, and capture is what keeps them fed. Both the `setPointerCapture` and its
- * release are guarded: a throw (a stale pointer id on some browsers) must not abort the drag setup or its
- * teardown. The caller keeps the returned `stop` in a ref and calls it on unmount, so a drag interrupted by
- * an unmount does not leak its `window` listeners.
- */
+/** Start a pointer drag from a separator's `pointerdown` and return an idempotent `stop`. It **captures
+ * the pointer on the handle** so later moves keep reaching us even when the cursor crosses a region whose
+ * handlers `stopPropagation` on `pointermove` (the canvas), or leaves the element. Both `setPointerCapture`
+ * and its release are guarded, so a throw (a stale pointer id) cannot abort setup or teardown. */
 export function beginDrag(e: React.PointerEvent, t: DragTransport): () => void {
   const el = e.currentTarget as HTMLElement;
   // `preventDefault` on the caller's `pointerdown` can suppress the click's own focus, so focus the handle
@@ -62,19 +51,15 @@ export function beginDrag(e: React.PointerEvent, t: DragTransport): () => void {
 }
 
 export interface DragSizeOptions {
-  /** `localStorage` key the size persists under, as a plain number. */
   storageKey: string;
-  /** The size used when nothing valid is stored. */
   defaultSize: number;
   /** Floor the size may not shrink below (also the `aria-valuemin`). */
   min: number;
   /** Ceiling the size may not grow past — a number, or a function read live (e.g. off `window.innerHeight`). */
   max: number | (() => number);
-  /** The drag axis: `"x"` reads `clientX`, `"y"` reads `clientY`. */
   axis: "x" | "y";
   /** The pointer-delta sign that grows the size: `+1` handle-on-right/bottom, `-1` handle-on-left/top. */
   grow: 1 | -1;
-  /** The body cursor for the drag. */
   cursor: "col-resize" | "row-resize";
   /** The separator's `aria-orientation` — a vertical bar resizes a width, a horizontal bar a height. */
   ariaOrientation: "vertical" | "horizontal";
@@ -94,7 +79,6 @@ export interface DragSizeHandleProps {
 export interface DragSize {
   /** The live size, in px; feed it to the region's inline `width`/`height`. */
   size: number;
-  /** The drag/keyboard props for the region's separator. */
   handleProps: DragSizeHandleProps;
 }
 
@@ -112,11 +96,8 @@ function loadSize(key: string, defaultSize: number, min: number): number {
   return raw >= min ? raw : defaultSize;
 }
 
-/**
- * A single drag-set dimension: a persisted, clamped size a separator resizes by pointer drag or arrow keys.
- * The run dock's height is one; the app shell and the run dock's columns use the paired `usePaneWidths`
- * instead, which composes the same `beginDrag` transport for its coupled two-pane clamp.
- */
+/** A single drag-set dimension: a persisted, clamped size a separator resizes by pointer drag or arrow
+ * keys. The run dock's height is one; the paired columns use `usePaneWidths` over the same transport. */
 export function useDragSize(opts: DragSizeOptions): DragSize {
   const { storageKey, defaultSize, min, max, axis, grow, cursor, ariaOrientation } = opts;
   const [size, setSize] = useState<number>(() => loadSize(storageKey, defaultSize, min));

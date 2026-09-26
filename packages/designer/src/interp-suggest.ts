@@ -7,29 +7,13 @@ import {
   walkNodes,
 } from "@path/schema";
 
-/**
- * The pure support for the input-wiring editor (#370, designer-spec § Input/output wiring). A step's one
- * input is an interpolable JSON **value** (any JSON value, §6.1: a map is common, a bare `"${context.x}"`
- * whole-string or a literal is also whole): `${…}` placeholders reference dot-paths, authored with path
- * autocomplete and validated live by `checkInterpolationSyntax` — an unclosed or ill-typed placeholder
- * is rejected in the pane, the structural analogue of the unsnappable socket. There is no node-to-node
- * wire on the canvas.
- *
- * The live check runs against the **same roots the schema enforces** for the field (`STEP_ROOTS` for an
- * input), so what the pane accepts is exactly what a load-time parse accepts — the pane never green-lights
- * a placeholder a save would reject. The autocomplete offers the same roots, plus the concrete keys the
- * file makes referenceable, so a suggestion is never one the check would then refuse.
- */
+/** The pure support for the input-wiring editor (designer-spec § Input/output wiring): the pane validates
+ * `${…}` placeholders against the schema's own roots, so it never green-lights one a save would reject. */
 
 /**
- * The concrete dot-paths worth autocompleting for an interpolable field, given its allowed roots:
- * - `config.<key>` for every key the file's own `config` declares;
- * - `context.<key>` for every key any step in the file `publish`es (what a `${context.x}` read resolves);
- * - the bare `<root>.` prefix for every allowed root, so an author can start a path the file has no key
- *   for yet (an `output.` read of a not-yet-authored predecessor output).
- *
- * Sorted and de-duplicated. `output` carries no enumerable keys — a predecessor's output shape is
- * author-trust, not statically known (ADR 0022 sub-7) — so it contributes only its prefix.
+ * The concrete dot-paths worth autocompleting: `config.<key>` for the file's own config keys,
+ * `context.<key>` for every published key, and the bare `<root>.` prefix for each allowed root. Sorted
+ * and de-duplicated; `output` carries no enumerable keys (ADR 0022 sub-7).
  */
 export function referenceablePaths(
   file: WorkflowFile,
@@ -76,14 +60,8 @@ function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[
 }
 
 /**
- * Parse and validate an input draft against the field's roots. Input is **any JSON value** (§6.1 — a
- * map is the common case, but a bare `${context.x}` whole-string, or a literal, is the whole input).
- *
- * A draft that looks like structured JSON — it starts with `{`, `[`, `"`, a digit/`-`, or is a bare
- * `true`/`false`/`null` — is parsed as JSON, and every `${…}` leaf checked. Anything else is taken as a
- * raw whole-string interpolation (`${context.x}`), authored without JSON quotes exactly like every other
- * value field (publish, config), and checked as one interpolable string. An invalid draft is reported
- * and never committed, so the node stays strict-valid (#369).
+ * Parse and validate an input draft: JSON-looking text is parsed and every `${…}` leaf checked; anything
+ * else is taken as a raw whole-string interpolation. An invalid draft is reported, never committed.
  */
 export function parseInputDraft(text: string, roots: readonly InterpolationRoot[]): InputParse {
   const trimmed = text.trim();
@@ -104,7 +82,6 @@ export function parseInputDraft(text: string, roots: readonly InterpolationRoot[
     if (error) return { ok: false, error };
     return { ok: true, value: parsed as JsonValue };
   }
-  // A raw whole-string interpolation or literal: the draft itself is the string value.
   const check = checkInterpolationSyntax(text, roots);
   if (!check.ok) return { ok: false, error: check.error ?? "invalid interpolation" };
   return { ok: true, value: text };

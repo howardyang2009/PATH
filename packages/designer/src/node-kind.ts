@@ -1,32 +1,20 @@
 /**
- * The flat, per-kind presentation facts of a node kind — its canvas hue, its one-line pane explanation,
- * and its leaf chip label — gathered in one table (#369). The canvas block render (`block-tree.tsx`) and
- * the properties pane (`properties-pane.tsx`) both read from here, so the same kind is described once
- * rather than switched over in each. The render and edit *dispatch* (which JSX a kind draws, which fields
- * it edits) stays in those files — this module holds only the flat facts, not the markup.
- *
- * A leaf step type outside the fixed set (a registry plugin like `api-call`) has no descriptor row: it
- * takes the shared **step** hue, an explanation derived from its type name, and its upper-cased type as
- * the chip. So the table lists only the kinds with kind-specific copy, and the accessors fall back for
- * every other type.
+ * Per-kind presentation facts — canvas hue, pane explanation, leaf chip glyph — read by the canvas block
+ * render and the properties pane, so a kind is described once. An unlisted leaf type takes step defaults.
  */
 
 /** The kind-specific presentation facts. A kind not listed falls back to the step defaults below. */
 interface KindDescriptor {
-  /** The hue-token stem (`--k-<hue>` / `--k-<hue>-bg`) the canvas block tints from. */
+  /** Hue-token stem: the block tints from `--k-<hue>` / `--k-<hue>-bg`. */
   hue: string;
-  /** The one-line explanation shown above the pane divider (§ Pane layout, explanatory copy). */
   explanation: string;
-  /** An optional leaf glyph drawn before the chip, so a kind reads by shape as well as by hue (#487). */
   glyph?: string;
 }
 
 const KIND: Record<string, KindDescriptor> = {
   prompt: { hue: "step", explanation: "An LLM prompt run against a model." },
   binary: { hue: "step", explanation: "A command run with arguments in a working directory." },
-  // A `person-activity` leaf carries its own teal hue and a person glyph, so it no longer reads as a
-  // generic step in the indigo `--k-step` (#470, #487). It suspends the run as `awaiting` until a person
-  // completes the offline activity (CONTEXT.md § Awaiting).
+  // A `person-activity` carries its own teal hue and glyph; the run awaits the person's Complete.
   "person-activity": {
     hue: "person",
     explanation: "An offline activity a person completes; the run awaits their Complete.",
@@ -77,7 +65,7 @@ export function leafChip(type: string): string {
   return type.toUpperCase();
 }
 
-/** The leaf glyph a kind draws before its chip, or `""` when it has none (§ #487 person glyph). */
+/** The leaf glyph a kind draws before its chip, or `""` when it has none. */
 export function leafGlyph(type: string): string {
   return KIND[type]?.glyph ?? "";
 }

@@ -39,32 +39,10 @@ export {
 export { type ValidateWorkflowFileResult, validateWorkflowFile } from "./validate-workflow-file.js";
 
 // What a consumer may name is what it needs to *use* the engine, not what the engine is built from.
-// Two rules decide this list:
-//
-// - **Assembly is not exported.** `openProject` composes the observers, the log backends, the run
-//   archive and `.path/` itself; `runWorkflow` scans the plugin registry, builds the processor
-//   semaphore and the secret masker. Exporting their ingredients — `composeObservers`,
-//   `createLoggingObserver`, `createPersistedObserver`, `createLogBackends`, `createRunArchive`,
-//   `ensurePathDirGitignore`, `scanStepPlugins`, `createProcessorSemaphore`, `collectSecrets` — let a
-//   consumer rebuild that composition by hand, in the wrong order, which is the hazard having an owner
-//   removed. `main` is likewise not here: `bin/path.ts` imports it from `./cli.js`, the only caller.
-//   The one seam over the scanner that *is* exported is `loadStepPluginRegistry`: it hands the frozen
-//   registry out as read-only *data* (what `GET /v0/step-plugins` serves the browser Designer, ADR
-//   0018), not as an ingredient to reassemble the engine from — it takes no `dir` and drives no run.
-//
-// - **A seam's vocabulary stays, even when its default adapter goes.** `RunOptions.observer` and
-//   `LogBackend` are substitution points, so `RunObserver`, `Observation` and their result shapes are
-//   exported — a consumer cannot implement an interface it cannot name. Worker substitution moved to
-//   `@path/engine/plugin`: `WorkerDescriptor` (and the whole plugin seam) lives there, and
-//   `RunOptions.workerOverrides` is a `(type, name)` map of them — so `LlmWorker`/`PromptRequest`/
-//   `PromptResult` are gone from this index (ADR 0021 sub-15). The engine's own implementations are internal.
-//
-// Reading a run goes through `RunArchive`, not through the stores under it: `getRunsForRoot`,
-// `listRootRuns`, `readJsonBlob` and `runBlobDir` are not exported, because a consumer that has
-// them ends up rebuilding `.path/`'s layout for itself, which is how the layout became part of
-// @path/server's contract. `openDb`/`dbFilePath`/`pathDir`/`rootRunTreeDir` stay: they address
-// `.path/` without interpreting it, which is what a test asserting on-disk artifacts needs.
-//
-// Domain vocabulary — run status, log events, traces, the run record, the v0 wire shapes — is
-// @path/schema's (#66), and is not re-exported here. An engine consumer that needs to name a run
-// imports it from the package that defines what a run is.
+// Assembly is not exported: `openProject` and `runWorkflow` own their composition, and exporting the
+// ingredients lets a consumer rebuild it by hand, in the wrong order. A seam's vocabulary stays even
+// when its default adapter goes, because a consumer cannot implement an interface it cannot name
+// (worker substitution lives in `@path/engine/plugin`, ADR 0021 sub-15). Reading a run goes through
+// `RunArchive`, so a consumer cannot rebuild `.path/`'s layout for itself; `openDb`/`dbFilePath`/
+// `pathDir`/`rootRunTreeDir` stay, because they address `.path/` without interpreting it. Domain
+// vocabulary — run status, log events, the run record, the v0 wire shapes — is @path/schema's.

@@ -3,10 +3,8 @@ import type { WorkflowNode } from "@path/schema";
 import { useCallback, useRef, useState } from "react";
 
 /**
- * What the palette has **armed** — the thing the canvas opens sockets for and places on a socket click.
- * A Nodes-tab card arms a node kind (#368); a Template card arms that template's body (#578), which
- * the canvas instantiates on place (ADR 0049). The template body rides in the armed value, fetched once
- * on select, so a place is synchronous and every open socket reads the same body.
+ * What the palette has **armed**: a node kind from a Nodes card, or a template's body (ADR 0049). The
+ * body is fetched once on select and rides in the armed value, so a place is synchronous.
  */
 export type Armed =
   | { kind: "node"; type: string }
@@ -14,12 +12,9 @@ export type Armed =
 
 export interface ArmedState {
   armed: Armed | null;
-  /** Arm a value directly (a Nodes card) or disarm (`null`). Supersedes an in-flight template read. */
+  /** Arm a value directly (a Nodes card) or disarm; supersedes an in-flight template read. */
   arm: (armed: Armed | null) => void;
-  /**
-   * Arm a Template: disarm at once, read its envelope (`GET /v0/templates/:id`), then arm its body.
-   * A failed read or a template the server reports invalid arms nothing and sets `templateError` instead.
-   */
+  /** Arm a Template: disarm, read its envelope, then arm its body; a failed or invalid read arms nothing. */
   armTemplate: (template: TemplateSummary) => void;
   /** Why the last template select armed or placed nothing, or `null`. Cleared by the next arm. */
   templateError: string | null;
@@ -28,8 +23,7 @@ export interface ArmedState {
 export function useArmed(client: PathApiClient): ArmedState {
   const [armed, setArmed] = useState<Armed | null>(null);
   const [templateError, setTemplateError] = useState<string | null>(null);
-  // The latest arm request. A template read that resolves after a newer arm (another card, or a
-  // disarm) is stale and dropped, so the last click wins.
+  // The latest arm request; a template read resolving after a newer arm is stale and dropped.
   const latest = useRef(0);
 
   const arm = useCallback((next: Armed | null) => {
@@ -38,17 +32,13 @@ export function useArmed(client: PathApiClient): ArmedState {
     setArmed(next);
   }, []);
 
-  /**
-   * The one template-select spine behind both card kinds: disarm at once, read the envelope, drop a stale
-   * landing (the last click wins), and report a failed read. `use` acts on a fresh envelope and returns
-   * why it did nothing, or `null` when it succeeded.
-   */
+  /** The one template-select spine behind both card kinds: disarm, read the envelope, drop a stale landing
+   * (the last click wins), and report a failed read. `use` returns why it did nothing, or `null` on success. */
   const selectTemplate = useCallback(
     (template: TemplateSummary, use: (envelope: GetTemplateResponse) => string | null) => {
       const request = ++latest.current;
       setTemplateError(null);
-      // Disarm while the read is in flight: the previous selection must not stay placeable behind a
-      // select that may yet fail.
+      // Disarm while the read is in flight: the previous selection must not stay placeable behind it.
       setArmed(null);
       const id = template.id;
       if (id === null) return; // an id-less row is invalid, and the palette never offers it
@@ -72,8 +62,7 @@ export function useArmed(client: PathApiClient): ArmedState {
   const armTemplate = useCallback(
     (template: TemplateSummary) =>
       selectTemplate(template, (envelope) => {
-        // `valid` is the server's registry-relative check, so a valid template body is a
-        // `WorkflowNode[]`; `kind` guards a file that changed kind between the list and this read.
+        // `valid` is the server's registry-relative check; `kind` guards a file that changed kind since the list read.
         if (!envelope.valid || envelope.kind !== "step" || !Array.isArray(envelope.body)) {
           return `Cannot insert "${template.name}": ${envelope.error?.message ?? "invalid template"}`;
         }

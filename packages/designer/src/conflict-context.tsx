@@ -1,16 +1,9 @@
 import { createContext, type ReactNode, useContext } from "react";
 
-/**
- * The node validation markers, threaded to every block without drilling through each block signature
- * (#370, extended by #388, designer-spec § Canvas validation-error UX). The map is `node-id → marker
- * message`, computed by `problems.ts` from the file being rendered — every **cross-node** error the
- * canvas cannot catch node-by-node: a publish conflict the load-time checks reject (#370), a dangling
- * `${context.…}` read, and a dangling condition path. A node with several problems carries one marker
- * whose message stacks them (newline-joined).
- *
- * It rides its own context, not the `editor` prop, because a marker is a read-only derivation of the
- * file rather than an edit affordance — and a read-only render (#367, no editor) still shows it.
- */
+/** The node validation markers, threaded to every block without drilling through each block signature:
+ * `node-id → marker message`, computed by `problems.ts` — every cross-node error the canvas cannot catch
+ * node-by-node. A node with several problems carries one newline-joined marker. It rides its own context
+ * because a marker is a read-only derivation of the file, so a read-only render still shows it. */
 const ConflictContext = createContext<ReadonlyMap<string, string>>(new Map());
 
 export function ConflictProvider({

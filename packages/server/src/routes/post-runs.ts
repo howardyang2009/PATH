@@ -17,12 +17,8 @@ const PostRunsBodySchema = z
     workflow_path: z.string().min(1),
     input: z.record(z.string(), z.unknown()).optional(),
     config: ConfigObjectSchema.optional(),
-    // The launch worker-default table (ADR 0044, #517): a top-level `{ <type>: <name> }` peer of
-    // `input`/`config`, not folded into `config` (dispatch never reads `config` for worker selection).
-    // Non-empty keys and values, mirroring the file channel's `worker_defaults` grammar
-    // (`@path/schema` workflow-file.ts). This is the *shape* net only; registry-relative validity (an
-    // absent type or an unshipped worker) is the launch-boundary check below (#518), run once the
-    // workflow's registry is in hand — a bad table `400`s before the run starts.
+    // The launch worker-default table (ADR 0044): a top-level peer of `input`/`config`. Shape-only here;
+    // registry-relative validity is the launch-boundary check below.
     worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     log_backends: z.array(z.enum(LOG_BACKEND_IDS)).optional(),
     processor_concurrency: z.number().int().positive().optional(),
@@ -41,10 +37,8 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
     processor_concurrency: processorConcurrency,
   } = body.data;
 
-  // ADR 0012 / #231: operator config may carry a literal `{"$secret": "..."}` but not `{"$env":
-  // "NAME"}`. Rejected before the filesystem is touched, as a bad config invalidates the request
-  // whatever the workflow turns out to be. `resume-run.ts` makes the same call — one spelling of the
-  // rule (launch.ts), not two.
+  // ADR 0012: operator config may carry a literal `$secret` but not `$env`. Rejected before the
+  // filesystem is touched — a bad config invalidates the request whatever the workflow turns out to be.
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) {
@@ -53,9 +47,7 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
     }
   }
 
-  // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts). A fresh launch
-  // distinguishes an escaping `workflow_path` from a merely missing one — both 404, both naming the
-  // path the caller sent.
+  // Escape / not-found / invalid, decided once for both launch surfaces (launch.ts).
   const prepared = await prepareWorkflow(ctx.project.dir, workflowPath, {
     notFound: (p) => `workflow file not found: "${p}"`,
     escapesRoot: (p) => `workflow_path "${p}" resolves outside the project root`,
@@ -66,12 +58,8 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
   }
   const { workflow } = prepared;
 
-  // The launch channel of ADR 0044's registry-relative validation (#518). The launch `worker_defaults`
-  // is operator input, authored in no file and seen by no Designer, so a bad entry — an absent type, or
-  // a worker a type does not ship — is a bad request: `400` before the run starts, checked against the
-  // run's one registry (the one the load validated the file against). Every bad entry is reported in one
-  // pass, prefixed `worker_defaults:` so the operator knows which field to fix — the same taxonomy the
-  // CLI `--worker-default` boundary uses.
+  // The launch channel of ADR 0044's registry-relative validation: `worker_defaults` is operator input,
+  // authored in no file, so a bad entry is a `400` before the run starts, every bad entry in one pass.
   const workerDefaultErrors = validateLaunchWorkerDefaults(
     launchWorkerDefaults,
     workflow.registry,
@@ -83,26 +71,21 @@ export async function handlePostRuns({ req, res, ctx }: ApiRequest): Promise<voi
 
   let ids: StartedRun;
   try {
-    // `workflow.workflowDir` is the *root workflow file's own* directory — what the engine resolves
-    // nested `workflow` refs and binary `cwd`s against. Distinct from the project directory, which is
-    // where `.path/` lives; passing the latter here is what broke nested refs in #59.
+    // The *root workflow file's own* directory — what the engine resolves nested `workflow` refs and
+    // binary `cwd`s against. Distinct from the project directory, where `.path/` lives.
     ids = await ctx.live.start(workflow.rootFile, workflow.workflowDir, {
-      // The effective root input and the recorded override, by the one rule every launch door shares
+      // The effective root input and recorded override, by the one rule every launch door shares
       // (format @4 §1a, ADR 0046): the run records the input it actually seeded, not the file default.
       ...launchInput(input as { [key: string]: JsonValue } | undefined, workflow.rootFile.input),
       operatorConfig: config,
-      // The operator's run-wide launch worker-default table (ADR 0044, #517), forwarded verbatim to the
-      // engine's `RunOptions.launchWorkerDefaults` so an HTTP launch resolves un-pinned steps exactly as
-      // an equivalent `path run --worker-default` launch. Undefined when the field was omitted, so a
-      // request without it resolves through the file/default tiers unchanged.
+      // Forwarded verbatim to the engine's `RunOptions.launchWorkerDefaults` (ADR 0044).
       launchWorkerDefaults,
       files: workflow.files,
       // Dispatch reuses the registry the load validated the file against (ADR 0019 sub-15); no re-scan.
       registry: workflow.registry,
       logBackends: logBackendIds,
       processorConcurrency,
-      // Recorded on the root row so this run is resumable (§4.3), the same relative form `path run`
-      // stores — the normalized path, not the raw request string.
+      // Recorded on the root row so this run is resumable (§4.3), in the same relative form `path run` stores.
       sourceWorkflowPath: workflow.storeRelativePath(ctx.project.dir),
     });
   } catch (err) {

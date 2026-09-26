@@ -12,21 +12,9 @@ export interface TemplateSaveInput {
 }
 
 /**
- * The save-as-template dialog. A new user template always lands in
- * `.path/template/step-template/` (`POST /v0/templates` picks the place), so the author chooses only the
- * name and the description. There is one template kind (ADR 0063).
- *
- * - **Save as…** of an opened template (`source` set, #580): the name (prefilled `<name>-copy`) and
- *   the description (prefilled from the source's).
- * - First **Save** of a new template (`source` `null`): the name and the description.
- * - Workflow mode's **Save as template** (`workflowName` set, #459.6): the name (prefilled from the
- *   workflow's) and the description. A template keeps only the body, so the dialog lists the
- *   workflow-level fields it drops.
- *
- * A template requires a description: it is the palette blurb.
- *
- * The create is create-only: a taken name is refused ("choose another name"), never an overwrite, and
- * only a `created` closes the dialog.
+ * The save-as-template dialog: a new user template always lands in `.path/template/step-template/`, so the
+ * author picks only the name and description (required — it is the palette blurb). Prefills from an opened
+ * template's copy or a workflow's name. Create is create-only: a taken name is refused, never overwritten.
  */
 export function SaveTemplateAsDialog({
   source,

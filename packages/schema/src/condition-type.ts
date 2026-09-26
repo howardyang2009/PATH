@@ -68,11 +68,8 @@ export type Condition =
 export type LeafCondition = Extract<Condition, { path: string }>;
 export type LeafConditionType = LeafCondition["type"];
 
-/**
- * The leaf operator names at runtime. `satisfies` ties it to the union above and the exhaustiveness
- * check below ties it the other way, so the list cannot drift from the types in either direction —
- * which is the whole reason it exists rather than being written out wherever an enum is needed.
- */
+/** The leaf operator names at runtime. `satisfies` ties them to the union above and the exhaustiveness
+ * check below ties them back, so the list cannot drift from the types in either direction. */
 export const LEAF_CONDITION_TYPES = [
   "exists",
   "equals",

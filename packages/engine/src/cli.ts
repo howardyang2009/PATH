@@ -32,41 +32,22 @@ import type { RunResult, WorkerOverrides } from "./run-workflow.js";
 export interface CliIo {
   log(message: string): void;
   error(message: string): void;
-  /**
-   * Ask a yes/no question and resolve to the operator's answer. Undefined means the surface cannot
-   * ask (no attached terminal) — a destructive verb treats "cannot ask" as "not confirmed" (#166),
-   * so a scripted `prune` with no `--yes` aborts rather than deleting unprompted. Optional so a
-   * plain `{ log, error }` still satisfies the interface for the many callers that never prompt.
-   */
+  /** Ask a yes/no question; `undefined` means the surface cannot ask, which counts as "not confirmed". */
   confirm?(question: string): Promise<boolean> | undefined;
 }
 
-/**
- * Collaborators the CLI would otherwise construct itself. The acceptance run (#26) uses this to
- * drive the real pipeline — real workflow files, real git, real persistence and logging — with a
- * scripted LLM worker in place of a live Agent SDK processor, which is the one collaborator that
- * costs money and never answers the same way twice.
- */
+/** Collaborators the CLI would otherwise construct; the acceptance run injects a scripted LLM worker. */
 export interface RunOverrides {
-  /**
-   * Replace named `(type, worker)` pairs in the scanned registry (ADR 0021 sub-15), forwarded to
-   * `runWorkflow` verbatim. The acceptance run substitutes its scripted `prompt`/`anthropic` worker here.
-   */
+  /** Replace named `(type, worker)` pairs in the scanned registry, forwarded to `runWorkflow` verbatim. */
   workerOverrides?: WorkerOverrides;
-  /**
-   * How a forced second `^C` leaves the process (#53) — defaults to `process.exit(130)`. The one
-   * place the CLI exits abruptly, and only because the operator asked twice; tests substitute their
-   * own rather than taking the test process down to assert it.
-   */
+  /** How a forced second `^C` leaves the process — defaults to `process.exit(130)`; tests substitute their own. */
   forceExit?: (code: number) => void;
 }
 
 const consoleIo: CliIo = {
   log: (message) => console.log(message),
   error: (message) => console.error(message),
-  // Only an interactive stdin can answer a prompt; a piped or redirected one returns undefined so
-  // the caller falls through to its "cannot confirm" path (#166) instead of blocking on a read that
-  // would never resolve. `y`/`yes` (any case) is the only accepted yes — everything else is no.
+  // Only an interactive stdin can answer; `y`/`yes` (any case) is the only accepted yes.
   confirm: (question) => {
     if (!process.stdin.isTTY) return undefined;
     const rl = createInterface({ input: process.stdin, output: process.stdout });
@@ -77,7 +58,7 @@ const consoleIo: CliIo = {
   },
 };
 
-// How many root-run ids `prune` prints before collapsing the rest to "... and N more" (#166).
+// How many root-run ids `prune` prints before collapsing the rest to "... and N more".
 const PRUNE_ID_PREVIEW = 20;
 
 const RUN_USAGE =
@@ -86,21 +67,13 @@ const RUNS_USAGE =
   "usage: path runs [-C <dir>] [--limit <n>] [--status <status>] [--workflow <name>] [--workflow-id <guid>] | path runs [-C <dir>] rm [--force] <root-run-id> | path runs [-C <dir>] prune [--yes]";
 
 /**
- * What `path run` was asked to do, as a **value**: the three forms the one command line accepts, each
- * carrying only the flags its form can use. `path run` used to parse into one flat twelve-field bag
- * (ten optional) whose compatibility matrix lived in successive `if` blocks at the end of the parser —
- * so "`--from` without `--resume`", "`--list-eligible` with `--config`" and the rest were rules a
- * reader had to reconstruct, and every consumer of the bag had to re-decide which fields its form
- * could trust. Here the arms make the illegal combinations unconstructable, and the refusals that
- * remain are the parser's own messages.
- *
- * Each arm names the fields the *other* forms own as `undefined`/empty, so the run assembly below
- * reads one shape without re-checking which form it is holding.
+ * What `path run` was asked to do, as a value: three arms, each carrying only the flags its form can
+ * use, so illegal flag combinations are unconstructable and the run assembly reads one shape.
  */
 export interface LaunchInvocation {
   kind: "launch";
   workflowPath: string;
-  /** `-C <dir>`: the directory whose `.path/` store this run reads and writes (#201, ADR 0005). */
+  /** `-C <dir>`: the directory whose `.path/` store this run reads and writes. */
   storeDir?: string;
   configFile?: string;
   setPairs: readonly (readonly [string, string])[];
@@ -112,9 +85,8 @@ export interface LaunchInvocation {
 }
 
 /**
- * The resume form. A resumed run's starting context is rebuilt from the original tree (ADR 0003, 0062) and a
- * **launch worker-default** is fixed at the launch it was given on (ADR 0044), so both are refused with
- * `--resume` — hence the `undefined`/empty members this arm carries instead of them.
+ * The resume form: its starting context is rebuilt from the original tree and a launch worker-default
+ * is fixed at launch, so both are refused and carried as `undefined`/empty here instead.
  */
 export interface ResumeInvocation {
   kind: "resume";
@@ -132,18 +104,18 @@ export interface ResumeInvocation {
   setContextPairs?: undefined;
 }
 
-/** `--list-eligible` (#446): a dry-run of Resume that lists candidate Ks and launches nothing. */
+/** `--list-eligible`: a dry-run of Resume that lists candidate Ks and launches nothing. */
 export interface ListEligibleInvocation {
   kind: "list-eligible";
   workflowPath: string;
   storeDir?: string;
   resumeRootRunId: string;
   configFile?: undefined;
-  /** Never present: `--set` is a launch flag, refused with `--list-eligible`, so no pairs can exist. */
+  /** Never present: `--set` is a launch flag, refused with `--list-eligible`. */
   setPairs?: undefined;
   workerDefaultPairs?: undefined;
   contextFile?: undefined;
-  /** Never present, as `setPairs`: the listing builds no context seed and launches nothing. */
+  /** Never present, as `setPairs`: the listing builds no context seed. */
   setContextPairs?: undefined;
   logBackends?: undefined;
   processorConcurrency?: undefined;
@@ -155,13 +127,11 @@ export type RunInvocationResult =
   | { success: true; invocation: RunInvocation }
   | { success: false; error: string };
 
-// Operator launch-time config via CLI flags and/or a config file (spec §3): `--config <file>`
-// loads a whole object, repeatable `--set key=value` overrides individual top-level keys —
-// both merge over the top-level file's config defaults, nearest wins (format doc §8).
+// Operator launch-time config via CLI flags and/or a config file (spec §3): `--config` loads a whole
+// object, repeatable `--set key=value` overrides top-level keys, both merging over file defaults.
 export function parseRunInvocation(argv: string[]): RunInvocationResult {
-  // `-C <dir>` can appear anywhere — including ahead of the workflow positional — exactly as it can
-  // on `path runs` (extractDirFlag), so it is stripped before the positional is taken rather than
-  // pinned to one slot. Absent means the store defaults to the workflow file's own directory.
+  // `-C <dir>` can appear anywhere, so it is stripped before the positional is taken. Absent means the
+  // store defaults to the workflow file's own directory.
   const dirFlag = extractDirFlag(argv, RUN_USAGE);
   if (!dirFlag.success) return dirFlag;
   const storeDir = dirFlag.dir;
@@ -193,7 +163,6 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
       rerunFromRunId = taken.value;
       i += 1;
     } else if (flag === "--list-eligible") {
-      // A bare boolean flag — it takes no value; it selects the dry-run listing mode.
       listEligible = true;
     } else if (flag === "--config") {
       const taken = takeValue(rest, i, "--config", "a path", RUN_USAGE);
@@ -206,10 +175,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
       setPairs.push(taken.pair);
       i += 1;
     } else if (flag === "--worker-default") {
-      // `<type>=<name>`, both sides non-empty: unlike `--set`, an empty worker name is never a valid
-      // selection, so it is an operator mistake at parse (exit 2) rather than a `has no worker` failure
-      // deep in a run that already spent money. Registry-relative validity — the type/worker actually
-      // existing — is the launch-boundary check (#506), not this shape check.
+      // Both sides non-empty: an empty worker name is an operator mistake at parse (exit 2), not a
+      // mid-run failure; registry-relative validity is the launch-boundary check, not this shape check.
       const taken = takePair(rest, i, "--worker-default", "type=name", RUN_USAGE, {
         valueRequired: true,
       });
@@ -243,10 +210,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     }
   }
 
-  // A resumed run's starting context is already fully determined by the original tree: each
-  // re-entered workflow-run replays from its recorded seed (ADR 0003, ADR 0062) — a supplied `--context`/`--set-context` seed has nothing to do but be
-  // silently discarded or fought over, so combining either with `--resume` is refused outright
-  // rather than quietly dropped (this repo treats silently-discarded operator state as a failure).
+  // A resumed run's context is rebuilt from the original tree, so a supplied seed is refused outright
+  // rather than silently discarded.
   if (resumeRootRunId !== undefined && (contextFile !== undefined || setContextPairs.length > 0)) {
     return {
       success: false,
@@ -254,12 +219,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     };
   }
 
-  // A launch worker-default is fixed at the launch it was given on (ADR 0044): it is identity-defining
-  // like `input`, so a resume does not re-take it — the resume route carries no worker-default field at
-  // all, and changing the worker a step runs on is a new run, not a resume. Supplying `--worker-default`
-  // with `--resume` would therefore be silently discarded or, worse, silently repoint a re-run step, so
-  // it is refused outright — the same "no silently-discarded operator state" stance as the context
-  // refusal above.
+  // A launch worker-default is fixed at launch and identity-defining, so supplying one with `--resume`
+  // is refused rather than silently discarded — changing the worker is a new run, not a resume.
   if (resumeRootRunId !== undefined && workerDefaultPairs.length > 0) {
     return {
       success: false,
@@ -267,17 +228,13 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     };
   }
 
-  // `--from` names the rerun boundary K *within* a resume (#444, spec §7.2), so it rides the existing
-  // resume form and is meaningless without `--resume`. A parse-time misuse — exit 2 — never an engine
-  // refusal.
+  // `--from` names the rerun boundary K within a resume, so it is meaningless without `--resume`.
   if (rerunFromRunId !== undefined && resumeRootRunId === undefined) {
     return { success: false, error: `--from requires --resume\n${RUN_USAGE}` };
   }
 
-  // `--list-eligible` is a dry-run of resume (#446, spec §2): it needs a source tree, so it requires
-  // `--resume`; it lists candidate Ks, the opposite of `--from` naming one, so the two are mutually
-  // exclusive; and it launches nothing, so the launch-only flags have nothing to apply to and are
-  // refused. All three are parse-time misuse — exit 2, never an engine refusal.
+  // `--list-eligible` is a dry-run of resume: it requires `--resume`, excludes `--from`, and refuses
+  // the launch-only flags because it launches nothing.
   if (listEligible) {
     if (resumeRootRunId === undefined) {
       return { success: false, error: `--list-eligible requires --resume\n${RUN_USAGE}` };
@@ -288,12 +245,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
         error: `--list-eligible cannot be combined with --from: one lists candidate rerun boundaries, the other resumes from a chosen one\n${RUN_USAGE}`,
       };
     }
-    // The launch-only flags, in flag-name form for the message. `--context`/`--set-context` are already
-    // refused with `--resume` above, so a `--list-eligible` run never reaches them here; the rest only
-    // configure a launch this mode does not perform.
-    // `--worker-default` is not listed here: it is already refused above whenever `--resume` is set,
-    // and `--list-eligible` requires `--resume`, so a `--worker-default` on a list-eligible run is
-    // caught by that earlier guard before this block — listing it here would be dead.
+    // `--context`/`--set-context` and `--worker-default` are already refused above whenever `--resume`
+    // is set, so they cannot reach this block; the rest only configure a launch this mode does not do.
     const launchFlag =
       configFile !== undefined
         ? "--config"
@@ -312,8 +265,7 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
     }
   }
 
-  // The compatibility guards above have run, so the form is decided by what survived them: the listing
-  // first (it requires a resume source but carries nothing else), then the resume form, then a launch.
+  // The guards above decide the form: the listing first, then the resume form, then a launch.
   if (listEligible && resumeRootRunId !== undefined) {
     return {
       success: true,
@@ -355,12 +307,8 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
 
 type TakeValueResult = { success: true; value: string } | { success: false; error: string };
 
-// The argument after a pure value-flag at `args[i]`, or a usage error naming the flag when it is
-// absent. The five value-flags that only take a string — --resume, --config, --context, --workflow,
-// --workflow-id — shared this exact read-check-message verbatim; concentrating it keeps the wording
-// from drifting across them. `noun` is the flag's own ("a path", "a guid"); the message re-appends
-// " argument" to stay byte-identical to the hand-written checks it replaces. The caller still
-// advances `i` — the `+ 1` stays visible in each parse loop.
+// The argument after a value-flag at `args[i]`, or a usage error naming the flag. The caller advances
+// `i`; `noun` is the flag's own wording ("a path", "a guid").
 function takeValue(
   args: string[],
   i: number,
@@ -375,9 +323,8 @@ function takeValue(
 
 type TakePairResult = { success: true; pair: [string, string] } | { success: false; error: string };
 
-// The `<key>=<value>` argument after a pair-flag at `args[i]` — `--set`, `--set-context`,
-// `--worker-default` — split at the first `=`. The key must be non-empty; `valueRequired` also refuses
-// an empty value (an empty worker name is never a valid selection, unlike an empty config string).
+// The `<key>=<value>` argument after a pair-flag, split at the first `=`; the key must be non-empty and
+// `valueRequired` also refuses an empty value (unlike an empty config string).
 function takePair(
   args: string[],
   i: number,
@@ -396,9 +343,8 @@ function takePair(
 
 type PositiveIntResult = { success: true; value: number } | { success: false; error: string };
 
-// The one positive-integer flag check, shared by `--processor-concurrency`'s memory cap and `runs`'
-// `--limit` page size (#174). `flag`/`usage` name the offending flag and its command's usage, so the
-// two call sites can't drift on the wording the way two copy-pasted checks eventually would.
+// The one positive-integer flag check, shared by `--processor-concurrency` and `runs`' `--limit`;
+// `flag`/`usage` name the offending flag and its command's usage.
 function parsePositiveInt(
   flag: string,
   value: string | undefined,
@@ -411,16 +357,14 @@ function parsePositiveInt(
   return { success: true, value: parsed };
 }
 
-// The engine-wide Processor cap (mvp spec §5.5, §7): a positive integer overriding the default
-// of 4. The ceiling is memory (~400 MB per live processor), so this is the operator's memory knob.
+// The engine-wide Processor cap (spec §5.5): ~400 MB per live processor, so this is the memory knob.
 function parseProcessorConcurrency(value: string | undefined): PositiveIntResult {
   return parsePositiveInt("--processor-concurrency", value, RUN_USAGE);
 }
 
 type LogBackendsResult = { success: true; ids: LogBackendId[] } | { success: false; error: string };
 
-// The engine-level `log.backends` setting (mvp spec §8.2): a comma-separated list of backend ids.
-// `--log-backends none` selects no backends; when the flag is absent, both are on by default.
+// The engine-level `log.backends` setting: a comma-separated list; absent means both are on by default.
 function parseLogBackends(value: string | undefined): LogBackendsResult {
   if (!value) return { success: false, error: `--log-backends requires a value\n${RUN_USAGE}` };
   if (value === "none") return { success: true, ids: [] };
@@ -441,11 +385,8 @@ function parseLogBackends(value: string | undefined): LogBackendsResult {
 
 type ConfigResult = { success: true; config: ConfigObject } | { success: false; error: string };
 
-// Shared by `--config`/`--set` and `--context`/`--set-context` (ADR 0003: "one merge algorithm
-// serves both flag pairs"): a whole-object file loads first, then repeatable `key=value` pairs
-// override individual top-level keys, each JSON.parse-or-raw-string-fallback, nearest-wins via
-// `mergeConfig`. `fileFlag`/`pairFlag` name the flags in error messages, so the two call sites can't
-// drift on validation wording the way two copy-pasted functions eventually would.
+// Shared by `--config`/`--set` and `--context`/`--set-context`: a whole-object file loads first, then
+// repeatable `key=value` pairs override top-level keys, each JSON.parse-or-raw-string, nearest-wins.
 function buildKeyedConfig(
   fileFlag: string,
   file: string | undefined,
@@ -490,12 +431,8 @@ function buildOperatorConfig(args: {
   return buildKeyedConfig("--config", args.configFile, "--set", args.setPairs ?? []);
 }
 
-// The launch worker-default table (ADR 0044) folded from the repeatable `--worker-default` pairs into
-// the `{ <type>: <name> }` map `RunOptions.launchWorkerDefaults` takes. A shallow per-type merge — a
-// later pair for a type replaces an earlier one, the same nearest-wins rule `--set` uses — but no JSON
-// parse and no file: a worker name is a plain string selection, not config data. No pairs yields
-// `undefined`, so a run with no flag carries no table and resolves through the file tier exactly as
-// before. Registry-relative validity is the launch-boundary check (#506), not this fold.
+// Fold the repeatable `--worker-default` pairs into the `{ <type>: <name> }` table: a shallow
+// per-type nearest-wins merge, no JSON parse and no file. No pairs yields `undefined`.
 function buildLaunchWorkerDefaults(args: {
   workerDefaultPairs?: readonly (readonly [string, string])[];
 }): { [stepType: string]: string } | undefined {
@@ -510,8 +447,7 @@ type ContextResult =
   | { success: true; context: { [key: string]: JsonValue } }
   | { success: false; error: string };
 
-// The starting-context seed for a fresh (non-`--resume`) run (ADR 0003), feeding `RunOptions.input`
-// instead of operator config.
+// The starting-context seed for a fresh (non-`--resume`) run, feeding `RunOptions.input`.
 function buildContextSeed(args: {
   contextFile?: string | undefined;
   setContextPairs?: readonly (readonly [string, string])[] | undefined;
@@ -524,29 +460,22 @@ function buildContextSeed(args: {
   );
   if (!result.success) return result;
 
-  // A context seed is plain JSON data (format doc §6.3) — never `$secret`/`$env` wrappers, which are
-  // a `config`-only concept (spec §8.3). `--context`/`--set-context` only ever produce plain JSON
-  // values, so this narrowing is exact, not a runtime assumption.
+  // A context seed is plain JSON, never `$secret`/`$env` wrappers, which are a `config`-only concept;
+  // so this narrowing is exact, not a runtime assumption.
   return { success: true, context: result.config as { [key: string]: JsonValue } };
 }
 
 interface SigintCancellation {
-  /** Handed to `RunOptions.signal`: the operator's way into the engine's own unwind (#52). */
+  /** Handed to `RunOptions.signal`: the operator's way into the engine's own unwind. */
   signal: AbortSignal;
   /** Removes the listener — the CLI owns the process signal only while a run is in flight. */
   dispose(): void;
 }
 
 /**
- * Makes `^C` truthful (#53): the first press *cancels the run* rather than killing the process, so
- * the run unwinds the engine's normal way — in-flight leaf killed, `run-cancelled` with
- * `cause: "operator"`, the root's terminal `step-finished` written, backends closed, row
- * `cancelled`.
- *
- * Cancellation is best-effort and holds no deadline (mvp spec §5.6), so the operator needs an
- * escape hatch from a slow unwind: a second press exits immediately, which is what pressing `^C`
- * twice already means. That is the only path where the CLI exits by itself — the graceful one
- * returns an exit code like every other command (`main` never calls `process.exit`).
+ * Makes `^C` truthful: the first press cancels the run so it unwinds the engine's normal way (leaf
+ * killed, `run-cancelled` with `cause: "operator"`, row `cancelled`); cancellation holds no deadline, so
+ * a second press exits immediately — the only path where the CLI exits by itself.
  */
 function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCancellation {
   const controller = new AbortController();
@@ -555,9 +484,7 @@ function cancelOnSigint(io: CliIo, forceExit: (code: number) => void): SigintCan
       forceExit(SIGINT_EXIT_CODE);
       return;
     }
-    // Naming the cost at the moment the operator is deciding whether to press again (#60): forcing
-    // abandons the unwind, so the rows keep whatever status they last held and nothing later fixes
-    // them. `path runs rm` is the remedy, and saying so here is cheaper than being asked.
+    // Forcing abandons the unwind, so the rows keep whatever status they held; `path runs rm` is the remedy.
     io.error(
       "cancelling… (Ctrl-C again to force — leaves the run's rows `running`; clear with `path runs rm`)",
     );
@@ -599,18 +526,12 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 1;
   }
 
-  // Whole-tree validation happened above; execution starts at the root file and follows
-  // `workflow` step refs into the rest of the tree (#22) via `runWorkflow`'s `files` option.
+  // Whole-tree validation happened above; execution follows `workflow` step refs via `runWorkflow`'s `files`.
   const { workflow } = loadResult;
 
-  // The launch channel of ADR 0044's registry-relative validation (#518). The launch worker-default
-  // table is operator input, authored in no file and seen by no Designer, so a bad entry is a bad
-  // *request*, not an engine fault: refuse it here, before the run starts, exit 2 like any other bad
-  // flag. Same taxonomy as the file channel — an absent type, or a worker a type does not ship — but
-  // checked against the run's one registry (`workflow.registry`), the one the load validated the file
-  // against. Every bad entry is reported in one pass, each prefixed `--worker-default:` so the operator
-  // knows where to fix it. `--worker-default` is already refused with `--resume`, so a table here is a
-  // fresh launch's.
+  // The launch worker-default table is operator input authored in no file, so a bad entry is a bad
+  // request, not an engine fault: refuse it here, exit 2, against the registry the load validated the
+  // file with. Every bad entry is reported in one pass, each prefixed `--worker-default:`.
   const launchWorkerDefaults = buildLaunchWorkerDefaults(invocation);
   const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry);
   if (workerDefaultErrors.length > 0) {
@@ -618,31 +539,23 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return 2;
   }
 
-  // The CLI's project directory defaults to the workflow file's own directory — it runs one file,
-  // in place. `-C <dir>` overrides *only* where the `.path/` store lives (#201, ADR 0005): the store
-  // is opened at `projectDir`, but `workflow.workflowDir` — what the engine resolves nested
-  // `workflow` refs and binary `cwd`s against — stays the workflow file's own directory. The server,
-  // serving a whole project, must tell the two apart (#59); `Project.run` takes both so neither
-  // caller can conflate them, and that same seam is what lets `-C` relocate the store without
-  // re-rooting the workflow.
+  // `-C <dir>` overrides only where the `.path/` store lives: the store opens at `projectDir`, while
+  // `workflow.workflowDir` — what nested `workflow` refs and binary `cwd`s resolve against — stays the
+  // workflow file's own directory.
   const projectDir = invocation.storeDir ?? workflow.workflowDir;
   const opened = openProject(projectDir);
   if (!opened.success) {
     io.error(opened.error);
-    // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db
-    // is not.
+    // A malformed engine-settings file is an operator mistake, like a bad flag; an unopenable db is not.
     return opened.kind === "settings" ? 2 : 1;
   }
   const project = opened.project;
 
-  // `--list-eligible` (#446) is a dry-run of resume: it reads the source tree and prints the per-node
-  // eligibility, launching nothing — so it runs before the SIGINT handler and the run assembly below,
-  // over the same file load and `-C` store resolution `path run` already did. The `files` tree lets the
-  // shared legal-K predicate descend a nested K's refs, exactly as `resume` passes it.
+  // `--list-eligible` reads the source tree and prints per-node eligibility, launching nothing; the
+  // `files` tree lets the shared legal-K predicate descend a nested K's refs, exactly as `resume` passes it.
   if (invocation.kind === "list-eligible") {
     let listResult: ListEligibleResult;
     try {
-      // `resumeRootRunId` is present by construction: the form exists only for a source tree.
       listResult = project.listEligible(
         workflow.rootFile,
         invocation.resumeRootRunId,
@@ -655,33 +568,26 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return emit(renderListEligible(listResult), io);
   }
 
-  // Installed only for the run itself, and removed the moment it settles — see cancelOnSigint.
+  // Installed only for the run itself, and removed the moment it settles.
   const sigint = cancelOnSigint(io, overrides.forceExit ?? ((code) => process.exit(code)));
 
-  // The backend list, the observer pair and their order, and settings precedence all belong to the
-  // project (#64). What is left here is what a CLI actually owns: the flags it parsed, the signal it
-  // installed, and where warnings go. `input` is the fresh-run context seed only — a resumed run
-  // restores its context from the original tree instead, so `resume` never carries an `input`.
+  // Backends, observer order and settings precedence belong to the project; here the CLI owns only the
+  // parsed flags, the signal, and where warnings go. `input` is the fresh-run context seed only.
   const projectOptions: ProjectRunOptions = {
     operatorConfig: operatorConfig.config,
-    // The operator's run-wide launch worker-default table (ADR 0044), folded from `--worker-default`
-    // pairs and validated registry-relative above (#518). Undefined when the operator passed none, so a
-    // flagless run resolves through the file tier unchanged. Forwarded verbatim to `runWorkflow`
-    // (`ProjectRunOptions` extends `RunOptions`).
+    // The validated launch worker-default table; `undefined` when none was passed, so a flagless run
+    // resolves through the file tier unchanged.
     launchWorkerDefaults,
     files: workflow.files,
-    // The registry this file was validated against (ADR 0019 sub-15): dispatch reuses it, so the run
-    // never re-scans the folder and cannot execute against a different one than the load validated.
+    // The registry this file was validated against: dispatch reuses it and never re-scans the folder.
     registry: workflow.registry,
     logBackends: invocation.logBackends,
     processorConcurrency: invocation.processorConcurrency,
     workerOverrides: overrides.workerOverrides,
     warn: (message) => io.error(`warning: ${message}`),
     signal: sigint.signal,
-    // Source-workflow provenance for the root row (#202, ADR 0006): the workflow file's path
-    // relative to the store dir, so a central `-C` store distinguishes two same-named workflows by
-    // where each lives. Default (no `-C`) collapses to the bare filename, store dir being the file's
-    // own directory. Recorded on a fresh run *and* a resume — a successor is still that workflow's run.
+    // Source-workflow provenance for the root row: the workflow file's path relative to the store dir,
+    // so a central `-C` store distinguishes two same-named workflows. Recorded on fresh runs and resumes.
     sourceWorkflowPath: workflow.storeRelativePath(projectDir),
   };
 
@@ -692,8 +598,7 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
         workflow.rootFile,
         invocation.resumeRootRunId,
         workflow.workflowDir,
-        // `--from` forwarded verbatim (#444): the CLI does zero K-logic, `Project.resume` is the one
-        // authority. Absent = plain Resume.
+        // `--from` forwarded verbatim: the CLI does zero K-logic, `Project.resume` is the one authority.
         { ...projectOptions, rerunFromRunId: invocation.rerunFromRunId },
       );
     } finally {
@@ -703,15 +608,13 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
     return emit(renderResume(resumeResult), io);
   }
 
-  // Only the launch form reaches here (`list-eligible` returned above, `resume` above that), and only a
-  // launch carries a context seed.
+  // Only the launch form reaches here, and only a launch carries a context seed.
   let runResult: RunResult;
   try {
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
       ...projectOptions,
-      // The effective root input and the recorded override, by the one rule every launch door shares
-      // (format @4 §1a, ADR 0046): a non-empty `--context`/`--set-context` seed wins over the file's own
-      // top-level `input`, so a file that declares `input` runs the same way wherever it is launched.
+      // A non-empty context seed wins over the file's top-level `input`, the one rule every launch door
+      // shares, so a file declaring `input` runs the same way wherever it is launched.
       ...launchInput(contextSeed.context, workflow.rootFile.input),
     });
   } finally {
@@ -729,19 +632,16 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   return emit(renderRunOutcome(runResult.status, runResult.error), io);
 }
 
-// The one shell that turns a pure {@link RunReport} into effects: stdout lines, then stderr lines,
-// then the exit code. Every `path run` / `path runs` outcome flows through here, so `run-report.ts`
-// owns *what* an outcome says and this owns *that* it is written — the split candidate 2 introduced.
+// The one shell turning a pure {@link RunReport} into effects: stdout lines, then stderr lines, then
+// the exit code. `run-report.ts` owns what an outcome says; this owns that it is written.
 function emit(report: RunReport, io: CliIo): number {
   for (const line of report.stdout) io.log(line);
   for (const line of report.stderr) io.error(line);
   return report.exitCode;
 }
 
-// `-C <dir>` (git's own flag for "run as if started in <dir>") can appear anywhere in a `runs`
-// invocation's args, ahead of or behind the subcommand — `path runs -C foo rm <id>` and
-// `path runs rm -C foo <id>` both mean the same thing, so it's stripped before the rest of parsing
-// ever sees it rather than pinned to one position.
+// `-C <dir>` can appear anywhere in a `runs` invocation, ahead of or behind the subcommand, so it is
+// stripped before the rest of parsing sees it rather than pinned to one position.
 type ExtractDirFlagResult =
   | { success: true; dir: string | undefined; rest: string[] }
   | { success: false; error: string };
@@ -766,9 +666,8 @@ type ListRootsArgsResult =
   | { success: true; options: ListRootsOptions }
   | { success: false; error: string };
 
-// The bare `path runs` listing (#174) reuses the same `--limit`/`--status` filters `listRoots`
-// already implements, validated here the way `run`'s flags are — `--status` against the domain's own
-// status set, so an unknown status is refused rather than silently matching nothing.
+// The bare `path runs` listing reuses `listRoots`' `--limit`/`--status` filters, `--status` validated
+// against the domain's own set so an unknown status is refused rather than silently matching nothing.
 function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   let limit: number | undefined;
   let status: RunStatus | undefined;
@@ -793,13 +692,13 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
       status = value as RunStatus;
       i += 1;
     } else if (flag === "--workflow") {
-      // Exact match on the source workflow's human `name` (#202) — the display key in this table.
+      // Exact match on the source workflow's human `name` — the display key in this table.
       const taken = takeValue(args, i, "--workflow", "a name", RUNS_USAGE);
       if (!taken.success) return taken;
       workflowName = taken.value;
       i += 1;
     } else if (flag === "--workflow-id") {
-      // Exact match on the durable GUID (#202) — unambiguous where two files share a `name`.
+      // Exact match on the durable GUID — unambiguous where two files share a `name`.
       const taken = takeValue(args, i, "--workflow-id", "a guid", RUNS_USAGE);
       if (!taken.success) return taken;
       workflowId = taken.value;
@@ -812,9 +711,8 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
   return { success: true, options: { limit, status, workflowName, workflowId } };
 }
 
-// `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`
-// operate on. The `resumed-from` cell asks the archive which predecessor ids still have rows —
-// existence, not presence on this page, is what tells a live predecessor from a `(deleted)` one.
+// `path runs` with no subcommand: the first listing surface, over the same query `rm`/`prune` operate
+// on. The `resumed-from` cell asks which predecessor ids still have rows, not which are on this page.
 async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promise<number> {
   const parsed = parseRunsListArgs(args);
   if (!parsed.success) {
@@ -837,9 +735,7 @@ async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promi
           : live.has(predecessor)
             ? predecessor
             : `${predecessor} (deleted)`;
-      // The human `name` is the display key (ADR 0006). Every engine-produced root records one (from
-      // the required `file.name`), so "-" is the defensive floor for a row with no recorded identity —
-      // a hand-inserted row, not a real run — never the common case.
+      // The human `name` is the display key; "-" is the defensive floor for a row with no recorded identity.
       return [
         run.runId,
         run.workflowName ?? "-",
@@ -855,10 +751,7 @@ async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promi
   });
 }
 
-/**
- * Open the run archive under `dir`, hand it to `use`, and close it however `use` ends. An archive that
- * will not open is reported and exits `1` before `use` runs.
- */
+/** Open the run archive under `dir`, hand it to `use`, and close it however `use` ends; a failed open exits 1. */
 async function withRunArchive(
   dir: string,
   io: CliIo,
@@ -876,9 +769,8 @@ async function withRunArchive(
   }
 }
 
-// `path runs rm`/`path runs prune` take no workflow-file argument (mvp spec §3) — they operate
-// on the `.path/` found in the current working directory, like `git` subcommands operate on
-// whatever repo the cwd is inside — or on `-C <dir>` when given one, again like `git -C`.
+// `runs rm`/`runs prune` take no workflow-file argument: they operate on the `.path/` in the cwd, or on
+// `-C <dir>` when given one.
 async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   const dirFlag = extractDirFlag(args, RUNS_USAGE);
   if (!dirFlag.success) {
@@ -889,9 +781,8 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   const [subcommand, ...rest] = dirFlag.rest;
 
   if (subcommand === "rm") {
-    // `--force` overrides the live-reuse-marker block (#175). Splitting flags from operands keeps the
-    // existing "exactly one id" check counting ids, not the flag — `rm --force <id>` and `rm <id>`
-    // both carry one operand.
+    // `--force` overrides the live-reuse-marker block; splitting flags from operands keeps the "exactly
+    // one id" check counting ids, not the flag.
     const force = rest.includes("--force");
     const unknownFlag = rest.find((arg) => arg.startsWith("--") && arg !== "--force");
     if (unknownFlag !== undefined) {
@@ -904,18 +795,15 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       io.error(RUNS_USAGE);
       return 2;
     }
-    // One id, not a list: a second operand used to be dropped in silence, so an operator who typed
-    // two ids watched one run survive a command they believed had removed it (#61).
+    // One id, not a list: a second operand is refused rather than silently dropped.
     if (operands.length > 1) {
       io.error(`runs rm takes exactly one run id, got ${operands.length}\n${RUNS_USAGE}`);
       return 2;
     }
 
     return withRunArchive(dir, io, (archive) => {
-      // The guard reads before deleting: a live successor tree still reusing this tree's data blocks
-      // the delete by default, so `rm` never silently strands a reference a later resume or cost
-      // query would read from (#175). An id with no rows has no blockers, so a not-found id still
-      // falls through to `remove`'s own "no run found" below rather than being masked by the guard.
+      // The guard reads before deleting: a live successor reusing this tree's data blocks the delete
+      // unless `--force`; a not-found id has no blockers and falls through to `remove`'s own error.
       const blockers = archive.blockingSuccessors(rootRunId);
       if (blockers.length > 0 && !force) {
         io.error(
@@ -924,18 +812,15 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
         );
         return 1;
       }
-      // "Found" means either store held something — an orphaned directory with no rows still
-      // counts, so `rm` finishes a half-done cleanup rather than reporting "not found" while
-      // deleting it anyway. Which stores there are, and that they go together (mvp spec §6), is
-      // the archive's business.
+      // "Found" means either store held something: an orphaned directory with no rows still counts, so
+      // `rm` finishes a half-done cleanup rather than reporting "not found" while deleting it anyway.
       if (!archive.remove(rootRunId)) {
         io.error(`no run found with id "${rootRunId}"`);
         return 1;
       }
       io.log(`removed run ${rootRunId}`);
-      // `--force` deletes exactly the named tree, no cascade — so the successors it just orphaned are
-      // named here (they were blockers until the delete landed), or the dangling reference stays
-      // invisible until something later reads through it.
+      // `--force` deletes exactly the named tree, no cascade, so the successors it orphaned are named
+      // here or the dangling reference stays invisible.
       if (blockers.length > 0) {
         io.log(`orphaned successor run(s): ${blockers.join(", ")}`);
       }
@@ -944,10 +829,8 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
   }
 
   if (subcommand === "prune") {
-    // `prune` takes no operands, and used to ignore whatever followed it — so `runs prune --help`,
-    // asked by someone who wanted to know what it does, deleted every run in the project instead of
-    // answering (#61). A destructive verb must be at least as strict about its input as `run` is.
-    // `--yes`/`-y` are the one exception: they skip the confirmation prompt for scripted use (#166).
+    // `prune` takes no operands: a destructive verb must be at least as strict about its input as `run`
+    // is. `--yes`/`-y` skip the confirmation prompt for scripted use.
     const yes = rest.includes("--yes") || rest.includes("-y");
     const badArg = rest.find((arg) => arg !== "--yes" && arg !== "-y");
     if (badArg !== undefined) {
@@ -956,15 +839,11 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
     }
 
     return withRunArchive(dir, io, async (archive) => {
-      // Confirm before deleting (#166): a bare `prune` wipes every root under `.path/`, and the only
-      // deletion that is ever project-wide. `--yes` skips the gate for scripts; an empty project has
-      // nothing to lose so it prunes unprompted (this still clears an orphaned directory with no rows).
-      // `listRoots` defaults to a 50-row page, but `prune` deletes *all* roots — pass an unbounded
-      // limit so the count and the id list describe everything that is about to go, never one page of it.
+      // Confirm before deleting: a bare `prune` wipes every root. `--yes` skips the gate; an empty
+      // project prunes unprompted. `listRoots` defaults to a 50-row page, so pass an unbounded limit.
       const roots = archive.listRoots({ limit: Number.MAX_SAFE_INTEGER });
       if (!yes && roots.length > 0) {
-        // Cap the printed ids so a project with thousands of roots does not bury the prompt; the
-        // count above the list is always the true total.
+        // Cap the printed ids so thousands of roots do not bury the prompt; the count is the true total.
         const shown = roots.slice(0, PRUNE_ID_PREVIEW);
         const more = roots.length - shown.length;
         io.log(
@@ -985,8 +864,7 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
     });
   }
 
-  // No subcommand, or a leading flag — the bare listing (#174). A word that is neither `rm`, `prune`
-  // nor a flag is a mistyped subcommand, and still earns the usage error.
+  // No subcommand, or a leading flag, is the bare listing; any other word earns the usage error.
   if (subcommand === undefined || subcommand.startsWith("--")) {
     return runRunsListCommand(dirFlag.rest, dir, io);
   }
@@ -1003,9 +881,7 @@ export async function main(
 ): Promise<number> {
   const [command, ...rest] = argv;
 
-  // Help is answered here, before dispatch, so it can never reach a subcommand and be mistaken for
-  // an operand. There was no help flag at all until #61, which is exactly why `runs prune --help`
-  // was a plausible thing to type — and, until the same ticket, a destructive one.
+  // Help is answered before dispatch, so it can never reach a subcommand and be mistaken for an operand.
   if (command === "--help" || command === "-h" || rest.includes("--help") || rest.includes("-h")) {
     io.log(`${RUN_USAGE}\n${RUNS_USAGE}`);
     return 0;

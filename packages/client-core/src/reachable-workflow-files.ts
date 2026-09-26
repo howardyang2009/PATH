@@ -1,14 +1,8 @@
 import { type WorkflowFile, walkNodes } from "@path/schema";
 import type { PathApiClient } from "./api-client.js";
 
-/**
- * Resolve a `workflow` step's `ref` (relative to the referencing file, workflow-format-v0.md §4.2)
- * to a path relative to the store dir — the shape `getWorkflowFile` reads. It is the client-side,
- * POSIX-only mirror of the engine's `resolve(dirname(parentPath), ref)`: the parent file's directory
- * plus the ref, with `.`/`..` collapsed. Store paths are always `/`-separated and relative, so no
- * drive letters or absolute roots enter — a `..` that would climb past the root is clamped, matching
- * the server's own refusal to serve a path that escapes the project.
- */
+/** Client-side mirror of the engine's `resolve(dirname(parentPath), ref)`: `.`/`..` collapsed, a `..`
+ * past the root clamped — matching the server's refusal to serve a path that escapes the project. */
 function resolveRef(parentPath: string, ref: string): string {
   const out = parentPath.split("/").slice(0, -1); // the parent file's directory
   for (const segment of ref.split("/")) {
@@ -22,20 +16,10 @@ function resolveRef(parentPath: string, ref: string): string {
   return out.join("/");
 }
 
-/**
- * The root workflow file and every file its `workflow` steps ref, transitively — the set an awaiting
- * `person-activity` leaf may live in (issue #486 follow-up). A leaf in a nested workflow file is
- * invisible to a root-only read, so the awaiting surface (`awaitingNodeForRun`) needs the whole
- * reachable set to find its node by id.
- *
- * Breadth-first from `rootPath`, following each file's `workflow` refs; a path is fetched once (the
- * `seen` set also stops a ref cycle a hand-built file could hold). The read tolerates a missing or
- * unparseable file — a since-moved ref, or a nested file the reader cannot see — by skipping it rather
- * than failing the set, exactly as the single-file read degrades today; a `rootPath` that fails yields
- * an empty array, so the caller's awaiting surface falls back to the schema-less submit. The root file
- * is first in the result, so a caller that also wants the root alone (the `Resume from …` legal-K
- * check) reads `files[0]`.
- */
+/** The root workflow file and every file its `workflow` refs reach, transitively — the set that may
+ * hold an awaiting leaf, which a root-only read cannot see. Breadth-first, each path fetched once
+ * (`seen` also stops a ref cycle); a missing or unparseable file is skipped, so the set degrades
+ * rather than failing, and the root file is first. */
 export async function loadReachableWorkflowFiles(
   client: PathApiClient,
   rootPath: string,

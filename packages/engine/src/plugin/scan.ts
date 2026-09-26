@@ -7,57 +7,37 @@ import { RESERVED_TYPE_NAMES } from "@path/schema";
 import type { StepPlugin } from "./seam.js";
 
 /**
- * The engine-side plugin discovery scanner (ADR 0019 sub-decisions 7–17, #335). It turns the one fixed
- * plugin directory into a frozen registry: it reads the directory entries, checks each candidate folder
- * against the scan rules *before* importing anything, then `await import()`s each surviving entry module
- * and assembles a registry entry in the seam's `StepPlugin` shape.
- *
- * Wired on the production load path (#337): the async `loadWorkflowTree` freeze point calls this to
- * build the file schema (ADR 0019 sub-15), and `runWorkflow` calls it again to get the executor
- * registry it dispatches every leaf step through. Its adequacy is also proven by unit tests against
- * fixture directories.
- *
- * Everything here is a **hard** failure. A folder present on disk but broken fails the whole scan
- * naming the folder and the reason (ADR 0019 sub-16); there is no skip-with-warning, because a skipped
- * plugin degrades into the "unknown step type" message `@path/schema` cannot tell from a genuinely
- * absent type (ADR 0018 sub-5).
- */
+ * Scans the one fixed plugin directory (ADR 0019 sub-7–17): checks every candidate folder *before*
+ * importing, then assembles the frozen registry the load/run paths dispatch through. A broken folder
+ * fails the whole scan rather than being skipped, which would degrade into a misleading "unknown type". */
 
-/** The registry the scan builds: leaf step-type name → its loaded plugin. Keyed by folder name (ADR 0019 sub-2). */
+/** The registry the scan builds: leaf step-type name → its loaded plugin, keyed by folder name (ADR 0019 sub-2). */
 export type LoadedStepPluginRegistry = Record<string, StepPlugin>;
 
-/**
- * The one fixed location, resolved relative to `import.meta.url` and never `process.cwd()` (ADR 0019
- * sub-8): a cwd-relative resolution would make the set of valid step types depend on the operator's
- * shell directory. From `src/plugin/scan.ts`, the plugins root is two directories up, under `plugin/step-plugin/`.
- */
+/** The one fixed location, resolved relative to `import.meta.url`, never `process.cwd()` (ADR 0019 sub-8):
+ * a cwd-relative resolution would make valid step types depend on the operator's shell directory. */
 export const STEP_PLUGINS_DIR = fileURLToPath(
   new URL("../../plugin/step-plugin/", import.meta.url),
 );
 
-// The folder name becomes a `z.literal` and a `type` value in author-written JSON, so it must look like
-// a core type name (ADR 0019 sub-13). Every core name already matches this shape.
+// The folder name becomes a `z.literal` and a JSON `type` value, so it must look like a core type name (ADR 0019
+// sub-13).
 const FOLDER_NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
 
-// The seven control-construct names a folder can never legitimately be (ADR 0019 sub-14). `binary` and
-// `prompt` are *not* here — sub-10 makes them ordinary folders.
+// The control-construct names a folder can never legitimately be; `binary`/`prompt` are ordinary folders (ADR 0019
+// sub-10/sub-14).
 const RESERVED_NAMES = new Set<string>(RESERVED_TYPE_NAMES);
 
-// The single conventional entry module (ADR 0019 sub-3). One path, probed once, no ordered fallback.
+// The single conventional entry module — one path, probed once, no ordered fallback (ADR 0019 sub-3).
 const ENTRY_FILE = "index.ts";
 
-// The named export the engine reads (ADR 0019 sub-4). Not a default export: greppable, barrel-safe, and
-// leaves the module free to add sibling exports.
+// The named export the engine reads — greppable, barrel-safe, and leaves the module free to add sibling exports (ADR
+// 0019 sub-4).
 const PLUGIN_EXPORT = "stepPlugin";
 
-/**
- * Scan the fixed plugin directory (or an explicit `dir`, for tests) and return the frozen registry.
- *
- * Directories only; dot-prefixed skipped; sorted lexicographically before loading, so the first-reported
- * error is stable across machines whose `readdir` order differs (ADR 0019 sub-12). The folder-name and
- * reserved-name checks run *before* the import, so a folder named `while-do` reports the reserved name
- * even when its own `index.ts` would also throw (ADR 0019 sub-14).
- */
+/** Scan the fixed plugin directory (or an explicit `dir`, for tests) and return the frozen registry.
+ * Directories only, dot-prefixed skipped, sorted before loading so the first error is machine-stable;
+ * the name checks run *before* the import, so a reserved name reports even if `index.ts` would throw. */
 export async function scanStepPlugins(
   dir: string = STEP_PLUGINS_DIR,
 ): Promise<LoadedStepPluginRegistry> {
@@ -88,8 +68,7 @@ export async function scanStepPlugins(
   return registry;
 }
 
-// Load one surviving folder: probe the single entry file, import it under a change-keyed URL, and read
-// the named export into a registry entry. Each failure class throws with the folder name and the reason.
+// Load one surviving folder: probe the single entry file, import it under a change-keyed URL, read the named export.
 async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
   const entry = join(folder, ENTRY_FILE);
 
@@ -97,8 +76,7 @@ async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
   try {
     entryStat = await stat(entry);
   } catch (err) {
-    // Only a genuine absence is "no index.ts". A permission or broken-symlink error names its own
-    // cause, so it is not masked into a message that sends the operator to create a file that exists.
+    // Only a genuine absence is "no index.ts" — a permission or broken-symlink error names its own cause.
     if ((err as NodeJS.ErrnoException).code === "ENOENT") {
       throw new Error(`step plugin "${name}": no ${ENTRY_FILE} in ${folder}`);
     }
@@ -135,34 +113,20 @@ async function loadPlugin(name: string, folder: string): Promise<StepPlugin> {
   return plugin;
 }
 
-/**
- * The change-keyed import URL for a plugin entry (ADR 0019 sub-17): `pathToFileURL(entry).href` plus a
- * `?v=` token that is the **maximum mtime across the folder tree**. An unchanged folder yields the same
- * URL and hits Node's ESM cache — no re-execution — so the module map grows with the number of *edits*,
- * not the number of loads. The N loads inside one `GET /v0/workflows` call share one import.
- *
- * **Freshness limit (documented, not fixed here):** Node does not propagate the query string to
- * relative specifiers, so `index.ts?v=2` importing `./helpers.ts` resolves without the query and hits
- * the cached copy. The entry module refreshes on any change within its folder; modules it imports from
- * beside it refresh only on process restart.
- *
- * Exported so a test can assert the token is stable for an unchanged folder and changes after an edit —
- * the mechanism the freshness contract rests on. Whether a new token *re-executes* is Node's ESM-cache
- * behavior, not the scanner's.
- */
+/** The change-keyed import URL (ADR 0019 sub-17): the file URL plus a `?v=` token that is the max mtime across
+ * the folder tree, so an unchanged folder hits Node's ESM cache. Node does not propagate the query to relative
+ * specifiers, so modules imported beside the entry refresh only on process restart. Exported for tests to assert. */
 export async function entryImportUrl(
   folder: string,
   entry: string = join(folder, ENTRY_FILE),
 ): Promise<string> {
-  // Floor to integer milliseconds: a fractional token would put a `.` in the query, and an ESM loader
-  // that sniffs the specifier's extension reads the trailing digits as one. Millisecond resolution is
-  // ample for a cache key — two edits inside one millisecond are one edit as far as the module map cares.
+  // Floor to integer milliseconds: a fractional token puts a `.` in the query, which an ESM loader that sniffs
+  // the specifier's extension misreads. Millisecond resolution is ample for a cache key.
   const token = Math.floor(await maxMtimeMs(folder));
   return `${pathToFileURL(entry).href}?v=${token}`;
 }
 
-// The maximum mtime across a folder tree. Directory mtimes are included so an added or removed file —
-// which changes the containing directory's mtime but not any surviving file's — still moves the token.
+// The max mtime across a folder tree. Directory mtimes count too, so an added or removed file moves the token.
 async function maxMtimeMs(dir: string): Promise<number> {
   let max = (await stat(dir)).mtimeMs;
   for (const entry of await readdir(dir, { withFileTypes: true })) {
@@ -176,23 +140,15 @@ async function maxMtimeMs(dir: string): Promise<number> {
   return max;
 }
 
-/**
- * Load the frozen step-plugin registry from the one fixed location, as read-only data. The use-facing
- * seam behind `GET /v0/step-plugins` (server-api-v0.md §8, ADR 0018): the browser Designer cannot scan
- * the plugin folder, so the server reads the registry here and serves it as the authoring palette. This
- * is a *read*, not the assembly `scanStepPlugins`'s `dir` override serves (fixture folders for tests) —
- * so it takes no argument and exposes only the fixed-location snapshot.
- *
- * A broken plugin folder throws here exactly as it does on the load/run paths (ADR 0019 sub-16), so a
- * server that scans at start fails loud rather than ever serving a partial registry.
- */
+/** The read-only registry snapshot behind `GET /v0/step-plugins` (server-api-v0.md §8, ADR 0018): the browser
+ * Designer cannot scan the plugin folder, so the server reads it here and serves the authoring palette. A broken
+ * folder throws exactly as on the load/run paths, so a server fails loud rather than serving a partial registry. */
 export function loadStepPluginRegistry(): Promise<LoadedStepPluginRegistry> {
   return scanStepPlugins();
 }
 
-// A shallow structural check on the export. It gates only the four seam keys the scanner assembles; the
-// deeper invariants — a `fields` key colliding with `commonStepFields`, a type shipping no worker — are
-// the schema factory's, thrown when `makeWorkflowFileSchema(registry)` freezes (ADR 0018 sub-4).
+// A shallow structural check gating only the four seam keys; the deeper invariants (a `fields` key colliding
+// with `commonStepFields`, a type shipping no worker) belong to the schema factory at freeze time (ADR 0018 sub-4).
 function isStepPluginShape(value: unknown): value is StepPlugin {
   if (typeof value !== "object" || value === null) return false;
   const candidate = value as Record<string, unknown>;

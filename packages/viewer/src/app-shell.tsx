@@ -1,9 +1,9 @@
 import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 export interface AppShellProps {
-  /** Top of the left rail: workflow discovery + inline launch (#233). */
+  /** Top of the left rail: workflow discovery + inline launch. */
   workflows: ReactNode;
-  /** Bottom of the left rail: the runs list with its status filter (#46). */
+  /** Bottom of the left rail: the runs list with its status filter. */
   runs: ReactNode;
   detail: ReactNode;
   nodeIo: ReactNode;
@@ -42,13 +42,12 @@ function loadWidths(): RailWidths {
 }
 
 /**
- * The pinned app frame: **Variant A, the three-pane console** (#44 decision) —
- * `runs list │ run detail │ node I/O`. The panes are co-visible by design: a read-only monitor
- * watches a run live while inspecting a node, so no tab switch may drop the live narrative. Slots
- * only — each surface graduates into its pane in its own ticket under map #40.
+ * The pinned app frame: **Variant A, the three-pane console** — `runs list │ run detail │ node I/O`.
+ * The panes are co-visible by design: a read-only monitor watches a run live while inspecting a node, so
+ * no tab switch may drop the live narrative.
  *
- * The two rails are drag-resizable: grab the divider between panes to widen or narrow it. Widths
- * clamp to `[MIN_RAIL, MAX_RAIL]` and persist in `localStorage`, so the fluid centre never starves.
+ * The two rails are drag-resizable. Widths clamp to `[MIN_RAIL, MAX_RAIL]` and persist in
+ * `localStorage`, so the fluid centre never starves.
  */
 export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
   const [widths, setWidths] = useState<RailWidths>(loadWidths);
@@ -159,11 +158,9 @@ function loadWorkflowsHeight(): number {
 }
 
 /**
- * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below
- * (the status-filtered run list). Two landmark panes, one drag-resizable divider between them — the
- * vertical mirror of the column resizers, sharing the `.row-resizer` handle the run-detail pane uses.
- * The workflows panel's height is drag-set and persisted; the runs list takes whatever is left, since
- * it is the surface that keeps growing.
+ * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below. One
+ * drag-resizable divider between them, the vertical mirror of the column resizers. The workflows panel's
+ * height is persisted; the runs list takes what is left, since it is the surface that keeps growing.
  */
 function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }) {
   const railRef = useRef<HTMLDivElement>(null);

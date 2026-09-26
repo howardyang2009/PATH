@@ -2,7 +2,7 @@
 // vocabulary its execution produces.
 //
 //   Workflow format v0 — steps, workers, control blocks, conditions, config, interpolation.
-//     Normative reference: docs/format/workflow-format-v0.md; spec: docs/spec/mvp-spec.md §4.
+//     Normative reference: docs/format/docs/format/workflow-format.md; spec: docs/spec/mvp-spec.md §4.
 //   Runtime vocabulary — run status, the log-event stream, condition traces, the run record, and
 //     the v0 wire shapes that carry them. Normative reference: docs/api/server-api-v0.md.
 //
@@ -37,7 +37,7 @@ export { ConditionSchema } from "./conditions.js";
 export { ConfigObjectSchema, ConfigValueSchema } from "./config.js";
 export { updateAtConfigPath, valueAtConfigPath } from "./config-path.js";
 export type { ConfigObject, ConfigValue, EnvWrapper, SecretWrapper } from "./config-value-type.js";
-// The dot-path grammar (format §5, §9) — one declaration, and both operations over it: the
+// The dot-path grammar (format §6, §9) — one declaration, and both operations over it: the
 // load-time syntax check and the runtime walk.
 export {
   checkDotPath,
@@ -63,10 +63,8 @@ export { formatIssues } from "./format-issues.js";
 export { type GotoIssue, type GotoIssueRule, gotoIssues } from "./goto.js";
 export { IdSchema, NAME_PATTERN, NameSchema } from "./ids.js";
 // Instantiation (ADR 0049): the pure detached-copy transform that turns a Step-Template body into
-// ordinary workflow nodes — a deep copy that re-stamps every id, keeps every other datum verbatim,
-// uniquifies a colliding name, and wraps a 2+-node body for a single-node slot. Owned here beside the
-// tree walks it uses (`childBodies`), so the Designer is a thin caller and the transform is unit-
-// testable without a browser.
+// ordinary workflow nodes — re-stamps every id, keeps other data verbatim, wraps a 2+-node body for a
+// single-node slot. Owned here beside the tree walk it uses, so the Designer is a thin caller.
 export {
   type InstantiateOptions,
   instantiate,
@@ -220,9 +218,8 @@ export {
   safeParseStepTemplateWith,
 } from "./step-template.js";
 // The Step-Template schema (ADR 0048): a strict `{ format, id, description, body }` envelope over the
-// shared body validator, so a template's body is checked exactly as a file's body. Validity is
-// per-node and registry-relative only — the file-scoped rules (name uniqueness, publish set,
-// `worker_defaults`) are not run at template load, because a fragment cannot know the file it lands in.
+// shared body validator. File-scoped rules are not run at template load — a fragment cannot know the
+// file it lands in.
 export type { StepTemplate } from "./step-template-type.js";
 export type { AllTrace, AnyTrace, ConditionOutcome, LeafTrace, NotTrace, Trace } from "./trace.js";
 export { TraceSchema } from "./trace.js";
@@ -265,10 +262,8 @@ export {
   type WireWorkflowLease,
   type WorkflowSummary,
 } from "./wire-v0.js";
-// The launch channel of ADR 0044's registry-relative `worker_defaults` validation (#518): the operator
-// launch surfaces (CLI `--worker-default`, server `POST /v0/runs`) check their table here, at the
-// launch boundary, and prefix their own source onto each returned message. The per-entry core
-// (`collectWorkerDefaultIssues`) stays internal — the file channel imports it directly.
+// The launch channel of ADR 0044's registry-relative `worker_defaults` validation: the operator launch
+// surfaces check their table here, at the launch boundary, and prefix their own source onto each message.
 export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
 export type { BinaryWorkerName, PromptWorkerName } from "./worker-names.js";
 export {

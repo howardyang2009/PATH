@@ -3,22 +3,9 @@ import { sendError, sendJson } from "../http-json.js";
 import type { ApiRequest } from "./route-context.js";
 
 /**
- * `DELETE /v0/runs/:root_run_id` — permanently remove a root run's data from both stores: its rows
- * in `path.db` and its blob tree under `.path/runs/<root>/`. The destructive twin of `path runs rm`
- * (engine `RunArchive.remove`), reached from the viewer's per-run delete affordance.
- *
- * Two refusals guard the delete, each a different reason:
- *
- * - **Still running.** A non-terminal root must not be deleted out from under an executing process:
- *   its rows are still being written. The caller cancels it first (`409`). Only a settled run —
- *   succeeded / failed / cancelled — is deletable.
- * - **Live successor.** A later run that resumed from this one reuses its data (reuse markers); the
- *   default refuses (`409`) so the delete never strands a dangling reference. `?force=true` overrides
- *   it, mirroring `path runs rm --force`.
- *
- * `remove` returning `false` means neither store held anything for the id — a `404`, either an
- * unknown id or one already deleted (a double-click after the list refreshed). The `200` body echoes
- * `{ root_run_id }`, which the caller passed in.
+ * `DELETE /v0/runs/:root_run_id` — permanently remove a root run from `path.db` and `.path/runs/<root>/`.
+ * Refuses a non-terminal run (`409`: cancel first) and, unless `?force=true`, a delete whose data a live
+ * successor still reuses (`409`). `404` means neither store held the id.
  */
 export function handleDeleteRun({
   res,
@@ -28,8 +15,7 @@ export function handleDeleteRun({
 }: ApiRequest<[string]>): void {
   const force = query.get("force") === "true";
 
-  // The root row specifically (as `cancel` does): a child can read terminal while the tree still
-  // runs, so a status taken from any other row could wrongly clear the "still running" guard.
+  // The root row specifically: a child can read terminal while the tree still runs.
   const rootRow = ctx.project.archive.tree(rootRunId)?.root;
   if (!rootRow) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);

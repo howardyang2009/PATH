@@ -18,9 +18,8 @@ import {
 
 export { FORMAT_VERSION };
 
-// The file envelope, parameterised by its `body` schema so the plugin factory can wrap the opened
-// node union `makeNodeSchema(registry)` builds. Everything except `body` is fixed grammar. There is no
-// closed built-in envelope any more — a file is only ever parsed against a registry (ADR 0019, #337).
+// The file envelope is parameterised by its `body` schema; everything except `body` is fixed grammar,
+// and there is no closed built-in envelope — a file is only ever parsed against a registry (ADR 0019).
 function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
   return z
     .object({
@@ -28,36 +27,19 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
       id: IdSchema,
       name: NameSchema,
       config: ConfigObjectSchema.optional(),
-      // The file's own launch seed: the JSON object a launch sends as the root input when the operator
-      // supplies no override. Plain JSON — the empty root set refuses a `${…}` placeholder here, since
-      // nothing interpolates the root input; it goes straight into the root context (format doc §6.3).
-      // Registry-agnostic and shape-only, like `output`/`worker_defaults`.
+      // The file's launch seed: the JSON object a launch sends as root input when the operator gives no
+      // override. Plain JSON — the empty root set refuses a `${…}` placeholder here (format doc §6.3).
       input: z.record(z.string(), interpolatedJsonValue([])).optional(),
       body: bodySchema,
       output: z.record(z.string(), interpolatedJsonValue(STEP_ROOTS)).optional(),
-      // The file worker-default table (ADR 0044): `{ <stepType>: <workerName> }`, a per-type selection
-      // for un-pinned steps. Shape only here — this schema is registry-agnostic, so "is this a real
-      // type shipping that worker" is an engine-load check, not a zod constraint.
+      // The file worker-default table (ADR 0044): shape only — registry-relative validity is an engine-load check.
       worker_defaults: z.record(z.string().min(1), z.string().min(1)).optional(),
     })
     .strict();
 }
 
-// Every node — steps, controllers, checkpoints, and each `parallel` branch (now itself a node, `@2`
-// §4.3) — carries a required human `name`, unique across the whole file at every nesting level
-// (workflow-format-v2.md §3). The walk and the rule are `node-identity.ts`'s, shared with the two other
-// doors that enforce an identity rule (the write route's duplicate-`id` check, the Designer's open
-// gate); this refinement only turns the issues into zod issues at the offending `name` field.
-
-// The file channel of ADR 0044's registry-relative `worker_defaults` validation (#516). The base
-// schema fixes the *shape* (`{ <non-empty>: <non-empty> }`), registry-agnostically; here — with the
-// registry in hand — each entry is checked for registry-relative validity through the per-entry core
-// (`collectWorkerDefaultIssues`) the launch channel shares (#518), so the two channels report a bad
-// selection in one voice. A bad entry is file-invalidity (discovery reports it, the Designer refuses
-// the file, ADR 0026), reported against its own `worker_defaults.<type>` path so the reader sees which
-// entry, not the whole table. Every bad entry is reported in one pass (aggregate). The registry is one,
-// run-wide, and each file is parsed on its own, so a bad table invalidates *its* file — a child ref's,
-// never its parent's.
+// The file channel of ADR 0044's registry-relative `worker_defaults` validation: each bad entry makes
+// the file invalid (ADR 0026), reported at its own `worker_defaults.<type>` path, aggregated in one pass.
 function checkWorkerDefaults(
   file: WorkflowFile,
   ctx: z.RefinementCtx,
@@ -69,20 +51,14 @@ function checkWorkerDefaults(
   }
 }
 
-// The cross-node invariants zod's per-field parse cannot express: file-unique names, no two
-// concurrent parallel branches publishing one key, no publish inside a `do-not-wait` branch, every
-// goto's placement and first-level target (docs/spec/goto.md §2.3), and the
-// registry-relative `worker_defaults` check (ADR 0044). Applied by the plugin factory's schema
-// (`makeWorkflowFileSchema`), which closes the registry over the last argument.
+// The cross-node invariants zod's per-field parse cannot express: file-unique names, the publish set,
+// every goto's placement and first-level target (docs/spec/goto.md §2.3), and `worker_defaults` (ADR 0044).
 function checkWorkflowFileInvariants(
   file: WorkflowFile,
   ctx: z.RefinementCtx,
   registry: StepPluginRegistry,
 ): void {
-  // The identity rule is `node-identity.ts`'s, so this refinement and the write route cannot disagree
-  // about which occurrence offends; only the reader-facing half (a zod issue at the `name` field) is
-  // here. `duplicate-name` is the one rule the load enforces: `id`s are UUID-checked per field, and a
-  // duplicate `id` is refused at the write door and the Designer's open gate (ADR 0015).
+  // The identity rule is `node-identity.ts`'s; `duplicate-name` is the one rule the load enforces (ADR 0015).
   for (const issue of nodeIdentityIssues(file, ["duplicate-name"])) {
     ctx.addIssue({
       code: z.ZodIssueCode.custom,
@@ -103,16 +79,9 @@ function checkWorkflowFileInvariants(
 }
 
 /**
- * The **body** validator (ADR 0048 decision 7): `z.array(nodeSchema).min(1)`, and nothing else. It is
- * the one constraint a workflow file's `body` and a Step-Template's `body` share, so the two cannot
- * drift — a file body is this plus the file-scoped invariants (`makeWorkflowFileSchema`), a template
- * body is this alone (`makeStepTemplateSchema`). Registry-relative and per-node only: each element
- * validates against `makeNodeSchema(registry)` (the node union, each type's `fields`/`config`, its
- * `worker` enum), controllers are legal at the top level because a controller *is* a `WorkflowNode`,
- * and the array carries the `@2` minimum of one node. The cross-node file rules — name uniqueness, the
- * publish set, goto placement and targets, `worker_defaults` — are deliberately **not** here: they
- * are the file namespace's, not the body's, and a fragment cannot know the namespace it will land in
- * (decision 5).
+ * The body validator (ADR 0048 decision 7): `z.array(nodeSchema).min(1)` over `makeNodeSchema(registry)`,
+ * the one constraint a file body and a Step-Template body share. The cross-node file rules are the file
+ * namespace's, not the body's (decision 5), so a fragment need not know where it will land.
  */
 export function makeBodySchema(registry: StepPluginRegistry): z.ZodType<WorkflowNode[]> {
   const nodeSchema = makeNodeSchema(registry);
@@ -120,15 +89,11 @@ export function makeBodySchema(registry: StepPluginRegistry): z.ZodType<Workflow
 }
 
 /**
- * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
- * wrapping the open node union `makeNodeSchema(registry)` builds, plus the same cross-node invariants
- * the closed schema enforces. The registry is required and has no default — a caller with no plugins
- * still passes an empty registry, which describes a grammar with the seven control members and no leaf
- * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
+ * The whole `WorkflowFileSchema` for a registry (ADR 0018 sub-7): the file envelope wrapping the open
+ * node union, plus the file-scoped invariants. Build once per freeze; parse many files with it.
  */
 export function makeWorkflowFileSchema(registry: StepPluginRegistry): z.ZodType<WorkflowFile> {
-  // The registry is closed over the refinement here (ADR 0044 #516): the base schema stays
-  // registry-free, and the whole-file check reads the registry to validate `worker_defaults` entries.
+  // The registry is closed over the refinement here (ADR 0044): the base schema stays registry-free.
   return buildBaseWorkflowFileSchema(makeBodySchema(registry)).superRefine((file, ctx) =>
     checkWorkflowFileInvariants(file, ctx, registry),
   ) as z.ZodType<WorkflowFile>;
@@ -144,16 +109,9 @@ export interface WorkflowFileParseFailure {
   errors: string[];
 }
 
-// A pre-migration file — or a Step-Template, which stamps the same body grammar (ADR 0048) — carrying
-// a superseded `format` string gets a targeted error naming the codemod, not a generic zod "invalid
-// literal": the shape changed (`@2`'s worker union, `@1`'s uniform single-node containers, `@0`'s GUID
-// identity), so the fix is to migrate, not to hand-edit `format` (workflow-format-v3.md §1). Both
-// `safeParseWorkflowFileWith` and `safeParseStepTemplateWith` run this pre-check. The engine reads the
-// current format only — there is no dual reader.
-//
-// The pre-check is symmetric (ADR 0058 §6): a well-formed version *newer* than `FORMAT_VERSION` gets
-// "upgrade PATH", not a bare invalid-literal, so a file written by a newer PATH is legible on an older
-// engine. A malformed version string still falls through to zod's literal mismatch.
+// A file carrying a superseded `format` string gets a targeted error naming the codemod, not a generic
+// zod "invalid literal", because the fix is to migrate (workflow-format-v3.md §1). The check is
+// symmetric (ADR 0058 §6): a version newer than `FORMAT_VERSION` gets "upgrade PATH".
 export function supersededFormatError(json: unknown): WorkflowFileParseFailure | null {
   if (typeof json !== "object" || json === null) return null;
   const format = (json as { format?: unknown }).format;
@@ -168,10 +126,8 @@ export function supersededFormatError(json: unknown): WorkflowFileParseFailure |
     };
   }
   if (!(format in SUPERSEDED_FORMAT_VERSIONS)) return null;
-  // Per workflow-format-v2.md §1 (the ADR 0007 precedent): names the codemod script, never a generic
-  // zod "invalid literal" on `format`. Each older string names its whole codemod chain in the order
-  // the scripts must run, because a single codemod migrates one step only and would not move a file
-  // that is two or three versions behind.
+  // Named per workflow-format-v2.md §1: the whole codemod chain in run order, since one codemod
+  // migrates one step only and would not move a file that is two or three versions behind.
   const codemods = SUPERSEDED_FORMAT_VERSIONS[format as keyof typeof SUPERSEDED_FORMAT_VERSIONS];
   return {
     success: false,
@@ -187,8 +143,7 @@ function formatVersionNumber(format: string): number | null {
   return match ? Number(match[1]) : null;
 }
 
-// The superseded-format pre-check and the success/failure shaping both doors share: parse a file
-// against an already-built schema. `loadWorkflowTree` builds the schema once per registry freeze and
+// Parse a file against an already-built schema; `loadWorkflowTree` builds once per registry freeze and
 // calls this per file in the ref tree (ADR 0018 sub-decision 7).
 export function safeParseWorkflowFileWith(
   schema: z.ZodType<WorkflowFile>,
@@ -204,10 +159,7 @@ export function safeParseWorkflowFileWith(
 }
 
 // The single-file convenience door: build the open schema for `registry` and parse `json` against it.
-// The registry is **required** — there is no closed built-in schema to fall back on (ADR 0019, #337),
-// so a caller with no plugins still passes an empty registry (a grammar of the seven control members and
-// no leaf step). A caller parsing many files should build the schema once with `makeWorkflowFileSchema`
-// and reuse it via `safeParseWorkflowFileWith`; this door is for the one-off case.
+// A caller parsing many files should build once with `makeWorkflowFileSchema` and reuse that schema.
 export function safeParseWorkflowFile(
   json: unknown,
   registry: StepPluginRegistry,

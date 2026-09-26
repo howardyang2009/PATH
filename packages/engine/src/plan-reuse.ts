@@ -11,29 +11,9 @@ export type ReusePlan = Map<string, RunRecord>;
 
 /**
  * Which node ids of a re-read `WorkflowFile` reuse their original run, and which run each reuses
- * (resume-reuse-semantics.md): a node id reuses iff `originalRuns` holds a `succeeded` run at that
- * id — matched by id alone, never by comparing input, config, or the step's own definition.
- *
- * `originalRuns` is scoped to one workflow-run's direct children before matching, not searched
- * whole: node ids are unique only within one file (release-notes.test.ts), so a nested workflow-run's
- * own descendants can carry an id that coincidentally collides with one in this file. `parentRunId`
- * names that workflow-run — the original root run when omitted (the top-level call), or a re-entered
- * nested workflow-run's original counterpart when the engine recurses into it (#172). Since
- * `walkNodes` never descends into a `workflow` step's ref (node-walk.ts), a succeeded workflow-run's
- * whole subtree is collapsed for free — nothing inside it is a candidate, and nothing inside it is
- * ever inspected.
- *
- * A node id with more than one succeeded row under one scope does not reuse rather than guessing which
- * attempt answers it. Since ADR 0037 (#454) a `while-do` body's runs sit under one per-iteration
- * container each, so a loop body no longer collides here — within a container scope it has exactly one
- * run; `runWhileDoNode` scopes a `planReuse` to each iteration's container. This guard now only trips on
- * a genuinely ambiguous collision, and refuses it.
- *
- * `suppress` is the Resume-from-K rerun boundary as a set of run-producing node ids (ADR 0035,
- * Producer A): K and every serialized-later node. A suppressed id is skipped in the walk, so it never
- * plans reuse and re-runs instead — the one guard that discards the reuse an operator asked to drop.
- * Absent (plain Resume) leaves every succeeded node reusing exactly as before.
- */
+ * (resume-reuse-semantics.md): a node id reuses iff `originalRuns` holds exactly one `succeeded` run at
+ * that id under the scope's parent run (`parentRunId`, or the root when omitted). Ids are unique only
+ * within a file, so the scope bounds the match; `suppress` (Resume-from-K) makes those ids re-run. */
 export function planReuse(
   originalRuns: RunRecord[],
   tree: WorkflowFile,
@@ -54,17 +34,14 @@ export function planReuse(
   return plan;
 }
 
-// Re-derived here from the format so the reuse decisions below stay pure over `@path/schema` and this
-// module never has to import the executor. The executor derives the same two types for its own use;
+// Re-derived from the format so this module never imports the executor; both resolve to the same
+// `WorkflowFile["body"]` member.
 // both resolve to the same `WorkflowFile["body"]` member, so a call across the seam type-checks.
 type ParallelNode = Extract<WorkflowFile["body"][number], { type: "parallel" }>;
 type ParallelBranch = ParallelNode["branches"][number];
 
-// True when every run-producing node in a branch already reuses a `succeeded` original run (#172) —
-// i.e. this branch is the winner of an already-decided `wait-one` race being replayed. A branch with
-// no run-producing node at all is not a decided winner (nothing was recorded to reuse), so it does
-// not qualify. Losers were `cancelled`, never `succeeded`, so their nodes are absent from the plan
-// and they fail this test — which is what lets resume start no loser (wait-one-join.md §7).
+// True when every run-producing node in a branch already reuses a succeeded original run — the winner of
+// an already-decided `wait-one` race. A branch with nothing recorded to reuse does not qualify (wait-one-join.md §7).
 function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean {
   let sawRunProducing = false;
   for (const inner of walkNodes([branch])) {
@@ -76,9 +53,8 @@ function branchIsReusedWinner(branch: ParallelBranch, plan: ReusePlan): boolean 
   return sawRunProducing;
 }
 
-// A fully-reused branch's recorded completion time: the latest `finishedAt` among its reused runs,
-// since the branch reaches `succeeded` when its last node does. Null when no reused run carries a
-// finish time — the tie-break below then falls back to declaration order.
+// A fully-reused branch's completion time, the latest `finishedAt` among its reused runs; null falls back to
+// declaration order.
 function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string | null {
   let completedAt: string | null = null;
   for (const inner of walkNodes([branch])) {
@@ -92,17 +68,9 @@ function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string
   return completedAt;
 }
 
-/**
- * The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). Usually exactly
- * one branch is a reused winner (the losers were `cancelled`, so absent from the plan), and it is
- * returned directly. Best-effort cancellation is asynchronous, though, so a photo-finish can leave
- * **two** branches recorded `succeeded`; the live run resolved that by `seq` (§6), the ordering truth
- * — which a `RunRecord` does not carry. Resume reproduces it from the recorded completion time (a
- * lower `seq` was emitted no later, so the branch that finished first is the recorded winner), and
- * declaration order breaks an exact timestamp collision — the case `seq` exists for but resume cannot
- * see. Picking the first-*declared* winner instead would land a different branch than the original
- * run's `join-applied` named, breaking resume determinism (ADR 0001).
- */
+/** The winner to reuse when replaying a decided `wait-one` race (wait-one-join.md §7). A photo-finish can
+ * leave two branches recorded `succeeded`; resume orders them by recorded completion time (the live run's
+ * `seq` is not on a `RunRecord`) and breaks an exact tie by declaration order. */
 export function pickReusedWaitOneWinner(
   node: ParallelNode,
   plan: ReusePlan,
@@ -126,15 +94,11 @@ export interface RecordedScopeKey {
   nodeId?: string | null;
   iteration?: number;
   pass?: number;
-  /** Only a `succeeded` row answers (a reusable iteration). */
   succeeded?: boolean;
 }
 
-/**
- * The **one** recorded row under `parentRunId` that answers `key`, or `undefined`. Exactly one match
- * answers; zero (added since) or more than one (which attempt is undefined) both answer none, so the
- * scope runs fresh rather than guessing. Resume and Complete both look rows up through here.
- */
+/** The **one** recorded row under `parentRunId` that answers `key`, or `undefined`: zero matches (added
+ * since) and more than one (which attempt is undefined) both answer none, so the scope runs fresh. */
 export function recordedChild(
   rows: readonly RunRecord[],
   parentRunId: string | undefined,

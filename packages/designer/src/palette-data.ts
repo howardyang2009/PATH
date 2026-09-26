@@ -1,54 +1,37 @@
 import type { WireStepPlugin } from "@path/client-core";
 
 /**
- * The palette's four categories (#368, #577, designer-spec § The v1 authoring palette), split across the
- * two tabs of the rail (#564 variant C). The **Nodes** tab: **Step** — one entry per leaf step type — and
- * **Controller** — fixed by the grammar, split into a **Structure** sub-tab (the five Structure Controllers,
- * `checkpoint` included) and a **Graph** sub-tab (the Graph Controller `goto`). The **Templates**
- * tab: one card per entry of `GET /v0/templates`, with no group heading (one kind only, ADR 0063).
- *
- * The Step half is **registry-driven** (ADR 0018, § The palette is registry-driven): one card per
- * leaf type the received `GET /v0/step-plugins` snapshot describes (`prompt`, `binary`, and any plugin
- * such as `api-call`), plus `workflow` — the sub-workflow ref, core grammar rather than a plugin, but a
- * leaf-step entry in the palette all the same. The Controller group is grammar-fixed.
- *
- * Each entry's `kind` is the node `type` a place mints and the CSS hue token (`--k-<kind>`); `hue` is
- * the hue key when it differs from `kind` (a `while-do` block paints the `while` hue; the `workflow`
- * ref keeps its own). No entry is a closed constant any more — the Step list is a function of the
- * registry the session received.
+ * The palette's categories, split across the two rail tabs. The **Nodes** tab: **Step** — one
+ * registry-driven entry per leaf step type (the `workflow` ref included) — and **Controller**, fixed by
+ * the grammar and split into Structure | Graph. The **Templates** tab: one card per `GET /v0/templates`
+ * entry, with no group heading (one kind only, ADR 0063).
  */
 export interface PaletteEntry {
-  /** The node `type` discriminant a place mints, e.g. `prompt`, `parallel`, `while-do`. */
   readonly kind: string;
   /** The palette label shown to the author. */
   readonly label: string;
-  /** One-line description of what the entry authors. */
   readonly blurb: string;
-  /** The hue token key `--k-<hue>` / `--k-<hue>-bg`; defaults to `kind` when omitted. */
+  /** Hue token key when it differs from `kind` (a `while-do` block paints the `while` hue). */
   readonly hue: string;
 }
 
 export interface PaletteGroup {
   readonly title: string;
-  /** Every entry of the group, in order. */
   readonly entries: readonly PaletteEntry[];
-  /** Sub-tabs that split `entries` for display, when the group has them (the Controller group: Structure | Graph). */
+  /** Sub-tabs that split `entries` for display (the Controller group: Structure | Graph). */
   readonly tabs?: readonly PaletteSubTab[];
 }
 
-/** One sub-tab of a palette group: a label and the entries it shows. */
 export interface PaletteSubTab {
   readonly key: string;
   readonly label: string;
   readonly entries: readonly PaletteEntry[];
 }
 
-/** Title-case a leaf type name for its palette label: `api-call` → `Api-call`, `prompt` → `Prompt`. */
 function titleCase(name: string): string {
   return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
 }
 
-/** The blurb for a first-class leaf type; a plugin type gets a generic one. */
 function leafBlurb(name: string): string {
   if (name === "prompt") return "LLM prompt against a model";
   if (name === "binary") return "A command with args and cwd";
@@ -56,7 +39,6 @@ function leafBlurb(name: string): string {
   return `A ${name} step`;
 }
 
-/** The Step group for a received registry: one card per plugin leaf type, plus the `workflow` ref. */
 function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
   const fromRegistry: PaletteEntry[] = plugins.map((plugin) => ({
     kind: plugin.name,
@@ -82,7 +64,6 @@ const STRUCTURE_CONTROLLERS: readonly PaletteEntry[] = [
   { kind: "checkpoint", label: "Checkpoint", blurb: "An assertion on the run", hue: "checkpoint" },
 ];
 
-/** The one Graph Controller, goto, fixed by the grammar. */
 const GRAPH_CONTROLLERS: readonly PaletteEntry[] = [
   { kind: "goto", label: "Goto", blurb: "A bounded jump to a first-level node", hue: "goto" },
 ];
@@ -97,7 +78,6 @@ const CONTROLLERS: PaletteGroup = {
   ],
 };
 
-/** The Nodes tab's groups for a received registry snapshot: registry-driven Step, then grammar-fixed Controller. */
 export function paletteGroups(plugins: WireStepPlugin[]): readonly PaletteGroup[] {
   return [stepGroup(plugins), CONTROLLERS];
 }

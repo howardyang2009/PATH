@@ -5,10 +5,9 @@ import { directionGlyph, gotoDirection, incomingGotos } from "./goto-view.js";
 import { useSelection } from "./selection-context.js";
 
 /**
- * The canvas's goto view (#619, designer-spec § goto): a goto draws no edge, so its block, its target's
- * block and the target's incoming badge all read the jump off one shared value. The provider holds the
- * rendered file and the goto the pointer rests on; the selected goto comes from the selection context.
- * The highlighted target is the target of the hovered goto, else of the selected one.
+ * The goto view (designer-spec § goto): a goto draws no edge, so its block, its target's block and the
+ * target's incoming badge all read the jump off one shared value. The highlighted target is the hovered
+ * goto's target, else the selected goto's.
  */
 
 interface GotoView {

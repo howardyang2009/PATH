@@ -3,21 +3,10 @@ import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
 
 /**
- * The first-save dialog for a from-scratch buffer (#390, designer-spec § New-file placement and naming).
- * Placement is decided **here**, at the first save, never at create: the author picks a directory
- * confined to the project root and a filename, and the save is an **exclusive create** — an existing path
- * is refused ("choose another name"), never a silent overwrite (ADR 0016).
- *
- * - **Where.** A directory picker over the project's discovered directories (the App's one
- *   `discovery.ts` snapshot), the **project root** always offered and the default. The server confines
- *   the resolved path to the root (a path that escapes it is a `404`), so every offered choice is
- *   in-root by construction.
- * - **Name.** The filename stem is prefilled from the workflow's `name` and is author-editable, but the
- *   **`.workflow.json` suffix is enforced** — it is a fixed adornment the author cannot edit away, because
- *   discovery lists only that suffix.
- * - **Collision.** `create` runs the exclusive create; its `exists` result surfaces here as the refusal,
- *   and only a `created` closes the dialog (the App then adopts the path, acquires the lease, and enables
- *   launch).
+ * The first-save dialog for a from-scratch buffer (designer-spec § New-file placement and naming):
+ * placement is decided here, at the first save, as an exclusive create — an existing path is refused,
+ * never overwritten (ADR 0016). The author picks an in-root directory and a stem; the `.workflow.json`
+ * suffix is enforced because discovery lists only that suffix, and only a `created` closes the dialog.
  */
 export function NewFileDialog({
   discovery,
@@ -48,8 +37,7 @@ export function NewFileDialog({
   const [error, setError] = useState<string | null>(null);
 
   // The project's directories for the picker — the parent of every discovered workflow, plus the root.
-  // Nothing discovered (still scanning, or a failed scan) is not fatal: the root is always offered, so a
-  // save can still proceed.
+  // A failed scan is not fatal: the root is always offered, so a save can still proceed.
   const directories = useMemo(() => {
     const dirs = new Set<string>(["", initialDirectory]);
     for (const wf of discoveredWorkflows(discovery) ?? []) dirs.add(dirnameOf(wf.relative_path));
@@ -141,10 +129,8 @@ export function NewFileDialog({
 }
 
 /**
- * The filename **stem**, cleaned so the dialog's own controls are the sole placement control: a trailing
- * `.workflow.json` the author typed is stripped (the suffix is appended once, never doubled), and path
- * separators are dropped so a `/`- or `..`-bearing stem cannot escape the picked directory. Confinement
- * still holds server-side (a path escaping the root is a `404`, ADR 0016); this keeps the picker honest.
+ * The filename **stem**, cleaned so the dialog's controls are the sole placement: a trailing
+ * `.workflow.json` is stripped and path separators dropped, so a stem cannot escape the picked directory.
  */
 function normalizeStem(stem: string): string {
   return stem

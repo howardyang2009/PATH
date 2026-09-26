@@ -9,22 +9,13 @@ import { dispatchApi } from "./routes/api-routes.js";
 import type { RouteContext } from "./routes/route-context.js";
 import { serveStatic } from "./serve-static.js";
 
-/**
- * Where `path-server` looks for the built `@path/viewer` bundle when no `staticDir` is passed:
- * `packages/viewer/dist`, resolved relative to this package. Absent until the viewer is built —
- * `serveStatic` no-ops (falls through to a 404) when the directory or its `index.html` is missing.
- */
+/** Built `@path/viewer` bundle (`packages/viewer/dist`); `serveStatic` 404s when it is absent or unbuilt. */
 const DEFAULT_STATIC_DIR = fileURLToPath(new URL("../../viewer/dist", import.meta.url));
 
-/**
- * Where `path-server` looks for the built `@path/designer` bundle when no `designerStaticDir` is
- * passed: `packages/designer/dist`, resolved relative to this package. The Designer bundle does not
- * exist yet (#360) — its mount degrades to a 404 (never a crash) until it is built, exactly like the
- * Viewer's when unbuilt.
- */
+/** Built `@path/designer` bundle (`packages/designer/dist`); its mount 404s (never crashes) until built. */
 const DEFAULT_DESIGNER_STATIC_DIR = fileURLToPath(new URL("../../designer/dist", import.meta.url));
 
-/** The two hardcoded mounts (#360, ADR 0027) — not an open table. Prefix has no trailing slash. */
+/** The two hardcoded mounts (ADR 0027) — not an open table. Prefix has no trailing slash. */
 const VIEWER_PREFIX = "/viewer";
 const DESIGNER_PREFIX = "/designer";
 
@@ -33,11 +24,8 @@ function isApiPath(pathname: string): boolean {
   return pathname === "/v0" || pathname.startsWith("/v0/");
 }
 
-/**
- * The request suffix within a mount, or `undefined` when `pathname` is not under `prefix`. Bare
- * `/designer` and `/designer/` both map to `/` (the mount root, which `serveStatic` answers with the
- * bundle's `index.html`); `/designer/assets/x.js` maps to `/assets/x.js`.
- */
+/** The request suffix within a mount, or `undefined` when `pathname` is not under `prefix`. Bare
+ * `/designer` and `/designer/` both map to `/` (the mount root, answered with the bundle's `index.html`). */
 function mountSuffix(prefix: string, pathname: string): string | undefined {
   if (pathname === prefix) return "/";
   if (pathname.startsWith(`${prefix}/`)) return pathname.slice(prefix.length);
@@ -55,25 +43,20 @@ async function handleRequest(
   const pathname = url.pathname;
 
   try {
-    // Every state-changing route is a non-GET method. Gate them all against cross-origin browser
-    // CSRF here (#237, origin-gate.ts) rather than per-route, so a future mutating route can't ship
-    // ungated by forgetting a hand-placed check. GET/HEAD are safe reads and pass through.
+    // Gate every non-GET route here, not per-route, so a future mutating route can't ship ungated (origin-gate.ts).
     if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
 
     if (await dispatchApi(req, res, ctx, url)) return;
 
-    // Bare `/` redirects to the default surface. A 302 (not 301) keeps the default target a single
-    // changeable line — no client caches the root as permanently the Viewer (#360, ADR 0027).
+    // Bare `/` redirects to the default surface; 302 (not 301) keeps the target a changeable, uncached line.
     if (req.method === "GET" && pathname === "/") {
       res.writeHead(302, { Location: `${VIEWER_PREFIX}/` });
       res.end();
       return;
     }
 
-    // Named mounts (#360): a GET is routed by prefix to one bundle, the prefix stripped, the suffix
-    // resolved within that bundle's dir with its **own** SPA fallback to that bundle's `index.html`.
-    // An unbuilt bundle (`serveStatic` returns false) falls through to the plain 404 below — never to
-    // the other mount. `/v0/*` is excluded so its unmatched routes keep JSON 404s.
+    // Named mounts: a GET is routed by prefix, the prefix stripped, the suffix resolved in that bundle's
+    // dir with its own SPA fallback. An unbuilt bundle falls through to the plain 404 below.
     if (req.method === "GET" && !isApiPath(pathname)) {
       const viewerSuffix = mountSuffix(VIEWER_PREFIX, pathname);
       if (viewerSuffix !== undefined && serveStatic(staticDir, viewerSuffix, res)) return;
@@ -97,19 +80,9 @@ export interface PathServerHandle {
 }
 
 /**
- * Boots `@path/server` against one fixed project root (server-api-v0.md §0): opens the same
- * `.path/path.db` `path run` would, in-process — no subprocess, no per-request project switching.
- * `port` defaults to an OS-assigned ephemeral port. Localhost-bind only, no auth (§0). `staticDir`
- * defaults to the built `@path/viewer` bundle (`packages/viewer/dist`), mounted at `/viewer/`;
- * `designerStaticDir` defaults to `packages/designer/dist`, mounted at `/designer/`. Each mount's
- * assets are served — with an SPA fallback to its own `index.html` — from the same origin as the
- * `/v0/*` API (issue #42, #360). Bare `/` 302-redirects to `/viewer/`; an unbuilt bundle 404s.
- *
- * The step-plugin registry is scanned **once, here at start** (server-api-v0.md §8, ADR 0018): `GET
- * /v0/step-plugins` serves that frozen snapshot as the Designer's palette, and a broken plugin folder
- * fails the server loudly at start (ADR 0019 sub-16) rather than later on a workflow op. `stepPlugins`
- * is an injection seam for tests — a caller may hand in a hand-built registry (e.g. a >1-worker type)
- * instead of scanning the real folder — mirroring `runWorkflow`'s optional `registry`.
+ * Boots `@path/server` against one fixed project root (server-api-v0.md §0): one in-process
+ * `.path/path.db`, localhost-bind, no auth. `staticDir`/`designerStaticDir` mount at `/viewer/` and
+ * `/designer/` with their own SPA fallbacks; bare `/` 302s to `/viewer/`. `stepPlugins` is a test seam.
  */
 export async function startPathServer(
   projectDir: string,
@@ -119,14 +92,12 @@ export async function startPathServer(
   stepPlugins?: LoadedStepPluginRegistry,
   shippedTemplateDir?: string,
 ): Promise<PathServerHandle> {
-  // Fail loud at start on a broken plugin folder (§8), and freeze the palette snapshot for the
-  // process. Scanned *before* `openProject` so a broken folder throws without leaving an opened db
-  // handle behind — the project is closed only via the returned handle, which a throw here skips.
+  // Scan the plugin folder (server-api-v0.md §8) before `openProject`, so a broken folder throws without
+  // leaving an opened db handle behind; a thrown error skips the handle that would close it.
   const registry = stepPlugins ?? (await loadStepPluginRegistry());
 
-  // One project for the process (#64): `.path/` ensured, engine settings loaded, db opened once —
-  // the same three steps `path run` performs per invocation, now in one place that also owns how a
-  // run's backends and observers are assembled.
+  // One project for the process: `.path/` ensured, settings loaded, db opened once, with the run
+  // backends and observers assembled in one place.
   const opened = openProject(projectDir);
   if (!opened.success) throw new Error(opened.error);
   const project = opened.project;
@@ -155,9 +126,8 @@ export async function startPathServer(
     close: () =>
       new Promise((resolvePromise, reject) => {
         server.close(() => {
-          // Runs are fire-and-forget, so `server.close` (which only drains HTTP connections) can fire
-          // while a run is still executing a step. Drain those runs before closing the store, so none
-          // hits a closed connection and throws `The database connection is not open` (#439).
+          // `server.close` only drains HTTP connections; runs are fire-and-forget, so drain them before
+          // closing the store or a still-running step hits `The database connection is not open`.
           live.idle().then(() => {
             project.close();
             resolvePromise();

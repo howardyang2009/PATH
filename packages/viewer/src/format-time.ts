@@ -1,20 +1,12 @@
-/**
- * Timestamp formatting shared by the runs list and the run-detail head. Rendered in the viewer's
- * locale and time zone: these are wall-clock times an operator compares against their own terminal,
- * not a stable serialization.
- */
+/** Wall-clock times an operator compares against their own terminal, not a stable serialization. */
 
-/** A run that never started has no `started_at` (it is still `pending`) — an em dash keeps grids aligned. */
+/** A run that never started has no `started_at` — an em dash keeps grids aligned. */
 export function formatTimestamp(iso: string | null): string {
   if (iso === null) return "—";
   return new Date(iso).toLocaleString(undefined, { dateStyle: "short", timeStyle: "medium" });
 }
 
-/**
- * Time of day with milliseconds, for a narrative row: every event in one run happens on the same day,
- * so the date is noise in a dense list — and sub-second resolution is what separates events the
- * engine emitted back to back. 24-hour, because the column has to stay one width.
- */
+/** Time of day with milliseconds for a narrative row; 24-hour, so the column stays one width. */
 export function formatClockTime(iso: string): string {
   return new Date(iso).toLocaleTimeString(undefined, {
     hourCycle: "h23",

@@ -12,85 +12,30 @@ import { createLiveLogBackend } from "./live-log-backend.js";
 import { RunEventHub } from "./run-event-hub.js";
 
 /**
- * The runs this server process is executing, for as long as it is executing them.
- *
- * **What this module exists to own.** Starting a run over HTTP is not one call to `Project.run`: it
- * is a run started, an id answered before the run finishes, a controller filed so the run can be
- * cancelled, a live channel opened so clients can watch, and both of those torn down however the
- * run ends. That behaviour was spread across five modules — `post-runs.ts` assembled the deferred,
- * the capture observer and the two registries; `get-run-events.ts` merged replay with live;
- * `cancel-run.ts` reached into the controllers; `run-event-hub.ts` and `live-log-backend.ts` held
- * the channel — and none of it could be exercised without binding a port. The registry lifecycle
- * could not be observed through the HTTP surface at all, so its tests drove a route handler with a
- * hand-built request and response.
- *
- * What the routes keep is what a route owns: reading a request, choosing a status code, framing a
- * response. Nothing here knows about either.
- *
- * **The guarantees this interface makes**, each of which used to be a comment a caller upheld:
- *
- * - `start` resolves once the run's `run-started` has landed — after its row is written and after
- *   its live channel is open, so a client may `GET` the run or subscribe the instant it returns.
- * - A started run is cancellable until it settles, and only until it settles, however it settles —
- *   including the one path with no terminal event, a `runWorkflow` that rejects with a bug (#74).
- * - `stream` delivers persisted replay then live events with no gap and no duplicate, whatever
- *   lands mid-read.
+ * The runs this server process is executing. Routes keep what a route owns (request in, status out).
+ * Guarantees: `start` resolves once `run-started` has landed (row written, channel open); a started run
+ * is cancellable until it settles; `stream` replays then goes live with no gap or duplicate.
  */
 export interface LiveRuns {
-  /**
-   * Starts one workflow and resolves with its ids as soon as the root run exists — the async
-   * contract behind `POST /v0/runs`' 202 (server-api-v0.md §2). The returned promise rejects only
-   * when the run never reached `run-started`; a run that starts and *then* fails resolves normally,
-   * because by then the client has an id to watch.
-   *
-   * `workflowDir` is the root workflow file's own directory, not the project directory — see
-   * `Project.run`.
-   */
+  /** Starts one workflow and resolves with its ids once the root run exists — the 202 contract of
+   * `POST /v0/runs` (server-api-v0.md §2). Rejects only if `run-started` never fires. */
   start(rootFile: WorkflowFile, workflowDir: string, options: StartRunOptions): Promise<StartedRun>;
-  /**
-   * Resumes a prior root run as a **successor** (ADR 0001, engine #173) and resolves with the
-   * successor's *own* fresh ids as soon as it reaches `run-started` — the same async contract as
-   * `start`, behind `POST /v0/runs/:root_run_id/resume`. The successor restores its context from the
-   * predecessor's tree, so no `input`/`operatorConfig` is carried (a resumed run's starting context
-   * is already determined — engine `cli.ts`). Rejects with a {@link ResumeNotFound} when the engine
-   * reports the predecessor id unknown (a TOCTOU against the route's own existence check), and like
-   * `start` when the successor never reaches `run-started`.
-   */
+  /** Resumes a prior root run as a **successor** (ADR 0001) and resolves with its own fresh ids; the
+   * context is restored from the predecessor, so no `input`/`operatorConfig` is carried. */
   resume(
     rootFile: WorkflowFile,
     resumeRootRunId: string,
     workflowDir: string,
     options: ResumeRunOptions,
   ): Promise<StartedRun>;
-  /**
-   * Signals a run's abort, best-effort (mvp spec §5.6). `false` means no run by that id is
-   * executing here — a `running` row this process holds no controller for belongs to some other
-   * one (a `path run` against the same `.path/path.db`, or an earlier crashed server), and its
-   * caller must not report a cancel it cannot perform. Cancelling twice is a no-op that still
-   * answers `true`, which is what makes a double click safe.
-   */
+  /** Signals a run's abort, best-effort (mvp spec §5.6). `false` means no run by that id executes here,
+   * so the caller must not report a cancel it cannot perform; a second cancel still answers `true`. */
   cancel(rootRunId: string): boolean;
-  /**
-   * Subscribes to a root run's event stream: the persisted narrative after `afterSeq` (all of it
-   * when `undefined` — a fresh connect), then live events as they are published.
-   *
-   * `onEnd` fires when no more events will come: the run reached a terminal status, or it is not
-   * executing here and has no live channel to join. Returns an unsubscribe for a caller that hangs
-   * up first.
-   *
-   * The seam this replaces was the subtlest part of the SSE route. Subscribing happens *before* the
-   * replay is read, so an event published mid-read is held rather than missed, and every delivered
-   * `seq` is tracked so nothing replay already covered is sent twice.
-   */
+  /** Subscribes to a root run's stream: persisted replay after `afterSeq`, then live events. The
+   * subscription precedes the replay read and every delivered `seq` is tracked, so nothing is missed. */
   stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe;
-  /**
-   * Completes a parked `awaiting` leaf (ADR 0041) by a fresh engine replay over the appendable tree:
-   * `Project.complete` re-enters the existing tree in place, reaches the leaf named by `stepRunId`,
-   * writes `output`, and drives the tail. The tail is streamed to the root run's live channel and is
-   * cancellable for its duration (a controller is filed under `rootRunId`), so Cancel still works on a
-   * run a Complete is advancing. Resolves with the engine's discriminated result — a rejection
-   * (unknown id, not-awaiting, lease held) or the drive's outcome — which the route maps to a status.
-   */
+  /** Completes a parked `awaiting` leaf (ADR 0041) by replaying the appendable tree to it, writing
+   * `output` and driving the tail, which streams live and stays cancellable. */
   complete(
     rootFile: WorkflowFile,
     rootRunId: string,
@@ -99,20 +44,10 @@ export interface LiveRuns {
     workflowDir: string,
     options: CompleteRunOptions,
   ): Promise<CompleteResult>;
-  /**
-   * How many runs are cancellable here — 0 once every started run has settled. A leaked entry is a
-   * slow leak in a long-lived server; a missing one is a refused cancel of a live run.
-   */
+  /** How many runs are cancellable here — 0 once every started run has settled. */
   readonly cancellable: number;
-  /**
-   * Resolves once every run started here has settled — the drain a graceful shutdown awaits before it
-   * closes the store (#439). A run is fire-and-forget: `start`/`resume` resolve on `run-started`, long
-   * before the run finishes, so without this a caller that closes `Project` (its `better-sqlite3`
-   * store) right after the response would pull the connection out from under a run still executing a
-   * step, whose next `db.prepare` throws `The database connection is not open`. Awaiting `idle` first
-   * lets each in-flight run reach its terminal row on a live connection. It does not *stop* runs —
-   * `cancel` those first for a bounded shutdown — it only waits for the ones already running.
-   */
+  /** Resolves once every run started here has settled — the drain a shutdown awaits before closing the
+   * store, since runs are fire-and-forget and would otherwise lose their connection mid-step. */
   idle(): Promise<void>;
 }
 
@@ -120,83 +55,53 @@ export interface LiveRuns {
 export interface StartRunOptions {
   input?: { [key: string]: JsonValue };
   /**
-   * The operator's override input as they sent it (ADR 0046), where `input` is the *effective* seed
-   * (override, else the file's own, else `{}`). Recorded in the run's frozen launch facts so a reader
-   * sees the launch's own input; never re-applied on a continuation.
+   * The operator's override input as sent (ADR 0046); `input` is the effective seed and is never re-applied on a
+   * continuation.
    */
   operatorInput?: JsonValue;
   operatorConfig?: ConfigObject;
-  /**
-   * The operator's run-wide **launch worker-default** table (ADR 0044, #517): `{ <type>: <name> }`,
-   * from `POST /v0/runs`'s top-level `worker_defaults`. Spread straight into `Project.run`'s
-   * `RunOptions.launchWorkerDefaults`, so an HTTP launch fills the same engine launch table a CLI
-   * `--worker-default` launch does. Deliberately *not* on {@link ResumeRunOptions}: a launch
-   * worker-default is frozen with the run, so a resume carries none (changing it is a new run).
-   */
+  /** The operator's run-wide launch worker-default table (ADR 0044), spread into `Project.run`'s
+   * `launchWorkerDefaults`; frozen with the run, so a resume carries none. */
   launchWorkerDefaults?: { [stepType: string]: string };
-  /** The whole validated workflow tree, so nested `workflow` refs resolve without re-reading. */
   files: Map<string, WorkflowFile>;
-  /**
-   * The step-plugin registry the workflow was validated against (`LoadedWorkflow.registry`), forwarded
-   * to the engine so the run dispatches against exactly that registry rather than re-scanning the
-   * folder (ADR 0019 sub-15).
-   */
+  /** The registry the workflow was validated against, forwarded so the run dispatches without re-scanning. */
   registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
-  /**
-   * The root workflow file's path relative to the project root, recorded on the root run row so a
-   * later `resume` (§4.3) can recover which file to re-run — the same value `path run` stores
-   * (engine `cli.ts`). Without it a run is unresumable.
-   */
+  /** The root workflow file's project-relative path, recorded so a later `resume` can recover the file. */
   sourceWorkflowPath?: string;
 }
 
 /**
- * What `resume` needs beyond the predecessor id: the workflow structure (re-read from disk by the
- * route, since a resumed successor still runs the workflow file, not a db copy) and the same backend
- * overrides `start` takes. Deliberately *not* `input`/`operatorConfig` — a resumed run's context is
- * restored from the predecessor's tree, so a fresh seed would be silently discarded.
+ * What `resume` needs beyond the predecessor id: the workflow structure and the same backend overrides as `start`.
  */
 export interface ResumeRunOptions {
   files: Map<string, WorkflowFile>;
-  /** The registry the workflow was validated against (see `StartRunOptions.registry`). */
   registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /**
-   * An optional config override for the resumed run (§4.3). Unlike `input` — which a resume discards
-   * in favour of the restored context — operator config is still applied on the resume path (the
-   * engine merges it over the workflow's declared config for the steps that re-run), so it is
-   * forwarded rather than dropped.
+   * An optional config override (§4.3): unlike `input`, operator config is merged over the declared config for re-run
+   * steps.
    */
   operatorConfig?: ConfigObject;
   /** Recorded on the successor's root row so a resumed run is itself resumable (see `StartRunOptions`). */
   sourceWorkflowPath?: string;
-  /**
-   * The rerun boundary K's source run id (#444): forwarded verbatim to `Project.resume`, the one
-   * legal-K authority. Absent = plain Resume. A refusal surfaces as {@link ResumeRefused}.
-   */
+  /** The rerun boundary K's source run id (ADR 0032), forwarded verbatim to `Project.resume`; absent = plain Resume. */
   rerunFromRunId?: string;
 }
 
 /**
- * What `complete` needs beyond the leaf id and its output: the reloaded workflow structure (the route
- * re-reads it from disk, since a Complete re-runs the workflow file, not a db copy) and the backend
- * overrides the other entry points take. No `input`/`operatorConfig` — a Complete resolves one leaf and
- * drives the existing tree's tail; it seeds nothing.
+ * What `complete` needs beyond the leaf id and its output: the reloaded workflow structure and the backend overrides.
  */
 export interface CompleteRunOptions {
   files: Map<string, WorkflowFile>;
-  /** The registry the workflow was validated against (see `StartRunOptions.registry`). */
   registry: LoadedStepPluginRegistry;
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /**
-   * An optional config override for the continued run (ADR 0046), the same field a launch and a resume
-   * take. A Complete recovers the launch's frozen config, so this is how an operator supplies again a
-   * value that was a `$secret` (the frozen copy holds a `[secret:<key>]` token) — see `resume`'s
-   * `operatorConfig`. Absent, the frozen config is used as it stands.
+   * An optional config override for the continued run (ADR 0046); it is how a frozen `$secret` value is supplied
+   * again.
    */
   operatorConfig?: ConfigObject;
 }
@@ -209,11 +114,7 @@ export class ResumeNotFound extends Error {
   }
 }
 
-/**
- * Thrown by `resume` when `Project.resume` refuses a Resume-from-K selection (#444, spec §5): the
- * legal-K authority rejected `rerunFromRunId` before any successor started. Carries the taxonomy
- * `status` and the verbatim `message` the route answers with — one wording authority.
- */
+/** Thrown by `resume` when `Project.resume` refuses a Resume-from-K selection (ADR 0032), carrying its status. */
 export class ResumeRefused extends Error {
   constructor(
     readonly status: number,
@@ -238,25 +139,19 @@ export interface RunStreamHandlers {
 export type Unsubscribe = () => void;
 
 /**
- * One `LiveRuns` per server process, over the process's one `Project` (#64) — runs execute
- * in-process (server-api-v0.md §0), which is what makes a live channel and an in-memory controller
- * the honest answers to "watch this run" and "stop this run".
+ * One `LiveRuns` per server process, over the process's one `Project`; runs execute in-process (server-api-v0.md §0).
  */
 export function createLiveRuns(project: Project): LiveRuns {
   const hub = new RunEventHub();
   /**
-   * The root runs executing here, each holding the `AbortController` whose signal went to
-   * `runWorkflow`. Membership is this server's honest answer to "can I actually stop this run?",
-   * which is why an id is filed only once `run-started` has produced it and dropped on every
+   * The root runs executing here with the `AbortController` whose signal went to `runWorkflow`; filed and dropped per
    * outcome.
    */
   const controllers = new Map<string, AbortController>();
 
   /**
-   * Every in-flight run's own promise — the whole `project.run(...).then(...).finally(finalize)` chain,
-   * not the `run-started` deferred the caller awaits. Each removes itself on settle, so the set is the
-   * live set of runs still touching the store, and `idle` drains it (#439). The chain never rejects
-   * (its `.then` handles both arms), so awaiting the set cannot throw.
+   * Every in-flight run's own promise; each removes itself on settle, so `idle` drains the set. The chain never
+   * rejects.
    */
   const inFlight = new Set<Promise<void>>();
   function track(runChain: Promise<void>): void {
@@ -264,13 +159,8 @@ export function createLiveRuns(project: Project): LiveRuns {
     inFlight.add(entry);
   }
 
-  /**
-   * The tracking machinery `start` and `resume` share (they differ only in which engine entry point
-   * they drive — `project.run` vs `project.resume`): a deferred that resolves on the first
-   * `run-started`, the controller filed under the root run id for `cancel`, the live-forwarding
-   * backend, and the teardown that drops the controller on any outcome. `hooks` is spread into the
-   * engine options; `finalize` is the `.finally` both attach.
-   */
+  /** The tracking `start` and `resume` share: the `run-started` deferred, the controller filed for
+   * `cancel`, the live-forwarding backend, and the teardown that drops both on any outcome. */
   function beginTracked(): {
     started: ReturnType<typeof createDeferred<StartedRun>>;
     hooks: {
@@ -281,8 +171,7 @@ export function createLiveRuns(project: Project): LiveRuns {
     };
     finalize: () => void;
   } {
-    // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
-    // the response goes out before the run finishes, not before it starts.
+    // Resolved on the first `run-started`: the response goes out before the run finishes, not before it starts.
     const started = createDeferred<StartedRun>();
     const controller = new AbortController();
     let registeredRootRunId: string | undefined;
@@ -302,26 +191,18 @@ export function createLiveRuns(project: Project): LiveRuns {
     return {
       started,
       hooks: {
-        // The live-forwarding backend rides alongside the configured db/NDJSON backends so
-        // subscribers (§5) see every already-masked event in `seq` order — independent of which
-        // backends the run persists to. It never throws, so it can't fail the run.
+        // Lets subscribers (§5) see every event in `seq` order; never throws, so it cannot fail the run.
         extraBackends: [createLiveLogBackend(hub)],
-        // Appended after persistence and logging by `Project.run`/`resume`, which is the point: this
-        // is what resolves the deferred, and a caller may read the run the moment it does.
+        // Appended after persistence: this resolves the deferred, so a caller may read the run the moment it does.
         extraObservers: [captureObserver],
         signal: controller.signal,
         warn: (message) => console.error(`warning: ${message}`),
       },
-      // However it ended, the run is over. Tearing both registries down here rather than in each
-      // arm is what makes "on every outcome" true by construction, so a long-lived server
-      // accumulates neither.
+      // Tearing both registries down here makes "on every outcome" true by construction.
       finalize: () => {
         if (registeredRootRunId === undefined) return; // never started; neither holds an entry
         controllers.delete(registeredRootRunId);
-        // Normally already closed: the root run's terminal event drives the live backend's `close`.
-        // This is the backstop for the one path that has no terminal event — `runWorkflow` rejecting
-        // with a propagating bug rather than converting it to a failed run (#74). Without it the
-        // channel outlives the run and every subscriber hangs open. Idempotent.
+        // Backstop for the one path with no terminal event (a `runWorkflow` rejection); idempotent.
         hub.close(registeredRootRunId);
       },
     };
@@ -330,9 +211,7 @@ export function createLiveRuns(project: Project): LiveRuns {
   return {
     async start(rootFile, workflowDir, options): Promise<StartedRun> {
       const { started, hooks, finalize } = beginTracked();
-      // Fire-and-forget from the starter's point of view: the run keeps executing after `start`
-      // resolves. Never left unhandled — a rejection here means `run-started` never fired either,
-      // so it also settles `started` (a no-op if it already resolved).
+      // Fire-and-forget: the run keeps executing after `start` resolves; a rejection also settles `started`.
       track(
         project
           .run(rootFile, workflowDir, { ...options, ...hooks })
@@ -358,10 +237,7 @@ export function createLiveRuns(project: Project): LiveRuns {
           .resume(rootFile, resumeRootRunId, workflowDir, { ...options, ...hooks })
           .then(
             (result) => {
-              // No successor was started (unknown predecessor, or a Resume-from-K refusal validated
-              // before launch), so nothing emitted `run-started` and the deferred is still pending.
-              // Reject it with the shape the route branches on: a refusal keeps its taxonomy status
-              // (#444), an unknown root run answers 404.
+              // No successor started: reject with the shape the route branches on (refusal, or 404).
               if (!result.found) {
                 started.reject(
                   "refusal" in result
@@ -388,8 +264,7 @@ export function createLiveRuns(project: Project): LiveRuns {
     cancel(rootRunId: string): boolean {
       const controller = controllers.get(rootRunId);
       if (!controller) return false;
-      // Aborting an already-aborted run is a no-op that still answers `true` — a second cancel of a
-      // still-unwinding run is not a refusal.
+      // A second cancel of a still-unwinding run is a no-op that still answers `true`.
       controller.abort();
       return true;
     },
@@ -402,15 +277,11 @@ export function createLiveRuns(project: Project): LiveRuns {
       workflowDir,
       options,
     ): Promise<CompleteResult> {
-      // A Complete re-drives the *existing* tree in place (ADR 0041), so unlike `start`/`resume` there
-      // is no fresh `run-started` to key registration off — the root run id is already known. File the
-      // controller under it directly so an operator Cancel reaches the tail (Cancel still works on an
-      // awaiting run), and ride the live backend so the tail streams to that root's SSE subscribers.
+      // A Complete re-drives the existing tree (ADR 0041), so no fresh `run-started` exists — file the
+      // controller under the known root id so Cancel reaches the tail, and stream the tail live.
       const controller = new AbortController();
-      // Only own the controller/channel when no drive is already active for this root: a concurrent
-      // Complete the engine lease will reject must not clobber the live drive's controller nor close
-      // its subscribers' channel out from under it. When rejected for any reason, no drive runs, so
-      // there is nothing to cancel and (for an idle tree) no open channel to close.
+      // Own the controller/channel only when no drive is active for this root: a concurrent Complete the
+      // engine lease rejects must not clobber the live drive's controller or close its subscribers.
       const owns = !controllers.has(rootRunId);
       if (owns) controllers.set(rootRunId, controller);
       const drive = project.complete(rootFile, stepRunId, output, workflowDir, {
@@ -419,8 +290,7 @@ export function createLiveRuns(project: Project): LiveRuns {
         signal: controller.signal,
         warn: (message) => console.error(`warning: ${message}`),
       });
-      // Track the whole drive so a graceful shutdown drains it (#439); it settles to a result either
-      // way, so this arm never rejects.
+      // Track the whole drive so a graceful shutdown drains it; it settles either way, so never rejects.
       track(
         drive.then(
           () => {},
@@ -432,9 +302,7 @@ export function createLiveRuns(project: Project): LiveRuns {
       } finally {
         if (owns) {
           controllers.delete(rootRunId);
-          // The tail's terminal event already closed the channel for a settled tree; this is the
-          // backstop for a rejection (no drive ran) or a bug that never emitted a terminal. Idempotent,
-          // and a no-op when no channel was open.
+          // Backstop for a rejection (no drive ran) or a missing terminal; idempotent and channel-safe.
           hub.close(rootRunId);
         }
       }
@@ -445,9 +313,7 @@ export function createLiveRuns(project: Project): LiveRuns {
       afterSeq: number | undefined,
       handlers: RunStreamHandlers,
     ): Unsubscribe {
-      // The high-water mark of every seq already delivered, across replay and live — anything at or
-      // below it is dropped, so nothing is sent twice regardless of when the first live event lands
-      // relative to the read below.
+      // High-water mark across replay and live: anything at or below it is dropped, so nothing is sent twice.
       let lastSeq = afterSeq ?? 0;
       let live = false;
       const buffered: LogEvent[] = [];
@@ -458,9 +324,7 @@ export function createLiveRuns(project: Project): LiveRuns {
         handlers.onEvent(event);
       }
 
-      // Subscribe *before* reading history: anything the hub publishes from here on is captured
-      // (held in `buffered` until replay finishes) even if it lands mid-read, so nothing published
-      // after this point is ever missed.
+      // Subscribe *before* reading history: a publish landing mid-read is buffered, so nothing is missed.
       const unsubscribe = hub.subscribe(
         rootRunId,
         (event) => (live ? deliver(event) : buffered.push(event)),
@@ -471,8 +335,7 @@ export function createLiveRuns(project: Project): LiveRuns {
       for (const event of buffered) deliver(event);
       live = true;
 
-      // No open channel: the run already reached a terminal status, isn't executing here, or never
-      // existed. Whatever was replayed above is the whole story.
+      // No open channel: the run is terminal, not executing here, or never existed — the replay is all.
       if (unsubscribe === null) {
         handlers.onEnd();
         return () => {};
@@ -486,8 +349,7 @@ export function createLiveRuns(project: Project): LiveRuns {
     },
 
     async idle(): Promise<void> {
-      // Loop: a run tracked when we snapshot the set can settle while we await, and though a closing
-      // server starts no new runs, this stays correct even if one did — drain until the set is empty.
+      // Loop: a run tracked at snapshot time can settle while we await, so drain until the set is empty.
       while (inFlight.size > 0) await Promise.all([...inFlight]);
     },
   };

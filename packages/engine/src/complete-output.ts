@@ -10,17 +10,13 @@ import { resolveNode } from "./ref-tree.js";
 import type { EnvSource } from "./resolve-env.js";
 
 /**
- * **Is this output a valid Complete of this parked leaf?** (ADR 0040, server-api-v0.md §4.4) The leaf's
- * node must still be an awaiting node in the current file, and the output must satisfy its
- * `outputSchema`, interpolated against the config the run itself executes with.
- *
- * That last clause is why this sits behind `Project.complete` and not in a route: a Complete runs with
- * the tree's frozen launch config (ADR 0046) merged under anything supplied again, and only the Complete
- * door recovers it. A schema reading `${config.x}` where `x` came from the launch is judged against the
- * launch's value, not the file default.
+ * Is this output a valid Complete of this parked leaf? (server-api-v0.md §4.4) The node must still be an
+ * awaiting node and the output must satisfy its `outputSchema`, interpolated against the config the run
+ * executes with: the tree's frozen launch config merged under anything supplied again, which is why this
+ * sits behind `Project.complete` rather than in a route.
  */
 
-/** The one awaiting step type v1 ships (ADR 0039). */
+/** The one awaiting step type. */
 export const AWAITING_STEP_TYPE = "person-activity";
 
 export type OutputCheck =
@@ -64,7 +60,6 @@ export function checkCompletedOutput(args: {
     };
   }
 
-  // A node with no schema accepts any JSON.
   const rawSchema = (resolved.node as { outputSchema?: JsonValue }).outputSchema;
   if (rawSchema === undefined) return { ok: true };
   let schema: JsonValue;

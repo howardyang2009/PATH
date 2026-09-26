@@ -10,36 +10,14 @@ import {
 } from "@path/schema";
 
 /**
- * The pure structure edits the canvas performs on a `WorkflowFile` body (#368, designer-spec § Adding,
- * reordering, deleting). Every function here is a pure transform: it takes a file and returns a **new**
- * file, and it **preserves every node `id`** across a move, a reorder, and a reparent (ADR 0015) — the
- * moved node keeps its object reference, so its id is untouched. Only a fresh add or a duplicate mints a
- * new id, and that happens in `node-factory.ts`, not here.
- *
- * The slot rules that keep the tree legal (§ Delete) live in `deleteNode`: deleting a `while-do` body
- * deletes the loop; the last `parallel` branch or branch arm cannot be deleted (must keep ≥1); emptying
- * a `sequence` deletes the sequence; the file-body root is never deleted (removing its last node just
- * empties the canvas). A single-node slot never empties — it **swaps** (`swapSingleSlot`).
- *
- * **The mutation interface is one door: `editFile(file, op)`.** The named transforms below are the
- * private cases it dispatches over; callers name the edit as an `EditOp` and read one `EditResult`
- * (the delete rules are the only ones that can refuse). Locating and querying stay their own exports
- * (`locate`, `findById`, `isDuplicable`), because a reader is not a mutation and carries the module's
- * depth — the recursive tree-walk — on its own.
- *
- * The door also holds the goto rules that no single op can see (#619, designer-spec § goto): an edit that
- * would put a goto under a `while-do` or a `parallel` is **refused** (no follow-up edit could repair it),
- * and a rename rewrites every goto `target` naming the old name in the same edit (one undo step).
+ * The pure structure edits the canvas performs on a `WorkflowFile` body (designer-spec § Adding,
+ * reordering, deleting). Every function returns a **new** file and preserves every node `id` across a
+ * move, reorder, and reparent; only a fresh add or duplicate mints one, in `node-factory.ts`.
  */
 
 // ── The one mutation door ─────────────────────────────────────────────────────────────────────────
 
-/**
- * One structural edit named as data. Each variant carries exactly what its transform needs; the canvas
- * (`editor-api`) and the properties pane build one of these and hand it to {@link editFile}. `move` and
- * `insert-after` name a node by id; the arm/else/list ops name their owner. `delete` is the only variant
- * whose result can refuse (the slot rules).
- */
+/** One structural edit named as data; only `delete` can refuse (the slot rules). */
 export type EditOp =
   | { kind: "replace"; id: string; node: WorkflowNode }
   | { kind: "set-arm-when"; branchId: string; armIndex: number; when: Condition }
@@ -53,10 +31,9 @@ export type EditOp =
   | { kind: "delete"; id: string };
 
 /**
- * The single entry point for every structural edit: apply `op` to `file` and return the new file, or a
- * refusal (a `delete` that the slot rules forbid, or any edit that misplaces a goto). A no-op op (a move
- * off the end, a replace of an absent id) returns `{ ok: true, file }` with the **same** file reference,
- * so a caller commits only a genuine change (`result.file !== file`).
+ * Apply `op` to `file` and return the new file, or a refusal: a `delete` the slot rules forbid, or a goto
+ * this edit misplaces (no follow-up edit could repair it). A no-op returns the **same** file reference, so
+ * a caller commits only a genuine change (`result.file !== file`).
  */
 export function editFile(file: WorkflowFile, op: EditOp): EditResult {
   const result = applyOp(file, op);
@@ -101,11 +78,7 @@ function applyOp(file: WorkflowFile, op: EditOp): EditResult {
   }
 }
 
-/**
- * Unwrap an {@link editFile} result the caller knows cannot refuse: an op other than `delete` whose
- * arrival the grammar already admitted (`grammar.socketAcceptsKind`). A refusal here is a bug, so it
- * throws rather than silently dropping the edit. `delete` callers read the `EditResult` directly instead.
- */
+/** Unwrap an {@link editFile} result the caller knows cannot refuse; a refusal is a bug, so it throws. */
 export function unwrapEdit(result: EditResult): WorkflowFile {
   if (!result.ok) throw new Error(`edit refused: ${result.reason}`);
   return result.file;
@@ -115,15 +88,10 @@ export function unwrapEdit(result: EditResult): WorkflowFile {
 
 /** Where a node sits in the tree — the context its delete/move/duplicate rules depend on. */
 export type Site =
-  /** A top-level node in the file body (the undeletable root list). */
   | { where: "file-body"; index: number }
-  /** An element of a `sequence` body or a `parallel` branch list. */
   | { where: "list"; ownerId: string; listKind: "sequence-body" | "branches"; index: number }
-  /** A branch arm's single occupant (the arm at `armIndex` of branch `ownerId`). */
   | { where: "arm"; ownerId: string; armIndex: number }
-  /** A branch's `else` single occupant. */
   | { where: "else"; ownerId: string }
-  /** A `while-do` body's single occupant. */
   | { where: "while-body"; ownerId: string };
 
 /** Find `id` in the file and describe where it sits, or `null` if it is not present. */
@@ -138,10 +106,8 @@ export function locate(file: WorkflowFile, id: string): Site | null {
 }
 
 /**
- * Locate `id` under `owner`, descending through the one grammar-descent owner (`@path/schema`
- * `childBodies`) rather than re-spelling which slots each node kind has. Each child body carries the
- * JSON `path` that names the slot, so the occupant's `Site` reads straight off that path — no second
- * statement of the block grammar's shape.
+ * Locate `id` under `owner`, descending through the one grammar-descent owner (`childBodies`) rather than
+ * re-spelling which slots each node kind has; each child body carries the JSON `path` naming the slot.
  */
 function locateWithin(owner: WorkflowNode, id: string): Site | null {
   for (const child of childBodies(owner)) {
@@ -155,12 +121,7 @@ function locateWithin(owner: WorkflowNode, id: string): Site | null {
   return null;
 }
 
-/**
- * The `Site` of a child body's occupant, read off the `childBodies` JSON path. A `sequence` `body`
- * carries its whole array, so the occupant's list index is its position within the body; a `parallel`
- * branch, a branch arm, an `else`, and a `while-do` body each carry one node, so their index lives in
- * the path itself (`["branches", i]`, `["arms", i, "node"]`, `["else"]`, `["node"]`).
- */
+/** The `Site` of a child body's occupant, read off the `childBodies` JSON path. */
 function siteFromPath(ownerId: string, path: (string | number)[], index: number): Site {
   switch (path[0]) {
     case "body":
@@ -179,9 +140,8 @@ function siteFromPath(ownerId: string, path: (string | number)[], index: number)
 // ── The immutable spine rebuild ───────────────────────────────────────────────────────────────────
 
 /**
- * Rebuild a body, replacing the node with `ownerId` (anywhere in the tree) by `fn(node)`. The spine
- * down to that node is rebuilt; every other node keeps its reference (and its id). `fn` returns a
- * same-identity node, so single-node slots stay length-1 — this is an update primitive, not an insert.
+ * Rebuild the spine down to the node with `ownerId`, replacing it by `fn(node)`; every other node keeps
+ * its reference (and its id). `fn` returns a same-identity node, so single-node slots stay length-1.
  */
 function updateNode(
   body: WorkflowNode[],
@@ -190,24 +150,17 @@ function updateNode(
 ): WorkflowNode[] {
   return body.map((node) => {
     if (node.id === ownerId) return fn(node);
-    // Descend through the one grammar-descent owner (`@path/schema` `mapChildBodies`, the write
-    // counterpart of `childBodies`), so the spine rebuild states the block grammar's shape nowhere here.
     return mapChildBodies(node, (childBody) => updateNode(childBody, ownerId, fn));
   });
 }
 
-/** The file with its body replaced. */
 function withBody(file: WorkflowFile, body: WorkflowNode[]): WorkflowFile {
   return { ...file, body };
 }
 
 // ── List sockets: the file body, a `sequence` body, a `parallel` branch list ─────────────────────────
 
-/**
- * A position in a node list: the file body (`ownerId` `null`), or the list a `sequence` (`body`) or a
- * `parallel` (`branches`) owns. The one place that says which key holds which owner's list, so add,
- * move, duplicate and delete address a list position without spelling the owner types again.
- */
+/** A node list position: the file body (`ownerId` `null`), or the list a `sequence`/`parallel` owns. */
 interface ListSite {
   ownerId: string | null;
   index: number;
@@ -220,7 +173,6 @@ function listSiteOf(site: Site): ListSite | null {
   return null;
 }
 
-/** The node list `ownerId` holds, or `null` when it is no list owner. */
 function listOf(file: WorkflowFile, ownerId: string | null): WorkflowNode[] | null {
   if (ownerId === null) return file.body;
   const owner = findById(file.body, ownerId);
@@ -251,19 +203,10 @@ function withList(
 // ── Replace a node's content in place ───────────────────────────────────────────────────────────
 
 /**
- * Replace the node `id` (anywhere in the tree) by `next`, keeping its position and its container's
- * shape. This is the properties pane's commit primitive (#369): the pane hands back a whole new node
- * object with the edited content, and the spine down to it is rebuilt while every sibling keeps its
- * reference. Unlike the structure ops, this one **may change the node's own `id`** — the pane's
- * confirmation-gated re-key (ADR 0015) passes a `next` carrying a fresh id — so the match is on the
- * *old* `id` and the replacement is whatever `next` carries. A missing `id` is a no-op.
- *
- * A rename of a first-level node rewrites every goto `target` naming the old name, in the same edit
- * (#619, ADR 0056 §7). The pane commits a rename per keystroke, so the rewrite runs only when it cannot
- * mis-aim: the old name was this node's alone (not a name shared mid-typing with another node) and the
- * new name is free and non-empty (`""` is a fresh goto's "no target yet", never a link). Otherwise
- * nothing is rewritten and the goto keeps its old target, which the goto markers then flag, so a lost
- * link is visible, never a silent repoint to some other node.
+ * Replace the node `id` by `next`, keeping its position and its container's shape; the match is on the
+ * *old* `id`, and `next` may carry a fresh id (ADR 0015); a missing `id` is a no-op. A first-level rename
+ * repoints every goto naming the old name, but only when that name was this node's alone and the new name
+ * is free and non-empty — otherwise the goto stays and its marker shows the loss (ADR 0056 §7).
  */
 function replaceNode(file: WorkflowFile, id: string, next: WorkflowNode): WorkflowFile {
   const previous = findById(file.body, id);
@@ -296,13 +239,8 @@ function retarget(body: WorkflowNode[], from: string, to: string): WorkflowNode[
   );
 }
 
-/**
- * Set a branch arm's `when` condition, keeping its occupant node untouched (#370, designer-spec
- * § Structure on the canvas, content in the pane). An arm owns its `when` (not the Branch node), and the
- * pane edits it while the arm's **occupant** is selected — so the commit lands on the parent branch's
- * `arms[armIndex].when`, not on the selected node. A missing branch, a non-branch owner, or an
- * out-of-range arm is a no-op.
- */
+/** Set a branch arm's `when`, leaving its occupant untouched — the pane edits it while that occupant is
+ * selected. A missing branch, a non-branch owner, or a bad arm index is a no-op. */
 function setArmWhen(
   file: WorkflowFile,
   branchId: string,
@@ -321,11 +259,7 @@ function setArmWhen(
 
 // ── Add into a list socket ────────────────────────────────────────────────────────────────────────
 
-/**
- * Append `node` to a list socket: the file body (`ownerId` `null`), a `sequence` body, or a `parallel`
- * branch list (each a `WorkflowNode[]`). The caller has already checked the socket admits the node's
- * kind (`grammar.socketAcceptsKind`); an illegal kind never reaches here.
- */
+/** Append `node` to the file body (`ownerId` `null`), a `sequence` body, or a `parallel` branch list. */
 function addToList(file: WorkflowFile, ownerId: string | null, node: WorkflowNode): WorkflowFile {
   return withList(file, ownerId, (list) => [...list, node]);
 }
@@ -338,11 +272,8 @@ export type SingleSlot =
   | { slot: "arm"; ownerId: string; armIndex: number }
   | { slot: "else"; ownerId: string };
 
-/**
- * Swap a single-node slot's occupant for `node`, never emptying the slot (§ Replace a single-node
- * slot). The former occupant is discarded; the slot stays occupied. A checkpoint never reaches here —
- * the grammar refuses it at a single slot (`grammar.socketAcceptsKind`).
- */
+/** Swap a single-node slot's occupant for `node`, never emptying it (the former occupant is discarded).
+ * A checkpoint never reaches here — the grammar refuses it at a single slot. */
 function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: WorkflowNode): WorkflowFile {
   return withBody(
     file,
@@ -360,7 +291,6 @@ function swapSingleSlot(file: WorkflowFile, target: SingleSlot, node: WorkflowNo
 
 // ── Branch arm and else management ────────────────────────────────────────────────────────────────
 
-/** Append a new arm to a `branch` (§ Adding; the arm carries its own `when` and occupant). */
 function addArm(file: WorkflowFile, branchId: string, arm: BranchArm): WorkflowFile {
   return withBody(
     file,
@@ -450,12 +380,9 @@ function swapAt<T>(list: T[], i: number, j: number): T[] | null {
 export type EditResult = { ok: true; file: WorkflowFile } | { ok: false; reason: string };
 
 /**
- * Delete the node `id`, applying the slot rules that keep the tree legal (§ Delete):
- * - a **file-body** node is removed (the root list may empty to the start-a-body canvas);
- * - a **`sequence` body** node is removed, and an emptied sequence is itself deleted (cascading up);
- * - a **`parallel` branch** or a **branch arm** cannot be the last one (a refusal, must keep ≥1);
- * - a **`while-do` body** node deletes the whole loop;
- * - a **branch `else`** occupant removes the `else`.
+ * Delete the node `id` under the slot rules (designer-spec § Delete): a file-body or `sequence` node is
+ * removed (an emptied sequence cascades away); the last `parallel` branch or branch arm is refused; a
+ * `while-do` body node deletes the loop; a branch `else` occupant removes the `else`.
  */
 function deleteNode(file: WorkflowFile, id: string): EditResult {
   const site = locate(file, id);
@@ -464,8 +391,6 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
   switch (site.where) {
     case "file-body":
     case "list": {
-      // The list rules: the file body may empty; a `parallel` must keep one branch; an emptied `sequence`
-      // is itself deleted (cascading up).
       const { ownerId, index } = listSiteOf(site)!;
       const list = listOf(file, ownerId);
       if (ownerId !== null && list !== null && list.length <= 1) {
@@ -504,17 +429,11 @@ function removeArm(file: WorkflowFile, branchId: string, armIndex: number): Edit
   };
 }
 
-/** A copy of `list` without index `i`. */
 function removeAt<T>(list: T[], i: number): T[] {
   return list.filter((_, index) => index !== i);
 }
 
-/**
- * Find a node by id anywhere in a body, or `null` if it is not present. The one node-by-id lookup —
- * the sibling of `locate` (which returns the *site*), for callers that want the *node*. It reads the
- * one grammar-descent owner (`@path/schema` `walkNodes`), so it re-spells the block grammar's shape
- * nowhere of its own.
- */
+/** Find a node by id anywhere in a body, or `null`; the sibling of `locate`, which returns the *site*. */
 export function findById(body: WorkflowNode[], id: string): WorkflowNode | null {
   for (const node of walkNodes(body)) {
     if (node.id === id) return node;
@@ -524,11 +443,7 @@ export function findById(body: WorkflowNode[], id: string): WorkflowNode | null 
 
 // ── Duplicate a list node ─────────────────────────────────────────────────────────────────────────
 
-/**
- * Insert `clone` (a fresh-identity copy, minted by `node-factory.cloneWithFreshIdentity`) directly
- * after the node `id` in its list. Only a list node (file body, `sequence` body, `parallel` branches)
- * can be duplicated — a single-slot occupant has no list to grow — so a non-list `id` is a no-op.
- */
+/** Insert `clone` (a fresh-identity copy) after the node `id` in its list; a non-list `id` is a no-op. */
 function insertAfter(file: WorkflowFile, id: string, clone: WorkflowNode): WorkflowFile {
   const site = locate(file, id);
   const listSite = site && listSiteOf(site);

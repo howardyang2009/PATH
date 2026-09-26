@@ -1,29 +1,11 @@
 import type { LogEvent } from "./log-event.js";
 
-/**
- * The v0 event stream's wire framing (server-api-v0.md §5): how a `LogEvent` becomes bytes on an
- * SSE connection, and how it comes back.
- *
- * **Why this lives here.** The same reason the v0 run-record shapes do (`wire-v0.ts`): the framing
- * was written four times — encoded by the server's SSE route, decoded by `@path/client-core`,
- * decoded again by the server's own acceptance driver (which cannot import client-core), and twice
- * more in the server's tests. The copies had already drifted: one accepted `data:` with or without
- * the space, the others assumed the space and sliced a fixed six characters, so a server that ever
- * emitted the compact form would have been read by one client and silently ignored by the rest.
- * Nothing connected the encoder to any decoder, so no type error could have caught it.
- *
- * The frame grammar is small and fixed: `id: <seq>`, `data: <event JSON>`, blank line. `seq` is
- * monotonic per root run and doubles as the SSE event id, which is what makes `Last-Event-ID`
- * reconnects exact.
- */
+/** The v0 event stream's wire framing (server-api-v0.md §5): `id: <seq>`, `data: <event JSON>`, blank
+ * line. `seq` doubles as the SSE event id, which makes `Last-Event-ID` reconnects exact. */
 
 /** One decoded frame: the event, and the `id:` it arrived under. */
 export interface EventFrame {
-  /**
-   * The frame's `id:` line verbatim — the event's `seq` as it crossed the wire, which is what a
-   * reconnect sends back as `Last-Event-ID`. `undefined` only if the peer omitted the line; the
-   * PATH server always writes it.
-   */
+  /** The `id:` line verbatim — what a reconnect sends back as `Last-Event-ID`; absent if omitted. */
   id: string | undefined;
   event: LogEvent;
 }
@@ -34,8 +16,8 @@ export function encodeEventFrame(event: LogEvent): string {
 }
 
 /**
- * The request headers for `GET /v0/runs/:root_run_id/events` (§5). Omitting `lastEventId` asks for
- * the full history from seq 1; passing one asks the server to replay `seq >` it, then go live.
+ * Request headers for `GET /v0/runs/:root_run_id/events` (§5): omitting `lastEventId` asks for full history, else a
+ * replay of `seq >` it.
  */
 export function eventStreamHeaders(lastEventId?: number): Record<string, string> {
   const headers: Record<string, string> = { Accept: "text/event-stream" };
@@ -45,22 +27,14 @@ export function eventStreamHeaders(lastEventId?: number): Record<string, string>
 
 export interface EventFrameDecoder {
   /**
-   * Feeds one chunk of the stream and returns the frames it completed, in order. A chunk that ends
-   * mid-frame contributes nothing until the rest arrives — the decoder holds the remainder, so a
-   * caller may push arbitrary transport-sized pieces.
+   * Feeds one chunk, returning the frames it completed in order; a chunk ending mid-frame is held until the rest
+   * arrives.
    */
   push(chunk: string): EventFrame[];
 }
 
-/**
- * A frame decoder over the decoded text of one connection. Text, not bytes: a caller already owns
- * its transport (a `fetch` body reader, a socket) and its `TextDecoder`, and keeping those out
- * leaves this usable from a browser, a Node test, and the acceptance driver alike.
- *
- * The event JSON is not re-validated. The engine validates every event against `LogEventSchema`
- * before a backend writes it, so a client that parsed the same bytes again could only reject what
- * the server already vouched for — and would do it in the middle of a live stream.
- */
+/** A frame decoder over one connection's decoded text — text, not bytes, so a caller keeps its own
+ * transport and `TextDecoder`. The event JSON is not re-validated: the engine did so at write time. */
 export function createEventFrameDecoder(): EventFrameDecoder {
   let buffer = "";
 
@@ -69,7 +43,6 @@ export function createEventFrameDecoder(): EventFrameDecoder {
       buffer += chunk;
       const frames: EventFrame[] = [];
 
-      // The frame boundary is the blank line, per the SSE grammar.
       let separator = buffer.indexOf("\n\n");
       while (separator !== -1) {
         const block = buffer.slice(0, separator);
@@ -93,11 +66,7 @@ export function createEventFrameDecoder(): EventFrameDecoder {
   };
 }
 
-/**
- * An SSE field's value: everything after the colon, with one optional leading space stripped (the
- * grammar allows `data:x` and `data: x` to mean the same thing — the drift between the four hand
- * written copies of this).
- */
+/** An SSE field's value: after the colon, one optional leading space stripped (the grammar allows both forms). */
 function fieldValue(line: string): string {
   const value = line.slice(line.indexOf(":") + 1);
   return value.startsWith(" ") ? value.slice(1) : value;
