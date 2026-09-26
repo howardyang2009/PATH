@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { safeParseWorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { builtinRegistry } from "./builtin-registry.js";
-import { runCodemod } from "./run-codemod.js";
+import { builtinRegistry } from "../builtin-registry.js";
+import { runCodemod } from "../run-codemod.js";
 
 /**
  * The `@2` → `@3` codemod, black-box (ADR 0021, #332) — the worker-name migration.
@@ -19,7 +19,7 @@ import { runCodemod } from "./run-codemod.js";
  * Driven through the process, not the module: the subprocess reaches the `process.exitCode = 1` and
  * the stderr report a unit test of `migrateDocument` cannot.
  */
-const V3 = "migrate-workflow-format-v3.ts";
+const V3 = "archive/migrate-workflow-format-v3.ts";
 
 let dir: string;
 
@@ -50,7 +50,7 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
-  runCodemod([copy], dir, "migrate-workflow-format-v4.ts");
+  runCodemod([copy], dir, "archive/migrate-workflow-format-v4.ts");
   runCodemod([copy], dir, "migrate-workflow-format-v5.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   expect(result.success, result.success ? "" : result.errors.join("\n")).toBe(true);

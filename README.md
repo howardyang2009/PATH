@@ -370,8 +370,15 @@ Full notes live on the [releases page](https://github.com/howardyang2009/PATH/re
   the issue tracker (`gh`, repo `howardyang2009/PATH`) and the domain-doc layout.
 - Vocabulary in code, specs, and issues follows `CONTEXT.md` exactly. If you introduce a term, define it
   there first.
+- **`.sandcastle/` is not part of the product.** It is the maintainers' own agent loop — a planner, one
+  implementer and one reviewer per ready issue, then a merger — driven by `pnpm sandcastle` and the
+  root devDependency `@ai-hero/sandcastle`. Nothing in `packages/` imports it, no test runs it, and a
+  contributor working on PATH itself can ignore it.
 - The warmed sandcastle store is a snapshot of the current lockfile. New dependencies download
   incrementally, which is fine, but the lockfile drifts over time. Re-warm the image when it does:
   `pnpm exec sandcastle docker build-image --dockerfile .sandcastle/Dockerfile`.
 - A long merge cycle can hit "limit hit mid-merge". Check `git status` for a half-finished merge before
   restarting the loop.
+- Only the current workflow-format codemod lives at the top of [`scripts/`](scripts); the superseded
+  ones sit in [`scripts/archive/`](scripts/archive) and stay runnable, because
+  `SUPERSEDED_FORMAT_VERSIONS` points a file still carrying an older format string at them.

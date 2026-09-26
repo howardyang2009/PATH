@@ -101,7 +101,7 @@ describe("loadWorkflowTree — what the load already knows", () => {
  * and that it does so for a nested ref as readily as for the entry file.
  *
  * These files are written to a temp dir rather than checked in beside the other fixtures on
- * purpose: `scripts/migrate-workflow-format-v2.ts` discovers every `*.workflow.json` in the repo, so
+ * purpose: `scripts/archive/migrate-workflow-format-v2.ts` discovers every `*.workflow.json` in the repo, so
  * a checked-in `@1` fixture would be silently migrated to `@2` by the next codemod run and the test
  * would pass for the wrong reason.
  */
@@ -113,9 +113,9 @@ describe("loadWorkflowTree — superseded format versions", () => {
   // names both codemods in order: the `@2` script migrates `@1` and nothing else, so alone it would
   // leave an `@0` file exactly as unreadable as it was.
   const V1_REJECTION =
-    "path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
+    "path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
   const V0_REJECTION =
-    "path/workflow@0 is no longer read — run scripts/migrate-workflow-format-v1.ts then scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
+    "path/workflow@0 is no longer read — run scripts/archive/migrate-workflow-format-v1.ts then scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5";
 
   beforeAll(() => {
     dir = mkdtempSync(join(tmpdir(), "path-superseded-format-"));

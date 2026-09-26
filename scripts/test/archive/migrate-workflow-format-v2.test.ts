@@ -5,8 +5,8 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeParseWorkflowFile } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { builtinRegistry } from "./builtin-registry.js";
-import { runCodemod } from "./run-codemod.js";
+import { builtinRegistry } from "../builtin-registry.js";
+import { runCodemod } from "../run-codemod.js";
 
 /**
  * The `@1` → `@2` codemod, black-box (#287).
@@ -70,8 +70,8 @@ const bytes = (file: string): string => readFileSync(file, "utf8");
 function expectSchemaValid(file: string): void {
   const copy = `${file}.lifted.json`;
   writeFileSync(copy, readFileSync(file, "utf8"));
-  runCodemod([copy], scriptsDir, "migrate-workflow-format-v3.ts");
-  runCodemod([copy], scriptsDir, "migrate-workflow-format-v4.ts");
+  runCodemod([copy], scriptsDir, "archive/migrate-workflow-format-v3.ts");
+  runCodemod([copy], scriptsDir, "archive/migrate-workflow-format-v4.ts");
   runCodemod([copy], scriptsDir, "migrate-workflow-format-v5.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
   if (!result.success)

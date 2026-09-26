@@ -12,7 +12,7 @@
  *   - it is **idempotent** — a file already at `@4` (or still at an older `@0`/`@1`/`@2` string,
  *     which is an earlier codemod's step) is left byte-unchanged.
  *
- * Usage:  pnpm tsx scripts/migrate-workflow-format-v4.ts [file ...]
+ * Usage:  pnpm tsx scripts/archive/migrate-workflow-format-v4.ts [file ...]
  *   With no arguments it discovers every tracked `*.workflow.json` under the repo root.
  */
 import { readdirSync, readFileSync, writeFileSync } from "node:fs";

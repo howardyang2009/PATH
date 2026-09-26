@@ -14,7 +14,7 @@
  *
  * Idempotent: a file already at `@1` is left untouched, so a re-run never regenerates an id.
  *
- * Usage:  pnpm tsx scripts/migrate-workflow-format-v1.ts [file ...]
+ * Usage:  pnpm tsx scripts/archive/migrate-workflow-format-v1.ts [file ...]
  *   With no arguments it discovers every tracked `*.workflow.json` under the repo root.
  */
 import { randomUUID } from "node:crypto";

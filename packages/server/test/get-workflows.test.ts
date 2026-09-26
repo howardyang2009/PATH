@@ -130,7 +130,7 @@ describe("GET /v0/workflows", () => {
     const old = byPath((await listWorkflows()).body).get("old.workflow.json")!;
     expect(old).toMatchObject({ valid: false, is_root: null, name: "old" });
     expect(old.error?.message).toBe(
-      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/migrate-workflow-format-v2.ts then scripts/migrate-workflow-format-v3.ts then scripts/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5`,
+      `${join(projectDir, "old.workflow.json")}: path/workflow@1 is no longer read — run scripts/archive/migrate-workflow-format-v2.ts then scripts/archive/migrate-workflow-format-v3.ts then scripts/archive/migrate-workflow-format-v4.ts then scripts/migrate-workflow-format-v5.ts to migrate this file to path/workflow@5`,
     );
     expect(old.error?.details).toHaveLength(1);
   });
