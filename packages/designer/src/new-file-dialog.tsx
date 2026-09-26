@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
-import type { SaveNewFileResult } from "./use-open-file.js";
+import type { SaveAsResult } from "./use-open-file.js";
 
 /**
  * The first-save dialog for a from-scratch buffer (#390, designer-spec § New-file placement and naming).
@@ -36,7 +36,7 @@ export function NewFileDialog({
   /** The preselected directory; Save as… starts in the source file's directory. */
   initialDirectory?: string;
   /** Run the exclusive create against the composed path; the dialog reads its outcome. */
-  create: (targetPath: string) => Promise<SaveNewFileResult>;
+  create: (targetPath: string) => Promise<SaveAsResult>;
   /** Called once the file is created — the App drops the dialog and the frame is now saved. */
   onCreated: (path: string) => void;
   /** Dismiss without saving; the from-scratch buffer stays on the canvas untouched. */
@@ -67,7 +67,7 @@ export function NewFileDialog({
     void create(targetPath).then((result) => {
       setSubmitting(false);
       if (result.status === "created") {
-        onCreated(result.path);
+        onCreated(result.path ?? targetPath);
       } else if (result.status === "exists") {
         setError("A workflow already exists at that path. Choose another name.");
       } else {

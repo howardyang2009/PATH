@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { PathApiClient, TemplateSummary, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
 import { AppShell } from "./app-shell.js";
@@ -22,6 +22,7 @@ import { useFileProblems } from "./use-file-problems.js";
 import { useTemplateList } from "./template-list.js";
 import { useArmed } from "./use-armed.js";
 import { useRefAuthoring } from "./use-ref-authoring.js";
+import { documentPolicy } from "./document.js";
 import { frameCanRedo, frameCanUndo, frameDirty, frameHasUnsavedWork, openedResultOf, planDelete, useOpenFile } from "./use-open-file.js";
 
 /** The workflow-level fields of `file` that hold a value — what a save as template drops. */
@@ -151,16 +152,12 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
   // The lease is per file (ADR 0017): acquire one for every *opened* frame on the stack, so a
   // `workflow`-ref descent holds a second, independently-beating lease under the same session, and a
   // frame that only failed to open (a 404) or a brand-new, never-saved buffer (no path) takes none.
-  const leasedPaths = useMemo(
-    () =>
-      session.frames
-        // An unwritten frame (a from-scratch root, or a create-new child before its first save, #391) takes
-        // no lease — the from-scratch rule — so a lease is held only for an opened, written, path-bearing frame.
-        .filter((frame) => openedResultOf(frame) !== null && frame.written && frame.path !== null)
-        .map((frame) => frame.path as string),
-    [session.frames],
-  );
-  const { sessionId, leases, takeover, reacquire } = useEditLeases(client, leasedPaths);
+  // The document policy (`document.ts`): which door Save opens, whether Save as… is offered, and which
+  // frames hold a lease — derived from the session alone. An unwritten frame (a from-scratch root, or a
+  // create-new child before its first save, #391) and a template take no lease.
+  // `useEditLeases` reconciles on the set of paths, not the array's identity.
+  const policy = documentPolicy(session);
+  const { sessionId, leases, takeover, reacquire } = useEditLeases(client, policy.leasedPaths);
   // Delete removes the root file from disk (`planDelete`): always confirmed, since it cannot be undone.
   const deletePlan = planDelete({ mode: session.mode, frames: session.frames, activeIndex: session.activeIndex, saveState: session.saveState });
   const onDelete = (): void => {
@@ -230,7 +227,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             onNew={onNew}
             onOpen={onOpen}
             // A new workflow or template (no path, no template source) has only Save: its first save.
-            canSaveAs={openedResult !== null && Boolean(activePath || activeTemplate)}
+            canSaveAs={policy.canSaveAs}
             saveState={session.saveState}
             dirty={dirty}
             canUndo={canUndo}
@@ -241,11 +238,11 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
             // instead of overwriting — the new-template dialog in template mode. A saved frame saves in
             // place through the write route, and a template source (#580) writes back to its template by id.
             onSave={
-              activePath || activeTemplate
-                ? session.save
-                : inTemplateMode
-                  ? () => setSaveAsDialog("new-template")
-                  : () => setNewFileOpen(true)
+              policy.saveDoor === "new-template-dialog"
+                ? () => setSaveAsDialog("new-template")
+                : policy.saveDoor === "new-workflow-dialog"
+                  ? () => setNewFileOpen(true)
+                  : session.save
             }
             // Save as…: in template mode, a copy to a new template; in workflow mode, first a choice between a
             // copy to a new workflow file and a new template made from the workflow's body (#459.6).
@@ -337,7 +334,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       <NewFileDialog
         discovery={discovery}
         workflowName={openedFile.name}
-        create={session.saveNewFile}
+        create={(path) => session.saveAs({ kind: "new-file", path })}
         onCreated={() => setNewFileOpen(false)}
         onCancel={() => setNewFileOpen(false)}
       />
@@ -347,7 +344,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
     {saveAsDialog === "new-template" && openedFile && !activeTemplate ? (
       <SaveTemplateAsDialog
         source={null}
-        create={({ name, description }) => session.saveNewTemplate(name, description)}
+        create={({ name, description }) => session.saveAs({ kind: "new-template", name, description })}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />
@@ -356,7 +353,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
       <SaveTemplateAsDialog
         source={activeTemplate}
         droppedFields={openedFile ? workflowLevelFields(openedFile) : []}
-        create={({ name, description }) => session.saveAsTemplate(name, description)}
+        create={({ name, description }) => session.saveAs({ kind: "template-copy", name, description })}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />
@@ -373,7 +370,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         source={null}
         workflowName={openedFile.name}
         droppedFields={workflowLevelFields(openedFile)}
-        create={({ name, description }) => session.saveWorkflowAsTemplate(name, description)}
+        create={({ name, description }) => session.saveAs({ kind: "workflow-as-template", name, description })}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />
@@ -384,7 +381,7 @@ export function App({ client, initialPath }: { client: PathApiClient; initialPat
         title="Save workflow as"
         workflowName={`${openedFile.name}-copy`}
         initialDirectory={activePath ? dirnameOf(activePath) : ""}
-        create={session.saveWorkflowAs}
+        create={(path) => session.saveAs({ kind: "workflow-copy", path })}
         onCreated={() => setSaveAsDialog(null)}
         onCancel={() => setSaveAsDialog(null)}
       />

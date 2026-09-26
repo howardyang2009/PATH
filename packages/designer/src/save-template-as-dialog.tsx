@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { templateSuffix } from "./session-reducer.js";
-import type { SaveAsTemplateResult, TemplateSource } from "./use-open-file.js";
+import { TEMPLATE_SUFFIX } from "./session-reducer.js";
+import type { SaveAsResult, TemplateSource } from "./use-open-file.js";
 
 /** A template name is its file stem, so it must match `NameSchema` (server-api-v0.md §10.3). */
 const NAME_PATTERN = /^[a-z][a-z0-9-]*$/;
@@ -42,7 +42,7 @@ export function SaveTemplateAsDialog({
   workflowName?: string;
   /** The source workflow's non-empty workflow-level fields a save as template drops. */
   droppedFields?: readonly string[];
-  create: (input: TemplateSaveInput) => Promise<SaveAsTemplateResult>;
+  create: (input: TemplateSaveInput) => Promise<SaveAsResult>;
   onCreated: () => void;
   onCancel: () => void;
 }): JSX.Element {
@@ -53,7 +53,7 @@ export function SaveTemplateAsDialog({
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const suffix = templateSuffix("step");
+  const suffix = TEMPLATE_SUFFIX;
   const trimmed = name.trim();
   const clean = trimmed.toLowerCase().endsWith(suffix) ? trimmed.slice(0, -suffix.length) : trimmed;
   const legal = NAME_PATTERN.test(clean);

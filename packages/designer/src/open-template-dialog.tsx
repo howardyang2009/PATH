@@ -1,5 +1,5 @@
 import type { TemplateSummary } from "@path/client-core";
-import { templateSuffix } from "./session-reducer.js";
+import { TEMPLATE_SUFFIX } from "./session-reducer.js";
 import type { TemplateListLoad } from "./template-list.js";
 
 /**
@@ -40,7 +40,7 @@ export function OpenTemplateDialog({
                     <button type="button" className="workflow-row" onClick={() => onOpen(template)}>
                       <span className="workflow-file-name">
                         {template.name}
-                        {templateSuffix(template.kind)}
+                        {TEMPLATE_SUFFIX}
                       </span>
                       {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
                     </button>

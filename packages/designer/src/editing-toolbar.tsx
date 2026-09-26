@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { LeaseState } from "./lease-client.js";
 import { canonicalSerialize } from "./serialize.js";
-import { frameHasUnsavedWork, openedResultOf, templateSuffix, type Frame } from "./session-reducer.js";
+import { frameHasUnsavedWork, openedResultOf, TEMPLATE_SUFFIX, type Frame } from "./session-reducer.js";
 import type { EditMode, SaveState, TemplateSource } from "./use-open-file.js";
 
 const MODES: readonly { key: EditMode; label: string }[] = [
@@ -37,7 +37,7 @@ export function TemplateFileName({ template }: { template: TemplateSource | null
   }
   return (
     <span className="author-mode-tag" data-testid="author-mode" title="Save writes back to this template">
-      <code>{template.name}{templateSuffix(template.kind)}</code>
+      <code>{template.name}{TEMPLATE_SUFFIX}</code>
       {template.readOnly ? " (shipped, read-only)" : null}
     </span>
   );
