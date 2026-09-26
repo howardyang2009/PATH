@@ -3,41 +3,11 @@ import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { loadStepPluginRegistry, openProject, type LoadedStepPluginRegistry } from "@path/engine";
 import { sendError } from "./http-json.js";
-import { handleCancelRun } from "./routes/cancel-run.js";
-import { handleCompleteRun } from "./routes/complete-run.js";
-import { handleDeleteRun } from "./routes/delete-run.js";
-import { handleResumeRun } from "./routes/resume-run.js";
-import { handleGetRun } from "./routes/get-run.js";
-import { handleGetRunBlob } from "./routes/get-run-blob.js";
-import { handleGetRunEvents } from "./routes/get-run-events.js";
-import { handleListRuns } from "./routes/list-runs.js";
-import { handleGetWorkflows } from "./routes/get-workflows.js";
-import { handleGetWorkflowFile } from "./routes/get-workflow-file.js";
-import { handleGetStepPlugins } from "./routes/get-step-plugins.js";
-import { handleGetTemplates } from "./routes/get-templates.js";
-import { handleGetTemplate } from "./routes/get-template.js";
-import { handlePostTemplates } from "./routes/post-templates.js";
-import { handlePutTemplate } from "./routes/put-template.js";
-import { handleDeleteTemplate } from "./routes/delete-template.js";
-import { handleDeleteWorkflow } from "./routes/delete-workflow.js";
 import { createLiveRuns } from "./live-runs.js";
 import { enforceSameOrigin } from "./origin-gate.js";
-import { handlePostRuns, type RunsRouteContext } from "./routes/post-runs.js";
-import { handlePutWorkflow } from "./routes/put-workflow.js";
-import {
-  handleWorkflowLock,
-  handleWorkflowLockHeartbeat,
-  handleWorkflowLockRelease,
-} from "./routes/workflow-lock.js";
+import { dispatchApi } from "./routes/api-routes.js";
+import type { RouteContext } from "./routes/route-context.js";
 import { serveStatic } from "./serve-static.js";
-
-const RUN_ID_ROUTE = /^\/v0\/runs\/([^/]+)$/;
-const RUN_EVENTS_ROUTE = /^\/v0\/runs\/([^/]+)\/events$/;
-const RUN_CANCEL_ROUTE = /^\/v0\/runs\/([^/]+)\/cancel$/;
-const RUN_COMPLETE_ROUTE = /^\/v0\/runs\/([^/]+)\/complete$/;
-const RUN_RESUME_ROUTE = /^\/v0\/runs\/([^/]+)\/resume$/;
-const RUN_BLOB_ROUTE = /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/;
-const TEMPLATE_ID_ROUTE = /^\/v0\/templates\/([^/]+)$/;
 
 /**
  * Where `path-server` looks for the built `@path/viewer` bundle when no `staticDir` is passed:
@@ -77,7 +47,7 @@ function mountSuffix(prefix: string, pathname: string): string | undefined {
 async function handleRequest(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   staticDir: string,
   designerStaticDir: string,
 ): Promise<void> {
@@ -90,135 +60,7 @@ async function handleRequest(
     // ungated by forgetting a hand-placed check. GET/HEAD are safe reads and pass through.
     if (req.method !== "GET" && req.method !== "HEAD" && !enforceSameOrigin(req, res)) return;
 
-    if (req.method === "POST" && pathname === "/v0/runs") {
-      await handlePostRuns(req, res, ctx);
-      return;
-    }
-
-    if (req.method === "GET" && pathname === "/v0/runs") {
-      handleListRuns(res, ctx, url.searchParams);
-      return;
-    }
-
-    if (req.method === "GET" && pathname === "/v0/workflows") {
-      await handleGetWorkflows(res, ctx);
-      return;
-    }
-
-    if (req.method === "PUT" && pathname === "/v0/workflows") {
-      await handlePutWorkflow(req, res, ctx);
-      return;
-    }
-
-    if (req.method === "DELETE" && pathname === "/v0/workflows/file") {
-      handleDeleteWorkflow(req, res, ctx, url.searchParams.get("path"), url.searchParams.get("session_id"));
-      return;
-    }
-
-    if (req.method === "GET" && pathname === "/v0/workflows/file") {
-      handleGetWorkflowFile(res, ctx, url.searchParams.get("path"));
-      return;
-    }
-
-    // The Designer edit-lock lease (#364, ADR 0017): three POST routes so `navigator.sendBeacon` can
-    // drive release from `beforeunload`. Each carries the `/`-bearing path in the body and reuses the
-    // write door's confine/symlink stance; each is already origin-gated centrally above.
-    if (req.method === "POST" && pathname === "/v0/workflows/lock") {
-      await handleWorkflowLock(req, res, ctx);
-      return;
-    }
-
-    if (req.method === "POST" && pathname === "/v0/workflows/lock/heartbeat") {
-      await handleWorkflowLockHeartbeat(req, res, ctx);
-      return;
-    }
-
-    if (req.method === "POST" && pathname === "/v0/workflows/lock/release") {
-      await handleWorkflowLockRelease(req, res, ctx);
-      return;
-    }
-
-    if (req.method === "GET" && pathname === "/v0/step-plugins") {
-      handleGetStepPlugins(res, ctx);
-      return;
-    }
-
-    // The authoring templates (server-api-v0.md §10, ADR 0050): the list and by-id read are ungated
-    // reads; POST/PUT/DELETE are state-changing and already passed the §2.1 origin gate above. The
-    // by-id GUID lookup spans both kinds and origins — no `?kind=` on the by-id routes.
-    if (req.method === "GET" && pathname === "/v0/templates") {
-      handleGetTemplates(res, ctx, url.searchParams.get("kind"));
-      return;
-    }
-
-    if (req.method === "POST" && pathname === "/v0/templates") {
-      await handlePostTemplates(req, res, ctx);
-      return;
-    }
-
-    const templateMatch = TEMPLATE_ID_ROUTE.exec(pathname);
-    if (templateMatch) {
-      const id = decodeURIComponent(templateMatch[1]!);
-      if (req.method === "GET") {
-        handleGetTemplate(res, ctx, id);
-        return;
-      }
-      if (req.method === "PUT") {
-        await handlePutTemplate(req, res, ctx, id);
-        return;
-      }
-      if (req.method === "DELETE") {
-        handleDeleteTemplate(res, ctx, id);
-        return;
-      }
-    }
-
-    const cancelMatch = RUN_CANCEL_ROUTE.exec(pathname);
-    if (req.method === "POST" && cancelMatch) {
-      handleCancelRun(res, ctx, decodeURIComponent(cancelMatch[1]!));
-      return;
-    }
-
-    const completeMatch = RUN_COMPLETE_ROUTE.exec(pathname);
-    if (req.method === "POST" && completeMatch) {
-      await handleCompleteRun(req, res, ctx, decodeURIComponent(completeMatch[1]!));
-      return;
-    }
-
-    const resumeMatch = RUN_RESUME_ROUTE.exec(pathname);
-    if (req.method === "POST" && resumeMatch) {
-      await handleResumeRun(req, res, ctx, decodeURIComponent(resumeMatch[1]!));
-      return;
-    }
-
-    const eventsMatch = RUN_EVENTS_ROUTE.exec(pathname);
-    if (req.method === "GET" && eventsMatch) {
-      handleGetRunEvents(req, res, ctx, decodeURIComponent(eventsMatch[1]!));
-      return;
-    }
-
-    const blobMatch = RUN_BLOB_ROUTE.exec(pathname);
-    if (req.method === "GET" && blobMatch) {
-      handleGetRunBlob(
-        res,
-        ctx,
-        decodeURIComponent(blobMatch[1]!),
-        decodeURIComponent(blobMatch[2]!),
-        decodeURIComponent(blobMatch[3]!),
-      );
-      return;
-    }
-
-    const match = RUN_ID_ROUTE.exec(pathname);
-    if (req.method === "GET" && match) {
-      handleGetRun(res, ctx, decodeURIComponent(match[1]!));
-      return;
-    }
-
-    if (req.method === "DELETE" && match) {
-      handleDeleteRun(res, ctx, decodeURIComponent(match[1]!), url.searchParams.get("force") === "true");
-      return;
-    }
+    if (await dispatchApi(req, res, ctx, url)) return;
 
     // Bare `/` redirects to the default surface. A 302 (not 301) keeps the default target a single
     // changeable line — no client caches the root as permanently the Viewer (#360, ADR 0027).
@@ -291,7 +133,7 @@ export async function startPathServer(
   const absStaticDir = resolve(staticDir);
   const absDesignerStaticDir = resolve(designerStaticDir);
   const live = createLiveRuns(project);
-  const ctx: RunsRouteContext = { project, live, stepPlugins: registry, shippedTemplateDir };
+  const ctx: RouteContext = { project, live, stepPlugins: registry, shippedTemplateDir };
   const server = createServer((req, res) => {
     handleRequest(req, res, ctx, absStaticDir, absDesignerStaticDir).catch((err) => {
       console.error(`unhandled request error: ${err instanceof Error ? err.stack : String(err)}`);

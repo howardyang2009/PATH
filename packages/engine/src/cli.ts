@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { createInterface } from "node:readline/promises";
-import { effectiveRootInput, RUN_STATUSES, validateLaunchWorkerDefaults, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
+import { launchInput, RUN_STATUSES, validateLaunchWorkerDefaults, type ConfigObject, type JsonValue, type RunStatus } from "@path/schema";
 import { loadWorkflowTree } from "./load-workflow-tree.js";
 import { isLogBackendId, LOG_BACKEND_IDS, type LogBackendId } from "./logging/backends.js";
 import type { WorkerOverrides } from "./run-workflow.js";
@@ -15,7 +15,7 @@ import {
   type RunReport,
   type RunsTableRow,
 } from "./run-report.js";
-import { openRunArchive, type ListRootsOptions } from "./run-archive.js";
+import { openRunArchive, type ListRootsOptions, type RunArchive } from "./run-archive.js";
 
 export interface CliIo {
   log(message: string): void;
@@ -148,20 +148,11 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
   // `-C <dir>` can appear anywhere — including ahead of the workflow positional — exactly as it can
   // on `path runs` (extractDirFlag), so it is stripped before the positional is taken rather than
   // pinned to one slot. Absent means the store defaults to the workflow file's own directory.
-  const positional: string[] = [];
-  let storeDir: string | undefined;
-  for (let i = 0; i < argv.length; i += 1) {
-    if (argv[i] === "-C") {
-      const value = argv[i + 1];
-      if (!value) return { success: false, error: `-C requires a directory argument\n${RUN_USAGE}` };
-      storeDir = value;
-      i += 1;
-    } else {
-      positional.push(argv[i]!);
-    }
-  }
+  const dirFlag = extractDirFlag(argv, RUN_USAGE);
+  if (!dirFlag.success) return dirFlag;
+  const storeDir = dirFlag.dir;
 
-  const [workflowPath, ...rest] = positional;
+  const [workflowPath, ...rest] = dirFlag.rest;
   if (!workflowPath) return { success: false, error: RUN_USAGE };
 
   let resumeRootRunId: string | undefined;
@@ -196,22 +187,18 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
       configFile = taken.value;
       i += 1;
     } else if (flag === "--set") {
-      const pair = rest[i + 1];
-      const eq = pair?.indexOf("=") ?? -1;
-      if (!pair || eq <= 0) return { success: false, error: `--set requires a key=value argument\n${RUN_USAGE}` };
-      setPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+      const taken = takePair(rest, i, "--set", "key=value", RUN_USAGE);
+      if (!taken.success) return taken;
+      setPairs.push(taken.pair);
       i += 1;
     } else if (flag === "--worker-default") {
       // `<type>=<name>`, both sides non-empty: unlike `--set`, an empty worker name is never a valid
       // selection, so it is an operator mistake at parse (exit 2) rather than a `has no worker` failure
       // deep in a run that already spent money. Registry-relative validity — the type/worker actually
       // existing — is the launch-boundary check (#506), not this shape check.
-      const pair = rest[i + 1];
-      const eq = pair?.indexOf("=") ?? -1;
-      if (!pair || eq <= 0 || eq === pair.length - 1) {
-        return { success: false, error: `--worker-default requires a type=name argument\n${RUN_USAGE}` };
-      }
-      workerDefaultPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+      const taken = takePair(rest, i, "--worker-default", "type=name", RUN_USAGE, { valueRequired: true });
+      if (!taken.success) return taken;
+      workerDefaultPairs.push(taken.pair);
       i += 1;
     } else if (flag === "--context") {
       const taken = takeValue(rest, i, "--context", "a path", RUN_USAGE);
@@ -219,10 +206,9 @@ export function parseRunInvocation(argv: string[]): RunInvocationResult {
       contextFile = taken.value;
       i += 1;
     } else if (flag === "--set-context") {
-      const pair = rest[i + 1];
-      const eq = pair?.indexOf("=") ?? -1;
-      if (!pair || eq <= 0) return { success: false, error: `--set-context requires a key=value argument\n${RUN_USAGE}` };
-      setContextPairs.push([pair.slice(0, eq), pair.slice(eq + 1)]);
+      const taken = takePair(rest, i, "--set-context", "key=value", RUN_USAGE);
+      if (!taken.success) return taken;
+      setContextPairs.push(taken.pair);
       i += 1;
     } else if (flag === "--log-backends") {
       const value = rest[i + 1];
@@ -347,6 +333,27 @@ function takeValue(args: string[], i: number, flag: string, noun: string, usage:
   const value = args[i + 1];
   if (!value) return { success: false, error: `${flag} requires ${noun} argument\n${usage}` };
   return { success: true, value };
+}
+
+type TakePairResult = { success: true; pair: [string, string] } | { success: false; error: string };
+
+// The `<key>=<value>` argument after a pair-flag at `args[i]` — `--set`, `--set-context`,
+// `--worker-default` — split at the first `=`. The key must be non-empty; `valueRequired` also refuses
+// an empty value (an empty worker name is never a valid selection, unlike an empty config string).
+function takePair(
+  args: string[],
+  i: number,
+  flag: string,
+  shape: string,
+  usage: string,
+  { valueRequired = false }: { valueRequired?: boolean } = {},
+): TakePairResult {
+  const pair = args[i + 1];
+  const eq = pair?.indexOf("=") ?? -1;
+  if (!pair || eq <= 0 || (valueRequired && eq === pair.length - 1)) {
+    return { success: false, error: `${flag} requires a ${shape} argument\n${usage}` };
+  }
+  return { success: true, pair: [pair.slice(0, eq), pair.slice(eq + 1)] };
 }
 
 type PositiveIntResult = { success: true; value: number } | { success: false; error: string };
@@ -638,16 +645,10 @@ async function runRunCommand(rest: string[], io: CliIo, overrides: RunOverrides)
   try {
     runResult = await project.run(workflow.rootFile, workflow.workflowDir, {
       ...projectOptions,
-      // The effective root input, resolved by the one rule every launch door shares (format @4 §1a): a
-      // non-empty `--context`/`--set-context` seed wins over the file's own top-level `input`, else the
-      // file seed, else `{}`. The CLI is a launch door like `POST /v0/runs`, so it must not treat the
-      // operator's seed as the only source — a file that declares `input` has to run the same way
-      // wherever it is launched.
-      input: effectiveRootInput(contextSeed.context, workflow.rootFile.input),
-      // The operator's own seed, recorded beside the effective input as a launch fact (ADR 0046): `input`
-      // above is what the root context seeds from, this is what a reader is shown as the launch's input.
-      // A seedless run records none, the same "empty is no override" rule the server launch applies.
-      operatorInput: Object.keys(contextSeed.context).length > 0 ? contextSeed.context : undefined,
+      // The effective root input and the recorded override, by the one rule every launch door shares
+      // (format @4 §1a, ADR 0046): a non-empty `--context`/`--set-context` seed wins over the file's own
+      // top-level `input`, so a file that declares `input` runs the same way wherever it is launched.
+      ...launchInput(contextSeed.context, workflow.rootFile.input),
     });
   } finally {
     sigint.dispose();
@@ -675,15 +676,15 @@ function emit(report: RunReport, io: CliIo): number {
 // invocation's args, ahead of or behind the subcommand — `path runs -C foo rm <id>` and
 // `path runs rm -C foo <id>` both mean the same thing, so it's stripped before the rest of parsing
 // ever sees it rather than pinned to one position.
-type ExtractDirFlagResult = { success: true; dir: string; rest: string[] } | { success: false; error: string };
+type ExtractDirFlagResult = { success: true; dir: string | undefined; rest: string[] } | { success: false; error: string };
 
-function extractDirFlag(args: string[]): ExtractDirFlagResult {
+function extractDirFlag(args: string[], usage: string): ExtractDirFlagResult {
   const rest: string[] = [];
-  let dir = process.cwd();
+  let dir: string | undefined;
   for (let i = 0; i < args.length; i += 1) {
     if (args[i] === "-C") {
       const value = args[i + 1];
-      if (!value) return { success: false, error: `-C requires a directory argument\n${RUNS_USAGE}` };
+      if (!value) return { success: false, error: `-C requires a directory argument\n${usage}` };
       dir = value;
       i += 1;
     } else {
@@ -741,24 +742,19 @@ function parseRunsListArgs(args: string[]): ListRootsArgsResult {
 // `path runs` with no subcommand (#174): the first listing surface, over the same query `rm`/`prune`
 // operate on. The `resumed-from` cell asks the archive which predecessor ids still have rows —
 // existence, not presence on this page, is what tells a live predecessor from a `(deleted)` one.
-function runRunsListCommand(args: string[], dir: string, io: CliIo): number {
+async function runRunsListCommand(args: string[], dir: string, io: CliIo): Promise<number> {
   const parsed = parseRunsListArgs(args);
   if (!parsed.success) {
     io.error(parsed.error);
     return 2;
   }
 
-  const opened = openRunArchive(dir);
-  if (!opened.success) {
-    io.error(opened.error);
-    return 1;
-  }
-  try {
-    const roots = opened.archive.listRoots(parsed.options);
+  return withRunArchive(dir, io, (archive) => {
+    const roots = archive.listRoots(parsed.options);
     const predecessorIds = roots
       .map((run) => run.resumedFromRootRunId)
       .filter((id): id is string => id !== null);
-    const live = opened.archive.existingRunIds(predecessorIds);
+    const live = archive.existingRunIds(predecessorIds);
 
     const rows = roots.map((run): RunsTableRow => {
       const predecessor = run.resumedFromRootRunId;
@@ -771,23 +767,37 @@ function runRunsListCommand(args: string[], dir: string, io: CliIo): number {
     });
 
     io.log(formatRunsTable(rows));
+    return 0;
+  });
+}
+
+/**
+ * Open the run archive under `dir`, hand it to `use`, and close it however `use` ends. An archive that
+ * will not open is reported and exits `1` before `use` runs.
+ */
+async function withRunArchive(dir: string, io: CliIo, use: (archive: RunArchive) => number | Promise<number>): Promise<number> {
+  const opened = openRunArchive(dir);
+  if (!opened.success) {
+    io.error(opened.error);
+    return 1;
+  }
+  try {
+    return await use(opened.archive);
   } finally {
     opened.close();
   }
-
-  return 0;
 }
 
 // `path runs rm`/`path runs prune` take no workflow-file argument (mvp spec §3) — they operate
 // on the `.path/` found in the current working directory, like `git` subcommands operate on
 // whatever repo the cwd is inside — or on `-C <dir>` when given one, again like `git -C`.
 async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
-  const dirFlag = extractDirFlag(args);
+  const dirFlag = extractDirFlag(args, RUNS_USAGE);
   if (!dirFlag.success) {
     io.error(dirFlag.error);
     return 2;
   }
-  const dir = dirFlag.dir;
+  const dir = dirFlag.dir ?? process.cwd();
   const [subcommand, ...rest] = dirFlag.rest;
 
   if (subcommand === "rm") {
@@ -813,17 +823,12 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    const opened = openRunArchive(dir);
-    if (!opened.success) {
-      io.error(opened.error);
-      return 1;
-    }
-    try {
+    return withRunArchive(dir, io, (archive) => {
       // The guard reads before deleting: a live successor tree still reusing this tree's data blocks
       // the delete by default, so `rm` never silently strands a reference a later resume or cost
       // query would read from (#175). An id with no rows has no blockers, so a not-found id still
       // falls through to `remove`'s own "no run found" below rather than being masked by the guard.
-      const blockers = opened.archive.blockingSuccessors(rootRunId);
+      const blockers = archive.blockingSuccessors(rootRunId);
       if (blockers.length > 0 && !force) {
         io.error(
           `refusing to remove ${rootRunId}: live successor run(s) reuse its data: ${blockers.join(", ")}\n` +
@@ -835,7 +840,7 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       // counts, so `rm` finishes a half-done cleanup rather than reporting "not found" while
       // deleting it anyway. Which stores there are, and that they go together (mvp spec §6), is
       // the archive's business.
-      if (!opened.archive.remove(rootRunId)) {
+      if (!archive.remove(rootRunId)) {
         io.error(`no run found with id "${rootRunId}"`);
         return 1;
       }
@@ -846,11 +851,8 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       if (blockers.length > 0) {
         io.log(`orphaned successor run(s): ${blockers.join(", ")}`);
       }
-    } finally {
-      opened.close();
-    }
-
-    return 0;
+      return 0;
+    });
   }
 
   if (subcommand === "prune") {
@@ -865,18 +867,13 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
       return 2;
     }
 
-    const opened = openRunArchive(dir);
-    if (!opened.success) {
-      io.error(opened.error);
-      return 1;
-    }
-    try {
+    return withRunArchive(dir, io, async (archive) => {
       // Confirm before deleting (#166): a bare `prune` wipes every root under `.path/`, and the only
       // deletion that is ever project-wide. `--yes` skips the gate for scripts; an empty project has
       // nothing to lose so it prunes unprompted (this still clears an orphaned directory with no rows).
       // `listRoots` defaults to a 50-row page, but `prune` deletes *all* roots — pass an unbounded
       // limit so the count and the id list describe everything that is about to go, never one page of it.
-      const roots = opened.archive.listRoots({ limit: Number.MAX_SAFE_INTEGER });
+      const roots = archive.listRoots({ limit: Number.MAX_SAFE_INTEGER });
       if (!yes && roots.length > 0) {
         // Cap the printed ids so a project with thousands of roots does not bury the prompt; the
         // count above the list is always the true total.
@@ -894,13 +891,10 @@ async function runRunsCommand(args: string[], io: CliIo): Promise<number> {
           return 1;
         }
       }
-      const deleted = opened.archive.prune();
+      const deleted = archive.prune();
       io.log(`pruned ${deleted} run(s)`);
-    } finally {
-      opened.close();
-    }
-
-    return 0;
+      return 0;
+    });
   }
 
   // No subcommand, or a leading flag — the bare listing (#174). A word that is neither `rm`, `prune`

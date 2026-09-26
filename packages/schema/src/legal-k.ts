@@ -17,10 +17,11 @@ import { findRootRun, pathToRoot, type RunTreeFields } from "./run-tree.js";
  * the dirty-buffer save gate. The two callers make the seam real, and the taxonomy can no longer
  * disagree with itself.
  *
- * It stays deliberately low: it classifies **one level** against **one file body** and the rows under
- * one scope. The engine drives it once per level of a nested descent; the client drives it once, for a
- * top-level K in the open root file (the only level a browser holds). Root detection, the descent walk,
- * and message wording sit on top of it, not inside it.
+ * Three pieces, used in order by both surfaces: {@link selectBoundary} says what the selected run is
+ * (never the root run, never a goto pass container), {@link boundaryLevels} walks its descent root→…→K,
+ * and {@link classifyLevelK} classifies **one level** against **one file body**. The engine drives the
+ * last once per level of a nested descent; the client drives it once, for a top-level K in the open
+ * root file (the only level a browser holds). Message wording sits on top, not inside.
  */
 export type LegalKLevelReason =
   | "not-in-file" // #2 — resolves to a node no longer in this level's file (rename/move survive by id)
@@ -154,4 +155,28 @@ export function boundaryLevels<T extends BoundaryLevelRun>(rows: Iterable<T>, se
     passRun = undefined;
   }
   return levels;
+}
+
+/**
+ * What a selected run is, as a candidate rerun boundary. Only a node's run can be one: the root run owns
+ * no node (an implicit root step, invariant 2), and a goto pass is a container, not a node (ADR 0054
+ * §3) — K is a first-level node inside it. A `node` selection carries its descent levels.
+ */
+export type BoundarySelection<T extends BoundaryLevelRun> =
+  | { kind: "not-in-tree" }
+  | { kind: "pass-run"; pass: number }
+  | { kind: "root-run" }
+  | { kind: "node"; run: T & { nodeId: string }; levels: BoundaryLevel<T>[] };
+
+/**
+ * Classify `selectedRunId` among `rows` before any level is classified. The engine and the client's
+ * eager mirror both start here, so neither can accept a selection the other refuses.
+ */
+export function selectBoundary<T extends BoundaryLevelRun>(rows: Iterable<T>, selectedRunId: string): BoundarySelection<T> {
+  const all = [...rows];
+  const selected = all.find((r) => r.runId === selectedRunId);
+  if (!selected) return { kind: "not-in-tree" };
+  if (isPassRun(selected)) return { kind: "pass-run", pass: selected.pass };
+  if (selected.parentRunId === null || selected.nodeId === null) return { kind: "root-run" };
+  return { kind: "node", run: selected as T & { nodeId: string }, levels: boundaryLevels(all, selectedRunId) };
 }

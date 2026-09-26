@@ -1,7 +1,6 @@
 import {
-  boundaryLevels,
   classifyLevelK,
-  isRootRun,
+  selectBoundary,
   type BoundaryLevel,
   type ControlBlockKind,
   type LegalKLevelReason,
@@ -25,12 +24,13 @@ import {
  * failure is left to the engine's `refusal` on click, the documented backstop for what the client
  * cannot see.
  *
- * The taxonomy reasons are 1:1 with the engine's `LegalKReasonCode`, minus `not-in-tree` (the
- * selection is always a row of the tree it came from) and plus the two surface-only states the button
- * layers on: `no-selection` (spec #1, folding the root row in) and `dirty-buffer` (spec #3).
+ * The taxonomy reasons are 1:1 with the engine's `LegalKReasonCode`, minus `not-in-tree` and
+ * `root-run` (both fold into `no-selection`, spec #1) and plus the one surface-only state the button
+ * layers on: `dirty-buffer` (spec #3).
  */
 export type ResumeFromReasonCode =
   | "no-selection" // spec #1 — nothing selected, or the root row (never a K)
+  | "pass-run" // a goto pass container row (ADR 0054 §3); K is a node inside it
   | LegalKLevelReason // engine #2–#5, the per-level taxonomy shared with the engine (`classifyLevelK`)
   | "dirty-buffer"; // spec #3 — a legal K, but the open file is not saved
 
@@ -69,15 +69,18 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   // (1) Nothing selected — the button's rest state. Selecting the root row folds in here: the root run
   // owns no node (an implicit root step), so it is never a K, and its only resume is plain Resume run.
   if (selectedRunId === null) return noSelection();
-  const selected = runs.get(selectedRunId);
-  if (!selected || isRootRun(selected) || selected.nodeId === null) return noSelection();
+  const selection = selectBoundary(runs.values(), selectedRunId);
+  if (selection.kind === "not-in-tree" || selection.kind === "root-run") return noSelection();
+  if (selection.kind === "pass-run") {
+    return { ok: false, reason: "pass-run", message: `Pass ${selection.pass} is a goto pass, not a node; select a node inside it.` };
+  }
+  const { run: selected, levels } = selection;
 
   // (2) An illegal K. A root-level K (one descent level: a direct child of the root run, or of a goto
   // pass run of the root, ADR 0054) is located in the open file's body — the exact engine mirror. A
   // nested K sits in a file the Designer does not hold, so only its own success is checked here and the
   // engine backstops the rest.
   const nodeName = selected.nodeName ?? selected.nodeId;
-  const levels = boundaryLevels(runs.values(), selected.runId);
   const topLevel = levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
   if (topLevel && rootFile !== null) {
     const illegal = classifyTopLevel(rootFile, runs, levels[0]!, selected, nodeName);

@@ -91,13 +91,6 @@ function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, r
 }
 
 /**
- * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
- * wrapping the open node union `makeNodeSchema(registry)` builds, plus the same cross-node invariants
- * the closed schema enforces. The registry is required and has no default — a caller with no plugins
- * still passes an empty registry, which describes a grammar with the seven control members and no leaf
- * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
- */
-/**
  * The **body** validator (ADR 0048 decision 7): `z.array(nodeSchema).min(1)`, and nothing else. It is
  * the one constraint a workflow file's `body` and a Step-Template's `body` share, so the two cannot
  * drift — a file body is this plus the file-scoped invariants (`makeWorkflowFileSchema`), a template
@@ -114,6 +107,13 @@ export function makeBodySchema(registry: StepPluginRegistry): z.ZodType<Workflow
   return z.array(nodeSchema).min(1) as unknown as z.ZodType<WorkflowNode[]>;
 }
 
+/**
+ * The whole `WorkflowFileSchema` for a given registry (ADR 0018 sub-decision 7): the file envelope
+ * wrapping the open node union `makeNodeSchema(registry)` builds, plus the same cross-node invariants
+ * the closed schema enforces. The registry is required and has no default — a caller with no plugins
+ * still passes an empty registry, which describes a grammar with the seven control members and no leaf
+ * step. Build this once per freeze and parse many files with `safeParseWorkflowFileWith`.
+ */
 export function makeWorkflowFileSchema(registry: StepPluginRegistry): z.ZodType<WorkflowFile> {
   // The registry is closed over the refinement here (ADR 0044 #516): the base schema stays
   // registry-free, and the whole-file check reads the registry to validate `worker_defaults` entries.

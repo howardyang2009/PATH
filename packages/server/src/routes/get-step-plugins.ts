@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
 import { toWireStepPlugins, type StepPluginsResponse } from "@path/schema";
 import { sendJson } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/step-plugins` (server-api-v0.md §8): serve the server's step-plugin registry as data, so the
@@ -16,7 +16,7 @@ import type { RunsRouteContext } from "./post-runs.js";
  * rejected write, never a corrupt file. A broken plugin folder already failed the server at start (ADR
  * 0019 sub-16), so for a live server this route is always `200`.
  */
-export function handleGetStepPlugins(res: ServerResponse, ctx: RunsRouteContext): void {
+export function handleGetStepPlugins(res: ServerResponse, ctx: RouteContext): void {
   const body: StepPluginsResponse = toWireStepPlugins(ctx.stepPlugins);
   sendJson(res, 200, body);
 }

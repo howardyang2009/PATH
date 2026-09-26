@@ -1,7 +1,7 @@
 import { readdirSync, readFileSync } from "node:fs";
-import { join } from "node:path";
+import { join, relative, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import { makeStepTemplateSchema, safeParseStepTemplateWith, type StepPluginRegistry, type WireError } from "@path/schema";
+import { makeStepTemplateSchema, safeParseStepTemplateWith, type StepPluginRegistry, type TemplateSummary, type WireError } from "@path/schema";
 
 // The Template store (ADR 0050, ADR 0051): the Server-owned, engine-blind discovery of the
 // shipped∪user authoring templates. A template is typed by its file **suffix**, never its bytes
@@ -195,4 +195,55 @@ export function discoverTemplates(
   }
 
   return { entries, byId };
+}
+
+/**
+ * Whether `workflowPath` addresses a template, which the workflow doors refuse (§10.6): anything
+ * lexically under `.path/template/`. The path is resolved first, so a `../` detour into the template
+ * tree is caught as well. A template is changed through `/v0/templates` only.
+ */
+export function isTemplatePath(projectDir: string, workflowPath: string): boolean {
+  const relFromRoot = relative(projectDir, resolve(projectDir, workflowPath));
+  const templateDir = join(".path", "template");
+  return relFromRoot === templateDir || relFromRoot.startsWith(`${templateDir}${sep}`);
+}
+
+/** What the template doors read the store through: the project, its frozen registry, and the shipped root. */
+export interface TemplateStoreContext {
+  project: { dir: string };
+  stepPlugins: StepPluginRegistry;
+  shippedTemplateDir?: string;
+}
+
+/** The template union one server serves, scanned fresh for this request. */
+export function templatesOf(ctx: TemplateStoreContext): TemplateStore {
+  return discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
+}
+
+/**
+ * The user template `id` names, for a door that changes one — or the refusal: an unknown id is `404`, a
+ * shipped one `403` (read-only, ADR 0050 decision 9).
+ */
+export function writableTemplate(
+  store: TemplateStore,
+  id: string,
+): { ok: true; entry: TemplateEntry } | { ok: false; status: 404 | 403; message: string } {
+  const entry = store.byId.get(id);
+  if (entry === undefined) return { ok: false, status: 404, message: "not found" };
+  if (entry.readOnly) return { ok: false, status: 403, message: "template is read-only" };
+  return { ok: true, entry };
+}
+
+/** One entry as its thin wire row (§10.1): everything but the body. */
+export function templateSummary(entry: TemplateEntry): TemplateSummary {
+  return {
+    id: entry.id,
+    name: entry.name,
+    description: entry.description,
+    kind: entry.kind,
+    origin: entry.origin,
+    read_only: entry.readOnly,
+    valid: entry.valid,
+    error: entry.error,
+  };
 }

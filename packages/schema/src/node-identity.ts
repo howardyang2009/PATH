@@ -1,5 +1,5 @@
 import { IdSchema } from "./ids.js";
-import { childBodies } from "./node-walk.js";
+import { childBodies, childNodePath } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
 
@@ -124,19 +124,18 @@ export function identityIssues(
 export function nodeIdentityOccurrences(file: WorkflowFile): IdentityOccurrence[] {
   const occurrences: IdentityOccurrence[] = [];
 
-  const collect = (nodes: WorkflowNode[], basePath: (string | number)[]): void => {
-    nodes.forEach((node, index) => {
-      const path = [...basePath, index];
-      occurrences.push({
-        id: (node as { id?: unknown }).id,
-        name: (node as { name?: unknown }).name,
-        path,
-      });
-      for (const child of childBodies(node)) collect(child.nodes, [...path, ...child.path]);
+  const collect = (node: WorkflowNode, path: (string | number)[]): void => {
+    occurrences.push({
+      id: (node as { id?: unknown }).id,
+      name: (node as { name?: unknown }).name,
+      path,
     });
+    for (const child of childBodies(node)) {
+      child.nodes.forEach((each, index) => collect(each, [...path, ...childNodePath(child, index)]));
+    }
   };
 
-  collect(file.body, ["body"]);
+  file.body.forEach((node, index) => collect(node, ["body", index]));
   return occurrences;
 }
 

@@ -42,11 +42,11 @@ interface RunTreeBody {
   runs: RunRow[];
 }
 
-async function launch(workflowPath: string): Promise<string> {
+async function launch(workflowPath: string, config?: Record<string, unknown>): Promise<string> {
   const res = await fetch(`${handle.url}/v0/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ workflow_path: workflowPath }),
+    body: JSON.stringify(config === undefined ? { workflow_path: workflowPath } : { workflow_path: workflowPath, config }),
   });
   expect(res.status).toBe(202);
   const { root_run_id } = (await res.json()) as { root_run_id: string };
@@ -156,6 +156,18 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
     // The schema's `enum: ["${config.allowed}"]` resolves to `["high"]` from the file's config.
     expect((await complete(leafId, { output: { level: "low" } })).status).toBe(400);
     expect((await complete(leafId, { output: { level: "high" } })).status).toBe(202);
+    expect((await settle(rootRunId)).status).toBe("succeeded");
+  });
+
+  // The schema is judged against the config the Complete runs with: the launch's frozen config
+  // (ADR 0046), not the file default. Before this lived behind `Project.complete`, the route read the
+  // file default and refused the launch's own value.
+  it("interpolates the outputSchema against the launch's frozen config, not the file default", async () => {
+    const rootRunId = await launch("awaiting-config-schema.workflow.json", { allowed: "urgent" });
+    const leafId = await awaitingLeafId(rootRunId);
+
+    expect((await complete(leafId, { output: { level: "high" } })).status).toBe(400);
+    expect((await complete(leafId, { output: { level: "urgent" } })).status).toBe(202);
     expect((await settle(rootRunId)).status).toBe("succeeded");
   });
 

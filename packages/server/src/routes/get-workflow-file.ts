@@ -1,10 +1,10 @@
-import { readFileSync } from "node:fs";
 import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
+import { readArtifact } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/workflows/file?path=<relative_path>` (server-api-v0.md §7.1): the raw read half of the
@@ -21,7 +21,7 @@ import type { RunsRouteContext } from "./post-runs.js";
  * no body — and stays an opaque `/`-bearing string. The three 404 causes collapse to one response:
  * the file is not there, `path` escapes the root, or a path component is a symlink.
  */
-export function handleGetWorkflowFile(res: ServerResponse, ctx: RunsRouteContext, path: string | null): void {
+export function handleGetWorkflowFile(res: ServerResponse, ctx: RouteContext, path: string | null): void {
   if (path === null || path === "") {
     sendError(res, 404, "not found");
     return;
@@ -33,12 +33,10 @@ export function handleGetWorkflowFile(res: ServerResponse, ctx: RunsRouteContext
     return;
   }
 
-  let bytes: Buffer;
-  try {
-    bytes = readFileSync(absPath);
-  } catch {
-    // Confinement passed but the read failed — the file vanished between the two, or the path names a
-    // directory. Either way there is no file to serve: the same 404.
+  // Confinement passed but the read can still fail — the file vanished between the two, or the path
+  // names a directory. Either way there is no file to serve: the same 404.
+  const bytes = readArtifact(absPath);
+  if (bytes === undefined) {
     sendError(res, 404, "not found");
     return;
   }

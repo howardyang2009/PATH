@@ -1701,48 +1701,10 @@ body {
   cursor: not-allowed;
 }
 
-/* Status pill — colour + glyph + label. */
-.run-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  padding: 1px 7px;
-  border-radius: 999px;
-  color: var(--run-pending);
-  background: var(--run-pending-bg);
-}
-
-.run-pill[data-status="running"] {
-  color: var(--run-running);
-  background: var(--run-running-bg);
-}
-.run-pill[data-status="awaiting"] {
-  color: var(--run-awaiting);
-  background: var(--run-awaiting-bg);
-}
-.run-pill[data-status="succeeded"] {
-  color: var(--run-succeeded);
-  background: var(--run-succeeded-bg);
-}
-.run-pill[data-status="failed"] {
-  color: var(--run-failed);
-  background: var(--run-failed-bg);
-}
-.run-pill[data-status="cancelled"] {
-  color: var(--run-cancelled);
-  background: var(--run-cancelled-bg);
-}
-.run-pill[data-status="pending"] {
-  color: var(--run-pending);
-  background: var(--run-pending-bg);
-}
-
 /* The run list, run tree, node I/O and JSON view are the reused Viewer panels (ADR 0031); their
  * styling lives in `viewer.css`. The Designer's old fork rules for those surfaces were removed so the
- * panels read identically to the Viewer — only the dock frame, the launch form, the status pill (for
- * the canvas projection) and the projection badge below are the Designer's to style. */
+ * panels read identically to the Viewer — only the dock frame, the launch form and the projection badge
+ * below are the Designer's to style. */
 
 /* Canvas run projection — a status badge on a node the watched run touched. */
 .node-run-badge {

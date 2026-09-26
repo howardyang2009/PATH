@@ -9,6 +9,7 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 import type Database from "better-sqlite3";
+import { checkCompletedOutput } from "./complete-output.js";
 import { continuationBlobReader, continuationRunOptions, sourceRuns, successorCapture } from "./continuation.js";
 import { createLogBackends, DEFAULT_LOG_BACKENDS, type LogBackendId } from "./logging/backends.js";
 import type { LogBackend } from "./logging/log-backend.js";
@@ -105,6 +106,10 @@ export interface Project {
    * non-`awaiting` leaf — including a double-submit, which sees the leaf already `succeeded` — is
    * rejected (`reason: "not-awaiting"`). An unknown `stepRunId` is `reason: "not-found"`.
    *
+   * Before the lease, the output is checked against the leaf's node in the reloaded file
+   * (`complete-output.ts`, ADR 0040): a node deleted or retyped mid-wait is `reason: "node-gone"`, and
+   * an output its `outputSchema` rejects is `reason: "output-invalid"`, leaf untouched.
+   *
    * `rootFile`/`workflowDir` are the reloaded workflow (the same requirement Resume carries): a moved
    * file or relocated store must still resolve for the replay. Returns a discriminated result and never
    * throws on operator input; an engine-invariant breach still throws.
@@ -131,13 +136,15 @@ export interface Project {
  * The outcome of `Project.complete` (ADR 0041) — a Result, not a throw, because "no such leaf", "not
  * awaiting", and "lease held" are ordinary states the route branches on to choose a status code, not
  * exceptional ones. `ok: false` carries the rejection `reason` (the route maps `not-found → 404`,
- * `not-awaiting`/`lease-held → 409`) and the message a surface renders. `ok: true` carries the tree's
+ * `not-awaiting`/`lease-held`/`node-gone → 409`, `output-invalid → 400`) and the message a surface
+ * renders; `output-invalid` may carry the schema validator's issues as `details`. `ok: true` carries the tree's
  * **own** root run id (never a successor's — Complete appends in place) and the drive's outcome:
  * `succeeded`/`failed`/`cancelled` when the tail settled, or `awaiting` when a still-parked sibling
  * parked the walk again (park-at-join).
  */
 export type CompleteResult =
-  | { ok: false; reason: "not-found" | "not-awaiting" | "lease-held"; message: string }
+  | { ok: false; reason: "not-found" | "not-awaiting" | "lease-held" | "node-gone"; message: string }
+  | { ok: false; reason: "output-invalid"; message: string; details?: unknown[] }
   | {
       ok: true;
       rootRunId: string;
@@ -506,6 +513,23 @@ export function openProject(dir: string): OpenProjectResult {
           return { ok: false, reason: "not-awaiting", message: `run "${rootRunId}" already finished with status "${rootRow.status}"` };
         }
 
+        // Validation runs before the lease (§4.4): it is per-leaf and the lease per-tree, so a bad submit
+        // on one leaf never contends for the lease a valid Complete of a sibling needs. The output is
+        // judged against the config this Complete will run with — the tree's frozen launch config under
+        // anything supplied again (ADR 0046) — so the schema and the run read the same values.
+        const runOptions = continuationRunOptions(opts, getLaunchFacts(db, rootRunId));
+        const check = checkCompletedOutput({
+          rootFile,
+          workflowDir,
+          files: opts.files,
+          operatorConfig: runOptions.operatorConfig,
+          env: { ...process.env },
+          stepRunId,
+          nodeId: leaf.nodeId,
+          output,
+        });
+        if (!check.ok) return check;
+
         // The per-root-run expiring lease (ADR 0041): one Complete advances a tree at a time. A held
         // lease rejects (`lease-held` → 409) rather than queueing.
         const lease = acquireCompleteLease(absDir, rootRunId);
@@ -540,7 +564,7 @@ export function openProject(dir: string): OpenProjectResult {
             // any launch secret the caller supplied again merged over it — and the launch worker-default
             // table, so a forward step resolves exactly as the launch did. The frozen input is not
             // re-applied: the tree's own contexts and the parked leaf are what this replay resumes from.
-            continuationRunOptions(opts, getLaunchFacts(db, rootRunId)),
+            runOptions,
             undefined,
             [],
             continueInput,

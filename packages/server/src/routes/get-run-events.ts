@@ -1,7 +1,7 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { encodeEventFrame } from "@path/schema";
 import { sendError } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 const SSE_HEADERS = {
   "Content-Type": "text/event-stream",
@@ -30,7 +30,7 @@ function parseLastEventId(req: IncomingMessage): number | undefined {
 export function handleGetRunEvents(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   rootRunId: string,
 ): void {
   // Unknown root run → 404. A run row exists the moment `POST /v0/runs` returns (run-started has

@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { PathApiClient, TemplateSummary } from "@path/client-core";
+import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
 /**
@@ -17,34 +18,15 @@ export type TemplateListLoad =
   | { phase: "ready"; templates: readonly TemplateSummary[] };
 
 export function useTemplateList(client: PathApiClient, savePhase: SaveState["phase"]): TemplateListLoad {
-  const [load, setLoad] = useState<TemplateListLoad>({ phase: "loading" });
-  // Set on mount (not only at init), so StrictMode's dev mount-unmount-mount leaves it live.
-  const alive = useRef(false);
-  useEffect(() => {
-    alive.current = true;
-    return () => {
-      alive.current = false;
-    };
-  }, []);
-
-  const scan = useCallback((): void => {
-    client
-      .listTemplates()
-      .then((response) => {
-        if (alive.current) setLoad({ phase: "ready", templates: response.templates });
-      })
-      .catch((error: unknown) => {
-        if (alive.current) setLoad({ phase: "error", message: error instanceof Error ? error.message : String(error) });
-      });
-  }, [client]);
-
-  // The first scan, and one after each save or delete that lands.
-  useEffect(() => {
-    scan();
-  }, [scan]);
-  useEffect(() => {
-    if (savePhase === "saved" || savePhase === "deleted" || savePhase === "saved-as-template") scan();
-  }, [savePhase, scan]);
-
-  return load;
+  const listTemplates = useCallback(async () => (await client.listTemplates()).templates, [client]);
+  const load = useScanOnSave(listTemplates, savePhase, RESCAN_ON);
+  // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
+  return useMemo(() => {
+    if (load.phase === "ready") return { phase: "ready", templates: load.value };
+    if (load.phase === "error") return { phase: "error", message: load.message };
+    return load;
+  }, [load]);
 }
+
+/** The save phases that change which templates exist. */
+const RESCAN_ON: readonly SaveState["phase"][] = ["saved", "deleted", "saved-as-template"];

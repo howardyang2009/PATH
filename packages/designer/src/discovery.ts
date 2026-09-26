@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useMemo } from "react";
 import type { PathApiClient, WorkflowSummary } from "@path/client-core";
+import { useScanOnSave } from "./scan-on-save.js";
 import type { SaveState } from "./session-reducer.js";
 
 /**
@@ -40,38 +41,15 @@ export function discoveredWorkflows(load: DiscoveryLoad): readonly WorkflowSumma
  * discovered", because a read blip must not empty every picker or flag every ref dangling (#388, #392).
  */
 export function useWorkflowDiscovery(client: PathApiClient, savePhase: SaveState["phase"]): DiscoveryLoad {
-  const [load, setLoad] = useState<DiscoveryLoad>({ phase: "loading" });
-  // The last successful scan, kept across failures and read when composing an error state.
-  const lastGood = useRef<readonly WorkflowSummary[] | null>(null);
-  const alive = useRef(true);
-  useEffect(
-    () => () => {
-      alive.current = false;
-    },
-    [],
-  );
-
-  const scan = useCallback((): void => {
-    client
-      .listWorkflows()
-      .then((response) => {
-        if (!alive.current) return;
-        lastGood.current = response.workflows;
-        setLoad({ phase: "ready", workflows: response.workflows });
-      })
-      .catch((error: unknown) => {
-        if (!alive.current) return;
-        setLoad({ phase: "error", message: error instanceof Error ? error.message : String(error), workflows: lastGood.current });
-      });
-  }, [client]);
-
-  // The first scan, and one after each save or delete that lands.
-  useEffect(() => {
-    scan();
-  }, [scan]);
-  useEffect(() => {
-    if (savePhase === "saved" || savePhase === "deleted") scan();
-  }, [savePhase, scan]);
-
-  return load;
+  const listWorkflows = useCallback(async () => (await client.listWorkflows()).workflows, [client]);
+  const load = useScanOnSave(listWorkflows, savePhase, RESCAN_ON);
+  // Mapped once per scan result, so a consumer keyed on this object does not re-run every render.
+  return useMemo(() => {
+    if (load.phase === "ready") return { phase: "ready", workflows: load.value };
+    if (load.phase === "error") return { phase: "error", message: load.message, workflows: load.lastGood };
+    return load;
+  }, [load]);
 }
+
+/** The save phases that change which workflow files exist. */
+const RESCAN_ON: readonly SaveState["phase"][] = ["saved", "deleted"];

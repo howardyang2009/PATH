@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
 import { makeStepTemplateSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
-import { checkPrecondition, writeArtifact } from "../artifact-file.js";
+import { checkPrecondition, PRECONDITION_FAILED, writeArtifact } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import { templatesOf, writableTemplate } from "../template-store.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `PUT /v0/templates/:id` (server-api-v0.md §10.4, ADR 0050 decision 7): **update-only** and
@@ -18,7 +18,7 @@ import type { RunsRouteContext } from "./post-runs.js";
 export async function handlePutTemplate(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   id: string,
 ): Promise<void> {
   const raw = await readJsonBody(req);
@@ -27,24 +27,19 @@ export async function handlePutTemplate(
     return;
   }
 
-  const projectDir = resolve(ctx.project.dir);
-  const { byId } = discoverTemplates(projectDir, shippedTemplateDir(ctx), ctx.stepPlugins);
-  const entry = byId.get(id);
-  if (entry === undefined) {
-    sendError(res, 404, "not found");
+  const found = writableTemplate(templatesOf(ctx), id);
+  if (!found.ok) {
+    sendError(res, found.status, found.message);
     return;
   }
-  if (entry.readOnly) {
-    sendError(res, 403, "template is read-only");
-    return;
-  }
+  const { entry } = found;
 
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required. Absent or stale is a
   // `412`. The etag check through the write below is a single synchronous block — no `await` between
   // them — so only an *external* writer can invalidate the token, which is what it guards.
   const precondition = checkPrecondition(entry.bytes, firstHeader(req.headers["if-match"]), "overwrite");
   if (!precondition.ok) {
-    sendError(res, 412, precondition.conflict === "required" ? "precondition failed: If-Match required" : "precondition failed: the template changed since it was read");
+    sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
     return;
   }
 
@@ -61,7 +56,7 @@ export async function handlePutTemplate(
   }
 
   const { etag } = writeArtifact(entry.absPath, rawBody, { create: false });
-  const reply: WireTemplateWriteResponse = { id, relative_path: relative(projectDir, entry.absPath), etag };
+  const reply: WireTemplateWriteResponse = { id, relative_path: relative(resolve(ctx.project.dir), entry.absPath), etag };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

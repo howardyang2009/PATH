@@ -318,6 +318,19 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
     expect(result).toMatchObject({ ok: false, reason: "in-body", container: "loop" });
   });
 
+  // A pass-2 row carries its opening goto's node id, so without the shared selection rule it read as a
+  // node and a succeeded pass enabled the button — which the engine then refused with 400 "pass-run".
+  it("disables a goto pass row itself, as the engine refuses it", () => {
+    const result = resumeFromEligibility({
+      rootRunId: "root",
+      runs: mapOf(...passRows().map((r) => (r.runId === "pass-2" ? { ...r, status: "succeeded" as const } : r))),
+      rootFile: file([leaf("a"), seq("test", [leaf("b"), leaf("c")])]),
+      selectedRunId: "pass-2",
+      dirty: CLEAN,
+    });
+    expect(result).toMatchObject({ ok: false, reason: "pass-run" });
+  });
+
   it("counts earlier passes as prefix under a goto pass run", () => {
     const result = resumeFromEligibility({
       rootRunId: "root",

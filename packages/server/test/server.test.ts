@@ -1,4 +1,4 @@
-import { cpSync, existsSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -309,9 +309,25 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
   });
 
+  // A path parameter is decoded once, in the route table: an invalid escape is the client's error.
+  it("400s a path parameter that is not valid percent-encoding, rather than a 500", async () => {
+    const res = await fetch(`${handle.url}/v0/runs/%E0`);
+    expect(res.status).toBe(400);
+  });
+
   it("404s when workflow_path resolves outside the project root", async () => {
     const res = await postRun({ workflow_path: "../../etc/passwd" });
     expect(res.status).toBe(404);
+  });
+
+  // The launch gate confines like every other file door (`confine.ts`): a symlink inside the project
+  // could otherwise point the run at a file outside it, which the read and write doors already refuse.
+  it("404s a workflow_path that traverses a symlink, and starts no run", async () => {
+    symlinkSync(join(projectDir, "two-binary-steps.workflow.json"), join(projectDir, "linked.workflow.json"));
+    const res = await postRun({ workflow_path: "linked.workflow.json" });
+    expect(res.status).toBe(404);
+    const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
+    expect(runs.runs).toEqual([]);
   });
 
   // Issue #237 — the CSRF/origin gate on the state-changing routes. A cross-origin browser fetch

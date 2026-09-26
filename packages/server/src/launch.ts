@@ -1,7 +1,8 @@
 import { existsSync } from "node:fs";
-import { isAbsolute, relative, resolve } from "node:path";
+import { resolve } from "node:path";
 import { loadWorkflowTree, type LoadedWorkflow } from "@path/engine";
 import { mapEnv, type ConfigObject, type JsonValue, type RunRecord } from "@path/schema";
+import { confineToProjectRoot } from "./confine.js";
 
 /**
  * Turning a workflow path into a launchable workflow, once, for every surface that needs one.
@@ -36,19 +37,6 @@ export interface WorkflowRefusal {
 export type PreparedWorkflow =
   | { ok: true; workflow: LoadedWorkflow }
   | { ok: false; refusal: WorkflowRefusal };
-
-/**
- * `workflow_path` resolves against the server's fixed project root, the same way `path run
- * <workflow.json>` resolves against the cwd (server-api-v0.md §2) — except a path that escapes the
- * project root yields `undefined` rather than being followed, since the server (unlike the CLI) is
- * not trusted with the operator's whole filesystem.
- */
-function resolveWorkflowPath(projectDir: string, workflowPath: string): string | undefined {
-  const absPath = resolve(projectDir, workflowPath);
-  const rel = relative(projectDir, absPath);
-  if (rel.startsWith("..") || isAbsolute(rel)) return undefined;
-  return absPath;
-}
 
 /**
  * The ADR 0012 `$env` reject both launch endpoints owe: operator-supplied override config may name a
@@ -89,7 +77,11 @@ export interface NotFoundMessages {
  * returning the {@link LoadedWorkflow} or a ready-to-send refusal. The three refusals mirror the two
  * routes' existing wording and status codes:
  *
- * - escapes the project root → `404`, `messages.escapesRoot` (defaulting to `notFound`);
+ * - escapes the project root, or traverses a symlink → `404`, `messages.escapesRoot` (defaulting to
+ *   `notFound`). `workflow_path` resolves against the fixed project root the way `path run
+ *   <workflow.json>` resolves against the cwd (server-api-v0.md §2), through the same confinement as
+ *   every other file door (`confine.ts`): the server, unlike the CLI, is not trusted with the
+ *   operator's whole filesystem;
  * - not on disk → `404`, `messages.notFound`;
  * - fails to load → `400`, `"workflow validation failed"` with the loader's per-file errors.
  *
@@ -102,7 +94,9 @@ export async function prepareWorkflow(
   workflowPath: string,
   messages: NotFoundMessages,
 ): Promise<PreparedWorkflow> {
-  const absPath = resolveWorkflowPath(projectDir, workflowPath);
+  // A missing tail is allowed through here so that a file that is simply not there reads as
+  // `notFound` below rather than as an escape.
+  const absPath = confineToProjectRoot(resolve(projectDir), workflowPath, { allowMissingTail: true });
   if (!absPath) {
     const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
     return { ok: false, refusal: { status: 404, message: escaped } };

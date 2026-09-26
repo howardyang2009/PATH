@@ -57,6 +57,7 @@ import {
   validateMaxIterations,
   validateOutputSchema,
   type KeyedRow,
+  type DraftResult,
 } from "./validated-draft.js";
 
 /**
@@ -188,17 +189,7 @@ function FileProperties({
  * section always renders.
  */
 function FileReferenceSection({ file }: { file: WorkflowFile }): JSX.Element | null {
-  const paths = referenceablePaths(file, [...STEP_ROOTS]);
-  if (paths.length === 0) return null;
-  return (
-    <>
-      <hr className="pane-divider" />
-      {/* Keyed by the file: a re-key opens the section collapsed again. */}
-      <PaneSection key={file.id} title="reference" className="pane-reference">
-        <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
-      </PaneSection>
-    </>
-  );
+  return <ReferenceList ownerId={file.id} paths={referenceablePaths(file, [...STEP_ROOTS])} />;
 }
 
 /**
@@ -243,11 +234,10 @@ function FileWorkerDefaultsRegion({
   );
 }
 
-/** The file's `output` map read back as editor rows (each value coerced to its string form). */
-function outputRowsOf(file: WorkflowFile): KeyedRow[] {
-  const output = (file as { output?: unknown }).output;
-  if (output === null || typeof output !== "object" || Array.isArray(output)) return [];
-  return Object.entries(output as Record<string, unknown>).map(([key, value]) => ({
+/** A `key → value` map (a file's `output`, a step's `publish`) read back as editor rows, each value in its string form. */
+function keyedRowsOf(map: unknown): KeyedRow[] {
+  if (map === null || typeof map !== "object" || Array.isArray(map)) return [];
+  return Object.entries(map as Record<string, unknown>).map(([key, value]) => ({
     key,
     value: typeof value === "string" ? value : JSON.stringify(value),
   }));
@@ -266,7 +256,7 @@ function FileOutputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
   // The file's `output` map is a keyed-row field (`useKeyedRows`): an empty map drops the whole `output`
   // key, so an empty `output: {}` never lands. A row edit folds to one undo entry (#389, `file-output:…`).
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
-    () => outputRowsOf(file),
+    () => keyedRowsOf((file as { output?: unknown }).output),
     STEP_ROOTS,
     editKey(file.id, "output"),
     (map, key) => {
@@ -392,13 +382,17 @@ function ReferenceSection({ file, node, site }: { file: WorkflowFile; node: Work
     for (const root of PUBLISH_ROOTS) roots.add(root);
   }
   if (roots.size === 0) return null;
-  const paths = referenceablePaths(file, [...roots]);
+  return <ReferenceList ownerId={node.id} paths={referenceablePaths(file, [...roots])} />;
+}
+
+/** The "reference" section's body: the referenceable dot-paths, or nothing when there are none. */
+function ReferenceList({ ownerId, paths }: { ownerId: string; paths: readonly string[] }): JSX.Element | null {
   if (paths.length === 0) return null;
   return (
     <>
       <hr className="pane-divider" />
-      {/* Keyed by the node: a new selection opens its sections collapsed again. */}
-      <PaneSection key={node.id} title="reference" className="pane-reference">
+      {/* Keyed by the owner: a new selection opens the section collapsed again. */}
+      <PaneSection key={ownerId} title="reference" className="pane-reference">
         <p className="pane-hint pane-suggest">{paths.join(" · ")}</p>
       </PaneSection>
     </>
@@ -648,35 +642,19 @@ function PersonActivityEditor({ node, commit }: { node: WorkflowNode; commit: Ed
  * strict-valid. Seeded from the node's current schema, pretty-printed.
  */
 function OutputSchemaField({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
-  const { draft, error, onEdit } = useValidatedDraft(
-    () => {
-      const schema = rec(node).outputSchema;
-      return schema === undefined ? "" : JSON.stringify(schema, null, 2);
-    },
-    (text) => validateOutputSchema(node, text),
-    editKey(node.id, "outputSchema"),
-    (next) => commit(next),
-  );
-
   return (
-    <div className="pane-field">
-      <label className="pane-label" htmlFor={`output-schema-${node.id}`}>
-        outputSchema (JSON Schema, optional)
-      </label>
-      <textarea
-        id={`output-schema-${node.id}`}
-        className="pane-input pane-json"
-        value={draft}
-        onChange={(e) => onEdit(e.target.value)}
-        aria-invalid={error !== null}
-        rows={8}
-      />
-      {error ? (
-        <p className="pane-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <JsonDraftField
+      id={`output-schema-${node.id}`}
+      label="outputSchema (JSON Schema, optional)"
+      rows={8}
+      initial={() => {
+        const schema = rec(node).outputSchema;
+        return schema === undefined ? "" : JSON.stringify(schema, null, 2);
+      }}
+      validate={(text) => validateOutputSchema(node, text)}
+      identity={editKey(node.id, "outputSchema")}
+      commit={commit}
+    />
   );
 }
 
@@ -754,32 +732,16 @@ function GenericField({
  * the canvas stays strict-valid and only the editor's fidelity degrades.
  */
 function RawJsonFloor({ node, plugins, commit }: Omit<LeafEditorProps, "file">): JSX.Element {
-  const { draft, error, onEdit } = useValidatedDraft(
-    () => JSON.stringify(nodePayload(node), null, 2),
-    (text) => validateJsonPayload(node, text, plugins),
-    editKey(node.id, "payload"),
-    (next) => commit(next),
-  );
-
   return (
-    <div className="pane-field">
-      <label className="pane-label" htmlFor="raw-json">
-        payload (JSON)
-      </label>
-      <textarea
-        id="raw-json"
-        className="pane-input pane-json"
-        value={draft}
-        onChange={(e) => onEdit(e.target.value)}
-        aria-invalid={error !== null}
-        rows={8}
-      />
-      {error ? (
-        <p className="pane-error" role="alert">
-          {error}
-        </p>
-      ) : null}
-    </div>
+    <JsonDraftField
+      id={`raw-json-${node.id}`}
+      label="payload (JSON)"
+      rows={8}
+      initial={() => JSON.stringify(nodePayload(node), null, 2)}
+      validate={(text) => validateJsonPayload(node, text, plugins)}
+      identity={editKey(node.id, "payload")}
+      commit={commit}
+    />
   );
 }
 
@@ -955,33 +917,18 @@ function FileConfigRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: 
  * an empty `input: {}` never lands. A blank box reads back as `{}`, the field's own empty default.
  */
 function FileInputRegion({ file, applyEdit }: { file: WorkflowFile; applyEdit: EditCommit<WorkflowFile> }): JSX.Element {
-  const { draft, error, onEdit } = useValidatedDraft(
-    () => (file.input === undefined ? "{}" : JSON.stringify(file.input, null, 2)),
-    (text) => validateFileInputDraft(file, text),
-    editKey(file.id, "input"),
-    (next) => applyEdit(next, editKey(file.id, "input")),
-  );
-
+  const identity = editKey(file.id, "input");
   return (
     <PaneSection title="input">
-      <div className="pane-field">
-        <label className="pane-label" htmlFor={`file-input-${file.id}`}>
-          input (JSON object, the workflow's launch seed)
-        </label>
-        <textarea
-          id={`file-input-${file.id}`}
-          className="pane-input pane-json"
-          value={draft}
-          onChange={(e) => onEdit(e.target.value)}
-          aria-invalid={error !== null}
-          rows={5}
-        />
-        {error ? (
-          <p className="pane-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
+      <JsonDraftField
+        id={`file-input-${file.id}`}
+        label="input (JSON object, the workflow's launch seed)"
+        rows={5}
+        initial={() => (file.input === undefined ? "{}" : JSON.stringify(file.input, null, 2))}
+        validate={(text) => validateFileInputDraft(file, text)}
+        identity={identity}
+        commit={(next) => applyEdit(next, identity)}
+      />
     </PaneSection>
   );
 }
@@ -1041,48 +988,22 @@ function ConfigRowField({
  * placeholder is reported and never committed, and the referenceable paths are offered as autocomplete.
  */
 function InputEditor({ node, commit }: { node: WorkflowNode; commit: EditCommit<WorkflowNode> }): JSX.Element {
-  const { draft, error, onEdit } = useValidatedDraft(
-    () => {
-      const input = rec(node).input;
-      return input === undefined ? "{}" : JSON.stringify(input, null, 2);
-    },
-    (text) => validateInputDraft(node, text),
-    editKey(node.id, "input"),
-    (next) => commit(next),
-  );
-
   return (
     <PaneSection key={node.id} title="input">
-      <div className="pane-field">
-        <label className="pane-label" htmlFor={`input-${node.id}`}>
-          input (any JSON value, ${"{…}"} interpolable)
-        </label>
-        <textarea
-          id={`input-${node.id}`}
-          className="pane-input pane-json"
-          value={draft}
-          onChange={(e) => onEdit(e.target.value)}
-          aria-invalid={error !== null}
-          rows={5}
-        />
-        {error ? (
-          <p className="pane-error" role="alert">
-            {error}
-          </p>
-        ) : null}
-      </div>
+      <JsonDraftField
+        id={`input-${node.id}`}
+        label="input (any JSON value, ${…} interpolable)"
+        rows={5}
+        initial={() => {
+          const input = rec(node).input;
+          return input === undefined ? "{}" : JSON.stringify(input, null, 2);
+        }}
+        validate={(text) => validateInputDraft(node, text)}
+        identity={editKey(node.id, "input")}
+        commit={commit}
+      />
     </PaneSection>
   );
-}
-
-/** The node's `publish` map read back as editor rows (each value coerced to its string form). */
-function publishRowsOf(node: WorkflowNode): KeyedRow[] {
-  const publish = rec(node).publish;
-  if (publish === null || typeof publish !== "object" || Array.isArray(publish)) return [];
-  return Object.entries(publish as Record<string, unknown>).map(([key, value]) => ({
-    key,
-    value: typeof value === "string" ? value : JSON.stringify(value),
-  }));
 }
 
 /**
@@ -1100,7 +1021,7 @@ function PublishParseFields({ node, commit }: { node: WorkflowNode; commit: Edit
   // one undo entry (#389, the field's identity plus the row — scoped by node, so two nodes' rows never
   // fold together).
   const { rows, setRow, addRow, removeRow } = useKeyedRows(
-    () => publishRowsOf(node),
+    () => keyedRowsOf(rec(node).publish),
     PUBLISH_ROOTS,
     editKey(node.id, "publish"),
     (map, key) =>
@@ -1227,13 +1148,60 @@ function MaxIterationsField({
         onChange={(e) => onEdit(e.target.value)}
         aria-invalid={error !== null}
       />
-      {error ? (
-        <p className="pane-error" role="alert">
-          {error}
-        </p>
-      ) : null}
+      <FieldError error={error} />
     </div>
   );
+}
+
+// ── Shared field pieces ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * A live-validated JSON textarea: every keystroke is validated, only a valid value commits, and an
+ * invalid draft shows its error without touching the node — so the canvas stays strict-valid.
+ */
+function JsonDraftField<T>({
+  id,
+  label,
+  rows,
+  initial,
+  validate,
+  identity,
+  commit,
+}: {
+  id: string;
+  label: string;
+  rows: number;
+  initial: () => string;
+  validate: (text: string) => DraftResult<T>;
+  identity: EditKey;
+  commit: (value: T) => void;
+}): JSX.Element {
+  const { draft, error, onEdit } = useValidatedDraft(initial, validate, identity, commit);
+  return (
+    <div className="pane-field">
+      <label className="pane-label" htmlFor={id}>
+        {label}
+      </label>
+      <textarea
+        id={id}
+        className="pane-input pane-json"
+        value={draft}
+        onChange={(e) => onEdit(e.target.value)}
+        aria-invalid={error !== null}
+        rows={rows}
+      />
+      <FieldError error={error} />
+    </div>
+  );
+}
+
+/** A field's validation error, announced to assistive tech; nothing when the draft is valid. */
+function FieldError({ error }: { error: string | null }): JSX.Element | null {
+  return error ? (
+    <p className="pane-error" role="alert">
+      {error}
+    </p>
+  ) : null;
 }
 
 // ── Node payload helpers ─────────────────────────────────────────────────────────────────────────

@@ -4,7 +4,7 @@ import { createEmitter, type StepEmitter } from "../src/run-emitter.js";
 import type { Cancellation, RunIdentity } from "../src/run-context.js";
 import type { Observation } from "../src/run-observer.js";
 import type { StepResult } from "../src/plugin/seam.js";
-import { settleStepResult, type SettleStepResult } from "../src/run-workflow.js";
+import { settleStepResult, type SettleStepResult } from "../src/leaf-step.js";
 
 /**
  * The engine-owned mapping from a worker's `StepResult` to a leaf step's terminal outcome, tested on

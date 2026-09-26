@@ -1,4 +1,5 @@
 import { mapEnv, mapSecrets, type ConfigObject, type ConfigValue, type JsonValue } from "@path/schema";
+import { mergeConfig } from "./merge-config.js";
 
 /**
  * The engine's read of the two config wrappers — `{"$env": "<NAME>"}` (workflow-format-v0.md §8.3,
@@ -107,6 +108,15 @@ export function resolveConfigEnv(config: ConfigObject, env: EnvSource): EnvResol
  */
 export function resolveEffectiveConfig(merged: ConfigObject, env: EnvSource): ConfigObject {
   return unwrapSecrets(resolveConfigEnv(merged, env).config);
+}
+
+/**
+ * The effective config at one level (format doc §8): `override` shadows `base` key by key, nearest
+ * wins, then `$env` is resolved and `$secret` unwrapped. The one spelling of "a file's config under
+ * its incoming config" and "a step's config under its file's", for the executor and the ref-tree walk.
+ */
+export function effectiveConfig(base: ConfigObject, override: ConfigObject | undefined, env: EnvSource): ConfigObject {
+  return resolveEffectiveConfig(mergeConfig(base, override), env);
 }
 
 /** Every `$secret` in a config object replaced by the value it marks (format §8.3). */

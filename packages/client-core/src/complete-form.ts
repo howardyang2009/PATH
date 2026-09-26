@@ -1,4 +1,4 @@
-import { validateOutputSchema, type JsonValue } from "@path/schema";
+import { isPlainObject, validateOutputSchema, type JsonValue } from "@path/schema";
 
 /**
  * The Complete form model (ADR 0040, CONTEXT.md § Person-activity): a `person-activity` node's
@@ -34,10 +34,6 @@ export interface CompleteField {
 /** The value a form control holds before coercion: a checkbox's boolean, or any other control's text. */
 export type CompleteFieldValue = string | boolean;
 
-function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 function fieldKind(prop: { [key: string]: JsonValue }): { kind: CompleteFieldKind; enumValues: string[] | null } {
   if (Array.isArray(prop.enum)) {
     return { kind: "enum", enumValues: prop.enum.map((value) => String(value)) };
@@ -54,11 +50,11 @@ function fieldKind(prop: { [key: string]: JsonValue }): { kind: CompleteFieldKin
  * server accepts as any JSON. A schema that is not an object-with-properties also yields no fields.
  */
 export function buildCompleteFields(outputSchema: JsonValue | null): CompleteField[] {
-  if (!isJsonObject(outputSchema) || !isJsonObject(outputSchema.properties)) return [];
+  if (!isPlainObject(outputSchema) || !isPlainObject(outputSchema.properties)) return [];
   const required = new Set(Array.isArray(outputSchema.required) ? outputSchema.required.map((v) => String(v)) : []);
   const fields: CompleteField[] = [];
   for (const [key, raw] of Object.entries(outputSchema.properties)) {
-    if (!isJsonObject(raw)) continue;
+    if (!isPlainObject(raw)) continue;
     const { kind, enumValues } = fieldKind(raw);
     fields.push({
       key,
@@ -156,7 +152,7 @@ export function mapCompleteErrors(details: JsonValue | undefined): MappedComplet
   const formErrors: string[] = [];
   if (!Array.isArray(details)) return { fieldErrors, formErrors };
   for (const raw of details) {
-    if (!isJsonObject(raw)) continue;
+    if (!isPlainObject(raw)) continue;
     const message = typeof raw.message === "string" ? raw.message : "Invalid value.";
     const key = fieldKeyOf(raw);
     if (key === null) formErrors.push(message);
@@ -167,7 +163,7 @@ export function mapCompleteErrors(details: JsonValue | undefined): MappedComplet
 
 /** The field an ajv issue is about, or `null` for a form-level one. */
 function fieldKeyOf(issue: { [key: string]: JsonValue }): string | null {
-  if (issue.keyword === "required" && isJsonObject(issue.params) && typeof issue.params.missingProperty === "string") {
+  if (issue.keyword === "required" && isPlainObject(issue.params) && typeof issue.params.missingProperty === "string") {
     return issue.params.missingProperty;
   }
   if (typeof issue.instancePath === "string" && issue.instancePath.startsWith("/")) {

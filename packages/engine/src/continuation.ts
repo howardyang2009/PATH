@@ -161,15 +161,20 @@ export function successorCapture(): SuccessorCapture {
  * re-entered in place.
  */
 export type NodeDisposition =
-  /** Resume: the reuse plan holds a succeeded original run for this node id — reuse its output. */
-  | { kind: "reuse"; original: RunRecord }
-  /** Complete: this tree's row for the node already succeeded — read its output, re-run nothing. */
-  | { kind: "succeeded"; existing: RunRecord }
-  /** Complete: this tree's row is the parked leaf being Completed — transition it in place. */
-  | { kind: "complete"; existing: RunRecord }
-  /** Complete: this tree's row is a still-parked sibling — park the walk again (park-at-join). */
+  /**
+   * Do not run the node: its output is already recorded. Resume reuses the original tree's run and
+   * marks it (`reusedFrom`, ADR 0001); Complete reads this tree's own succeeded row, read-only and
+   * unmarked, since it is not a fresh successor tree (ADR 0041).
+   */
+  | { kind: "reuse"; output: () => JsonValue; reusedFrom?: string }
+  /** Complete: this node's row is the parked leaf being Completed — finish that run in place with `output`. */
+  | { kind: "complete"; runId: string; output: JsonValue }
+  /** Complete: this node's row is a still-parked sibling — park the walk again (park-at-join). */
   | { kind: "park" }
-  /** Complete: an existing non-terminal row this node re-enters in place (a nested run, an iteration). */
+  /**
+   * Complete: a non-terminal row this node re-enters in place, keeping its run id (a nested run, an
+   * iteration). The whole row, because a re-entered workflow-run restores its parked context from it.
+   */
   | { kind: "reenter"; existing: RunRecord }
   /** Nothing recorded answers this node — run it fresh. */
   | { kind: "fresh" };
@@ -195,9 +200,13 @@ export interface Continuation {
  */
 function resumeContinuation(resume: RunContext["resume"]): Continuation {
   return {
-    disposition(node) {
+    disposition(node, iteration) {
+      // An iteration container is paired through the Resume plan's own iteration scope
+      // (`enterIteration`), never through this node-id lookup.
+      if (iteration !== undefined) return { kind: "fresh" };
       const original = resume?.plan.get(node.id);
-      return original ? { kind: "reuse", original } : { kind: "fresh" };
+      if (!resume || !original) return { kind: "fresh" };
+      return { kind: "reuse", output: () => resume.input.readBlob(original, RUN_BLOB_FILE.output), reusedFrom: original.runId };
     },
   };
 }
@@ -219,9 +228,11 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
       // within one tree a single match or none; more than one is a corrupt tree and runs fresh.
       const existing = recordedChild(state.existingRuns, parentRunId, { nodeId: node.id, iteration });
       if (!existing) return { kind: "fresh" };
-      if (existing.status === "succeeded") return { kind: "succeeded", existing };
+      if (existing.status === "succeeded") return { kind: "reuse", output: () => readExistingOutput(state, existing) };
       if (existing.status === "awaiting") {
-        return existing.runId === state.target.stepRunId ? { kind: "complete", existing } : { kind: "park" };
+        return existing.runId === state.target.stepRunId
+          ? { kind: "complete", runId: existing.runId, output: state.target.output }
+          : { kind: "park" };
       }
       if (node.type === "workflow" || iteration !== undefined) return { kind: "reenter", existing };
       return { kind: "fresh" };
@@ -235,7 +246,7 @@ function completeContinuation(state: ContinueState, parentRunId: string): Contin
  * neither — and a plain forward run gets the Resume adapter over an undefined plan, which answers
  * `fresh` for every node.
  */
-export function continuationOf(run: RunContext): Continuation {
+export function continuationOf(run: Pick<RunContext, "continue" | "resume" | "identity">): Continuation {
   return run.continue ? completeContinuation(run.continue, run.identity.runId) : resumeContinuation(run.resume);
 }
 
@@ -253,7 +264,7 @@ export function targetLeafUnder(state: ContinueState, ancestorRunId: string): bo
  * pre-swapped for their source record (`sourceRuns`), so a `succeeded` row always carries its own
  * `outputRef` addressing its output blob; a `{}` fallback covers the theoretical row with no ref.
  */
-export function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
+function readExistingOutput(state: ContinueState, run: RunRecord): JsonValue {
   return run.outputRef ? state.readBlob(run, RUN_BLOB_FILE.output) : {};
 }
 

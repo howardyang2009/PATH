@@ -1,4 +1,4 @@
-import { walkNodes, type JsonValue, type RunStatus, type WorkflowFile } from "@path/schema";
+import { isPlainObject, walkNodes, type JsonValue, type RunStatus, type WorkflowFile } from "@path/schema";
 
 /**
  * The one awaiting leaf step type v1 ships (ADR 0039). A leaf is completable only while its node is
@@ -30,10 +30,6 @@ export interface AwaitingNode {
   outputSchema: JsonValue | null;
 }
 
-function isJsonObject(value: unknown): value is { [key: string]: JsonValue } {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
 /**
  * The `person-activity` node with id `nodeId` in a **structurally-parsed** workflow file, or `null`
  * when the id is absent or maps to another node type. `person-activity` is a plugin leaf outside the
@@ -51,7 +47,7 @@ export function findAwaitingNode(file: WorkflowFile, nodeId: string): AwaitingNo
     return {
       description: typeof loose.description === "string" ? loose.description : null,
       assignee: typeof loose.assignee === "string" ? loose.assignee : null,
-      outputSchema: isJsonObject(loose.outputSchema) ? loose.outputSchema : null,
+      outputSchema: isPlainObject(loose.outputSchema) ? loose.outputSchema : null,
     };
   }
   return null;

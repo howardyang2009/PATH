@@ -12,29 +12,28 @@ export interface NodeChildBody {
    * node, wrapped in a one-element array so every caller walks a list (`@2` §3.1).
    */
   nodes: WorkflowNode[];
-  /** JSON path segments from the owning node to this body, for error reporting. */
+  /**
+   * JSON path segments from the owning node to this slot. A single-node slot and a `parallel` branch
+   * already land on the node (`["arms", 0, "node"]`, `["branches", 1]`); a `sequence` body lands on its
+   * array (`["body"]`). Use {@link childNodePath} for one node's path.
+   */
   path: (string | number)[];
   /** True for `parallel` branches: siblings that run at once, and so can race to publish. */
   concurrent: boolean;
 }
 
 /**
- * Where a node's children are. **The one statement of the block grammar's descent.**
- *
- * It was stated five times: three collectors in this package, one in `@path/engine`, and the
- * executor's dispatch. Four of those five ended in `default: break`, so a block type added to the
- * format was not scanned for id uniqueness, publish-key collisions, or `workflow` refs — it was
- * *silently skipped* rather than rejected, and the first symptom would be a workflow that validates
- * and then misbehaves. The `never` guard below turns that into a compile error: a new node type must
- * say where its children are, or nothing builds.
- *
- * Returns `[]` for a leaf — the step kinds, `checkpoint` and `goto` have no nested bodies. Deliberately
- * does **not** descend into a `workflow` step's ref'd file: that file has its own isolated context
- * and its own validation pass.
+ * The JSON path of `child.nodes[index]` relative to its owning node. Only a `sequence` body indexes an
+ * array; every other slot's path already names its one node. The one spelling of that rule for every
+ * walker that reports a node's position.
  */
+export function childNodePath(child: NodeChildBody, index: number): (string | number)[] {
+  return child.path[0] === "body" ? [...child.path, index] : child.path;
+}
+
 /**
  * The child-slot shape of each control block: which of a node's own keys hold its nested bodies, and
- * how each is shaped. `childBodies` above reads this shape through its typed, `never`-guarded switch;
+ * how each is shaped. `childBodies` below reads this shape through its typed, `never`-guarded switch;
  * a consumer that must walk the same descent **before a file is schema-parsed** — the designer's open
  * pipeline, over raw JSON — reads this table instead of re-spelling the descent a fourth time.
  */
@@ -93,6 +92,20 @@ export const CONTROL_CHILD_SLOTS = {
   ],
 } as const satisfies Record<BranchingType, readonly ChildSlot[]>;
 
+/**
+ * Where a node's children are. **The one statement of the block grammar's descent.**
+ *
+ * It was stated five times: three collectors in this package, one in `@path/engine`, and the
+ * executor's dispatch. Four of those five ended in `default: break`, so a block type added to the
+ * format was not scanned for id uniqueness, publish-key collisions, or `workflow` refs — it was
+ * *silently skipped* rather than rejected, and the first symptom would be a workflow that validates
+ * and then misbehaves. The `never` guard below turns that into a compile error: a new node type must
+ * say where its children are, or nothing builds.
+ *
+ * Returns `[]` for a leaf — the step kinds, `checkpoint` and `goto` have no nested bodies. Deliberately
+ * does **not** descend into a `workflow` step's ref'd file: that file has its own isolated context
+ * and its own validation pass.
+ */
 export function childBodies(node: WorkflowNode): NodeChildBody[] {
   switch (node.type) {
     case "parallel":

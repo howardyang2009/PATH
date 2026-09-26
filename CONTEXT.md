@@ -12,7 +12,7 @@ and issues use them exactly.
   `Task = Step + Worker` reads literally. A step type ships one or more workers, all reaching the same
   result by a different route (a local method, a library, a remote service); "same result" is an
   author-trust contract, not an enforced check. The pair `(type, name)` is a worker's identity, so a
-  name is unique only inside its type. You select a worker per step by **name** (`"worker": "sdk"`);
+  name is unique only inside its type. You select a worker per step by **name** (`"worker": "deepseek"`);
   when you do not, the step falls to a **worker-default** for its type if one is set — a **launch
   worker-default** first, then a **file worker-default** — and finally to its type's **default
   worker**. There is no worker inheritance: a
@@ -29,7 +29,7 @@ and issues use them exactly.
   worker's **provider credential** — `deepseek` reads `config.DEEPSEEK_API_KEY` first and
   `process.env.DEEPSEEK_API_KEY` second (ADR 0045).
 - **Default worker** — the worker a step of a given type uses when it names none and no **worker-default**
-  overrides it. Each step type declares exactly one (`binary`'s `spawn`, `prompt`'s `sdk`). Most steps use
+  overrides it. Each step type declares exactly one (`binary`'s `spawn`, `prompt`'s `anthropic`). Most steps use
   it and write no `worker` field. It is a required key on the type, not a reserved worker name. It is the
   bottom of the four-tier resolution: `node.worker` beats a **launch worker-default**, beats a **file
   worker-default**, beats this.

@@ -3,12 +3,13 @@ import { isAbsolute, join, relative, resolve, sep } from "node:path";
 
 /**
  * Resolve `relPath` to an absolute path *inside* `projectDir`, or `undefined` when it must not be
- * touched. This is the read/write door's confinement (server-api-v0.md §7, §7.1), stricter than
- * discovery's list-time skip, and the *one* place it is spelled (ADR 0016: the write reuses the read's
+ * touched. This is every file door's confinement — read, write, delete, lock and the launch gate
+ * (server-api-v0.md §2, §7, §7.1) — stricter than discovery's list-time skip, and the *one* place it
+ * is spelled (ADR 0016: the write reuses the read's
  * escape/confine logic verbatim, not a second copy):
  *
  * - Lexical `resolve` against the fixed root, then a `relative` check — a path that escapes the root
- *   (`..`, or an absolute path) yields `undefined`, the same stance `prepareWorkflow` takes.
+ *   (`..`, or an absolute path) yields `undefined`.
  *   `relFromRoot === ""` (the root itself) is refused — it is a directory, not a file.
  * - A per-**component** `lstat`: if any segment is a symlink, `undefined`. A symlinked parent directory
  *   could otherwise redirect the access outside the root even when the lexical path stays inside, so

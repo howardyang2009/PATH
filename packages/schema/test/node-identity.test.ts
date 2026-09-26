@@ -48,16 +48,15 @@ const nested: WorkflowFile = {
 
 describe("nodeIdentityOccurrences", () => {
   it("walks the block grammar depth-first, with the JSON paths the load refinement reports against", () => {
-    // A child body's nodes are indexed inside their slot (`childBodies`' path plus the position in it),
-    // so an arm occupant is `body.1.arms.0.node.0` — the shape the load refinement already reported, kept
-    // here so a shared walk cannot quietly move an existing error path.
+    // Each path is the node's real JSON path (`childNodePath`): a single-node slot lands on the node
+    // itself (`body.1.arms.0.node`), so a load error points at a field that exists.
     expect(nodeIdentityOccurrences(nested).map((occurrence) => occurrence.path)).toEqual([
       ["body", 0],
       ["body", 1],
-      ["body", 1, "arms", 0, "node", 0],
-      ["body", 1, "else", 0],
+      ["body", 1, "arms", 0, "node"],
+      ["body", 1, "else"],
       ["body", 2],
-      ["body", 2, "node", 0],
+      ["body", 2, "node"],
     ]);
   });
 

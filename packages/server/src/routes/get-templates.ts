@@ -1,9 +1,7 @@
 import type { ServerResponse } from "node:http";
-import { resolve } from "node:path";
-import type { TemplateSummary } from "@path/schema";
 import { sendJson } from "../http-json.js";
-import { discoverTemplates, shippedTemplateDir, type TemplateKind } from "../template-store.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import { templateSummary, templatesOf, type TemplateKind } from "../template-store.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/templates?kind=step` (server-api-v0.md §10.1, ADR 0050 decision 4): the thin list
@@ -12,24 +10,13 @@ import type { RunsRouteContext } from "./post-runs.js";
  * (ADR 0063), so it changes nothing today. Each row carries its registry-relative `valid`/`error`, so the palette greys out a template it
  * cannot insert without hiding it.
  */
-export function handleGetTemplates(res: ServerResponse, ctx: RunsRouteContext, kindParam: string | null): void {
-  const { entries } = discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
+export function handleGetTemplates(res: ServerResponse, ctx: RouteContext, kindParam: string | null): void {
+  const { entries } = templatesOf(ctx);
 
   const filter: TemplateKind | undefined =
     kindParam === "step" ? kindParam : undefined;
 
-  const templates: TemplateSummary[] = entries
-    .filter((e) => filter === undefined || e.kind === filter)
-    .map((e) => ({
-      id: e.id,
-      name: e.name,
-      description: e.description,
-      kind: e.kind,
-      origin: e.origin,
-      read_only: e.readOnly,
-      valid: e.valid,
-      error: e.error,
-    }));
+  const templates = entries.filter((e) => filter === undefined || e.kind === filter).map(templateSummary);
 
   sendJson(res, 200, { templates });
 }

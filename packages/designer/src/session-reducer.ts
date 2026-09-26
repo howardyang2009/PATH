@@ -378,7 +378,8 @@ export type SessionAction =
   /** Set the transient save phase directly — a failure mapping (`conflict`/`error`) or a reset to `idle`. */
   | { type: "setSaveState"; saveState: SaveState };
 
-const IDLE: SaveState = { phase: "idle" };
+/** The save state with nothing in flight and nothing to report. */
+export const IDLE: SaveState = { phase: "idle" };
 
 /** The one pure `(state, action) => state` behind the whole session (see the module header). */
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {
@@ -454,13 +455,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // collide two fields into one entry by minting the same string for both.
       const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
-      const frames = state.frames.slice();
-      frames[depth] = {
-        ...frame,
-        state: { phase: "open", result: { ...opened, file: action.next } },
-        history: { past, future: [], coalesceKey: action.key },
-      };
-      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
+      return withBuffer(state, depth, frame, action.next, { past, future: [], coalesceKey: action.key });
     }
 
     case "undo": {
@@ -475,13 +470,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
       // baseline, so an undo past the save-point re-dirties the buffer for free (ADR 0030). Close any
       // coalesce run so a following field edit opens a fresh entry rather than folding into the undone one.
-      const frames = state.frames.slice();
-      frames[depth] = {
-        ...frame,
-        state: { phase: "open", result: { ...opened, file: restored } },
-        history: { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined },
-      };
-      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
+      return withBuffer(state, depth, frame, restored, { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined });
     }
 
     case "redo": {
@@ -491,13 +480,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       if (!frame || !opened || frame.history.future.length === 0) return state;
       const future = frame.history.future.slice();
       const restored = future.shift()!;
-      const frames = state.frames.slice();
-      frames[depth] = {
-        ...frame,
-        state: { phase: "open", result: { ...opened, file: restored } },
-        history: { past: [...frame.history.past, opened.file], future, coalesceKey: undefined },
-      };
-      return { mode: state.mode, frames, activeIndex: depth, saveState: IDLE };
+      return withBuffer(state, depth, frame, restored, { past: [...frame.history.past, opened.file], future, coalesceKey: undefined });
     }
 
     case "reload": {
@@ -540,90 +523,107 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "saveStarted":
       return { ...state, saveState: { phase: "saving" } };
 
-    case "saved": {
-      // The PUT succeeded, so the phase is `saved` regardless; the frame advances only if it is still the
-      // one saved (an author who navigated away mid-save must not have that frame re-based).
-      const top = state.frames[action.depth];
-      if (!top || !openedResultOf(top) || top.path !== action.path) return { ...state, saveState: { phase: "saved" } };
-      const frames = state.frames.slice();
-      frames[action.depth] = withSavePoint(top, action.etag, action.savedBytes);
-      return { ...state, frames, saveState: { phase: "saved" } };
-    }
+    // A save that lands advances the frame only if it is still the one that was written — an author
+    // who navigated away mid-save must not have another frame re-based. Each case states what "still
+    // the saved frame" means for its door; `landSave` does the rest.
+    case "saved":
+      return landSave(state, action.depth, (frame) => frame.path === action.path, (frame) =>
+        withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
+      );
 
-    case "newFileSaved": {
-      const { depth, etag, savedBytes, relativePath } = action;
-      const top = state.frames[depth];
-      // The from-scratch match: still unwritten and path-less. Anything else means the frame was re-based.
-      if (!top || !openedResultOf(top) || top.written || top.path !== null) return { ...state, saveState: { phase: "saved" } };
-      const frames = state.frames.slice();
-      // The child is now a saved frame that adopts the server path; drop its `refParent` — it is bound.
-      frames[depth] = { ...withSavePoint(top, etag, savedBytes), path: relativePath, refParent: undefined };
-      // Back-fill the parent node's `ref` (#391) from the path the child was actually saved to. The parent
-      // buffer moves off its baseline, so it reads dirty — the author saves it like any edit. Skip silently
-      // if the parent frame or its `workflow` node is gone, which leaves the child standing on its own.
-      const link = top.refParent;
-      const parent = link ? frames[link.depth] : undefined;
-      const parentResult = openedResultOf(parent);
-      if (link && parent && parentResult && parent.path !== null) {
-        const node = findById(parentResult.file.body, link.nodeId);
-        if (node && node.type === "workflow") {
-          const ref = relativeRefPath(parent.path, relativePath);
-          const nextParent = unwrapEdit(editFile(parentResult.file, { kind: "replace", id: link.nodeId, node: { ...node, ref } as WorkflowNode }));
-          frames[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
-        }
-      }
-      return { ...state, frames, saveState: { phase: "saved" } };
-    }
+    case "templateSaved":
+      return landSave(state, action.depth, (frame) => frame.template?.id === action.id, (frame) =>
+        withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
+      );
 
-    case "templateSaved": {
-      const top = state.frames[action.depth];
-      if (!top || !openedResultOf(top) || top.template?.id !== action.id) return { ...state, saveState: { phase: "saved" } };
-      const frames = state.frames.slice();
-      frames[action.depth] = withSavePoint(top, action.etag, action.savedBytes);
-      return { ...state, frames, saveState: { phase: "saved" } };
-    }
+    // A from-scratch buffer's first save: it is still that buffer while it is unwritten and path-less.
+    case "newFileSaved":
+      return landSave(state, action.depth, (frame) => !frame.written && frame.path === null, (frame) => landNewFile(state, frame, action));
 
-    case "templateSavedAs": {
-      const top = state.frames[action.depth];
-      const opened = openedResultOf(top);
-      // `fromId: null` is a new template's first save: the frame held no template yet.
-      if (!top || !opened || (top.template?.id ?? null) !== action.fromId) return { ...state, saveState: { phase: "saved" } };
-      const bytes = canonicalSerialize(action.file);
-      const frames = state.frames.slice();
-      frames[action.depth] = {
-        ...top,
-        written: true,
-        template: action.template,
-        state: { phase: "open", result: { ...opened, file: action.file } },
-        etag: action.etag,
-        baseline: bytes,
-        openedBytes: bytes,
-        history: freshHistory(),
-      };
-      return { ...state, frames, saveState: { phase: "saved" } };
-    }
+    // `fromId: null` is a new template's first save: the frame held no template yet.
+    case "templateSavedAs":
+      return landSave(state, action.depth, (frame) => (frame.template?.id ?? null) === action.fromId, (frame, opened) =>
+        withFrame(state, action.depth, { ...frame, template: action.template, ...savedBuffer(action.file, action.etag, opened) }),
+      );
 
-    case "detachedSaved": {
-      const top = state.frames[action.depth];
-      const opened = openedResultOf(top);
-      if (!top || !opened || opened.file.id !== action.fromId) return { ...state, saveState: { phase: "saved" } };
-      const bytes = canonicalSerialize(action.file);
-      const saved: Frame = {
-        path: action.relativePath,
-        written: true,
-        state: { phase: "open", result: { status: "opened", file: action.file, idsStamped: false } },
-        etag: action.etag,
-        baseline: bytes,
-        openedBytes: bytes,
-        history: freshHistory(),
-        loadSeq: null,
-      };
-      return { mode: "workflow", frames: [saved], activeIndex: 0, saveState: { phase: "saved" } };
-    }
+    // A detached copy saved as a plain workflow replaces the whole session with that one file.
+    case "detachedSaved":
+      return landSave(state, action.depth, (_frame, opened) => opened.file.id === action.fromId, () => ({
+        mode: "workflow",
+        frames: [{ path: action.relativePath, loadSeq: null, ...savedBuffer(action.file, action.etag) }],
+        activeIndex: 0,
+        saveState: IDLE,
+      }));
 
     case "setSaveState":
       return { ...state, saveState: action.saveState };
   }
+}
+
+/** `state` with the frame at `depth` replaced. */
+function withFrame(state: SessionState, depth: number, frame: Frame): SessionState {
+  const frames = state.frames.slice();
+  frames[depth] = frame;
+  return { ...state, frames };
+}
+
+/** An edit, undo or redo: the active frame's buffer becomes `file`, under `history`. */
+function withBuffer(state: SessionState, depth: number, frame: Frame, file: WorkflowFile, history: History): SessionState {
+  const opened = openedResultOf(frame)!;
+  const next = withFrame(state, depth, { ...frame, state: { phase: "open", result: { ...opened, file } }, history });
+  return { ...next, activeIndex: depth, saveState: IDLE };
+}
+
+/**
+ * Land a save on the frame at `depth`. The phase is `saved` either way — the write succeeded — but
+ * `land` runs only while `stillSaved` holds for the frame there now.
+ */
+function landSave(
+  state: SessionState,
+  depth: number,
+  stillSaved: (frame: Frame, opened: OpenedResult) => boolean,
+  land: (frame: Frame, opened: OpenedResult) => SessionState,
+): SessionState {
+  const frame = state.frames[depth];
+  const opened = openedResultOf(frame);
+  const landed = frame && opened && stillSaved(frame, opened) ? land(frame, opened) : state;
+  return { ...landed, saveState: { phase: "saved" } };
+}
+
+/** A buffer that now matches what is on disk: written, open on `file`, its save point at `file`'s bytes. */
+function savedBuffer(file: WorkflowFile, etag: string, opened?: OpenedResult): Omit<Frame, "path" | "loadSeq"> {
+  const bytes = canonicalSerialize(file);
+  return {
+    written: true,
+    state: { phase: "open", result: opened ? { ...opened, file } : { status: "opened", file, idsStamped: false } },
+    etag,
+    baseline: bytes,
+    openedBytes: bytes,
+    history: freshHistory(),
+  };
+}
+
+/**
+ * A create-new child's first save (#391): the child adopts its server path and drops its `refParent`,
+ * and the parent's `workflow` node gets its `ref` back-filled from where the child was actually saved.
+ * The parent buffer moves off its baseline, so it reads dirty and is saved like any edit. A parent frame
+ * or node that is gone is skipped silently, leaving the child standing on its own.
+ */
+function landNewFile(state: SessionState, child: Frame, action: Extract<SessionAction, { type: "newFileSaved" }>): SessionState {
+  const frames = state.frames.slice();
+  frames[action.depth] = { ...withSavePoint(child, action.etag, action.savedBytes), path: action.relativePath, refParent: undefined };
+  const link = child.refParent;
+  const parent = link ? frames[link.depth] : undefined;
+  const parentResult = openedResultOf(parent);
+  if (link && parent && parentResult && parent.path !== null) {
+    const node = findById(parentResult.file.body, link.nodeId);
+    if (node && node.type === "workflow") {
+      const ref = relativeRefPath(parent.path, action.relativePath);
+      const nextParent = unwrapEdit(editFile(parentResult.file, { kind: "replace", id: link.nodeId, node: { ...node, ref } as WorkflowNode }));
+      frames[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
+    }
+  }
+  return { ...state, frames };
 }
 
 // ── The save doors, as decisions the hook performs ──────────────────────────────────────────────────

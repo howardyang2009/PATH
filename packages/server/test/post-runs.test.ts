@@ -4,7 +4,8 @@ import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
-import { handlePostRuns, type RunsRouteContext } from "../src/routes/post-runs.js";
+import { handlePostRuns } from "../src/routes/post-runs.js";
+import type { RouteContext } from "../src/routes/route-context.js";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
 
 /**
@@ -49,7 +50,7 @@ function fakeRes(): { res: ServerResponse; result: { status?: number; body?: unk
   return { res, result };
 }
 
-function context(live: LiveRuns): RunsRouteContext {
+function context(live: LiveRuns): RouteContext {
   return {
     project: { dir: fixturesDir } as unknown as Project,
     live,

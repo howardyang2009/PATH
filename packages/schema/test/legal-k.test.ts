@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
 import type { RunStatus } from "../src/run-status.js";
-import { boundaryLevels, classifyLevelK, type BoundaryLevelRun, type LegalKLevelRun } from "../src/legal-k.js";
+import { boundaryLevels, classifyLevelK, selectBoundary, type BoundaryLevelRun, type LegalKLevelRun } from "../src/legal-k.js";
 
 /**
  * The per-level legal-K taxonomy (spec §5), the one predicate the engine authority and the client's
@@ -215,5 +215,32 @@ describe("boundaryLevels — the descent levels read from the run tree", () => {
     const rows = [row("root", null, null)];
     expect(boundaryLevels(rows, "root")).toEqual([]);
     expect(boundaryLevels(rows, "nope")).toEqual([]);
+  });
+});
+
+describe("selectBoundary — only a node's run is a candidate rerun boundary", () => {
+  const row = (runId: string, parentRunId: string | null, nodeId: string | null, pass: number | null = null): BoundaryLevelRun => ({
+    runId,
+    parentRunId,
+    nodeId,
+    pass,
+  });
+  const rows = [row("root", null, null), row("p1", "root", null, 1), row("p2", "root", "g", 2), row("r-a", "p2", "a")];
+
+  it("names a run id outside the tree", () => {
+    expect(selectBoundary(rows, "nope")).toEqual({ kind: "not-in-tree" });
+  });
+
+  it("refuses the root run, which owns no node", () => {
+    expect(selectBoundary(rows, "root")).toEqual({ kind: "root-run" });
+  });
+
+  it("refuses a goto pass container, even one opened by a goto (it carries the goto's node id)", () => {
+    expect(selectBoundary(rows, "p1")).toEqual({ kind: "pass-run", pass: 1 });
+    expect(selectBoundary(rows, "p2")).toEqual({ kind: "pass-run", pass: 2 });
+  });
+
+  it("accepts a node's run, carrying its descent levels", () => {
+    expect(selectBoundary(rows, "r-a")).toEqual({ kind: "node", run: rows[3], levels: boundaryLevels(rows, "r-a") });
   });
 });

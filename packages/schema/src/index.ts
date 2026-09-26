@@ -75,7 +75,7 @@ export {
 // uniquifies a colliding name, and wraps a 2+-node body for a single-node slot. Owned here beside the
 // tree walks it uses (`childBodies`), so the Designer is a thin caller and the transform is unit-
 // testable without a browser.
-export { instantiate, instantiateWorkflow, type InstantiateOptions } from "./instantiate.js";
+export { instantiate, instantiateWorkflow, uniqueName, type InstantiateOptions } from "./instantiate.js";
 
 export {
   buildCoreMembers,
@@ -96,7 +96,7 @@ export { validateLaunchWorkerDefaults } from "./worker-defaults.js";
 // The root-input fallback every launch door resolves the same way (format @4 §1a): a non-empty
 // operator override, else the file's own top-level `input`, else `{}`. It sits here so `path run` and
 // `POST /v0/runs` cannot disagree about which seed a run records.
-export { effectiveRootInput } from "./effective-root-input.js";
+export { effectiveRootInput, launchInput } from "./effective-root-input.js";
 
 // `outputSchema` validation (ADR 0040), shared by the two adapters that enforce it: the Complete route
 // (which refuses the submit) and the browser's Complete form (which pre-checks the same output).
@@ -142,6 +142,7 @@ export { checkDotPath, resolveDotPath, type DotPathCheckResult, type DotPathReso
 export {
   CONTROL_CHILD_SLOTS,
   childBodies,
+  childNodePath,
   enclosingControlBlock,
   serialOrder,
   isStepType,
@@ -162,19 +163,14 @@ export {
   type ConditionRoot,
 } from "./roots.js";
 
-export {
-  BINARY_WORKER_NAMES,
-  BINARY_DEFAULT_WORKER,
-  PROMPT_WORKER_NAMES,
-  PROMPT_DEFAULT_WORKER,
-  type BinaryWorkerName,
-  type PromptWorkerName,
-} from "./worker-names.js";
+export type { BinaryWorkerName, PromptWorkerName } from "./worker-names.js";
 
 export { ConfigValueSchema, ConfigObjectSchema } from "./config.js";
 export type { ConfigValue, ConfigObject, EnvWrapper, SecretWrapper } from "./config-value-type.js";
 export { isSecretWrapper, mapSecrets } from "./secret.js";
 export { isEnvWrapper, mapEnv } from "./env.js";
+export { updateAtConfigPath, valueAtConfigPath } from "./config-path.js";
+export { isPlainObject } from "./wrapper.js";
 
 export type { JsonValue } from "./json-value.js";
 
@@ -226,8 +222,10 @@ export { childrenByParent, findRootRun, pathToRoot, subtree, type RunTreeFields 
 export {
   boundaryLevels,
   classifyLevelK,
+  selectBoundary,
   type BoundaryLevel,
   type BoundaryLevelRun,
+  type BoundarySelection,
   type ClassifyLevelKArgs,
   type LegalKLevelReason,
   type LegalKLevelResult,

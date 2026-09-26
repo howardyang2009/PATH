@@ -223,12 +223,12 @@ export class PathApiClient {
     if (query.status !== undefined) params.set("status", query.status);
     if (query.workflowId !== undefined) params.set("workflow_id", query.workflowId);
     const qs = params.toString();
-    return this.getJson<ListRunsResponse>(`/v0/runs${qs ? `?${qs}` : ""}`);
+    return this.requestJson<ListRunsResponse>(`/v0/runs${qs ? `?${qs}` : ""}`);
   }
 
   /** `GET /v0/runs/:root_run_id` — run status + full tree (server-api-v0.md §4). */
   async getRun(rootRunId: string): Promise<RunTreeResponse> {
-    return this.getJson<RunTreeResponse>(`/v0/runs/${encodeURIComponent(rootRunId)}`);
+    return this.requestJson<RunTreeResponse>(`/v0/runs/${encodeURIComponent(rootRunId)}`);
   }
 
   /**
@@ -236,7 +236,7 @@ export class PathApiClient {
    * The route lands server-side in its own ticket; the client is written to the agreed contract.
    */
   async getBlob(rootRunId: string, runId: string, name: BlobName): Promise<JsonValue> {
-    return this.getJson<JsonValue>(
+    return this.requestJson<JsonValue>(
       `/v0/runs/${encodeURIComponent(rootRunId)}/blobs/${encodeURIComponent(runId)}/${encodeURIComponent(name)}`,
     );
   }
@@ -250,7 +250,7 @@ export class PathApiClient {
    * server process) arrive as `PathApiError`s carrying that status and the server's message.
    */
   async cancelRun(rootRunId: string): Promise<void> {
-    await this.post(`/v0/runs/${encodeURIComponent(rootRunId)}/cancel`);
+    await this.request(`/v0/runs/${encodeURIComponent(rootRunId)}/cancel`, { method: "POST" });
   }
 
   /**
@@ -264,7 +264,7 @@ export class PathApiClient {
    */
   async deleteRun(rootRunId: string, options: { force?: boolean } = {}): Promise<void> {
     const qs = options.force ? "?force=true" : "";
-    await this.del(`/v0/runs/${encodeURIComponent(rootRunId)}${qs}`);
+    await this.request(`/v0/runs/${encodeURIComponent(rootRunId)}${qs}`, { method: "DELETE" });
   }
 
   /**
@@ -290,8 +290,8 @@ export class PathApiClient {
     if (config !== undefined) body.config = config;
     if (rerunFromRunId !== undefined) body.rerun_from_run_id = rerunFromRunId;
     return Object.keys(body).length === 0
-      ? this.postReadingReply<StartRunResponse>(path)
-      : this.postJson<StartRunResponse>(path, body);
+      ? this.requestJson<StartRunResponse>(path, { method: "POST" })
+      : this.requestJson<StartRunResponse>(path, { method: "POST", body });
   }
 
   /**
@@ -315,7 +315,7 @@ export class PathApiClient {
     // field set cannot drift from the one the route decodes.
     const body: CompleteRunRequest = { output };
     if (config !== undefined) body.config = config;
-    return this.postJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, body);
+    return this.requestJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, { method: "POST", body });
   }
 
   /**
@@ -334,7 +334,7 @@ export class PathApiClient {
     if (options.workerDefaults !== undefined) body.worker_defaults = options.workerDefaults;
     if (options.logBackends !== undefined) body.log_backends = options.logBackends;
     if (options.processorConcurrency !== undefined) body.processor_concurrency = options.processorConcurrency;
-    return this.postJson<StartRunResponse>("/v0/runs", body);
+    return this.requestJson<StartRunResponse>("/v0/runs", { method: "POST", body });
   }
 
   /**
@@ -344,7 +344,7 @@ export class PathApiClient {
    * guaranteed runnable standalone. Returns the raw wire `ListWorkflowsResponse`.
    */
   async listWorkflows(): Promise<ListWorkflowsResponse> {
-    return this.getJson<ListWorkflowsResponse>("/v0/workflows");
+    return this.requestJson<ListWorkflowsResponse>("/v0/workflows");
   }
 
   /**
@@ -354,7 +354,7 @@ export class PathApiClient {
    * the palette splits them by `kind`. Returns the raw wire `ListTemplatesResponse`.
    */
   async listTemplates(): Promise<ListTemplatesResponse> {
-    return this.getJson<ListTemplatesResponse>("/v0/templates");
+    return this.requestJson<ListTemplatesResponse>("/v0/templates");
   }
 
   /**
@@ -363,7 +363,7 @@ export class PathApiClient {
    * `body`, so the caller decides whether to use it; an unknown id arrives as a `404` `PathApiError`.
    */
   async getTemplate(id: string): Promise<GetTemplateResponse> {
-    return this.getJson<GetTemplateResponse>(`/v0/templates/${encodeURIComponent(id)}`);
+    return this.requestJson<GetTemplateResponse>(`/v0/templates/${encodeURIComponent(id)}`);
   }
 
   /**
@@ -389,18 +389,13 @@ export class PathApiClient {
    * template is a `403` and an unknown id a `404`, each as a `PathApiError`.
    */
   async deleteTemplate(id: string): Promise<void> {
-    await this.del(`/v0/templates/${encodeURIComponent(id)}`);
+    await this.request(`/v0/templates/${encodeURIComponent(id)}`, { method: "DELETE" });
   }
 
   /** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed reply. */
   private async writeTemplate(path: string, method: "POST" | "PUT", body: unknown, ifMatch: string | undefined): Promise<TemplateWriteResult> {
-    const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
-    if (ifMatch !== undefined) headers["If-Match"] = ifMatch;
-    const res = await this.fetch(this.url(path), { method, headers, body: JSON.stringify(body) });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-    const parsed = JSON.parse(text) as WireTemplateWriteResponse;
-    return { id: parsed.id, relativePath: parsed.relative_path, etag: parsed.etag };
+    const reply = await this.requestJson<WireTemplateWriteResponse>(path, { method, body, headers: ifMatchHeader(ifMatch) });
+    return { id: reply.id, relativePath: reply.relative_path, etag: reply.etag };
   }
 
   /**
@@ -412,7 +407,7 @@ export class PathApiClient {
    * corrupt file. Returns the raw wire `StepPluginsResponse`.
    */
   async getStepPlugins(): Promise<StepPluginsResponse> {
-    return this.getJson<StepPluginsResponse>("/v0/step-plugins");
+    return this.requestJson<StepPluginsResponse>("/v0/step-plugins");
   }
 
   /**
@@ -424,12 +419,8 @@ export class PathApiClient {
    * component is a symlink) arrives as a `PathApiError`.
    */
   async getWorkflowFile(path: string): Promise<WorkflowFileRaw> {
-    const res = await this.fetch(this.url(`/v0/workflows/file?path=${encodeURIComponent(path)}`), {
-      headers: { Accept: "application/json" },
-    });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-    return { text, etag: res.headers.get("ETag") };
+    const reply = await this.request(`/v0/workflows/file?path=${encodeURIComponent(path)}`);
+    return { text: reply.text, etag: reply.headers.get("ETag") };
   }
 
   /**
@@ -441,16 +432,11 @@ export class PathApiClient {
    * (validation or a duplicate id) and a `404` (path escapes the root) also arrive as `PathApiError`s.
    */
   async putWorkflow(input: PutWorkflowInput): Promise<PutWorkflowResult> {
-    const headers: Record<string, string> = { Accept: "application/json", "Content-Type": "application/json" };
-    if (input.ifMatch !== undefined) headers["If-Match"] = input.ifMatch;
     // The camelCase input is renamed inline to the shared wire shape (ADR 0013): one declaration, so a
     // field the server stops reading is a compile error here rather than a silently dropped write.
     const body: WirePutWorkflowRequest = { workflow_path: input.workflowPath, workflow: input.workflow as WirePutWorkflowRequest["workflow"] };
-    const res = await this.fetch(this.url("/v0/workflows"), { method: "PUT", headers, body: JSON.stringify(body) });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-    const parsed = JSON.parse(text) as WirePutWorkflowResponse;
-    return { relativePath: parsed.relative_path, id: parsed.id, etag: parsed.etag };
+    const reply = await this.requestJson<WirePutWorkflowResponse>("/v0/workflows", { method: "PUT", body, headers: ifMatchHeader(input.ifMatch) });
+    return { relativePath: reply.relative_path, id: reply.id, etag: reply.etag };
   }
 
   /**
@@ -463,7 +449,7 @@ export class PathApiClient {
   async deleteWorkflowFile(input: { path: string; ifMatch: string; sessionId?: string }): Promise<void> {
     const query = new URLSearchParams({ path: input.path });
     if (input.sessionId !== undefined) query.set("session_id", input.sessionId);
-    await this.del(`/v0/workflows/file?${query.toString()}`, { "If-Match": input.ifMatch });
+    await this.request(`/v0/workflows/file?${query.toString()}`, { method: "DELETE", headers: { "If-Match": input.ifMatch } });
   }
 
   /**
@@ -475,12 +461,9 @@ export class PathApiClient {
   async acquireLock(input: AcquireLockInput): Promise<AcquireLockResult> {
     const body: WireLockRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
     if (input.takeover !== undefined) body.takeover = input.takeover;
-    const { status, text } = await this.postForResult("/v0/workflows/lock", body);
-    if (status === 200) return { status: "granted", lease: JSON.parse(text) as WorkflowLease };
-    if (status === 409) {
-      const parsed = JSON.parse(text) as WireLockHeldBody;
-      return { status: "held-by-other", expiresAt: parsed.expires_at ?? null };
-    }
+    const { status, text } = await this.send("/v0/workflows/lock", { method: "POST", body });
+    if (status === 200) return { status: "granted", lease: parseReply<WorkflowLease>(status, text) };
+    if (status === 409) return { status: "held-by-other", expiresAt: parseReply<WireLockHeldBody>(status, text).expires_at ?? null };
     throw toApiError(status, text);
   }
 
@@ -491,8 +474,8 @@ export class PathApiClient {
    */
   async heartbeatLock(input: LeaseOpInput): Promise<HeartbeatResult> {
     const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
-    const { status, text } = await this.postForResult("/v0/workflows/lock/heartbeat", body);
-    if (status === 200) return { status: "renewed", lease: JSON.parse(text) as WorkflowLease };
+    const { status, text } = await this.send("/v0/workflows/lock/heartbeat", { method: "POST", body });
+    if (status === 200) return { status: "renewed", lease: parseReply<WorkflowLease>(status, text) };
     if (status === 409) return { status: "lost" };
     throw toApiError(status, text);
   }
@@ -505,98 +488,70 @@ export class PathApiClient {
    */
   async releaseLock(input: LeaseOpInput): Promise<void> {
     const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
-    const { status, text } = await this.postForResult("/v0/workflows/lock/release", body);
-    if (status < 200 || status >= 300) throw toApiError(status, text);
+    await this.request("/v0/workflows/lock/release", { method: "POST", body });
   }
 
   /**
-   * A JSON POST whose non-2xx is *not* automatically a throw — the caller decides which statuses are
-   * normal outcomes (a lock `409`) and which are errors. Returns the raw status and body text; the lock
-   * methods branch on it, and every unexpected status still routes through `toApiError`. All three lock
-   * routes are POST (ADR 0017), so the verb is fixed rather than a flag — the same "reading the helper
-   * tells you the request shape" stance `post`/`postJson` take.
+   * The one transport. Sends `method` to `path` — a JSON `body` when given, plus any extra `headers` —
+   * and hands back the raw reply whatever its status. The lock doors use it directly, because a `409`
+   * there is an ordinary answer; every other caller goes through `request`.
    */
-  private async postForResult(path: string, body: unknown): Promise<{ status: number; text: string }> {
-    const res = await this.fetch(this.url(path), {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    return { status: res.status, text: await res.text() };
+  private async send(path: string, options: RequestOptions = {}): Promise<Reply> {
+    const { method = "GET", body, headers = {} } = options;
+    const init: RequestInit =
+      method === "GET"
+        ? { headers: { Accept: "application/json", ...headers } }
+        : {
+            method,
+            headers: { Accept: "application/json", ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+            ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+          };
+    const res = await this.fetch(this.url(path), init);
+    return { status: res.status, text: await res.text(), headers: res.headers };
   }
 
-  private async getJson<T>(path: string): Promise<T> {
-    const res = await this.fetch(this.url(path), { headers: { Accept: "application/json" } });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
+  /**
+   * `send`, with any non-2xx raised as the server's error envelope (`PathApiError`). The reply body is
+   * not parsed: a caller that already knows everything the reply would say reads nothing back, so an
+   * empty or non-JSON 2xx cannot fail it.
+   */
+  private async request(path: string, options?: RequestOptions): Promise<Reply> {
+    const reply = await this.send(path, options);
+    if (reply.status < 200 || reply.status >= 300) throw toApiError(reply.status, reply.text);
+    return reply;
+  }
+
+  /** `request`, with the 2xx reply parsed as JSON — a malformed body is a `PathApiError` too. */
+  private async requestJson<T>(path: string, options?: RequestOptions): Promise<T> {
+    const reply = await this.request(path, options);
+    return parseReply<T>(reply.status, reply.text);
+  }
+}
+
+interface RequestOptions {
+  method?: "GET" | "POST" | "PUT" | "DELETE";
+  /** Sent as JSON, with a `Content-Type` to say so. */
+  body?: unknown;
+  headers?: Record<string, string>;
+}
+
+interface Reply {
+  status: number;
+  text: string;
+  headers: Headers;
+}
+
+/** The `If-Match` precondition header, when the caller has an ETag to send. */
+function ifMatchHeader(ifMatch: string | undefined): Record<string, string> {
+  return ifMatch === undefined ? {} : { "If-Match": ifMatch };
+}
+
+/** Parse a reply body the server promised is JSON, keeping `PathApiError` the client's only failure. */
+function parseReply<T>(status: number, text: string): T {
+  try {
     return JSON.parse(text) as T;
-  }
-
-  /**
-   * The write sibling of `getJson`: same `toApiError` envelope decoding on a non-2xx, no request
-   * body — no v0 action takes one. Kept as its own helper rather than a `method` argument on
-   * `getJson`, so reading either one tells you what kind of request it is without tracing a flag.
-   *
-   * The success body is *not* parsed. No v0 action answers with anything its caller does not
-   * already know, so parsing would only add a way to fail: an empty or non-JSON 2xx — a proxy
-   * stripping a body, a future `204` — would raise a bare `SyntaxError` rather than the
-   * `PathApiError` this class promises is its only failure.
-   */
-  private async post(path: string): Promise<void> {
-    const res = await this.fetch(this.url(path), {
-      method: "POST",
-      headers: { Accept: "application/json" },
-    });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-  }
-
-  /**
-   * The body-bearing, reply-parsing write — `startRun`'s transport, kept distinct from `post`
-   * rather than folded in behind optional arguments, so reading either helper tells you what kind of
-   * request it is without tracing a flag (the `getJson`/`post` reasoning). Sends `body` as JSON and
-   * decodes the 2xx envelope, because `startRun`'s caller does not already know the `run_id` it
-   * answers with — unlike `cancelRun`, whose `post` deliberately reads nothing back.
-   */
-  /**
-   * A write that sends no request body yet *does* parse its 2xx reply — `resumeRun`'s transport,
-   * distinct from `post` (reads nothing back) and `postJson` (sends a body), following the same
-   * "reading the helper tells you the request shape" reasoning. Resume names its target in the path
-   * but answers with the successor's ids the caller does not yet know.
-   */
-  private async postReadingReply<T>(path: string): Promise<T> {
-    const res = await this.fetch(this.url(path), {
-      method: "POST",
-      headers: { Accept: "application/json" },
-    });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-    return JSON.parse(text) as T;
-  }
-
-  /**
-   * The `DELETE` sibling of `post`: same envelope decoding on a non-2xx, no request body, and the
-   * 2xx reply is not parsed (`deleteRun`'s caller already knows the id). Its own helper, so reading
-   * it tells you the request is a delete without tracing a method flag.
-   */
-  private async del(path: string, headers: Record<string, string> = {}): Promise<void> {
-    const res = await this.fetch(this.url(path), {
-      method: "DELETE",
-      headers: { Accept: "application/json", ...headers },
-    });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-  }
-
-  private async postJson<T>(path: string, body: unknown): Promise<T> {
-    const res = await this.fetch(this.url(path), {
-      method: "POST",
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
-      body: JSON.stringify(body),
-    });
-    const text = await res.text();
-    if (!res.ok) throw toApiError(res.status, text);
-    return JSON.parse(text) as T;
+  } catch {
+    throw new PathApiError(status, `the server's reply was not valid JSON (status ${status})`);
   }
 }
 

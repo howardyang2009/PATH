@@ -105,7 +105,7 @@ export function renderListEligible(result: ListEligibleResult): RunReport {
   return { stdout: [formatTable(ELIGIBLE_TABLE_HEADERS, rows)], stderr: [], exitCode: 0 };
 }
 
-export const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "finished", "resumed-from"] as const;
+const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "finished", "resumed-from"] as const;
 
 /** One rendered row of the `path runs` listing — a cell per header, in header order. */
 export type RunsTableRow = [string, string, string, string, string, string];
@@ -113,7 +113,7 @@ export type RunsTableRow = [string, string, string, string, string, string];
 // Space-aligned columns (#174): a header line, then every column but the last padded to its widest
 // cell so the last (and any never-truncated id column) carries no trailing padding. Shared by `path
 // runs` and `--list-eligible` (#446) so the two listings render identically.
-export function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
+function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
   const widths = headers.map((header, col) => Math.max(header.length, ...rows.map((row) => row[col]!.length)));
   const line = (cols: readonly string[]): string =>
     cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");

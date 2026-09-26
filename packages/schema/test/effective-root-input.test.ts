@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { effectiveRootInput } from "../src/effective-root-input.js";
+import { effectiveRootInput, launchInput } from "../src/effective-root-input.js";
 
 // The root-input fallback (format @4 §1a): a non-empty operator override wins, else the file's own
 // top-level `input`, else `{}`. Every launch door resolves it through this one function, so `path run`
@@ -23,5 +23,16 @@ describe("effectiveRootInput", () => {
 
   it("keeps an empty file seed empty rather than inventing keys", () => {
     expect(effectiveRootInput(undefined, {})).toEqual({});
+  });
+});
+
+describe("launchInput", () => {
+  it("records a non-empty override beside the effective input it becomes", () => {
+    expect(launchInput({ topic: "x" }, { topic: "file" })).toEqual({ input: { topic: "x" }, operatorInput: { topic: "x" } });
+  });
+
+  it("records no override when none, or an empty one, was sent — the file seed is the input", () => {
+    expect(launchInput(undefined, { topic: "file" })).toEqual({ input: { topic: "file" }, operatorInput: undefined });
+    expect(launchInput({}, undefined)).toEqual({ input: {}, operatorInput: undefined });
   });
 });

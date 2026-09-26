@@ -4,7 +4,6 @@ import {
   describeMissingLaunchSecrets,
   recoverLaunchConfig,
   secretPathsOf,
-  valueAtPath,
   wrapSecretsAtPaths,
 } from "../src/launch-facts.js";
 
@@ -26,14 +25,6 @@ describe("secretPathsOf", () => {
 
   it("treats a config field named $secret as a field, not a wrapper", () => {
     expect(secretPathsOf({ $secret: "literal" })).toEqual([]);
-  });
-});
-
-describe("valueAtPath", () => {
-  it("reads nested object and array positions, and answers undefined for a missing path", () => {
-    expect(valueAtPath({ a: { b: [{ c: 7 }] } }, "a.b.0.c")).toBe(7);
-    expect(valueAtPath({ a: 1 }, "a.b")).toBeUndefined();
-    expect(valueAtPath(undefined, "a")).toBeUndefined();
   });
 });
 
@@ -105,6 +96,14 @@ describe("wrapSecretsAtPaths", () => {
     const already = { apiKey: { $secret: "sk-2" } };
     expect(wrapSecretsAtPaths(already, ["apiKey"])).toEqual(already);
     expect(wrapSecretsAtPaths({ a: 1 }, ["missing.key"])).toEqual({ a: 1 });
+  });
+
+  // `secretPathsOf` names a secret inside a list by its index (`list.0`); a value supplied again there
+  // must be re-marked too, or the successor records it in the clear.
+  it("re-marks a supplied value inside an array, at the index secretPathsOf recorded", () => {
+    const paths = secretPathsOf({ list: [{ $secret: "old" }, "plain"] });
+    expect(paths).toEqual(["list.0"]);
+    expect(wrapSecretsAtPaths({ list: ["new", "plain"] }, paths)).toEqual({ list: [{ $secret: "new" }, "plain"] });
   });
 });
 

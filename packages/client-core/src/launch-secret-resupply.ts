@@ -1,4 +1,4 @@
-import type { JsonValue } from "@path/schema";
+import { valueAtConfigPath, type JsonValue } from "@path/schema";
 import { parseJsonField, type JsonFieldResult } from "./launch-json.js";
 
 /**
@@ -103,7 +103,7 @@ export function secretSkeletonJson(keys: readonly string[]): string {
  */
 export function blankSecretPaths(keys: readonly string[], supplied: { [key: string]: JsonValue } | undefined): string[] {
   return keys.filter((key) => {
-    const value = valueAtPath(supplied, key);
+    const value = valueAtConfigPath(supplied, key);
     return typeof value !== "string" || value.trim() === "";
   });
 }
@@ -118,19 +118,4 @@ export function blankSecretMessage(paths: readonly string[], verb: ContinuationV
   return paths.length === 1
     ? `Launch secret ${names} is empty — enter a value before ${verb}.`
     : `Launch secrets ${names} are empty — enter a value for each before ${verb}.`;
-}
-
-function valueAtPath(config: { [key: string]: JsonValue } | undefined, path: string): JsonValue | undefined {
-  let current: JsonValue | undefined = config;
-  for (const segment of path.split(".")) {
-    if (current === null || typeof current !== "object") return undefined;
-    if (Array.isArray(current)) {
-      const index = Number(segment);
-      current = Number.isInteger(index) ? (current[index] as JsonValue | undefined) : undefined;
-    } else {
-      current = (current as { [key: string]: JsonValue })[segment];
-    }
-    if (current === undefined) return undefined;
-  }
-  return current;
 }

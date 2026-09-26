@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ConfigObjectSchema, formatIssues, isTerminal, type StartRunResponse } from "@path/schema";
+import { ConfigObjectSchema, isTerminal, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
-import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused } from "../live-runs.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * Two optional fields: a config override for the resumed run (§4.3, no `input` — see below), and
@@ -34,20 +34,12 @@ const ResumeBodySchema = z
 export async function handleResumeRun(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   rootRunId: string,
 ): Promise<void> {
-  const body = await readJsonBody(req);
-  if (!body.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return;
-  }
-  const parsed = ResumeBodySchema.safeParse(body.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return;
-  }
-  const { config, rerun_from_run_id: rerunFromRunId } = parsed.data;
+  const body = await readRequestBody(req, res, ResumeBodySchema);
+  if (!body) return;
+  const { config, rerun_from_run_id: rerunFromRunId } = body.data;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) {

@@ -1,9 +1,9 @@
 import type { ServerResponse } from "node:http";
 import { sendError, sendJson } from "../http-json.js";
 import { toWireLaunchFacts, toWireRunRecord } from "@path/schema";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
-export function handleGetRun(res: ServerResponse, ctx: RunsRouteContext, rootRunId: string): void {
+export function handleGetRun(res: ServerResponse, ctx: RouteContext, rootRunId: string): void {
   const tree = ctx.project.archive.tree(rootRunId);
   if (!tree) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);

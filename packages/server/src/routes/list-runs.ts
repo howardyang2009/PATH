@@ -1,14 +1,14 @@
 import type { ServerResponse } from "node:http";
 import { RUN_STATUSES, toRootRunSummary, type ListRunsResponse, type RunStatus } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/runs` (server-api-v0.md §3): the root-run summary list. `limit` (default 50), `status`,
  * and `workflow_id` are query params; the summary carries only `run_id`/`status`/`started_at`/
  * `finished_at` — the full tree and output live at `GET /v0/runs/:root_run_id`.
  */
-export function handleListRuns(res: ServerResponse, ctx: RunsRouteContext, query: URLSearchParams): void {
+export function handleListRuns(res: ServerResponse, ctx: RouteContext, query: URLSearchParams): void {
   const limitParam = query.get("limit");
   let limit: number | undefined;
   if (limitParam !== null) {
