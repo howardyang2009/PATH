@@ -1,27 +1,11 @@
-// The worker *names* each built-in step type ships (ADR 0021 sub-1/sub-2). A Worker is a named
-// `run` method of a step type (CONTEXT: **Worker**), so the name is the method it performs —
-// `binary` spawns a child process (`spawn`), `prompt` calls a model provider (`anthropic`). The pair
-// `(type, name)` is a worker's identity, so a name is unique only inside its type.
-//
-// The node union is still closed here (ADR 0021 realized on the pre-plugin union, #332): the names
-// are fixed constants, and the step schema (`nodes.ts`) builds each type's `worker` enum from the
-// matching list. When the union opens to plugins these come off the folder scan instead — a step
-// type ships one or more workers, and the enum widens with no grammar change.
+// The worker *names* the two built-in step types ship, as the closed core node union types a step's
+// `worker` field (ADR 0021 sub-1/sub-2). A Worker is a named `run` method of a step type (CONTEXT:
+// **Worker**), so the name is the method it performs: `binary` spawns a child process, `prompt` calls a
+// model provider. The plugin folders (`packages/engine/plugin/step-plugin/`) are the authority — the
+// load validates every `worker` against the scanned registry — so these only keep the typed union honest.
 
-/** `binary`'s worker names; `spawn` (`child_process.spawn`) is the default worker. */
-export const BINARY_WORKER_NAMES = ["spawn"] as const;
-/** The worker a `binary` step uses when it names none (`@3` §4). */
-export const BINARY_DEFAULT_WORKER = "spawn";
+/** `binary`'s worker names; `spawn` (`child_process.spawn`) is its default worker. */
+export type BinaryWorkerName = "spawn";
 
-/**
- * `prompt`'s worker names: one per model provider. `anthropic` (the Agent SDK transport) is the
- * default worker; `deepseek` is the OpenAI-compatible one. The plugin folder is the authority — these
- * mirror `packages/engine/plugin/step-plugin/prompt/index.ts`, whose registry the load validates against —
- * and #309's `cli`/`remote` remain unbuilt.
- */
-export const PROMPT_WORKER_NAMES = ["anthropic", "deepseek"] as const;
-/** The worker a `prompt` step uses when it names none (`@3` §4). */
-export const PROMPT_DEFAULT_WORKER = "anthropic";
-
-export type BinaryWorkerName = (typeof BINARY_WORKER_NAMES)[number];
-export type PromptWorkerName = (typeof PROMPT_WORKER_NAMES)[number];
+/** `prompt`'s worker names, one per model provider; `anthropic` (the Agent SDK) is its default worker. */
+export type PromptWorkerName = "anthropic" | "deepseek";

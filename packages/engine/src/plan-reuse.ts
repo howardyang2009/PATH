@@ -42,9 +42,8 @@ export function planReuse(
   for (const node of walkNodes(tree.body)) {
     if (!isStepType(node.type)) continue;
     if (suppress?.has(node.id)) continue;
-    const succeeded = candidates.filter((candidate) => candidate.nodeId === node.id && candidate.status === "succeeded");
-    const [only] = succeeded;
-    if (only && succeeded.length === 1) plan.set(node.id, only);
+    const only = recordedChild(candidates, scopeRunId, { nodeId: node.id, succeeded: true });
+    if (only) plan.set(node.id, only);
   }
   return plan;
 }
@@ -110,4 +109,35 @@ export function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): Pa
     }
     return node.branches.indexOf(a) - node.branches.indexOf(b);
   })[0];
+}
+
+/** Which recorded row answers a scope: under one parent, by node id, iteration ordinal, or pass ordinal. */
+export interface RecordedScopeKey {
+  nodeId?: string | null;
+  iteration?: number;
+  pass?: number;
+  /** Only a `succeeded` row answers (a reusable iteration). */
+  succeeded?: boolean;
+}
+
+/**
+ * The **one** recorded row under `parentRunId` that answers `key`, or `undefined`. Exactly one match
+ * answers; zero (added since) or more than one (which attempt is undefined) both answer none, so the
+ * scope runs fresh rather than guessing. Resume and Complete both look rows up through here.
+ */
+export function recordedChild(
+  rows: readonly RunRecord[],
+  parentRunId: string | undefined,
+  key: RecordedScopeKey,
+): RunRecord | undefined {
+  if (parentRunId === undefined) return undefined;
+  const matches = rows.filter(
+    (r) =>
+      r.parentRunId === parentRunId &&
+      (key.nodeId === undefined || r.nodeId === key.nodeId) &&
+      (key.iteration === undefined || r.iteration === key.iteration) &&
+      (key.pass === undefined || r.pass === key.pass) &&
+      (!key.succeeded || r.status === "succeeded"),
+  );
+  return matches.length === 1 ? matches[0] : undefined;
 }

@@ -9,7 +9,7 @@ import {
   type RunRecord,
   type WorkflowFile,
 } from "@path/schema";
-import { planReuse, type ReusePlan } from "./plan-reuse.js";
+import { planReuse, recordedChild, type ReusePlan } from "./plan-reuse.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import type { ResumeInput } from "./run-workflow.js";
 
@@ -54,36 +54,6 @@ export interface RunResume extends ResumeEntry {
   plan: ReusePlan;
 }
 
-/** Which recorded row answers a scope: under one parent, by node id, iteration ordinal, or pass ordinal. */
-export interface RecordedScopeKey {
-  nodeId?: string | null;
-  iteration?: number;
-  pass?: number;
-  /** Only a `succeeded` row answers (a reusable iteration). */
-  succeeded?: boolean;
-}
-
-/**
- * The **one** recorded row under `parentRunId` that answers `key`, or `undefined`. Exactly one match
- * answers; zero (added since) or more than one (which attempt is undefined) both answer none, so the
- * scope runs fresh rather than guessing. Resume and Complete both look rows up through here.
- */
-export function recordedChild(
-  rows: readonly RunRecord[],
-  parentRunId: string | undefined,
-  key: RecordedScopeKey,
-): RunRecord | undefined {
-  if (parentRunId === undefined) return undefined;
-  const matches = rows.filter(
-    (r) =>
-      r.parentRunId === parentRunId &&
-      (key.nodeId === undefined || r.nodeId === key.nodeId) &&
-      (key.iteration === undefined || r.iteration === key.iteration) &&
-      (key.pass === undefined || r.pass === key.pass) &&
-      (!key.succeeded || r.status === "succeeded"),
-  );
-  return matches.length === 1 ? matches[0] : undefined;
-}
 
 /**
  * The root run's entry: its counterpart is the predecessor tree's own root run, and it carries the
@@ -209,3 +179,5 @@ export function passResumer(resume: RunResume, file: WorkflowFile): (pass: numbe
     return resolveResume({ input: resume.input, counterpart, rerunPath: pass === boundaryPass ? resume.rerunPath : [] }, file);
   };
 }
+
+export { recordedChild, type RecordedScopeKey } from "./plan-reuse.js";

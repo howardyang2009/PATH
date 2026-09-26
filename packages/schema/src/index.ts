@@ -163,20 +163,14 @@ export {
   type ConditionRoot,
 } from "./roots.js";
 
-export {
-  BINARY_WORKER_NAMES,
-  BINARY_DEFAULT_WORKER,
-  PROMPT_WORKER_NAMES,
-  PROMPT_DEFAULT_WORKER,
-  type BinaryWorkerName,
-  type PromptWorkerName,
-} from "./worker-names.js";
+export type { BinaryWorkerName, PromptWorkerName } from "./worker-names.js";
 
 export { ConfigValueSchema, ConfigObjectSchema } from "./config.js";
 export type { ConfigValue, ConfigObject, EnvWrapper, SecretWrapper } from "./config-value-type.js";
 export { isSecretWrapper, mapSecrets } from "./secret.js";
 export { isEnvWrapper, mapEnv } from "./env.js";
 export { updateAtConfigPath, valueAtConfigPath } from "./config-path.js";
+export { isPlainObject } from "./wrapper.js";
 
 export type { JsonValue } from "./json-value.js";
 

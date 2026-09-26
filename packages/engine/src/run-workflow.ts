@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { findRootRun, isStepType, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WorkflowFile } from "@path/schema";
+import { findRootRun, isPlainObject, isStepType, type ConfigObject, type ControllerType, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry, type RunRecord, type WorkflowFile } from "@path/schema";
 import { rootCancellation } from "./cancellation.js";
 import { childIdentity } from "./child-run.js";
 import { continuationOf, resolveRerunFromNodePath } from "./continuation.js";
@@ -308,12 +308,6 @@ function isControlNode(node: WorkflowNode): node is ControlNode {
   return !isStepType(node.type);
 }
 
-// The interpolated `input` object must be a JSON object so its top-level keys can seed the child's
-// context (format doc §6.3). A bare `"${context.x}"` that resolves to a string/number/array can't.
-function isJsonObject(value: JsonValue): value is { [key: string]: JsonValue } {
-  return value !== null && typeof value === "object" && !Array.isArray(value);
-}
-
 /**
  * Executes one workflow-run: walks the file's body strictly sequentially (mvp spec §5.1),
  * running `binary` steps as child processes and `workflow` steps as nested workflow-runs (#22),
@@ -517,7 +511,9 @@ async function runWorkflowNode(
    */
   existingRun?: RunRecord,
 ): Promise<SeqOutcome> {
-  if (!isJsonObject(stepInput)) {
+  // The interpolated `input` must be a JSON object so its top-level keys can seed the child's context
+  // (format doc §6.3). A bare `"${context.x}"` that resolves to a string/number/array can't.
+  if (!isPlainObject(stepInput)) {
     return {
       status: "failed",
       error: `workflow step "${node.name}": input must be a JSON object to seed the child's context (format doc §6.3)`,
