@@ -503,7 +503,7 @@ exec path.
 is no bare `workflow.json`). Skip `.path/`, `node_modules`, and any directory whose name starts with
 `.`. Symlinks are **not** followed. The loader canonicalizes lexically (`resolve`, not `realpath`), and
 a match of that avoids the alias of a nested file as a root
-([valid-root-detection.md](../research/valid-root-detection.md)).
+([valid-root-detection.md](../archive/research/valid-root-detection.md)).
 
 **Root classification.** For each discovered file, run `loadWorkflowTree(f)`. On success, subtract that
 tree's nested-ref set (`keys(tree.files) \ {rootPath}`) from the discovered union. A file that lands in
@@ -564,7 +564,7 @@ Response `200 OK`:
   ([#315](https://github.com/howardyang2009/PATH/issues/315)). The set of valid leaf step types is a fact
   about the **step-plugin registry** this tree loaded, not about the format
   ([ADR 0019](../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md),
-  [workflow-format-v2.md](../format/workflow-format-v2.md) §4). So a file naming `api-call` where no
+  [workflow-format-v2.md](../format/archive/workflow-format-v2.md) §4). So a file naming `api-call` where no
   `api-call` plugin folder exists is invalid **against the only registry this server has**, and `valid`
   reports exactly that. No `launchable` field is added: §6 has never reported launch-readiness (see the
   bullet below and ADR 0011), and a valid-but-unlaunchable state would need the loader to gain a

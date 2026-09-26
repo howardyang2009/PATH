@@ -17,7 +17,7 @@ node ids root→…→K) and a per-level `RunResume.rerunSuffix` (the remaining 
 Each on-path level derives two sets from its own body and its own suffix head B — `suppress` (Producer A,
 B and everything after it) and `rerunEntire` (Producer B, after-B only) — that differ by **exactly B**,
 and only when B is intermediate. That one-element gap is the third disposition, **descend**. The full
-mechanism map is [docs/research/resume-from-nested-k-mechanism.md](../research/resume-from-nested-k-mechanism.md);
+mechanism map is [docs/research/resume-from-nested-k-mechanism.md](../archive/research/resume-from-nested-k-mechanism.md);
 the wire representation and validation that feed the path are
 [ADR 0032](0032-resume-from-k-boundary-representation-and-successor-provenance.md).
 

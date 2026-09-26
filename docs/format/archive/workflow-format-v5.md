@@ -1,7 +1,11 @@
 # PATH Workflow File Format v5
 
+> **Archived.** This was the `@5` delta document. It has been folded into
+> [`../workflow-format.md`](../workflow-format.md), the one current format reference, which states `@5`
+> in full. This file is kept because the CHANGELOG and closed issues link it.
+
 This is the normative definition of `path/workflow@5`. `@path/schema` implements it as zod schemas. The
-engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
+engine executes it. The vocabulary follows [CONTEXT.md](../../../CONTEXT.md) (step, worker, task, run,
 controller, checkpoint, config vs context, output object, publish, first level).
 
 `@5` is `@4` plus **one** grammar change: the `goto` controller
@@ -36,7 +40,7 @@ Step-Templates and Workflow-Templates stamp the same `FORMAT_VERSION` (ADR 0048 
 
 > [!NOTE]
 > The grammar and the load refusals below are built (#614), and the engine executes a jump (#615):
-> a goto-holding file walks its first level in passes ([goto spec](../spec/goto.md) §3). The
+> a goto-holding file walks its first level in passes ([goto spec](../../spec/goto.md) §3). The
 > `pass-started` / `goto-taken` / `goto-exhausted` audit events, and Resume and Complete across
 > passes, are not built yet.
 
@@ -66,7 +70,7 @@ goto with one issue per offender, all in one failed parse:
 
 A Step-Template body is not checked for these, because it has no file until it lands; the instance is
 checked by the target file's load. Execution is specified normatively in
-[`docs/spec/goto.md`](../spec/goto.md) §3 (ADRs 0053–0061).
+[`docs/spec/goto.md`](../../spec/goto.md) §3 (ADRs 0053–0061).
 
 ## 2. Migration from `@4`
 

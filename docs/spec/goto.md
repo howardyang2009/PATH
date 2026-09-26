@@ -97,7 +97,9 @@ the target file's check refuses an instance that breaks. Instantiation does not 
 - An engine meeting a newer version reports `path/workflow@5 is newer than this engine reads
   (path/workflow@4) — upgrade PATH to read it`. A malformed version string still falls through to the
   literal mismatch.
-- `docs/format/workflow-format-v5.md` (the delta) and the v4 superseded banner ship with the build.
+- `docs/format/workflow-format-v5.md` (the delta) and the v4 superseded banner ship with the build; the
+  delta was later folded into the one current format doc,
+  [`docs/format/workflow-format.md`](../format/workflow-format.md).
 
 ## 3. Execution
 
@@ -352,7 +354,8 @@ Five slices, in order. Each slice lands green on its own matrix rows.
 
 1. **Schema and format** — `nodes.ts`, `node-type.ts` (`GotoNode`), `node-walk.ts`, the new goto rule
    module, `workflow-file.ts`, `workflow-file-type.ts` (`@5`, symmetric version message),
-   `scripts/migrate-workflow-format-v5.ts`, `docs/format/workflow-format-v5.md`, the "seven reserved
+   `scripts/migrate-workflow-format-v5.ts`, the one current format doc
+   ([`docs/format/workflow-format.md`](../format/workflow-format.md)), the "seven reserved
    names / six controllers" wording, and the `@5` stamp in `CONTEXT.md`. Rows G-S-*.
 2. **Engine walk, passes, seeding, events** — `run-workflow.ts` (top-level walk in `runBody`, the
    `goto` `SeqOutcome`), `run-kind.ts` / `run-record.ts` (`pass`, `isPassRun`), `log-event.ts`,

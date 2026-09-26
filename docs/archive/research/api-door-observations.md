@@ -39,7 +39,7 @@ Three sources, distinguished throughout because they carry different weight:
 1. **The persisted run artifacts** under `docs/dogfood/.path/runs/`, two runs of this workflow:
    `7f549c03…` (the `401`, `2026-08-02T11:06`) and `2f9f60df…` (the successful run, `2026-08-02T11:10`).
    Primary evidence.
-2. **The build record** in [`github-release-notes.NOTES.md`](../dogfood/github-release-notes.NOTES.md)
+2. **The build record** in [`github-release-notes.NOTES.md`](../../dogfood/github-release-notes.NOTES.md)
    and the design record in [`api-door-pipeline-shape.md`](api-door-pipeline-shape.md). Secondary, used
    for what happened, not for how it scores. Where this file's count disagrees with theirs, the
    disagreement is stated rather than smoothed (`Q2`).

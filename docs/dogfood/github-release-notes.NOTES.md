@@ -3,12 +3,12 @@
 The build-and-run half of [map #129](https://github.com/howardyang2009/PATH/issues/129), which resolves
 [#133](https://github.com/howardyang2009/PATH/issues/133). The shape was settled in
 [#131](https://github.com/howardyang2009/PATH/issues/131)
-([api-door-pipeline-shape.md](../research/api-door-pipeline-shape.md)); the credential in
+([api-door-pipeline-shape.md](../archive/research/api-door-pipeline-shape.md)); the credential in
 [#132](https://github.com/howardyang2009/PATH/issues/132). This file is the **record of actually doing
 it**: every failed attempt, quoting fix, and confusing error, kept rather than tidied, because
 [#134](https://github.com/howardyang2009/PATH/issues/134) reads this as evidence.
 
-**It records no verdict against [the rubric](../research/api-door-rubric.md).** Where an observation
+**It records no verdict against [the rubric](../archive/research/api-door-rubric.md).** Where an observation
 lands on an entry, the entry is named so #134 can find it. To name is not to score.
 
 **Date:** 2026-08-02. **Verified from:** macOS 15 (arm64), `curl 8.7.1`, `node v22.23.1`, against live

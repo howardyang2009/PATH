@@ -4,7 +4,7 @@
 sub-decision 9 for the shipped `prompt` workers.
 
 The `deepseek` worker shipped reading `process.env.DEEPSEEK_API_KEY`
-([`deepseek-worker.ts`](../../packages/engine/step-plugins/prompt/deepseek-worker.ts)), and ADR 0020
+([`deepseek-worker.ts`](../../packages/engine/plugin/step-plugin/prompt/deepseek-worker.ts)), and ADR 0020
 sub-decision 9 says a worker must not read `process.env`: "the engine's `$env` resolution is the only
 env door." The `anthropic` worker bends the same rule through the Agent SDK, which reads
 `ANTHROPIC_API_KEY` (or the subscription credential) itself. So the rule was already joined by both

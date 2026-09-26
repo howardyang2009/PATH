@@ -1,7 +1,7 @@
 # PATH
 
 [![CI](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml/badge.svg)](https://github.com/howardyang2009/PATH/actions/workflows/ci.yml)
-[![workflow format](https://img.shields.io/badge/format-path%2Fworkflow%405-blue)](docs/format/workflow-format-v5.md)
+[![workflow format](https://img.shields.io/badge/format-path%2Fworkflow%405-blue)](docs/format/workflow-format.md)
 [![latest release](https://img.shields.io/github/v/release/howardyang2009/PATH)](https://github.com/howardyang2009/PATH/releases)
 
 PATH runs workflows that can stop and start again. You describe a workflow as JSON: **steps** do the
@@ -24,9 +24,9 @@ The part that makes PATH different is what happens when work stops:
 - **Swap the *how*, keep the *what*.** A step's `worker` is a name, not a code path. The same `prompt`
   step runs on `anthropic` or `deepseek`; `binary` runs on `spawn`. Selection is per step, per
   worker-default, or per launch.
-- **Open step types.** A leaf step type is a folder under `packages/engine/step-plugins/` that imports
-  the public `@path/engine/plugin` seam. `binary`, `prompt`, and `person-activity` are peers, not
-  special cases.
+- **Open step types.** A leaf step type is a folder under `packages/engine/plugin/step-plugin/` that
+  imports the public `@path/engine/plugin` seam. `binary`, `prompt`, and `person-activity` are peers,
+  not special cases.
 - **Two consoles over one client.** The **viewer** monitors, launches, resumes, and completes runs.
   The **designer** authors files on a node canvas. Both sit on the shared `@path/client-core` API.
 
@@ -63,6 +63,32 @@ This builds both consoles and starts `path-server` on <http://localhost:8080>. T
 `/viewer/` (bare `/` redirects there), and the designer at `/designer/`. For UI work, run
 `pnpm --filter @path/viewer run dev` or `pnpm --filter @path/designer run dev` instead; each dev
 server proxies API calls to a running `path-server`.
+
+## Repository layout
+
+```
+packages/
+  schema/                   the domain: the workflow format, its zod schemas, the plugin registry factory
+  engine/                   the runner and the `path` CLI; leaf step types live in plugin/step-plugin/
+  server/                   the HTTP + SSE API and the `path-server` bin that serves both consoles
+  client-core/              the framework-free API client both consoles share
+  viewer/                   the React run console
+  designer/                 the React authoring console
+docs/
+  format/workflow-format.md the one current format reference; older formats in format/archive/
+  spec/                     execution semantics and feature specs (mvp-spec.md, goto.md, resume, …)
+  api/server-api-v0.md      every HTTP route and its wire shapes
+  adr/                      architecture decision records, indexed by adr/README.md
+  archive/research/         the investigation write-ups behind past decisions
+  acceptance-workflow/      the end-to-end pipeline PATH is acceptance-tested with
+  dogfood/                  notes from running PATH on its own repo
+  agents/                   how agents work in this repo
+scripts/                    the current format codemod; superseded codemods in scripts/archive/
+CONTEXT.md                  the canonical glossary
+```
+
+Each console and the server read files from the project directory they are pointed at: `.path/` holds
+the run store (SQLite rows and per-run blobs) beside the workflow files, like `.git`.
 
 ## A workflow file
 
@@ -240,7 +266,7 @@ pnpm path run hello.workflow.json --resume <root-run-id> --from <run-id>
 
 > **Resume is at-least-once.** A re-run step can fire an external effect a second time — a `git push`,
 > an API `POST`. The engine cannot detect or prevent the duplicate. Make steps idempotent. See mvp spec
-> §5.6 and [`docs/research/resume-side-effect-contract.md`](docs/research/resume-side-effect-contract.md).
+> §5.6 and [`docs/archive/research/resume-side-effect-contract.md`](docs/archive/research/resume-side-effect-contract.md).
 
 ## CLI reference
 
@@ -296,11 +322,11 @@ single-origin tool: do not expose it.
 | Package | What it is |
 | --- | --- |
 | [`@path/schema`](packages/schema) | The domain. The workflow format (`path/workflow@5`), the registry factory that opens its node union to plugin step types, and the runtime vocabulary: run status, log events, traces, and the v0 wire shapes. |
-| [`@path/engine`](packages/engine) | Runs workflows locally and provides the `path` CLI. Discovers leaf step types as plugins under `step-plugins/` and exposes the `@path/engine/plugin` seam. |
+| [`@path/engine`](packages/engine) | Runs workflows locally and provides the `path` CLI. Discovers leaf step types as plugins under `plugin/step-plugin/` and exposes the `@path/engine/plugin` seam. |
 | [`@path/server`](packages/server) | The HTTP and SSE API over the engine, plus the `path-server` CLI that serves both consoles. |
 | [`@path/client-core`](packages/client-core) | A pure-TypeScript API client: SSE client, run view-model, and run/workflow write surface. No framework, no Node. |
 | [`@path/viewer`](packages/viewer) | The React run console. Monitors runs live, and launches, resumes, and completes them. |
-| [`@path/designer`](packages/designer) | The React authoring console. Opens, edits, and saves workflow files on a live canvas. A peer of the viewer, never an importer of it. |
+| [`@path/designer`](packages/designer) | The React authoring console. Opens, edits, and saves workflow files on a live canvas. A separate package from the viewer that reuses its run panels (ADR 0031). |
 
 ## Development
 
@@ -322,21 +348,21 @@ pnpm release-notes    # dogfood: PATH summarizes its own recent commits
 | Document | Covers |
 | --- | --- |
 | [`CONTEXT.md`](CONTEXT.md) | The canonical glossary. Read this first. |
-| [`docs/format/workflow-format-v5.md`](docs/format/workflow-format-v5.md) | The normative workflow file format (a delta over v4 and v3). |
+| [`docs/format/workflow-format.md`](docs/format/workflow-format.md) | The normative workflow file format (`path/workflow@5`), in full. Superseded formats sit in `docs/format/archive/`. |
 | [`docs/spec/mvp-spec.md`](docs/spec/mvp-spec.md) | Execution semantics: scheduling, data flow, persistence. |
 | [`docs/spec/person-activity.md`](docs/spec/person-activity.md) | `awaiting`, Complete, and `outputSchema` validation. |
 | [`docs/spec/resume-from-k.md`](docs/spec/resume-from-k.md) | Choosing the rerun boundary K. |
 | [`docs/api/server-api-v0.md`](docs/api/server-api-v0.md) | Every HTTP route and its wire shapes. |
-| [`docs/adr/`](docs/adr) | Architecture decision records. |
+| [`docs/adr/README.md`](docs/adr/README.md) | The index of every architecture decision and whether it still governs. |
 | [`docs/agents/`](docs/agents) | How agents work in this repo. |
-| [`CHANGELOG.md`](CHANGELOG.md) | Release history through v0.5.4. |
+| [`CHANGELOG.md`](CHANGELOG.md) | Release history through v0.5.4. Current releases live on the releases page. |
 
 ## Status
 
-The latest release is **v0.6.3** (2026-09-20). The workflow format is `path/workflow@4` and the store
-schema is `SCHEMA_VERSION` 12. `main` is green: `pnpm typecheck` is clean across all packages and
-**2162 tests pass** — schema 354, engine 834, server 234, designer 349, viewer 169, client-core 194,
-scripts 28.
+The latest release is **v0.6.3** (2026-09-20). The workflow format is `path/workflow@5` and the store
+schema is `SCHEMA_VERSION` 13. `main` is green: `pnpm typecheck` is clean across all packages and
+**2523 tests pass** — schema 447, engine 925, server 273, designer 462, viewer 170, client-core 213,
+scripts 33.
 
 The MVP is done, and all three wayfinder maps are closed: #1 spec, #29 server API, and #40 viewer. No
 product gap is open. Built on `main`, unreleased: authoring reuse (Templates #459; the
@@ -362,7 +388,7 @@ continues on the
 | v0.4.0 | 2026-07-26 | Cancellation. |
 
 Full notes live on the [releases page](https://github.com/howardyang2009/PATH/releases); the
-[`CHANGELOG.md`](CHANGELOG.md) covers v0.1.0 through v0.5.4.
+[`CHANGELOG.md`](CHANGELOG.md) holds the older in-repo history through v0.5.4.
 
 ## Notes for maintainers and agents
 

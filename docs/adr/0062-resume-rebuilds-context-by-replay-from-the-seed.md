@@ -4,7 +4,7 @@
 grilling of [#598](https://github.com/howardyang2009/PATH/issues/598)
 ([ADR 0059](0059-context-under-goto-is-one-last-writer-wins-blackboard-across-passes.md) §5).
 Supersedes the restore-by-load rule of
-[resume-restore-semantics.md §1–2](../research/resume-restore-semantics.md) **for Resume only**.
+[resume-restore-semantics.md §1–2](../archive/research/resume-restore-semantics.md) **for Resume only**.
 Complete ([ADR 0041](0041-awaiting-continue-is-a-replay-from-root-over-the-appendable-tree.md)) keeps
 restore-by-load.
 

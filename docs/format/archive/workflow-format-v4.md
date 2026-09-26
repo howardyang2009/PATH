@@ -4,10 +4,10 @@
 > read by the engine — `@5` is the format the `goto` controller lands in (ADR 0058). This document is
 > retained because the CHANGELOG and closed issues link it, and it remains the normative reference for
 > the `worker_defaults` and `input` envelope keys `@5` did not change; migrate `@4` files with
-> [`scripts/migrate-workflow-format-v5.ts`](../../scripts/migrate-workflow-format-v5.ts).
+> [`scripts/migrate-workflow-format-v5.ts`](../../../scripts/migrate-workflow-format-v5.ts).
 
 This is the normative definition of `path/workflow@4`. `@path/schema` implements it as zod schemas. The
-engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
+engine executes it. The vocabulary follows [CONTEXT.md](../../../CONTEXT.md) (step, worker, task, run,
 controller, checkpoint, config vs context, output object, publish).
 
 `@4` is `@3` plus **one** new file-level field. Everything else — every node type, config vs context,

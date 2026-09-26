@@ -2,12 +2,12 @@
 
 Status: accepted
 
-[resume-door-verdict.md §3](../research/resume-door-verdict.md) found that root-level
+[resume-door-verdict.md §3](../archive/research/resume-door-verdict.md) found that root-level
 `path run <file>` has no documented way to seed a file's starting `context`. It can seed only its
 `config`, through `--config <file>` and `--set key=value`. This ticket
 ([#162](https://github.com/howardyang2009/PATH/issues/162), chartered by map
 [#158](https://github.com/howardyang2009/PATH/issues/158)) closes that gap. It is **not** a `--resume`
-mechanism: [resume-restore-semantics.md §1](../research/resume-restore-semantics.md) already settles
+mechanism: [resume-restore-semantics.md §1](../archive/research/resume-restore-semantics.md) already settles
 that a resumed run's context is restored **by load** from the original tree, automatic, no operator
 input. This flag serves fresh (non-`--resume`) runs, chiefly to test one workflow step in isolation by
 a seed of whatever prior context it expects to read through `${context.x}`.

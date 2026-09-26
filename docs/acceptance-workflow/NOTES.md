@@ -3,9 +3,11 @@
 Resolves wayfinder ticket #9. This is the concrete LLM/agent pipeline the PATH MVP must run end-to-end
 on macOS, the acceptance case every spec decision is tested against.
 
-The JSON files are written in the real **format v0** defined by ticket #10. See
-[docs/format/workflow-format-v0.md](../format/workflow-format-v0.md). Binding here are both the pipeline
-itself and, now, the format it is expressed in.
+The JSON files were written in the format v0 that ticket #10 defined and have since been migrated to
+today's `path/workflow@5`; the pipeline itself is unchanged. The original format is kept at
+[docs/format/archive/workflow-format-v0.md](../format/archive/workflow-format-v0.md), and the current
+one at [docs/format/workflow-format.md](../format/workflow-format.md). Binding here are both the
+pipeline itself and the format it is expressed in.
 
 ## The pipeline
 

@@ -13,7 +13,7 @@ the two places reuse fires — the `planReuse` short-circuit (`plan-reuse.ts:27-
 is derived once over the top-level slice `body.slice(indexOf(K))` with the exact walk `planReuse`
 already uses (`walkNodes` over `RUN_PRODUCING_TYPES`, `plan-reuse.ts:33-34`); two one-line guards drop
 its ids from reuse. There is no new node walker, no new persisted column, and no second code path. The
-full mechanism map is [docs/research/resume-from-k-mechanism.md](../research/resume-from-k-mechanism.md);
+full mechanism map is [docs/research/resume-from-k-mechanism.md](../archive/research/resume-from-k-mechanism.md);
 [ADR 0036](0036-resume-rerun-boundary-is-a-per-level-plan-reuse-override.md) generalizes this root-only
 set to the per-level chain that lets K sit inside a nested `workflow`.
 

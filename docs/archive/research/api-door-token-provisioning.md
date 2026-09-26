@@ -87,7 +87,7 @@ run's credential.
   `process.env` at run start, and `binary` steps inherit the process environment
   (`packages/engine/src/binary-worker.ts`), which is the mechanism the `env-secret-probe` acceptance
   workflow pins down (see
-  [`docs/acceptance-workflow/env-secret-probe.NOTES.md`](../acceptance-workflow/env-secret-probe.NOTES.md)).
+  [`docs/acceptance-workflow/env-secret-probe.NOTES.md`](../../acceptance-workflow/env-secret-probe.NOTES.md)).
 - **Consequence for #133:** the run needs no setup step, no config file, and no engine change. One
   export in the invoking shell is the whole of it.
 

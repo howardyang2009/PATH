@@ -1,7 +1,7 @@
 # Single-node container slots, and a `sequence` controller for the array
 
 **Status:** accepted; freezes the two structural rulings of `path/workflow@2`
-([workflow-format-v2.md](../format/workflow-format-v2.md), map
+([workflow-format-v2.md](../format/archive/workflow-format-v2.md), map
 [#265](https://github.com/howardyang2009/PATH/issues/265)). The format doc fixes the contract. This ADR
 records *why* the shape is what it is, and the alternatives weighed and rejected, the reasoning a reader
 of the format would otherwise have to reconstruct.

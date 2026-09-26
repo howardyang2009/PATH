@@ -118,13 +118,13 @@ and issues use them exactly.
 
 ## Step-type plugins
 
-- **Step-type plugin** — a folder under `packages/engine/step-plugins/` that contributes one new **leaf
-  step** type: its own extra fields, bundled with the type's named **workers**. The folder name *is* the
-  type name: an `api-call` plugin makes `api-call` a first-class leaf step type, peer to `binary` and
-  `prompt`. The folder states the type name nowhere else, so it cannot disagree with itself. The engine
-  discovers and registers plugins before it validates a workflow, so a built-in and a plugin type are
-  indistinguishable to a workflow author — `binary` and `prompt` are themselves plugin folders, not a
-  privileged kind beside them. One directory holds every plugin, which is why no plugin can shadow
+- **Step-type plugin** — a folder under `packages/engine/plugin/step-plugin/` that contributes one new
+  **leaf step** type: its own extra fields, bundled with the type's named **workers**. The folder name
+  *is* the type name: an `api-call` plugin makes `api-call` a first-class leaf step type, peer to
+  `binary` and `prompt`. The folder states the type name nowhere else, so it cannot disagree with
+  itself. The engine discovers and registers plugins before it validates a workflow, so a built-in and
+  a plugin type are indistinguishable to a workflow author — `binary` and `prompt` are themselves plugin
+  folders, not a privileged kind beside them. One directory holds every plugin, which is why no plugin can shadow
   another and no precedence order exists. Control constructs (parallel, branch, while-do, sequence,
   checkpoint, goto) stay engine-owned and are never plugin-contributed: their names are **reserved**, and a
   folder claiming one is refused (map #308, ADR 0019). A workflow file that names a plugin type is

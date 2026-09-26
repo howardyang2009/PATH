@@ -44,7 +44,7 @@ answers depend on it, and it flags it for #149 to ratify rather than silently an
 
 ### 1. Restore-by-load, not recreate-by-replay, for context
 
-> [!warning] Superseded for Resume by [ADR 0062](../adr/0062-resume-rebuilds-context-by-replay-from-the-seed.md)
+> [!warning] Superseded for Resume by [ADR 0062](../../adr/0062-resume-rebuilds-context-by-replay-from-the-seed.md)
 > Load equals replay only for plain Resume. Under Resume-from-K the final `context.json` holds keys
 > written after K, so Resume now seeds each re-entered workflow-run from its counterpart's
 > `input.json` and replays the reused prefix. §1–2 below stay as the record; Complete (ADR 0041)

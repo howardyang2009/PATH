@@ -8,7 +8,7 @@ first) plus the workflow file format, able to run an LLM/agent pipeline end-to-e
 **How to read this document.** The vocabulary follows [CONTEXT.md](../../CONTEXT.md) exactly; the terms
 there are canonical. Two decisions already have normative documents in this repo, and this spec
 *incorporates them by reference* rather than restate them: the
-[workflow file format v0](../format/workflow-format-v0.md) and the
+[workflow file format v0](../format/archive/workflow-format-v0.md) and the
 [acceptance workflow](../acceptance-workflow/NOTES.md). Everything else (architecture, execution
 semantics, worker model, persistence, logging/audit) previously lived only in tracker resolutions. This
 spec states it normatively **here**. Where this document and a tracker comment disagree, this document
@@ -43,7 +43,7 @@ wins. §12 maps every section back to its originating decision.
 
 **Resume of crash-interrupted runs has shipped.** Its semantics were settled first
 ([map #142](https://github.com/howardyang2009/PATH/issues/142),
-[resume-door-verdict.md](../research/resume-door-verdict.md)). The CLI/engine surface was then built by
+[resume-door-verdict.md](../archive/research/resume-door-verdict.md)). The CLI/engine surface was then built by
 [map #158](https://github.com/howardyang2009/PATH/issues/158). It lands as
 `path run --resume <root-run-id>` (§3): one cause-blind operator verb that re-runs a stopped tree as a
 successor run, reuses every recorded `succeeded` output, and re-runs the rest. It is **at-least-once**
@@ -107,7 +107,7 @@ are the invariants that implementers must not break:
   the LLM's structured result), never world-state. Thus it cannot detect or prevent a duplicated effect,
   and it does not gate resume on step type. Idempotency, or the avoidance of externally-visible effects,
   is the workflow author's obligation, not an engine guarantee
-  ([resume-side-effect-contract.md](../research/resume-side-effect-contract.md)).
+  ([resume-side-effect-contract.md](../archive/research/resume-side-effect-contract.md)).
 - `path run <workflow.json> -C <dir>` — direct the run at the `.path/` store under `<dir>` instead of
   the default (the workflow file's own directory). Thus many workflows can pool their runs in one
   central place. **Store-only:** `-C` relocates where runs are read and written, and nothing else. The
@@ -140,8 +140,8 @@ Exact flag spellings are the implementer's choice. The semantics above are not.
 
 ## 4. Workflow file format v2
 
-Normative document: [docs/format/workflow-format-v2.md](../format/workflow-format-v2.md)
-(`path/workflow@2`). The older [workflow-format-v0.md](../format/workflow-format-v0.md) describes the
+Normative document: [docs/format/archive/workflow-format-v2.md](../format/archive/workflow-format-v2.md)
+(`path/workflow@2`). The older [workflow-format-v0.md](../format/archive/workflow-format-v0.md) describes the
 superseded `@1` and carries a banner that points here. This summary is for orientation only; the format
 doc wins on any detail:
 
@@ -288,12 +288,12 @@ publishes from cancelled or failed branches land. Rejected for MVP: drain-then-f
 (allSettled), and a per-branch on-failure policy (the latter two would be additive format changes).
 Automatic in-run retry stays out of scope (§1). Resume, an operator-initiated re-run of a stopped tree,
 cause-blind, reuses every recorded `succeeded` output. It has shipped as `path run --resume` (§3). See
-[resume-door-verdict.md](../research/resume-door-verdict.md) and §1. Because it is **cause-blind**,
+[resume-door-verdict.md](../archive/research/resume-door-verdict.md) and §1. Because it is **cause-blind**,
 every not-`succeeded` node re-runs regardless of *why* it stopped. So resume is **at-least-once**: a
 re-run node that already had an external side effect can fire it again, and the engine, blind to
 world-state, neither detects nor prevents the duplicate. Idempotency is the workflow author's burden,
 not an engine guarantee. It holds identically for `binary` and `prompt` steps
-([resume-side-effect-contract.md](../research/resume-side-effect-contract.md)).
+([resume-side-effect-contract.md](../archive/research/resume-side-effect-contract.md)).
 
 **External abort.** An operator may **cancel a root run in flight** (`RunOptions.signal`). The abort
 reaches every descendant run and leaf step of the tree, and the root run ends **`cancelled`**. It does
@@ -306,7 +306,7 @@ causes: the engine asks, and holds no kill deadline and no force path. `run-canc
 killed a run (`operator` | `sibling-failed` | `sibling-succeeded`, §8.1). What a stop owes is the truth
 about where the run got to, not the ability to resume it. That truthfulness is now the precondition that
 resume's reuse mechanism depends on
-([resume-door-verdict.md §4.2](../research/resume-door-verdict.md)): a resumed run trusts a run's
+([resume-door-verdict.md §4.2](../archive/research/resume-door-verdict.md)): a resumed run trusts a run's
 recorded status without a re-verify.
 
 **The forced exit is the one exception, and it is accepted.** The engine has no force path. But the
@@ -317,7 +317,7 @@ lying `running` row that this section says cancellation avoids. That is the pric
 and it is deliberate. An operator who forces an exit has decided that a return of their terminal
 outranks a truthful record, and to make the force path wait for writes would defeat it. Nothing
 reconciles such rows afterwards. There is no startup reconcile pass, and resume does not own the
-building of one ([resume-door-verdict.md §5](../research/resume-door-verdict.md)). So a forced run stays
+building of one ([resume-door-verdict.md §5](../archive/research/resume-door-verdict.md)). So a forced run stays
 `running` in `path runs`, in `GET /v0/runs`, and in any viewer over it, until the operator removes it
 with `path runs rm <run-id>` (§3). Cancelling without forcing has none of these consequences. This
 applies to the second `^C` alone.
@@ -348,7 +348,7 @@ row lives only in the *original* tree. A successor run's own descendants do not 
 traverses the reuse-marker link into the original tree for every reused node rather than a duplicate of
 rows into the new tree. To duplicate would create two ground truths for the same spend, the exact
 failure that this section's "exactly once" rule exists to prevent
-([resume-door-verdict.md §4.3](../research/resume-door-verdict.md)).
+([resume-door-verdict.md §4.3](../archive/research/resume-door-verdict.md)).
 
 ## 6. Persistence
 
@@ -405,8 +405,8 @@ directory** beside the workflow files (like `.git`), gitignored by default.
   run row, alongside `usage` token counts, which are always real.
 - **Later, additive:** a lightweight `llm-call` worker type over the direct API (no agentic loop); and
   local runtimes as offline fallback. Survey:
-  [llm-worker-execution-options.md](../research/llm-worker-execution-options.md). Empirics:
-  [agent-sdk-spike-findings.md](../research/agent-sdk-spike-findings.md).
+  [llm-worker-execution-options.md](../archive/research/llm-worker-execution-options.md). Empirics:
+  [agent-sdk-spike-findings.md](../archive/research/agent-sdk-spike-findings.md).
 
 ## 8. Logging & audit
 

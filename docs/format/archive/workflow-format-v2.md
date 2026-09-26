@@ -3,10 +3,10 @@
 > **Superseded by [`workflow-format-v3.md`](workflow-format-v3.md).** `path/workflow@2` is no longer
 > read by the engine — a worker is a name now, and `model`/`options` moved to config (ADR 0021). This
 > document is retained because the CHANGELOG and closed issues link it; migrate `@2` files with
-> [`scripts/archive/migrate-workflow-format-v3.ts`](../../scripts/archive/migrate-workflow-format-v3.ts).
+> [`scripts/archive/migrate-workflow-format-v3.ts`](../../../scripts/archive/migrate-workflow-format-v3.ts).
 
 This is the normative definition of `path/workflow@2`. `@path/schema` implements it as zod schemas. The
-engine executes it. The vocabulary follows [CONTEXT.md](../../CONTEXT.md) (step, worker, task, run,
+engine executes it. The vocabulary follows [CONTEXT.md](../../../CONTEXT.md) (step, worker, task, run,
 controller, checkpoint, config vs context, output object, publish).
 
 This document is **self-contained**: everything needed to author, validate, or interpret a
@@ -54,7 +54,7 @@ records the trade this change makes and the alternatives weighed. This document 
   ```
 
   The engine reads `@2` only. There is no dual reader. Migration is the one-time repo script
-  [`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts) (§11), which
+  [`scripts/archive/migrate-workflow-format-v2.ts`](../../../scripts/archive/migrate-workflow-format-v2.ts) (§11), which
   follows its `@0`-to-`@1` predecessor `scripts/archive/migrate-workflow-format-v1.ts`.
 
   An `@0` file names **both** scripts, in the order they must run, because the `@2` codemod migrates
@@ -150,7 +150,7 @@ contribute or replace them. Every *other* `type` value is a **leaf step type**, 
 it is exactly what the **step-plugin registry** holds, one entry per folder under
 `packages/engine/step-plugins/`. `prompt` and `binary` appear in the table above because PATH ships
 them, not because the format names them — they are plugin folders like any other
-([ADR 0019](../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md)). A file is
+([ADR 0019](../../adr/0019-step-plugins-are-folders-under-packages-engine-step-plugins.md)). A file is
 therefore valid **against a registry**, never in the abstract; the same bytes load in a tree that holds
 the plugin and fail in one that does not, both correctly. There is no `requires` block: the `type`
 values in `body` *are* the file's dependency list, and a reader derives it with the walk it already has
@@ -160,7 +160,7 @@ Step-type-specific fields sit **directly on the node** (no `payload` wrapper). A
 cannot collide with the engine-owned ones (`type`, `id`, `name`, `worker`, `config`, `input`, `parse`,
 `publish`): a plugin declares only its *extra*-field fragment and the schema layer composes the
 envelope, rejecting a collision loudly at registry freeze
-([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md) sub-decision 4).
+([ADR 0018](../../adr/0018-open-node-union-via-pure-registry-factory.md) sub-decision 4).
 
 ### 4.1 Common step fields
 
@@ -224,8 +224,8 @@ array of nodes** (§3.1). Each branch is a node that carries its own `id` and `n
   with output `{}`. A branch **may not `publish`** anywhere reachable within it (rejected at load, §5.3
   and §9).
 
-See [wait-one-join.md](../spec/wait-one-join.md) and
-[do-not-wait-join.md](../spec/do-not-wait-join.md).
+See [wait-one-join.md](../../spec/wait-one-join.md) and
+[do-not-wait-join.md](../../spec/do-not-wait-join.md).
 
 **`branch`** — `arms` is a non-empty array of `{ "when": <condition>, "node": <node> }`, plus an
 optional top-level `else` that holds **one node**. The arms are tested in order. The first arm whose
@@ -503,7 +503,7 @@ A `do-not-wait` branch node's publish set (§5.1) must be empty. A detached bran
 would-be readers, so a `publish` from it is a nondeterministic write-after-read. It is a **load error**,
 caught anywhere below the block, including one nested through a `sequence` or inside a
 `collect`/`while-do`/`branch` within the detached branch. See
-[do-not-wait-join.md](../spec/do-not-wait-join.md) §4.
+[do-not-wait-join.md](../../spec/do-not-wait-join.md) §4.
 
 ## 10. Conditions
 
@@ -515,7 +515,7 @@ trees. Conditions appear on `branch` arm `when`s, `while-do` `condition`, and `c
 ## 11. Migration from `@1`
 
 The one-time repo script
-[`scripts/archive/migrate-workflow-format-v2.ts`](../../scripts/archive/migrate-workflow-format-v2.ts) migrates `@1`
+[`scripts/archive/migrate-workflow-format-v2.ts`](../../../scripts/archive/migrate-workflow-format-v2.ts) migrates `@1`
 files, following its `@0`-to-`@1` predecessor. It is a committed repo-internal script, not a shipped
 `path migrate` command. Pre-1.0 there are no external stored workflow files.
 
@@ -556,7 +556,7 @@ by the build map, not this script. A `*.workflow.json` codemod does not size tha
   door.
 - **Everything about a step-type plugin except the two sentences §1 and §4 add.** How the registry is
   built and frozen is ADR 0018; where a plugin lives and what it consists of is ADR 0019; how discovery
-  reports a file whose plugin is absent is [server-api-v0.md §6](../api/server-api-v0.md); a plugin's
+  reports a file whose plugin is absent is [server-api-v0.md §6](../../api/server-api-v0.md); a plugin's
   own version is #324. This document fixes only that `format` does not move when the type set does.
 
 ## 13. Authoring & navigation
