@@ -5,7 +5,7 @@ import { checkPrecondition, writeArtifact } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `PUT /v0/templates/:id` (server-api-v0.md §10.4, ADR 0050 decision 7): **update-only** and
@@ -18,7 +18,7 @@ import type { RunsRouteContext } from "./post-runs.js";
 export async function handlePutTemplate(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   id: string,
 ): Promise<void> {
   const raw = await readJsonBody(req);

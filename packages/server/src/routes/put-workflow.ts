@@ -12,9 +12,9 @@ import {
 import { z } from "zod";
 import { confineToProjectRoot } from "../confine.js";
 import { checkPrecondition, readArtifact, writeArtifact, type ArtifactConflict } from "../artifact-file.js";
-import { readJsonBody, sendError } from "../http-json.js";
+import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * The write envelope (server-api-v0.md §7): the resource path travels in the body, not the URL, so a
@@ -83,19 +83,10 @@ export function isTemplatePath(projectDir: string, workflowPath: string): boolea
  * client's workflow object deterministically (`JSON.stringify(wf, null, 2)` + a trailing newline,
  * author key order preserved) and owns the on-disk bytes.
  */
-export async function handlePutWorkflow(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
-  const body = await readJsonBody(req);
-  if (!body.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return;
-  }
-
-  const parsed = PutWorkflowBodySchema.safeParse(body.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return;
-  }
-  const { workflow_path: workflowPath } = parsed.data;
+export async function handlePutWorkflow(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
+  const body = await readRequestBody(req, res, PutWorkflowBodySchema);
+  if (!body) return;
+  const { workflow_path: workflowPath } = body.data;
 
   // The two write doors are disjoint (server-api-v0.md §10.6, ADR 0050 decision 8): a template is
   // written only through `/v0/templates`, so this door refuses a `.path/template/` path.
@@ -107,7 +98,7 @@ export async function handlePutWorkflow(req: IncomingMessage, res: ServerRespons
   // Serialize the *raw* object from the request, not zod's parsed copy: `WorkflowFileSchema` may emit
   // keys in schema order, which would silently reorder the author's file. The raw object preserves the
   // key order the client sent (ADR 0016). Envelope `.strict()` already guaranteed it is an object.
-  const rawWorkflow = (body.value as { workflow: unknown }).workflow;
+  const rawWorkflow = (body.raw as { workflow: unknown }).workflow;
 
   // Path confinement (404) before schema (400): a path that escapes the root or traverses a symlink is
   // refused regardless of what the body says. The two 404 causes fold into one response, as the read

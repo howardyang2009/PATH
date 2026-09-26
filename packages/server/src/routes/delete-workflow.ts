@@ -5,7 +5,7 @@ import { checkPrecondition, deleteArtifact, readArtifact } from "../artifact-fil
 import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 import { isTemplatePath, PRECONDITION_FAILED } from "./put-workflow.js";
 
 /**
@@ -22,7 +22,7 @@ import { isTemplatePath, PRECONDITION_FAILED } from "./put-workflow.js";
 export function handleDeleteWorkflow(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   path: string | null,
   sessionId: string | null,
 ): void {

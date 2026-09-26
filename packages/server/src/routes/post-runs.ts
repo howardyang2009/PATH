@@ -1,10 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { LOG_BACKEND_IDS, type LoadedStepPluginRegistry, type Project } from "@path/engine";
-import { ConfigObjectSchema, effectiveRootInput, formatIssues, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
+import { LOG_BACKEND_IDS } from "@path/engine";
+import { ConfigObjectSchema, effectiveRootInput, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
-import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
-import type { LiveRuns } from "../live-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 const PostRunsBodySchema = z
   .object({
@@ -23,39 +23,9 @@ const PostRunsBodySchema = z
   })
   .strict();
 
-export interface RunsRouteContext {
-  /**
-   * The opened project (#64): its `.path/`, its engine settings, what its runs left behind
-   * (`project.archive`), and the one way to run a workflow against it.
-   */
-  project: Project;
-  /** The runs this process is executing: starting, cancelling, and watching them. */
-  live: LiveRuns;
-  /**
-   * The step-plugin registry frozen at server start, served by `GET /v0/step-plugins` as the Designer's
-   * authoring palette (server-api-v0.md §8, ADR 0018). A bare snapshot with no staleness contract:
-   * scanned once, never per request, so the palette is fixed for the server's life.
-   */
-  stepPlugins: LoadedStepPluginRegistry;
-  /**
-   * The shipped (read-only) template root the `/v0/templates` union scans (server-api-v0.md §10, ADR
-   * 0050). Defaults to `packages/server/template` when absent; a test injects a fixture root here.
-   */
-  shippedTemplateDir?: string;
-}
-
-export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
-  const body = await readJsonBody(req);
-  if (!body.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return;
-  }
-
-  const parsed = PostRunsBodySchema.safeParse(body.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return;
-  }
+export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
+  const body = await readRequestBody(req, res, PostRunsBodySchema);
+  if (!body) return;
   const {
     workflow_path: workflowPath,
     input,
@@ -63,7 +33,7 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
     worker_defaults: launchWorkerDefaults,
     log_backends: logBackendIds,
     processor_concurrency: processorConcurrency,
-  } = parsed.data;
+  } = body.data;
 
   // ADR 0012 / #231: operator config may carry a literal `{"$secret": "..."}` but not `{"$env":
   // "NAME"}`. Rejected before the filesystem is touched, as a bad config invalidates the request

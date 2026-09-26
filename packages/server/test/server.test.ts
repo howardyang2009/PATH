@@ -309,6 +309,12 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     expect(res.status).toBe(404);
   });
 
+  // A path parameter is decoded once, in the route table: an invalid escape is the client's error.
+  it("400s a path parameter that is not valid percent-encoding, rather than a 500", async () => {
+    const res = await fetch(`${handle.url}/v0/runs/%E0`);
+    expect(res.status).toBe(400);
+  });
+
   it("404s when workflow_path resolves outside the project root", async () => {
     const res = await postRun({ workflow_path: "../../etc/passwd" });
     expect(res.status).toBe(404);

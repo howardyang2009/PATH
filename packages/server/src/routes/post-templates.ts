@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { join, relative, resolve } from "node:path";
-import { formatIssues, makeStepTemplateSchema, NameSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
+import { makeStepTemplateSchema, NameSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
 import { z } from "zod";
 import { writeArtifact } from "../artifact-file.js";
-import { readJsonBody, sendError } from "../http-json.js";
+import { readRequestBody, sendError } from "../http-json.js";
 import { kindDirFor, suffixFor, userTemplateRoot } from "../template-store.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * The save-as envelope (server-api-v0.md §10.3): `{ kind, name, description, body }`. `kind` is always
@@ -33,23 +33,14 @@ const PostTemplateBodySchema = z
 export async function handlePostTemplates(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
 ): Promise<void> {
-  const raw = await readJsonBody(req);
-  if (!raw.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return;
-  }
-
-  const parsed = PostTemplateBodySchema.safeParse(raw.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return;
-  }
-  const { kind, name } = parsed.data;
+  const body = await readRequestBody(req, res, PostTemplateBodySchema);
+  if (!body) return;
+  const { kind, name } = body.data;
   // The raw `body` sub-object, not zod's parsed copy: serialize it with the author's key order, as
   // `put-workflow` does. `.strict()` above guaranteed it is an object.
-  const rawBody = (raw.value as { body: unknown }).body;
+  const rawBody = (body.raw as { body: unknown }).body;
 
   // Registry-relative body validation of the step-template envelope; it surfaces the client-minted `id`.
   const validation = safeParseStepTemplateWith(makeStepTemplateSchema(ctx.stepPlugins), rawBody);

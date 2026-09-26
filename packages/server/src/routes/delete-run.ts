@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `DELETE /v0/runs/:root_run_id` — permanently remove a root run's data from both stores: its rows
@@ -23,7 +23,7 @@ import type { RunsRouteContext } from "./post-runs.js";
  */
 export function handleDeleteRun(
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   rootRunId: string,
   force: boolean,
 ): void {

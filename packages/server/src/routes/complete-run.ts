@@ -1,9 +1,9 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { ConfigObjectSchema, formatIssues, type ConfigObject, type JsonValue } from "@path/schema";
+import { ConfigObjectSchema, type ConfigObject, type JsonValue } from "@path/schema";
 import { z } from "zod";
-import { readJsonBody, sendError, sendJson } from "../http-json.js";
+import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `POST /v0/runs/:step_run_id/complete` (server-api-v0.md §4.4; ADR 0039/0040/0041) — resolve a parked
@@ -37,31 +37,17 @@ const CompleteBodySchema = z.object({ output: z.unknown(), config: ConfigObjectS
 export async function handleCompleteRun(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   stepRunId: string,
 ): Promise<void> {
-  const body = await readJsonBody(req);
-  if (!body.ok) {
-    sendError(res, 400, "invalid JSON body");
-    return;
-  }
-
-  if (typeof body.value !== "object" || body.value === null || Array.isArray(body.value)) {
-    sendError(res, 400, "body must be a JSON object");
-    return;
-  }
-
-  const parsed = CompleteBodySchema.safeParse(body.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return;
-  }
-  const output = parsed.data.output as JsonValue;
+  const body = await readRequestBody(req, res, CompleteBodySchema);
+  if (!body) return;
+  const output = body.data.output as JsonValue;
   if (output === undefined) {
     sendError(res, 400, 'missing required field "output"');
     return;
   }
-  const config = parsed.data.config as ConfigObject | undefined;
+  const config = body.data.config as ConfigObject | undefined;
   if (config !== undefined) {
     const envError = operatorConfigEnvError(config);
     if (envError) {

@@ -1,9 +1,8 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { formatIssues } from "@path/schema";
 import { z } from "zod";
 import { editLease, type EditLease } from "../edit-lease.js";
-import { readJsonBody, sendError, sendJson } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import { readRequestBody, sendError, sendJson } from "../http-json.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * The three Designer edit-lease doors (ADR 0017, issue #364): acquire, heartbeat and release. The lease
@@ -37,25 +36,17 @@ const LeaseOpBodySchema = z
 async function leaseRequest<T extends { workflow_path: string }>(
   req: IncomingMessage,
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   schema: z.ZodType<T>,
 ): Promise<{ body: T; lease: EditLease } | undefined> {
-  const raw = await readJsonBody(req);
-  if (!raw.ok) {
-    sendError(res, 400, "request body must be valid JSON");
-    return undefined;
-  }
-  const parsed = schema.safeParse(raw.value);
-  if (!parsed.success) {
-    sendError(res, 400, "invalid request body", formatIssues(parsed.error));
-    return undefined;
-  }
-  const lease = editLease(ctx.project.dir, parsed.data.workflow_path);
+  const body = await readRequestBody(req, res, schema);
+  if (!body) return undefined;
+  const lease = editLease(ctx.project.dir, body.data.workflow_path);
   if (lease === undefined) {
     sendError(res, 404, "not found");
     return undefined;
   }
-  return { body: parsed.data, lease };
+  return { body: body.data, lease };
 }
 
 /**
@@ -63,7 +54,7 @@ async function leaseRequest<T extends { workflow_path: string }>(
  * is a `409` carrying `held_by_other` and the holder's `expires_at` (a lease conflict, not the write
  * door's byte-`412`).
  */
-export async function handleWorkflowLock(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
+export async function handleWorkflowLock(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LockBodySchema);
   if (!request) return;
   const result = request.lease.acquire(request.body.session_id, request.body.takeover === true);
@@ -75,7 +66,7 @@ export async function handleWorkflowLock(req: IncomingMessage, res: ServerRespon
  * `POST /v0/workflows/lock/heartbeat`: renew → `200` + lease. A lease that was reclaimed or taken over
  * is a `409`; the client stops beating and offers re-acquire.
  */
-export async function handleWorkflowLockHeartbeat(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
+export async function handleWorkflowLockHeartbeat(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LeaseOpBodySchema);
   if (!request) return;
   const renewed = request.lease.renew(request.body.session_id);
@@ -88,7 +79,7 @@ export async function handleWorkflowLockHeartbeat(req: IncomingMessage, res: Ser
  * lease is freed, so a stale `sendBeacon` from a closing tab can never free someone else's. POST, not
  * DELETE, because `navigator.sendBeacon` drives release from `beforeunload` and is POST-only.
  */
-export async function handleWorkflowLockRelease(req: IncomingMessage, res: ServerResponse, ctx: RunsRouteContext): Promise<void> {
+export async function handleWorkflowLockRelease(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
   const request = await leaseRequest(req, res, ctx, LeaseOpBodySchema);
   if (!request) return;
   sendJson(res, 200, { released: request.lease.release(request.body.session_id) });

@@ -1,7 +1,7 @@
 import type { ServerResponse } from "node:http";
 import type { RunBlobName } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * The only blob names this route serves — a fixed set, so `name` is never a raw filename. Which
@@ -25,7 +25,7 @@ function toBlobName(name: string): RunBlobName | undefined {
  */
 export function handleGetRunBlob(
   res: ServerResponse,
-  ctx: RunsRouteContext,
+  ctx: RouteContext,
   rootRunId: string,
   runId: string,
   name: string,

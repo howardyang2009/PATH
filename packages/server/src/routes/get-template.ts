@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
 import { discoverTemplates, shippedTemplateDir } from "../template-store.js";
-import type { RunsRouteContext } from "./post-runs.js";
+import type { RouteContext } from "./route-context.js";
 
 /**
  * `GET /v0/templates/:id` (server-api-v0.md §10.2, ADR 0050 decision 5): read one template as a
@@ -13,7 +13,7 @@ import type { RunsRouteContext } from "./post-runs.js";
  * unchanged. Ungated read. An **invalid** template still returns `200` with `valid: false`, its
  * `error`, and its `body`, so author-mode can open it to repair it; an unknown id is `404`.
  */
-export function handleGetTemplate(res: ServerResponse, ctx: RunsRouteContext, id: string): void {
+export function handleGetTemplate(res: ServerResponse, ctx: RouteContext, id: string): void {
   const { byId } = discoverTemplates(resolve(ctx.project.dir), shippedTemplateDir(ctx), ctx.stepPlugins);
   const entry = byId.get(id);
   if (entry === undefined) {
