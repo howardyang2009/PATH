@@ -85,7 +85,7 @@ export class EventStreamStub {
 
   push(event: Record<string, unknown>): void {
     this.controller?.enqueue(
-      new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`),
+      new TextEncoder().encode(`id: ${String(event.seq)}\ndata: ${JSON.stringify(event)}\n\n`),
     );
   }
 }
@@ -233,7 +233,7 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       );
     }
     if (init?.method === "DELETE") {
-      const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+      const ifMatch = (init.headers as Record<string, string>)?.["If-Match"] ?? null;
       calls?.deletes.push({ url: input, ifMatch });
       return options.onDelete ? options.onDelete(input) : new Response(null, { status: 204 });
     }
@@ -265,8 +265,8 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       calls?.templateWrites.push(templateWrite);
       if (options.onTemplateWrite) return options.onTemplateWrite(templateWrite);
       if (templateWrite.method === "POST") {
-        const created = templateWrite.body["body"] as { id: string };
-        const name = templateWrite.body["name"] as string;
+        const created = templateWrite.body.body as { id: string };
+        const name = templateWrite.body.name as string;
         return json(
           {
             id: created.id,
@@ -276,7 +276,7 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
           201,
         );
       }
-      const envelope = (options.templateBodies ?? {})[templateWrite.id!] as
+      const envelope = options.templateBodies?.[templateWrite.id!] as
         | { read_only?: boolean }
         | undefined;
       if (envelope?.read_only) return json({ error: { message: "template is read-only" } }, 403);
@@ -299,7 +299,7 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       return json(options.workflows ?? { workflows: [] }, 200);
     }
     if (input === "/v0/workflows" && init?.method === "PUT") {
-      const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+      const ifMatch = (init.headers as Record<string, string>)?.["If-Match"] ?? null;
       const b = body as { workflow_path: string; workflow: Record<string, unknown> };
       calls?.put.push({ body: b, ifMatch });
       return options.onPut
@@ -329,7 +329,7 @@ function json(body: unknown, status: number): Response {
 /** A `POST /v0/templates` or `PUT /v0/templates/:id` as a recorded write, or `null` for any other request. */
 function templateWriteOf(url: string, init: RequestInit | undefined): TemplateWrite | null {
   const method = init?.method;
-  const ifMatch = ((init?.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
+  const ifMatch = (init?.headers as Record<string, string>)?.["If-Match"] ?? null;
   const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
   if (url === "/v0/templates" && method === "POST") return { method, id: null, body, ifMatch };
   const match = /^\/v0\/templates\/([^/?]+)$/.exec(url);

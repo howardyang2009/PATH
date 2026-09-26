@@ -8,9 +8,7 @@ import { type FetchLike, PathApiClient } from "@path/client-core";
  */
 
 function frame(event: Record<string, unknown>): Uint8Array {
-  return new TextEncoder().encode(
-    `id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`,
-  );
+  return new TextEncoder().encode(`id: ${String(event.seq)}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
 /**

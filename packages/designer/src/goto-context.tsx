@@ -50,7 +50,7 @@ function targetOf(file: WorkflowFile, id: string | null): string | null {
 export function useIsGotoTarget(node: WorkflowNode): boolean {
   const view = useContext(GotoContext);
   const selection = useSelection();
-  if (!view || !view.firstLevel.has(node.id)) return false;
+  if (!view?.firstLevel.has(node.id)) return false;
   const target =
     targetOf(view.file, view.hoveredId) ?? targetOf(view.file, selection?.selectedId ?? null);
   return target !== null && target === node.name;
@@ -59,7 +59,7 @@ export function useIsGotoTarget(node: WorkflowNode): boolean {
 /** The `← N` badge on a first-level node that gotos target; its title lists them. */
 export function IncomingBadge({ node }: { node: WorkflowNode }): JSX.Element | null {
   const view = useContext(GotoContext);
-  if (!view || !view.firstLevel.has(node.id)) return null;
+  if (!view?.firstLevel.has(node.id)) return null;
   const sources = view.incoming.get(node.name);
   if (!sources) return null;
   return (

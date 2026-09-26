@@ -165,7 +165,7 @@ export function CompleteForm({
         </p>
       )}
 
-      {formErrors.map((message, index) => (
+      {formErrors.map((message, _index) => (
         <p
           key={message}
           className="pane-note pane-error complete-form-error"

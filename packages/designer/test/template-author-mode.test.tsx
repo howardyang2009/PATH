@@ -169,8 +169,8 @@ describe("Author mode on a *.step-template.json", () => {
     expect(calls.templateWrites).toHaveLength(1);
     const write = calls.templateWrites[0]!;
     expect(write).toMatchObject({ method: "PUT", id: USER_ID, ifMatch: '"t"' });
-    expect(write.body["id"]).toBe(USER_ID);
-    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([
+    expect(write.body.id).toBe(USER_ID);
+    expect((write.body.body as { id: string }[]).map((node) => node.id)).toEqual([
       NODE_IDS[1],
       NODE_IDS[0],
     ]);
@@ -197,7 +197,7 @@ describe("Author mode on a *.step-template.json", () => {
       id: null,
       body: { kind: "step", name: "nightly-v2", description: "nightly blurb" },
     });
-    const created = post.body["body"] as { id: string };
+    const created = post.body.body as { id: string };
     expect(created.id).not.toBe(USER_ID);
 
     // The editor now writes back to the new template, under the create's ETag.
@@ -243,7 +243,7 @@ describe("The template envelope", () => {
       id: STEP_ID,
       description: "draft then judge",
     });
-    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([
+    expect((write.body.body as { id: string }[]).map((node) => node.id)).toEqual([
       NODE_IDS[1],
       NODE_IDS[0],
     ]);
@@ -270,7 +270,7 @@ describe("The template envelope", () => {
       id: null,
       body: { kind: "step", name: "draft-judge-v2", description: "draft then judge" },
     });
-    const created = post.body["body"] as { id: string; description: string };
+    const created = post.body.body as { id: string; description: string };
     expect(created.id).not.toBe(STEP_ID);
     expect(created.description).toBe("draft then judge");
   });

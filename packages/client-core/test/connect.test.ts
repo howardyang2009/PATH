@@ -36,9 +36,7 @@ function record(overrides: Partial<WireRunRecord> & { run_id: string }): WireRun
 const ROOT_ROW = record({ run_id: ROOT, parent_run_id: null, node_id: null, node_name: null });
 
 function frame(event: Record<string, unknown>): Uint8Array {
-  return new TextEncoder().encode(
-    `id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`,
-  );
+  return new TextEncoder().encode(`id: ${String(event.seq)}\ndata: ${JSON.stringify(event)}\n\n`);
 }
 
 /** An SSE body that stays open, as the server's does until the root run goes terminal. */

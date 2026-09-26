@@ -64,7 +64,7 @@ async function readFrames(
       if (done) return { frames, ended: true };
       for (const frame of decoder.push(text.decode(value, { stream: true })))
         frames.push(frame.event);
-      if (until && until(frames)) {
+      if (until?.(frames)) {
         controller?.abort();
         return { frames, ended: false };
       }
@@ -177,7 +177,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
     id: "4",
     title: "disconnect mid-run, reconnect with Last-Event-ID, no gap in the narrative",
     pass: framesA.length > 0 && reconnectFilledSeam && contiguous,
-    detail: `connection A read ${framesA.length} frame(s) (last seq ${lastSeqA}${endedA ? ", stream ended before disconnect" : ", disconnected mid-run"}); reconnect Last-Event-ID:${lastSeqA} replayed ${framesB.length} of ${expectedTail} tail event(s) from seq ${firstBSeq ?? "—"}; merged narrative ${narrativeSeqs.length} events, ${contiguous ? "contiguous 1.." + narrativeSeqs.length : "NOT contiguous"}`,
+    detail: `connection A read ${framesA.length} frame(s) (last seq ${lastSeqA}${endedA ? ", stream ended before disconnect" : ", disconnected mid-run"}); reconnect Last-Event-ID:${lastSeqA} replayed ${framesB.length} of ${expectedTail} tail event(s) from seq ${firstBSeq ?? "—"}; merged narrative ${narrativeSeqs.length} events, ${contiguous ? `contiguous 1..${narrativeSeqs.length}` : "NOT contiguous"}`,
   });
 
   // ── §5.3: GET /v0/runs/:id reports succeeded with the same run tree on disk ─────────────────────

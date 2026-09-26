@@ -27,8 +27,6 @@ type Envelope = {
   node_name: string | null;
 };
 
-type NodeIdentity = { id: string; name: string };
-
 // A `cancelled` step-finished carries no error — the cause is narrated by run-cancelled.
 function finishedEvent(env: Envelope, outcome: RunOutcome): LogEvent {
   return outcome.status === "failed" && outcome.error !== undefined

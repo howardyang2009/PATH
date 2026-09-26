@@ -72,7 +72,7 @@ describe("GET /v0/templates", () => {
   it("lists the shipped∪user union thin, with origin/read_only and no body", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
     writeTemplate(
-      projectDir + "/.path/template",
+      `${projectDir}/.path/template`,
       "step-template",
       "nightly",
       ".step-template.json",
@@ -107,7 +107,7 @@ describe("GET /v0/templates", () => {
   it("ignores a former *.workflow-template.json file (ADR 0063: the Step-Template is the only kind)", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
     writeTemplate(
-      projectDir + "/.path/template",
+      `${projectDir}/.path/template`,
       "workflow-template",
       "nightly",
       ".workflow-template.json",
@@ -155,7 +155,7 @@ describe("GET /v0/templates", () => {
       stepTemplate({ id }),
     );
     writeTemplate(
-      projectDir + "/.path/template",
+      `${projectDir}/.path/template`,
       "step-template",
       "copy",
       ".step-template.json",
@@ -280,7 +280,7 @@ describe("PUT /v0/templates/:id", () => {
   }> {
     const tpl = stepTemplate();
     const bytes = writeTemplate(
-      projectDir + "/.path/template",
+      `${projectDir}/.path/template`,
       "step-template",
       "editable",
       ".step-template.json",
@@ -357,7 +357,7 @@ describe("DELETE /v0/templates/:id", () => {
   it("removes a user template (204), 403s shipped, 404s unknown", async () => {
     const user = stepTemplate();
     writeTemplate(
-      projectDir + "/.path/template",
+      `${projectDir}/.path/template`,
       "step-template",
       "gone",
       ".step-template.json",

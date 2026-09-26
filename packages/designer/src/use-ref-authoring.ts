@@ -33,7 +33,7 @@ function fileWithNodeRef(
   targetPath: string,
 ): WorkflowFile | null {
   const node = findById(file.body, nodeId);
-  if (!node || node.type !== "workflow") return null;
+  if (node?.type !== "workflow") return null;
   const ref = relativeRefPath(activePath, targetPath);
   return replaceNode(file, { ...node, ref } as WorkflowNode);
 }

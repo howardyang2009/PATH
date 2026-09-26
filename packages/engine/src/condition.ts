@@ -6,9 +6,7 @@ import {
   type LeafTrace,
   resolveDotPath,
   type Trace,
-  TraceSchema,
 } from "@path/schema";
-import { z } from "zod";
 
 /**
  * The condition evaluator (mvp spec §5.2–5.4, §8.1). Evaluates a predicate tree against the roots

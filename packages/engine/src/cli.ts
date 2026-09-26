@@ -390,7 +390,7 @@ type ConfigResult = { success: true; config: ConfigObject } | { success: false; 
 function buildKeyedConfig(
   fileFlag: string,
   file: string | undefined,
-  pairFlag: string,
+  _pairFlag: string,
   pairs: readonly (readonly [string, string])[],
 ): ConfigResult {
   let config: ConfigObject = {};
