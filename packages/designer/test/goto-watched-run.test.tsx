@@ -7,7 +7,7 @@ import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS, stubClient } from "./stub-server.js";
 
 /**
- * #620 a watched run with goto passes (docs/spec/goto.md §9, designer-spec § goto, G-D-08): the goto block
+ * #620 — a watched run with goto passes (docs/spec/goto.md §9, designer-spec § goto, G-D-08): the goto block
  * takes no status tint, it shows its jumps spent as `<spent>/<max_jumps>`, and a node revisited in several
  * passes shows its latest run. A goto-free run renders as before.
  */
@@ -112,7 +112,7 @@ function block(canvas: HTMLElement, id: string): HTMLElement {
   return canvas.querySelector(`[data-node-id="${id}"]`) as HTMLElement;
 }
 
-describe("#620 G-D-08 watched run with passes", () => {
+describe("G-D-08 watched run with passes", () => {
   it("leaves the goto untinted, badges its jumps spent, and shows a revisited node's latest run", async () => {
     // Pass 1 ran alpha (failed), hop jumped back twice: pass 2 re-ran alpha (succeeded), pass 3 is running tail.
     const canvas = await watch([

@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
+/**
+ * #369 — the properties pane: a selection populates it, the id re-key is confirmation-gated, and the
+ * three editor tiers (hand-built, generic, raw JSON) resolve per step type. Later tickets added the
+ * file worker-defaults (#505) and the person-activity editor (#487).
+ */
+
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -117,7 +123,7 @@ function openSection(pane: HTMLElement, title: string): void {
   fireEvent.click(within(pane).getByRole("button", { name: title }));
 }
 
-describe("#369 selection populates the pane", () => {
+describe("selection populates the pane", () => {
   it("keeps name and id always shown, opens the kind fields expanded, and the payload regions collapsed", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -249,7 +255,7 @@ describe("#369 selection populates the pane", () => {
   });
 });
 
-describe("#369 the id re-key is confirmation-gated", () => {
+describe("the id re-key is confirmation-gated", () => {
   it("re-keys only after Confirm, and keeps the node selected under its new id", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -276,7 +282,7 @@ describe("#369 the id re-key is confirmation-gated", () => {
   });
 });
 
-describe("#369 the three editor tiers", () => {
+describe("the three editor tiers", () => {
   it("uses the hand-built editors for prompt and workflow-ref, and the generic form for binary", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "alpha");
@@ -414,7 +420,7 @@ describe("#369 the three editor tiers", () => {
   });
 });
 
-describe("#369 worker selection", () => {
+describe("worker selection", () => {
   it("shows no worker control for a single-worker type", async () => {
     const { canvas, pane } = await openPane();
     selectNode(canvas, "runner"); // binary ships one worker
@@ -435,7 +441,7 @@ describe("#369 worker selection", () => {
   });
 });
 
-describe("#505 file worker-defaults", () => {
+describe("file worker-defaults", () => {
   it("hides the section when no type ships more than one worker", async () => {
     // A file whose only step type is `prompt` as the default registry ships it — one worker, nothing to
     // select, so the section (its header included) is not rendered at all.
@@ -750,7 +756,7 @@ describe("the workflow-level input seed", () => {
   });
 });
 
-describe("#487 person-activity first-class editor + canvas identity", () => {
+describe("person-activity first-class editor + canvas identity", () => {
   const PERSON_PLUGINS: WireStepPlugin[] = [
     ...RICH_PLUGINS,
     {

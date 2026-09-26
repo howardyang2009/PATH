@@ -4,6 +4,12 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
+/**
+ * #368 — canvas structure editing through the real app: a block snaps only into a grammar-legal socket
+ * (add), reorder preserves structure, a replace swaps a single-node slot, the delete slot rules hold, a
+ * duplicate gets a fresh node, and an empty canvas offers a start-a-body affordance.
+ */
+
 /** A distinct valid UUIDv4 per seed. */
 function uuid(n: number): string {
   return `${n.toString(16).padStart(8, "0")}-1111-4111-8111-111111111111`;
@@ -81,7 +87,7 @@ async function openEditable() {
   return screen.getByRole("region", { name: "Workflow canvas" });
 }
 
-describe("#368 add — a block snaps only into a grammar-legal socket", () => {
+describe("add — a block snaps only into a grammar-legal socket", () => {
   it("adds a step at a legal list socket and refuses a checkpoint at an illegal one", async () => {
     const canvas = await openEditable();
 
@@ -109,7 +115,7 @@ describe("#368 add — a block snaps only into a grammar-legal socket", () => {
   });
 });
 
-describe("#368 reorder — within a container, preserving structure", () => {
+describe("reorder — within a container, preserving structure", () => {
   it("moves a top-level node down", async () => {
     const canvas = await openEditable();
     const names = () =>
@@ -120,7 +126,7 @@ describe("#368 reorder — within a container, preserving structure", () => {
   });
 });
 
-describe("#368 replace — a single-node slot swaps, never empties", () => {
+describe("replace — a single-node slot swaps, never empties", () => {
   it("swaps a while-do body occupant for the armed kind", async () => {
     const canvas = await openEditable();
     arm("Binary");
@@ -133,7 +139,7 @@ describe("#368 replace — a single-node slot swaps, never empties", () => {
   });
 });
 
-describe("#368 delete — the slot rules hold", () => {
+describe("delete — the slot rules hold", () => {
   it("deletes a while-do body, which deletes the whole loop", async () => {
     const canvas = await openEditable();
     fireEvent.click(within(canvas).getByRole("button", { name: "Delete body" }));
@@ -156,7 +162,7 @@ describe("#368 delete — the slot rules hold", () => {
   });
 });
 
-describe("#368 identity — a duplicate gets a fresh node", () => {
+describe("identity — a duplicate gets a fresh node", () => {
   it("duplicates a top-level node in place", async () => {
     const canvas = await openEditable();
     fireEvent.click(within(canvas).getByRole("button", { name: "Duplicate alpha" }));
@@ -164,7 +170,7 @@ describe("#368 identity — a duplicate gets a fresh node", () => {
   });
 });
 
-describe("#368 empty canvas — a start-a-body affordance", () => {
+describe("empty canvas — a start-a-body affordance", () => {
   it("empties the body then seeds it from the palette", async () => {
     const canvas = await openEditable();
     // Delete every top-level node.

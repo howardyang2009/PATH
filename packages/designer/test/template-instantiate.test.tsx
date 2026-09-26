@@ -6,7 +6,7 @@ import { App } from "../src/app.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
- * #578: insert a Template into an open workflow. Selecting a template card fetches
+ * #578 — insert a Template into an open workflow. Selecting a template card fetches
  * `GET /v0/templates/:id` and arms its body; the canvas opens only the grammar-legal sockets for it, and
  * a place runs Instantiation (fresh ids, names uniquified on collision) and splices the nodes in — a
  * 2+-node body at a single-node slot wrapped in a fresh `sequence`. The inserted nodes are ordinary.
@@ -137,7 +137,7 @@ async function savedBody(calls: ReturnType<typeof makeCalls>): Promise<Record<st
   return calls.put[0]!.body.workflow.body as Record<string, unknown>[];
 }
 
-describe("Insert a Template into a workflow (#578)", () => {
+describe("Insert a Template into a workflow", () => {
   it("fetches the template on select and splices fresh nodes in at a list socket", async () => {
     const { calls, canvas, palette } = await openApp();
     await armTemplate(palette, "draft-judge");

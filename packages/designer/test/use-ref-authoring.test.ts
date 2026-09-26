@@ -6,9 +6,10 @@ import type { OpenSession } from "../src/use-open-file.js";
 import { useRefAuthoring } from "../src/use-ref-authoring.js";
 
 /**
- * The nested-`workflow`-ref authoring seam (#391), driven head-on — the in-flight node, the reference-existing
- * edit, and the create-new descent — without rendering the App and its three overlays (app-391.test.tsx does
- * the end-to-end path). The seam's whole job is that these three transitions read side by side.
+ * #391 — the nested-`workflow`-ref authoring seam, driven head-on — the in-flight node, the reference-existing
+ * edit, and the create-new descent — without rendering the App and its three overlays
+ * (nested-ref-authoring.test.tsx does the end-to-end path). The seam's whole job is that these three
+ * transitions read side by side.
  */
 
 const PARENT_PATH = "flows/parent.workflow.json";

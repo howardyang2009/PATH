@@ -12,7 +12,7 @@ import {
 import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
 
 /**
- * The per-file undo/redo stack (#389, designer-spec § Dirty-state, undo, and the save-point). These drive
+ * #389 — the per-file undo/redo stack (designer-spec § Dirty-state, undo, and the save-point). These drive
  * the session hook directly — an undo/redo is a plain state transition on a frame, so the assertions read
  * `frameCanUndo` / `frameDirty` off the frame rather than round-tripping the UI. The stack rests on the
  * content-equality clean model (ADR 0030): the save advances the baseline, not the history, so an undo
@@ -57,7 +57,7 @@ function rename(base: WorkflowFile, name: string): WorkflowFile {
   return { ...base, body: [{ ...base.body[0]!, name }] } as WorkflowFile;
 }
 
-describe("#389 undo/redo — one entry per structural edit, clean re-derived (ADR 0030)", () => {
+describe("undo/redo — one entry per structural edit, clean re-derived (ADR 0030)", () => {
   it("undoes and redoes an edit, restoring the buffer either way", async () => {
     const hook = await openSession({ [PATH]: JSON.stringify(file("draft")) });
     const original = buffer(hook);
@@ -141,7 +141,7 @@ describe("#389 undo/redo — one entry per structural edit, clean re-derived (AD
   });
 });
 
-describe("#389 per-file stack isolation — each descended ref child has its own stack", () => {
+describe("per-file stack isolation — each descended ref child has its own stack", () => {
   const CHILD = "flows/child.workflow.json";
 
   it("keeps the parent's stack untouched while the child is edited and undone", async () => {

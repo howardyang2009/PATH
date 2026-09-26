@@ -5,7 +5,7 @@ import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
 /**
- * #619 goto authoring on the canvas and in the pane (docs/spec/goto.md §9, designer-spec § goto): the
+ * #619 — goto authoring on the canvas and in the pane (docs/spec/goto.md §9, designer-spec § goto): the
  * palette refuses a goto under a while-do or parallel, the block shows a chip instead of an edge, the
  * pane picks the target, and a rename of the target rewrites the goto in one undoable edit.
  */
@@ -71,7 +71,7 @@ function selectNode(canvas: HTMLElement, name: string): void {
   fireEvent.click(block(canvas, name));
 }
 
-describe("#619 G-D-01 palette placement", () => {
+describe("G-D-01 palette placement", () => {
   it("opens no goto socket under a while-do or a parallel, and opens the file body's", async () => {
     const { canvas } = await openCanvas();
     fireEvent.click(screen.getByRole("tab", { name: "Graph" }));
@@ -93,7 +93,7 @@ describe("#619 G-D-01 palette placement", () => {
   });
 });
 
-describe("#619 G-D-07 chip, highlight and incoming badge", () => {
+describe("G-D-07 chip, highlight and incoming badge", () => {
   it("shows the target and a direction glyph on the goto block", async () => {
     const { canvas } = await openCanvas();
     expect(within(block(canvas, "hop")).getByText("→ alpha")).toBeInTheDocument();
@@ -123,7 +123,7 @@ describe("#619 G-D-07 chip, highlight and incoming badge", () => {
   });
 });
 
-describe("#619 G-D-06 the target picker", () => {
+describe("G-D-06 the target picker", () => {
   it("lists first-level nodes in file order, self excluded, each marked forward or backward", async () => {
     const { canvas, pane } = await openCanvas();
     selectNode(canvas, "hop");
@@ -162,7 +162,7 @@ describe("#619 G-D-06 the target picker", () => {
   });
 });
 
-describe("#619 G-D-04 / G-D-05 target edits", () => {
+describe("G-D-04 / G-D-05 target edits", () => {
   it("rewrites every goto on a rename of its target, and one undo restores both", async () => {
     const { canvas, pane } = await openCanvas();
     selectNode(canvas, "alpha");

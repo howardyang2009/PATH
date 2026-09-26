@@ -6,7 +6,7 @@ import { App } from "../src/app.js";
 import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
- * #580: author mode. Opening a `*.step-template.json` itself (a double-click on its palette card) edits
+ * #580 — author mode. Opening a `*.step-template.json` itself (a double-click on its palette card) edits
  * the template source inside a synthetic workflow, and two save doors apply (ADR 0049 decision 8, ADR
  * 0050):
  *
@@ -132,7 +132,7 @@ async function editTemplate(stem: string): Promise<HTMLElement> {
   return canvas;
 }
 
-describe("Author mode on a *.step-template.json (#580)", () => {
+describe("Author mode on a *.step-template.json", () => {
   it("opens the template source in author mode, named by its suffix", async () => {
     renderApp();
     await editTemplate("nightly");

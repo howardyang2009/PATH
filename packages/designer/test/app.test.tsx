@@ -80,7 +80,7 @@ function filesWith(root: unknown): Record<string, string> {
   return { [ROOT_PATH]: JSON.stringify(root), [CHILD_PATH]: JSON.stringify(childFile()) };
 }
 
-describe("Designer shell (#366 tracer bullet, still true)", () => {
+describe("Designer shell (the tracer bullet, still true)", () => {
   it("renders the authoring shell, not the read-only Viewer", () => {
     render(<App client={stubClient()} />);
     expect(screen.getByText("PATH")).toBeInTheDocument();
@@ -121,7 +121,7 @@ describe("Designer shell (#366 tracer bullet, still true)", () => {
   });
 });
 
-describe("Designer open + render (#367)", () => {
+describe("Designer open + render", () => {
   it("opens a valid @3 file and renders it in the block grammar", async () => {
     render(<App client={stubClient({ files: filesWith(rootFile()) })} initialPath={ROOT_PATH} />);
 

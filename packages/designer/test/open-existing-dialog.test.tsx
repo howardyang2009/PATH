@@ -38,7 +38,7 @@ const FILES = {
   [BETA_PATH]: JSON.stringify(fileNamed(3, "beta-flow", "beta-step")),
 };
 
-describe("#254 open existing — empty-canvas entry point", () => {
+describe("open existing — empty-canvas entry point", () => {
   it("offers Open workflow beside New workflow on the empty canvas", async () => {
     render(<App client={stubClient()} />);
     expect(await screen.findByRole("button", { name: "Open workflow" })).toBeInTheDocument();
@@ -86,7 +86,7 @@ describe("#254 open existing — empty-canvas entry point", () => {
   });
 });
 
-describe("#254 open existing — toolbar entry point switches the open file", () => {
+describe("open existing — toolbar entry point switches the open file", () => {
   it("opens the picker from the toolbar and swaps the active workflow", async () => {
     render(
       <App client={stubClient({ files: FILES, workflows: DISCOVERY })} initialPath={ALPHA_PATH} />,

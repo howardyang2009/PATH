@@ -5,7 +5,7 @@ import { App } from "../src/app.js";
 import { stubClient } from "./stub-server.js";
 
 /**
- * #577: the palette lists templates. A `Templates` tab beside `Nodes` (variant C of #564) holds a
+ * #577 — the palette lists templates. A `Templates` tab beside `Nodes` (variant C of #564) holds a
  * Template category (the only kind, ADR 0063), populated from `GET /v0/templates` — shipped and user
  * rows alike. An invalid row is listed with its error and cannot be selected.
  */
@@ -48,7 +48,7 @@ async function openTemplatesTab(): Promise<HTMLElement> {
   return within(palette).getByRole("tabpanel", { name: "Templates" });
 }
 
-describe("Designer palette lists templates (#577)", () => {
+describe("Designer palette lists templates", () => {
   it("keeps Step and Controller on the Nodes tab, selected by default", async () => {
     render(<App client={stubClient({ templates: { templates: TEMPLATES } })} />);
     const palette = screen.getByRole("region", { name: "Palette" });

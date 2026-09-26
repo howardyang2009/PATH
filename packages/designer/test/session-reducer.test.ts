@@ -21,7 +21,8 @@ import {
  * open-and-navigate session makes — the trail, the per-frame undo history, the coalesced-edit fold, the
  * save-point advance, the two async-result staleness guards, and the create-new ref back-fill — with no
  * React and no stub server. Before the extraction the same behavior was reachable only by mounting the App
- * (`undo.test.tsx`, `save-point.test.tsx`, `app-389…392.test.tsx`).
+ * (`undo.test.tsx`, `save-point.test.tsx`, `new-file-first-save.test.tsx`,
+ * `nested-ref-authoring.test.tsx`, `problems-panel.test.tsx`).
  */
 
 function uuid(n: number): string {
