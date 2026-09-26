@@ -1,10 +1,9 @@
-import type { ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import { readArtifact } from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
 import { strongEtag } from "../etag.js";
 import { sendError } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `GET /v0/workflows/file?path=<relative_path>` (server-api-v0.md §7.1): the raw read half of the
@@ -21,11 +20,9 @@ import type { RouteContext } from "./route-context.js";
  * no body — and stays an opaque `/`-bearing string. The three 404 causes collapse to one response:
  * the file is not there, `path` escapes the root, or a path component is a symlink.
  */
-export function handleGetWorkflowFile(
-  res: ServerResponse,
-  ctx: RouteContext,
-  path: string | null,
-): void {
+export function handleGetWorkflowFile({ res, ctx, query }: ApiRequest): void {
+  const path = query.get("path");
+
   if (path === null || path === "") {
     sendError(res, 404, "not found");
     return;

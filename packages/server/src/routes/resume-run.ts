@@ -1,10 +1,9 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { ConfigObjectSchema, isTerminal, type StartRunResponse } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
 import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * Two optional fields: a config override for the resumed run (§4.3, no `input` — see below), and
@@ -31,12 +30,12 @@ const ResumeBodySchema = z
  * Each refusal names a distinct reason a resume cannot happen, so the client can tell "not finished
  * yet" from "already succeeded" from "the workflow file is gone".
  */
-export async function handleResumeRun(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-  rootRunId: string,
-): Promise<void> {
+export async function handleResumeRun({
+  req,
+  res,
+  ctx,
+  params: [rootRunId],
+}: ApiRequest<[string]>): Promise<void> {
   const body = await readRequestBody(req, res, ResumeBodySchema);
   if (!body) return;
   const { config, rerun_from_run_id: rerunFromRunId } = body.data;

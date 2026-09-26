@@ -1,7 +1,6 @@
-import type { ServerResponse } from "node:http";
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `POST /v0/runs/:root_run_id/cancel` (server-api-v0.md §4.2) — a named action, not a mutation of a
@@ -15,7 +14,7 @@ import type { RouteContext } from "./route-context.js";
  * The three refusals exist so the route never promises a stop it cannot perform; each names a
  * different reason, because "cannot cancel" is not one condition.
  */
-export function handleCancelRun(res: ServerResponse, ctx: RouteContext, rootRunId: string): void {
+export function handleCancelRun({ res, ctx, params: [rootRunId] }: ApiRequest<[string]>): void {
   // Unlike `GET /v0/runs/:root_run_id`, which can still report a tree when the root row is missing,
   // this route must not fall back to some other row of the tree: a child can read `succeeded` while
   // the tree is still running, and a terminal 409 taken from it would refuse the cancel of a live

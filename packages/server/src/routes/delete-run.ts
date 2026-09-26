@@ -1,7 +1,6 @@
-import type { ServerResponse } from "node:http";
 import { isTerminal } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `DELETE /v0/runs/:root_run_id` — permanently remove a root run's data from both stores: its rows
@@ -21,12 +20,14 @@ import type { RouteContext } from "./route-context.js";
  * unknown id or one already deleted (a double-click after the list refreshed). The `200` body echoes
  * `{ root_run_id }`, which the caller passed in.
  */
-export function handleDeleteRun(
-  res: ServerResponse,
-  ctx: RouteContext,
-  rootRunId: string,
-  force: boolean,
-): void {
+export function handleDeleteRun({
+  res,
+  ctx,
+  params: [rootRunId],
+  query,
+}: ApiRequest<[string]>): void {
+  const force = query.get("force") === "true";
+
   // The root row specifically (as `cancel` does): a child can read terminal while the tree still
   // runs, so a status taken from any other row could wrongly clear the "still running" guard.
   const rootRow = ctx.project.archive.tree(rootRunId)?.root;

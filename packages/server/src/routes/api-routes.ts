@@ -19,7 +19,7 @@ import { handlePostTemplates } from "./post-templates.js";
 import { handlePutTemplate } from "./put-template.js";
 import { handlePutWorkflow } from "./put-workflow.js";
 import { handleResumeRun } from "./resume-run.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest, RouteContext } from "./route-context.js";
 import {
   handleWorkflowLock,
   handleWorkflowLockHeartbeat,
@@ -32,16 +32,7 @@ import {
  * happen once, here; a handler receives its parameters already decoded.
  */
 
-/** One matched request, as a handler reads it. */
-interface ApiRequest {
-  req: IncomingMessage;
-  res: ServerResponse;
-  ctx: RouteContext;
-  /** The path parameters, percent-decoded, in pattern order. */
-  params: string[];
-  query: URLSearchParams;
-}
-
+/** One row of the table: the method and path it matches, and the handler that answers it. */
 interface ApiRoute {
   method: "GET" | "POST" | "PUT" | "DELETE";
   path: string | RegExp;
@@ -53,122 +44,39 @@ const TEMPLATE = /^\/v0\/templates\/([^/]+)$/;
 
 const API_ROUTES: readonly ApiRoute[] = [
   // Runs (§2–§6).
-  {
-    method: "POST",
-    path: "/v0/runs",
-    handle: ({ req, res, ctx }) => handlePostRuns(req, res, ctx),
-  },
-  {
-    method: "GET",
-    path: "/v0/runs",
-    handle: ({ res, ctx, query }) => handleListRuns(res, ctx, query),
-  },
-  {
-    method: "GET",
-    path: RUN,
-    handle: ({ res, ctx, params }) => handleGetRun(res, ctx, params[0]!),
-  },
-  {
-    method: "DELETE",
-    path: RUN,
-    handle: ({ res, ctx, params, query }) =>
-      handleDeleteRun(res, ctx, params[0]!, query.get("force") === "true"),
-  },
-  {
-    method: "GET",
-    path: /^\/v0\/runs\/([^/]+)\/events$/,
-    handle: ({ req, res, ctx, params }) => handleGetRunEvents(req, res, ctx, params[0]!),
-  },
+  { method: "POST", path: "/v0/runs", handle: handlePostRuns },
+  { method: "GET", path: "/v0/runs", handle: handleListRuns },
+  { method: "GET", path: RUN, handle: handleGetRun },
+  { method: "DELETE", path: RUN, handle: handleDeleteRun },
+  { method: "GET", path: /^\/v0\/runs\/([^/]+)\/events$/, handle: handleGetRunEvents },
   {
     method: "GET",
     path: /^\/v0\/runs\/([^/]+)\/blobs\/([^/]+)\/([^/]+)$/,
-    handle: ({ res, ctx, params }) =>
-      handleGetRunBlob(res, ctx, params[0]!, params[1]!, params[2]!),
+    handle: handleGetRunBlob,
   },
-  {
-    method: "POST",
-    path: /^\/v0\/runs\/([^/]+)\/cancel$/,
-    handle: ({ res, ctx, params }) => handleCancelRun(res, ctx, params[0]!),
-  },
-  {
-    method: "POST",
-    path: /^\/v0\/runs\/([^/]+)\/resume$/,
-    handle: ({ req, res, ctx, params }) => handleResumeRun(req, res, ctx, params[0]!),
-  },
-  {
-    method: "POST",
-    path: /^\/v0\/runs\/([^/]+)\/complete$/,
-    handle: ({ req, res, ctx, params }) => handleCompleteRun(req, res, ctx, params[0]!),
-  },
+  { method: "POST", path: /^\/v0\/runs\/([^/]+)\/cancel$/, handle: handleCancelRun },
+  { method: "POST", path: /^\/v0\/runs\/([^/]+)\/resume$/, handle: handleResumeRun },
+  { method: "POST", path: /^\/v0\/runs\/([^/]+)\/complete$/, handle: handleCompleteRun },
 
   // Workflow files (§7). The Designer edit lease is three POSTs so `navigator.sendBeacon` can drive
   // release from `beforeunload` (ADR 0017); each carries its `/`-bearing path in the body.
-  { method: "GET", path: "/v0/workflows", handle: ({ res, ctx }) => handleGetWorkflows(res, ctx) },
-  {
-    method: "PUT",
-    path: "/v0/workflows",
-    handle: ({ req, res, ctx }) => handlePutWorkflow(req, res, ctx),
-  },
-  {
-    method: "GET",
-    path: "/v0/workflows/file",
-    handle: ({ res, ctx, query }) => handleGetWorkflowFile(res, ctx, query.get("path")),
-  },
-  {
-    method: "DELETE",
-    path: "/v0/workflows/file",
-    handle: ({ req, res, ctx, query }) =>
-      handleDeleteWorkflow(req, res, ctx, query.get("path"), query.get("session_id")),
-  },
-  {
-    method: "POST",
-    path: "/v0/workflows/lock",
-    handle: ({ req, res, ctx }) => handleWorkflowLock(req, res, ctx),
-  },
-  {
-    method: "POST",
-    path: "/v0/workflows/lock/heartbeat",
-    handle: ({ req, res, ctx }) => handleWorkflowLockHeartbeat(req, res, ctx),
-  },
-  {
-    method: "POST",
-    path: "/v0/workflows/lock/release",
-    handle: ({ req, res, ctx }) => handleWorkflowLockRelease(req, res, ctx),
-  },
+  { method: "GET", path: "/v0/workflows", handle: handleGetWorkflows },
+  { method: "PUT", path: "/v0/workflows", handle: handlePutWorkflow },
+  { method: "GET", path: "/v0/workflows/file", handle: handleGetWorkflowFile },
+  { method: "DELETE", path: "/v0/workflows/file", handle: handleDeleteWorkflow },
+  { method: "POST", path: "/v0/workflows/lock", handle: handleWorkflowLock },
+  { method: "POST", path: "/v0/workflows/lock/heartbeat", handle: handleWorkflowLockHeartbeat },
+  { method: "POST", path: "/v0/workflows/lock/release", handle: handleWorkflowLockRelease },
 
   // The step-plugin palette (§8).
-  {
-    method: "GET",
-    path: "/v0/step-plugins",
-    handle: ({ res, ctx }) => handleGetStepPlugins(res, ctx),
-  },
+  { method: "GET", path: "/v0/step-plugins", handle: handleGetStepPlugins },
 
   // Templates (§10, ADR 0050). The by-id lookup spans both kinds and origins, so it takes no `?kind=`.
-  {
-    method: "GET",
-    path: "/v0/templates",
-    handle: ({ res, ctx, query }) => handleGetTemplates(res, ctx, query.get("kind")),
-  },
-  {
-    method: "POST",
-    path: "/v0/templates",
-    handle: ({ req, res, ctx }) => handlePostTemplates(req, res, ctx),
-  },
-  {
-    method: "GET",
-    path: TEMPLATE,
-    handle: ({ res, ctx, params }) => handleGetTemplate(res, ctx, params[0]!),
-  },
-  {
-    method: "PUT",
-    path: TEMPLATE,
-    handle: ({ req, res, ctx, params }) => handlePutTemplate(req, res, ctx, params[0]!),
-  },
-  {
-    method: "DELETE",
-    path: TEMPLATE,
-    handle: ({ res, ctx, params }) => handleDeleteTemplate(res, ctx, params[0]!),
-  },
+  { method: "GET", path: "/v0/templates", handle: handleGetTemplates },
+  { method: "POST", path: "/v0/templates", handle: handlePostTemplates },
+  { method: "GET", path: TEMPLATE, handle: handleGetTemplate },
+  { method: "PUT", path: TEMPLATE, handle: handlePutTemplate },
+  { method: "DELETE", path: TEMPLATE, handle: handleDeleteTemplate },
 ];
 
 /**

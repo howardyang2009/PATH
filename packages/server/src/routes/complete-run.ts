@@ -1,9 +1,8 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { type ConfigObject, ConfigObjectSchema, type JsonValue } from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `POST /v0/runs/:step_run_id/complete` (server-api-v0.md §4.4; ADR 0039/0040/0041) — resolve a parked
@@ -36,12 +35,12 @@ const CompleteBodySchema = z
   .object({ output: z.unknown(), config: ConfigObjectSchema.optional() })
   .strict();
 
-export async function handleCompleteRun(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-  stepRunId: string,
-): Promise<void> {
+export async function handleCompleteRun({
+  req,
+  res,
+  ctx,
+  params: [stepRunId],
+}: ApiRequest<[string]>): Promise<void> {
   const body = await readRequestBody(req, res, CompleteBodySchema);
   if (!body) return;
   const output = body.data.output as JsonValue;

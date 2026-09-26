@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
 import {
   checkPrecondition,
@@ -11,7 +10,7 @@ import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { isTemplatePath } from "../template-store.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * `DELETE /v0/workflows/file?path=<relative_path>&session_id=<id>` (server-api-v0.md §7.2): remove one
@@ -24,13 +23,10 @@ import type { RouteContext } from "./route-context.js";
  * through `DELETE /v0/templates/:id`. Other workflows that reference this file keep their ref; the
  * Designer's problems pass reports it as dangling.
  */
-export function handleDeleteWorkflow(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-  path: string | null,
-  sessionId: string | null,
-): void {
+export function handleDeleteWorkflow({ req, res, ctx, query }: ApiRequest): void {
+  const path = query.get("path");
+  const sessionId = query.get("session_id");
+
   if (path === null || path === "") {
     sendError(res, 404, "not found");
     return;

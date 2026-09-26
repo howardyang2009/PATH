@@ -1,9 +1,8 @@
-import type { ServerResponse } from "node:http";
 import { toWireLaunchFacts, toWireRunRecord } from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
-export function handleGetRun(res: ServerResponse, ctx: RouteContext, rootRunId: string): void {
+export function handleGetRun({ res, ctx, params: [rootRunId] }: ApiRequest<[string]>): void {
   const tree = ctx.project.archive.tree(rootRunId);
   if (!tree) {
     sendError(res, 404, `no run found with id "${rootRunId}"`);

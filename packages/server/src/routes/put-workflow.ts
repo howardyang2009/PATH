@@ -1,4 +1,3 @@
-import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
 import { validateWorkflowFile } from "@path/engine";
 import {
@@ -19,7 +18,7 @@ import { confineToProjectRoot } from "../confine.js";
 import { readRequestBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
 import { isTemplatePath } from "../template-store.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * The write envelope (server-api-v0.md §7): the resource path travels in the body, not the URL, so a
@@ -69,11 +68,7 @@ function duplicateIdErrors(file: WorkflowFile): string[] {
  * client's workflow object deterministically (`JSON.stringify(wf, null, 2)` + a trailing newline,
  * author key order preserved) and owns the on-disk bytes.
  */
-export async function handlePutWorkflow(
-  req: IncomingMessage,
-  res: ServerResponse,
-  ctx: RouteContext,
-): Promise<void> {
+export async function handlePutWorkflow({ req, res, ctx }: ApiRequest): Promise<void> {
   const body = await readRequestBody(req, res, PutWorkflowBodySchema);
   if (!body) return;
   const { workflow_path: workflowPath } = body.data;

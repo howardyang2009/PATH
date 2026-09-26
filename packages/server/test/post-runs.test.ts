@@ -1,11 +1,11 @@
-import type { ServerResponse } from "node:http";
+import type { IncomingMessage, ServerResponse } from "node:http";
 import { dirname, join } from "node:path";
 import { Readable } from "node:stream";
 import { fileURLToPath } from "node:url";
 import type { LoadedStepPluginRegistry, Project } from "@path/engine";
 import { describe, expect, it } from "vitest";
 import type { LiveRuns, StartRunOptions } from "../src/live-runs.js";
-import { handlePostRuns } from "../src/routes/post-runs.js";
+import { handlePostRuns as handlePostRunsWithRequest } from "../src/routes/post-runs.js";
 import type { RouteContext } from "../src/routes/route-context.js";
 
 /**
@@ -18,6 +18,18 @@ import type { RouteContext } from "../src/routes/route-context.js";
  */
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
+
+/**
+ * The route table hands every handler one `ApiRequest`; this test drives `POST /v0/runs` directly, so
+ * this adapter supplies the matched-request envelope. The route reads neither `params` nor `query`.
+ */
+function handlePostRuns(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): Promise<void> {
+  return handlePostRunsWithRequest({ req, res, ctx, params: [], query: new URLSearchParams() });
+}
 
 /** A `LiveRuns` whose only live method records the `start` options and answers a fixed id pair. */
 function recordingLive(): { live: LiveRuns; started: StartRunOptions[] } {

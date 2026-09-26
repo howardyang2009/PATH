@@ -1,7 +1,6 @@
-import type { ServerResponse } from "node:http";
 import type { RunBlobName } from "@path/engine";
 import { sendError, sendJson } from "../http-json.js";
-import type { RouteContext } from "./route-context.js";
+import type { ApiRequest } from "./route-context.js";
 
 /**
  * The only blob names this route serves — a fixed set, so `name` is never a raw filename. Which
@@ -23,13 +22,11 @@ function toBlobName(name: string): RunBlobName | undefined {
  * workflow-run writes a `context.json`, so a `context` read for a leaf step is an absent file → 404.
  * `stderr` is deferred (map #40), so it resolves to an unknown name → 404.
  */
-export function handleGetRunBlob(
-  res: ServerResponse,
-  ctx: RouteContext,
-  rootRunId: string,
-  runId: string,
-  name: string,
-): void {
+export function handleGetRunBlob({
+  res,
+  ctx,
+  params: [rootRunId, runId, name],
+}: ApiRequest<[string, string, string]>): void {
   const blobName = toBlobName(name);
   if (blobName === undefined) {
     sendError(res, 404, `unknown blob name "${name}" (expected "input", "output" or "context")`);
