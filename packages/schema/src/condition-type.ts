@@ -83,6 +83,10 @@ export const LEAF_CONDITION_TYPES = [
 ] as const satisfies readonly LeafConditionType[];
 
 // Fails to compile if the union grows a leaf operator the list above is missing.
-type _ExhaustiveLeafTypes = Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]> extends never
-  ? true
-  : ["LEAF_CONDITION_TYPES is missing", Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]>];
+type _ExhaustiveLeafTypes =
+  Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]> extends never
+    ? true
+    : [
+        "LEAF_CONDITION_TYPES is missing",
+        Exclude<LeafConditionType, (typeof LEAF_CONDITION_TYPES)[number]>,
+      ];

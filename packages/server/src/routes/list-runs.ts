@@ -1,5 +1,10 @@
 import type { ServerResponse } from "node:http";
-import { RUN_STATUSES, toRootRunSummary, type ListRunsResponse, type RunStatus } from "@path/schema";
+import {
+  type ListRunsResponse,
+  RUN_STATUSES,
+  type RunStatus,
+  toRootRunSummary,
+} from "@path/schema";
 import { sendError, sendJson } from "../http-json.js";
 import type { RouteContext } from "./route-context.js";
 
@@ -8,7 +13,11 @@ import type { RouteContext } from "./route-context.js";
  * and `workflow_id` are query params; the summary carries only `run_id`/`status`/`started_at`/
  * `finished_at` — the full tree and output live at `GET /v0/runs/:root_run_id`.
  */
-export function handleListRuns(res: ServerResponse, ctx: RouteContext, query: URLSearchParams): void {
+export function handleListRuns(
+  res: ServerResponse,
+  ctx: RouteContext,
+  query: URLSearchParams,
+): void {
   const limitParam = query.get("limit");
   let limit: number | undefined;
   if (limitParam !== null) {
@@ -21,7 +30,11 @@ export function handleListRuns(res: ServerResponse, ctx: RouteContext, query: UR
 
   const statusParam = query.get("status");
   if (statusParam !== null && !RUN_STATUSES.includes(statusParam as RunStatus)) {
-    sendError(res, 400, `invalid status "${statusParam}": must be one of ${RUN_STATUSES.join(", ")}`);
+    sendError(
+      res,
+      400,
+      `invalid status "${statusParam}": must be one of ${RUN_STATUSES.join(", ")}`,
+    );
     return;
   }
   const status = statusParam === null ? undefined : (statusParam as RunStatus);
@@ -39,7 +52,9 @@ export function handleListRuns(res: ServerResponse, ctx: RouteContext, query: UR
   // Each summary carries the masked-secret *names* its launch recorded (ADR 0046) — never values — so
   // a Resume surface can ask for them before it submits.
   const body: ListRunsResponse = {
-    runs: rows.map((row) => toRootRunSummary(row, ctx.project.archive.launchFacts(row.runId)?.secretKeys)),
+    runs: rows.map((row) =>
+      toRootRunSummary(row, ctx.project.archive.launchFacts(row.runId)?.secretKeys),
+    ),
   };
   sendJson(res, 200, body);
 }

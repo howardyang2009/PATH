@@ -30,7 +30,12 @@ function twoStepFile(): Record<string, unknown> {
 }
 
 async function openApp() {
-  render(<App client={stubClient({ files: { [PATH]: JSON.stringify(twoStepFile()) } })} initialPath={PATH} />);
+  render(
+    <App
+      client={stubClient({ files: { [PATH]: JSON.stringify(twoStepFile()) } })}
+      initialPath={PATH}
+    />,
+  );
   await screen.findByText("beta");
   return screen.getByRole("region", { name: "Workflow canvas" });
 }

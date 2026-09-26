@@ -29,7 +29,11 @@ describe("shipped templates", () => {
     expect(entries.some((entry) => entry.kind === "step")).toBe(true);
     for (const entry of entries) {
       expect(entry.origin).toBe("shipped");
-      expect({ name: entry.name, valid: entry.valid, error: entry.error }).toEqual({ name: entry.name, valid: true, error: null });
+      expect({ name: entry.name, valid: entry.valid, error: entry.error }).toEqual({
+        name: entry.name,
+        valid: true,
+        error: null,
+      });
     }
   });
 });

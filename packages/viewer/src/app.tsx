@@ -1,4 +1,8 @@
-import { loadReachableWorkflowFiles, type PathApiClient, type WorkflowFile } from "@path/client-core";
+import {
+  loadReachableWorkflowFiles,
+  type PathApiClient,
+  type WorkflowFile,
+} from "@path/client-core";
 import { useEffect, useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { LaunchPanel } from "./launch-panel.js";
@@ -91,7 +95,9 @@ export function App({ client }: { client: PathApiClient }) {
   // The tree is the only source of the selected run: taking the record from the same snapshot the
   // tree renders is what keeps the pane's refs and status current as the run executes.
   const selectedRun =
-    load.phase === "ready" && selectedRunId !== null ? load.value.runs.get(selectedRunId) : undefined;
+    load.phase === "ready" && selectedRunId !== null
+      ? load.value.runs.get(selectedRunId)
+      : undefined;
 
   return (
     <AppShell

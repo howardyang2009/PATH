@@ -12,8 +12,12 @@ import { createPersistedObserver } from "../../src/persistence/persisted-observe
 import { getRunsForRoot, type RunRecord } from "../../src/persistence/run-store.js";
 import { composeObservers } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
+import {
+  createScriptedLlmWorker,
+  SCRIPTED_COST_USD,
+  SCRIPTED_USAGE,
+} from "../acceptance/scripted-llm-worker.js";
 import { stampNames } from "../stamp-names.js";
-import { createScriptedLlmWorker, SCRIPTED_COST_USD, SCRIPTED_USAGE } from "../acceptance/scripted-llm-worker.js";
 
 /**
  * The regression test for #62, shaped as a **differential**: every fixture runs twice, identical but
@@ -55,15 +59,22 @@ const controls: WorkflowFile = {
   body: [
     {
       type: "binary",
-      id: "seed", name: "seed",
+      id: "seed",
+      name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
       publish: { pick: "b" },
     },
-    { type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.pick" } },
+    {
+      type: "checkpoint",
+      id: "gate",
+      name: "gate",
+      condition: { type: "exists", path: "context.pick" },
+    },
     {
       type: "branch",
-      id: "route", name: "route",
+      id: "route",
+      name: "route",
       arms: [
         { when: { type: "equals", path: "context.pick", value: "b" }, node: echoToken("arm-b") },
       ],
@@ -80,7 +91,8 @@ const loop: WorkflowFile = {
   body: [
     {
       type: "binary",
-      id: "seed", name: "seed",
+      id: "seed",
+      name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write('0')"],
       parse: "json",
@@ -88,14 +100,20 @@ const loop: WorkflowFile = {
     },
     {
       type: "while-do",
-      id: "spin", name: "spin",
+      id: "spin",
+      name: "spin",
       condition: { type: "range", path: "context.count", max: 1 },
       max_iterations: 4,
       node: {
         type: "binary",
-        id: "bump", name: "bump",
+        id: "bump",
+        name: "bump",
         command: "node",
-        args: ["-e", "process.stdout.write(String(Number(process.argv[1]) + 1))", "${context.count}"],
+        args: [
+          "-e",
+          "process.stdout.write(String(Number(process.argv[1]) + 1))",
+          "${context.count}",
+        ],
         parse: "json",
         publish: { count: "${output}" },
       },
@@ -111,15 +129,19 @@ const parallelJoin: WorkflowFile = {
   body: [
     {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         {
-          type: "sequence", id: "left", name: "left",
+          type: "sequence",
+          id: "left",
+          name: "left",
           body: [
             {
               type: "binary",
-              id: "l", name: "l",
+              id: "l",
+              name: "l",
               command: "node",
               args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
               publish: { left: "${output}" },
@@ -127,11 +149,14 @@ const parallelJoin: WorkflowFile = {
           ],
         },
         {
-          type: "sequence", id: "right", name: "right",
+          type: "sequence",
+          id: "right",
+          name: "right",
           body: [
             {
               type: "binary",
-              id: "r", name: "r",
+              id: "r",
+              name: "r",
               command: "node",
               args: ["-e", "process.stdout.write('r')"],
               publish: { right: "${output}" },
@@ -151,16 +176,37 @@ const parallelCancel: WorkflowFile = {
   body: [
     {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         {
-          type: "sequence", id: "doomed", name: "doomed",
-          body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(3)"] }],
+          type: "sequence",
+          id: "doomed",
+          name: "doomed",
+          body: [
+            {
+              type: "binary",
+              id: "kaboom",
+              name: "kaboom",
+              command: "node",
+              args: ["-e", "process.exit(3)"],
+            },
+          ],
         },
         {
-          type: "sequence", id: "victim", name: "victim",
-          body: [{ type: "binary", id: "sleeper", name: "sleeper", command: "node", args: ["-e", "setTimeout(() => {}, 5000)"] }],
+          type: "sequence",
+          id: "victim",
+          name: "victim",
+          body: [
+            {
+              type: "binary",
+              id: "sleeper",
+              name: "sleeper",
+              command: "node",
+              args: ["-e", "setTimeout(() => {}, 5000)"],
+            },
+          ],
         },
       ],
     },
@@ -175,15 +221,22 @@ const noMatch: WorkflowFile = {
   body: [
     {
       type: "binary",
-      id: "seed", name: "seed",
+      id: "seed",
+      name: "seed",
       command: "node",
       args: ["-e", "process.stdout.write(process.argv[1])", "${config.token}"],
       publish: { pick: "${output}" },
     },
     {
       type: "branch",
-      id: "route", name: "route",
-      arms: [{ when: { type: "equals", path: "context.pick", value: "never-matches" }, node: echoToken("dead") }],
+      id: "route",
+      name: "route",
+      arms: [
+        {
+          when: { type: "equals", path: "context.pick", value: "never-matches" },
+          node: echoToken("dead"),
+        },
+      ],
     },
   ],
 };
@@ -200,7 +253,13 @@ const prompt: WorkflowFile = {
 interface RunOutcomeSnapshot {
   eventTypes: string[];
   /** Per row: the shape that must not change, never the values that legitimately do. */
-  rowShape: { status: string; hasInput: boolean; hasOutput: boolean; hasUsage: boolean; cost: number | null }[];
+  rowShape: {
+    status: string;
+    hasInput: boolean;
+    hasOutput: boolean;
+    hasUsage: boolean;
+    cost: number | null;
+  }[];
   usage: (unknown | null)[];
   status: string;
   serialized: string;
@@ -211,15 +270,22 @@ async function runOnce(file: WorkflowFile, token: ConfigValue): Promise<RunOutco
   const runDb = openDb(dbFilePath(dir));
   try {
     const backends = createLogBackends(["db", "ndjson"], { db: runDb, projectDir: dir });
-    const observer = composeObservers(createPersistedObserver(runDb, dir), createLoggingObserver(backends));
+    const observer = composeObservers(
+      createPersistedObserver(runDb, dir),
+      createLoggingObserver(backends),
+    );
     const llmWorker = createScriptedLlmWorker({ ask: () => "hello" }, () => "ask");
 
     // Merge, not replace, so a fixture's own config (the prompt fixture's `config.model`, `@3` §8)
     // survives the token injection.
-    const result = await runWorkflow(stampNames({ ...file, config: { ...file.config, token } }), dir, {
-      observer,
-      workerOverrides: { prompt: { anthropic: llmWorker } },
-    });
+    const result = await runWorkflow(
+      stampNames({ ...file, config: { ...file.config, token } }),
+      dir,
+      {
+        observer,
+        workerOverrides: { prompt: { anthropic: llmWorker } },
+      },
+    );
 
     const rootRunId = (
       runDb.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string }
@@ -269,7 +335,9 @@ describe("declaring a secret must not change the narrative (#62)", () => {
       // ...and the events the fixture exists for are actually present in both.
       for (const type of expects) {
         expect(plain.eventTypes, `${name} should emit ${type}`).toContain(type);
-        expect(secret.eventTypes, `${name} should still emit ${type} with a secret`).toContain(type);
+        expect(secret.eventTypes, `${name} should still emit ${type} with a secret`).toContain(
+          type,
+        );
       }
 
       expect(secret.serialized).not.toContain(SECRET);

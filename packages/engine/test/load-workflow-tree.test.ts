@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
 import { dirname, join, relative } from "node:path";
+import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { loadWorkflowTree } from "../src/load-workflow-tree.js";
 
@@ -139,7 +139,14 @@ describe("loadWorkflowTree — superseded format versions", () => {
               {
                 id: "b3184ce9-6d20-4f51-92ac-708be1d3a64f",
                 name: "left",
-                body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "left-step", command: "echo" }],
+                body: [
+                  {
+                    type: "binary",
+                    id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97",
+                    name: "left-step",
+                    command: "echo",
+                  },
+                ],
               },
             ],
           },
@@ -165,7 +172,14 @@ describe("loadWorkflowTree — superseded format versions", () => {
         format: "path/workflow@5",
         id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "parent",
-        body: [{ type: "workflow", id: "42be13f7-a05c-4986-b7d4-6e1f28903cba", name: "child-step", ref: "./v1.workflow.json" }],
+        body: [
+          {
+            type: "workflow",
+            id: "42be13f7-a05c-4986-b7d4-6e1f28903cba",
+            name: "child-step",
+            ref: "./v1.workflow.json",
+          },
+        ],
       }),
     );
   });
@@ -223,7 +237,14 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
         id: "9c27e0a3-48bf-4d75-a1e6-3b840f9c62d5",
         name: "wd-parent",
         worker_defaults: { prompt: "anthropic" },
-        body: [{ type: "workflow", id: "42be13f7-a05c-4986-b7d4-6e1f28903cba", name: "child-step", ref: "./wd-child.workflow.json" }],
+        body: [
+          {
+            type: "workflow",
+            id: "42be13f7-a05c-4986-b7d4-6e1f28903cba",
+            name: "child-step",
+            ref: "./wd-child.workflow.json",
+          },
+        ],
       }),
     );
     writeFileSync(
@@ -233,7 +254,14 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
         id: "e7c4a1d2-3f88-4b16-9c50-24af6d0b83e1",
         name: "wd-child",
         worker_defaults: { nope: "spawn", prompt: "openai" },
-        body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "child-body", command: "echo" }],
+        body: [
+          {
+            type: "binary",
+            id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97",
+            name: "child-body",
+            command: "echo",
+          },
+        ],
       }),
     );
 
@@ -245,7 +273,14 @@ describe("loadWorkflowTree — worker_defaults registry validation (ADR 0044, #5
         id: "b3184ce9-6d20-4f51-92ac-708be1d3a64f",
         name: "wd-bad",
         worker_defaults: { prompt: "openai" },
-        body: [{ type: "binary", id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97", name: "only", command: "echo" }],
+        body: [
+          {
+            type: "binary",
+            id: "0fd6b845-91e7-42ca-8b39-cd52704e1a97",
+            name: "only",
+            command: "echo",
+          },
+        ],
       }),
     );
   });

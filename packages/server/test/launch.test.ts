@@ -35,7 +35,9 @@ describe("prepareWorkflow", () => {
   const notFound = (p: string) => `not found: ${p}`;
 
   it("loads a valid workflow within the project root", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "two-binary-steps.workflow.json", { notFound });
+    const prepared = await prepareWorkflow(fixturesDir, "two-binary-steps.workflow.json", {
+      notFound,
+    });
     expect(prepared.ok).toBe(true);
     if (!prepared.ok) return;
     expect(prepared.workflow.rootFile.name).toBe("two-binary-steps");
@@ -64,7 +66,9 @@ describe("prepareWorkflow", () => {
   });
 
   it("404s a missing file with the caller's notFound message", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "does-not-exist.workflow.json", { notFound });
+    const prepared = await prepareWorkflow(fixturesDir, "does-not-exist.workflow.json", {
+      notFound,
+    });
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(404);
@@ -72,7 +76,9 @@ describe("prepareWorkflow", () => {
   });
 
   it("400s an invalid file, carrying the loader's per-file errors as details", async () => {
-    const prepared = await prepareWorkflow(fixturesDir, "invalid-schema.workflow.json", { notFound });
+    const prepared = await prepareWorkflow(fixturesDir, "invalid-schema.workflow.json", {
+      notFound,
+    });
     expect(prepared.ok).toBe(false);
     if (prepared.ok) return;
     expect(prepared.refusal.status).toBe(400);

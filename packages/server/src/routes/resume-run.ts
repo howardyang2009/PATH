@@ -3,7 +3,7 @@ import { ConfigObjectSchema, isTerminal, type StartRunResponse } from "@path/sch
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareRunWorkflow } from "../launch.js";
-import { ResumeNotFound, ResumeRefused } from "../live-runs.js";
+import { ResumeNotFound, ResumeRefused, type StartedRun } from "../live-runs.js";
 import type { RouteContext } from "./route-context.js";
 
 /**
@@ -59,7 +59,11 @@ export async function handleResumeRun(
   // Only a finished-but-unsuccessful run is resumable. A still-running run has nothing to resume yet;
   // a succeeded run has nothing left to do. `cancelled` and `failed` fall through.
   if (!isTerminal(root.status)) {
-    sendError(res, 409, `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`);
+    sendError(
+      res,
+      409,
+      `run "${rootRunId}" is still ${root.status}; only a finished run can be resumed`,
+    );
     return;
   }
   // Plain Resume of a succeeded run has nothing to do; but a **Resume-from-K** target is legitimately
@@ -90,7 +94,7 @@ export async function handleResumeRun(
   }
   const { workflow } = prepared;
 
-  let ids;
+  let ids: StartedRun;
   try {
     ids = await ctx.live.resume(workflow.rootFile, rootRunId, workflow.workflowDir, {
       files: workflow.files,
@@ -118,7 +122,11 @@ export async function handleResumeRun(
       sendError(res, err.status, err.message);
       return;
     }
-    sendError(res, 500, `resume failed to start: ${err instanceof Error ? err.message : String(err)}`);
+    sendError(
+      res,
+      500,
+      `resume failed to start: ${err instanceof Error ? err.message : String(err)}`,
+    );
     return;
   }
 

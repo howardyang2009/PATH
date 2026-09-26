@@ -1,7 +1,7 @@
 import { IdSchema } from "./ids.js";
+import type { WorkflowNode } from "./node-type.js";
 import { childBodies, childNodePath } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
-import type { WorkflowNode } from "./node-type.js";
 
 /**
  * Node identity, stated once as **data**: the `id` an occurrence carries (the durable GUID Resume
@@ -131,11 +131,15 @@ export function nodeIdentityOccurrences(file: WorkflowFile): IdentityOccurrence[
       path,
     });
     for (const child of childBodies(node)) {
-      child.nodes.forEach((each, index) => collect(each, [...path, ...childNodePath(child, index)]));
+      child.nodes.forEach((each, index) => {
+        collect(each, [...path, ...childNodePath(child, index)]);
+      });
     }
   };
 
-  file.body.forEach((node, index) => collect(node, ["body", index]));
+  file.body.forEach((node, index) => {
+    collect(node, ["body", index]);
+  });
   return occurrences;
 }
 
@@ -145,6 +149,9 @@ export function workflowIdentityOccurrence(file: WorkflowFile): IdentityOccurren
 }
 
 /** The typed convenience: the nodes' identity issues, with no workflow row in either namespace. */
-export function nodeIdentityIssues(file: WorkflowFile, rules: readonly NodeIdentityRule[]): NodeIdentityIssue[] {
+export function nodeIdentityIssues(
+  file: WorkflowFile,
+  rules: readonly NodeIdentityRule[],
+): NodeIdentityIssue[] {
   return identityIssues(nodeIdentityOccurrences(file), rules);
 }

@@ -53,8 +53,12 @@ const StepFinishedSchema = z
 
 // Checkpoint asserts (spec §5.2): the condition's `trace` is the whole record — a strict-error
 // evaluation surfaces as an error leaf inside it, `checkpoint-failed` covers both false and error.
-const CheckpointPassedSchema = z.object({ type: z.literal("checkpoint-passed"), ...envelope, trace: TraceSchema }).strict();
-const CheckpointFailedSchema = z.object({ type: z.literal("checkpoint-failed"), ...envelope, trace: TraceSchema }).strict();
+const CheckpointPassedSchema = z
+  .object({ type: z.literal("checkpoint-passed"), ...envelope, trace: TraceSchema })
+  .strict();
+const CheckpointFailedSchema = z
+  .object({ type: z.literal("checkpoint-failed"), ...envelope, trace: TraceSchema })
+  .strict();
 
 // Branch routes (§5.2, §5.4). `branch-taken` names the winning arm — its index, or `"else"` (the
 // fallback has no condition, so `trace` is null there); `branch-no-match` carries every arm's
@@ -67,7 +71,9 @@ const BranchTakenSchema = z
     trace: TraceSchema.nullable(),
   })
   .strict();
-const BranchNoMatchSchema = z.object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) }).strict();
+const BranchNoMatchSchema = z
+  .object({ type: z.literal("branch-no-match"), ...envelope, traces: z.array(TraceSchema) })
+  .strict();
 
 // A `parallel` collect join applied at block end (mvp spec §5.2–5.4, §8.1): control events carry
 // the enclosing workflow-step's run id + the `parallel` node's id/name (envelope), plus the branch
@@ -165,7 +171,9 @@ const GotoExhaustedSchema = z
 // one per descendant). The envelope's `run_id` is the nearest re-entered workflow-run ancestor in
 // the successor tree, `node_id` the reused node's own id; `original_run_id` back-references the run
 // in the *original* tree that holds the real data, so a reader follows the pointer instead of a gap.
-const ReuseMarkerSchema = z.object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() }).strict();
+const ReuseMarkerSchema = z
+  .object({ type: z.literal("reuse-marker"), ...envelope, original_run_id: z.string() })
+  .strict();
 
 // A leaf step entered the `awaiting` status (#462): the worker returned `{ status: "awaiting" }` and
 // the engine suspended the step until an external `complete` call resolves it. The step is still live
@@ -177,7 +185,11 @@ const ReuseMarkerSchema = z.object({ type: z.literal("reuse-marker"), ...envelop
 // line is re-validated on read, so a pre-#488 `step-awaiting` line, written before the field existed,
 // must keep parsing — it reads back as `assignee: null`.
 const StepAwaitingSchema = z
-  .object({ type: z.literal("step-awaiting"), ...envelope, assignee: z.string().nullable().default(null) })
+  .object({
+    type: z.literal("step-awaiting"),
+    ...envelope,
+    assignee: z.string().nullable().default(null),
+  })
   .strict();
 
 export const LogEventSchema = z.discriminatedUnion("type", [

@@ -1,6 +1,6 @@
-import { useCallback, useRef, useState } from "react";
 import type { GetTemplateResponse, PathApiClient, TemplateSummary } from "@path/client-core";
 import type { WorkflowNode } from "@path/schema";
+import { useCallback, useRef, useState } from "react";
 
 /**
  * What the palette has **armed** — the thing the canvas opens sockets for and places on a socket click.
@@ -61,7 +61,9 @@ export function useArmed(client: PathApiClient): ArmedState {
         })
         .catch((error: unknown) => {
           if (request !== latest.current) return;
-          setTemplateError(`Could not read "${template.name}": ${error instanceof Error ? error.message : String(error)}`);
+          setTemplateError(
+            `Could not read "${template.name}": ${error instanceof Error ? error.message : String(error)}`,
+          );
         });
     },
     [client],
@@ -75,7 +77,12 @@ export function useArmed(client: PathApiClient): ArmedState {
         if (!envelope.valid || envelope.kind !== "step" || !Array.isArray(envelope.body)) {
           return `Cannot insert "${template.name}": ${envelope.error?.message ?? "invalid template"}`;
         }
-        setArmed({ kind: "step-template", id: envelope.id, name: template.name, body: envelope.body as WorkflowNode[] });
+        setArmed({
+          kind: "step-template",
+          id: envelope.id,
+          name: template.name,
+          body: envelope.body as WorkflowNode[],
+        });
         return null;
       }),
     [selectTemplate],

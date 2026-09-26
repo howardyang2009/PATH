@@ -5,7 +5,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { main, type CliIo } from "../../src/cli.js";
+import { type CliIo, main } from "../../src/cli.js";
 import { loadWorkflowTree } from "../../src/load-workflow-tree.js";
 import { openProject } from "../../src/project.js";
 import {
@@ -42,7 +42,11 @@ const REVISED_DRAFT = "# Release notes\n\nA revised draft that addresses the fee
 const FINAL_NOTES = "# Release notes\n\n- Condensed to the ten things that matter.";
 
 function verdict(pass: boolean, format: "short" | "long" = "short"): string {
-  return JSON.stringify({ pass, feedback: pass ? "Looks good." : "Be specific about the fixes.", suggested_format: format });
+  return JSON.stringify({
+    pass,
+    feedback: pass ? "Looks good." : "Be specific about the fixes.",
+    suggested_format: format,
+  });
 }
 
 /**
@@ -105,14 +109,25 @@ function createRepo(): string {
   git("config", "user.name", "Acceptance Test");
   git("config", "commit.gpgsign", "false");
 
-  for (const [n, subject] of ["feat: add while-do loops", "fix: mask secrets", "feat: collect joins", "chore: tidy"].entries()) {
+  for (const [n, subject] of [
+    "feat: add while-do loops",
+    "fix: mask secrets",
+    "feat: collect joins",
+    "chore: tidy",
+  ].entries()) {
     writeFileSync(join(dir, `file-${n}.txt`), `contents ${n}\n`);
     git("add", ".");
     git("commit", "--quiet", "-m", subject);
   }
 
-  cpSync(join(acceptanceDir, "release-notes.workflow.json"), join(dir, "release-notes.workflow.json"));
-  cpSync(join(acceptanceDir, "revise-cycle.workflow.json"), join(dir, "revise-cycle.workflow.json"));
+  cpSync(
+    join(acceptanceDir, "release-notes.workflow.json"),
+    join(dir, "release-notes.workflow.json"),
+  );
+  cpSync(
+    join(acceptanceDir, "revise-cycle.workflow.json"),
+    join(dir, "revise-cycle.workflow.json"),
+  );
   return dir;
 }
 
@@ -191,8 +206,15 @@ function readRuns(projectDir: string): RunRow[] {
  * apart by its `iteration` ordinal and kept out of `workflowRuns` and `leaves` — those two keep
  * meaning "genuine workflow-run" and "genuine leaf step".
  */
-function classifyRuns(runs: RunRow[]): { root: RunRow; workflowRuns: RunRow[]; iterations: RunRow[]; leaves: RunRow[] } {
-  const parentIds = new Set(runs.map((row) => row.parent_run_id).filter((id): id is string => id !== null));
+function classifyRuns(runs: RunRow[]): {
+  root: RunRow;
+  workflowRuns: RunRow[];
+  iterations: RunRow[];
+  leaves: RunRow[];
+} {
+  const parentIds = new Set(
+    runs.map((row) => row.parent_run_id).filter((id): id is string => id !== null),
+  );
   const root = runs.find((row) => row.parent_run_id === null)!;
   return {
     root,
@@ -225,7 +247,10 @@ function readRunLog(projectDir: string, rootRunId: string): { seq: number; type:
   // The first line is the NDJSON header (#19), not an event.
   return lines
     .map((line) => JSON.parse(line) as { seq?: number; type?: string })
-    .filter((entry): entry is { seq: number; type: string } => entry.seq !== undefined && entry.type !== undefined)
+    .filter(
+      (entry): entry is { seq: number; type: string } =>
+        entry.seq !== undefined && entry.type !== undefined,
+    )
     .map(({ seq, type }) => ({ seq, type })); // projected to match the db-side selection
 }
 
@@ -250,7 +275,13 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     // parallel branches may settle in either order; the rest of the pipeline is strictly ordered.
     const nodeIds = worker.calls.map((call) => call.nodeName);
     expect(nodeIds.slice(0, 2).sort()).toEqual(["summarize-features", "summarize-fixes"]);
-    expect(nodeIds.slice(2)).toEqual(["draft-notes", "judge-draft", "revise", "judge", "format-short"]);
+    expect(nodeIds.slice(2)).toEqual([
+      "draft-notes",
+      "judge-draft",
+      "revise",
+      "judge",
+      "format-short",
+    ]);
 
     // The real git history reached the first LLM step, so the binary step genuinely ran git —
     // and ran it in the *workflow's* repo (`repo_path: "."`), not wherever the test process sits.
@@ -316,7 +347,9 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     const worker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(runPipeline(worker)).resolves.toBe(0);
 
-    const rootRunId = readRuns(harness.projectDir).find((row) => row.parent_run_id === null)!.run_id;
+    const rootRunId = readRuns(harness.projectDir).find(
+      (row) => row.parent_run_id === null,
+    )!.run_id;
     const fromDb = readDbLogEvents(harness.projectDir, rootRunId);
     const fromFile = readRunLog(harness.projectDir, rootRunId);
 
@@ -336,8 +369,12 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
 
     for (const row of runs) {
       const runDir = join(treeDir, row.run_id);
-      expect(existsSync(join(runDir, "input.json")), `no input.json for "${row.node_id}"`).toBe(true);
-      expect(existsSync(join(runDir, "output.json")), `no output.json for "${row.node_id}"`).toBe(true);
+      expect(existsSync(join(runDir, "input.json")), `no input.json for "${row.node_id}"`).toBe(
+        true,
+      );
+      expect(existsSync(join(runDir, "output.json")), `no output.json for "${row.node_id}"`).toBe(
+        true,
+      );
       expect(row.input_ref).toBe(`runs/${rootRunId}/${row.run_id}/input.json`);
       expect(row.output_ref).toBe(`runs/${rootRunId}/${row.run_id}/output.json`);
     }
@@ -346,11 +383,18 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     const { workflowRuns } = classifyRuns(runs);
     expect(workflowRuns).toHaveLength(2);
     for (const row of workflowRuns) {
-      expect(existsSync(join(treeDir, row.run_id, "context.json")), `no context.json for run ${row.run_id}`).toBe(true);
+      expect(
+        existsSync(join(treeDir, row.run_id, "context.json")),
+        `no context.json for run ${row.run_id}`,
+      ).toBe(true);
     }
 
     const rootContext = JSON.parse(readFileSync(join(treeDir, rootRunId, "context.json"), "utf8"));
-    expect(rootContext).toMatchObject({ draft: REVISED_DRAFT, final_notes: FINAL_NOTES, file: "RELEASE_NOTES.md" });
+    expect(rootContext).toMatchObject({
+      draft: REVISED_DRAFT,
+      final_notes: FINAL_NOTES,
+      file: "RELEASE_NOTES.md",
+    });
   });
 
   it("criterion 4 — records usage and estimated_cost_usd on every LLM run, and only those", async () => {
@@ -365,7 +409,9 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     expect(llmLeaves).toHaveLength(7);
     for (const row of llmLeaves) {
       expect(JSON.parse(row.usage!), `usage missing on "${row.node_id}"`).toEqual(SCRIPTED_USAGE);
-      expect(row.estimated_cost_usd, `cost missing on "${row.node_id}"`).toBeCloseTo(SCRIPTED_COST_USD);
+      expect(row.estimated_cost_usd, `cost missing on "${row.node_id}"`).toBeCloseTo(
+        SCRIPTED_COST_USD,
+      );
     }
 
     // Spend is recorded leaf-only: binary steps never spend, and a workflow-run stores no total of
@@ -379,11 +425,14 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
   it("criterion 1 — picks the long branch arm when the verdict asks for it", async () => {
     // The happy path always takes the `short` arm; `pick-format` is ordered-arms/first-match-wins
     // (NOTES.md), so the second arm needs its own run to be exercised at all.
-    const worker = createScriptedLlmWorker({
-      ...happyPathScript(),
-      "judge-draft": () => verdict(true, "long"),
-      "format-long": () => "# Release notes\n\n## Features\n\nThe long form.",
-    }, labelPrompt);
+    const worker = createScriptedLlmWorker(
+      {
+        ...happyPathScript(),
+        "judge-draft": () => verdict(true, "long"),
+        "format-long": () => "# Release notes\n\n## Features\n\nThe long form.",
+      },
+      labelPrompt,
+    );
 
     await expect(runPipeline(worker)).resolves.toBe(0);
 
@@ -392,7 +441,9 @@ describe("acceptance: release-notes pipeline end-to-end (mvp spec §11, ticket #
     expect(nodeIds).not.toContain("format-short");
     // A passing first verdict also means the while-do loop never entered.
     expect(nodeIds).not.toContain("revise");
-    expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toContain("## Features");
+    expect(readFileSync(join(harness.projectDir, "RELEASE_NOTES.md"), "utf8")).toContain(
+      "## Features",
+    );
   });
 
   it("criterion 4 — fans out the parallel block when the cap leaves room", async () => {
@@ -432,11 +483,14 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
   });
 
   it("a never-passing judge exhausts max_revisions and fails the run", async () => {
-    const worker = createScriptedLlmWorker({
-      ...happyPathScript(),
-      "judge-draft": () => verdict(false),
-      judge: () => verdict(false), // never passes, so the loop condition stays true
-    }, labelPrompt);
+    const worker = createScriptedLlmWorker(
+      {
+        ...happyPathScript(),
+        "judge-draft": () => verdict(false),
+        judge: () => verdict(false), // never passes, so the loop condition stays true
+      },
+      labelPrompt,
+    );
 
     const code = await runPipeline(worker, ["--set", "max_revisions=2"]);
 
@@ -458,11 +512,16 @@ describe("acceptance: failure paths (mvp spec §11 criterion 3)", () => {
 });
 
 /** The reuse-markers (#172) a resumed root run wrote, read straight from the `db` log backend. */
-function readReuseMarkers(projectDir: string, rootRunId: string): { nodeName: string; originalRunId: string }[] {
+function readReuseMarkers(
+  projectDir: string,
+  rootRunId: string,
+): { nodeName: string; originalRunId: string }[] {
   const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
   try {
     const rows = db
-      .prepare("SELECT event FROM log_events WHERE root_run_id = ? AND type = 'reuse-marker' ORDER BY seq")
+      .prepare(
+        "SELECT event FROM log_events WHERE root_run_id = ? AND type = 'reuse-marker' ORDER BY seq",
+      )
       .all(rootRunId) as { event: string }[];
     return rows.map((row) => {
       const event = JSON.parse(row.event) as { node_name: string; original_run_id: string };
@@ -523,7 +582,13 @@ async function killMidFirstRevise(): Promise<{ rootRunId: string; worker: Script
 describe("acceptance: resume after a mid-while-do kill (#178)", () => {
   // Pre-loop nodes that succeeded before the kill: everything up to and including judge-draft. On
   // resume these must reuse — no fresh execution, no fresh spend.
-  const REUSED_NODES = ["gather-changes", "summarize-features", "summarize-fixes", "draft-notes", "judge-draft"];
+  const REUSED_NODES = [
+    "gather-changes",
+    "summarize-features",
+    "summarize-fixes",
+    "draft-notes",
+    "judge-draft",
+  ];
 
   it("completes on --resume, reusing pre-loop nodes instead of re-running them", async () => {
     const { rootRunId: killedRootRunId } = await killMidFirstRevise();
@@ -561,7 +626,12 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     const resumeWorker = createScriptedLlmWorker(happyPathScript(), labelPrompt);
     await expect(
       main(
-        ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", killedRootRunId],
+        [
+          "run",
+          join(harness.projectDir, "release-notes.workflow.json"),
+          "--resume",
+          killedRootRunId,
+        ],
         harness.io,
         { workerOverrides: overrides(resumeWorker) },
       ),
@@ -575,7 +645,9 @@ describe("acceptance: resume after a mid-while-do kill (#178)", () => {
     expect(markers.every((marker) => marker.originalRunId.length > 0)).toBe(true);
 
     // The successor is a successor: its root row links back to the killed run, and it is a fresh tree.
-    const successorRuns = readRuns(harness.projectDir).filter((row) => row.root_run_id === successorRootRunId);
+    const successorRuns = readRuns(harness.projectDir).filter(
+      (row) => row.root_run_id === successorRootRunId,
+    );
     const successorRoot = successorRuns.find((row) => row.parent_run_id === null)!;
     expect(successorRoot.resumed_from_root_run_id).toBe(killedRootRunId);
 
@@ -626,7 +698,14 @@ describe("acceptance: Resume-from-K after a multi-iteration while-do (#454)", ()
     harness.stdout.length = 0;
     const resumeWorker = createScriptedLlmWorker(twoIterationScript(), labelPrompt);
     const code = await main(
-      ["run", join(harness.projectDir, "release-notes.workflow.json"), "--resume", root.run_id, "--from", writeFile.run_id],
+      [
+        "run",
+        join(harness.projectDir, "release-notes.workflow.json"),
+        "--resume",
+        root.run_id,
+        "--from",
+        writeFile.run_id,
+      ],
       harness.io,
       { workerOverrides: overrides(resumeWorker) },
     );
@@ -647,7 +726,9 @@ describe("acceptance: Resume-from-K after a multi-iteration while-do (#454)", ()
 
     // No fresh revise-cycle ran in the successor: the loop body left no genuine-execution leaf, only
     // reuse rows. (A reuse row carries no worker; a fresh run would.)
-    const successorRuns = readRuns(harness.projectDir).filter((row) => row.root_run_id === successorRootRunId);
+    const successorRuns = readRuns(harness.projectDir).filter(
+      (row) => row.root_run_id === successorRootRunId,
+    );
     const { leaves } = classifyRuns(successorRuns);
     expect(leaves.filter(isLlmRun)).toHaveLength(0);
   });

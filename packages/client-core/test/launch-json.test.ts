@@ -15,7 +15,11 @@ describe("parseJsonField", () => {
   });
 
   it("treats blank text as an omitted field when empty is allowed", () => {
-    expect(parseJsonField("   ", { allowEmpty: true })).toEqual({ ok: true, empty: true, value: undefined });
+    expect(parseJsonField("   ", { allowEmpty: true })).toEqual({
+      ok: true,
+      empty: true,
+      value: undefined,
+    });
   });
 
   it("rejects blank text when empty is not allowed", () => {
@@ -39,6 +43,10 @@ describe("parseJsonField", () => {
   });
 
   it("accepts an empty object", () => {
-    expect(parseJsonField("{}", { allowEmpty: true })).toEqual({ ok: true, empty: false, value: {} });
+    expect(parseJsonField("{}", { allowEmpty: true })).toEqual({
+      ok: true,
+      empty: false,
+      value: {},
+    });
   });
 });

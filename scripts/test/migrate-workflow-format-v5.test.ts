@@ -2,8 +2,8 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "nod
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { safeParseStepTemplate, safeParseWorkflowFile } from "@path/schema";
-import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { builtinRegistry } from "./builtin-registry.js";
 import { runCodemod } from "./run-codemod.js";
 
 /**
@@ -35,7 +35,8 @@ function writeRaw(file: string, text: string): string {
   return full;
 }
 
-const write = (file: string, doc: unknown): string => writeRaw(file, `${JSON.stringify(doc, null, 2)}\n`);
+const write = (file: string, doc: unknown): string =>
+  writeRaw(file, `${JSON.stringify(doc, null, 2)}\n`);
 const read = (file: string): Record<string, unknown> => JSON.parse(readFileSync(file, "utf8"));
 const bytes = (file: string): string => readFileSync(file, "utf8");
 

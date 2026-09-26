@@ -43,7 +43,10 @@ describe("blockCancellation", () => {
     block.cancellation.trigger("villain-run");
 
     expect(block.cancellation.signal.aborted).toBe(true);
-    expect(stopCause(block.cancellation)).toEqual({ cause: "sibling-failed", causeRunId: "villain-run" });
+    expect(stopCause(block.cancellation)).toEqual({
+      cause: "sibling-failed",
+      causeRunId: "villain-run",
+    });
   });
 
   it("keeps the first cause when a race win and a failure land together", () => {
@@ -61,7 +64,10 @@ describe("blockCancellation", () => {
 
     // The inner block never failed; the outer sibling's failure is what stopped it.
     outer.cancellation.trigger("outer-villain");
-    expect(stopCause(inner.cancellation)).toEqual({ cause: "sibling-failed", causeRunId: "outer-villain" });
+    expect(stopCause(inner.cancellation)).toEqual({
+      cause: "sibling-failed",
+      causeRunId: "outer-villain",
+    });
 
     // Once it has its own cause, that one wins — an outer failure does not overwrite a local verdict.
     inner.cancellation.triggerWin();
@@ -95,7 +101,13 @@ describe("stopCause", () => {
   });
 
   it("reports an authority with no cause yet as operator, matching the pre-authority reading", () => {
-    const silent: Cancellation = { signal: new AbortController().signal, cause: null, causeRunId: null, trigger: () => {}, triggerWin: () => {} };
+    const silent: Cancellation = {
+      signal: new AbortController().signal,
+      cause: null,
+      causeRunId: null,
+      trigger: () => {},
+      triggerWin: () => {},
+    };
     expect(stopCause(silent)).toEqual({ cause: "operator", causeRunId: null });
   });
 });

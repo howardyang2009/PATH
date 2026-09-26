@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { tokenizeJson, type JsonToken } from "../src/json-tokens.js";
+import { type JsonToken, tokenizeJson } from "../src/json-tokens.js";
 
 /** The tokens of one kind, in order — what a test asserts about, rather than the whole span list. */
 function textOf(tokens: readonly JsonToken[], kind: JsonToken["kind"]): string[] {

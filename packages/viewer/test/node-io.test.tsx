@@ -55,10 +55,14 @@ describe("NodeIo", () => {
   });
 
   it("shows each object's blob ref as its provenance", async () => {
-    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } } });
+    const client = stubClient({
+      blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } },
+    });
     render(<NodeIo client={client} run={runState()} />);
 
-    expect(await screen.findByTestId("node-io-input")).toHaveTextContent(`runs/${ROOT}/${RUN}/input.json`);
+    expect(await screen.findByTestId("node-io-input")).toHaveTextContent(
+      `runs/${ROOT}/${RUN}/input.json`,
+    );
   });
 
   it("reads a blob that is JSON null as a value, not as a missing object", async () => {
@@ -84,9 +88,9 @@ describe("NodeIo", () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
     render(<NodeIo client={client} run={runState()} />);
 
-    expect(await within(await screen.findByTestId("node-io-output")).findByRole("alert")).toHaveTextContent(
-      /Failed to load output/i,
-    );
+    expect(
+      await within(await screen.findByTestId("node-io-output")).findByRole("alert"),
+    ).toHaveTextContent(/Failed to load output/i);
   });
 
   it("re-reads the output on its own once the finished run publishes its ref", async () => {
@@ -96,16 +100,23 @@ describe("NodeIo", () => {
     const running = runState({ status: "running", outputRef: null });
     const view = render(<NodeIo client={client} run={running} />);
 
-    await waitFor(() => expect(screen.getByTestId("node-io-output")).toHaveTextContent(/No output object yet/i));
+    await waitFor(() =>
+      expect(screen.getByTestId("node-io-output")).toHaveTextContent(/No output object yet/i),
+    );
 
     // What the live snapshot does when the run finishes: the record gains its output ref.
     view.rerender(<NodeIo client={client} run={runState()} />);
 
-    await waitFor(() => expect(screen.getByTestId("node-io-output")).toHaveTextContent('"done": true'));
+    await waitFor(() =>
+      expect(screen.getByTestId("node-io-output")).toHaveTextContent('"done": true'),
+    );
   });
 
   it("re-reads both objects on refresh, for a ref whose content changed underneath", async () => {
-    const blobs: Record<string, unknown> = { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { v: 1 } };
+    const blobs: Record<string, unknown> = {
+      [`${RUN}/input`]: { a: 1 },
+      [`${RUN}/output`]: { v: 1 },
+    };
     const client = stubClient({ blobs });
     render(<NodeIo client={client} run={runState()} />);
 
@@ -129,7 +140,11 @@ describe("NodeIo", () => {
     view.rerender(
       <NodeIo
         client={client}
-        run={runState({ runId: other, outputRef: null, inputRef: `runs/${ROOT}/${other}/input.json` })}
+        run={runState({
+          runId: other,
+          outputRef: null,
+          inputRef: `runs/${ROOT}/${other}/input.json`,
+        })}
       />,
     );
 
@@ -141,7 +156,12 @@ describe("NodeIo", () => {
     // last node of a tree finishes — so a terminal run with a null ref may still have written its
     // object. Trusting the ref there hides real output, and Refresh cannot rescue it.
     const client = stubClient({ blobs: { [`${RUN}/output`]: { wrote: "RELEASE_NOTES.md" } } });
-    render(<NodeIo client={client} run={runState({ status: "succeeded", inputRef: null, outputRef: null })} />);
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ status: "succeeded", inputRef: null, outputRef: null })}
+      />,
+    );
 
     await waitFor(() =>
       expect(screen.getByTestId("node-io-output")).toHaveTextContent('"wrote": "RELEASE_NOTES.md"'),
@@ -150,7 +170,12 @@ describe("NodeIo", () => {
 
   it("reads a 404 for a finished run as an object it never recorded", async () => {
     const client = stubClient({ blobs: {} });
-    render(<NodeIo client={client} run={runState({ status: "succeeded", inputRef: null, outputRef: null })} />);
+    render(
+      <NodeIo
+        client={client}
+        run={runState({ status: "succeeded", inputRef: null, outputRef: null })}
+      />,
+    );
 
     const output = await screen.findByTestId("node-io-output");
     await waitFor(() => expect(output).toHaveTextContent(/No output object recorded/i));
@@ -184,7 +209,11 @@ describe("NodeIo", () => {
     render(
       <NodeIo
         client={client}
-        run={runState({ outputRef: null, reusedFromRunId: sourceRun, reusedFromRootRunId: sourceRoot })}
+        run={runState({
+          outputRef: null,
+          reusedFromRunId: sourceRun,
+          reusedFromRootRunId: sourceRoot,
+        })}
       />,
     );
 
@@ -199,7 +228,13 @@ describe("NodeIo", () => {
     render(
       <NodeIo
         client={client}
-        run={runState({ status: "succeeded", inputRef: null, outputRef: null, reusedFromRunId: "gone", reusedFromRootRunId: null })}
+        run={runState({
+          status: "succeeded",
+          inputRef: null,
+          outputRef: null,
+          reusedFromRunId: "gone",
+          reusedFromRootRunId: null,
+        })}
       />,
     );
 
@@ -230,7 +265,9 @@ describe("NodeIo", () => {
   it("reads an absent context as no context, not an error", async () => {
     // A run with no context.json (e.g. still mid-flight) 404s on its `context` read; the 404 is
     // trusted and rendered as a plain note rather than surfaced as a failure.
-    const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } } });
+    const client = stubClient({
+      blobs: { [`${RUN}/input`]: { a: 1 }, [`${RUN}/output`]: { b: 2 } },
+    });
     render(<NodeIo client={client} run={runState()} />);
 
     const context = await screen.findByTestId("node-io-context");
@@ -239,7 +276,10 @@ describe("NodeIo", () => {
   });
 
   it("re-reads the context on refresh, for a write-through that changed it underneath", async () => {
-    const blobs: Record<string, unknown> = { [`${RUN}/input`]: { a: 1 }, [`${RUN}/context`]: { v: 1 } };
+    const blobs: Record<string, unknown> = {
+      [`${RUN}/input`]: { a: 1 },
+      [`${RUN}/context`]: { v: 1 },
+    };
     const client = stubClient({ blobs });
     render(<NodeIo client={client} run={runState({ outputRef: null })} />);
 
@@ -263,7 +303,10 @@ describe("NodeIo", () => {
     const client = stubClient({ blobs: { [`${RUN}/input`]: { a: 1 } } });
     // The view folded this run's last failed `step-finished` from the event log; the pane reads the fact
     // rather than scanning the narrative itself (the fold is covered in client-core's view-model test).
-    const view = { displayStatus: new Map(), lastError: new Map([[RUN, "worker exited with code 1: boom"]]) };
+    const view = {
+      displayStatus: new Map(),
+      lastError: new Map([[RUN, "worker exited with code 1: boom"]]),
+    };
     render(<NodeIo client={client} run={runState({ status: "failed" })} view={view} />);
 
     const error = await screen.findByTestId("node-io-error");
@@ -293,10 +336,16 @@ describe("NodeIo", () => {
       />,
     );
 
-    expect(await screen.findByTestId("node-io-override-input")).toHaveTextContent('"since_tag": "1.3.0"');
+    expect(await screen.findByTestId("node-io-override-input")).toHaveTextContent(
+      '"since_tag": "1.3.0"',
+    );
     // The masked token is shown as stored — the reader sees what the run holds, tokens and all.
-    expect(screen.getByTestId("node-io-override-config")).toHaveTextContent('"[secret:github_token]"');
-    expect(screen.getByTestId("node-io-launch-worker-defaults")).toHaveTextContent('"prompt": "deepseek"');
+    expect(screen.getByTestId("node-io-override-config")).toHaveTextContent(
+      '"[secret:github_token]"',
+    );
+    expect(screen.getByTestId("node-io-launch-worker-defaults")).toHaveTextContent(
+      '"prompt": "deepseek"',
+    );
   });
 
   it("shows only the launch facts the launch supplied", async () => {
@@ -347,7 +396,9 @@ describe("NodeIo", () => {
     // the tree actually started from belongs to the predecessor. The pane reads the predecessor's object
     // directly (the same direct-to-source reading a reuse row gets) rather than a copy on disk.
     const original = "05c47f7d-a6cb-4720-9b0f-11a8eb301726";
-    const client = stubClient({ blobs: { [`${original}/input`]: { test1: "test3", test4: "test5" } } });
+    const client = stubClient({
+      blobs: { [`${original}/input`]: { test1: "test3", test4: "test5" } },
+    });
     render(
       <NodeIo
         client={client}

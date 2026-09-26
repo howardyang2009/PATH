@@ -35,7 +35,16 @@ const TEMPLATE_BODY = [
 
 function summary(id: string, origin: "user" | "shipped"): TemplateSummary {
   const name = origin === "user" ? "nightly" : "starter";
-  return { id, name, description: `${name} blurb`, kind: "step", origin, read_only: origin === "shipped", valid: true, error: null };
+  return {
+    id,
+    name,
+    description: `${name} blurb`,
+    kind: "step",
+    origin,
+    read_only: origin === "shipped",
+    valid: true,
+    error: null,
+  };
 }
 
 function envelope(id: string, origin: "user" | "shipped"): Record<string, unknown> {
@@ -82,7 +91,14 @@ function renderApp(initialPath?: string) {
     <App
       client={stubClient({
         files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
-        templates: { templates: [summary(USER_ID, "user"), summary(SHIPPED_ID, "shipped"), STEP_SUMMARY, BROKEN_SUMMARY] },
+        templates: {
+          templates: [
+            summary(USER_ID, "user"),
+            summary(SHIPPED_ID, "shipped"),
+            STEP_SUMMARY,
+            BROKEN_SUMMARY,
+          ],
+        },
         templateBodies: {
           [USER_ID]: envelope(USER_ID, "user"),
           [SHIPPED_ID]: envelope(SHIPPED_ID, "shipped"),
@@ -108,7 +124,9 @@ async function editTemplate(stem: string): Promise<HTMLElement> {
   // A double-click edits only in template mode; switching from an empty workflow canvas asks nothing.
   const mode = await screen.findByRole("radiogroup", { name: "Edit mode" });
   fireEvent.click(within(mode).getByRole("radio", { name: "Template" }));
-  fireEvent.doubleClick(await within(templatesPanel()).findByRole("button", { name: new RegExp(`^${stem}`) }));
+  fireEvent.doubleClick(
+    await within(templatesPanel()).findByRole("button", { name: new RegExp(`^${stem}`) }),
+  );
   const canvas = await screen.findByRole("region", { name: "Workflow canvas" });
   await within(canvas).findByText("draft");
   return canvas;
@@ -152,7 +170,10 @@ describe("Author mode on a *.step-template.json (#580)", () => {
     const write = calls.templateWrites[0]!;
     expect(write).toMatchObject({ method: "PUT", id: USER_ID, ifMatch: '"t"' });
     expect(write.body["id"]).toBe(USER_ID);
-    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([NODE_IDS[1], NODE_IDS[0]]);
+    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([
+      NODE_IDS[1],
+      NODE_IDS[0],
+    ]);
     expect(calls.put).toHaveLength(0);
   });
 
@@ -162,14 +183,20 @@ describe("Author mode on a *.step-template.json (#580)", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "nightly-v2" } });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "nightly-v2" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     // The green "Saved" status replaces the file name in the top bar.
     await screen.findByText("Saved");
     expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
     const post = calls.templateWrites[0]!;
-    expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "nightly-v2", description: "nightly blurb" } });
+    expect(post).toMatchObject({
+      method: "POST",
+      id: null,
+      body: { kind: "step", name: "nightly-v2", description: "nightly blurb" },
+    });
     const created = post.body["body"] as { id: string };
     expect(created.id).not.toBe(USER_ID);
 
@@ -177,7 +204,11 @@ describe("Author mode on a *.step-template.json (#580)", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: "Move draft down" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.templateWrites).toHaveLength(2));
-    expect(calls.templateWrites[1]).toMatchObject({ method: "PUT", id: created.id, ifMatch: '"created"' });
+    expect(calls.templateWrites[1]).toMatchObject({
+      method: "PUT",
+      id: created.id,
+      ifMatch: '"created"',
+    });
   });
 
   it("a shipped template refuses the write-back with the API's 403", async () => {
@@ -189,7 +220,9 @@ describe("Author mode on a *.step-template.json (#580)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect(await screen.findByText(/template is read-only/)).toBeInTheDocument();
-    expect(calls.templateWrites).toEqual([expect.objectContaining({ method: "PUT", id: SHIPPED_ID })]);
+    expect(calls.templateWrites).toEqual([
+      expect.objectContaining({ method: "PUT", id: SHIPPED_ID }),
+    ]);
   });
 });
 
@@ -205,8 +238,15 @@ describe("The template envelope", () => {
     const write = calls.templateWrites[0]!;
     expect(write).toMatchObject({ method: "PUT", id: STEP_ID, ifMatch: '"s"' });
     expect(Object.keys(write.body).sort()).toEqual(["body", "description", "format", "id"]);
-    expect(write.body).toMatchObject({ format: FORMAT_VERSION, id: STEP_ID, description: "draft then judge" });
-    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([NODE_IDS[1], NODE_IDS[0]]);
+    expect(write.body).toMatchObject({
+      format: FORMAT_VERSION,
+      id: STEP_ID,
+      description: "draft then judge",
+    });
+    expect((write.body["body"] as { id: string }[]).map((node) => node.id)).toEqual([
+      NODE_IDS[1],
+      NODE_IDS[0],
+    ]);
   });
 
   it("Save as keeps the description and names the .step-template.json suffix", async () => {
@@ -216,14 +256,20 @@ describe("The template envelope", () => {
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
     const dialog = await screen.findByRole("dialog", { name: "Save as new template" });
     expect(within(dialog).getByText(".step-template.json")).toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "draft-judge-v2" } });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "draft-judge-v2" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     // The green "Saved" status replaces the file name in the top bar.
     await screen.findByText("Saved");
     expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
     const post = calls.templateWrites[0]!;
-    expect(post).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "draft-judge-v2", description: "draft then judge" } });
+    expect(post).toMatchObject({
+      method: "POST",
+      id: null,
+      body: { kind: "step", name: "draft-judge-v2", description: "draft then judge" },
+    });
     const created = post.body["body"] as { id: string; description: string };
     expect(created.id).not.toBe(STEP_ID);
     expect(created.description).toBe("draft then judge");

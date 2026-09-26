@@ -1,10 +1,10 @@
 import { z } from "zod";
 import { formatIssues } from "./format-issues.js";
 import { IdSchema } from "./ids.js";
-import { makeBodySchema, supersededFormatError } from "./workflow-file.js";
-import { FORMAT_VERSION } from "./workflow-file-type.js";
 import type { StepPluginRegistry } from "./nodes.js";
 import type { StepTemplate } from "./step-template-type.js";
+import { makeBodySchema, supersededFormatError } from "./workflow-file.js";
+import { FORMAT_VERSION } from "./workflow-file-type.js";
 
 // The strict Step-Template envelope (ADR 0048 decision 1): `{ format, id, description, body }` and
 // nothing else. `.strict()` is the whole point of the shape — a `name`, a `worker_defaults`, a

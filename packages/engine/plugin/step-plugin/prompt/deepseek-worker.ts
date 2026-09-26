@@ -1,7 +1,6 @@
 import type { JsonValue, StepRequest, StepResult } from "@path/engine/plugin";
-
+import type { PromptConfig, PromptFields } from "./index.js";
 import { renderPromptMessage } from "./render-prompt-message.js";
-import type { PromptFields, PromptConfig } from "./index.js";
 
 /**
  * The `prompt` type's `deepseek` worker: one OpenAI-compatible Chat Completions request per step-run
@@ -41,7 +40,10 @@ const DEFAULT_BASE_URL = "https://api.deepseek.com";
  * these rates, so this is the ceiling of what the step could have cost. A cost estimate that can only
  * overstate is the honest direction for a ceiling to err.
  */
-const PEAK_USD_PER_MILLION_TOKENS: Record<string, { cacheHitInput: number; cacheMissInput: number; output: number }> = {
+const PEAK_USD_PER_MILLION_TOKENS: Record<
+  string,
+  { cacheHitInput: number; cacheMissInput: number; output: number }
+> = {
   "deepseek-flash": { cacheHitInput: 0.006, cacheMissInput: 0.3, output: 1.2 },
   "deepseek-v4-pro": { cacheHitInput: 0.044, cacheMissInput: 1.32, output: 3.96 },
 };
@@ -68,7 +70,8 @@ function buildRequestBody(request: StepRequest<PromptFields, PromptConfig>, mode
   const messages: unknown[] = [];
   // `options.systemPrompt` is the one Agent SDK key with a direct meaning here; it is accepted as a
   // plain string only, since the SDK's structured variants (preset/paths) are harness concepts.
-  if (typeof system === "string" && system !== "") messages.push({ role: "system", content: system });
+  if (typeof system === "string" && system !== "")
+    messages.push({ role: "system", content: system });
   messages.push({ role: "user", content: renderPromptMessage(prompt, request.input) });
 
   const body: Record<string, unknown> = { model, messages, stream: false };
@@ -96,12 +99,13 @@ function estimateCostUsd(model: string, usage: JsonValue | undefined): number | 
   const price = PEAK_USD_PER_MILLION_TOKENS[model];
   if (price === undefined || typeof usage !== "object" || usage === null) return undefined;
   const counters = usage as Record<string, unknown>;
-  const number = (key: string): number => (typeof counters[key] === "number" ? (counters[key] as number) : 0);
+  const number = (key: string): number =>
+    typeof counters[key] === "number" ? (counters[key] as number) : 0;
   const cost =
-    (number("prompt_cache_hit_tokens") * price.cacheHitInput
-      + number("prompt_cache_miss_tokens") * price.cacheMissInput
-      + number("completion_tokens") * price.output)
-    / 1_000_000;
+    (number("prompt_cache_hit_tokens") * price.cacheHitInput +
+      number("prompt_cache_miss_tokens") * price.cacheMissInput +
+      number("completion_tokens") * price.output) /
+    1_000_000;
   return cost;
 }
 
@@ -110,7 +114,9 @@ function firstChoiceText(payload: unknown): { text: string; finishReason?: strin
   if (typeof payload !== "object" || payload === null) return undefined;
   const choices = (payload as { choices?: unknown }).choices;
   if (!Array.isArray(choices) || choices.length === 0) return undefined;
-  const choice = choices[0] as { message?: { content?: unknown }; finish_reason?: unknown } | undefined;
+  const choice = choices[0] as
+    | { message?: { content?: unknown }; finish_reason?: unknown }
+    | undefined;
   const content = choice?.message?.content;
   return {
     text: typeof content === "string" ? content : "",
@@ -129,7 +135,9 @@ function truncate(text: string, limit = 500): string {
  * sub-5). `stderr` carries diagnostics, the one sanctioned channel (ADR 0020 sub-4): a model-name
  * mapping, and a body the API rejected.
  */
-export async function runDeepseekWorker(request: StepRequest<PromptFields, PromptConfig>): Promise<StepResult> {
+export async function runDeepseekWorker(
+  request: StepRequest<PromptFields, PromptConfig>,
+): Promise<StepResult> {
   const { signal } = request;
   const { model: requestedModel } = request.config;
 
@@ -139,20 +147,23 @@ export async function runDeepseekWorker(request: StepRequest<PromptFields, Promp
   // that resolved to "" (an `$env` naming an empty variable, say) falls through to the environment
   // rather than sending an empty bearer token.
   const configKey = request.config.DEEPSEEK_API_KEY;
-  const apiKey = configKey !== undefined && configKey !== "" ? configKey : process.env.DEEPSEEK_API_KEY;
+  const apiKey =
+    configKey !== undefined && configKey !== "" ? configKey : process.env.DEEPSEEK_API_KEY;
   if (apiKey === undefined || apiKey === "") {
     // No request is attempted without a credential, so this is the one failure that spends nothing:
     // it names both doors to set rather than surfacing the API's 401 as the author's problem.
     return {
       status: "failed",
-      error: "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
+      error:
+        "DEEPSEEK_API_KEY is not set: give it as config.DEEPSEEK_API_KEY or in the engine's environment",
     };
   }
 
   const baseUrl = (process.env.DEEPSEEK_BASE_URL ?? DEFAULT_BASE_URL).replace(/\/+$/, "");
   const mapped = mapForeignModel(requestedModel);
   const model = mapped ?? requestedModel;
-  const mappedNote = mapped === undefined ? undefined : `model "${requestedModel}" mapped to DeepSeek "${mapped}"`;
+  const mappedNote =
+    mapped === undefined ? undefined : `model "${requestedModel}" mapped to DeepSeek "${mapped}"`;
 
   try {
     const response = await fetch(`${baseUrl}/chat/completions`, {
@@ -169,35 +180,53 @@ export async function runDeepseekWorker(request: StepRequest<PromptFields, Promp
     // A non-2xx is a failure whether or not the body parses: the provider's own error text is the
     // most useful thing to keep, so it rides `stderr` while the status names the failure.
     if (!response.ok) {
-      return { status: "failed", error: `DeepSeek API returned HTTP ${response.status}`, stderr: truncate(text) };
+      return {
+        status: "failed",
+        error: `DeepSeek API returned HTTP ${response.status}`,
+        stderr: truncate(text),
+      };
     }
 
     let payload: unknown;
     try {
       payload = JSON.parse(text);
     } catch {
-      return { status: "failed", error: "DeepSeek API returned a body that is not JSON", stderr: truncate(text) };
+      return {
+        status: "failed",
+        error: "DeepSeek API returned a body that is not JSON",
+        stderr: truncate(text),
+      };
     }
 
     const choice = firstChoiceText(payload);
     if (choice === undefined) {
-      return { status: "failed", error: "DeepSeek API returned no completion choice", stderr: truncate(text) };
+      return {
+        status: "failed",
+        error: "DeepSeek API returned no completion choice",
+        stderr: truncate(text),
+      };
     }
 
     const usage = asUsage((payload as { usage?: unknown }).usage);
     // A `length` finish means the answer was cut off at `max_tokens`. It is not an error — the text is
     // real model output and a downstream `parse: "json"` step is the right place to reject a truncated
     // document — but it is worth a diagnostic, because a silently clipped answer is otherwise invisible.
-    const truncation = choice.finishReason === "length" ? "response was cut off at max_tokens" : undefined;
+    const truncation =
+      choice.finishReason === "length" ? "response was cut off at max_tokens" : undefined;
     return {
       status: "succeeded",
       output: choice.text,
       usage,
       estimatedCostUsd: estimateCostUsd(model, usage),
-      stderr: [mappedNote, truncation].filter((line): line is string => line !== undefined).join("; ") || undefined,
+      stderr:
+        [mappedNote, truncation].filter((line): line is string => line !== undefined).join("; ") ||
+        undefined,
     };
   } catch (err) {
     // An abort surfaces here as the fetch rejecting; the engine relabels it cancelled from the signal.
-    return { status: "failed", error: `DeepSeek request failed: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      status: "failed",
+      error: `DeepSeek request failed: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 }

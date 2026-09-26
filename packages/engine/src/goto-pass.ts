@@ -1,10 +1,18 @@
-import { isPassRun, serialOrder, walkNodes, type GotoNode, type JsonValue, type RunRecord, type WorkflowFile } from "@path/schema";
+import {
+  type GotoNode,
+  isPassRun,
+  type JsonValue,
+  type RunRecord,
+  serialOrder,
+  type WorkflowFile,
+  walkNodes,
+} from "@path/schema";
 import { childIdentity, openContainerRun } from "./child-run.js";
 import { targetLeafUnder } from "./continuation.js";
 import { resolveBound } from "./controllers.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
-import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 import { passResumer, type RunResume } from "./resume-plan.js";
+import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /**
  * A workflow-run's **top-level walk** and its **goto passes** (ADR 0053/0054/0060, spec
@@ -59,7 +67,9 @@ export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
  * `nodeId` names the goto that opened it (null for pass 1), so these rows are also the jump counts.
  */
 export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
-  return rows.filter((r) => r.parentRunId === parentRunId && isPassRun(r)).sort((a, b) => a.pass! - b.pass!);
+  return rows
+    .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
+    .sort((a, b) => a.pass! - b.pass!);
 }
 
 /**
@@ -88,7 +98,8 @@ export function passWalkStart(
   // not re-walked: no condition, goto or event of theirs is replayed.
   const passes = recordedPasses(state.existingRuns, run.identity.runId);
   for (const recorded of passes) {
-    if (recorded.nodeId !== null) walk.jumpsSpent.set(recorded.nodeId, (walk.jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
+    if (recorded.nodeId !== null)
+      walk.jumpsSpent.set(recorded.nodeId, (walk.jumpsSpent.get(recorded.nodeId) ?? 0) + 1);
   }
   const reentered = passes.find((recorded) => recorded.status === "running");
   if (!reentered) return walk;
@@ -130,7 +141,11 @@ export function passWalkStart(
  * pass and, with it, the workflow-run. The target's incoming output is the goto's passed-through
  * output, forward or backward (ADR 0055).
  */
-export async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exec: NodeExecContext): Promise<SeqOutcome> {
+export async function runTopLevelWalk(
+  run: RunContext,
+  seedInput: JsonValue,
+  exec: NodeExecContext,
+): Promise<SeqOutcome> {
   const body = run.file.body;
   const gotos = new Map<string, GotoNode>();
   for (const node of walkNodes(body)) if (node.type === "goto") gotos.set(node.id, node);
@@ -174,7 +189,10 @@ export async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exe
     // Cause first (ADR 0061 §5): the goto event, then the closing pass's step-finished.
     if (spent >= maxJumps) {
       await run.emitter.gotoExhausted(goto, { target, maxJumps, pass });
-      const exhausted: SeqOutcome = { status: "failed", error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted` };
+      const exhausted: SeqOutcome = {
+        status: "failed",
+        error: `goto "${goto.name}": max_jumps (${maxJumps}) exhausted`,
+      };
       await container.finish(exhausted);
       return exhausted;
     }
@@ -194,11 +212,17 @@ export async function runTopLevelWalk(run: RunContext, seedInput: JsonValue, exe
  * it, the workflow-run fail. The parked leaf, when it sits in this pass, is committed first with the
  * supplied output, so a later Resume reuses it instead of asking for it again.
  */
-async function failDivergedPass(run: RunContext, passRow: RunRecord, error: string): Promise<SeqOutcome> {
+async function failDivergedPass(
+  run: RunContext,
+  passRow: RunRecord,
+  error: string,
+): Promise<SeqOutcome> {
   const state = run.continue!;
   if (targetLeafUnder(state, passRow.runId)) {
     const leaf = state.existingRuns.find((r) => r.runId === state.target.stepRunId)!;
-    await run.emitter.step({ id: leaf.nodeId!, name: leaf.nodeName! }, leaf.runId).finished({ status: "succeeded", output: state.target.output });
+    await run.emitter
+      .step({ id: leaf.nodeId!, name: leaf.nodeName! }, leaf.runId)
+      .finished({ status: "succeeded", output: state.target.output });
   }
   const failed: SeqOutcome = { status: "failed", error };
   const owner = passRow.nodeId === null ? null : { id: passRow.nodeId, name: passRow.nodeName! };

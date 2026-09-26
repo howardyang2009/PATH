@@ -1,4 +1,11 @@
-import type { BinaryStep, JsonValue, RunRecord, WorkflowFile, WorkflowNode, WorkflowStep } from "@path/schema";
+import type {
+  BinaryStep,
+  JsonValue,
+  RunRecord,
+  WorkflowFile,
+  WorkflowNode,
+  WorkflowStep,
+} from "@path/schema";
 import { FORMAT_VERSION } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import {
@@ -18,7 +25,9 @@ import type { ResumeInput } from "../src/run-workflow.js";
  * one `enter…` operation over the same counterpart lookup and boundary path.
  */
 
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "root",
     nodeName: overrides.nodeId,
@@ -42,17 +51,32 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
   };
 }
 
-const root = run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" });
+const root = run({
+  runId: "root",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+  status: "failed",
+});
 
 function tree(body: WorkflowNode[]): WorkflowFile {
   return { format: FORMAT_VERSION, id: "11111111-1111-4111-8111-111111111111", name: "t", body };
 }
 
 const binary = (id: string): BinaryStep => ({ type: "binary", id, name: id, command: "echo" });
-const workflow = (id: string): WorkflowStep => ({ type: "workflow", id, name: id, ref: "./nested.workflow.json" });
+const workflow = (id: string): WorkflowStep => ({
+  type: "workflow",
+  id,
+  name: id,
+  ref: "./nested.workflow.json",
+});
 
 function input(originalRuns: RunRecord[], extra: Partial<ResumeInput> = {}): ResumeInput {
-  return { originalRuns, readBlob: (r, filename) => ({ blob: `${r.runId}/${filename}` }) as JsonValue, ...extra };
+  return {
+    originalRuns,
+    readBlob: (r, filename) => ({ blob: `${r.runId}/${filename}` }) as JsonValue,
+    ...extra,
+  };
 }
 
 describe("recordedChild — the one counterpart lookup", () => {
@@ -77,7 +101,9 @@ describe("recordedChild — the one counterpart lookup", () => {
   });
 
   it("filters to succeeded rows on request", () => {
-    expect(recordedChild(rows, "root", { nodeId: "loop", iteration: 2, succeeded: true })).toBeUndefined();
+    expect(
+      recordedChild(rows, "root", { nodeId: "loop", iteration: 2, succeeded: true }),
+    ).toBeUndefined();
   });
 });
 
@@ -130,12 +156,23 @@ describe("enterNested — Producer B's three dispositions", () => {
   });
 
   it("descends the path-node with the path's tail", () => {
-    const resume = resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["w", "inner"], rerunFromPasses: [null, 3] })), file);
-    expect(enterNested(resume, file, "w")).toMatchObject({ counterpart: rows[2], rerunPath: [{ nodeId: "inner", pass: 3 }] });
+    const resume = resolveResume(
+      rootResumeEntry(
+        input(rows, { rerunFromNodePath: ["w", "inner"], rerunFromPasses: [null, 3] }),
+      ),
+      file,
+    );
+    expect(enterNested(resume, file, "w")).toMatchObject({
+      counterpart: rows[2],
+      rerunPath: [{ nodeId: "inner", pass: 3 }],
+    });
   });
 
   it("re-runs a node after the boundary entire, with no counterpart", () => {
-    const resume = resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["w", "inner"] })), file);
+    const resume = resolveResume(
+      rootResumeEntry(input(rows, { rerunFromNodePath: ["w", "inner"] })),
+      file,
+    );
     expect(enterNested(resume, file, "x")).toMatchObject({ counterpart: undefined, rerunPath: [] });
   });
 
@@ -174,7 +211,10 @@ describe("enterIteration — a while-do iteration container", () => {
   });
 
   it("runs every iteration fresh when the loop is at or after the boundary", () => {
-    const resume = resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["loop"] })), file);
+    const resume = resolveResume(
+      rootResumeEntry(input(rows, { rerunFromNodePath: ["loop"] })),
+      file,
+    );
     expect(enterIteration(resume, file, "loop", 1)).toBeUndefined();
   });
 });
@@ -205,7 +245,13 @@ describe("passResumer — goto pass pairing (ADR 0054 §5–6)", () => {
   });
 
   it("applies the boundary inside its pass and runs every later pass fresh", () => {
-    const next = passResumer(resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["a"], rerunFromPasses: [2] })), file), file);
+    const next = passResumer(
+      resolveResume(
+        rootResumeEntry(input(rows, { rerunFromNodePath: ["a"], rerunFromPasses: [2] })),
+        file,
+      ),
+      file,
+    );
     expect(next(1, null).plan.get("a")).toBe(rows[2]);
     const atBoundary = next(2, "g");
     expect(atBoundary.counterpart).toBe(rows[3]);
@@ -215,7 +261,10 @@ describe("passResumer — goto pass pairing (ADR 0054 §5–6)", () => {
   });
 
   it("pairs nothing when the boundary names no pass (a goto added since)", () => {
-    const next = passResumer(resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["a"] })), file), file);
+    const next = passResumer(
+      resolveResume(rootResumeEntry(input(rows, { rerunFromNodePath: ["a"] })), file),
+      file,
+    );
     expect(next(1, null).counterpart).toBeUndefined();
   });
 });

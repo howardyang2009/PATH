@@ -1,10 +1,18 @@
-import type Database from "better-sqlite3";
+import type {
+  JsonValue,
+  LaunchFacts,
+  RerunFromNodePathEntry,
+  RunRecord,
+  RunStatus,
+  TerminalRunStatus,
+  WireRunRecord,
+} from "@path/schema";
 import { fromWireRunRecord } from "@path/schema";
-import type { JsonValue, LaunchFacts, RerunFromNodePathEntry, RunRecord, RunStatus, TerminalRunStatus, WireRunRecord } from "@path/schema";
+import type Database from "better-sqlite3";
 
 // `RunStatus`, `RUN_STATUSES` and `RunRecord` are domain vocabulary and live in @path/schema (#66).
 // What lives here is how a run is *stored*: the row shape, the SQL, and the mapping between them.
-export { RUN_STATUSES, type RunStatus, type RunRecord } from "@path/schema";
+export { RUN_STATUSES, type RunRecord, type RunStatus } from "@path/schema";
 
 export interface NewRunRow {
   runId: string;
@@ -88,7 +96,14 @@ export function insertRun(db: Database.Database, row: NewRunRow): void {
  */
 export function insertReuseRun(
   db: Database.Database,
-  row: { runId: string; rootRunId: string; parentRunId: string; nodeId: string; nodeName: string | null; reusedFromRunId: string },
+  row: {
+    runId: string;
+    rootRunId: string;
+    parentRunId: string;
+    nodeId: string;
+    nodeName: string | null;
+    reusedFromRunId: string;
+  },
 ): void {
   const now = new Date().toISOString();
   db.prepare(
@@ -110,12 +125,18 @@ export function insertReuseRun(
  * `awaiting` (#462). A terminal status is rejected at the type level: it belongs to `finishRun`,
  * which also stamps `finished_at`, so routing one here would leave a "done" row with a null finish.
  */
-export function setRunStatus(db: Database.Database, runId: string, status: Exclude<RunStatus, TerminalRunStatus>): void {
+export function setRunStatus(
+  db: Database.Database,
+  runId: string,
+  status: Exclude<RunStatus, TerminalRunStatus>,
+): void {
   db.prepare(`UPDATE runs SET status = @status WHERE run_id = @runId`).run({ status, runId });
 }
 
 export function finishRun(db: Database.Database, runId: string, status: TerminalRunStatus): void {
-  db.prepare(`UPDATE runs SET status = @status, finished_at = @finishedAt WHERE run_id = @runId`).run({
+  db.prepare(
+    `UPDATE runs SET status = @status, finished_at = @finishedAt WHERE run_id = @runId`,
+  ).run({
     status,
     finishedAt: new Date().toISOString(),
     runId,
@@ -145,7 +166,10 @@ export function cancelNonTerminalRuns(db: Database.Database, rootRunId: string):
  * is why there is no setter for it (#72).
  */
 export function setRunOutputRef(db: Database.Database, runId: string, outputRef: string): void {
-  db.prepare(`UPDATE runs SET output_ref = @ref WHERE run_id = @runId`).run({ ref: outputRef, runId });
+  db.prepare(`UPDATE runs SET output_ref = @ref WHERE run_id = @runId`).run({
+    ref: outputRef,
+    runId,
+  });
 }
 
 /**
@@ -160,7 +184,9 @@ export interface RunUsage {
 }
 
 export function setRunUsage(db: Database.Database, runId: string, spend: RunUsage): void {
-  db.prepare(`UPDATE runs SET usage = @usage, estimated_cost_usd = @cost WHERE run_id = @runId`).run({
+  db.prepare(
+    `UPDATE runs SET usage = @usage, estimated_cost_usd = @cost WHERE run_id = @runId`,
+  ).run({
     usage: spend.usage === null ? null : JSON.stringify(spend.usage),
     cost: spend.estimatedCostUsd,
     runId,
@@ -217,7 +243,9 @@ function fromDbRow(row: RunRowDb): RunRecord {
  * recorded data to reuse", exactly as the cost query treats `rootRunIdOf`.
  */
 export function getRun(db: Database.Database, runId: string): RunRecord | undefined {
-  const row = db.prepare(`SELECT * FROM runs WHERE run_id = @runId`).get({ runId }) as RunRowDb | undefined;
+  const row = db.prepare(`SELECT * FROM runs WHERE run_id = @runId`).get({ runId }) as
+    | RunRowDb
+    | undefined;
   return row ? fromDbRow(row) : undefined;
 }
 
@@ -250,7 +278,10 @@ export function getLaunchFacts(db: Database.Database, rootRunId: string): Launch
  * `node.worker → launch → file → type` order the launch did, with the file tier live. A projection of
  * {@link getLaunchFacts} — the table is one field of the frozen facts now (ADR 0046).
  */
-export function getLaunchWorkerDefaults(db: Database.Database, rootRunId: string): { [stepType: string]: string } | undefined {
+export function getLaunchWorkerDefaults(
+  db: Database.Database,
+  rootRunId: string,
+): { [stepType: string]: string } | undefined {
   return getLaunchFacts(db, rootRunId)?.workerDefaults;
 }
 
@@ -285,9 +316,13 @@ export interface ListRootRunsOptions {
  * whole tree; this is the complementary "which root runs exist" query. The `rowid DESC` tiebreaker
  * keeps ordering stable when two roots share a `started_at` millisecond.
  */
-export function listRootRuns(db: Database.Database, options: ListRootRunsOptions = {}): RunRecord[] {
+export function listRootRuns(
+  db: Database.Database,
+  options: ListRootRunsOptions = {},
+): RunRecord[] {
   const limit = options.limit ?? 50;
-  const params: { limit: number; status?: RunStatus; workflowName?: string; workflowId?: string } = { limit };
+  const params: { limit: number; status?: RunStatus; workflowName?: string; workflowId?: string } =
+    { limit };
   let filterClause = "";
   if (options.status !== undefined) {
     filterClause += " AND status = @status";

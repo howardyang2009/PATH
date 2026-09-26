@@ -1,5 +1,5 @@
-import { defineStepPlugin, z } from "@path/engine/plugin";
 import type { StepRequest, StepResult } from "@path/engine/plugin";
+import { defineStepPlugin, z } from "@path/engine/plugin";
 
 /**
  * A fixture step-type plugin for the plugin-masking acceptance test (ADR 0020 sub-decision 10, #338).

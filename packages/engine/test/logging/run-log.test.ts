@@ -1,12 +1,12 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { LogEvent } from "@path/schema";
 import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { LogEvent } from "@path/schema";
 import { createDbLogBackend, maxLogSeqForRoot } from "../../src/logging/db-backend.js";
-import { createNdjsonBackend } from "../../src/logging/ndjson-backend.js";
 import { LOG_FORMAT } from "../../src/logging/log-backend.js";
+import { createNdjsonBackend } from "../../src/logging/ndjson-backend.js";
 import { openRunLog } from "../../src/logging/run-log.js";
 import { openDb } from "../../src/persistence/db.js";
 
@@ -45,7 +45,11 @@ function event(seq: number): LogEvent {
   };
 }
 
-async function writeEvents(backend: ReturnType<typeof createNdjsonBackend> | ReturnType<typeof createDbLogBackend>, seqs: number[], append = false): Promise<void> {
+async function writeEvents(
+  backend: ReturnType<typeof createNdjsonBackend> | ReturnType<typeof createDbLogBackend>,
+  seqs: number[],
+  append = false,
+): Promise<void> {
   await backend.open({ runId: ROOT, format: LOG_FORMAT, append });
   for (const seq of seqs) await backend.write(event(seq));
   await backend.close();

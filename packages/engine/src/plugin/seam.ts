@@ -1,5 +1,5 @@
 import type { JsonValue } from "@path/schema";
-import type { z, ZodRawShape } from "zod";
+import type { ZodRawShape, z } from "zod";
 
 /**
  * The TS seam a step-type plugin implements, and the engine dispatches through (#313). It mirrors
@@ -23,7 +23,10 @@ import type { z, ZodRawShape } from "zod";
  * sees `fields` and `config` inferred from its own type's declaration (ADR 0022, acceptance #4). The
  * defaults keep the engine's generic dispatch — which holds no single plugin's shapes — well typed.
  */
-export interface StepRequest<F extends ZodRawShape = ZodRawShape, C extends ZodRawShape = ZodRawShape> {
+export interface StepRequest<
+  F extends ZodRawShape = ZodRawShape,
+  C extends ZodRawShape = ZodRawShape,
+> {
   /**
    * The node's author-fixed `fields` after interpolation, typed by the plugin's own `fields` fragment
    * (ADR 0022: a field says *what the step does* — `binary`'s `command`, `api-call`'s `endpoint`).
@@ -65,8 +68,20 @@ export interface StepRequest<F extends ZodRawShape = ZodRawShape, C extends ZodR
  * applies only when it is a string.
  */
 export type StepResult =
-  | { status: "succeeded"; output: JsonValue; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
-  | { status: "failed"; error: string; usage?: JsonValue; estimatedCostUsd?: number; stderr?: string }
+  | {
+      status: "succeeded";
+      output: JsonValue;
+      usage?: JsonValue;
+      estimatedCostUsd?: number;
+      stderr?: string;
+    }
+  | {
+      status: "failed";
+      error: string;
+      usage?: JsonValue;
+      estimatedCostUsd?: number;
+      stderr?: string;
+    }
   // A worker that parks its run (person-activity, #462) may echo an informational `assignee` — who the
   // offline activity is for — so the engine can put it on the `step-awaiting` audit record. It is an
   // opaque interpolated string to the engine (masked at the emit choke point like any author value),
@@ -78,7 +93,10 @@ export type StepResult =
  * reads before calling it (ADR 0021 sub-5). The engine owns the capabilities the flags name, so a
  * worker only *declares* it needs them; it holds none of the machinery itself.
  */
-export interface WorkerDescriptor<F extends ZodRawShape = ZodRawShape, C extends ZodRawShape = ZodRawShape> {
+export interface WorkerDescriptor<
+  F extends ZodRawShape = ZodRawShape,
+  C extends ZodRawShape = ZodRawShape,
+> {
   /** The method that produces this step's output. One call per run; the processor is fresh each time (no session reuse in MVP). */
   run(request: StepRequest<F, C>): Promise<StepResult>;
   /**
@@ -101,7 +119,10 @@ export interface WorkerDescriptor<F extends ZodRawShape = ZodRawShape, C extends
  * validated at load; `config` is open and validated at run-start (ADR 0022 sub-2/sub-3) — the schema
  * factory adds that, so a plugin declares only the shapes.
  */
-export interface StepPlugin<F extends ZodRawShape = ZodRawShape, C extends ZodRawShape = ZodRawShape> {
+export interface StepPlugin<
+  F extends ZodRawShape = ZodRawShape,
+  C extends ZodRawShape = ZodRawShape,
+> {
   /** Author-fixed node fields, `ZodRawShape` (ADR 0022 sub-1). Strict + load-validated by the factory. */
   fields: F;
   /** Injected, inheritable, `$env`/`$secret`-capable config keys, `ZodRawShape`. Open + run-start-validated. */

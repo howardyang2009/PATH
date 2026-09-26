@@ -1,5 +1,5 @@
+import { IdSchema, type WorkflowNode, walkNodes } from "@path/schema";
 import { describe, expect, it } from "vitest";
-import { IdSchema, walkNodes, type WorkflowNode } from "@path/schema";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "../src/node-factory.js";
 
 /** Every id in a subtree, for uniqueness/format assertions. */
@@ -21,7 +21,10 @@ describe("node-factory — minting nodes with client identity (#368, ADR 0015)",
     expect(createNode("binary", new Set())).toMatchObject({ type: "binary", command: "" });
     expect(createNode("workflow", new Set())).toMatchObject({ type: "workflow", ref: "" });
     // person-activity's one required field is `description` (#487).
-    expect(createNode("person-activity", new Set())).toMatchObject({ type: "person-activity", description: "" });
+    expect(createNode("person-activity", new Set())).toMatchObject({
+      type: "person-activity",
+      description: "",
+    });
   });
 
   it("gives every minted name and id in a block subtree distinct, valid values", () => {

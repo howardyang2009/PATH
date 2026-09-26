@@ -1,4 +1,4 @@
-import { PathApiClient, type FetchLike, type WorkflowSummary } from "@path/client-core";
+import { type FetchLike, PathApiClient, type WorkflowSummary } from "@path/client-core";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LaunchPanel } from "../src/launch-panel.js";
@@ -75,10 +75,13 @@ function stubClient(opts: {
       });
     }
     // POST /v0/runs
-    return new Response(JSON.stringify(opts.startResponse ?? { run_id: "r_new", root_run_id: "r_new" }), {
-      status: opts.startStatus ?? 202,
-      headers: { "Content-Type": "application/json" },
-    });
+    return new Response(
+      JSON.stringify(opts.startResponse ?? { run_id: "r_new", root_run_id: "r_new" }),
+      {
+        status: opts.startStatus ?? 202,
+        headers: { "Content-Type": "application/json" },
+      },
+    );
   };
   return { client: new PathApiClient({ baseUrl: "", fetch }), calls };
 }
@@ -94,7 +97,9 @@ describe("LaunchPanel", () => {
     mount(client);
 
     // A top-level file shows at the top level, flagged root.
-    expect(await screen.findByTestId("workflow-row-release-notes.workflow.json")).toHaveTextContent("root");
+    expect(await screen.findByTestId("workflow-row-release-notes.workflow.json")).toHaveTextContent(
+      "root",
+    );
     // A nested file is hidden until its folder is opened — the top level shows the folder, not the file.
     const folder = screen.getByTestId("workflow-folder-lib");
     expect(screen.queryByTestId("workflow-row-lib/draft.workflow.json")).toBeNull();
@@ -247,7 +252,10 @@ describe("LaunchPanel", () => {
     await waitFor(() => expect(onLaunched).toHaveBeenCalledWith("r_abc"));
     const post = calls.find((c) => c.method === "POST");
     expect(post?.url).toBe("/v0/runs");
-    expect(post?.body).toEqual({ workflow_path: "release-notes.workflow.json", input: { ticket: 7 } });
+    expect(post?.body).toEqual({
+      workflow_path: "release-notes.workflow.json",
+      input: { ticket: 7 },
+    });
     // 202 collapses the form.
     await waitFor(() => expect(screen.queryByTestId("launch-input")).toBeNull());
   });
@@ -278,12 +286,16 @@ describe("LaunchPanel", () => {
     fireEvent.click(await screen.findByTestId("workflow-row-release-notes.workflow.json"));
 
     fireEvent.click(screen.getByTestId("launch-config-toggle"));
-    fireEvent.change(screen.getByTestId("launch-config"), { target: { value: '{"model": "claude"}' } });
+    fireEvent.change(screen.getByTestId("launch-config"), {
+      target: { value: '{"model": "claude"}' },
+    });
     fireEvent.click(screen.getByTestId("launch-config-toggle")); // collapse again
     fireEvent.click(screen.getByTestId("launch-submit"));
 
     await waitFor(() => expect(calls.some((c) => c.method === "POST")).toBe(true));
-    expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({ config: { model: "claude" } });
+    expect(calls.find((c) => c.method === "POST")?.body).toMatchObject({
+      config: { model: "claude" },
+    });
   });
 
   it("does not drop a typed input when the disclosure is collapsed before launch", async () => {

@@ -138,11 +138,19 @@ export class LeaseController {
         ...(takeover ? { takeover: true } : {}),
       });
     } catch (error) {
-      this.settle(path, epoch, { phase: "error", message: error instanceof Error ? error.message : String(error) });
+      this.settle(path, epoch, {
+        phase: "error",
+        message: error instanceof Error ? error.message : String(error),
+      });
       return;
     }
     if (result.status === "granted") {
-      this.settle(path, epoch, { phase: "held", expiresAt: result.lease.expires_at }, /* beat */ true);
+      this.settle(
+        path,
+        epoch,
+        { phase: "held", expiresAt: result.lease.expires_at },
+        /* beat */ true,
+      );
     } else {
       this.settle(path, epoch, { phase: "held-by-other", expiresAt: result.expiresAt });
     }
@@ -195,7 +203,9 @@ export class LeaseController {
     entry.epoch++; // invalidate any in-flight acquire/beat for this path
     // Release only a lease we actually hold; a held-by-other or errored path never took the marker.
     if (entry.state.phase === "held") {
-      void this.client.releaseLock({ workflowPath: path, sessionId: this.sessionId }).catch(() => {});
+      void this.client
+        .releaseLock({ workflowPath: path, sessionId: this.sessionId })
+        .catch(() => {});
     }
     this.entries.delete(path);
   }

@@ -2,7 +2,13 @@ import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { canonicalSerialize } from "../src/serialize.js";
-import { frameCanRedo, frameCanUndo, frameDirty, openedResultOf, useOpenFile } from "../src/use-open-file.js";
+import {
+  frameCanRedo,
+  frameCanUndo,
+  frameDirty,
+  openedResultOf,
+  useOpenFile,
+} from "../src/use-open-file.js";
 import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
 
 /**
@@ -19,12 +25,20 @@ function uuid(n: number): string {
 
 /** A canonical, fully-id'd single-step file with the given step `name`. */
 function file(name: string): Record<string, unknown> {
-  return { format: FORMAT_VERSION, id: uuid(1), name: "flow", body: [{ type: "prompt", id: uuid(2), name, prompt: "hi" }] };
+  return {
+    format: FORMAT_VERSION,
+    id: uuid(1),
+    name: "flow",
+    body: [{ type: "prompt", id: uuid(2), name, prompt: "hi" }],
+  };
 }
 
 const PATH = "flows/main.workflow.json";
 
-async function openSession(files: Record<string, string>, extra: Parameters<typeof stubClient>[0] = {}) {
+async function openSession(
+  files: Record<string, string>,
+  extra: Parameters<typeof stubClient>[0] = {},
+) {
   const client = stubClient({ files, ...extra });
   const hook = renderHook(() => useOpenFile(client, PATH));
   await waitFor(() => expect(openedResultOf(hook.result.current.frames[0])).not.toBeNull());
@@ -119,7 +133,9 @@ describe("#389 undo/redo — one entry per structural edit, clean re-derived (AD
 
     // A different identity opens a new entry, so it does not fold with the previous run.
     act(() => hook.result.current.redo());
-    act(() => hook.result.current.applyEdit(rename(original, "other"), { owner: "step", field: "prompt" }));
+    act(() =>
+      hook.result.current.applyEdit(rename(original, "other"), { owner: "step", field: "prompt" }),
+    );
     act(() => hook.result.current.undo());
     expect(buffer(hook).body[0]!.name).toBe("draft-2");
   });

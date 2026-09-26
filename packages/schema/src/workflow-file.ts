@@ -1,16 +1,20 @@
 import { z } from "zod";
 import { ConfigObjectSchema } from "./config.js";
 import { formatIssues } from "./format-issues.js";
+import { gotoIssues } from "./goto.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolatedJsonValue } from "./interpolation.js";
-import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
 import { nodeIdentityIssues } from "./node-identity.js";
-import { gotoIssues } from "./goto.js";
-import { publishSetIssues } from "./publish-set.js";
-import { collectWorkerDefaultIssues } from "./worker-defaults.js";
-import { STEP_ROOTS } from "./roots.js";
-import { FORMAT_VERSION, SUPERSEDED_FORMAT_VERSIONS, type WorkflowFile } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
+import { makeNodeSchema, type StepPluginRegistry } from "./nodes.js";
+import { publishSetIssues } from "./publish-set.js";
+import { STEP_ROOTS } from "./roots.js";
+import { collectWorkerDefaultIssues } from "./worker-defaults.js";
+import {
+  FORMAT_VERSION,
+  SUPERSEDED_FORMAT_VERSIONS,
+  type WorkflowFile,
+} from "./workflow-file-type.js";
 
 export { FORMAT_VERSION };
 
@@ -54,7 +58,11 @@ function buildBaseWorkflowFileSchema(bodySchema: z.ZodType<WorkflowNode[]>) {
 // entry, not the whole table. Every bad entry is reported in one pass (aggregate). The registry is one,
 // run-wide, and each file is parsed on its own, so a bad table invalidates *its* file — a child ref's,
 // never its parent's.
-function checkWorkerDefaults(file: WorkflowFile, ctx: z.RefinementCtx, registry: StepPluginRegistry): void {
+function checkWorkerDefaults(
+  file: WorkflowFile,
+  ctx: z.RefinementCtx,
+  registry: StepPluginRegistry,
+): void {
   if (!file.worker_defaults) return;
   for (const { type, message } of collectWorkerDefaultIssues(file.worker_defaults, registry)) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["worker_defaults", type], message });
@@ -66,7 +74,11 @@ function checkWorkerDefaults(file: WorkflowFile, ctx: z.RefinementCtx, registry:
 // goto's placement and first-level target (docs/spec/goto.md §2.3), and the
 // registry-relative `worker_defaults` check (ADR 0044). Applied by the plugin factory's schema
 // (`makeWorkflowFileSchema`), which closes the registry over the last argument.
-function checkWorkflowFileInvariants(file: WorkflowFile, ctx: z.RefinementCtx, registry: StepPluginRegistry): void {
+function checkWorkflowFileInvariants(
+  file: WorkflowFile,
+  ctx: z.RefinementCtx,
+  registry: StepPluginRegistry,
+): void {
   // The identity rule is `node-identity.ts`'s, so this refinement and the write route cannot disagree
   // about which occurrence offends; only the reader-facing half (a zod issue at the `name` field) is
   // here. `duplicate-name` is the one rule the load enforces: `id`s are UUID-checked per field, and a
@@ -150,7 +162,9 @@ export function supersededFormatError(json: unknown): WorkflowFileParseFailure |
   if (version !== null && version > (formatVersionNumber(FORMAT_VERSION) ?? 0)) {
     return {
       success: false,
-      errors: [`${format} is newer than this engine reads (${FORMAT_VERSION}) — upgrade PATH to read it`],
+      errors: [
+        `${format} is newer than this engine reads (${FORMAT_VERSION}) — upgrade PATH to read it`,
+      ],
     };
   }
   if (!(format in SUPERSEDED_FORMAT_VERSIONS)) return null;

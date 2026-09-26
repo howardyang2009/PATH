@@ -17,8 +17,20 @@ function started(seq: number, nodeId: string | null): LogEvent {
   };
 }
 
-function finished(seq: number, nodeId: string | null, status: Extract<RunStatus, "succeeded" | "failed" | "cancelled">): LogEvent {
-  return { type: "step-finished", seq, ts: `2026-07-25T10:00:0${seq}.000Z`, run_id: "run_a", node_id: nodeId, node_name: nodeId, status };
+function finished(
+  seq: number,
+  nodeId: string | null,
+  status: Extract<RunStatus, "succeeded" | "failed" | "cancelled">,
+): LogEvent {
+  return {
+    type: "step-finished",
+    seq,
+    ts: `2026-07-25T10:00:0${seq}.000Z`,
+    run_id: "run_a",
+    node_id: nodeId,
+    node_name: nodeId,
+    status,
+  };
 }
 
 /** jsdom gives every element zero size; a scrollable list has to be faked to test following. */
@@ -30,7 +42,12 @@ function sizeList(list: HTMLElement, { scrollTop }: { scrollTop: number }): void
 
 describe("Narrative", () => {
   it("renders one row per event in seq order, newest last", () => {
-    render(<Narrative events={[started(1, null), started(2, "step-a"), finished(3, "step-a", "succeeded")]} stream="live" />);
+    render(
+      <Narrative
+        events={[started(1, null), started(2, "step-a"), finished(3, "step-a", "succeeded")]}
+        stream="live"
+      />,
+    );
 
     const rows = screen.getAllByRole("listitem");
     expect(rows.map((row) => row.getAttribute("data-seq"))).toEqual(["1", "2", "3"]);

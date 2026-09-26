@@ -36,8 +36,14 @@ function paneFile(): Record<string, unknown> {
         id: uuid(7),
         name: "gate",
         arms: [
-          { when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: uuid(8), name: "arm1", prompt: "1" } },
-          { when: { type: "exists", path: "context.y" }, node: { type: "prompt", id: uuid(9), name: "arm2", prompt: "2" } },
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: uuid(8), name: "arm1", prompt: "1" },
+          },
+          {
+            when: { type: "exists", path: "context.y" },
+            node: { type: "prompt", id: uuid(9), name: "arm2", prompt: "2" },
+          },
         ],
         else: { type: "prompt", id: uuid(10), name: "els", prompt: "e" },
       },
@@ -49,7 +55,12 @@ function paneFile(): Record<string, unknown> {
 
 /** Registry with a multi-worker prompt, a layoutable generic type, and an unlayoutable (raw-JSON) type. */
 const RICH_PLUGINS: WireStepPlugin[] = [
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic", "batch"], default_worker: "anthropic" },
+  {
+    name: "prompt",
+    fields: { prompt: { type: "string", optional: false } },
+    workers: ["anthropic", "batch"],
+    default_worker: "anthropic",
+  },
   {
     name: "binary",
     fields: {
@@ -62,15 +73,28 @@ const RICH_PLUGINS: WireStepPlugin[] = [
   },
   {
     name: "api-call",
-    fields: { endpoint: { type: "string", optional: false }, retries: { type: "number", optional: true } },
+    fields: {
+      endpoint: { type: "string", optional: false },
+      retries: { type: "number", optional: true },
+    },
     workers: ["http"],
     default_worker: "http",
   },
-  { name: "weird", fields: { shape: { type: "object", optional: false } }, workers: ["w"], default_worker: "w" },
+  {
+    name: "weird",
+    fields: { shape: { type: "object", optional: false } },
+    workers: ["w"],
+    default_worker: "w",
+  },
 ];
 
 async function openPane(plugins: WireStepPlugin[] = RICH_PLUGINS) {
-  render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins })} initialPath={PATH} />);
+  render(
+    <App
+      client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins })}
+      initialPath={PATH}
+    />,
+  );
   await screen.findByText("alpha");
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   const pane = screen.getByRole("region", { name: "Properties" });
@@ -147,7 +171,16 @@ describe("#369 selection populates the pane", () => {
 
   it("pins `worker` when a worker is picked, and drops the key when the (default) option is chosen", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          files: { [PATH]: JSON.stringify(paneFile()) },
+          plugins: RICH_PLUGINS,
+          calls,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -169,7 +202,9 @@ describe("#369 selection populates the pane", () => {
     await waitFor(() => expect(screen.getByRole("button", { name: "Save" })).not.toBeDisabled());
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
     await waitFor(() => expect(calls.put.length).toBe(2));
-    const reSaved = calls.put.at(-1)!.body.workflow as { body: { name: string; worker?: string }[] };
+    const reSaved = calls.put.at(-1)!.body.workflow as {
+      body: { name: string; worker?: string }[];
+    };
     expect(reSaved.body.find((n) => n.name === "alpha")).not.toHaveProperty("worker");
   });
 
@@ -256,7 +291,9 @@ describe("#369 the three editor tiers", () => {
     expect((within(pane).getByLabelText("cwd") as HTMLInputElement).value).toBe("/tmp");
 
     selectNode(canvas, "sub");
-    expect((within(pane).getByLabelText("referenced file") as HTMLInputElement).value).toBe("other.workflow.json");
+    expect((within(pane).getByLabelText("referenced file") as HTMLInputElement).value).toBe(
+      "other.workflow.json",
+    );
   });
 
   it("authors workflow-level config on the file, and steps inherit it", async () => {
@@ -268,7 +305,9 @@ describe("#369 the three editor tiers", () => {
     expect(within(pane).getByText(/Add a key to set a workflow default/)).toBeInTheDocument();
 
     // Add a workflow-level key and give it a value.
-    fireEvent.change(within(pane).getByLabelText("New config key"), { target: { value: "region" } });
+    fireEvent.change(within(pane).getByLabelText("New config key"), {
+      target: { value: "region" },
+    });
     fireEvent.click(within(pane).getByRole("button", { name: "+ add config key" }));
     fireEvent.change(within(pane).getByLabelText("region"), { target: { value: "eu" } });
 
@@ -283,7 +322,12 @@ describe("#369 the three editor tiers", () => {
   it("ghosts the workflow's inherited model in a prompt's own model field", async () => {
     // A file whose config sets a workflow-default model; the prompt step declares none of its own.
     const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -317,7 +361,12 @@ describe("#369 the three editor tiers", () => {
 
   it("fills a field's placeholder on Tab, and leaves a filled field's Tab alone", async () => {
     const file = { ...paneFile(), config: { model: "claude-sonnet-5" } };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -334,7 +383,9 @@ describe("#369 the three editor tiers", () => {
     // A field that already holds text shows no placeholder, so Tab is left to move focus (value stays).
     fireEvent.change(filled, { target: { value: "claude-opus-4-8" } });
     fireEvent.keyDown(filled, { key: "Tab" });
-    expect((within(pane).getByLabelText("model") as HTMLInputElement).value).toBe("claude-opus-4-8");
+    expect((within(pane).getByLabelText("model") as HTMLInputElement).value).toBe(
+      "claude-opus-4-8",
+    );
   });
 
   it("generates a form for a layoutable registry type", async () => {
@@ -388,8 +439,15 @@ describe("#505 file worker-defaults", () => {
   it("hides the section when no type ships more than one worker", async () => {
     // A file whose only step type is `prompt` as the default registry ships it — one worker, nothing to
     // select, so the section (its header included) is not rendered at all.
-    const file = { format: FORMAT_VERSION, id: uuid(1), name: "flow", body: [{ type: "prompt", id: uuid(2), name: "alpha", prompt: "a" }] };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) } })} initialPath={PATH} />);
+    const file = {
+      format: FORMAT_VERSION,
+      id: uuid(1),
+      name: "flow",
+      body: [{ type: "prompt", id: uuid(2), name: "alpha", prompt: "a" }],
+    };
+    render(
+      <App client={stubClient({ files: { [PATH]: JSON.stringify(file) } })} initialPath={PATH} />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -400,7 +458,12 @@ describe("#505 file worker-defaults", () => {
 
   it("ghosts the file worker-default as the effective un-pinned resolution", async () => {
     const file = { ...paneFile(), worker_defaults: { prompt: "batch" } };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -414,7 +477,16 @@ describe("#505 file worker-defaults", () => {
 
   it("authors a file worker-default from the file properties and writes it on save", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          files: { [PATH]: JSON.stringify(paneFile()) },
+          plugins: RICH_PLUGINS,
+          calls,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -438,7 +510,16 @@ describe("#505 file worker-defaults", () => {
   it("reads an existing worker_defaults row back and drops the key when the last row is removed", async () => {
     const calls = makeCalls();
     const file = { ...paneFile(), worker_defaults: { prompt: "batch" } };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS, calls })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          files: { [PATH]: JSON.stringify(file) },
+          plugins: RICH_PLUGINS,
+          calls,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -461,7 +542,16 @@ describe("#505 file worker-defaults", () => {
 describe("the workflow-level output object (§6.4)", () => {
   it("authors an output map on the file and writes it on save", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          calls,
+          files: { [PATH]: JSON.stringify(paneFile()) },
+          plugins: RICH_PLUGINS,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -472,18 +562,26 @@ describe("the workflow-level output object (§6.4)", () => {
     fireEvent.click(within(pane).getByRole("button", { name: "+ add output key" }));
 
     // Before a key is typed the value placeholder falls back to ${context.key}.
-    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.key}");
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe(
+      "${context.key}",
+    );
 
     // The placeholder tracks the key: keying "notes" makes it ${context.notes}.
     fireEvent.change(within(pane).getByLabelText("Output key"), { target: { value: "notes" } });
-    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe("${context.notes}");
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).placeholder).toBe(
+      "${context.notes}",
+    );
 
     // An ill-typed interpolation is flagged and does not reach the file.
-    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${output.x}" } });
+    fireEvent.change(within(pane).getByLabelText("Output value"), {
+      target: { value: "${output.x}" },
+    });
     expect(within(pane).getByLabelText("Output value")).toBeInvalid();
 
     // A valid value over the output roots (config/context) commits.
-    fireEvent.change(within(pane).getByLabelText("Output value"), { target: { value: "${context.draft}" } });
+    fireEvent.change(within(pane).getByLabelText("Output value"), {
+      target: { value: "${context.draft}" },
+    });
     expect(within(pane).getByLabelText("Output value")).toBeValid();
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
@@ -493,7 +591,12 @@ describe("the workflow-level output object (§6.4)", () => {
 
   it("reads an existing output map back into rows", async () => {
     const file = { ...paneFile(), output: { verdict: "${context.verdict}" } };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -501,7 +604,9 @@ describe("the workflow-level output object (§6.4)", () => {
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
     openSection(pane, "output");
     expect((within(pane).getByLabelText("Output key") as HTMLInputElement).value).toBe("verdict");
-    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe("${context.verdict}");
+    expect((within(pane).getByLabelText("Output value") as HTMLInputElement).value).toBe(
+      "${context.verdict}",
+    );
   });
 });
 
@@ -512,9 +617,22 @@ describe("the workflow-level reference list", () => {
     const file = {
       ...paneFile(),
       config: { model: "claude-sonnet-5" },
-      body: [{ type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { draft: "${output.text}" } }],
+      body: [
+        {
+          type: "prompt",
+          id: uuid(2),
+          name: "alpha",
+          prompt: "a",
+          publish: { draft: "${output.text}" },
+        },
+      ],
     };
-    render(<App client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({ files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -533,7 +651,16 @@ describe("the workflow-level reference list", () => {
 describe("the workflow-level input seed", () => {
   it("authors a file input object and writes it on save", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          calls,
+          files: { [PATH]: JSON.stringify(paneFile()) },
+          plugins: RICH_PLUGINS,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -557,14 +684,25 @@ describe("the workflow-level input seed", () => {
   it("reads an existing input back, and drops the key when the box is cleared or emptied", async () => {
     const calls = makeCalls();
     const file = { ...paneFile(), input: { ticket: 7 } };
-    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(file) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          calls,
+          files: { [PATH]: JSON.stringify(file) },
+          plugins: RICH_PLUGINS,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
     fireEvent.click(canvas.querySelector(".canvas-body") as HTMLElement);
     openSection(pane, "input");
 
-    expect(JSON.parse((within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement).value)).toEqual({ ticket: 7 });
+    expect(
+      JSON.parse((within(pane).getByLabelText(/^input \(/) as HTMLTextAreaElement).value),
+    ).toEqual({ ticket: 7 });
 
     // Clearing the box drops the whole key, so `input: {}` never lands.
     fireEvent.change(within(pane).getByLabelText(/^input \(/), { target: { value: "" } });
@@ -576,7 +714,16 @@ describe("the workflow-level input seed", () => {
 
   it("never commits an invalid or non-object draft, so the file stays strict-valid", async () => {
     const calls = makeCalls();
-    render(<App client={stubClient({ calls, files: { [PATH]: JSON.stringify(paneFile()) }, plugins: RICH_PLUGINS })} initialPath={PATH} />);
+    render(
+      <App
+        client={stubClient({
+          calls,
+          files: { [PATH]: JSON.stringify(paneFile()) },
+          plugins: RICH_PLUGINS,
+        })}
+        initialPath={PATH}
+      />,
+    );
     await screen.findByText("alpha");
     const canvas = screen.getByRole("region", { name: "Workflow canvas" });
     const pane = screen.getByRole("region", { name: "Properties" });
@@ -638,7 +785,11 @@ describe("#487 person-activity first-class editor + canvas identity", () => {
   }
 
   async function openPersonPane(calls?: ReturnType<typeof makeCalls>) {
-    const client = stubClient({ calls, files: { [PATH]: JSON.stringify(personFile()) }, plugins: PERSON_PLUGINS });
+    const client = stubClient({
+      calls,
+      files: { [PATH]: JSON.stringify(personFile()) },
+      plugins: PERSON_PLUGINS,
+    });
     render(<App client={client} initialPath={PATH} />);
     await screen.findByText("review");
     return {
@@ -661,10 +812,15 @@ describe("#487 person-activity first-class editor + canvas identity", () => {
     const { canvas, pane } = await openPersonPane();
     selectNode(canvas, "review");
     expect(within(pane).getByText(/person completes/)).toBeInTheDocument();
-    expect((within(pane).getByLabelText("description") as HTMLTextAreaElement).value).toBe("Review the draft {{context.title}}");
+    expect((within(pane).getByLabelText("description") as HTMLTextAreaElement).value).toBe(
+      "Review the draft {{context.title}}",
+    );
     expect((within(pane).getByLabelText("assignee") as HTMLInputElement).value).toBe("editor");
     const schema = within(pane).getByLabelText(/outputSchema/) as HTMLTextAreaElement;
-    expect(JSON.parse(schema.value)).toEqual({ type: "object", properties: { approved: { type: "boolean" } } });
+    expect(JSON.parse(schema.value)).toEqual({
+      type: "object",
+      properties: { approved: { type: "boolean" } },
+    });
   });
 
   it("commits an edited description and drops outputSchema when cleared", async () => {
@@ -672,7 +828,9 @@ describe("#487 person-activity first-class editor + canvas identity", () => {
     const { canvas, pane } = await openPersonPane(calls);
     selectNode(canvas, "review");
 
-    fireEvent.change(within(pane).getByLabelText("description"), { target: { value: "New instructions" } });
+    fireEvent.change(within(pane).getByLabelText("description"), {
+      target: { value: "New instructions" },
+    });
     fireEvent.change(within(pane).getByLabelText(/outputSchema/), { target: { value: "" } });
 
     fireEvent.click(screen.getByRole("button", { name: "Save" }));

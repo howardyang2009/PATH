@@ -56,8 +56,15 @@ function step(name: string) {
  * jumps back to `target` while `last` is `"again"`, else runs `done`. `wrapReview` nests `review` in a
  * `stage` sequence.
  */
-function loop(opts: { target?: string; maxJumps?: number; wrapReview?: boolean } = {}): WorkflowFile {
-  const review = { type: "person-activity", id: "review", description: "review it", publish: { last: "${output}" } };
+function loop(
+  opts: { target?: string; maxJumps?: number; wrapReview?: boolean } = {},
+): WorkflowFile {
+  const review = {
+    type: "person-activity",
+    id: "review",
+    description: "review it",
+    publish: { last: "${output}" },
+  };
   return stampNames({
     format: "path/workflow@5",
     id: "wf-id",
@@ -72,7 +79,12 @@ function loop(opts: { target?: string; maxJumps?: number; wrapReview?: boolean }
         arms: [
           {
             when: { type: "one-of", path: "context.last", values: ["again"] },
-            node: { type: "goto", id: "check", target: opts.target ?? "review", max_jumps: opts.maxJumps ?? 3 },
+            node: {
+              type: "goto",
+              id: "check",
+              target: opts.target ?? "review",
+              max_jumps: opts.maxJumps ?? 3,
+            },
           },
         ],
         else: step("done"),
@@ -83,7 +95,10 @@ function loop(opts: { target?: string; maxJumps?: number; wrapReview?: boolean }
 
 function capture(): { observer: RunObserver; all: Observation[] } {
   const all: Observation[] = [];
-  return { observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver, all };
+  return {
+    observer: { observe: async (o: Observation) => void all.push(o) } as unknown as RunObserver,
+    all,
+  };
 }
 
 function passesOf(runs: RunRecord[]) {
@@ -91,7 +106,12 @@ function passesOf(runs: RunRecord[]) {
   return runs
     .filter((r) => r.parentRunId === root.runId && isPassRun(r))
     .sort((a, b) => a.pass! - b.pass!)
-    .map((p) => ({ pass: p.pass, opener: p.nodeName, status: p.status, children: runs.filter((r) => r.parentRunId === p.runId) }));
+    .map((p) => ({
+      pass: p.pass,
+      opener: p.nodeName,
+      status: p.status,
+      children: runs.filter((r) => r.parentRunId === p.runId),
+    }));
 }
 
 function awaitingLeaf(project: Project, rootRunId: string): RunRecord {
@@ -104,7 +124,9 @@ function awaitingLeaf(project: Project, rootRunId: string): RunRecord {
 async function parkedInPass2(project: Project, file: WorkflowFile, ran: string[]): Promise<string> {
   await project.run(file, dir, { workerOverrides: scripted(ran) });
   const rootRunId = project.archive.listRoots().at(-1)!.runId;
-  const first = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "again", dir, { workerOverrides: scripted(ran) });
+  const first = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "again", dir, {
+    workerOverrides: scripted(ran),
+  });
   if (!first.ok) throw new Error(`expected ok, got ${JSON.stringify(first)}`);
   expect(first.status).toBe("awaiting");
   expect(passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status])).toEqual([
@@ -133,10 +155,16 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
       const rootRunId = await parkedInPass2(project, file, ran);
 
       const { observer, all } = capture();
-      const second = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "again", dir, {
-        workerOverrides: scripted(ran),
-        extraObservers: [observer],
-      });
+      const second = await project.complete(
+        file,
+        awaitingLeaf(project, rootRunId).runId,
+        "again",
+        dir,
+        {
+          workerOverrides: scripted(ran),
+          extraObservers: [observer],
+        },
+      );
       if (!second.ok) throw new Error(`expected ok, got ${JSON.stringify(second)}`);
       expect(second.status).toBe("awaiting");
       // No event for pass 1 or a second pass 2: the only goto events are the new jump and pass 3.
@@ -150,14 +178,20 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
         [3, "check", "running"],
       ]);
       // Pass 2 was re-entered in place: its leaf completed, nothing in it re-ran or doubled.
-      expect(passes[1]!.children.map((r) => [r.nodeName, r.status])).toEqual([["review", "succeeded"]]);
+      expect(passes[1]!.children.map((r) => [r.nodeName, r.status])).toEqual([
+        ["review", "succeeded"],
+      ]);
 
-      const last = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "ok", dir, { workerOverrides: scripted(ran) });
+      const last = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "ok", dir, {
+        workerOverrides: scripted(ran),
+      });
       if (!last.ok) throw new Error(`expected ok, got ${JSON.stringify(last)}`);
       expect(last.status).toBe("succeeded");
       // `a` ran once at launch; closed passes were never re-walked.
       expect(ran).toEqual(["a", "done"]);
-      expect(passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status])).toEqual([
+      expect(
+        passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status]),
+      ).toEqual([
         [1, "succeeded"],
         [2, "succeeded"],
         [3, "succeeded"],
@@ -174,12 +208,16 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
       const file = loop({ target: "stage", wrapReview: true });
       const rootRunId = await parkedInPass2(project, file, ran);
 
-      const done = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "ok", dir, { workerOverrides: scripted(ran) });
+      const done = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "ok", dir, {
+        workerOverrides: scripted(ran),
+      });
       if (!done.ok) throw new Error(`expected ok, got ${JSON.stringify(done)}`);
       expect(done.error).toBeUndefined();
       expect(done.status).toBe("succeeded");
       expect(ran).toEqual(["a", "done"]);
-      expect(passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status])).toEqual([
+      expect(
+        passesOf(project.archive.tree(rootRunId)!.runs).map((p) => [p.pass, p.status]),
+      ).toEqual([
         [1, "succeeded"],
         [2, "succeeded"],
       ]);
@@ -195,10 +233,16 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
       const rootRunId = await parkedInPass2(project, file, []);
 
       const { observer, all } = capture();
-      const done = await project.complete(file, awaitingLeaf(project, rootRunId).runId, "again", dir, {
-        workerOverrides: scripted([]),
-        extraObservers: [observer],
-      });
+      const done = await project.complete(
+        file,
+        awaitingLeaf(project, rootRunId).runId,
+        "again",
+        dir,
+        {
+          workerOverrides: scripted([]),
+          extraObservers: [observer],
+        },
+      );
       if (!done.ok) throw new Error(`expected ok, got ${JSON.stringify(done)}`);
       expect(done.status).toBe("failed");
       expect(done.error).toBe('goto "check": max_jumps (1) exhausted');
@@ -215,10 +259,14 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
       const leaf = awaitingLeaf(project, rootRunId);
       const edited = loop({ target: "a" });
 
-      const done = await project.complete(edited, leaf.runId, "fine", dir, { workerOverrides: scripted([]) });
+      const done = await project.complete(edited, leaf.runId, "fine", dir, {
+        workerOverrides: scripted([]),
+      });
       if (!done.ok) throw new Error(`expected ok, got ${JSON.stringify(done)}`);
       expect(done.status).toBe("failed");
-      expect(done.error).toBe('Complete replay diverged: pass 2 was opened by goto "check" whose target is now "a", recorded "review"');
+      expect(done.error).toBe(
+        'Complete replay diverged: pass 2 was opened by goto "check" whose target is now "a", recorded "review"',
+      );
 
       const tree = project.archive.tree(rootRunId)!;
       expect(tree.root!.status).toBe("failed");
@@ -233,7 +281,9 @@ describe("goto — Complete follows the record across passes (spec §8.2)", () =
 
       // A Resume over the edited file pairs pass 2 (same opening goto) and reuses the committed review.
       const ran: string[] = [];
-      const resumed = await project.resume(edited, rootRunId, dir, { workerOverrides: scripted(ran) });
+      const resumed = await project.resume(edited, rootRunId, dir, {
+        workerOverrides: scripted(ran),
+      });
       if (!resumed.found) throw new Error("expected found:true");
       expect(resumed.status).toBe("succeeded");
       expect(ran).toEqual(["a", "done"]);

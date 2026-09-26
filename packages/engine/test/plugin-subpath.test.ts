@@ -1,7 +1,6 @@
+import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
 import { describe, expect, it } from "vitest";
 import { z as zFromZod } from "zod";
-
-import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
 import { stepPlugin } from "./fixtures/plugin-contract/index.js";
 
 // The subpath is the one public surface a plugin compiles against (#333, ADR 0019 sub-5). These
@@ -52,7 +51,11 @@ describe("plugin-contract fixture", () => {
     });
     expect(result.status).toBe("succeeded");
     if (result.status === "succeeded") {
-      expect(result.output).toMatchObject({ endpoint: "https://example.test", method: "GET", where: "/wf/out" });
+      expect(result.output).toMatchObject({
+        endpoint: "https://example.test",
+        method: "GET",
+        where: "/wf/out",
+      });
     }
   });
 

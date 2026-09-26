@@ -1,28 +1,74 @@
+import type { LogEvent, RunTreeResponse } from "@path/schema";
+import { isPassRun } from "@path/schema";
 import { describe, expect, it, vi } from "vitest";
 import { RunViewModel, type RunViewState } from "../src/view-model.js";
-import { isPassRun } from "@path/schema";
-import type { LogEvent, RunTreeResponse } from "@path/schema";
 
 const ROOT = "root-1";
 const CHILD = "child-1";
 
 function stepStarted(seq: number, runId: string, nodeId: string | null): LogEvent {
-  return { type: "step-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, step_type: "workflow", worker_name: "spawn" };
+  return {
+    type: "step-started",
+    seq,
+    ts: `t${seq}`,
+    run_id: runId,
+    node_id: nodeId,
+    node_name: nodeId,
+    step_type: "workflow",
+    worker_name: "spawn",
+  };
 }
 
-function stepFinished(seq: number, runId: string, nodeId: string | null, status: "succeeded" | "failed" | "cancelled" = "succeeded"): LogEvent {
-  return { type: "step-finished", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, status };
+function stepFinished(
+  seq: number,
+  runId: string,
+  nodeId: string | null,
+  status: "succeeded" | "failed" | "cancelled" = "succeeded",
+): LogEvent {
+  return {
+    type: "step-finished",
+    seq,
+    ts: `t${seq}`,
+    run_id: runId,
+    node_id: nodeId,
+    node_name: nodeId,
+    status,
+  };
 }
 
-function stepAwaiting(seq: number, runId: string, nodeId: string | null, assignee: string | null = null): LogEvent {
-  return { type: "step-awaiting", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, assignee };
+function stepAwaiting(
+  seq: number,
+  runId: string,
+  nodeId: string | null,
+  assignee: string | null = null,
+): LogEvent {
+  return {
+    type: "step-awaiting",
+    seq,
+    ts: `t${seq}`,
+    run_id: runId,
+    node_id: nodeId,
+    node_name: nodeId,
+    assignee,
+  };
 }
 
 function passStarted(seq: number, runId: string, nodeId: string | null, pass: number): LogEvent {
-  return { type: "pass-started", seq, ts: `t${seq}`, run_id: runId, node_id: nodeId, node_name: nodeId, pass };
+  return {
+    type: "pass-started",
+    seq,
+    ts: `t${seq}`,
+    run_id: runId,
+    node_id: nodeId,
+    node_name: nodeId,
+    pass,
+  };
 }
 
-function tree(status: RunViewState["status"], output: RunTreeResponse["output"] = null): RunTreeResponse {
+function tree(
+  status: RunViewState["status"],
+  output: RunTreeResponse["output"] = null,
+): RunTreeResponse {
   return {
     root_run_id: ROOT,
     status,
@@ -177,7 +223,10 @@ describe("RunViewModel", () => {
     expect(parked.displayStatus.get(CHILD)).toBe("awaiting");
     expect([...parked.awaitingRunIds]).toEqual([CHILD]);
 
-    model.applyEvent({ ...stepFinished(2, CHILD, "check-git-result", "failed"), error: "review rejected" } as LogEvent);
+    model.applyEvent({
+      ...stepFinished(2, CHILD, "check-git-result", "failed"),
+      error: "review rejected",
+    } as LogEvent);
     const failed = model.getState();
     // The park is over: the root reads `running` again, no leaf awaits, and the failure is published.
     expect(failed.displayStatus.get(ROOT)).toBe("running");

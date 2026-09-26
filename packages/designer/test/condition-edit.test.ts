@@ -43,7 +43,13 @@ describe("#370 changeConditionType carries what the new shape can hold", () => {
   });
 
   it("carries the child list between all and any", () => {
-    const all: Condition = { type: "all", of: [{ type: "exists", path: "context.a" }, { type: "exists", path: "context.b" }] };
+    const all: Condition = {
+      type: "all",
+      of: [
+        { type: "exists", path: "context.a" },
+        { type: "exists", path: "context.b" },
+      ],
+    };
     const any = changeConditionType(all, "any");
     expect(any).toEqual({ type: "any", of: all.of });
   });

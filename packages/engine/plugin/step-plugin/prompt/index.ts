@@ -1,8 +1,7 @@
-import { defineStepPlugin, z } from "@path/engine/plugin";
 import type { JsonValue, StepRequest, StepResult } from "@path/engine/plugin";
-
-import { renderPromptMessage } from "./render-prompt-message.js";
+import { defineStepPlugin, z } from "@path/engine/plugin";
 import { runDeepseekWorker } from "./deepseek-worker.js";
+import { renderPromptMessage } from "./render-prompt-message.js";
 
 /**
  * PATH's built-in `prompt` leaf step type, shipped as a plugin folder under `plugin/step-plugin/` and
@@ -71,7 +70,11 @@ interface SdkResultMessage {
 }
 
 function isResultMessage(message: unknown): message is SdkResultMessage {
-  return typeof message === "object" && message !== null && (message as { type?: unknown }).type === "result";
+  return (
+    typeof message === "object" &&
+    message !== null &&
+    (message as { type?: unknown }).type === "result"
+  );
 }
 
 // `usage` is stored verbatim on the run row as JSON; the SDK's exact shape is not the engine's

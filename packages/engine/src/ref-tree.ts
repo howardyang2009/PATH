@@ -1,6 +1,6 @@
 import { dirname, resolve } from "node:path";
-import { walkNodes, type ConfigObject, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { effectiveConfig, type EnvSource } from "./resolve-env.js";
+import { type ConfigObject, type WorkflowFile, type WorkflowNode, walkNodes } from "@path/schema";
+import { type EnvSource, effectiveConfig } from "./resolve-env.js";
 
 /**
  * The **loaded ref tree** (CONTEXT.md § Workflow): one root `workflow.json` plus every file its nested
@@ -60,7 +60,11 @@ export interface RefTreeScope {
  * tree does not hold that file (or holds no tree at all). The one spelling of the engine's ref math:
  * `resolve(dir, ref)` for the lookup key, `dirname` of it for the child's own level.
  */
-export function resolveChildRef(dir: string, ref: string, files: Map<string, WorkflowFile> | undefined): ChildRef | undefined {
+export function resolveChildRef(
+  dir: string,
+  ref: string,
+  files: Map<string, WorkflowFile> | undefined,
+): ChildRef | undefined {
   if (files === undefined) return undefined;
   const path = resolve(dir, ref);
   const file = files.get(path);
@@ -73,8 +77,16 @@ export function resolveChildRef(dir: string, ref: string, files: Map<string, Wor
  * this step's effective config across the boundary (format §8) — so a file reached under two parents is
  * visited once per incoming config, each with what actually reaches it.
  */
-export function* walkRefTree(rootFile: WorkflowFile, rootDir: string, scope: RefTreeScope): Generator<RefTreeEntry> {
-  function* walk(file: WorkflowFile, incomingConfig: ConfigObject, dir: string): Generator<RefTreeEntry> {
+export function* walkRefTree(
+  rootFile: WorkflowFile,
+  rootDir: string,
+  scope: RefTreeScope,
+): Generator<RefTreeEntry> {
+  function* walk(
+    file: WorkflowFile,
+    incomingConfig: ConfigObject,
+    dir: string,
+  ): Generator<RefTreeEntry> {
     const fileConfig = effectiveConfig(file.config ?? {}, incomingConfig, scope.env);
     for (const node of walkNodes(file.body)) {
       const nodeConfig = "config" in node ? node.config : undefined;
@@ -115,7 +127,11 @@ export function resolveNode(
   rootFile: WorkflowFile,
   rootDir: string,
   nodeId: string,
-  options: { files?: Map<string, WorkflowFile>; operatorConfig?: ConfigObject; env?: EnvSource } = {},
+  options: {
+    files?: Map<string, WorkflowFile>;
+    operatorConfig?: ConfigObject;
+    env?: EnvSource;
+  } = {},
 ): ResolvedNode | undefined {
   // The one descent of the loaded tree (`walkRefTree`), so the config a caller interpolates this node's
   // fields against is the object dispatch hands the worker — one rule, not a second copy of it. The

@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { PathApiClient, PathApiError, type FetchLike } from "../src/api-client.js";
+import { type FetchLike, PathApiClient, PathApiError } from "../src/api-client.js";
 
 /** A `fetch` stub that records the last requested URL and returns a canned response. */
-function stubFetch(handler: (url: string, init?: RequestInit) => Response): { fetch: FetchLike; urls: string[] } {
+function stubFetch(handler: (url: string, init?: RequestInit) => Response): {
+  fetch: FetchLike;
+  urls: string[];
+} {
   const urls: string[] = [];
   const fetch: FetchLike = async (input, init) => {
     urls.push(input);
@@ -12,12 +15,17 @@ function stubFetch(handler: (url: string, init?: RequestInit) => Response): { fe
 }
 
 function json(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 describe("PathApiClient", () => {
   it("GET /v0/runs lists root runs and encodes limit/status query params", async () => {
-    const stub = stubFetch(() => json({ runs: [{ run_id: "r1", status: "succeeded", started_at: "t0", finished_at: "t1" }] }));
+    const stub = stubFetch(() =>
+      json({ runs: [{ run_id: "r1", status: "succeeded", started_at: "t0", finished_at: "t1" }] }),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080/", fetch: stub.fetch });
 
     const res = await client.listRuns({ limit: 10, status: "running" });
@@ -34,7 +42,9 @@ describe("PathApiClient", () => {
   });
 
   it("GET /v0/runs/:id returns the run tree", async () => {
-    const stub = stubFetch(() => json({ root_run_id: "r1", status: "succeeded", output: { ok: true }, runs: [] }));
+    const stub = stubFetch(() =>
+      json({ root_run_id: "r1", status: "succeeded", output: { ok: true }, runs: [] }),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     const tree = await client.getRun("r1");
@@ -96,10 +106,19 @@ describe("PathApiClient", () => {
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.deleteWorkflowFile({ path: "flows/a b.workflow.json", ifMatch: '"e1"', sessionId: "s1" })).resolves.toBeUndefined();
-    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fa+b.workflow.json&session_id=s1");
+    await expect(
+      client.deleteWorkflowFile({
+        path: "flows/a b.workflow.json",
+        ifMatch: '"e1"',
+        sessionId: "s1",
+      }),
+    ).resolves.toBeUndefined();
+    expect(stub.urls[0]).toBe(
+      "http://localhost:8080/v0/workflows/file?path=flows%2Fa+b.workflow.json&session_id=s1",
+    );
     expect(inits[0]?.method).toBe("DELETE");
-    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"e1"');
+    const headers = inits[0]?.headers as Record<string, string> | undefined;
+    expect(headers?.["If-Match"]).toBe('"e1"');
   });
 
   it("deleteTemplate sends DELETE /v0/templates/:id", async () => {
@@ -126,24 +145,38 @@ describe("PathApiClient", () => {
   it.each([
     [404, "an unknown or already-deleted run", `no run found with id "r1"`],
     [409, "a run still running", `run "r1" is still running; cancel it before deleting`],
-  ])("deleteRun surfaces the %i for %s with its status and message", async (status, _case, message) => {
-    const stub = stubFetch(() => json({ error: { message } }, status));
-    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+  ])(
+    "deleteRun surfaces the %i for %s with its status and message",
+    async (status, _case, message) => {
+      const stub = stubFetch(() => json({ error: { message } }, status));
+      const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.deleteRun("r1")).rejects.toMatchObject({ name: "PathApiError", status, message });
-  });
+      await expect(client.deleteRun("r1")).rejects.toMatchObject({
+        name: "PathApiError",
+        status,
+        message,
+      });
+    },
+  );
 
   // One 409 is enough — the client cannot tell an already-terminal run from one this server process
   // is not executing, and does not try to; that the route sends both is `server.test.ts`'s to prove.
   it.each([
     [404, "an unknown run", `no run found with id "r1"`],
     [409, "a run that cannot be cancelled", `run "r1" already finished with status "succeeded"`],
-  ])("cancelRun surfaces the %i for %s with its status and the server's message", async (status, _case, message) => {
-    const stub = stubFetch(() => json({ error: { message } }, status));
-    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+  ])(
+    "cancelRun surfaces the %i for %s with its status and the server's message",
+    async (status, _case, message) => {
+      const stub = stubFetch(() => json({ error: { message } }, status));
+      const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.cancelRun("r1")).rejects.toMatchObject({ name: "PathApiError", status, message });
-  });
+      await expect(client.cancelRun("r1")).rejects.toMatchObject({
+        name: "PathApiError",
+        status,
+        message,
+      });
+    },
+  );
 
   it("cancelRun still raises a status-only PathApiError when the error body is not JSON", async () => {
     const stub = stubFetch(() => new Response("<html>502</html>", { status: 502 }));
@@ -209,19 +242,28 @@ describe("PathApiClient", () => {
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     await client.resumeRun("r1", { output_file: "OUT.md" }, "k-run-id");
-    expect(inits[0]?.body).toBe(JSON.stringify({ config: { output_file: "OUT.md" }, rerun_from_run_id: "k-run-id" }));
+    expect(inits[0]?.body).toBe(
+      JSON.stringify({ config: { output_file: "OUT.md" }, rerun_from_run_id: "k-run-id" }),
+    );
   });
 
   it.each([
     [404, "an unknown run or a missing workflow file", `no run found with id "r1"`],
     [409, "a run that is not resumable", `run "r1" already succeeded; there is nothing to resume`],
     [400, "a workflow that no longer validates", "workflow validation failed"],
-  ])("resumeRun surfaces the %i for %s with its status and message", async (status, _case, message) => {
-    const stub = stubFetch(() => json({ error: { message } }, status));
-    const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
+  ])(
+    "resumeRun surfaces the %i for %s with its status and message",
+    async (status, _case, message) => {
+      const stub = stubFetch(() => json({ error: { message } }, status));
+      const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.resumeRun("r1")).rejects.toMatchObject({ name: "PathApiError", status, message });
-  });
+      await expect(client.resumeRun("r1")).rejects.toMatchObject({
+        name: "PathApiError",
+        status,
+        message,
+      });
+    },
+  );
 
   it("POST /v0/runs translates camelCase options to the snake_case body and returns the wire reply", async () => {
     const inits: (RequestInit | undefined)[] = [];
@@ -242,7 +284,10 @@ describe("PathApiClient", () => {
     expect(res).toEqual({ run_id: "r1", root_run_id: "r1" });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs");
     expect(inits[0]?.method).toBe("POST");
-    expect(inits[0]?.headers).toEqual({ Accept: "application/json", "Content-Type": "application/json" });
+    expect(inits[0]?.headers).toEqual({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
     expect(JSON.parse(inits[0]?.body as string)).toEqual({
       workflow_path: "release-notes.workflow.json",
       input: { tag: "v1" },
@@ -265,7 +310,9 @@ describe("PathApiClient", () => {
   });
 
   it("startRun surfaces a 400 validation failure as a PathApiError with the server's details", async () => {
-    const stub = stubFetch(() => json({ error: { message: "invalid config", details: { field: "$env" } } }, 400));
+    const stub = stubFetch(() =>
+      json({ error: { message: "invalid config", details: { field: "$env" } } }, 400),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     await expect(client.startRun({ workflowPath: "wf.workflow.json" })).rejects.toMatchObject({
@@ -288,8 +335,13 @@ describe("PathApiClient", () => {
     expect(res).toEqual({ step_run_id: "leaf 1", root_run_id: "root" });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/runs/leaf%201/complete");
     expect(inits[0]?.method).toBe("POST");
-    expect(inits[0]?.headers).toEqual({ Accept: "application/json", "Content-Type": "application/json" });
-    expect(JSON.parse(inits[0]?.body as string)).toEqual({ output: { approved: true, reviewer: "Dana" } });
+    expect(inits[0]?.headers).toEqual({
+      Accept: "application/json",
+      "Content-Type": "application/json",
+    });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      output: { approved: true, reviewer: "Dana" },
+    });
   });
 
   it("completeStep accepts an optional config override and sends it in the body (ADR 0046)", async () => {
@@ -301,7 +353,11 @@ describe("PathApiClient", () => {
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     // The continuation re-supplies a value the launch froze as its masked token.
-    await client.completeStep("leaf1", { approved: true }, { github_token: "[secret:github_token]" });
+    await client.completeStep(
+      "leaf1",
+      { approved: true },
+      { github_token: "[secret:github_token]" },
+    );
     expect(inits[0]?.method).toBe("POST");
     expect(JSON.parse(inits[0]?.body as string)).toEqual({
       output: { approved: true },
@@ -310,8 +366,19 @@ describe("PathApiClient", () => {
   });
 
   it("completeStep surfaces a 400 schema rejection as a PathApiError carrying the ajv issues", async () => {
-    const issues = [{ instancePath: "/riskLevel", keyword: "enum", message: "must be equal to one of the allowed values" }];
-    const stub = stubFetch(() => json({ error: { message: "output does not match the step's outputSchema", details: issues } }, 400));
+    const issues = [
+      {
+        instancePath: "/riskLevel",
+        keyword: "enum",
+        message: "must be equal to one of the allowed values",
+      },
+    ];
+    const stub = stubFetch(() =>
+      json(
+        { error: { message: "output does not match the step's outputSchema", details: issues } },
+        400,
+      ),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     await expect(client.completeStep("leaf1", { riskLevel: "extreme" })).rejects.toMatchObject({
@@ -323,26 +390,52 @@ describe("PathApiClient", () => {
   });
 
   it("completeStep surfaces a 409 (double-submit / not awaiting) with its status and message", async () => {
-    const stub = stubFetch(() => json({ error: { message: `step run "leaf1" is succeeded, not awaiting` } }, 409));
+    const stub = stubFetch(() =>
+      json({ error: { message: `step run "leaf1" is succeeded, not awaiting` } }, 409),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.completeStep("leaf1", {})).rejects.toMatchObject({ name: "PathApiError", status: 409 });
+    await expect(client.completeStep("leaf1", {})).rejects.toMatchObject({
+      name: "PathApiError",
+      status: 409,
+    });
   });
 
   it("GET /v0/workflows returns the raw discovery list, roots flagged", async () => {
     const stub = stubFetch(() =>
       json({
         workflows: [
-          { relative_path: "release-notes.workflow.json", id: "w1", name: "release-notes", valid: true, is_root: true, error: null },
-          { relative_path: "broken.workflow.json", id: null, name: null, valid: false, is_root: null, error: { message: "bad JSON" } },
+          {
+            relative_path: "release-notes.workflow.json",
+            id: "w1",
+            name: "release-notes",
+            valid: true,
+            is_root: true,
+            error: null,
+          },
+          {
+            relative_path: "broken.workflow.json",
+            id: null,
+            name: null,
+            valid: false,
+            is_root: null,
+            error: { message: "bad JSON" },
+          },
         ],
       }),
     );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     const res = await client.listWorkflows();
-    expect(res.workflows[0]).toMatchObject({ relative_path: "release-notes.workflow.json", is_root: true });
-    expect(res.workflows[1]).toMatchObject({ valid: false, is_root: null, error: { message: "bad JSON" } });
+    expect(res.workflows[0]).toMatchObject({
+      relative_path: "release-notes.workflow.json",
+      is_root: true,
+    });
+    expect(res.workflows[1]).toMatchObject({
+      valid: false,
+      is_root: null,
+      error: { message: "bad JSON" },
+    });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
   });
 
@@ -350,16 +443,43 @@ describe("PathApiClient", () => {
     const stub = stubFetch(() =>
       json({
         templates: [
-          { id: "t1", name: "review", description: "A review gate", kind: "step", origin: "shipped", read_only: true, valid: true, error: null },
-          { id: "t2", name: "nightly", description: "nightly", kind: "step", origin: "user", read_only: false, valid: false, error: { message: "bad" } },
+          {
+            id: "t1",
+            name: "review",
+            description: "A review gate",
+            kind: "step",
+            origin: "shipped",
+            read_only: true,
+            valid: true,
+            error: null,
+          },
+          {
+            id: "t2",
+            name: "nightly",
+            description: "nightly",
+            kind: "step",
+            origin: "user",
+            read_only: false,
+            valid: false,
+            error: { message: "bad" },
+          },
         ],
       }),
     );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     const res = await client.listTemplates();
-    expect(res.templates[0]).toMatchObject({ name: "review", kind: "step", origin: "shipped", read_only: true });
-    expect(res.templates[1]).toMatchObject({ kind: "step", valid: false, error: { message: "bad" } });
+    expect(res.templates[0]).toMatchObject({
+      name: "review",
+      kind: "step",
+      origin: "shipped",
+      read_only: true,
+    });
+    expect(res.templates[1]).toMatchObject({
+      kind: "step",
+      valid: false,
+      error: { message: "bad" },
+    });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
   });
 
@@ -391,22 +511,47 @@ describe("PathApiClient", () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t2", relative_path: ".path/template/step-template/copy.step-template.json", etag: '"new"' }, 201);
+      return json(
+        {
+          id: "t2",
+          relative_path: ".path/template/step-template/copy.step-template.json",
+          etag: '"new"',
+        },
+        201,
+      );
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    const res = await client.createTemplate({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
-    expect(res).toEqual({ id: "t2", relativePath: ".path/template/step-template/copy.step-template.json", etag: '"new"' });
+    const res = await client.createTemplate({
+      kind: "step",
+      name: "copy",
+      description: "",
+      body: { id: "t2" },
+    });
+    expect(res).toEqual({
+      id: "t2",
+      relativePath: ".path/template/step-template/copy.step-template.json",
+      etag: '"new"',
+    });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates");
     expect(sent?.method).toBe("POST");
-    expect(JSON.parse(sent?.body as string)).toEqual({ kind: "step", name: "copy", description: "", body: { id: "t2" } });
+    expect(JSON.parse(sent?.body as string)).toEqual({
+      kind: "step",
+      name: "copy",
+      description: "",
+      body: { id: "t2" },
+    });
   });
 
   it("PUT /v0/templates/:id writes back under If-Match (#580)", async () => {
     let sent: RequestInit | undefined;
     const stub = stubFetch((_url, init) => {
       sent = init;
-      return json({ id: "t 1", relative_path: ".path/template/step-template/x.step-template.json", etag: '"next"' });
+      return json({
+        id: "t 1",
+        relative_path: ".path/template/step-template/x.step-template.json",
+        etag: '"next"',
+      });
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
@@ -414,7 +559,8 @@ describe("PathApiClient", () => {
     expect(res.etag).toBe('"next"');
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/templates/t%201");
     expect(sent?.method).toBe("PUT");
-    expect((sent?.headers as Record<string, string>)["If-Match"]).toBe('"prev"');
+    const headers = sent?.headers as Record<string, string> | undefined;
+    expect(headers?.["If-Match"]).toBe('"prev"');
     expect(JSON.parse(sent?.body as string)).toEqual({ id: "t 1" });
   });
 
@@ -422,7 +568,9 @@ describe("PathApiClient", () => {
     const stub = stubFetch(() => json({ error: { message: "template is read-only" } }, 403));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    const error = await client.putTemplate({ id: "t1", body: { id: "t1" }, ifMatch: '"e"' }).catch((e: unknown) => e);
+    const error = await client
+      .putTemplate({ id: "t1", body: { id: "t1" }, ifMatch: '"e"' })
+      .catch((e: unknown) => e);
     expect(error).toBeInstanceOf(PathApiError);
     expect(error).toMatchObject({ status: 403, message: "template is read-only" });
   });
@@ -431,8 +579,18 @@ describe("PathApiClient", () => {
     const stub = stubFetch(() =>
       json({
         step_plugins: [
-          { name: "binary", fields: { command: { type: "string", optional: false } }, workers: ["spawn"], default_worker: "spawn" },
-          { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
+          {
+            name: "binary",
+            fields: { command: { type: "string", optional: false } },
+            workers: ["spawn"],
+            default_worker: "spawn",
+          },
+          {
+            name: "prompt",
+            fields: { prompt: { type: "string", optional: false } },
+            workers: ["anthropic"],
+            default_worker: "anthropic",
+          },
         ],
       }),
     );
@@ -456,7 +614,9 @@ describe("PathApiClient", () => {
     const raw = await client.getWorkflowFile("flows/main.workflow.json");
     expect(raw.text).toBe('{"format":"path/workflow@5"}');
     expect(raw.etag).toBe('"abc123"');
-    expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/file?path=flows%2Fmain.workflow.json");
+    expect(stub.urls[0]).toBe(
+      "http://localhost:8080/v0/workflows/file?path=flows%2Fmain.workflow.json",
+    );
   });
 
   it("getWorkflowFile surfaces a 404 as a PathApiError with the server's message", async () => {
@@ -474,10 +634,13 @@ describe("PathApiClient", () => {
     const inits: (RequestInit | undefined)[] = [];
     const stub = stubFetch((_url, init) => {
       inits.push(init);
-      return new Response(JSON.stringify({ relative_path: "flows/main.workflow.json", id: "w1", etag: '"new"' }), {
-        status: 200,
-        headers: { "Content-Type": "application/json", ETag: '"new"' },
-      });
+      return new Response(
+        JSON.stringify({ relative_path: "flows/main.workflow.json", id: "w1", etag: '"new"' }),
+        {
+          status: 200,
+          headers: { "Content-Type": "application/json", ETag: '"new"' },
+        },
+      );
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
@@ -490,7 +653,8 @@ describe("PathApiClient", () => {
     expect(res).toEqual({ relativePath: "flows/main.workflow.json", id: "w1", etag: '"new"' });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows");
     expect(inits[0]?.method).toBe("PUT");
-    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBe('"old"');
+    const headers = inits[0]?.headers as Record<string, string> | undefined;
+    expect(headers?.["If-Match"]).toBe('"old"');
     expect(JSON.parse(inits[0]?.body as string)).toEqual({
       workflow_path: "flows/main.workflow.json",
       workflow: { format: "path/workflow@5", id: "w1", name: "main", body: [] },
@@ -506,14 +670,23 @@ describe("PathApiClient", () => {
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     await client.putWorkflow({ workflowPath: "new.workflow.json", workflow: { body: [] } });
-    expect((inits[0]?.headers as Record<string, string>)["If-Match"]).toBeUndefined();
+    const headers = inits[0]?.headers as Record<string, string> | undefined;
+    expect(headers?.["If-Match"]).toBeUndefined();
   });
 
   it("putWorkflow surfaces a 412 stale-write conflict as a PathApiError carrying the status", async () => {
-    const stub = stubFetch(() => json({ error: { message: "precondition failed: the file changed since it was read" } }, 412));
+    const stub = stubFetch(() =>
+      json({ error: { message: "precondition failed: the file changed since it was read" } }, 412),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.putWorkflow({ workflowPath: "f.workflow.json", workflow: { body: [] }, ifMatch: '"old"' })).rejects.toMatchObject({
+    await expect(
+      client.putWorkflow({
+        workflowPath: "f.workflow.json",
+        workflow: { body: [] },
+        ifMatch: '"old"',
+      }),
+    ).rejects.toMatchObject({
       name: "PathApiError",
       status: 412,
     });
@@ -532,14 +705,20 @@ describe("PathApiClient", () => {
     expect(res).toEqual({ status: "granted", lease });
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock");
     expect(inits[0]?.method).toBe("POST");
-    expect(JSON.parse(inits[0]?.body as string)).toEqual({ workflow_path: "f.workflow.json", session_id: "s1" });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      workflow_path: "f.workflow.json",
+      session_id: "s1",
+    });
   });
 
   it("acquireLock passes takeover:true when a takeover is requested", async () => {
     const inits: (RequestInit | undefined)[] = [];
     const stub = stubFetch((_url, init) => {
       inits.push(init);
-      return json({ session_id: "s1", acquired_at: "t0", heartbeat_at: "t0", expires_at: "t30" }, 200);
+      return json(
+        { session_id: "s1", acquired_at: "t0", heartbeat_at: "t0", expires_at: "t30" },
+        200,
+      );
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
@@ -549,11 +728,20 @@ describe("PathApiClient", () => {
 
   it("acquireLock returns held-by-other with the holder's expiry on a 409, not a throw", async () => {
     const stub = stubFetch(() =>
-      json({ error: { message: "workflow is being edited in another session" }, held_by_other: true, expires_at: "t99" }, 409),
+      json(
+        {
+          error: { message: "workflow is being edited in another session" },
+          held_by_other: true,
+          expires_at: "t99",
+        },
+        409,
+      ),
     );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.acquireLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({
+    await expect(
+      client.acquireLock({ workflowPath: "f.workflow.json", sessionId: "s1" }),
+    ).resolves.toEqual({
       status: "held-by-other",
       expiresAt: "t99",
     });
@@ -563,7 +751,9 @@ describe("PathApiClient", () => {
     const stub = stubFetch(() => json({ error: { message: "not found" } }, 404));
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.acquireLock({ workflowPath: "../escape.workflow.json", sessionId: "s1" })).rejects.toMatchObject({
+    await expect(
+      client.acquireLock({ workflowPath: "../escape.workflow.json", sessionId: "s1" }),
+    ).rejects.toMatchObject({
       name: "PathApiError",
       status: 404,
     });
@@ -573,15 +763,24 @@ describe("PathApiClient", () => {
     const renewed = { session_id: "s1", acquired_at: "t0", heartbeat_at: "t10", expires_at: "t40" };
     const okStub = stubFetch(() => json(renewed, 200));
     const okClient = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: okStub.fetch });
-    await expect(okClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({
+    await expect(
+      okClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" }),
+    ).resolves.toEqual({
       status: "renewed",
       lease: renewed,
     });
     expect(okStub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock/heartbeat");
 
-    const lostStub = stubFetch(() => json({ error: { message: "editing lease not held by this session" } }, 409));
-    const lostClient = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: lostStub.fetch });
-    await expect(lostClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toEqual({ status: "lost" });
+    const lostStub = stubFetch(() =>
+      json({ error: { message: "editing lease not held by this session" } }, 409),
+    );
+    const lostClient = new PathApiClient({
+      baseUrl: "http://localhost:8080",
+      fetch: lostStub.fetch,
+    });
+    await expect(
+      lostClient.heartbeatLock({ workflowPath: "f.workflow.json", sessionId: "s1" }),
+    ).resolves.toEqual({ status: "lost" });
   });
 
   it("releaseLock resolves on the idempotent 200 and posts the session_id", async () => {
@@ -592,13 +791,20 @@ describe("PathApiClient", () => {
     });
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
-    await expect(client.releaseLock({ workflowPath: "f.workflow.json", sessionId: "s1" })).resolves.toBeUndefined();
+    await expect(
+      client.releaseLock({ workflowPath: "f.workflow.json", sessionId: "s1" }),
+    ).resolves.toBeUndefined();
     expect(stub.urls[0]).toBe("http://localhost:8080/v0/workflows/lock/release");
-    expect(JSON.parse(inits[0]?.body as string)).toEqual({ workflow_path: "f.workflow.json", session_id: "s1" });
+    expect(JSON.parse(inits[0]?.body as string)).toEqual({
+      workflow_path: "f.workflow.json",
+      session_id: "s1",
+    });
   });
 
   it("raises PathApiError carrying the server's error envelope on non-2xx", async () => {
-    const stub = stubFetch(() => json({ error: { message: "no run found", details: { id: "nope" } } }, 404));
+    const stub = stubFetch(() =>
+      json({ error: { message: "no run found", details: { id: "nope" } } }, 404),
+    );
     const client = new PathApiClient({ baseUrl: "http://localhost:8080", fetch: stub.fetch });
 
     await expect(client.getRun("nope")).rejects.toMatchObject({

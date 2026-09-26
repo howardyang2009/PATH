@@ -24,8 +24,21 @@ function gotoFile(): Record<string, unknown> {
     name: "flow",
     body: [
       { type: "prompt", id: uuid(2), name: "alpha", prompt: "a", publish: { x: "${output.a}" } },
-      { type: "while-do", id: uuid(3), name: "loop", condition: { type: "exists", path: "context.x" }, max_iterations: 2, node: { type: "prompt", id: uuid(4), name: "lb", prompt: "l" } },
-      { type: "parallel", id: uuid(5), name: "fan", join: "collect", branches: [{ type: "prompt", id: uuid(6), name: "p1", prompt: "p" }] },
+      {
+        type: "while-do",
+        id: uuid(3),
+        name: "loop",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 2,
+        node: { type: "prompt", id: uuid(4), name: "lb", prompt: "l" },
+      },
+      {
+        type: "parallel",
+        id: uuid(5),
+        name: "fan",
+        join: "collect",
+        branches: [{ type: "prompt", id: uuid(6), name: "p1", prompt: "p" }],
+      },
       { type: "goto", id: uuid(7), name: "hop", target: "alpha", max_jumps: 3 },
       { type: "goto", id: uuid(8), name: "skip", target: "tail", max_jumps: 2 },
       { type: "prompt", id: uuid(9), name: "tail", prompt: "t" },
@@ -34,7 +47,12 @@ function gotoFile(): Record<string, unknown> {
 }
 
 async function openCanvas() {
-  render(<App client={stubClient({ files: { [PATH]: JSON.stringify(gotoFile()) } })} initialPath={PATH} />);
+  render(
+    <App
+      client={stubClient({ files: { [PATH]: JSON.stringify(gotoFile()) } })}
+      initialPath={PATH}
+    />,
+  );
   await screen.findByText("alpha");
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   const pane = screen.getByRole("region", { name: "Properties" });
@@ -60,12 +78,18 @@ describe("#619 G-D-01 palette placement", () => {
     fireEvent.click(screen.getByText("Goto"));
     expect(within(canvas).getByRole("button", { name: /add goto here/ })).toBeInTheDocument();
     expect(within(canvas).queryByRole("button", { name: /swap for goto/ })).not.toBeInTheDocument();
-    expect(within(canvas).queryByRole("button", { name: /add goto branch/ })).not.toBeInTheDocument();
+    expect(
+      within(canvas).queryByRole("button", { name: /add goto branch/ }),
+    ).not.toBeInTheDocument();
 
     fireEvent.click(within(canvas).getByRole("button", { name: /add goto here/ }));
     // The minted goto points nowhere yet: its chip says so and it carries a target-absent marker.
     expect(within(block(canvas, "goto")).getByText("→ (no target)")).toBeInTheDocument();
-    expect(within(block(canvas, "goto")).getByRole("img", { name: /Validation error: goto target "" not found/ })).toBeInTheDocument();
+    expect(
+      within(block(canvas, "goto")).getByRole("img", {
+        name: /Validation error: goto target "" not found/,
+      }),
+    ).toBeInTheDocument();
   });
 });
 
@@ -153,7 +177,11 @@ describe("#619 G-D-04 / G-D-05 target edits", () => {
   it("allows deleting the target and marks the goto target-absent", async () => {
     const { canvas } = await openCanvas();
     fireEvent.click(within(block(canvas, "alpha")).getByRole("button", { name: "Delete alpha" }));
-    expect(within(block(canvas, "hop")).getByRole("img", { name: /goto target "alpha" not found in this file/ })).toBeInTheDocument();
+    expect(
+      within(block(canvas, "hop")).getByRole("img", {
+        name: /goto target "alpha" not found in this file/,
+      }),
+    ).toBeInTheDocument();
     expect(within(block(canvas, "hop")).queryByText("↑")).not.toBeInTheDocument();
   });
 });

@@ -1,8 +1,7 @@
-import { describe, expect, it } from "vitest";
-
 import { childBodies, walkNodes } from "@path/schema/node-walk";
 import { makeNodeSchema, RESERVED_TYPE_NAMES } from "@path/schema/nodes";
 import { fromWireRunRecord, toRootRunSummary, toWireRunRecord } from "@path/schema/wire-v0";
+import { describe, expect, it } from "vitest";
 import * as barrel from "../src/index.js";
 
 /**

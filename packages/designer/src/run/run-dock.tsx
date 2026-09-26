@@ -118,7 +118,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
       style={open ? { height: `${dock.size}px` } : undefined}
     >
       {open && (
-        <div
+        <hr
           className="run-dock-resizer"
           aria-label="Resize runs panel"
           data-testid="run-dock-resizer"
@@ -134,9 +134,14 @@ export function RunDock(props: RunDockProps): JSX.Element {
           disabled={props.disabledReason !== undefined}
           onClick={() => setOpen((shown) => !shown)}
         >
-          <span className="run-dock-caret" aria-hidden="true">{open ? "▾" : "▸"}</span> Runs
+          <span className="run-dock-caret" aria-hidden="true">
+            {open ? "▾" : "▸"}
+          </span>{" "}
+          Runs
         </button>
-        {props.disabledReason !== undefined ? <span className="run-dock-note">{props.disabledReason}</span> : null}
+        {props.disabledReason !== undefined ? (
+          <span className="run-dock-note">{props.disabledReason}</span>
+        ) : null}
       </header>
       {open && (
         <div className="run-dock-body" ref={bodyRef}>
@@ -167,15 +172,22 @@ export function RunDock(props: RunDockProps): JSX.Element {
               // one value, absent until the tree lands.
               resumeFrom={
                 props.load.phase === "ready"
-                  ? { runs: props.load.value.runs, selectedRunId: props.selectedRunId, rootFile: props.rootFile, dirty: props.dirty }
+                  ? {
+                      runs: props.load.value.runs,
+                      selectedRunId: props.selectedRunId,
+                      rootFile: props.rootFile,
+                      dirty: props.dirty,
+                    }
                   : undefined
               }
               // The watched run's display status, so its row reads `awaiting` while a leaf is parked
               // even though the list's summary status stays `running` (ADR 0038).
-              displayStatus={props.load.phase === "ready" ? props.load.value.displayStatus : undefined}
+              displayStatus={
+                props.load.phase === "ready" ? props.load.value.displayStatus : undefined
+              }
             />
           </div>
-          <div
+          <hr
             className="run-dock-vresizer"
             aria-label="Resize runs list"
             data-testid="run-dock-vresizer-0"
@@ -202,7 +214,7 @@ export function RunDock(props: RunDockProps): JSX.Element {
               />
             )}
           </div>
-          <div
+          <hr
             className="run-dock-vresizer"
             aria-label="Resize run detail"
             data-testid="run-dock-vresizer-1"

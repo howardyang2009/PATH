@@ -1,19 +1,19 @@
-import { useState } from "react";
 import type { WireStepPlugin } from "@path/client-core";
 import {
-  FORMAT_VERSION,
-  STEP_ROOTS,
   checkInterpolationSyntax,
-  safeParseWorkflowFile,
+  FORMAT_VERSION,
   type InterpolationRoot,
   type JsonValue,
+  STEP_ROOTS,
+  safeParseWorkflowFile,
   type WorkflowFile,
   type WorkflowNode,
 } from "@path/schema";
-import { sameEditKey, type EditKey } from "./edit-key.js";
+import { useState } from "react";
+import { type EditKey, sameEditKey } from "./edit-key.js";
 import { withoutKey } from "./edit-target.js";
-import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { parseInputDraft } from "./interp-suggest.js";
+import { dropNodeKey, mergeNodePayload, setNodeField } from "./node-edit.js";
 import { wireToRegistry } from "./open-workflow.js";
 
 /**
@@ -103,7 +103,12 @@ export function useValidatedDraft<T>(
   identity: EditKey,
   commit: (value: T) => void,
 ): { draft: string; error: string | null; onEdit: (text: string) => void } {
-  const field = useDraft<string, T>(typeof initial === "function" ? initial : () => initial, validate, identity, commit);
+  const field = useDraft<string, T>(
+    typeof initial === "function" ? initial : () => initial,
+    validate,
+    identity,
+    commit,
+  );
   // The text field's whole draft is the edit's subject, so its `commit` closure names the fold key.
   return { draft: field.draft, error: field.error, onEdit: (text) => field.onEdit(text) };
 }
@@ -113,7 +118,11 @@ export function useValidatedDraft<T>(
  * envelope plus the parsed payload, and validate the whole one-node file against the registry. An
  * unparseable, non-object, or registry-invalid draft returns its error and is not committed.
  */
-export function validateJsonPayload(node: WorkflowNode, text: string, plugins: WireStepPlugin[]): DraftResult<WorkflowNode> {
+export function validateJsonPayload(
+  node: WorkflowNode,
+  text: string,
+  plugins: WireStepPlugin[],
+): DraftResult<WorkflowNode> {
   let parsed: unknown;
   try {
     parsed = JSON.parse(text);
@@ -124,9 +133,16 @@ export function validateJsonPayload(node: WorkflowNode, text: string, plugins: W
     return { ok: false, error: "The payload must be a JSON object." };
   }
   const next = mergeNodePayload(node, parsed as Record<string, unknown>);
-  const trial: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name: "trial", body: [next] };
+  const trial: WorkflowFile = {
+    format: FORMAT_VERSION,
+    id: crypto.randomUUID(),
+    name: "trial",
+    body: [next],
+  };
   const result = safeParseWorkflowFile(trial, wireToRegistry(plugins));
-  return result.success ? { ok: true, value: next } : { ok: false, error: result.errors.join("\n") };
+  return result.success
+    ? { ok: true, value: next }
+    : { ok: false, error: result.errors.join("\n") };
 }
 
 /**
@@ -139,9 +155,17 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
   const parsed = parseInputDraft(text, STEP_ROOTS);
   if (!parsed.ok) return { ok: false, error: parsed.error };
   const isEmptyObject =
-    parsed.value !== null && typeof parsed.value === "object" && !Array.isArray(parsed.value) && Object.keys(parsed.value).length === 0;
+    parsed.value !== null &&
+    typeof parsed.value === "object" &&
+    !Array.isArray(parsed.value) &&
+    Object.keys(parsed.value).length === 0;
   const isEmpty = text.trim() === "" || isEmptyObject;
-  return { ok: true, value: isEmpty ? dropNodeKey(node, "input") : ({ ...node, input: parsed.value } as WorkflowNode) };
+  return {
+    ok: true,
+    value: isEmpty
+      ? dropNodeKey(node, "input")
+      : ({ ...node, input: parsed.value } as WorkflowNode),
+  };
 }
 
 /**
@@ -152,7 +176,10 @@ export function validateInputDraft(node: WorkflowNode, text: string): DraftResul
  * unparseable, array, or scalar draft returns its error and is not committed, so the file stays
  * strict-valid.
  */
-export function validateFileInputDraft(file: WorkflowFile, text: string): DraftResult<WorkflowFile> {
+export function validateFileInputDraft(
+  file: WorkflowFile,
+  text: string,
+): DraftResult<WorkflowFile> {
   const dropInput = (): WorkflowFile => withoutKey(file, "input");
   if (text.trim() === "") return { ok: true, value: dropInput() };
   const parsed = parseInputDraft(text, []);
@@ -193,7 +220,10 @@ export function validateOutputSchema(node: WorkflowNode, text: string): DraftRes
 export function validateMaxIterations(text: string): DraftResult<number | string> {
   const trimmed = text.trim();
   if (trimmed === "") {
-    return { ok: false, error: "Required — a positive whole number, or a ${config.…} / ${context.…} reference." };
+    return {
+      ok: false,
+      error: "Required — a positive whole number, or a ${config.…} / ${context.…} reference.",
+    };
   }
   if (/^\d+$/.test(trimmed)) {
     const n = Number(trimmed);
@@ -275,7 +305,11 @@ export function useKeyedRows(
 
   return {
     rows: field.draft,
-    setRow: (index, row) => writeRows(field.draft.map((r, i) => (i === index ? row : r)), index),
+    setRow: (index, row) =>
+      writeRows(
+        field.draft.map((r, i) => (i === index ? row : r)),
+        index,
+      ),
     addRow: () => writeRows([...field.draft, { key: "", value: "" }]),
     removeRow: (index) => writeRows(field.draft.filter((_, i) => i !== index)),
   };

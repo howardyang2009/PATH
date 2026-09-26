@@ -1,8 +1,8 @@
 import type { JsonValue } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { Trace } from "../src/condition.js";
-import { createEmitter } from "../src/run-emitter.js";
 import type { RunIdentity } from "../src/run-context.js";
+import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 
 /**
@@ -13,7 +13,13 @@ import type { Observation } from "../src/run-observer.js";
  * distinct from the walker tests that assert the same wire `Observation`s through a real emitter.
  */
 
-const ROOT: RunIdentity = { runId: "root-run", rootRunId: "root-run", parentRunId: null, nodeId: null, nodeName: null };
+const ROOT: RunIdentity = {
+  runId: "root-run",
+  rootRunId: "root-run",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+};
 const NESTED: RunIdentity = {
   runId: "child-run",
   rootRunId: "root-run",
@@ -99,9 +105,32 @@ describe("createEmitter — run terminal + context", () => {
     await e.runFinished({ status: "cancelled" });
 
     expect(seen).toEqual([
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "succeeded", output: { ok: true } },
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "failed", error: "boom" },
-      { type: "run-finished", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, status: "cancelled" },
+      {
+        type: "run-finished",
+        runId: "root-run",
+        rootRunId: "root-run",
+        nodeId: null,
+        nodeName: null,
+        status: "succeeded",
+        output: { ok: true },
+      },
+      {
+        type: "run-finished",
+        runId: "root-run",
+        rootRunId: "root-run",
+        nodeId: null,
+        nodeName: null,
+        status: "failed",
+        error: "boom",
+      },
+      {
+        type: "run-finished",
+        runId: "root-run",
+        rootRunId: "root-run",
+        nodeId: null,
+        nodeName: null,
+        status: "cancelled",
+      },
     ]);
   });
 
@@ -109,7 +138,16 @@ describe("createEmitter — run terminal + context", () => {
     const { seen, emit } = sink();
     const ctx: JsonValue = { a: 1 };
     await createEmitter(ROOT, emit).contextChanged(ctx);
-    expect(seen).toEqual([{ type: "context-changed", runId: "root-run", rootRunId: "root-run", nodeId: null, nodeName: null, context: ctx }]);
+    expect(seen).toEqual([
+      {
+        type: "context-changed",
+        runId: "root-run",
+        rootRunId: "root-run",
+        nodeId: null,
+        nodeName: null,
+        context: ctx,
+      },
+    ]);
   });
 });
 
@@ -124,9 +162,32 @@ describe("createEmitter — control nodes pull node id/name off the node", () =>
     await e.branchNoMatch(node, { traces: [TRACE] });
 
     expect(seen).toEqual([
-      { type: "checkpoint-evaluated", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", passed: false, trace: TRACE },
-      { type: "branch-taken", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", arm: "else", trace: null },
-      { type: "branch-no-match", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", traces: [TRACE] },
+      {
+        type: "checkpoint-evaluated",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        passed: false,
+        trace: TRACE,
+      },
+      {
+        type: "branch-taken",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        arm: "else",
+        trace: null,
+      },
+      {
+        type: "branch-no-match",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        traces: [TRACE],
+      },
     ]);
   });
 
@@ -138,9 +199,33 @@ describe("createEmitter — control nodes pull node id/name off the node", () =>
     await e.reuseMarker(node, { originalRunId: "orig-run" });
 
     expect(seen).toEqual([
-      { type: "iteration-started", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", iteration: 2, trace: TRACE },
-      { type: "loop-exited", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", reason: "max-iterations-exceeded", iterations: 3, trace: TRACE },
-      { type: "reuse-marker", runId: "child-run", rootRunId: "root-run", nodeId: "node-guid", nodeName: "gate", originalRunId: "orig-run" },
+      {
+        type: "iteration-started",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        iteration: 2,
+        trace: TRACE,
+      },
+      {
+        type: "loop-exited",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        reason: "max-iterations-exceeded",
+        iterations: 3,
+        trace: TRACE,
+      },
+      {
+        type: "reuse-marker",
+        runId: "child-run",
+        rootRunId: "root-run",
+        nodeId: "node-guid",
+        nodeName: "gate",
+        originalRunId: "orig-run",
+      },
     ]);
   });
 
@@ -157,8 +242,27 @@ describe("createEmitter — control nodes pull node id/name off the node", () =>
     expect(seen).toEqual([
       { type: "pass-started", ...env, nodeId: null, nodeName: null, pass: 1 },
       { type: "pass-started", ...env, nodeId: "node-guid", nodeName: "gate", pass: 2 },
-      { type: "goto-taken", ...env, nodeId: "node-guid", nodeName: "gate", targetNodeId: "target-guid", targetNodeName: "b", jump: 1, maxJumps: 3, pass: 2 },
-      { type: "goto-exhausted", ...env, nodeId: "node-guid", nodeName: "gate", targetNodeId: "target-guid", targetNodeName: "b", maxJumps: 3, pass: 4 },
+      {
+        type: "goto-taken",
+        ...env,
+        nodeId: "node-guid",
+        nodeName: "gate",
+        targetNodeId: "target-guid",
+        targetNodeName: "b",
+        jump: 1,
+        maxJumps: 3,
+        pass: 2,
+      },
+      {
+        type: "goto-exhausted",
+        ...env,
+        nodeId: "node-guid",
+        nodeName: "gate",
+        targetNodeId: "target-guid",
+        targetNodeName: "b",
+        maxJumps: 3,
+        pass: 4,
+      },
     ]);
   });
 
@@ -190,8 +294,19 @@ describe("createEmitter — step sub-emitter", () => {
     expect(ids).toEqual(new Set([step.runId]));
     expect(step.runId).not.toBe(NESTED.runId);
     // ...and step-started names the enclosing workflow-run as its parent.
-    expect(seen[0]).toMatchObject({ type: "step-started", parentRunId: "child-run", nodeId: "step-guid", nodeName: "compile", stepType: "binary" });
-    expect(seen.map((o) => o.type)).toEqual(["step-started", "step-usage", "step-stderr", "step-finished"]);
+    expect(seen[0]).toMatchObject({
+      type: "step-started",
+      parentRunId: "child-run",
+      nodeId: "step-guid",
+      nodeName: "compile",
+      stepType: "binary",
+    });
+    expect(seen.map((o) => o.type)).toEqual([
+      "step-started",
+      "step-usage",
+      "step-stderr",
+      "step-finished",
+    ]);
   });
 
   it("cancelled narrates run-cancelled then a cancelled step-finished, in that order", async () => {
@@ -201,8 +316,23 @@ describe("createEmitter — step sub-emitter", () => {
     await step.cancelled({ cause: "sibling-failed", causeRunId: "villain-run" });
 
     expect(seen).toEqual([
-      { type: "run-cancelled", runId: step.runId, rootRunId: "root-run", nodeId: "step-guid", nodeName: "compile", cause: "sibling-failed", causeRunId: "villain-run" },
-      { type: "step-finished", runId: step.runId, rootRunId: "root-run", nodeId: "step-guid", nodeName: "compile", status: "cancelled" },
+      {
+        type: "run-cancelled",
+        runId: step.runId,
+        rootRunId: "root-run",
+        nodeId: "step-guid",
+        nodeName: "compile",
+        cause: "sibling-failed",
+        causeRunId: "villain-run",
+      },
+      {
+        type: "step-finished",
+        runId: step.runId,
+        rootRunId: "root-run",
+        nodeId: "step-guid",
+        nodeName: "compile",
+        status: "cancelled",
+      },
     ]);
   });
 

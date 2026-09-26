@@ -11,7 +11,10 @@ import { blobRef, runBlobDir } from "./paths.js";
 export function writeBlobFile(dir: string, filename: string, content: string): void {
   mkdirSync(dir, { recursive: true });
   const finalPath = join(dir, filename);
-  const tmpPath = join(dir, `.${filename}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`);
+  const tmpPath = join(
+    dir,
+    `.${filename}.tmp-${process.pid}-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+  );
   writeFileSync(tmpPath, content, "utf8");
   renameSync(tmpPath, finalPath);
 }

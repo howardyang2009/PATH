@@ -1,5 +1,5 @@
 import type { ServerResponse } from "node:http";
-import { toWireStepPlugins, type StepPluginsResponse } from "@path/schema";
+import { type StepPluginsResponse, toWireStepPlugins } from "@path/schema";
 import { sendJson } from "../http-json.js";
 import type { RouteContext } from "./route-context.js";
 

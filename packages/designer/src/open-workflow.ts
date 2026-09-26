@@ -1,14 +1,14 @@
-import { z } from "zod";
 import {
-  CONTROL_CHILD_SLOTS,
-  RESERVED_TYPE_NAMES,
-  identityIssues,
-  safeParseWorkflowFile,
   type ChildSlot,
+  CONTROL_CHILD_SLOTS,
+  identityIssues,
+  RESERVED_TYPE_NAMES,
   type StepPluginRegistry,
+  safeParseWorkflowFile,
   type WireStepPlugin,
   type WorkflowFile,
 } from "@path/schema";
+import { z } from "zod";
 
 /**
  * Opening a workflow file into the read-only canvas model (#367, designer-spec § Canvas interaction
@@ -51,7 +51,9 @@ export type OpenResult =
 
 /** A non-null, non-array object, or null. */
 function asObject(value: unknown): Record<string, unknown> | null {
-  return typeof value === "object" && value !== null && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : null;
 }
 
 /** An array, or null. */
@@ -225,10 +227,16 @@ function resolveIdentity(
   // the Designer must not clobber. Aggregate, so one open names every offender.
   const invalid = issues.filter((issue) => issue.rule === "invalid-id");
   if (invalid.length > 0) {
-    const lines = invalid.map((issue) => `  • ${labelAt(issue.path)} has an id that is not a UUIDv4: ${JSON.stringify(issue.value)}`);
+    const lines = invalid.map(
+      (issue) =>
+        `  • ${labelAt(issue.path)} has an id that is not a UUIDv4: ${JSON.stringify(issue.value)}`,
+    );
     return {
       status: "invalid-ids",
-      message: [`Cannot open: ${invalid.length} node id${invalid.length === 1 ? " is" : "s are"} not valid UUIDv4s.`, ...lines].join("\n"),
+      message: [
+        `Cannot open: ${invalid.length} node id${invalid.length === 1 ? " is" : "s are"} not valid UUIDv4s.`,
+        ...lines,
+      ].join("\n"),
     };
   }
 
@@ -243,10 +251,15 @@ function resolveIdentity(
     shared.set(issue.value, paths);
   }
   if (shared.size > 0) {
-    const lines = [...shared.entries()].map(([id, paths]) => `  • id ${JSON.stringify(id)} is shared by ${paths.map(labelAt).join(", ")}`);
+    const lines = [...shared.entries()].map(
+      ([id, paths]) => `  • id ${JSON.stringify(id)} is shared by ${paths.map(labelAt).join(", ")}`,
+    );
     return {
       status: "duplicate-ids",
-      message: [`Cannot open: ${shared.size} node id${shared.size === 1 ? " is" : "s are"} used more than once.`, ...lines].join("\n"),
+      message: [
+        `Cannot open: ${shared.size} node id${shared.size === 1 ? " is" : "s are"} used more than once.`,
+        ...lines,
+      ].join("\n"),
     };
   }
 
@@ -272,7 +285,10 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
   try {
     json = JSON.parse(rawText);
   } catch (error) {
-    return { status: "invalid", message: `Cannot open: the file is not valid JSON (${error instanceof Error ? error.message : String(error)}).` };
+    return {
+      status: "invalid",
+      message: `Cannot open: the file is not valid JSON (${error instanceof Error ? error.message : String(error)}).`,
+    };
   }
 
   const root = asObject(json);
@@ -293,7 +309,10 @@ export function openWorkflowFile(rawText: string, plugins: WireStepPlugin[]): Op
 
   const parsed = safeParseWorkflowFile(json, wireToRegistry(plugins));
   if (!parsed.success) {
-    return { status: "invalid", message: `Cannot open: the file does not validate.\n${parsed.errors.join("\n")}` };
+    return {
+      status: "invalid",
+      message: `Cannot open: the file does not validate.\n${parsed.errors.join("\n")}`,
+    };
   }
   // `idsStamped` records only that the identity gate minted an absent `id`; it drives the open badge's
   // wording, not the buffer's dirtiness. Dirtiness is content-equality against the baseline (ADR 0030):

@@ -1,11 +1,25 @@
-import { describe, expect, it } from "vitest";
-import { carriesEnvelope, childSocketFlavor, socketAcceptsBody, socketAcceptsKind } from "../src/grammar.js";
 import type { WorkflowNode } from "@path/schema";
+import { describe, expect, it } from "vitest";
+import {
+  carriesEnvelope,
+  childSocketFlavor,
+  socketAcceptsBody,
+  socketAcceptsKind,
+} from "../src/grammar.js";
 
 describe("grammar — which kind snaps into which socket (#368)", () => {
   it("admits every step and controller kind in every socket flavour", () => {
     for (const flavor of ["sequence", "single", "branches"] as const) {
-      for (const kind of ["prompt", "binary", "workflow", "parallel", "branch", "while-do", "sequence", "api-call"]) {
+      for (const kind of [
+        "prompt",
+        "binary",
+        "workflow",
+        "parallel",
+        "branch",
+        "while-do",
+        "sequence",
+        "api-call",
+      ]) {
         expect(socketAcceptsKind(flavor, kind)).toBe(true);
       }
     }
@@ -31,8 +45,10 @@ describe("grammar — which kind snaps into which socket (#368)", () => {
   });
 
   it("carriesEnvelope is true for a leaf/workflow type, false for every control block", () => {
-    for (const type of ["prompt", "binary", "workflow", "api-call"]) expect(carriesEnvelope(type)).toBe(true);
-    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"]) expect(carriesEnvelope(type)).toBe(false);
+    for (const type of ["prompt", "binary", "workflow", "api-call"])
+      expect(carriesEnvelope(type)).toBe(true);
+    for (const type of ["parallel", "branch", "while-do", "sequence", "checkpoint"])
+      expect(carriesEnvelope(type)).toBe(false);
   });
 
   it("admits a template body where its insert form is legal (#578)", () => {

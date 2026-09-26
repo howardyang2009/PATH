@@ -85,6 +85,8 @@ describe("setSecretSource", () => {
   it("env composes {$secret:{$env}}, preserving the name; literal collapses to {$secret:''}", () => {
     expect(setSecretSource({ $secret: { $env: "TOKEN" } }, "literal")).toEqual({ $secret: "" });
     expect(setSecretSource({ $secret: "x" }, "env")).toEqual({ $secret: { $env: "" } });
-    expect(setSecretSource({ $secret: { $env: "TOKEN" } }, "env")).toEqual({ $secret: { $env: "TOKEN" } });
+    expect(setSecretSource({ $secret: { $env: "TOKEN" } }, "env")).toEqual({
+      $secret: { $env: "TOKEN" },
+    });
   });
 });

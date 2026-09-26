@@ -1,10 +1,10 @@
 import {
-  classifyLevelK,
-  selectBoundary,
   type BoundaryLevel,
   type ControlBlockKind,
+  classifyLevelK,
   type LegalKLevelReason,
   type RunRecord,
+  selectBoundary,
   type WorkflowFile,
 } from "@path/schema";
 
@@ -72,7 +72,11 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   const selection = selectBoundary(runs.values(), selectedRunId);
   if (selection.kind === "not-in-tree" || selection.kind === "root-run") return noSelection();
   if (selection.kind === "pass-run") {
-    return { ok: false, reason: "pass-run", message: `Pass ${selection.pass} is a goto pass, not a node; select a node inside it.` };
+    return {
+      ok: false,
+      reason: "pass-run",
+      message: `Pass ${selection.pass} is a goto pass, not a node; select a node inside it.`,
+    };
   }
   const { run: selected, levels } = selection;
 
@@ -81,7 +85,8 @@ export function resumeFromEligibility(args: ResumeFromEligibilityArgs): ResumeFr
   // nested K sits in a file the Designer does not hold, so only its own success is checked here and the
   // engine backstops the rest.
   const nodeName = selected.nodeName ?? selected.nodeId;
-  const topLevel = levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
+  const topLevel =
+    levels.length === 1 && (levels[0]!.passRun ?? levels[0]!.run).parentRunId === rootRunId;
   if (topLevel && rootFile !== null) {
     const illegal = classifyTopLevel(rootFile, runs, levels[0]!, selected, nodeName);
     if (illegal) return illegal;
@@ -130,7 +135,11 @@ function classifyTopLevel(
   if (level.ok) return null;
   switch (level.reason) {
     case "not-in-file":
-      return { ok: false, reason: "not-in-file", message: `“${nodeName}” is no longer in the workflow.` };
+      return {
+        ok: false,
+        reason: "not-in-file",
+        message: `“${nodeName}” is no longer in the workflow.`,
+      };
     case "in-body":
       return {
         ok: false,

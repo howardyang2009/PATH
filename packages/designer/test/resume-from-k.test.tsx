@@ -4,7 +4,13 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, makeCalls, stubClient, type DesignerStubOptions, type StubCalls } from "./stub-server.js";
+import {
+  DEFAULT_PLUGINS,
+  type DesignerStubOptions,
+  makeCalls,
+  type StubCalls,
+  stubClient,
+} from "./stub-server.js";
 
 /** Canonical on-disk bytes, so a re-open reads clean (ADR 0030) — the same helper the run-surfaces test uses. */
 function canonicalBytes(file: Record<string, unknown>): string {
@@ -36,7 +42,12 @@ function twoStepFile(): Record<string, unknown> {
 }
 
 /** A run row carrying the fields the tree + the eager legal-K check read; the rest are inert nulls. */
-function wireRun(p: { run_id: string; status: string; node_id?: string | null; node_name?: string | null }): Record<string, unknown> {
+function wireRun(p: {
+  run_id: string;
+  status: string;
+  node_id?: string | null;
+  node_name?: string | null;
+}): Record<string, unknown> {
   return {
     run_id: p.run_id,
     root_run_id: "root-1",
@@ -109,13 +120,18 @@ describe("Designer Resume-from-K button (#447)", () => {
   it("is rendered but disabled with the select-a-node reason when no tree row is selected", async () => {
     await renderWatching({
       rootStatus: "failed",
-      treeRuns: [wireRun({ run_id: "root-1", status: "failed" }), wireRun({ run_id: "r-step1", status: "failed", node_id: STEP1_ID, node_name: "draft" })],
+      treeRuns: [
+        wireRun({ run_id: "root-1", status: "failed" }),
+        wireRun({ run_id: "r-step1", status: "failed", node_id: STEP1_ID, node_name: "draft" }),
+      ],
     });
 
     const submit = await screen.findByTestId("resume-from-submit");
     expect(submit).toBeDisabled();
     expect(submit).toHaveTextContent("Resume from …");
-    expect(screen.getByTestId("resume-from-reason")).toHaveTextContent("Select a node in the run tree.");
+    expect(screen.getByTestId("resume-from-reason")).toHaveTextContent(
+      "Select a node in the run tree.",
+    );
   });
 
   it("enables on a legal K and sends its run id as rerun_from_run_id", async () => {
@@ -125,8 +141,18 @@ describe("Designer Resume-from-K button (#447)", () => {
         rootStatus: "failed",
         treeRuns: [
           wireRun({ run_id: "root-1", status: "failed" }),
-          wireRun({ run_id: "r-step1", status: "succeeded", node_id: STEP1_ID, node_name: "draft" }),
-          wireRun({ run_id: "r-step2", status: "succeeded", node_id: STEP2_ID, node_name: "review" }),
+          wireRun({
+            run_id: "r-step1",
+            status: "succeeded",
+            node_id: STEP1_ID,
+            node_name: "draft",
+          }),
+          wireRun({
+            run_id: "r-step2",
+            status: "succeeded",
+            node_id: STEP2_ID,
+            node_name: "review",
+          }),
         ],
       },
       calls,
@@ -158,7 +184,9 @@ describe("Designer Resume-from-K button (#447)", () => {
 
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     const submit = await screen.findByTestId("resume-from-submit");
-    await waitFor(() => expect(screen.getByTestId("resume-from-reason")).toHaveTextContent(/prefix must succeed/i));
+    await waitFor(() =>
+      expect(screen.getByTestId("resume-from-reason")).toHaveTextContent(/prefix must succeed/i),
+    );
     expect(submit).toBeDisabled();
   });
 
@@ -170,12 +198,20 @@ describe("Designer Resume-from-K button (#447)", () => {
         wireRun({ run_id: "r-step1", status: "succeeded", node_id: STEP1_ID, node_name: "draft" }),
         wireRun({ run_id: "r-step2", status: "succeeded", node_id: STEP2_ID, node_name: "review" }),
       ],
-      onResumeRun: () => new Response(JSON.stringify({ error: { message: "run resolves to node which is no longer in the workflow" } }), { status: 409, headers: { "Content-Type": "application/json" } }),
+      onResumeRun: () =>
+        new Response(
+          JSON.stringify({
+            error: { message: "run resolves to node which is no longer in the workflow" },
+          }),
+          { status: 409, headers: { "Content-Type": "application/json" } },
+        ),
     });
 
     fireEvent.click(await screen.findByTestId("tree-row-r-step2"));
     fireEvent.click(await screen.findByTestId("resume-from-submit"));
-    expect(await screen.findByTestId("resume-from-error")).toHaveTextContent("no longer in the workflow");
+    expect(await screen.findByTestId("resume-from-error")).toHaveTextContent(
+      "no longer in the workflow",
+    );
     // The button is still there to read the reason and retry — the form did not collapse.
     expect(screen.getByTestId("resume-from-submit")).toBeInTheDocument();
   });
@@ -208,8 +244,18 @@ describe("Designer Resume-from-K button (#447)", () => {
         launchSecretKeys: ["DEEPSEEK_API_KEY"],
         treeRuns: [
           wireRun({ run_id: "root-1", status: "failed" }),
-          wireRun({ run_id: "r-step1", status: "succeeded", node_id: STEP1_ID, node_name: "draft" }),
-          wireRun({ run_id: "r-step2", status: "succeeded", node_id: STEP2_ID, node_name: "review" }),
+          wireRun({
+            run_id: "r-step1",
+            status: "succeeded",
+            node_id: STEP1_ID,
+            node_name: "draft",
+          }),
+          wireRun({
+            run_id: "r-step2",
+            status: "succeeded",
+            node_id: STEP2_ID,
+            node_name: "review",
+          }),
         ],
       },
       calls,
@@ -228,7 +274,9 @@ describe("Designer Resume-from-K button (#447)", () => {
     expect(calls.resume).toHaveLength(0);
 
     // Supplied, the reason clears and the K rides the resume with the config override.
-    fireEvent.change(await screen.findByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' } });
+    fireEvent.change(await screen.findByTestId("resume-config"), {
+      target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' },
+    });
     await waitFor(() => expect(submit).toBeEnabled());
     expect(screen.queryByTestId("resume-secret-error")).toBeNull();
 

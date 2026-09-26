@@ -2,9 +2,19 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { loadStepPluginRegistry, openProject, type Project } from "@path/engine";
-import { instantiate, validateOutputSchema, type JsonValue, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import {
+  instantiate,
+  type JsonValue,
+  validateOutputSchema,
+  type WorkflowFile,
+  type WorkflowNode,
+} from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { DEFAULT_SHIPPED_TEMPLATE_DIR, discoverTemplates, type TemplateEntry } from "../src/template-store.js";
+import {
+  DEFAULT_SHIPPED_TEMPLATE_DIR,
+  discoverTemplates,
+  type TemplateEntry,
+} from "../src/template-store.js";
 
 /**
  * The shipped `person-switch` Step-Template (#581, ADR 0052): a `person-activity` ask followed by a
@@ -42,12 +52,22 @@ function allNodes(nodes: WorkflowNode[]): WorkflowNode[] {
   const out: WorkflowNode[] = [];
   const visit = (node: WorkflowNode) => {
     out.push(node);
-    const loose = node as unknown as { body?: WorkflowNode[]; arms?: { node: WorkflowNode }[]; else?: WorkflowNode };
-    loose.body?.forEach(visit);
-    loose.arms?.forEach((arm) => visit(arm.node));
+    const loose = node as unknown as {
+      body?: WorkflowNode[];
+      arms?: { node: WorkflowNode }[];
+      else?: WorkflowNode;
+    };
+    loose.body?.forEach((child) => {
+      visit(child);
+    });
+    loose.arms?.forEach((arm) => {
+      visit(arm.node);
+    });
     if (loose.else) visit(loose.else);
   };
-  nodes.forEach(visit);
+  nodes.forEach((node) => {
+    visit(node);
+  });
   return out;
 }
 
@@ -60,7 +80,12 @@ function byName(nodes: WorkflowNode[], name: string): WorkflowNode {
 describe("person-switch step-template (ADR 0052)", () => {
   it("is a shipped, read-only, valid step-template whose body is one sequence of [person-activity, branch]", async () => {
     const entry = await personSwitch();
-    expect({ origin: entry.origin, readOnly: entry.readOnly, valid: entry.valid, error: entry.error }).toEqual({
+    expect({
+      origin: entry.origin,
+      readOnly: entry.readOnly,
+      valid: entry.valid,
+      error: entry.error,
+    }).toEqual({
       origin: "shipped",
       readOnly: true,
       valid: true,
@@ -74,15 +99,27 @@ describe("person-switch step-template (ADR 0052)", () => {
     expect(sequence.body.map((n) => n.type)).toEqual(["person-activity", "branch"]);
 
     // The ask's outputSchema is a string enum of exactly the branch's arm labels, one arm per label.
-    const ask = sequence.body[0] as unknown as { outputSchema: { properties: { choice: { enum: string[] } } } };
-    const branch = sequence.body[1] as unknown as { arms: { when: { type: string; path: string; value: string } }[]; else?: unknown };
+    const ask = sequence.body[0] as unknown as {
+      outputSchema: { properties: { choice: { enum: string[] } } };
+    };
+    const branch = sequence.body[1] as unknown as {
+      arms: { when: { type: string; path: string; value: string } }[];
+      else?: unknown;
+    };
     const labels = ask.outputSchema.properties.choice.enum;
-    expect(branch.arms.map((arm) => arm.when)).toEqual(labels.map((value) => ({ type: "equals", path: "output.choice", value })));
+    expect(branch.arms.map((arm) => arm.when)).toEqual(
+      labels.map((value) => ({ type: "equals", path: "output.choice", value })),
+    );
     expect(branch.else).toBeUndefined();
 
     // The schema accepts each label and refuses anything else.
-    for (const label of labels) expect(validateOutputSchema(ask.outputSchema as unknown as JsonValue, { choice: label }).ok).toBe(true);
-    expect(validateOutputSchema(ask.outputSchema as unknown as JsonValue, { choice: "nope" }).ok).toBe(false);
+    for (const label of labels)
+      expect(
+        validateOutputSchema(ask.outputSchema as unknown as JsonValue, { choice: label }).ok,
+      ).toBe(true);
+    expect(
+      validateOutputSchema(ask.outputSchema as unknown as JsonValue, { choice: "nope" }).ok,
+    ).toBe(false);
     expect(validateOutputSchema(ask.outputSchema as unknown as JsonValue, {}).ok).toBe(false);
   });
 
@@ -101,7 +138,12 @@ describe("person-switch step-template (ADR 0052)", () => {
     expect(freshIds).toHaveLength(sourceIds.size);
     for (const id of freshIds) expect(sourceIds.has(id)).toBe(false);
 
-    const wf = { format: "path/workflow@5", id: crypto.randomUUID(), name: "person-switch-demo", body } as WorkflowFile;
+    const wf = {
+      format: "path/workflow@5",
+      id: crypto.randomUUID(),
+      name: "person-switch-demo",
+      body,
+    } as WorkflowFile;
     const project = open();
     try {
       expect((await project.run(wf, dir)).status).toBe("awaiting");

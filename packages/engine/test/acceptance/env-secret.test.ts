@@ -1,10 +1,18 @@
-import { cpSync, existsSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  statSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { main, type CliIo } from "../../src/cli.js";
+import { type CliIo, main } from "../../src/cli.js";
 
 /**
  * The reached-when of map #113 (ticket #117): the checked-in
@@ -59,7 +67,10 @@ let savedEnv: Record<string, string | undefined>;
 /** A throwaway project directory holding just the probe workflow — `.path/` is created beside it. */
 function createProject(): string {
   const dir = mkdtempSync(join(tmpdir(), "path-env-acceptance-"));
-  cpSync(join(acceptanceDir, "env-secret-probe.workflow.json"), join(dir, "env-secret-probe.workflow.json"));
+  cpSync(
+    join(acceptanceDir, "env-secret-probe.workflow.json"),
+    join(dir, "env-secret-probe.workflow.json"),
+  );
   return dir;
 }
 
@@ -99,7 +110,11 @@ afterEach(() => {
 
 /** The real `path run`, with no worker or observer substituted. */
 function runProbe(extraArgs: string[] = []): Promise<number> {
-  return main(["run", join(harness.projectDir, "env-secret-probe.workflow.json"), ...extraArgs], harness.io, {});
+  return main(
+    ["run", join(harness.projectDir, "env-secret-probe.workflow.json"), ...extraArgs],
+    harness.io,
+    {},
+  );
 }
 
 /** Where the probe writes what it received — outside `.path/`, so the masking sweep never sees it. */
@@ -123,7 +138,9 @@ interface RunRow {
 function readRuns(): RunRow[] {
   const db = new Database(join(harness.projectDir, ".path", "path.db"), { readonly: true });
   try {
-    return db.prepare("SELECT run_id, parent_run_id, node_id, node_name, status FROM runs").all() as RunRow[];
+    return db
+      .prepare("SELECT run_id, parent_run_id, node_id, node_name, status FROM runs")
+      .all() as RunRow[];
   } finally {
     db.close();
   }
@@ -139,7 +156,9 @@ function rootRunId(): string {
 function readLogEvents(): Record<string, unknown>[] {
   const db = new Database(join(harness.projectDir, ".path", "path.db"), { readonly: true });
   try {
-    const rows = db.prepare("SELECT event FROM log_events ORDER BY seq").all() as { event: string }[];
+    const rows = db.prepare("SELECT event FROM log_events ORDER BY seq").all() as {
+      event: string;
+    }[];
     return rows.map((row) => JSON.parse(row.event) as Record<string, unknown>);
   } finally {
     db.close();
@@ -254,7 +273,11 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     for (const events of [readLogEvents(), readNdjsonLogEvents()]) {
       const checkpoint = events.find((event) => event.type === "checkpoint-passed");
       expect(checkpoint).toBeDefined();
-      expect(checkpoint!.trace).toMatchObject({ path: "context.echoed", outcome: "true", value: TOKEN_MASK });
+      expect(checkpoint!.trace).toMatchObject({
+        path: "context.echoed",
+        outcome: "true",
+        value: TOKEN_MASK,
+      });
     }
     // The predicate ran against the *real* value: `^[A-Za-z0-9._-]+$` passes for the token and
     // fails for a `{"$env": ...}` wrapper serialized in its place, so a passing checkpoint is
@@ -267,7 +290,9 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     // `probe_id` is `{"$env": ...}` with no `$secret` over it. Masking is by value and the author
     // says which sourced values are secret (format §8.3) — "env is always secret" was rejected on
     // map #113 precisely so an env-sourced model name is not scrubbed out of every artifact.
-    expect(readFileSync(blobPath(stepRunId("use-token"), "stderr.txt"), "utf8")).toContain(PROBE_ID);
+    expect(readFileSync(blobPath(stepRunId("use-token"), "stderr.txt"), "utf8")).toContain(
+      PROBE_ID,
+    );
     expect(JSON.parse(harness.stdout.join("\n"))).toEqual({ probe_id: PROBE_ID });
   });
 
@@ -285,7 +310,9 @@ describe("acceptance: $env + $secret composed (map #113 reached-when, ticket #11
     expect(readReceipt()).toBe(TOKEN); // the child still got the real value before failing
 
     for (const events of [readLogEvents(), readNdjsonLogEvents()]) {
-      const failures = events.filter((event) => event.type === "step-finished" && event.status === "failed");
+      const failures = events.filter(
+        (event) => event.type === "step-finished" && event.status === "failed",
+      );
       expect(failures.length).toBeGreaterThan(0);
       for (const event of failures) {
         expect(event.error).toContain(TOKEN_MASK);
@@ -341,7 +368,9 @@ describe("acceptance: an unset variable refuses the run (ticket #117)", () => {
     // the run row cannot hold it — it has status and no error column (#124), which is the whole of
     // what §8.3 means by the error being persisted in the log stream alone.
     for (const events of [readLogEvents(), readNdjsonLogEvents()]) {
-      const failed = events.filter((event) => event.type === "step-finished" && event.status === "failed");
+      const failed = events.filter(
+        (event) => event.type === "step-finished" && event.status === "failed",
+      );
       expect(failed).toHaveLength(1);
       expect(failed[0]!.error).toContain("PATH_ACCEPTANCE_TOKEN");
       expect(failed[0]!.error).toContain('config key "token"');

@@ -1,7 +1,21 @@
 import { instantiate, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { bodyInsertSocket, childSocketFlavor, socketAcceptsBody, socketAcceptsKind, socketBarred, type SocketFlavor } from "./grammar.js";
+import {
+  editFile,
+  findById,
+  isDuplicable,
+  locate,
+  type SingleSlot,
+  unwrapEdit,
+} from "./edit-tree.js";
+import {
+  bodyInsertSocket,
+  childSocketFlavor,
+  type SocketFlavor,
+  socketAcceptsBody,
+  socketAcceptsKind,
+  socketBarred,
+} from "./grammar.js";
 import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "./node-factory.js";
-import { editFile, findById, isDuplicable, locate, unwrapEdit, type SingleSlot } from "./edit-tree.js";
 import type { Armed } from "./use-armed.js";
 
 /**
@@ -66,7 +80,10 @@ export function createEditor(
   const arrivals = (armed: Armed, flavor: SocketFlavor): WorkflowNode[] =>
     armed.kind === "node"
       ? [mint(armed.type)]
-      : instantiate(armed.body, { usedNames: usedNames(file.body), socket: bodyInsertSocket(flavor) });
+      : instantiate(armed.body, {
+          usedNames: usedNames(file.body),
+          socket: bodyInsertSocket(flavor),
+        });
 
   /** The flavour of a list socket: the file body (`null`) is a sequence; an owner reports its own. */
   const listFlavor = (ownerId: string | null): SocketFlavor => {
@@ -79,7 +96,9 @@ export function createEditor(
     socketOpen(flavor, ownerId) {
       if (armed === null) return false;
       const barred = socketBarred(file.body, ownerId);
-      return armed.kind === "node" ? socketAcceptsKind(flavor, armed.type, barred) : socketAcceptsBody(flavor, armed.body, barred);
+      return armed.kind === "node"
+        ? socketAcceptsKind(flavor, armed.type, barred)
+        : socketAcceptsBody(flavor, armed.body, barred);
     },
     placeIntoList(ownerId) {
       if (armed === null) return;
@@ -97,10 +116,26 @@ export function createEditor(
       disarm();
     },
     addArm(branchId) {
-      applyEdit(unwrapEdit(editFile(file, { kind: "add-arm", branchId, arm: createArm(usedNames(file.body), defaultLeaf) })));
+      applyEdit(
+        unwrapEdit(
+          editFile(file, {
+            kind: "add-arm",
+            branchId,
+            arm: createArm(usedNames(file.body), defaultLeaf),
+          }),
+        ),
+      );
     },
     addElse(branchId) {
-      applyEdit(unwrapEdit(editFile(file, { kind: "add-else", branchId, node: createNode(defaultLeaf, usedNames(file.body), defaultLeaf) })));
+      applyEdit(
+        unwrapEdit(
+          editFile(file, {
+            kind: "add-else",
+            branchId,
+            node: createNode(defaultLeaf, usedNames(file.body), defaultLeaf),
+          }),
+        ),
+      );
     },
     removeElse(branchId) {
       applyEdit(unwrapEdit(editFile(file, { kind: "remove-else", branchId })));
@@ -116,14 +151,25 @@ export function createEditor(
     duplicate(id) {
       const node = findById(file.body, id);
       if (!node) return;
-      applyEdit(unwrapEdit(editFile(file, { kind: "insert-after", id, clone: cloneWithFreshIdentity(node, usedNames(file.body)) })));
+      applyEdit(
+        unwrapEdit(
+          editFile(file, {
+            kind: "insert-after",
+            id,
+            clone: cloneWithFreshIdentity(node, usedNames(file.body)),
+          }),
+        ),
+      );
     },
     canRemove(id) {
       return editFile(file, { kind: "delete", id }).ok;
     },
     canMove(id) {
       const site = locate(file, id);
-      return site !== null && (site.where === "file-body" || site.where === "list" || site.where === "arm");
+      return (
+        site !== null &&
+        (site.where === "file-body" || site.where === "list" || site.where === "arm")
+      );
     },
     canDuplicate(id) {
       return isDuplicable(file, id);

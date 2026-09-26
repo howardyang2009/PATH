@@ -14,7 +14,9 @@ describe("validateLaunchWorkerDefaults (ADR 0044, #518)", () => {
   });
 
   it("returns no errors for a table naming real types and workers they ship", () => {
-    expect(validateLaunchWorkerDefaults({ binary: "spawn", prompt: "anthropic" }, builtinRegistry)).toEqual([]);
+    expect(
+      validateLaunchWorkerDefaults({ binary: "spawn", prompt: "anthropic" }, builtinRegistry),
+    ).toEqual([]);
   });
 
   it("flags an absent step type, naming the type and the installed list", () => {
@@ -34,7 +36,10 @@ describe("validateLaunchWorkerDefaults (ADR 0044, #518)", () => {
   });
 
   it("aggregates every bad entry in one pass", () => {
-    const errors = validateLaunchWorkerDefaults({ nope: "spawn", prompt: "nosuchworker" }, builtinRegistry);
+    const errors = validateLaunchWorkerDefaults(
+      { nope: "spawn", prompt: "nosuchworker" },
+      builtinRegistry,
+    );
     expect(errors).toHaveLength(2);
     const joined = errors.join("\n");
     expect(joined).toMatch(/unknown step type "nope"/);

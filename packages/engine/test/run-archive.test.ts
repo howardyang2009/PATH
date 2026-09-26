@@ -9,7 +9,14 @@ import { LOG_FORMAT } from "../src/logging/log-backend.js";
 import { writeRunBlob } from "../src/persistence/blob-store.js";
 import { openDb } from "../src/persistence/db.js";
 import { blobRef, dbFilePath, rootRunTreeDir, runsDir } from "../src/persistence/paths.js";
-import { deleteRunsForRoot, finishRun, insertReuseRun, insertRun, setRunOutputRef, setRunUsage } from "../src/persistence/run-store.js";
+import {
+  deleteRunsForRoot,
+  finishRun,
+  insertReuseRun,
+  insertRun,
+  setRunOutputRef,
+  setRunUsage,
+} from "../src/persistence/run-store.js";
 import { createRunArchive, openRunArchive, type RunArchive } from "../src/run-archive.js";
 
 let dir: string;
@@ -33,7 +40,8 @@ function seedTree(rootRunId = "root-1"): void {
     runId: rootRunId,
     rootRunId,
     parentRunId: null,
-    nodeId: null, nodeName: null,
+    nodeId: null,
+    nodeName: null,
     workerName: null,
     status: "running",
   });
@@ -41,7 +49,8 @@ function seedTree(rootRunId = "root-1"): void {
     runId: `${rootRunId}-child`,
     rootRunId,
     parentRunId: rootRunId,
-    nodeId: "greet", nodeName: "greet",
+    nodeId: "greet",
+    nodeName: "greet",
     workerName: "spawn",
     status: "running",
   });
@@ -59,7 +68,8 @@ function stepStarted(seq: number, runId: string): LogEvent {
     seq,
     ts: new Date().toISOString(),
     run_id: runId,
-    node_id: "greet", node_name: "greet",
+    node_id: "greet",
+    node_name: "greet",
     step_type: "binary",
     worker_name: "spawn",
   };
@@ -104,7 +114,8 @@ describe("run archive — tree", () => {
       runId: "child-only",
       rootRunId: "root-1",
       parentRunId: "root-1",
-      nodeId: "greet", nodeName: "greet",
+      nodeId: "greet",
+      nodeName: "greet",
       workerName: "spawn",
       status: "succeeded",
     });
@@ -167,14 +178,45 @@ describe("run archive — reuse-row resolution (#257)", () => {
    */
   function seedSourceAndReuse(): void {
     // Source tree: root + a leaf that ran and recorded blobs.
-    insertRun(db, { runId: "src", rootRunId: "src", parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
-    insertRun(db, { runId: "src-leaf", rootRunId: "src", parentRunId: "src", nodeId: "greet", nodeName: "greet", workerName: "spawn", status: "succeeded" });
+    insertRun(db, {
+      runId: "src",
+      rootRunId: "src",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "succeeded",
+    });
+    insertRun(db, {
+      runId: "src-leaf",
+      rootRunId: "src",
+      parentRunId: "src",
+      nodeId: "greet",
+      nodeName: "greet",
+      workerName: "spawn",
+      status: "succeeded",
+    });
     writeRunBlob(dir, "src", "src-leaf", "input.json", { from: "source" });
     writeRunBlob(dir, "src", "src-leaf", "output.json", { greeting: "hi from source" });
 
     // Successor tree: root + a reuse row for the same node, pointing direct-to-source at the leaf.
-    insertRun(db, { runId: "succ", rootRunId: "succ", parentRunId: null, nodeId: null, nodeName: null, workerName: "spawn", status: "succeeded" });
-    insertReuseRun(db, { runId: "succ-reuse", rootRunId: "succ", parentRunId: "succ", nodeId: "greet", nodeName: "greet", reusedFromRunId: "src-leaf" });
+    insertRun(db, {
+      runId: "succ",
+      rootRunId: "succ",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "succeeded",
+    });
+    insertReuseRun(db, {
+      runId: "succ-reuse",
+      rootRunId: "succ",
+      parentRunId: "succ",
+      nodeId: "greet",
+      nodeName: "greet",
+      reusedFromRunId: "src-leaf",
+    });
   }
 
   it("resolves a reuse row's provenance onto its record: source root plus synthesized refs", () => {
@@ -215,14 +257,28 @@ describe("run archive — events", () => {
     seedTree();
     writeNdjsonLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child")]);
 
-    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1, 2]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events()
+        .map((event) => event.seq),
+    ).toEqual([1, 2]);
   });
 
   it("slices the replay to what a reconnecting client hasn't seen", () => {
     seedTree();
-    writeNdjsonLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child"), stepStarted(3, "root-1")]);
+    writeNdjsonLog("root-1", [
+      stepStarted(1, "root-1"),
+      stepStarted(2, "root-1-child"),
+      stepStarted(3, "root-1"),
+    ]);
 
-    expect(archive.tree("root-1")!.events(1).map((event) => event.seq)).toEqual([2, 3]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events(1)
+        .map((event) => event.seq),
+    ).toEqual([2, 3]);
     expect(archive.tree("root-1")!.events(9)).toEqual([]);
   });
 
@@ -230,14 +286,28 @@ describe("run archive — events", () => {
     seedTree();
     await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child")]);
 
-    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1, 2]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events()
+        .map((event) => event.seq),
+    ).toEqual([1, 2]);
   });
 
   it("slices a db replay the same way it slices an ndjson one", async () => {
     seedTree();
-    await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child"), stepStarted(3, "root-1")]);
+    await writeDbLog("root-1", [
+      stepStarted(1, "root-1"),
+      stepStarted(2, "root-1-child"),
+      stepStarted(3, "root-1"),
+    ]);
 
-    expect(archive.tree("root-1")!.events(1).map((event) => event.seq)).toEqual([2, 3]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events(1)
+        .map((event) => event.seq),
+    ).toEqual([2, 3]);
     expect(archive.tree("root-1")!.events(9)).toEqual([]);
   });
 
@@ -248,7 +318,12 @@ describe("run archive — events", () => {
     // is pinned here is which one is read, so the default configuration keeps reading the file.
     await writeDbLog("root-1", [stepStarted(1, "root-1"), stepStarted(2, "root-1-child")]);
 
-    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events()
+        .map((event) => event.seq),
+    ).toEqual([1]);
   });
 
   it("falls back to log_events when run.log holds only its header", async () => {
@@ -258,7 +333,12 @@ describe("run archive — events", () => {
 
     // An existing-but-empty file is not a narrative, so an in-flight run whose first event has not
     // reached disk still replays rather than reporting nothing.
-    expect(archive.tree("root-1")!.events().map((event) => event.seq)).toEqual([1]);
+    expect(
+      archive
+        .tree("root-1")!
+        .events()
+        .map((event) => event.seq),
+    ).toEqual([1]);
   });
 
   it("is empty for a run no log backend recorded", () => {
@@ -274,7 +354,8 @@ describe("run archive — events", () => {
       seq: 1,
       ts: new Date().toISOString(),
       run_id: "root-1",
-      node_id: "greet", node_name: "greet",
+      node_id: "greet",
+      node_name: "greet",
       status: "failed",
       error: "exit 1: token=***",
     };
@@ -300,28 +381,61 @@ describe("run archive — listRoots", () => {
     // Two roots sharing a human name but distinct GUIDs, plus a third — the segmentation #202 exists
     // for. Each `seedTree` also writes a child row, which must never pick up the identity.
     insertRun(db, {
-      runId: "acc-1", rootRunId: "acc-1", parentRunId: null, nodeId: null, nodeName: null,
-      workerName: "spawn", status: "running",
-      workflowId: "guid-acc", workflowName: "access", workflowPath: "a/access.workflow.json",
+      runId: "acc-1",
+      rootRunId: "acc-1",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "running",
+      workflowId: "guid-acc",
+      workflowName: "access",
+      workflowPath: "a/access.workflow.json",
     });
     insertRun(db, {
-      runId: "acc-1-child", rootRunId: "acc-1", parentRunId: "acc-1", nodeId: "greet", nodeName: "greet",
-      workerName: "spawn", status: "running",
+      runId: "acc-1-child",
+      rootRunId: "acc-1",
+      parentRunId: "acc-1",
+      nodeId: "greet",
+      nodeName: "greet",
+      workerName: "spawn",
+      status: "running",
     });
     insertRun(db, {
-      runId: "acc-2", rootRunId: "acc-2", parentRunId: null, nodeId: null, nodeName: null,
-      workerName: "spawn", status: "running",
-      workflowId: "guid-acc-fork", workflowName: "access", workflowPath: "b/access.workflow.json",
+      runId: "acc-2",
+      rootRunId: "acc-2",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "running",
+      workflowId: "guid-acc-fork",
+      workflowName: "access",
+      workflowPath: "b/access.workflow.json",
     });
     insertRun(db, {
-      runId: "foo-1", rootRunId: "foo-1", parentRunId: null, nodeId: null, nodeName: null,
-      workerName: "spawn", status: "running",
-      workflowId: "guid-foo", workflowName: "foo", workflowPath: "foo.workflow.json",
+      runId: "foo-1",
+      rootRunId: "foo-1",
+      parentRunId: null,
+      nodeId: null,
+      nodeName: null,
+      workerName: "spawn",
+      status: "running",
+      workflowId: "guid-foo",
+      workflowName: "foo",
+      workflowPath: "foo.workflow.json",
     });
 
     // Name groups both `access` roots (a fork keeps the name); the GUID separates them.
-    expect(archive.listRoots({ workflowName: "access" }).map((r) => r.runId).sort()).toEqual(["acc-1", "acc-2"]);
-    expect(archive.listRoots({ workflowId: "guid-acc-fork" }).map((r) => r.runId)).toEqual(["acc-2"]);
+    expect(
+      archive
+        .listRoots({ workflowName: "access" })
+        .map((r) => r.runId)
+        .sort(),
+    ).toEqual(["acc-1", "acc-2"]);
+    expect(archive.listRoots({ workflowId: "guid-acc-fork" }).map((r) => r.runId)).toEqual([
+      "acc-2",
+    ]);
 
     // Root-only: the identity is on the root record, its child carries null on all three columns.
     const root = archive.tree("acc-1")!.root!;
@@ -393,7 +507,8 @@ function reuseMarker(seq: number, originalRunId: string): LogEvent {
     seq,
     ts: new Date().toISOString(),
     run_id: "successor-root",
-    node_id: "greet", node_name: "greet",
+    node_id: "greet",
+    node_name: "greet",
     original_run_id: originalRunId,
   };
 }
@@ -461,7 +576,8 @@ function seedLeaf(opts: {
     runId: opts.runId,
     rootRunId: opts.rootRunId,
     parentRunId: opts.parentRunId,
-    nodeId: opts.nodeId, nodeName: opts.nodeId,
+    nodeId: opts.nodeId,
+    nodeName: opts.nodeId,
     workerName: "anthropic",
     status: "succeeded",
   });
@@ -471,8 +587,20 @@ function seedLeaf(opts: {
 describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)", () => {
   it("sums estimated_cost_usd over a tree's own descendant rows", () => {
     seedTree("root-1"); // root + one non-leaf child, both null cost
-    seedLeaf({ runId: "leaf-a", rootRunId: "root-1", parentRunId: "root-1", nodeId: "a", cost: 0.5 });
-    seedLeaf({ runId: "leaf-b", rootRunId: "root-1", parentRunId: "root-1", nodeId: "b", cost: 0.25 });
+    seedLeaf({
+      runId: "leaf-a",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      nodeId: "a",
+      cost: 0.5,
+    });
+    seedLeaf({
+      runId: "leaf-b",
+      rootRunId: "root-1",
+      parentRunId: "root-1",
+      nodeId: "b",
+      cost: 0.25,
+    });
 
     expect(archive.cost("root-1")).toBeCloseTo(0.75);
   });
@@ -486,10 +614,22 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
   it("reaches into the original tree via a reuse-marker for a reused leaf", async () => {
     // Original tree: a leaf that cost real money.
     seedTree("orig");
-    seedLeaf({ runId: "orig-leaf", rootRunId: "orig", parentRunId: "orig", nodeId: "a", cost: 0.4 });
+    seedLeaf({
+      runId: "orig-leaf",
+      rootRunId: "orig",
+      parentRunId: "orig",
+      nodeId: "a",
+      cost: 0.4,
+    });
     // Successor reused that leaf (no row of its own for it) and ran a fresh leaf.
     seedTree("succ");
-    seedLeaf({ runId: "succ-leaf", rootRunId: "succ", parentRunId: "succ", nodeId: "b", cost: 0.1 });
+    seedLeaf({
+      runId: "succ-leaf",
+      rootRunId: "succ",
+      parentRunId: "succ",
+      nodeId: "b",
+      cost: 0.1,
+    });
     await writeDbLog("succ", [reuseMarker(1, "orig-leaf")]);
 
     expect(archive.cost("succ")).toBeCloseTo(0.5); // 0.1 own + 0.4 reached
@@ -502,12 +642,25 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
       runId: "orig-wf",
       rootRunId: "orig",
       parentRunId: "orig",
-      nodeId: "loop", nodeName: "loop",
+      nodeId: "loop",
+      nodeName: "loop",
       workerName: "spawn",
       status: "succeeded",
     });
-    seedLeaf({ runId: "orig-wf-1", rootRunId: "orig", parentRunId: "orig-wf", nodeId: "x", cost: 0.2 });
-    seedLeaf({ runId: "orig-wf-2", rootRunId: "orig", parentRunId: "orig-wf", nodeId: "y", cost: 0.3 });
+    seedLeaf({
+      runId: "orig-wf-1",
+      rootRunId: "orig",
+      parentRunId: "orig-wf",
+      nodeId: "x",
+      cost: 0.2,
+    });
+    seedLeaf({
+      runId: "orig-wf-2",
+      rootRunId: "orig",
+      parentRunId: "orig-wf",
+      nodeId: "y",
+      cost: 0.3,
+    });
     seedTree("succ");
     await writeDbLog("succ", [reuseMarker(1, "orig-wf")]);
 
@@ -517,7 +670,13 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
 
   it("counts a marker whose original tree was deleted as 0, not an error", async () => {
     seedTree("succ");
-    seedLeaf({ runId: "succ-leaf", rootRunId: "succ", parentRunId: "succ", nodeId: "b", cost: 0.1 });
+    seedLeaf({
+      runId: "succ-leaf",
+      rootRunId: "succ",
+      parentRunId: "succ",
+      nodeId: "b",
+      cost: 0.1,
+    });
     await writeDbLog("succ", [reuseMarker(1, "gone-leaf")]);
 
     expect(archive.cost("succ")).toBeCloseTo(0.1); // reached subtree contributes 0
@@ -526,24 +685,60 @@ describe("run archive — cost (whole-tree SUM crossing tree boundaries, #176)",
   it("regression: with nothing reused, a resumed tree's total equals a from-scratch run's", async () => {
     // From-scratch run of the same shape.
     seedTree("scratch");
-    seedLeaf({ runId: "scratch-a", rootRunId: "scratch", parentRunId: "scratch", nodeId: "a", cost: 0.5 });
-    seedLeaf({ runId: "scratch-b", rootRunId: "scratch", parentRunId: "scratch", nodeId: "b", cost: 0.25 });
+    seedLeaf({
+      runId: "scratch-a",
+      rootRunId: "scratch",
+      parentRunId: "scratch",
+      nodeId: "a",
+      cost: 0.5,
+    });
+    seedLeaf({
+      runId: "scratch-b",
+      rootRunId: "scratch",
+      parentRunId: "scratch",
+      nodeId: "b",
+      cost: 0.25,
+    });
     // A resumed tree that reused nothing (no markers), same two leaves rerun fresh.
     seedTree("resumed");
-    seedLeaf({ runId: "resumed-a", rootRunId: "resumed", parentRunId: "resumed", nodeId: "a", cost: 0.5 });
-    seedLeaf({ runId: "resumed-b", rootRunId: "resumed", parentRunId: "resumed", nodeId: "b", cost: 0.25 });
+    seedLeaf({
+      runId: "resumed-a",
+      rootRunId: "resumed",
+      parentRunId: "resumed",
+      nodeId: "a",
+      cost: 0.5,
+    });
+    seedLeaf({
+      runId: "resumed-b",
+      rootRunId: "resumed",
+      parentRunId: "resumed",
+      nodeId: "b",
+      cost: 0.25,
+    });
 
     expect(archive.cost("resumed")).toBeCloseTo(archive.cost("scratch"));
   });
 
   it("does not let one tree's marker leak into another tree's total", async () => {
     seedTree("orig");
-    seedLeaf({ runId: "orig-leaf", rootRunId: "orig", parentRunId: "orig", nodeId: "a", cost: 0.4 });
+    seedLeaf({
+      runId: "orig-leaf",
+      rootRunId: "orig",
+      parentRunId: "orig",
+      nodeId: "a",
+      cost: 0.4,
+    });
     seedTree("succ");
     await writeDbLog("succ", [reuseMarker(1, "orig-leaf")]);
     // An unrelated tree with its own spend and no markers.
     seedTree("other");
-    seedLeaf({ runId: "other-leaf", rootRunId: "other", parentRunId: "other", nodeId: "z", cost: 0.9 });
+    seedLeaf({
+      runId: "other-leaf",
+      rootRunId: "other",
+      parentRunId: "other",
+      nodeId: "z",
+      cost: 0.9,
+    });
 
     expect(archive.cost("other")).toBeCloseTo(0.9);
   });

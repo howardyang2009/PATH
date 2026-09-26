@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 
 /**
  * The canvas selection, threaded to every block without drilling it through eight component
@@ -18,7 +18,13 @@ export interface Selection {
 
 const SelectionContext = createContext<Selection | null>(null);
 
-export function SelectionProvider({ value, children }: { value: Selection; children: ReactNode }): JSX.Element {
+export function SelectionProvider({
+  value,
+  children,
+}: {
+  value: Selection;
+  children: ReactNode;
+}): JSX.Element {
   return <SelectionContext.Provider value={value}>{children}</SelectionContext.Provider>;
 }
 

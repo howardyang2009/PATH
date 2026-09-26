@@ -1,4 +1,4 @@
-import { walkNodes, type WorkflowFile } from "@path/schema";
+import { type WorkflowFile, walkNodes } from "@path/schema";
 import type { PathApiClient } from "./api-client.js";
 
 /**
@@ -36,7 +36,10 @@ function resolveRef(parentPath: string, ref: string): string {
  * is first in the result, so a caller that also wants the root alone (the `Resume from …` legal-K
  * check) reads `files[0]`.
  */
-export async function loadReachableWorkflowFiles(client: PathApiClient, rootPath: string): Promise<WorkflowFile[]> {
+export async function loadReachableWorkflowFiles(
+  client: PathApiClient,
+  rootPath: string,
+): Promise<WorkflowFile[]> {
   const files: WorkflowFile[] = [];
   const seen = new Set<string>([rootPath]);
   const queue: string[] = [rootPath];

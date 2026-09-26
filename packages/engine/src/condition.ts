@@ -1,14 +1,14 @@
-import { z } from "zod";
 import {
-  resolveDotPath,
-  TraceSchema,
   type Condition,
   type ConditionOutcome,
   type ConditionRoot,
   type JsonValue,
   type LeafTrace,
+  resolveDotPath,
   type Trace,
+  TraceSchema,
 } from "@path/schema";
+import { z } from "zod";
 
 /**
  * The condition evaluator (mvp spec §5.2–5.4, §8.1; format §9). Evaluates a zod-validated
@@ -33,7 +33,14 @@ import {
 
 // The trace *shape* lives in @path/schema (trace.ts) — it rides the log-event stream, so a reader
 // replaying a run needs it without needing this evaluator. What lives here is what produces one.
-export type { AllTrace, AnyTrace, ConditionOutcome, LeafTrace, NotTrace, Trace } from "@path/schema";
+export type {
+  AllTrace,
+  AnyTrace,
+  ConditionOutcome,
+  LeafTrace,
+  NotTrace,
+  Trace,
+} from "@path/schema";
 export { TraceSchema } from "@path/schema";
 
 /**
@@ -72,7 +79,11 @@ function evaluateLeaf(
 
   // Every other predicate reads a value: an unresolvable path is a strict error, not a false.
   if (!resolved.found) {
-    return { ...base, outcome: "error", message: `path "${path}" does not resolve: ${resolved.error}` };
+    return {
+      ...base,
+      outcome: "error",
+      message: `path "${path}" does not resolve: ${resolved.error}`,
+    };
   }
   const value = resolved.value;
 
@@ -80,15 +91,33 @@ function evaluateLeaf(
     case "equals":
       return { ...base, outcome: value === condition.value ? "true" : "false", value };
     case "one-of":
-      return { ...base, outcome: condition.values.some((v) => v === value) ? "true" : "false", value };
+      return {
+        ...base,
+        outcome: condition.values.some((v) => v === value) ? "true" : "false",
+        value,
+      };
     case "matches":
       if (typeof value !== "string") {
-        return { ...base, outcome: "error", value, message: `"matches" requires a string value, got ${jsonType(value)}` };
+        return {
+          ...base,
+          outcome: "error",
+          value,
+          message: `"matches" requires a string value, got ${jsonType(value)}`,
+        };
       }
-      return { ...base, outcome: new RegExp(condition.pattern).test(value) ? "true" : "false", value };
+      return {
+        ...base,
+        outcome: new RegExp(condition.pattern).test(value) ? "true" : "false",
+        value,
+      };
     case "range": {
       if (typeof value !== "number") {
-        return { ...base, outcome: "error", value, message: `"range" requires a number value, got ${jsonType(value)}` };
+        return {
+          ...base,
+          outcome: "error",
+          value,
+          message: `"range" requires a number value, got ${jsonType(value)}`,
+        };
       }
       const withinMin = condition.min === undefined || value >= condition.min;
       const withinMax = condition.max === undefined || value <= condition.max;
@@ -96,7 +125,12 @@ function evaluateLeaf(
     }
     case "valid-json":
       if (typeof value !== "string") {
-        return { ...base, outcome: "error", value, message: `"valid-json" requires a string value, got ${jsonType(value)}` };
+        return {
+          ...base,
+          outcome: "error",
+          value,
+          message: `"valid-json" requires a string value, got ${jsonType(value)}`,
+        };
       }
       try {
         JSON.parse(value);
@@ -139,7 +173,10 @@ function evaluate(condition: Condition, roots: ConditionRoots): Trace {
 }
 
 /** Evaluate a condition tree over the roots, returning the overall outcome and the full trace. */
-export function evaluateCondition(condition: Condition, roots: ConditionRoots): ConditionEvaluation {
+export function evaluateCondition(
+  condition: Condition,
+  roots: ConditionRoots,
+): ConditionEvaluation {
   const trace = evaluate(condition, roots);
   return { outcome: trace.outcome, trace };
 }

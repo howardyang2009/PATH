@@ -64,7 +64,12 @@ function stepGroup(plugins: WireStepPlugin[]): PaletteGroup {
     blurb: leafBlurb(plugin.name),
     hue: "step",
   }));
-  const workflowRef: PaletteEntry = { kind: "workflow", label: "Workflow", blurb: "A sub-workflow reference", hue: "workflow" };
+  const workflowRef: PaletteEntry = {
+    kind: "workflow",
+    label: "Workflow",
+    blurb: "A sub-workflow reference",
+    hue: "workflow",
+  };
   return { title: "Step", entries: [...fromRegistry, workflowRef] };
 }
 

@@ -1,6 +1,10 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { relative, resolve } from "node:path";
-import { makeStepTemplateSchema, safeParseStepTemplateWith, type WireTemplateWriteResponse } from "@path/schema";
+import {
+  makeStepTemplateSchema,
+  safeParseStepTemplateWith,
+  type WireTemplateWriteResponse,
+} from "@path/schema";
 import { checkPrecondition, PRECONDITION_FAILED, writeArtifact } from "../artifact-file.js";
 import { readJsonBody, sendError } from "../http-json.js";
 import { firstHeader } from "../origin-gate.js";
@@ -37,7 +41,11 @@ export async function handlePutTemplate(
   // Precondition (ADR 0016): `If-Match` carrying the §10.2 etag is required. Absent or stale is a
   // `412`. The etag check through the write below is a single synchronous block — no `await` between
   // them — so only an *external* writer can invalidate the token, which is what it guards.
-  const precondition = checkPrecondition(entry.bytes, firstHeader(req.headers["if-match"]), "overwrite");
+  const precondition = checkPrecondition(
+    entry.bytes,
+    firstHeader(req.headers["if-match"]),
+    "overwrite",
+  );
   if (!precondition.ok) {
     sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
     return;
@@ -56,7 +64,11 @@ export async function handlePutTemplate(
   }
 
   const { etag } = writeArtifact(entry.absPath, rawBody, { create: false });
-  const reply: WireTemplateWriteResponse = { id, relative_path: relative(resolve(ctx.project.dir), entry.absPath), etag };
+  const reply: WireTemplateWriteResponse = {
+    id,
+    relative_path: relative(resolve(ctx.project.dir), entry.absPath),
+    etag,
+  };
   res.writeHead(200, { "Content-Type": "application/json", ETag: etag });
   res.end(JSON.stringify(reply));
 }

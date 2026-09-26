@@ -1,11 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { resolve } from "node:path";
+import {
+  checkPrecondition,
+  deleteArtifact,
+  PRECONDITION_FAILED,
+  readArtifact,
+} from "../artifact-file.js";
 import { confineToProjectRoot } from "../confine.js";
-import { checkPrecondition, deleteArtifact, PRECONDITION_FAILED, readArtifact } from "../artifact-file.js";
 import { editLease } from "../edit-lease.js";
 import { sendError } from "../http-json.js";
-import { isTemplatePath } from "../template-store.js";
 import { firstHeader } from "../origin-gate.js";
+import { isTemplatePath } from "../template-store.js";
 import type { RouteContext } from "./route-context.js";
 
 /**
@@ -48,7 +53,11 @@ export function handleDeleteWorkflow(
     sendError(res, 404, "not found");
     return;
   }
-  const precondition = checkPrecondition(currentBytes, firstHeader(req.headers["if-match"]), "overwrite");
+  const precondition = checkPrecondition(
+    currentBytes,
+    firstHeader(req.headers["if-match"]),
+    "overwrite",
+  );
   if (!precondition.ok) {
     sendError(res, 412, PRECONDITION_FAILED[precondition.conflict]);
     return;

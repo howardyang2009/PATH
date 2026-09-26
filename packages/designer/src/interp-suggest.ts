@@ -1,10 +1,10 @@
 import {
   checkInterpolationSyntax,
-  publishKeysOf,
-  walkNodes,
   type InterpolationRoot,
   type JsonValue,
+  publishKeysOf,
   type WorkflowFile,
+  walkNodes,
 } from "@path/schema";
 
 /**
@@ -31,7 +31,10 @@ import {
  * Sorted and de-duplicated. `output` carries no enumerable keys — a predecessor's output shape is
  * author-trust, not statically known (ADR 0022 sub-7) — so it contributes only its prefix.
  */
-export function referenceablePaths(file: WorkflowFile, roots: readonly InterpolationRoot[]): string[] {
+export function referenceablePaths(
+  file: WorkflowFile,
+  roots: readonly InterpolationRoot[],
+): string[] {
   const out = new Set<string>();
   for (const root of roots) out.add(`${root}.`);
 
@@ -84,7 +87,12 @@ function checkInterpolation(value: JsonValue, roots: readonly InterpolationRoot[
  */
 export function parseInputDraft(text: string, roots: readonly InterpolationRoot[]): InputParse {
   const trimmed = text.trim();
-  const looksStructured = /^[[{"]/.test(trimmed) || /^-?\d/.test(trimmed) || trimmed === "true" || trimmed === "false" || trimmed === "null";
+  const looksStructured =
+    /^[[{"]/.test(trimmed) ||
+    /^-?\d/.test(trimmed) ||
+    trimmed === "true" ||
+    trimmed === "false" ||
+    trimmed === "null";
   if (looksStructured) {
     let parsed: unknown;
     try {

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
+import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 import type { SaveAsResult } from "./use-open-file.js";
 
 /**

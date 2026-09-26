@@ -1,9 +1,9 @@
+import { randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let handle: PathServerHandle;
@@ -29,7 +29,11 @@ interface LeaseJson {
 }
 
 /** POST a lock route with a JSON body, returning the raw `Response`. */
-function post(route: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+function post(
+  route: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   return fetch(`${handle.url}${route}`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
@@ -63,7 +67,9 @@ describe("POST /v0/workflows/lock (acquire)", () => {
     const onDisk = JSON.parse(readFileSync(join(projectDir, MARKER), "utf8"));
     expect(onDisk).toEqual(lease);
     // Deterministic serialization: 2-space indent, trailing newline (matches the write door).
-    expect(readFileSync(join(projectDir, MARKER), "utf8")).toBe(`${JSON.stringify(lease, null, 2)}\n`);
+    expect(readFileSync(join(projectDir, MARKER), "utf8")).toBe(
+      `${JSON.stringify(lease, null, 2)}\n`,
+    );
   });
 
   it("never trusts a client-supplied expiry: extra body fields are rejected", async () => {
@@ -77,16 +83,22 @@ describe("POST /v0/workflows/lock (acquire)", () => {
 
   it("re-acquire by the same live holder keeps acquired_at, refreshes expiry", async () => {
     const sid = randomUUID();
-    const first = (await (await acquire({ workflow_path: "draft.workflow.json", session_id: sid })).json()) as LeaseJson;
+    const first = (await (
+      await acquire({ workflow_path: "draft.workflow.json", session_id: sid })
+    ).json()) as LeaseJson;
     await new Promise((r) => setTimeout(r, 5));
-    const second = (await (await acquire({ workflow_path: "draft.workflow.json", session_id: sid })).json()) as LeaseJson;
+    const second = (await (
+      await acquire({ workflow_path: "draft.workflow.json", session_id: sid })
+    ).json()) as LeaseJson;
 
     expect(second.acquired_at).toBe(first.acquired_at);
     expect(Date.parse(second.expires_at)).toBeGreaterThanOrEqual(Date.parse(first.expires_at));
   });
 
   it("rejects a second session on a live marker: 409 + held_by_other + expires_at", async () => {
-    const holder = (await (await acquire({ workflow_path: "draft.workflow.json", session_id: randomUUID() })).json()) as LeaseJson;
+    const holder = (await (
+      await acquire({ workflow_path: "draft.workflow.json", session_id: randomUUID() })
+    ).json()) as LeaseJson;
 
     const res = await acquire({ workflow_path: "draft.workflow.json", session_id: randomUUID() });
     expect(res.status).toBe(409);
@@ -133,7 +145,11 @@ describe("POST /v0/workflows/lock (acquire)", () => {
     await acquire({ workflow_path: "draft.workflow.json", session_id: holder });
 
     const taker = randomUUID();
-    const res = await acquire({ workflow_path: "draft.workflow.json", session_id: taker, takeover: true });
+    const res = await acquire({
+      workflow_path: "draft.workflow.json",
+      session_id: taker,
+      takeover: true,
+    });
     expect(res.status).toBe(200);
     const lease = (await res.json()) as LeaseJson;
     expect(lease.session_id).toBe(taker);
@@ -147,14 +163,18 @@ describe("POST /v0/workflows/lock (acquire)", () => {
 describe("POST /v0/workflows/lock/heartbeat (renew)", () => {
   it("renews for the holder: 200 + fresh heartbeat_at/expires_at, acquired_at preserved", async () => {
     const sid = randomUUID();
-    const granted = (await (await acquire({ workflow_path: "draft.workflow.json", session_id: sid })).json()) as LeaseJson;
+    const granted = (await (
+      await acquire({ workflow_path: "draft.workflow.json", session_id: sid })
+    ).json()) as LeaseJson;
     await new Promise((r) => setTimeout(r, 5));
 
     const res = await heartbeat({ workflow_path: "draft.workflow.json", session_id: sid });
     expect(res.status).toBe(200);
     const renewed = (await res.json()) as LeaseJson;
     expect(renewed.acquired_at).toBe(granted.acquired_at);
-    expect(Date.parse(renewed.heartbeat_at)).toBeGreaterThanOrEqual(Date.parse(granted.heartbeat_at));
+    expect(Date.parse(renewed.heartbeat_at)).toBeGreaterThanOrEqual(
+      Date.parse(granted.heartbeat_at),
+    );
     expect(Date.parse(renewed.expires_at)).toBeGreaterThanOrEqual(Date.parse(granted.expires_at));
   });
 
@@ -201,8 +221,15 @@ describe("POST /v0/workflows/lock/release (free)", () => {
 
 describe("edit-lock confinement and origin gate", () => {
   it("404s a path that escapes the project root", async () => {
-    for (const route of ["/v0/workflows/lock", "/v0/workflows/lock/heartbeat", "/v0/workflows/lock/release"]) {
-      const res = await post(route, { workflow_path: "../escape.workflow.json", session_id: randomUUID() });
+    for (const route of [
+      "/v0/workflows/lock",
+      "/v0/workflows/lock/heartbeat",
+      "/v0/workflows/lock/release",
+    ]) {
+      const res = await post(route, {
+        workflow_path: "../escape.workflow.json",
+        session_id: randomUUID(),
+      });
       expect(res.status).toBe(404);
     }
   });
@@ -216,7 +243,10 @@ describe("edit-lock confinement and origin gate", () => {
     const outside = mkdtempSync(join(tmpdir(), "path-lock-outside-"));
     symlinkSync(outside, join(projectDir, "linked"));
     try {
-      const res = await acquire({ workflow_path: "linked/draft.workflow.json", session_id: randomUUID() });
+      const res = await acquire({
+        workflow_path: "linked/draft.workflow.json",
+        session_id: randomUUID(),
+      });
       expect(res.status).toBe(404);
     } finally {
       rmSync(outside, { recursive: true, force: true });

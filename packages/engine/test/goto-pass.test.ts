@@ -9,7 +9,9 @@ import type { ContinueState } from "../src/run-context.js";
  * launch, a Resume and a Complete (ADR 0060), over in-memory rows and no store.
  */
 
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "root",
     nodeName: overrides.nodeId,
@@ -34,8 +36,19 @@ function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRu
 }
 
 const step = (id: string): WorkflowNode => ({ type: "binary", id, name: id, command: "echo" });
-const check: GotoNode = { type: "goto", id: "check", name: "check", target: "review", max_jumps: 3 };
-const reviewSequence: WorkflowNode = { type: "sequence", id: "review", name: "review", body: [step("draft"), step("lint")] };
+const check: GotoNode = {
+  type: "goto",
+  id: "check",
+  name: "check",
+  target: "review",
+  max_jumps: 3,
+};
+const reviewSequence: WorkflowNode = {
+  type: "sequence",
+  id: "review",
+  name: "review",
+  body: [step("draft"), step("lint")],
+};
 const file: WorkflowFile = {
   format: FORMAT_VERSION,
   id: "11111111-1111-4111-8111-111111111111",
@@ -43,7 +56,13 @@ const file: WorkflowFile = {
   body: [step("intake"), reviewSequence, check],
 };
 const gotos = new Map([["check", check]]);
-const identity = { runId: "root", rootRunId: "root", parentRunId: null, nodeId: null, nodeName: null };
+const identity = {
+  runId: "root",
+  rootRunId: "root",
+  parentRunId: null,
+  nodeId: null,
+  nodeName: null,
+};
 
 function continueState(existingRuns: RunRecord[]): ContinueState {
   return {
@@ -63,7 +82,13 @@ describe("passFirstNode", () => {
 describe("passWalkStart", () => {
   it("starts a launch at pass 1 from the top, with no jumps spent", () => {
     const walk = passWalkStart({ file, identity }, gotos, { seed: 1 });
-    expect(walk).toMatchObject({ pass: 1, opener: null, start: 0, carried: { seed: 1 }, reentered: undefined });
+    expect(walk).toMatchObject({
+      pass: 1,
+      opener: null,
+      start: 0,
+      carried: { seed: 1 },
+      reentered: undefined,
+    });
     if ("diverged" in walk) throw new Error("unexpected divergence");
     expect(walk.jumpsSpent.size).toBe(0);
     expect(walk.resumeFor(1, null)).toBeUndefined();
@@ -78,7 +103,13 @@ describe("passWalkStart", () => {
     ];
     const walk = passWalkStart({ file, identity, continue: continueState(rows) }, gotos, {});
     if ("diverged" in walk) throw new Error(walk.error);
-    expect(walk).toMatchObject({ pass: 3, opener: check, start: 1, carried: { blob: "p3/input.json" }, reentered: rows[2] });
+    expect(walk).toMatchObject({
+      pass: 3,
+      opener: check,
+      start: 1,
+      carried: { blob: "p3/input.json" },
+      reentered: rows[2],
+    });
     expect(walk.jumpsSpent.get("check")).toBe(2);
   });
 

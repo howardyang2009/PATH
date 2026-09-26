@@ -29,12 +29,18 @@ export interface RunReport {
  * workflow output, a resumed run has already printed the successor's root run id.
  */
 export function renderRunOutcome(status: RunStatus, error: string | undefined): RunReport {
-  if (status === "cancelled") return { stdout: [], stderr: ["run cancelled"], exitCode: SIGINT_EXIT_CODE };
+  if (status === "cancelled")
+    return { stdout: [], stderr: ["run cancelled"], exitCode: SIGINT_EXIT_CODE };
   if (status === "failed") return { stdout: [], stderr: [`run failed: ${error}`], exitCode: 1 };
   // A run that parked at a person-activity leaf (ADR 0039/0041): it is neither done nor broken, so it
   // exits 0 with a note rather than a failure. The engine tore down; the parked leaf lives in the
   // store and is resolved later through Complete (the server's `POST /complete`, not `path run`).
-  if (status === "awaiting") return { stdout: [], stderr: ["run is awaiting completion of a person-activity step"], exitCode: 0 };
+  if (status === "awaiting")
+    return {
+      stdout: [],
+      stderr: ["run is awaiting completion of a person-activity step"],
+      exitCode: 0,
+    };
   return { stdout: [], stderr: [], exitCode: 0 };
 }
 
@@ -50,7 +56,11 @@ export function renderResume(result: ResumeResult): RunReport {
     // A Resume-from-K refusal (#444) and an unknown root run both exit 1 (every engine refusal
     // collapses to 1; the command parsed, the engine refused — spec §7.2). The CLI prints the
     // engine's `refusal.message` verbatim, so there is one wording authority across route / CLI.
-    return { stdout: [], stderr: ["refusal" in result ? result.refusal.message : result.error], exitCode: 1 };
+    return {
+      stdout: [],
+      stderr: ["refusal" in result ? result.refusal.message : result.error],
+      exitCode: 1,
+    };
   }
   const outcome = renderRunOutcome(result.status, result.error);
   return { ...outcome, stdout: [result.rootRunId, ...outcome.stdout] };
@@ -105,7 +115,14 @@ export function renderListEligible(result: ListEligibleResult): RunReport {
   return { stdout: [formatTable(ELIGIBLE_TABLE_HEADERS, rows)], stderr: [], exitCode: 0 };
 }
 
-const RUNS_TABLE_HEADERS = ["root-run-id", "workflow", "status", "started", "finished", "resumed-from"] as const;
+const RUNS_TABLE_HEADERS = [
+  "root-run-id",
+  "workflow",
+  "status",
+  "started",
+  "finished",
+  "resumed-from",
+] as const;
 
 /** One rendered row of the `path runs` listing — a cell per header, in header order. */
 export type RunsTableRow = [string, string, string, string, string, string];
@@ -114,7 +131,9 @@ export type RunsTableRow = [string, string, string, string, string, string];
 // cell so the last (and any never-truncated id column) carries no trailing padding. Shared by `path
 // runs` and `--list-eligible` (#446) so the two listings render identically.
 function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
-  const widths = headers.map((header, col) => Math.max(header.length, ...rows.map((row) => row[col]!.length)));
+  const widths = headers.map((header, col) =>
+    Math.max(header.length, ...rows.map((row) => row[col]!.length)),
+  );
   const line = (cols: readonly string[]): string =>
     cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");
   return [line(headers), ...rows.map(line)].join("\n");

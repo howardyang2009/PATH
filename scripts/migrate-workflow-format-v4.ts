@@ -48,7 +48,8 @@ function discoverWorkflowFiles(dir: string): string[] {
 
 function main(): void {
   const args = process.argv.slice(2);
-  const files = args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
+  const files =
+    args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
 
   let migrated = 0;
   let skipped = 0;
@@ -63,7 +64,9 @@ function main(): void {
     migrated += 1;
     console.log(`migrated ${file}`);
   }
-  console.log(`\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @3 workflow file).`);
+  console.log(
+    `\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @3 workflow file).`,
+  );
 }
 
 // Import-safe: run only when invoked directly, so the codemod's unit test can import `migrateDocument`

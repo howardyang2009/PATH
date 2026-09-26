@@ -15,8 +15,16 @@ function apiCallRegistry(): StepPluginRegistry {
       fields: { url: z.string(), method: z.string() },
       config: { timeout: z.number() },
       workers: {
-        fetch: { run: () => Promise.reject(new Error("run must not be called at validation")), meters: false, needsProcessorSlot: false },
-        curl: { run: () => Promise.reject(new Error("run must not be called at validation")), meters: false, needsProcessorSlot: false },
+        fetch: {
+          run: () => Promise.reject(new Error("run must not be called at validation")),
+          meters: false,
+          needsProcessorSlot: false,
+        },
+        curl: {
+          run: () => Promise.reject(new Error("run must not be called at validation")),
+          meters: false,
+          needsProcessorSlot: false,
+        },
       },
       defaultWorker: "curl",
     },
@@ -45,7 +53,9 @@ describe("makeWorkflowFileSchema — plugin leaf envelope", () => {
 
   it("requires a declared plugin field", () => {
     const schema = makeWorkflowFileSchema(apiCallRegistry());
-    const result = schema.safeParse(file([{ type: "api-call", id: ID2, name: "call", url: "https://x" }]));
+    const result = schema.safeParse(
+      file([{ type: "api-call", id: ID2, name: "call", url: "https://x" }]),
+    );
     expect(result.success).toBe(false);
   });
 
@@ -95,7 +105,10 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
   });
 
   it("reports an absent type as (none) and still names the remedy", () => {
-    const result = safeParseWorkflowFile(file([{ id: ID2, name: "call", url: "https://x" }]), apiCallRegistry());
+    const result = safeParseWorkflowFile(
+      file([{ id: ID2, name: "call", url: "https://x" }]),
+      apiCallRegistry(),
+    );
     expect(result.success).toBe(false);
     if (result.success) return;
     const joined = result.errors.join("\n");
@@ -105,7 +118,15 @@ describe("makeWorkflowFileSchema — unknown / absent type", () => {
 });
 
 describe("makeNodeSchema — reserved control names", () => {
-  for (const reserved of ["workflow", "parallel", "branch", "while-do", "sequence", "checkpoint", "goto"]) {
+  for (const reserved of [
+    "workflow",
+    "parallel",
+    "branch",
+    "while-do",
+    "sequence",
+    "checkpoint",
+    "goto",
+  ]) {
     it(`rejects a plugin key shadowing "${reserved}" loud at freeze`, () => {
       const registry: StepPluginRegistry = {
         [reserved]: { fields: {}, config: {}, workers: { only: {} }, defaultWorker: "only" },
@@ -118,14 +139,24 @@ describe("makeNodeSchema — reserved control names", () => {
 describe("makeNodeSchema — freeze-time guards", () => {
   it("rejects a plugin field colliding with a common step field", () => {
     const registry: StepPluginRegistry = {
-      "api-call": { fields: { config: z.number() }, config: {}, workers: { only: {} }, defaultWorker: "only" },
+      "api-call": {
+        fields: { config: z.number() },
+        config: {},
+        workers: { only: {} },
+        defaultWorker: "only",
+      },
     };
     expect(() => makeNodeSchema(registry)).toThrowError(/collides with an envelope field/);
   });
 
   it("rejects a plugin field colliding with the composed discriminant", () => {
     const registry: StepPluginRegistry = {
-      "api-call": { fields: { type: z.string() }, config: {}, workers: { only: {} }, defaultWorker: "only" },
+      "api-call": {
+        fields: { type: z.string() },
+        config: {},
+        workers: { only: {} },
+        defaultWorker: "only",
+      },
     };
     expect(() => makeNodeSchema(registry)).toThrowError(/collides with an envelope field/);
   });
@@ -140,10 +171,17 @@ describe("makeNodeSchema — freeze-time guards", () => {
   it("never calls a worker's run during validation", () => {
     const run = vi.fn(() => Promise.reject(new Error("called")));
     const registry: StepPluginRegistry = {
-      "api-call": { fields: {}, config: {}, workers: { only: { run, meters: false, needsProcessorSlot: false } }, defaultWorker: "only" },
+      "api-call": {
+        fields: {},
+        config: {},
+        workers: { only: { run, meters: false, needsProcessorSlot: false } },
+        defaultWorker: "only",
+      },
     };
     const schema = makeWorkflowFileSchema(registry);
-    expect(schema.safeParse(file([{ type: "api-call", id: ID2, name: "call" }])).success).toBe(true);
+    expect(schema.safeParse(file([{ type: "api-call", id: ID2, name: "call" }])).success).toBe(
+      true,
+    );
     expect(run).not.toHaveBeenCalled();
   });
 });
@@ -165,7 +203,9 @@ describe("makeWorkflowFileSchema — publish guards govern plugin steps", () => 
     const result = schema.safeParse(file([node]));
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.message).join("\n")).toContain("duplicate publish key");
+    expect(result.error.issues.map((issue) => issue.message).join("\n")).toContain(
+      "duplicate publish key",
+    );
   });
 
   it("rejects a plugin step publishing inside a do-not-wait branch", () => {
@@ -179,7 +219,9 @@ describe("makeWorkflowFileSchema — publish guards govern plugin steps", () => 
     const result = schema.safeParse(file([node]));
     expect(result.success).toBe(false);
     if (result.success) return;
-    expect(result.error.issues.map((issue) => issue.message).join("\n")).toContain("do-not-wait branch");
+    expect(result.error.issues.map((issue) => issue.message).join("\n")).toContain(
+      "do-not-wait branch",
+    );
   });
 });
 
@@ -192,7 +234,13 @@ describe("makeWorkflowFileSchema — recursion closes over the open union", () =
   });
 
   it("validates a plugin step inside a parallel branch", () => {
-    const node = { type: "parallel", id: ID, name: "par", join: "collect", branches: [apiCallNode()] };
+    const node = {
+      type: "parallel",
+      id: ID,
+      name: "par",
+      join: "collect",
+      branches: [apiCallNode()],
+    };
     expect(schema.safeParse(file([node])).success).toBe(true);
   });
 

@@ -20,6 +20,7 @@ export function JsonView({ value }: { value: unknown }) {
         token.kind === "plain" ? (
           token.text
         ) : (
+          // biome-ignore lint/suspicious/noArrayIndexKey: tokens are recomputed from the text; position is identity.
           <span key={index} className={`json-${token.kind}`}>
             {token.text}
           </span>

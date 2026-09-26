@@ -1,12 +1,13 @@
 import { resolve } from "node:path";
-import { describe, expect, it } from "vitest";
 import type { WorkflowFile } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import { descendNodePath } from "../src/descend-node-path.js";
 
 // Minimal files: descendNodePath reads only `body`, and a path-node's `type`/`id`/`ref`.
 const step = (id: string) => ({ type: "binary", id, name: id, command: "node", args: ["-e", ""] });
 const wf = (id: string, ref: string) => ({ type: "workflow", id, name: id, ref });
-const file = (id: string, body: unknown[]): WorkflowFile => ({ version: "path/workflow@2", id, name: id, body } as unknown as WorkflowFile);
+const file = (id: string, body: unknown[]): WorkflowFile =>
+  ({ version: "path/workflow@2", id, name: id, body }) as unknown as WorkflowFile;
 
 const rootDir = "/wf";
 const childPath = resolve(rootDir, "./child.workflow.json");

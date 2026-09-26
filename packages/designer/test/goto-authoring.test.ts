@@ -1,13 +1,18 @@
-import { describe, expect, it } from "vitest";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { carriesEnvelope, socketAcceptsBody, socketAcceptsKind, socketBarred } from "../src/grammar.js";
-import { createNode } from "../src/node-factory.js";
+import { describe, expect, it } from "vitest";
 import { editFile, unwrapEdit } from "../src/edit-tree.js";
 import { createEditor } from "../src/editor-api.js";
-import { fileProblems } from "../src/problems.js";
 import { gotoDirection, gotoTargetOptions, incomingGotos } from "../src/goto-view.js";
-import { paletteGroups } from "../src/palette-data.js";
+import {
+  carriesEnvelope,
+  socketAcceptsBody,
+  socketAcceptsKind,
+  socketBarred,
+} from "../src/grammar.js";
+import { createNode } from "../src/node-factory.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
+import { paletteGroups } from "../src/palette-data.js";
+import { fileProblems } from "../src/problems.js";
 import { canonicalSerialize } from "../src/serialize.js";
 import { DEFAULT_PLUGINS } from "./stub-server.js";
 
@@ -79,7 +84,9 @@ describe("#619 grammar — goto placement reads the socket's ancestor chain", ()
   });
 
   it("refuses a template body holding a goto at any depth in a barred socket", () => {
-    const body = [{ type: "sequence", id: uuid(20), name: "s", body: [goto(21, "g", "x")] } as WorkflowNode];
+    const body = [
+      { type: "sequence", id: uuid(20), name: "s", body: [goto(21, "g", "x")] } as WorkflowNode,
+    ];
     expect(socketAcceptsBody("branches", body, true)).toBe(false);
     expect(socketAcceptsBody("single", body, true)).toBe(false);
     expect(socketAcceptsBody("sequence", body, false)).toBe(true);
@@ -90,7 +97,10 @@ describe("#619 palette and mint", () => {
   it("offers goto in the Controller group", () => {
     const controllers = paletteGroups([]).find((group) => group.title === "Controller")!;
     expect(controllers.entries.map((entry) => entry.kind)).toContain("goto");
-    const tabs = controllers.tabs!.map((tab) => [tab.label, tab.entries.map((entry) => entry.kind)]);
+    const tabs = controllers.tabs!.map((tab) => [
+      tab.label,
+      tab.entries.map((entry) => entry.kind),
+    ]);
     expect(tabs).toEqual([
       ["Structure", ["parallel", "branch", "while-do", "sequence", "checkpoint"]],
       ["Graph", ["goto"]],
@@ -115,7 +125,13 @@ describe("#619 editor sockets (G-D-01, G-D-03)", () => {
 
   it("G-D-03: a Template holding a goto opens no parallel branch socket", () => {
     const body = [leaf(30, "a"), goto(31, "g", "start")];
-    const editor = createEditor(fixture(), noop, { kind: "step-template", id: "t", name: "t", body }, noop, "prompt");
+    const editor = createEditor(
+      fixture(),
+      noop,
+      { kind: "step-template", id: "t", name: "t", body },
+      noop,
+      "prompt",
+    );
     expect(editor.socketOpen("branches", uuid(6))).toBe(false);
     expect(editor.socketOpen("sequence", null)).toBe(true);
   });
@@ -123,46 +139,83 @@ describe("#619 editor sockets (G-D-01, G-D-03)", () => {
 
 describe("#619 edit door (G-D-02, G-D-04, G-D-05)", () => {
   it("G-D-02: an edit that puts a sequence holding a goto into a while-do is refused", () => {
-    const moved = { type: "sequence", id: uuid(40), name: "carrier", body: [goto(41, "hop", "start")] } as WorkflowNode;
-    const result = editFile(fixture(), { kind: "swap-single", target: { slot: "while-body", ownerId: uuid(3) }, node: moved });
+    const moved = {
+      type: "sequence",
+      id: uuid(40),
+      name: "carrier",
+      body: [goto(41, "hop", "start")],
+    } as WorkflowNode;
+    const result = editFile(fixture(), {
+      kind: "swap-single",
+      target: { slot: "while-body", ownerId: uuid(3) },
+      node: moved,
+    });
     expect(result.ok).toBe(false);
-    const intoParallel = editFile(fixture(), { kind: "add-to-list", ownerId: uuid(6), node: moved });
+    const intoParallel = editFile(fixture(), {
+      kind: "add-to-list",
+      ownerId: uuid(6),
+      node: moved,
+    });
     expect(intoParallel.ok).toBe(false);
   });
 
   it("G-D-04: renaming a target rewrites every goto naming it in the same edit", () => {
-    const file = wrap([leaf(2, "start"), goto(3, "g1", "start"), { type: "sequence", id: uuid(4), name: "s", body: [goto(5, "g2", "start")] }]);
-    const next = unwrapEdit(editFile(file, { kind: "replace", id: uuid(2), node: { ...leaf(2, "begin") } }));
-    const targets = [next.body[1], (next.body[2] as Extract<WorkflowNode, { type: "sequence" }>).body[0]].map(
-      (node) => (node as Extract<WorkflowNode, { type: "goto" }>).target,
+    const file = wrap([
+      leaf(2, "start"),
+      goto(3, "g1", "start"),
+      { type: "sequence", id: uuid(4), name: "s", body: [goto(5, "g2", "start")] },
+    ]);
+    const next = unwrapEdit(
+      editFile(file, { kind: "replace", id: uuid(2), node: { ...leaf(2, "begin") } }),
     );
+    const targets = [
+      next.body[1],
+      (next.body[2] as Extract<WorkflowNode, { type: "sequence" }>).body[0],
+    ].map((node) => (node as Extract<WorkflowNode, { type: "goto" }>).target);
     expect(targets).toEqual(["begin", "begin"]);
   });
 
   it("a rename through an empty name rewrites nothing, so a fresh goto's empty target is never captured", () => {
     const file = wrap([leaf(2, "start"), goto(3, "g1", "")]);
     const cleared = unwrapEdit(editFile(file, { kind: "replace", id: uuid(2), node: leaf(2, "") }));
-    const renamed = unwrapEdit(editFile(cleared, { kind: "replace", id: uuid(2), node: leaf(2, "b") }));
+    const renamed = unwrapEdit(
+      editFile(cleared, { kind: "replace", id: uuid(2), node: leaf(2, "b") }),
+    );
     expect((renamed.body[1] as Extract<WorkflowNode, { type: "goto" }>).target).toBe("");
   });
 
   it("a rename through a name another node holds rewrites nothing, so no goto is repointed at that node", () => {
     const file = wrap([leaf(2, "a"), leaf(3, "ab"), goto(4, "to-a", "a"), goto(5, "to-ab", "ab")]);
     // Typing "ab" toward "ac" passes through "a", which node 2 already holds.
-    const through = unwrapEdit(editFile(file, { kind: "replace", id: uuid(3), node: leaf(3, "a") }));
-    const done = unwrapEdit(editFile(through, { kind: "replace", id: uuid(3), node: leaf(3, "ac") }));
-    const targets = done.body.slice(2).map((node) => (node as Extract<WorkflowNode, { type: "goto" }>).target);
+    const through = unwrapEdit(
+      editFile(file, { kind: "replace", id: uuid(3), node: leaf(3, "a") }),
+    );
+    const done = unwrapEdit(
+      editFile(through, { kind: "replace", id: uuid(3), node: leaf(3, "ac") }),
+    );
+    const targets = done.body
+      .slice(2)
+      .map((node) => (node as Extract<WorkflowNode, { type: "goto" }>).target);
     expect(targets).toEqual(["a", "ab"]); // to-a still names the real "a"; to-ab is left dangling, and marked
   });
 
   it("renaming a nested node rewrites nothing: only a first-level node is a target", () => {
-    const file = wrap([{ type: "sequence", id: uuid(2), name: "s", body: [leaf(3, "inner")] }, goto(4, "g", "inner")]);
-    const next = unwrapEdit(editFile(file, { kind: "replace", id: uuid(3), node: leaf(3, "deep") }));
+    const file = wrap([
+      { type: "sequence", id: uuid(2), name: "s", body: [leaf(3, "inner")] },
+      goto(4, "g", "inner"),
+    ]);
+    const next = unwrapEdit(
+      editFile(file, { kind: "replace", id: uuid(3), node: leaf(3, "deep") }),
+    );
     expect((next.body[1] as Extract<WorkflowNode, { type: "goto" }>).target).toBe("inner");
   });
 
   it("G-D-05: deleting the target or moving it into a sequence is allowed and marks the goto", () => {
-    const file = wrap([leaf(2, "start"), goto(3, "hop", "start"), { type: "sequence", id: uuid(4), name: "s", body: [leaf(5, "x")] }]);
+    const file = wrap([
+      leaf(2, "start"),
+      goto(3, "hop", "start"),
+      { type: "sequence", id: uuid(4), name: "s", body: [leaf(5, "x")] },
+    ]);
     const deleted = editFile(file, { kind: "delete", id: uuid(2) });
     expect(deleted.ok).toBe(true);
     expect(fileProblems(deleted.ok ? deleted.file : file)).toContainEqual(
@@ -170,9 +223,15 @@ describe("#619 edit door (G-D-02, G-D-04, G-D-05)", () => {
     );
 
     const removed = unwrapEdit(editFile(file, { kind: "delete", id: uuid(2) }));
-    const moved = editFile(removed, { kind: "add-to-list", ownerId: uuid(4), node: leaf(2, "start") });
+    const moved = editFile(removed, {
+      kind: "add-to-list",
+      ownerId: uuid(4),
+      node: leaf(2, "start"),
+    });
     expect(moved.ok).toBe(true);
-    expect(fileProblems(moved.ok ? moved.file : file)).toContainEqual(expect.objectContaining({ nodeId: uuid(3), kind: "target-inner" }));
+    expect(fileProblems(moved.ok ? moved.file : file)).toContainEqual(
+      expect.objectContaining({ nodeId: uuid(3), kind: "target-inner" }),
+    );
   });
 });
 
@@ -211,7 +270,13 @@ describe("#619 round-trip", () => {
     let file = wrap([leaf(2, "start")]);
     const node = createNode("goto", new Set(["start"]));
     file = unwrapEdit(editFile(file, { kind: "add-to-list", ownerId: null, node }));
-    file = unwrapEdit(editFile(file, { kind: "replace", id: node.id, node: { ...node, target: "start" } as WorkflowNode }));
+    file = unwrapEdit(
+      editFile(file, {
+        kind: "replace",
+        id: node.id,
+        node: { ...node, target: "start" } as WorkflowNode,
+      }),
+    );
     expect(file.format).toBe("path/workflow@5");
     const reopened = openWorkflowFile(canonicalSerialize(file), DEFAULT_PLUGINS);
     expect(reopened.status).toBe("opened");

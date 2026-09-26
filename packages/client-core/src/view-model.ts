@@ -143,7 +143,8 @@ export class RunViewModel {
     // Decode through the shared inverse, so the camelCase field set can never drift from the wire's
     // snake_case one. Kept absent (not an empty object) when the response carries no `launch_facts`,
     // which is how a launch that supplied nothing reads.
-    this.launchFacts = tree.launch_facts !== undefined ? fromWireLaunchFacts(tree.launch_facts) : undefined;
+    this.launchFacts =
+      tree.launch_facts !== undefined ? fromWireLaunchFacts(tree.launch_facts) : undefined;
     const root = this.runs.get(this.rootRunId);
     this.rootStatus = root?.status ?? tree.status;
     this.commit();

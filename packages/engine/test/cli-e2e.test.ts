@@ -1,12 +1,21 @@
 import { execFile } from "node:child_process";
-import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import Database from "better-sqlite3";
-import { stampGuids } from "./stamp-names.js";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { stampGuids } from "./stamp-names.js";
 
 // Every test here spawns one or more *cold* `tsx` subprocesses (see `runCli`), and some spawn three
 // (two `run`s + a `prune`/`rm`). On a loaded CI runner that cold start alone can exceed the default
@@ -53,14 +62,18 @@ describe("path run (real dev-mode process, no packaging)", () => {
   });
 
   it("exits non-zero with load errors surfaced, running nothing", async () => {
-    await expect(runCli(["run", join(fixtures, "invalid-schema.workflow.json")])).rejects.toMatchObject({
+    await expect(
+      runCli(["run", join(fixtures, "invalid-schema.workflow.json")]),
+    ).rejects.toMatchObject({
       code: 1,
       stderr: expect.stringContaining("bogus_field"),
     });
   });
 
   it("exits non-zero when a step fails, and does not run subsequent steps", async () => {
-    await expect(runCli(["run", join(fixtures, "failing-step.workflow.json")])).rejects.toMatchObject({
+    await expect(
+      runCli(["run", join(fixtures, "failing-step.workflow.json")]),
+    ).rejects.toMatchObject({
       code: 1,
       stderr: expect.stringContaining("boom"),
     });
@@ -109,8 +122,9 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
 
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
-    const rootRunId = (db.prepare("SELECT root_run_id FROM runs LIMIT 1").get() as { root_run_id: string })
-      .root_run_id;
+    const rootRunId = (
+      db.prepare("SELECT root_run_id FROM runs LIMIT 1").get() as { root_run_id: string }
+    ).root_run_id;
     db.close();
 
     const { stdout } = await runCli(["runs", "rm", rootRunId], projectDir);
@@ -127,17 +141,26 @@ describe("path run persistence + runs rm/prune (ticket #18, real dev-mode proces
     await runCli(["run", join(projectDir, "workflow.json")], projectDir);
 
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
-    const rootRunId = (db.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string })
-      .root_run_id;
-    const dbSeqs = (db.prepare("SELECT seq FROM log_events WHERE root_run_id = ? ORDER BY seq").all(rootRunId) as {
-      seq: number;
-    }[]).map((r) => r.seq);
+    const rootRunId = (
+      db.prepare("SELECT DISTINCT root_run_id FROM log_events").get() as { root_run_id: string }
+    ).root_run_id;
+    const dbSeqs = (
+      db
+        .prepare("SELECT seq FROM log_events WHERE root_run_id = ? ORDER BY seq")
+        .all(rootRunId) as {
+        seq: number;
+      }[]
+    ).map((r) => r.seq);
     db.close();
 
     const logLines = readFileSync(join(projectDir, ".path", "runs", rootRunId, "run.log"), "utf8")
       .trimEnd()
       .split("\n");
-    expect(JSON.parse(logLines[0]!)).toEqual({ type: "log-header", format: "path/log@0", run_id: rootRunId });
+    expect(JSON.parse(logLines[0]!)).toEqual({
+      type: "log-header",
+      format: "path/log@0",
+      run_id: rootRunId,
+    });
 
     const fileSeqs = logLines.slice(1).map((line) => JSON.parse(line).seq);
     expect(fileSeqs).toEqual(dbSeqs);
@@ -193,7 +216,9 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
     const db = new Database(join(projectDir, ".path", "path.db"), { readonly: true });
     const id = (
       db
-        .prepare("SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1")
+        .prepare(
+          "SELECT root_run_id FROM runs WHERE run_id = root_run_id AND resumed_from_root_run_id IS NULL LIMIT 1",
+        )
         .get() as { root_run_id: string }
     ).root_run_id;
     db.close();
@@ -202,7 +227,9 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
 
   it("resumes a real failed run end to end, reusing the succeeded step and printing the successor id", async () => {
     // The first run fails at step-b (config mode defaults to "fail"); step-a has already succeeded.
-    await expect(runCli(["run", join(projectDir, "workflow.json")], projectDir)).rejects.toMatchObject({ code: 1 });
+    await expect(
+      runCli(["run", join(projectDir, "workflow.json")], projectDir),
+    ).rejects.toMatchObject({ code: 1 });
     const originalRoot = originalRootRunId();
 
     // Resume with a corrected config: --set feeds every rerun, so step-b now passes.
@@ -219,7 +246,11 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
       // rather than re-executing; step-b reran and succeeded (no pointer).
       const successorRows = db
         .prepare("SELECT node_name, status, reused_from_run_id FROM runs WHERE root_run_id = ?")
-        .all(successorRoot) as { node_name: string | null; status: string; reused_from_run_id: string | null }[];
+        .all(successorRoot) as {
+        node_name: string | null;
+        status: string;
+        reused_from_run_id: string | null;
+      }[];
       const stepA = successorRows.find((r) => r.node_name === "step-a")!;
       expect(stepA.status).toBe("succeeded");
       expect(stepA.reused_from_run_id).not.toBeNull();
@@ -255,7 +286,10 @@ describe("path run --resume (ticket #177, real dev-mode process)", () => {
 
   it("exits 2 when --context is combined with --resume", async () => {
     await expect(
-      runCli(["run", join(projectDir, "workflow.json"), "--resume", "whatever", "--set-context", "k=v"], projectDir),
+      runCli(
+        ["run", join(projectDir, "workflow.json"), "--resume", "whatever", "--set-context", "k=v"],
+        projectDir,
+      ),
     ).rejects.toMatchObject({
       code: 2,
       stderr: expect.stringMatching(/--set-context|--context/),
@@ -280,7 +314,11 @@ describe("path run — secret masking at the persistence boundary (ticket #20, r
           type: "binary",
           id: "leak",
           command: "node",
-          args: ["-e", "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])", "${config.apiKey}"],
+          args: [
+            "-e",
+            "process.stdout.write(process.argv[1]);process.stderr.write('E'+process.argv[1])",
+            "${config.apiKey}",
+          ],
           publish: { saved: "${output}" },
         },
       ],
@@ -337,7 +375,10 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
   });
 
   it("runs the child, returns the child's output map to the parent, and mirrors the run tree in db + on disk", async () => {
-    const { stdout } = await runCli(["run", join(projectDir, "nested-parent.workflow.json")], projectDir);
+    const { stdout } = await runCli(
+      ["run", join(projectDir, "nested-parent.workflow.json")],
+      projectDir,
+    );
     // The parent's `publish` captured the child's `output` map verbatim.
     expect(stdout.trim()).toBe(JSON.stringify({ childResult: { shouted: "HI" } }));
 
@@ -381,12 +422,16 @@ describe("path run with a nested workflow step (ticket #22, real dev-mode proces
 
     // The leaf's snapshot is the child workflow-run's context after the leaf's publish landed: the
     // same post-step state its parent workflow-run records, taken under the leaf's own directory.
-    const leafContext = JSON.parse(readFileSync(join(runsRoot, leafRun!.run_id, "context.json"), "utf8"));
+    const leafContext = JSON.parse(
+      readFileSync(join(runsRoot, leafRun!.run_id, "context.json"), "utf8"),
+    );
     expect(leafContext).toEqual({ seed: "hi", shouted: "HI" });
 
     // The child's context.json is its own isolated blackboard — it holds the input-seeded key and
     // the child's own publish, and nothing from the parent.
-    const childContext = JSON.parse(readFileSync(join(runsRoot, childRun!.run_id, "context.json"), "utf8"));
+    const childContext = JSON.parse(
+      readFileSync(join(runsRoot, childRun!.run_id, "context.json"), "utf8"),
+    );
     expect(childContext).toEqual({ seed: "hi", shouted: "HI" });
   });
 });

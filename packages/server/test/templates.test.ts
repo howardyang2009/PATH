@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let shippedDir: string;
@@ -71,7 +71,13 @@ async function start(): Promise<PathServerHandle> {
 describe("GET /v0/templates", () => {
   it("lists the shipped∪user union thin, with origin/read_only and no body", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
-    writeTemplate(projectDir + "/.path/template", "step-template", "nightly", ".step-template.json", stepTemplate());
+    writeTemplate(
+      projectDir + "/.path/template",
+      "step-template",
+      "nightly",
+      ".step-template.json",
+      stepTemplate(),
+    );
 
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates`);
@@ -79,21 +85,43 @@ describe("GET /v0/templates", () => {
     const { templates } = (await res.json()) as { templates: Record<string, unknown>[] };
 
     const shipped = templates.find((t) => t.origin === "shipped")!;
-    expect(shipped).toMatchObject({ name: "review", kind: "step", origin: "shipped", read_only: true, valid: true });
+    expect(shipped).toMatchObject({
+      name: "review",
+      kind: "step",
+      origin: "shipped",
+      read_only: true,
+      valid: true,
+    });
     expect(shipped).not.toHaveProperty("body");
 
     const user = templates.find((t) => t.origin === "user")!;
-    expect(user).toMatchObject({ name: "nightly", kind: "step", origin: "user", read_only: false, valid: true });
+    expect(user).toMatchObject({
+      name: "nightly",
+      kind: "step",
+      origin: "user",
+      read_only: false,
+      valid: true,
+    });
   });
 
   it("ignores a former *.workflow-template.json file (ADR 0063: the Step-Template is the only kind)", async () => {
     writeTemplate(shippedDir, "step-template", "review", ".step-template.json", stepTemplate());
-    writeTemplate(projectDir + "/.path/template", "workflow-template", "nightly", ".workflow-template.json", workflowFile());
+    writeTemplate(
+      projectDir + "/.path/template",
+      "workflow-template",
+      "nightly",
+      ".workflow-template.json",
+      workflowFile(),
+    );
 
     const { url } = await start();
-    const all = (await (await fetch(`${url}/v0/templates`)).json()) as { templates: { name: string }[] };
+    const all = (await (await fetch(`${url}/v0/templates`)).json()) as {
+      templates: { name: string }[];
+    };
     expect(all.templates.map((t) => t.name)).toEqual(["review"]);
-    const stepOnly = (await (await fetch(`${url}/v0/templates?kind=step`)).json()) as { templates: { kind: string }[] };
+    const stepOnly = (await (await fetch(`${url}/v0/templates?kind=step`)).json()) as {
+      templates: { kind: string }[];
+    };
     expect(stepOnly.templates.map((t) => t.kind)).toEqual(["step"]);
   });
 
@@ -119,8 +147,20 @@ describe("GET /v0/templates", () => {
 
   it("lists both of a cross-origin duplicate id and flags the user one invalid", async () => {
     const id = randomUUID();
-    writeTemplate(shippedDir, "step-template", "shared", ".step-template.json", stepTemplate({ id }));
-    writeTemplate(projectDir + "/.path/template", "step-template", "copy", ".step-template.json", stepTemplate({ id }));
+    writeTemplate(
+      shippedDir,
+      "step-template",
+      "shared",
+      ".step-template.json",
+      stepTemplate({ id }),
+    );
+    writeTemplate(
+      projectDir + "/.path/template",
+      "step-template",
+      "copy",
+      ".step-template.json",
+      stepTemplate({ id }),
+    );
 
     const { url } = await start();
     const { templates } = (await (await fetch(`${url}/v0/templates`)).json()) as {
@@ -188,12 +228,17 @@ describe("POST /v0/templates", () => {
     expect(existsSync(join(projectDir, rel))).toBe(true);
   });
 
-  it("400s kind \"workflow\": the Workflow-Template is gone (ADR 0063)", async () => {
+  it('400s kind "workflow": the Workflow-Template is gone (ADR 0063)', async () => {
     const { url } = await start();
     const res = await fetch(`${url}/v0/templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "workflow", name: "nightly", description: "blurb", body: workflowFile() }),
+      body: JSON.stringify({
+        kind: "workflow",
+        name: "nightly",
+        description: "blurb",
+        body: workflowFile(),
+      }),
     });
     expect(res.status).toBe(400);
     expect(existsSync(join(projectDir, ".path/template/workflow-template"))).toBe(false);
@@ -216,16 +261,31 @@ describe("POST /v0/templates", () => {
     const res = await fetch(`${url}/v0/templates`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ kind: "step", name: "Bad Name", description: "b", body: stepTemplate() }),
+      body: JSON.stringify({
+        kind: "step",
+        name: "Bad Name",
+        description: "b",
+        body: stepTemplate(),
+      }),
     });
     expect(res.status).toBe(400);
   });
 });
 
 describe("PUT /v0/templates/:id", () => {
-  async function seedUserStep(): Promise<{ url: string; tpl: Record<string, unknown>; etag: string }> {
+  async function seedUserStep(): Promise<{
+    url: string;
+    tpl: Record<string, unknown>;
+    etag: string;
+  }> {
     const tpl = stepTemplate();
-    const bytes = writeTemplate(projectDir + "/.path/template", "step-template", "editable", ".step-template.json", tpl);
+    const bytes = writeTemplate(
+      projectDir + "/.path/template",
+      "step-template",
+      "editable",
+      ".step-template.json",
+      tpl,
+    );
     const { url } = await start();
     return { url, tpl, etag: strongEtag(bytes) };
   }
@@ -239,7 +299,10 @@ describe("PUT /v0/templates/:id", () => {
       body: JSON.stringify(updated),
     });
     expect(res.status).toBe(200);
-    const onDisk = readFileSync(join(projectDir, ".path/template/step-template/editable.step-template.json"), "utf8");
+    const onDisk = readFileSync(
+      join(projectDir, ".path/template/step-template/editable.step-template.json"),
+      "utf8",
+    );
     expect(onDisk).toBe(`${JSON.stringify(updated, null, 2)}\n`);
     expect(res.headers.get("etag")).toBe(strongEtag(onDisk));
   });
@@ -293,17 +356,29 @@ describe("PUT /v0/templates/:id", () => {
 describe("DELETE /v0/templates/:id", () => {
   it("removes a user template (204), 403s shipped, 404s unknown", async () => {
     const user = stepTemplate();
-    writeTemplate(projectDir + "/.path/template", "step-template", "gone", ".step-template.json", user);
+    writeTemplate(
+      projectDir + "/.path/template",
+      "step-template",
+      "gone",
+      ".step-template.json",
+      user,
+    );
     const shipped = stepTemplate();
     writeTemplate(shippedDir, "step-template", "keep", ".step-template.json", shipped);
     const { url } = await start();
 
     const del = await fetch(`${url}/v0/templates/${user.id}`, { method: "DELETE" });
     expect(del.status).toBe(204);
-    expect(existsSync(join(projectDir, ".path/template/step-template/gone.step-template.json"))).toBe(false);
+    expect(
+      existsSync(join(projectDir, ".path/template/step-template/gone.step-template.json")),
+    ).toBe(false);
 
-    expect((await fetch(`${url}/v0/templates/${shipped.id}`, { method: "DELETE" })).status).toBe(403);
-    expect((await fetch(`${url}/v0/templates/${randomUUID()}`, { method: "DELETE" })).status).toBe(404);
+    expect((await fetch(`${url}/v0/templates/${shipped.id}`, { method: "DELETE" })).status).toBe(
+      403,
+    );
+    expect((await fetch(`${url}/v0/templates/${randomUUID()}`, { method: "DELETE" })).status).toBe(
+      404,
+    );
   });
 });
 

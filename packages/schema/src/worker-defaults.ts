@@ -1,4 +1,8 @@
-import { describeUnknownStepType, describeUnknownWorker, type StepPluginRegistry } from "./nodes.js";
+import {
+  describeUnknownStepType,
+  describeUnknownWorker,
+  type StepPluginRegistry,
+} from "./nodes.js";
 
 /**
  * One registry-relative fault in a worker-default table (ADR 0044): the offending `type` key, and the

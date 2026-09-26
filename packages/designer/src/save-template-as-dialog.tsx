@@ -59,7 +59,11 @@ export function SaveTemplateAsDialog({
   const legal = NAME_PATTERN.test(clean);
   const described = description.trim() !== "";
   const canSubmit = legal && described && !submitting;
-  const title = fromWorkflow ? "Save workflow as template" : source ? "Save as new template" : "Save new template";
+  const title = fromWorkflow
+    ? "Save workflow as template"
+    : source
+      ? "Save as new template"
+      : "Save new template";
 
   const submit = (): void => {
     if (!canSubmit) return;
@@ -68,7 +72,8 @@ export function SaveTemplateAsDialog({
     void create({ name: clean, description: description.trim() }).then((result) => {
       setSubmitting(false);
       if (result.status === "created") onCreated();
-      else if (result.status === "exists") setError("A template with that name already exists. Choose another name.");
+      else if (result.status === "exists")
+        setError("A template with that name already exists. Choose another name.");
       else setError(result.message);
     });
   };
@@ -116,7 +121,9 @@ export function SaveTemplateAsDialog({
         </label>
 
         {!legal && clean !== "" ? (
-          <p className="new-file-error">Use lowercase letters, digits, and hyphens, starting with a letter.</p>
+          <p className="new-file-error">
+            Use lowercase letters, digits, and hyphens, starting with a letter.
+          </p>
         ) : null}
         {!described ? <p className="dialog-hint">A template needs a description.</p> : null}
         {fromWorkflow ? (
@@ -146,5 +153,7 @@ export function SaveTemplateAsDialog({
 
 /** `a`, `a and b`, `a, b and c`. */
 function formatList(items: readonly string[]): string {
-  return items.length <= 1 ? (items[0] ?? "") : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
+  return items.length <= 1
+    ? (items[0] ?? "")
+    : `${items.slice(0, -1).join(", ")} and ${items[items.length - 1]}`;
 }

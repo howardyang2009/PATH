@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { gotoIssues } from "../src/goto.js";
 import { instantiate } from "../src/instantiate.js";
 import type { WorkflowNode } from "../src/node-type.js";
-import { isStepType, childBodies, mapChildBodies } from "../src/node-walk.js";
+import { childBodies, isStepType, mapChildBodies } from "../src/node-walk.js";
 import { makeNodeSchema, RESERVED_TYPE_NAMES } from "../src/nodes.js";
 import { safeParseStepTemplate } from "../src/step-template.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
@@ -32,7 +32,10 @@ function file(body: WorkflowNode[]): WorkflowFile {
 }
 
 function parse(body: unknown[]) {
-  return safeParseWorkflowFile({ format: FORMAT_VERSION, id: uuid(1), name: "flow", body }, builtinRegistry);
+  return safeParseWorkflowFile(
+    { format: FORMAT_VERSION, id: uuid(1), name: "flow", body },
+    builtinRegistry,
+  );
 }
 
 function errorsOf(body: unknown[]): string[] {
@@ -79,7 +82,14 @@ describe("goto — the node grammar", () => {
   it("G-S-06: the target may be a first-level branch, while-do, parallel, checkpoint or goto", () => {
     const result = parse([
       { type: "branch", id: uuid(2), name: "b", arms: [{ when: cond, node: step("b-arm") }] },
-      { type: "while-do", id: uuid(3), name: "w", condition: cond, max_iterations: 2, node: step("w-body") },
+      {
+        type: "while-do",
+        id: uuid(3),
+        name: "w",
+        condition: cond,
+        max_iterations: 2,
+        node: step("w-body"),
+      },
       { type: "parallel", id: uuid(4), name: "p", join: "collect", branches: [step("p-one")] },
       { type: "checkpoint", id: uuid(5), name: "c", condition: cond },
       goto("other", "b"),
@@ -125,7 +135,12 @@ describe("gotoIssues — the four load refusals, as data", () => {
   it("G-S-04: target-self when a goto targets itself", () => {
     const g = goto("loop", "loop");
     expect(gotoIssues(file([step("a"), g]))).toEqual([
-      { rule: "target-self", nodeId: g.id, path: ["body", 1, "target"], message: 'goto "loop" targets itself' },
+      {
+        rule: "target-self",
+        nodeId: g.id,
+        path: ["body", 1, "target"],
+        message: 'goto "loop" targets itself',
+      },
     ]);
   });
 
@@ -173,7 +188,14 @@ describe("gotoIssues — the four load refusals, as data", () => {
   it("G-S-05: the load refuses both misplaced gotos in one failed parse", () => {
     const errors = errorsOf([
       step("a"),
-      { type: "while-do", id: uuid(2), name: "poll", condition: cond, max_iterations: 2, node: goto("x", "a") },
+      {
+        type: "while-do",
+        id: uuid(2),
+        name: "poll",
+        condition: cond,
+        max_iterations: 2,
+        node: goto("x", "a"),
+      },
       { type: "parallel", id: uuid(4), name: "fan", join: "collect", branches: [goto("y", "a")] },
     ]);
     expect(errors).toEqual([
@@ -204,7 +226,9 @@ describe("goto — a controller and a reserved name", () => {
   it("is the seventh reserved name, so a plugin may not claim it", () => {
     expect(RESERVED_TYPE_NAMES).toContain("goto");
     expect(RESERVED_TYPE_NAMES).toHaveLength(7);
-    const registry = { goto: { fields: {}, config: {}, workers: { only: {} }, defaultWorker: "only" } };
+    const registry = {
+      goto: { fields: {}, config: {}, workers: { only: {} }, defaultWorker: "only" },
+    };
     expect(() => makeNodeSchema(registry)).toThrowError(/seven control names/);
   });
 });
@@ -221,6 +245,8 @@ describe("goto — a Step-Template body", () => {
 
     // Instantiation re-mints ids and does not rewire targets, so the landed goto still names "missing".
     const landed = instantiate(template.data.body);
-    expect(errorsOf([step("host"), ...landed])).toEqual(['body.2.target: goto target "missing" not found in this file']);
+    expect(errorsOf([step("host"), ...landed])).toEqual([
+      'body.2.target: goto target "missing" not found in this file',
+    ]);
   });
 });

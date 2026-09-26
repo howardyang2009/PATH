@@ -4,8 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { safeParseWorkflowFile } from "@path/schema";
-import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { builtinRegistry } from "./builtin-registry.js";
 import { runCodemod } from "./run-codemod.js";
 
 /**
@@ -42,7 +42,12 @@ function legacyFile(body: unknown[]): Record<string, unknown> {
   return { format: "path/workflow@1", id: uuid(), name: "wf", worker: { type: "engine" }, body };
 }
 
-const step = (name: string): Record<string, unknown> => ({ type: "binary", id: uuid(), name, command: "echo" });
+const step = (name: string): Record<string, unknown> => ({
+  type: "binary",
+  id: uuid(),
+  name,
+  command: "echo",
+});
 
 const exists = { type: "exists", path: "context.x" };
 
@@ -69,7 +74,8 @@ function expectSchemaValid(file: string): void {
   runCodemod([copy], scriptsDir, "migrate-workflow-format-v4.ts");
   runCodemod([copy], scriptsDir, "migrate-workflow-format-v5.ts");
   const result = safeParseWorkflowFile(JSON.parse(readFileSync(copy, "utf8")), builtinRegistry);
-  if (!result.success) throw new Error(`migrated file is not schema-valid @5:\n${result.errors.join("\n")}`);
+  if (!result.success)
+    throw new Error(`migrated file is not schema-valid @5:\n${result.errors.join("\n")}`);
 }
 
 describe("migrate-workflow-format-v2 — parallel branch wrappers", () => {
@@ -143,7 +149,14 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
           arms: [{ when: exists, body: [step("arm-a")] }],
           else: [step("fallback")],
         },
-        { type: "while-do", id: uuid(), name: "spin", condition: exists, max_iterations: 2, body: [step("inner")] },
+        {
+          type: "while-do",
+          id: uuid(),
+          name: "spin",
+          condition: exists,
+          max_iterations: 2,
+          body: [step("inner")],
+        },
       ]),
     );
 
@@ -190,7 +203,10 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
     expect(armNode.type).toBe("sequence");
     // The minted name is derived from the owning node, so it reads as that slot's sequence.
     expect(armNode.name).toBe("route-arm");
-    expect((armNode.body as Record<string, unknown>[]).map((node) => node.name)).toEqual(["a1", "a2"]);
+    expect((armNode.body as Record<string, unknown>[]).map((node) => node.name)).toEqual([
+      "a1",
+      "a2",
+    ]);
 
     const elseNode = branch!.else as Record<string, unknown>;
     expect(elseNode.type).toBe("sequence");
@@ -199,7 +215,10 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
     const loopNode = loop!.node as Record<string, unknown>;
     expect(loopNode.type).toBe("sequence");
     expect(loopNode.name).toBe("spin-body");
-    expect((loopNode.body as Record<string, unknown>[]).map((node) => node.name)).toEqual(["l1", "l2"]);
+    expect((loopNode.body as Record<string, unknown>[]).map((node) => node.name)).toEqual([
+      "l1",
+      "l2",
+    ]);
   });
 
   it("disambiguates a minted name that is already taken with a -2 suffix", () => {
@@ -208,7 +227,12 @@ describe("migrate-workflow-format-v2 — single-node slots", () => {
       legacyFile([
         // Occupies the name the minted sequence below would otherwise take.
         step("route-arm"),
-        { type: "branch", id: uuid(), name: "route", arms: [{ when: exists, body: [step("a1"), step("a2")] }] },
+        {
+          type: "branch",
+          id: uuid(),
+          name: "route",
+          arms: [{ when: exists, body: [step("a1"), step("a2")] }],
+        },
       ]),
     );
 
@@ -264,7 +288,9 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
     // nothing on the way in — so it refuses rather than emitting `{ type: "sequence", body: [] }`.
     const file = write(
       "empty.workflow.json",
-      legacyFile([{ type: "branch", id: uuid(), name: "route", arms: [{ when: exists, body: [] }] }]),
+      legacyFile([
+        { type: "branch", id: uuid(), name: "route", arms: [{ when: exists, body: [] }] },
+      ]),
     );
     const before = bytes(file);
 
@@ -280,7 +306,13 @@ describe("migrate-workflow-format-v2 — refuses rather than inventing (§11)", 
     const file = write(
       "empty-branch.workflow.json",
       legacyFile([
-        { type: "parallel", id: uuid(), name: "fan", join: "collect", branches: [{ id: uuid(), name: "left", body: [] }] },
+        {
+          type: "parallel",
+          id: uuid(),
+          name: "fan",
+          join: "collect",
+          branches: [{ id: uuid(), name: "left", body: [] }],
+        },
       ]),
     );
     const before = bytes(file);

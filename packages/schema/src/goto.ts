@@ -1,5 +1,5 @@
-import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { GotoNode, WorkflowNode } from "./node-type.js";
+import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
 /**
@@ -36,30 +36,57 @@ export function gotoIssues(file: WorkflowFile): GotoIssue[] {
 
   // `barrier` is the nearest enclosing `while-do` / `parallel`, the only ancestors a goto may not have
   // (§2.2): a jump out of an iteration or a concurrent branch has no single place to land.
-  const visit = (node: WorkflowNode, nodePath: (string | number)[], barrier: WorkflowNode | undefined): void => {
+  const visit = (
+    node: WorkflowNode,
+    nodePath: (string | number)[],
+    barrier: WorkflowNode | undefined,
+  ): void => {
     if (node.type === "goto") issues.push(...issuesFor(node, nodePath, barrier));
     const inner = node.type === "while-do" || node.type === "parallel" ? node : barrier;
     for (const child of childBodies(node)) {
-      child.nodes.forEach((each, index) => visit(each, [...nodePath, ...childNodePath(child, index)], inner));
+      child.nodes.forEach((each, index) => {
+        visit(each, [...nodePath, ...childNodePath(child, index)], inner);
+      });
     }
   };
 
-  const issuesFor = (node: GotoNode, nodePath: (string | number)[], barrier: WorkflowNode | undefined): GotoIssue[] => {
-    const issue = (rule: GotoIssueRule, path: (string | number)[], message: string): GotoIssue[] => [
-      { rule, nodeId: node.id, path, message },
-    ];
+  const issuesFor = (
+    node: GotoNode,
+    nodePath: (string | number)[],
+    barrier: WorkflowNode | undefined,
+  ): GotoIssue[] => {
+    const issue = (
+      rule: GotoIssueRule,
+      path: (string | number)[],
+      message: string,
+    ): GotoIssue[] => [{ rule, nodeId: node.id, path, message }];
     if (barrier) {
-      return issue("placement", nodePath, `goto "${node.name}" may not sit under ${barrier.type} "${barrier.name}"`);
+      return issue(
+        "placement",
+        nodePath,
+        `goto "${node.name}" may not sit under ${barrier.type} "${barrier.name}"`,
+      );
     }
     const targetPath = [...nodePath, "target"];
-    if (node.target === node.name) return issue("target-self", targetPath, `goto "${node.name}" targets itself`);
+    if (node.target === node.name)
+      return issue("target-self", targetPath, `goto "${node.name}" targets itself`);
     if (firstLevel.has(node.target)) return [];
     if (everyName.has(node.target)) {
-      return issue("target-inner", targetPath, `goto target "${node.target}" is not a first-level node`);
+      return issue(
+        "target-inner",
+        targetPath,
+        `goto target "${node.target}" is not a first-level node`,
+      );
     }
-    return issue("target-absent", targetPath, `goto target "${node.target}" not found in this file`);
+    return issue(
+      "target-absent",
+      targetPath,
+      `goto target "${node.target}" not found in this file`,
+    );
   };
 
-  file.body.forEach((node, index) => visit(node, ["body", index], undefined));
+  file.body.forEach((node, index) => {
+    visit(node, ["body", index], undefined);
+  });
   return issues;
 }

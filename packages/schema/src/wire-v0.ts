@@ -2,7 +2,7 @@ import type { ConfigObject } from "./config-value-type.js";
 import type { JsonValue } from "./json-value.js";
 import type { LaunchFacts } from "./launch-facts.js";
 import type { LogBackendId } from "./log-backend-id.js";
-import { RUN_RECORD_FIELDS, type RerunFromNodePathEntry, type RunRecord } from "./run-record.js";
+import { type RerunFromNodePathEntry, RUN_RECORD_FIELDS, type RunRecord } from "./run-record.js";
 import type { RunStatus } from "./run-status.js";
 
 /**
@@ -402,6 +402,7 @@ export function toRootRunSummary(row: RunRecord, launchSecretKeys?: string[]): R
   for (const camel of Object.keys(ROOT_RUN_SUMMARY_FIELDS)) {
     summary[camelToSnake(camel)] = (row as unknown as Record<string, unknown>)[camel];
   }
-  if (launchSecretKeys !== undefined && launchSecretKeys.length > 0) summary.launch_secret_keys = launchSecretKeys;
+  if (launchSecretKeys !== undefined && launchSecretKeys.length > 0)
+    summary.launch_secret_keys = launchSecretKeys;
   return summary as unknown as RootRunSummary;
 }

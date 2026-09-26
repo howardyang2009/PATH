@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, makeCalls, stubClient, type StubCalls } from "./stub-server.js";
+import { DEFAULT_PLUGINS, makeCalls, type StubCalls, stubClient } from "./stub-server.js";
 
 /**
  * The on-disk bytes of a file the Designer has already saved: canonical, so a re-open is a fixed point
@@ -50,11 +50,21 @@ function otherFile(): Record<string, unknown> {
 
 /** An id-less file — the open pipeline stamps ids and opens the buffer dirty (ADR 0015). */
 function dirtyFile(): Record<string, unknown> {
-  return { format: FORMAT_VERSION, name: "no-ids", body: [{ type: "prompt", name: "draft", prompt: "hi" }] };
+  return {
+    format: FORMAT_VERSION,
+    name: "no-ids",
+    body: [{ type: "prompt", name: "draft", prompt: "hi" }],
+  };
 }
 
 /** A wire run record with the fields the inspector/tree/projection read; the rest are inert nulls. */
-function wireRun(partial: { run_id: string; status: string; node_id?: string | null; node_name?: string | null; output_ref?: string | null }): Record<string, unknown> {
+function wireRun(partial: {
+  run_id: string;
+  status: string;
+  node_id?: string | null;
+  node_name?: string | null;
+  output_ref?: string | null;
+}): Record<string, unknown> {
   return {
     run_id: partial.run_id,
     root_run_id: partial.run_id === "root-1" ? "root-1" : "root-1",
@@ -86,7 +96,11 @@ function openDock(): void {
 
 /** Render the App on the clean file and wait for the canvas to open. */
 async function renderClean(extra: Parameters<typeof stubClient>[0] = {}, calls?: StubCalls) {
-  const client = stubClient({ files: { [ROOT_PATH]: canonicalBytes(cleanFile()) }, calls, ...extra });
+  const client = stubClient({
+    files: { [ROOT_PATH]: canonicalBytes(cleanFile()) },
+    calls,
+    ...extra,
+  });
   render(<App client={client} initialPath={ROOT_PATH} />);
   await screen.findByRole("region", { name: "Workflow canvas" });
   return client;
@@ -148,7 +162,11 @@ describe("Designer run surfaces (#372)", () => {
 
   it("a launch 400 surfaces on the form without collapsing it", async () => {
     await renderClean({
-      onStartRun: () => new Response(JSON.stringify({ error: { message: "rejected $env override" } }), { status: 400, headers: { "Content-Type": "application/json" } }),
+      onStartRun: () =>
+        new Response(JSON.stringify({ error: { message: "rejected $env override" } }), {
+          status: 400,
+          headers: { "Content-Type": "application/json" },
+        }),
     });
     openDock();
 
@@ -166,15 +184,34 @@ describe("Designer run surfaces (#372)", () => {
     openDock();
 
     await waitFor(() => expect(calls.listRuns.length).toBeGreaterThan(0));
-    expect(calls.listRuns.every((qs) => qs.includes(`workflow_id=${encodeURIComponent(WF_ID)}`))).toBe(true);
+    expect(
+      calls.listRuns.every((qs) => qs.includes(`workflow_id=${encodeURIComponent(WF_ID)}`)),
+    ).toBe(true);
   });
 
   it("cancel uses arm-then-confirm on a run in flight", async () => {
     const calls = makeCalls();
     await renderClean(
       {
-        runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null }] },
-        tree: { root_run_id: "root-1", status: "running", output: null, runs: [wireRun({ run_id: "root-1", status: "running" })] },
+        runs: {
+          runs: [
+            {
+              run_id: "root-1",
+              workflow_name: "root-flow",
+              workflow_id: WF_ID,
+              workflow_path: ROOT_PATH,
+              status: "running",
+              started_at: "2026-01-01T00:00:00Z",
+              finished_at: null,
+            },
+          ],
+        },
+        tree: {
+          root_run_id: "root-1",
+          status: "running",
+          output: null,
+          runs: [wireRun({ run_id: "root-1", status: "running" })],
+        },
       },
       calls,
     );
@@ -194,8 +231,25 @@ describe("Designer run surfaces (#372)", () => {
 
   it("resume offers the config-override form", async () => {
     await renderClean({
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "failed", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
-      tree: { root_run_id: "root-1", status: "failed", output: null, runs: [wireRun({ run_id: "root-1", status: "failed" })] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "failed",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "2026-01-01T00:01:00Z",
+          },
+        ],
+      },
+      tree: {
+        root_run_id: "root-1",
+        status: "failed",
+        output: null,
+        runs: [wireRun({ run_id: "root-1", status: "failed" })],
+      },
     });
     openDock();
 
@@ -208,12 +262,27 @@ describe("Designer run surfaces (#372)", () => {
 
   it("projects run status onto the matching canvas node", async () => {
     await renderClean({
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null }] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "running",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: null,
+          },
+        ],
+      },
       tree: {
         root_run_id: "root-1",
         status: "running",
         output: null,
-        runs: [wireRun({ run_id: "root-1", status: "running" }), wireRun({ run_id: "r-step", status: "running", node_id: STEP_ID, node_name: "draft" })],
+        runs: [
+          wireRun({ run_id: "root-1", status: "running" }),
+          wireRun({ run_id: "r-step", status: "running", node_id: STEP_ID, node_name: "draft" }),
+        ],
       },
     });
     openDock();
@@ -227,7 +296,19 @@ describe("Designer run surfaces (#372)", () => {
     // The root run carries no node_id, so it projects onto no canvas node; its verdict shows on the
     // breadcrumb's workflow-name line instead.
     await renderClean({
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "succeeded",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "2026-01-01T00:01:00Z",
+          },
+        ],
+      },
       tree: {
         root_run_id: "root-1",
         status: "succeeded",
@@ -247,12 +328,27 @@ describe("Designer run surfaces (#372)", () => {
 
   it("shows a selected run's node I/O, and the shared absence rule for a missing terminal output", async () => {
     await renderClean({
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "succeeded",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "2026-01-01T00:01:00Z",
+          },
+        ],
+      },
       tree: {
         root_run_id: "root-1",
         status: "succeeded",
         output: null,
-        runs: [wireRun({ run_id: "root-1", status: "succeeded" }), wireRun({ run_id: "r-step", status: "succeeded", node_id: STEP_ID, node_name: "draft" })],
+        runs: [
+          wireRun({ run_id: "root-1", status: "succeeded" }),
+          wireRun({ run_id: "r-step", status: "succeeded", node_id: STEP_ID, node_name: "draft" }),
+        ],
       },
       blobs: { "r-step/input": { seed: 1 } },
     });
@@ -264,8 +360,14 @@ describe("Designer run surfaces (#372)", () => {
     // Input present → rendered; output absent on a terminal run → the "no output recorded" note (the
     // read-anyway-and-trust-the-404 branch of the shared absence rule, #51).
     const io = await screen.findByTestId("node-io-head");
-    await waitFor(() => expect(within(screen.getByTestId("node-io-input")).queryByText(/seed/)).toBeInTheDocument());
-    await waitFor(() => expect(within(screen.getByTestId("node-io-output")).getByText(/No output object recorded/i)).toBeInTheDocument());
+    await waitFor(() =>
+      expect(within(screen.getByTestId("node-io-input")).queryByText(/seed/)).toBeInTheDocument(),
+    );
+    await waitFor(() =>
+      expect(
+        within(screen.getByTestId("node-io-output")).getByText(/No output object recorded/i),
+      ).toBeInTheDocument(),
+    );
     expect(io).toBeInTheDocument();
   });
 
@@ -274,15 +376,49 @@ describe("Designer run surfaces (#372)", () => {
     // watched run belongs to the old workflow, so it must not survive the re-scope: the run-detail pane
     // clears and the new workflow's breadcrumb carries no status badge (the reported bug).
     const client = stubClient({
-      files: { [ROOT_PATH]: canonicalBytes(cleanFile()), [OTHER_PATH]: canonicalBytes(otherFile()) },
+      files: {
+        [ROOT_PATH]: canonicalBytes(cleanFile()),
+        [OTHER_PATH]: canonicalBytes(otherFile()),
+      },
       workflows: {
         workflows: [
-          { relative_path: ROOT_PATH, id: WF_ID, name: "root-flow", valid: true, is_root: true, error: null },
-          { relative_path: OTHER_PATH, id: OTHER_WF_ID, name: "other-flow", valid: true, is_root: true, error: null },
+          {
+            relative_path: ROOT_PATH,
+            id: WF_ID,
+            name: "root-flow",
+            valid: true,
+            is_root: true,
+            error: null,
+          },
+          {
+            relative_path: OTHER_PATH,
+            id: OTHER_WF_ID,
+            name: "other-flow",
+            valid: true,
+            is_root: true,
+            error: null,
+          },
         ],
       },
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "succeeded", started_at: "2026-01-01T00:00:00Z", finished_at: "2026-01-01T00:01:00Z" }] },
-      tree: { root_run_id: "root-1", status: "succeeded", output: null, runs: [wireRun({ run_id: "root-1", status: "succeeded" })] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "succeeded",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: "2026-01-01T00:01:00Z",
+          },
+        ],
+      },
+      tree: {
+        root_run_id: "root-1",
+        status: "succeeded",
+        output: null,
+        runs: [wireRun({ run_id: "root-1", status: "succeeded" })],
+      },
     });
     render(<App client={client} initialPath={ROOT_PATH} />);
     await screen.findByRole("region", { name: "Workflow canvas" });
@@ -290,7 +426,10 @@ describe("Designer run surfaces (#372)", () => {
 
     // Watch the succeeded run: the badge lights and the run-detail pane shows the tree, not its empty note.
     fireEvent.click(await screen.findByTestId("run-row-root-1"));
-    expect(await screen.findByTestId("workflow-run-badge")).toHaveAttribute("data-run-status", "succeeded");
+    expect(await screen.findByTestId("workflow-run-badge")).toHaveAttribute(
+      "data-run-status",
+      "succeeded",
+    );
     expect(screen.queryByText("Select a run.")).not.toBeInTheDocument();
 
     // Open the never-run workflow through the picker (the files sit under a `flows/` folder).
@@ -340,7 +479,11 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
           id: STEP_ID,
           name: "review",
           description: "Review the draft",
-          outputSchema: { type: "object", properties: { approved: { type: "boolean" } }, required: ["approved"] },
+          outputSchema: {
+            type: "object",
+            properties: { approved: { type: "boolean" } },
+            required: ["approved"],
+          },
           assignee: "editor",
         },
       ],
@@ -357,13 +500,28 @@ describe("Designer run dock reuses the Viewer awaiting/Complete surfaces (#487, 
     const client = stubClient({
       files: { [ROOT_PATH]: canonicalWith(awaitingFile(), PERSON_PLUGINS) },
       plugins: PERSON_PLUGINS,
-      runs: { runs: [{ run_id: "root-1", workflow_name: "root-flow", workflow_id: WF_ID, workflow_path: ROOT_PATH, status: "running", started_at: "2026-01-01T00:00:00Z", finished_at: null }] },
+      runs: {
+        runs: [
+          {
+            run_id: "root-1",
+            workflow_name: "root-flow",
+            workflow_id: WF_ID,
+            workflow_path: ROOT_PATH,
+            status: "running",
+            started_at: "2026-01-01T00:00:00Z",
+            finished_at: null,
+          },
+        ],
+      },
       tree: {
         root_run_id: "root-1",
         status: "running",
         output: null,
         // The root stays running while the leaf awaits (ADR 0038).
-        runs: [wireRun({ run_id: "root-1", status: "running" }), wireRun({ run_id: "r-step", status: "awaiting", node_id: STEP_ID, node_name: "review" })],
+        runs: [
+          wireRun({ run_id: "root-1", status: "running" }),
+          wireRun({ run_id: "r-step", status: "awaiting", node_id: STEP_ID, node_name: "review" }),
+        ],
       },
     });
     render(<App client={client} initialPath={ROOT_PATH} />);

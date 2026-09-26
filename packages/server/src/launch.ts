@@ -1,7 +1,7 @@
 import { existsSync } from "node:fs";
 import { resolve } from "node:path";
-import { loadWorkflowTree, type LoadedWorkflow } from "@path/engine";
-import { mapEnv, type ConfigObject, type JsonValue, type RunRecord } from "@path/schema";
+import { type LoadedWorkflow, loadWorkflowTree } from "@path/engine";
+import { type ConfigObject, type JsonValue, mapEnv, type RunRecord } from "@path/schema";
 import { confineToProjectRoot } from "./confine.js";
 
 /**
@@ -96,7 +96,9 @@ export async function prepareWorkflow(
 ): Promise<PreparedWorkflow> {
   // A missing tail is allowed through here so that a file that is simply not there reads as
   // `notFound` below rather than as an escape.
-  const absPath = confineToProjectRoot(resolve(projectDir), workflowPath, { allowMissingTail: true });
+  const absPath = confineToProjectRoot(resolve(projectDir), workflowPath, {
+    allowMissingTail: true,
+  });
   if (!absPath) {
     const escaped = (messages.escapesRoot ?? messages.notFound)(workflowPath);
     return { ok: false, refusal: { status: 404, message: escaped } };
@@ -107,7 +109,10 @@ export async function prepareWorkflow(
 
   const loadResult = await loadWorkflowTree(absPath);
   if (!loadResult.success) {
-    return { ok: false, refusal: { status: 400, message: "workflow validation failed", details: loadResult.errors } };
+    return {
+      ok: false,
+      refusal: { status: 400, message: "workflow validation failed", details: loadResult.errors },
+    };
   }
   return { ok: true, workflow: loadResult.workflow };
 }

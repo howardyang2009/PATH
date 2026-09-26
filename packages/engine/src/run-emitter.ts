@@ -1,5 +1,10 @@
 import { randomUUID } from "node:crypto";
-import { isRootRun, type JsonValue, type LaunchFacts, type RerunFromNodePathEntry } from "@path/schema";
+import {
+  isRootRun,
+  type JsonValue,
+  type LaunchFacts,
+  type RerunFromNodePathEntry,
+} from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
 import type { Observation, RunOutcome } from "./run-observer.js";
@@ -72,7 +77,10 @@ export interface StepEmitter {
    */
   awaiting(args: { assignee: string | null }): Promise<void>;
   /** The kill pair (§5.6): `run-cancelled` carrying the cause, then a `cancelled` `step-finished`. */
-  cancelled(args: { cause: "sibling-failed" | "sibling-succeeded" | "operator"; causeRunId: string | null }): Promise<void>;
+  cancelled(args: {
+    cause: "sibling-failed" | "sibling-succeeded" | "operator";
+    causeRunId: string | null;
+  }): Promise<void>;
 }
 
 /**
@@ -112,7 +120,11 @@ export interface Emitter {
   iterationStarted(node: NodeRef, args: { iteration: number; trace: Trace }): Promise<void>;
   loopExited(
     node: NodeRef,
-    args: { reason: "condition-false" | "max-iterations-exceeded"; iterations: number; trace: Trace },
+    args: {
+      reason: "condition-false" | "max-iterations-exceeded";
+      iterations: number;
+      trace: Trace;
+    },
   ): Promise<void>;
   joinApplied(
     node: NodeRef,
@@ -120,8 +132,14 @@ export interface Emitter {
   ): Promise<void>;
   /** A goto pass opened (ADR 0054): `opener` is the goto that opened it, `null` for pass 1. */
   passStarted(opener: NodeRef | null, args: { pass: number }): Promise<void>;
-  gotoTaken(node: NodeRef, args: { target: NodeRef; jump: number; maxJumps: number; pass: number }): Promise<void>;
-  gotoExhausted(node: NodeRef, args: { target: NodeRef; maxJumps: number; pass: number }): Promise<void>;
+  gotoTaken(
+    node: NodeRef,
+    args: { target: NodeRef; jump: number; maxJumps: number; pass: number },
+  ): Promise<void>;
+  gotoExhausted(
+    node: NodeRef,
+    args: { target: NodeRef; maxJumps: number; pass: number },
+  ): Promise<void>;
   reuseMarker(node: NodeRef, args: { originalRunId: string }): Promise<void>;
   /**
    * Open a step-scoped sub-emitter for one leaf step run. Mints a fresh run id normally; a Complete
@@ -163,10 +181,14 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
         // A goto pass container's ordinal (ADR 0054), the same way.
         ...(pass !== undefined ? { pass } : {}),
         // Successor lineage rides presence, not root-ness — the caller sets it on the root alone.
-        ...(args.resumedFromRootRunId !== undefined ? { resumedFromRootRunId: args.resumedFromRootRunId } : {}),
+        ...(args.resumedFromRootRunId !== undefined
+          ? { resumedFromRootRunId: args.resumedFromRootRunId }
+          : {}),
         // The rerun boundary (K) descent path is root-only (ADR 0032): a nested run never carries one,
         // and the caller supplies it on the root alone, so gating on `isRoot` keeps it there.
-        ...(isRoot && args.rerunFromNodePath !== undefined ? { rerunFromNodePath: args.rerunFromNodePath } : {}),
+        ...(isRoot && args.rerunFromNodePath !== undefined
+          ? { rerunFromNodePath: args.rerunFromNodePath }
+          : {}),
         // The frozen launch facts are root-only (ADR 0046), gated on `isRoot` for the same reason:
         // only the root row records them, and only a resume/Complete reads them back.
         ...(isRoot && args.launchFacts !== undefined ? { launchFacts: args.launchFacts } : {}),
@@ -329,16 +351,44 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
           });
         },
         stderr(stderr): Promise<void> {
-          return emit({ type: "step-stderr", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, stderr });
+          return emit({
+            type: "step-stderr",
+            runId: stepRunId,
+            rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
+            stderr,
+          });
         },
         finished(outcome): Promise<void> {
-          return emit({ type: "step-finished", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, ...outcome });
+          return emit({
+            type: "step-finished",
+            runId: stepRunId,
+            rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
+            ...outcome,
+          });
         },
         awaiting(args): Promise<void> {
-          return emit({ type: "step-awaiting", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, assignee: args.assignee });
+          return emit({
+            type: "step-awaiting",
+            runId: stepRunId,
+            rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
+            assignee: args.assignee,
+          });
         },
         context(context): Promise<void> {
-          return emit({ type: "step-context", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, context });
+          return emit({
+            type: "step-context",
+            runId: stepRunId,
+            rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
+            context,
+          });
         },
         async cancelled(args): Promise<void> {
           await emit({
@@ -350,7 +400,14 @@ export function createEmitter(identity: RunIdentity, emit: Emit): Emitter {
             cause: args.cause,
             causeRunId: args.causeRunId,
           });
-          await emit({ type: "step-finished", runId: stepRunId, rootRunId, nodeId: node.id, nodeName: node.name, status: "cancelled" });
+          await emit({
+            type: "step-finished",
+            runId: stepRunId,
+            rootRunId,
+            nodeId: node.id,
+            nodeName: node.name,
+            status: "cancelled",
+          });
         },
       };
     },

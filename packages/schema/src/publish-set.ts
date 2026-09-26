@@ -1,5 +1,5 @@
-import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
+import { childBodies, childNodePath, walkNodes } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
 /**
@@ -40,7 +40,9 @@ export interface PublishSetIssue {
  */
 export function publishKeysOf(node: WorkflowNode): string[] {
   const publish = (node as { publish?: unknown }).publish;
-  return publish !== null && typeof publish === "object" ? Object.keys(publish as Record<string, unknown>) : [];
+  return publish !== null && typeof publish === "object"
+    ? Object.keys(publish as Record<string, unknown>)
+    : [];
 }
 
 /** Every publish key anywhere in a subtree — a branch's whole publish set, for the sibling-race check. */
@@ -91,7 +93,9 @@ function siblingRaceIssues(file: WorkflowFile): PublishSetIssue[] {
     }
   };
 
-  file.body.forEach((node, index) => visit(node, ["body", index]));
+  file.body.forEach((node, index) => {
+    visit(node, ["body", index]);
+  });
   return issues;
 }
 
@@ -103,7 +107,11 @@ function siblingRaceIssues(file: WorkflowFile): PublishSetIssue[] {
 function detachedPublishIssues(file: WorkflowFile): PublishSetIssue[] {
   const issues: PublishSetIssue[] = [];
 
-  const visit = (node: WorkflowNode, nodePath: (string | number)[], insideDoNotWait: boolean): void => {
+  const visit = (
+    node: WorkflowNode,
+    nodePath: (string | number)[],
+    insideDoNotWait: boolean,
+  ): void => {
     if (insideDoNotWait) {
       for (const key of publishKeysOf(node)) {
         issues.push({
@@ -116,11 +124,15 @@ function detachedPublishIssues(file: WorkflowFile): PublishSetIssue[] {
     }
     const detached = insideDoNotWait || (node.type === "parallel" && node.join === "do-not-wait");
     for (const child of childBodies(node)) {
-      child.nodes.forEach((each, index) => visit(each, [...nodePath, ...childNodePath(child, index)], detached));
+      child.nodes.forEach((each, index) => {
+        visit(each, [...nodePath, ...childNodePath(child, index)], detached);
+      });
     }
   };
 
-  file.body.forEach((node, index) => visit(node, ["body", index], false));
+  file.body.forEach((node, index) => {
+    visit(node, ["body", index], false);
+  });
   return issues;
 }
 

@@ -1,7 +1,16 @@
 import { describe, expect, it } from "vitest";
 import type { RunRecord } from "../src/run-record.js";
 import { blankRunRecord } from "../src/run-record.js";
-import { ROOT_RUN_SUMMARY_FIELDS, fromWireLaunchFacts, fromWireRunRecord, toRootRunSummary, toWireLaunchFacts, toWireRunRecord, type RootRunSummary, type WireRunRecord } from "../src/wire-v0.js";
+import {
+  fromWireLaunchFacts,
+  fromWireRunRecord,
+  type ROOT_RUN_SUMMARY_FIELDS,
+  type RootRunSummary,
+  toRootRunSummary,
+  toWireLaunchFacts,
+  toWireRunRecord,
+  type WireRunRecord,
+} from "../src/wire-v0.js";
 
 /**
  * The wire shape must carry every field of the domain record, under its snake_case name — checked
@@ -24,16 +33,22 @@ type CamelToSnake<S extends string> = S extends `${infer Head}${infer Tail}`
     : `${Head}${CamelToSnake<Tail>}`
   : S;
 
-type Equal<A, B> = (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
+type Equal<A, B> =
+  (<T>() => T extends A ? 1 : 2) extends <T>() => T extends B ? 1 : 2 ? true : false;
 type Assert<T extends true> = T;
 
-type _WireCarriesEveryRecordField = Assert<Equal<keyof WireRunRecord, CamelToSnake<keyof RunRecord>>>;
+type _WireCarriesEveryRecordField = Assert<
+  Equal<keyof WireRunRecord, CamelToSnake<keyof RunRecord>>
+>;
 
 // The summary's projection list is the one statement of which record fields it carries, so its snake
 // spelling must be exactly the summary's keys: a field added to the list without a summary key (or a
 // summary key with no list entry) fails here rather than producing a summary that silently omits it.
 type _SummaryProjectionMatchesSummary = Assert<
-  Equal<CamelToSnake<keyof typeof ROOT_RUN_SUMMARY_FIELDS>, keyof Omit<RootRunSummary, "launch_secret_keys">>
+  Equal<
+    CamelToSnake<keyof typeof ROOT_RUN_SUMMARY_FIELDS>,
+    keyof Omit<RootRunSummary, "launch_secret_keys">
+  >
 >;
 
 const record: RunRecord = {

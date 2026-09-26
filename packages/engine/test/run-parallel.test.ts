@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { afterEach, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { scanStepPlugins, type LoadedStepPluginRegistry } from "../src/plugin/scan.js";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "../src/plugin/scan.js";
 import type { WorkerDescriptor } from "../src/plugin/seam.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
-import { createEmitter } from "../src/run-emitter.js";
 import type { NodeExecContext, RunContext } from "../src/run-context.js";
+import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 import { runNode, runSequence } from "../src/run-workflow.js";
 
@@ -48,18 +48,32 @@ beforeAll(async () => {
 });
 
 /** The scanned registry with one `(type, worker)` pair replaced — the concurrency test's scripted `anthropic`. */
-function registryWith(type: string, name: string, descriptor: WorkerDescriptor): LoadedStepPluginRegistry {
+function registryWith(
+  type: string,
+  name: string,
+  descriptor: WorkerDescriptor,
+): LoadedStepPluginRegistry {
   const clone: LoadedStepPluginRegistry = {};
-  for (const [t, plugin] of Object.entries(registry)) clone[t] = { ...plugin, workers: { ...plugin.workers } };
+  for (const [t, plugin] of Object.entries(registry))
+    clone[t] = { ...plugin, workers: { ...plugin.workers } };
   clone[type]!.workers[name] = descriptor;
   return clone;
 }
 
-function makeRun(overrides: Partial<RunContext> = {}): { run: RunContext; observed: Observation[] } {
+function makeRun(overrides: Partial<RunContext> = {}): {
+  run: RunContext;
+  observed: Observation[];
+} {
   const observed: Observation[] = [];
   // A real emitter over the capturing sink (Q7-b): join-applied and every other observation go
   // through `run.emitter`, so `observed` stays the wire-`Observation` assertion it always was.
-  const identity: RunContext["identity"] = { runId: "run-1", rootRunId: "run-1", parentRunId: null, nodeId: null, nodeName: null };
+  const identity: RunContext["identity"] = {
+    runId: "run-1",
+    rootRunId: "run-1",
+    parentRunId: null,
+    nodeId: null,
+    nodeName: null,
+  };
   const emit = async (o: Observation): Promise<void> => void observed.push(o);
   return {
     observed,
@@ -83,16 +97,28 @@ function makeExec(context: { [key: string]: JsonValue } = {}): NodeExecContext {
 
 /** An echo step whose output is its literal input, so a sequence's chaining is visible. */
 function echo(id: string, text: string): Node {
-  return { type: "binary", id, name: id, command: "node", args: ["-e", `process.stdout.write(${JSON.stringify(text)})`] };
+  return {
+    type: "binary",
+    id,
+    name: id,
+    command: "node",
+    args: ["-e", `process.stdout.write(${JSON.stringify(text)})`],
+  };
 }
 
 describe("runNode — parallel", () => {
   const parallel = (secondBranchBody: Node[]): Node => ({
     type: "parallel",
-    id: "fan", name: "fan",
+    id: "fan",
+    name: "fan",
     join: "collect",
     branches: [
-      { type: "sequence", id: "left", name: "left", body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node] },
+      {
+        type: "sequence",
+        id: "left",
+        name: "left",
+        body: [{ ...echo("l", "L"), publish: { from_left: "${output}" } } as Node],
+      },
       { type: "sequence", id: "right", name: "right", body: secondBranchBody },
     ],
   });
@@ -121,7 +147,8 @@ describe("runNode — parallel", () => {
 
     expect(outcome).toEqual({ status: "succeeded", output: { left: "L", right: "R" } });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "fan", nodeName: "fan",
+      nodeId: "fan",
+      nodeName: "fan",
       branches: ["left", "right"],
       publishedKeys: ["from_left"],
     });
@@ -132,16 +159,22 @@ describe("runNode — parallel", () => {
   // run, seeded by the block's predecessor and then by each other, so the value proves the chain.
   it("values a sequence branch by its last child's output, keyed by the branch node's name (§5.4)", async () => {
     const { run } = makeRun();
-    const appendStdin = "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-2'))";
+    const appendStdin =
+      "let d='';process.stdin.on('data',c=>d+=c);process.stdin.on('end',()=>process.stdout.write(d+'-2'))";
     const node: Node = {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         {
           type: "sequence",
-          id: "pair", name: "pair",
-          body: [echo("p1", "one"), { type: "binary", id: "p2", name: "p2", command: "node", args: ["-e", appendStdin] }],
+          id: "pair",
+          name: "pair",
+          body: [
+            echo("p1", "one"),
+            { type: "binary", id: "p2", name: "p2", command: "node", args: ["-e", appendStdin] },
+          ],
         },
         echo("solo", "S"),
       ],
@@ -161,7 +194,8 @@ describe("runNode — parallel", () => {
       parallel([
         {
           type: "binary",
-          id: "peek", name: "peek",
+          id: "peek",
+          name: "peek",
           command: "node",
           args: ["-e", `process.stdout.write(${JSON.stringify("R")})`],
         },
@@ -181,7 +215,15 @@ describe("runNode — parallel", () => {
     const exec = makeExec();
     const outcome = await runNode(
       run,
-      parallel([{ type: "binary", id: "boom", name: "boom", command: "node", args: ["-e", "process.exit(3)"] }]),
+      parallel([
+        {
+          type: "binary",
+          id: "boom",
+          name: "boom",
+          command: "node",
+          args: ["-e", "process.exit(3)"],
+        },
+      ]),
       "seed",
       exec,
     );
@@ -214,7 +256,8 @@ describe("runNode — parallel", () => {
     const { run } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         { type: "sequence", id: "alpha", name: "alpha", body: [rendezvous(fileDir, "a", "b")] },
@@ -232,13 +275,24 @@ describe("runNode — parallel", () => {
     const { run } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
-        { type: "sequence", id: "writer", name: "writer", body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node] },
+        {
+          type: "sequence",
+          id: "writer",
+          name: "writer",
+          body: [{ ...echo("w", "w"), publish: { written: "${output}" } } as Node],
+        },
         // Reads a key its sibling publishes; against the entry snapshot it does not exist, so this
         // branch fails — proving siblings never observe each other's writes (§5.3).
-        { type: "sequence", id: "reader", name: "reader", body: [{ ...echo("r", "r"), input: "${context.written}" } as Node] },
+        {
+          type: "sequence",
+          id: "reader",
+          name: "reader",
+          body: [{ ...echo("r", "r"), input: "${context.written}" } as Node],
+        },
       ],
     };
 
@@ -252,23 +306,40 @@ describe("runNode — parallel", () => {
     const { run, observed } = makeRun();
     const node: Node = {
       type: "parallel",
-      id: "fan", name: "fan",
+      id: "fan",
+      name: "fan",
       join: "collect",
       branches: [
         // Sleeps well past the sibling's failure; it must be killed, not allowed to finish.
         {
-          type: "sequence", id: "slow", name: "slow",
+          type: "sequence",
+          id: "slow",
+          name: "slow",
           body: [
             {
               type: "binary",
-              id: "sleeper", name: "sleeper",
+              id: "sleeper",
+              name: "sleeper",
               command: "node",
               args: ["-e", "setTimeout(()=>process.stdout.write('done'),5000)"],
               publish: { slow: "${output}" },
             },
           ],
         },
-        { type: "sequence", id: "boom", name: "boom", body: [{ type: "binary", id: "kaboom", name: "kaboom", command: "node", args: ["-e", "process.exit(1)"] }] },
+        {
+          type: "sequence",
+          id: "boom",
+          name: "boom",
+          body: [
+            {
+              type: "binary",
+              id: "kaboom",
+              name: "kaboom",
+              command: "node",
+              args: ["-e", "process.exit(1)"],
+            },
+          ],
+        },
       ],
     };
 
@@ -283,7 +354,8 @@ describe("runNode — parallel", () => {
     // operator cancel would carry `cause: "operator"` and a null cause run instead (#52).
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
       runId: sleeper.runId,
-      nodeId: "sleeper", nodeName: "sleeper",
+      nodeId: "sleeper",
+      nodeName: "sleeper",
       cause: "sibling-failed",
       causeRunId: kaboom.runId,
     });
@@ -309,15 +381,32 @@ describe("runNode — parallel", () => {
       },
     };
     const { run } = makeRun({
-      runtime: { registry: registryWith("prompt", "anthropic", worker), semaphore: createProcessorSemaphore(2) },
+      runtime: {
+        registry: registryWith("prompt", "anthropic", worker),
+        semaphore: createProcessorSemaphore(2),
+      },
     });
     const ask = (id: string) => ({
       type: "sequence" as const,
       id,
       name: id,
-      body: [{ type: "prompt" as const, id: `ask-${id}`, name: `ask-${id}`, prompt: "Hi.", config: { model: "m" } }],
+      body: [
+        {
+          type: "prompt" as const,
+          id: `ask-${id}`,
+          name: `ask-${id}`,
+          prompt: "Hi.",
+          config: { model: "m" },
+        },
+      ],
     });
-    const node: Node = { type: "parallel", id: "fan", name: "fan", join: "collect", branches: [ask("a"), ask("b"), ask("c"), ask("d")] };
+    const node: Node = {
+      type: "parallel",
+      id: "fan",
+      name: "fan",
+      join: "collect",
+      branches: [ask("a"), ask("b"), ask("c"), ask("d")],
+    };
 
     expect((await runNode(run, node, "seed", makeExec())).status).toBe("succeeded");
     expect(peakLive).toBe(2); // every branch ran, but never more than the cap at once
@@ -334,18 +423,30 @@ describe("runNode — parallel wait-one", () => {
     args: ["-e", `setTimeout(()=>process.stdout.write(${JSON.stringify(text)}),${ms})`],
     publish: { answer: "${output}" },
   });
-  const failFast = (id: string): Node => ({ type: "binary", id, name: id, command: "node", args: ["-e", "process.exit(1)"] });
+  const failFast = (id: string): Node => ({
+    type: "binary",
+    id,
+    name: id,
+    command: "node",
+    args: ["-e", "process.exit(1)"],
+  });
 
   it("keeps the first branch to succeed, landing only its publishes and naming it the winner", async () => {
     const { run, observed } = makeRun();
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race", name: "race",
+      id: "race",
+      name: "race",
       join: "wait-one",
       branches: [
         // The fast branch resolves at once; the slow one sleeps well past it and must be cancelled.
-        { type: "sequence", id: "fast", name: "fast", body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node] },
+        {
+          type: "sequence",
+          id: "fast",
+          name: "fast",
+          body: [{ ...echo("f", "FAST"), publish: { answer: "${output}" } } as Node],
+        },
         { type: "sequence", id: "slow", name: "slow", body: [sleepThenPublish("s", 5000, "SLOW")] },
       ],
     };
@@ -353,17 +454,22 @@ describe("runNode — parallel wait-one", () => {
     const outcome = await runNode(run, node, "seed", exec);
 
     // Stable winner-keyed output (§3), and only the winner's buffered publish landed (§4).
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "fast", output: "FAST" } } });
+    expect(outcome).toEqual({
+      status: "succeeded",
+      output: { winner: { name: "fast", output: "FAST" } },
+    });
     expect(exec.context).toEqual({ answer: "FAST" });
     expect(observed.find((o) => o.type === "join-applied")).toMatchObject({
-      nodeId: "race", nodeName: "race",
+      nodeId: "race",
+      nodeName: "race",
       branches: ["fast"],
       publishedKeys: ["answer"],
       winner: "fast",
     });
     // The loser is cancelled best-effort with the new cause — nothing failed, so it is not sibling-failed.
     expect(observed.find((o) => o.type === "run-cancelled")).toMatchObject({
-      nodeId: "s", nodeName: "s",
+      nodeId: "s",
+      nodeName: "s",
       cause: "sibling-succeeded",
       causeRunId: null,
     });
@@ -374,22 +480,33 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race", name: "race",
+      id: "race",
+      name: "race",
       join: "wait-one",
       branches: [
         // Fails immediately; under wait-one this cancels nothing and the race continues (§2).
         { type: "sequence", id: "boom", name: "boom", body: [failFast("kab")] },
         // Succeeds only after a delay — proof the race outlived the failure rather than ending on it.
-        { type: "sequence", id: "winner", name: "winner", body: [sleepThenPublish("slowwin", 150, "W")] },
+        {
+          type: "sequence",
+          id: "winner",
+          name: "winner",
+          body: [sleepThenPublish("slowwin", 150, "W")],
+        },
       ],
     };
 
     const outcome = await runNode(run, node, "seed", exec);
 
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "winner", output: "W" } } });
+    expect(outcome).toEqual({
+      status: "succeeded",
+      output: { winner: { name: "winner", output: "W" } },
+    });
     expect(exec.context).toEqual({ answer: "W" });
     // The failure cancelled nothing — no sibling-failed anywhere.
-    expect(observed.some((o) => o.type === "run-cancelled" && o.cause === "sibling-failed")).toBe(false);
+    expect(observed.some((o) => o.type === "run-cancelled" && o.cause === "sibling-failed")).toBe(
+      false,
+    );
   });
 
   it("fails the block with a synthetic aggregate when every branch fails", async () => {
@@ -397,7 +514,8 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race", name: "race",
+      id: "race",
+      name: "race",
       join: "wait-one",
       branches: [
         { type: "sequence", id: "a", name: "a", body: [failFast("x")] },
@@ -419,14 +537,25 @@ describe("runNode — parallel wait-one", () => {
     const exec = makeExec();
     const node: Node = {
       type: "parallel",
-      id: "race", name: "race",
+      id: "race",
+      name: "race",
       join: "wait-one",
-      branches: [{ type: "sequence", id: "only", name: "only", body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node] }],
+      branches: [
+        {
+          type: "sequence",
+          id: "only",
+          name: "only",
+          body: [{ ...echo("o", "O"), publish: { answer: "${output}" } } as Node],
+        },
+      ],
     };
 
     const outcome = await runNode(run, node, "seed", exec);
 
-    expect(outcome).toEqual({ status: "succeeded", output: { winner: { name: "only", output: "O" } } });
+    expect(outcome).toEqual({
+      status: "succeeded",
+      output: { winner: { name: "only", output: "O" } },
+    });
     expect(exec.context).toEqual({ answer: "O" });
   });
 });

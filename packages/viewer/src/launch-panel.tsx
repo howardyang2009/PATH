@@ -5,8 +5,6 @@ import type {
   WorkflowTreeFolder,
   WorkflowTreeNode,
 } from "@path/client-core";
-import { useEffect, useMemo, useState } from "react";
-import { LaunchForm } from "./launch-form.js";
 import {
   buildWorkflowTree,
   countWorkflowLeaves,
@@ -14,6 +12,8 @@ import {
   nextOpenFolder,
   workflowBaseName,
 } from "@path/client-core";
+import { useEffect, useMemo, useState } from "react";
+import { LaunchForm } from "./launch-form.js";
 import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 
@@ -110,8 +110,7 @@ export function LaunchPanel({ client, onLaunched }: LaunchPanelProps) {
   // Accordion open-state, one open folder per level (see `workflow-tree`): opening a sibling
   // collapses the previous one on its own; toggling an open folder walks back to its parent.
   const isFolderOpen = (path: string): boolean => isFolderOnOpenChain(openFolder, path);
-  const toggleFolder = (path: string): void =>
-    setOpenFolder((prev) => nextOpenFolder(prev, path));
+  const toggleFolder = (path: string): void => setOpenFolder((prev) => nextOpenFolder(prev, path));
   const toggleFile = (path: string): void =>
     setExpanded((current) => (current === path ? null : path));
 
@@ -354,4 +353,3 @@ function RootTag({ workflow }: { workflow: WorkflowSummary }) {
     <span className="workflow-tag workflow-tag--nested">nested</span>
   );
 }
-

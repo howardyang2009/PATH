@@ -1,5 +1,5 @@
-import { valueAtConfigPath, type JsonValue } from "@path/schema";
-import { parseJsonField, type JsonFieldResult } from "./launch-json.js";
+import { type JsonValue, valueAtConfigPath } from "@path/schema";
+import { type JsonFieldResult, parseJsonField } from "./launch-json.js";
 
 /**
  * The client half of the launch-facts secret-restore rule (ADR 0046), in one place. A continuation —
@@ -34,7 +34,9 @@ export interface LaunchSecretResupply {
 
 /** Resolve the config field's initial show/skeleton state from the tree's recorded secret dot-paths. */
 export function launchSecretResupply(keys: readonly string[]): LaunchSecretResupply {
-  return keys.length > 0 ? { required: true, skeleton: secretSkeletonJson(keys) } : { required: false, skeleton: "" };
+  return keys.length > 0
+    ? { required: true, skeleton: secretSkeletonJson(keys) }
+    : { required: false, skeleton: "" };
 }
 
 /**
@@ -53,7 +55,11 @@ export interface ResupplyGate {
 }
 
 /** Compute the {@link ResupplyGate} for one continuation's config draft against its recorded secrets. */
-export function resupplyGate(keys: readonly string[], configText: string, verb: ContinuationVerb): ResupplyGate {
+export function resupplyGate(
+  keys: readonly string[],
+  configText: string,
+  verb: ContinuationVerb,
+): ResupplyGate {
   const configResult = parseJsonField(configText, { allowEmpty: true });
   const blankPaths = configResult.ok ? blankSecretPaths(keys, configResult.value) : [];
   return {
@@ -101,7 +107,10 @@ export function secretSkeletonJson(keys: readonly string[]): string {
  * request is spent is the client-side half of that rule; the server still owns the outcome.
  * Dot-paths read the same nesting `secretSkeletonJson` writes.
  */
-export function blankSecretPaths(keys: readonly string[], supplied: { [key: string]: JsonValue } | undefined): string[] {
+export function blankSecretPaths(
+  keys: readonly string[],
+  supplied: { [key: string]: JsonValue } | undefined,
+): string[] {
   return keys.filter((key) => {
     const value = valueAtConfigPath(supplied, key);
     return typeof value !== "string" || value.trim() === "";

@@ -1,5 +1,5 @@
-import { childBodies } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
+import { childBodies } from "./node-walk.js";
 import type { WorkflowFile } from "./workflow-file-type.js";
 
 /**
@@ -74,7 +74,10 @@ function restamp(node: WorkflowNode, used: Set<string>): void {
   }
 }
 
-export function instantiate(body: WorkflowNode[], options: InstantiateOptions = {}): WorkflowNode[] {
+export function instantiate(
+  body: WorkflowNode[],
+  options: InstantiateOptions = {},
+): WorkflowNode[] {
   const used = new Set(options.usedNames ?? []);
   const nodes = structuredClone(body) as WorkflowNode[];
   for (const node of nodes) restamp(node, used);
@@ -83,7 +86,14 @@ export function instantiate(body: WorkflowNode[], options: InstantiateOptions = 
   // `sequence` so the drop is grammar-legal. A one-node body needs no wrapper, and a list slot takes
   // any count directly.
   if (options.socket === "single" && nodes.length >= 2) {
-    return [{ type: "sequence", id: crypto.randomUUID(), name: uniqueName("sequence", used), body: nodes }];
+    return [
+      {
+        type: "sequence",
+        id: crypto.randomUUID(),
+        name: uniqueName("sequence", used),
+        body: nodes,
+      },
+    ];
   }
   return nodes;
 }

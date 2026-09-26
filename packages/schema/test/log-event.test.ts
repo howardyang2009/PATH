@@ -1,7 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { LogEventSchema } from "../src/log-event.js";
 
-const envelope = { seq: 1, ts: "2026-07-19T00:00:00.000Z", run_id: "run-1", node_id: "greet", node_name: "greet" };
+const envelope = {
+  seq: 1,
+  ts: "2026-07-19T00:00:00.000Z",
+  run_id: "run-1",
+  node_id: "greet",
+  node_name: "greet",
+};
 
 describe("LogEventSchema", () => {
   it("accepts a step-started event with its worker_name and step_type payload", () => {
@@ -15,7 +21,11 @@ describe("LogEventSchema", () => {
   });
 
   it("accepts a succeeded step-finished event with no error", () => {
-    const parsed = LogEventSchema.parse({ type: "step-finished", ...envelope, status: "succeeded" });
+    const parsed = LogEventSchema.parse({
+      type: "step-finished",
+      ...envelope,
+      status: "succeeded",
+    });
     expect(parsed).toMatchObject({ type: "step-finished", status: "succeeded" });
   });
 
@@ -59,7 +69,11 @@ describe("LogEventSchema", () => {
       cause: "sibling-succeeded",
       cause_run_id: null,
     });
-    expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-succeeded", cause_run_id: null });
+    expect(parsed).toMatchObject({
+      type: "run-cancelled",
+      cause: "sibling-succeeded",
+      cause_run_id: null,
+    });
   });
 
   it("carries the winner name on a wait-one join-applied event", () => {
@@ -86,8 +100,16 @@ describe("LogEventSchema", () => {
   it("reads a pre-#52 run-cancelled line — written with no cause — back as sibling-failed", () => {
     // Every persisted NDJSON line is re-validated on replay (readNdjsonLog), so a v0.3-era log must
     // keep parsing: `cause` defaults to the only cause that existed when it was written.
-    const parsed = LogEventSchema.parse({ type: "run-cancelled", ...envelope, cause_run_id: "run-2" });
-    expect(parsed).toMatchObject({ type: "run-cancelled", cause: "sibling-failed", cause_run_id: "run-2" });
+    const parsed = LogEventSchema.parse({
+      type: "run-cancelled",
+      ...envelope,
+      cause_run_id: "run-2",
+    });
+    expect(parsed).toMatchObject({
+      type: "run-cancelled",
+      cause: "sibling-failed",
+      cause_run_id: "run-2",
+    });
   });
 
   it("carries the assignee on a step-awaiting event (#488)", () => {
@@ -109,24 +131,72 @@ describe("LogEventSchema", () => {
 
   it("accepts the goto events (spec docs/spec/goto.md §7)", () => {
     const goto = { ...envelope, node_id: "g1", node_name: "check" };
-    expect(LogEventSchema.parse({ type: "pass-started", ...envelope, node_id: null, node_name: null, pass: 1 })).toMatchObject({ pass: 1 });
-    expect(LogEventSchema.parse({ type: "pass-started", ...goto, pass: 2 })).toMatchObject({ node_name: "check", pass: 2 });
+    expect(
+      LogEventSchema.parse({
+        type: "pass-started",
+        ...envelope,
+        node_id: null,
+        node_name: null,
+        pass: 1,
+      }),
+    ).toMatchObject({ pass: 1 });
+    expect(LogEventSchema.parse({ type: "pass-started", ...goto, pass: 2 })).toMatchObject({
+      node_name: "check",
+      pass: 2,
+    });
     const target = { target_node_id: "n2", target_node_name: "b" };
-    expect(LogEventSchema.parse({ type: "goto-taken", ...goto, ...target, jump: 2, max_jumps: 3, pass: 3 })).toMatchObject({ jump: 2 });
-    expect(LogEventSchema.parse({ type: "goto-exhausted", ...goto, ...target, max_jumps: 3, pass: 4 })).toMatchObject({ pass: 4 });
+    expect(
+      LogEventSchema.parse({
+        type: "goto-taken",
+        ...goto,
+        ...target,
+        jump: 2,
+        max_jumps: 3,
+        pass: 3,
+      }),
+    ).toMatchObject({ jump: 2 });
+    expect(
+      LogEventSchema.parse({ type: "goto-exhausted", ...goto, ...target, max_jumps: 3, pass: 4 }),
+    ).toMatchObject({ pass: 4 });
     // No jump happens on exhaustion, so the payload has no `jump`.
-    expect(() => LogEventSchema.parse({ type: "goto-exhausted", ...goto, ...target, jump: 4, max_jumps: 3, pass: 4 })).toThrow();
+    expect(() =>
+      LogEventSchema.parse({
+        type: "goto-exhausted",
+        ...goto,
+        ...target,
+        jump: 4,
+        max_jumps: 3,
+        pass: 4,
+      }),
+    ).toThrow();
   });
 
   it("G-V-03: reads a pre-goto run.log, holding none of the goto events, unchanged", () => {
     const lines = [
-      { type: "step-started", ...envelope, seq: 1, node_id: null, node_name: null, step_type: "workflow", worker_name: "workflow" },
+      {
+        type: "step-started",
+        ...envelope,
+        seq: 1,
+        node_id: null,
+        node_name: null,
+        step_type: "workflow",
+        worker_name: "workflow",
+      },
       { type: "step-started", ...envelope, seq: 2, step_type: "prompt", worker_name: "anthropic" },
       { type: "step-finished", ...envelope, seq: 3, status: "succeeded" },
       { type: "branch-taken", ...envelope, seq: 4, arm: "else", trace: null },
-      { type: "step-finished", ...envelope, seq: 5, node_id: null, node_name: null, status: "succeeded" },
+      {
+        type: "step-finished",
+        ...envelope,
+        seq: 5,
+        node_id: null,
+        node_name: null,
+        status: "succeeded",
+      },
     ];
-    expect(lines.map((line) => LogEventSchema.parse(JSON.parse(JSON.stringify(line))))).toEqual(lines);
+    expect(lines.map((line) => LogEventSchema.parse(JSON.parse(JSON.stringify(line))))).toEqual(
+      lines,
+    );
   });
 
   it("rejects an unknown event type", () => {
@@ -135,13 +205,24 @@ describe("LogEventSchema", () => {
 
   it("rejects an event missing its seq (the ordering truth)", () => {
     expect(() =>
-      LogEventSchema.parse({ type: "step-finished", ts: envelope.ts, run_id: "r", node_id: null, status: "succeeded" }),
+      LogEventSchema.parse({
+        type: "step-finished",
+        ts: envelope.ts,
+        run_id: "r",
+        node_id: null,
+        status: "succeeded",
+      }),
     ).toThrow();
   });
 
   it("rejects an unexpected extra field (strict envelope)", () => {
     expect(() =>
-      LogEventSchema.parse({ type: "step-finished", ...envelope, status: "succeeded", bogus: true }),
+      LogEventSchema.parse({
+        type: "step-finished",
+        ...envelope,
+        status: "succeeded",
+        bogus: true,
+      }),
     ).toThrow();
   });
 });

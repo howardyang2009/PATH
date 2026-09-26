@@ -18,7 +18,14 @@ describe("stampNames — refuses a fixture still written in the @1 container sha
   it("refuses an @1 parallel branch wrapper — a branch is a node in @2", () => {
     expect(() =>
       stampNames({
-        body: [{ type: "parallel", id: "fan", join: "collect", branches: [{ id: "left", body: [step("a")] }] }],
+        body: [
+          {
+            type: "parallel",
+            id: "fan",
+            join: "collect",
+            branches: [{ id: "left", body: [step("a")] }],
+          },
+        ],
       }),
     ).toThrow(/@1 .*branch wrapper.*parallel\.branches/i);
   });
@@ -26,14 +33,24 @@ describe("stampNames — refuses a fixture still written in the @1 container sha
   it("refuses a branch arm carrying the @1 `body` array instead of a single `node`", () => {
     expect(() =>
       stampNames({
-        body: [{ type: "branch", id: "route", arms: [{ when: { type: "exists", path: "context.x" }, body: [step("a")] }] }],
+        body: [
+          {
+            type: "branch",
+            id: "route",
+            arms: [{ when: { type: "exists", path: "context.x" }, body: [step("a")] }],
+          },
+        ],
       }),
     ).toThrow(/@1 .*arm.*`node`/i);
   });
 
   it("refuses an arm carrying no occupant at all — the same stale fixture, one key further along", () => {
     expect(() =>
-      stampNames({ body: [{ type: "branch", id: "route", arms: [{ when: { type: "exists", path: "context.x" } }] }] }),
+      stampNames({
+        body: [
+          { type: "branch", id: "route", arms: [{ when: { type: "exists", path: "context.x" } }] },
+        ],
+      }),
     ).toThrow(/route.*arm.*`node`/i);
   });
 
@@ -165,7 +182,13 @@ describe("stampGuids — the same guard on the schema-valid stamper", () => {
   it("refuses an @1 arm `body`", () => {
     expect(() =>
       stampGuids({
-        body: [{ type: "branch", id: "route", arms: [{ when: { type: "exists", path: "context.x" }, body: [step("a")] }] }],
+        body: [
+          {
+            type: "branch",
+            id: "route",
+            arms: [{ when: { type: "exists", path: "context.x" }, body: [step("a")] }],
+          },
+        ],
       }),
     ).toThrow(/@1 .*arm.*`node`/i);
   });

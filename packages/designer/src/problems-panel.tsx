@@ -1,5 +1,5 @@
-import { useSelection } from "./selection-context.js";
 import type { Problem, ProblemKind } from "./problems.js";
+import { useSelection } from "./selection-context.js";
 
 /**
  * The aggregate problems panel (#388, designer-spec § Canvas validation-error UX). The per-node ⚠
@@ -37,15 +37,20 @@ export function ProblemsPanel({ problems }: { problems: Problem[] }): JSX.Elemen
 
   const count = problems.length;
   return (
-    <section className="problems-panel" role="region" aria-label="Problems">
+    <section className="problems-panel" aria-label="Problems">
       <header className="problems-head">
-        <span className="problems-title" role="img" aria-label={`${count} warning${count === 1 ? "" : "s"}`}>
+        <span
+          className="problems-title"
+          role="img"
+          aria-label={`${count} warning${count === 1 ? "" : "s"}`}
+        >
           ⚠ {count} {count === 1 ? "warning" : "warnings"}
         </span>
         <span className="problems-note">Soft errors — save and launch are not blocked.</span>
       </header>
-      <ul className="problems-list" role="list">
+      <ul className="problems-list">
         {problems.map((problem, index) => (
+          // biome-ignore lint/suspicious/noArrayIndexKey: a node can repeat a kind, so the index disambiguates.
           <li className="problems-row" key={`${problem.nodeId}:${problem.kind}:${index}`}>
             <button
               type="button"

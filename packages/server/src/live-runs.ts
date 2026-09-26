@@ -1,4 +1,11 @@
-import { type CompleteResult, type LoadedStepPluginRegistry, type LogBackend, type LogBackendId, type Project, type RunObserver } from "@path/engine";
+import type {
+  CompleteResult,
+  LoadedStepPluginRegistry,
+  LogBackend,
+  LogBackendId,
+  Project,
+  RunObserver,
+} from "@path/engine";
 import type { ConfigObject, JsonValue, LogEvent, WorkflowFile } from "@path/schema";
 import { createDeferred } from "./deferred.js";
 import { createLiveLogBackend } from "./live-log-backend.js";
@@ -49,7 +56,12 @@ export interface LiveRuns {
    * reports the predecessor id unknown (a TOCTOU against the route's own existence check), and like
    * `start` when the successor never reaches `run-started`.
    */
-  resume(rootFile: WorkflowFile, resumeRootRunId: string, workflowDir: string, options: ResumeRunOptions): Promise<StartedRun>;
+  resume(
+    rootFile: WorkflowFile,
+    resumeRootRunId: string,
+    workflowDir: string,
+    options: ResumeRunOptions,
+  ): Promise<StartedRun>;
   /**
    * Signals a run's abort, best-effort (mvp spec §5.6). `false` means no run by that id is
    * executing here — a `running` row this process holds no controller for belongs to some other
@@ -261,7 +273,12 @@ export function createLiveRuns(project: Project): LiveRuns {
    */
   function beginTracked(): {
     started: ReturnType<typeof createDeferred<StartedRun>>;
-    hooks: { extraBackends: LogBackend[]; extraObservers: RunObserver[]; signal: AbortSignal; warn: (message: string) => void };
+    hooks: {
+      extraBackends: LogBackend[];
+      extraObservers: RunObserver[];
+      signal: AbortSignal;
+      warn: (message: string) => void;
+    };
     finalize: () => void;
   } {
     // Resolved as soon as the first `run-started` observation arrives — the async contract (§2):
@@ -357,7 +374,9 @@ export function createLiveRuns(project: Project): LiveRuns {
             },
             (err) => {
               started.reject(err);
-              console.error(`resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`);
+              console.error(
+                `resumed run crashed: ${err instanceof Error ? err.stack : String(err)}`,
+              );
             },
           )
           .finally(finalize),
@@ -375,7 +394,14 @@ export function createLiveRuns(project: Project): LiveRuns {
       return true;
     },
 
-    async complete(rootFile, rootRunId, stepRunId, output, workflowDir, options): Promise<CompleteResult> {
+    async complete(
+      rootFile,
+      rootRunId,
+      stepRunId,
+      output,
+      workflowDir,
+      options,
+    ): Promise<CompleteResult> {
       // A Complete re-drives the *existing* tree in place (ADR 0041), so unlike `start`/`resume` there
       // is no fresh `run-started` to key registration off — the root run id is already known. File the
       // controller under it directly so an operator Cancel reaches the tail (Cancel still works on an
@@ -395,7 +421,12 @@ export function createLiveRuns(project: Project): LiveRuns {
       });
       // Track the whole drive so a graceful shutdown drains it (#439); it settles to a result either
       // way, so this arm never rejects.
-      track(drive.then(() => {}, () => {}));
+      track(
+        drive.then(
+          () => {},
+          () => {},
+        ),
+      );
       try {
         return await drive;
       } finally {
@@ -409,7 +440,11 @@ export function createLiveRuns(project: Project): LiveRuns {
       }
     },
 
-    stream(rootRunId: string, afterSeq: number | undefined, handlers: RunStreamHandlers): Unsubscribe {
+    stream(
+      rootRunId: string,
+      afterSeq: number | undefined,
+      handlers: RunStreamHandlers,
+    ): Unsubscribe {
       // The high-water mark of every seq already delivered, across replay and live — anything at or
       // below it is dropped, so nothing is sent twice regardless of when the first live event lands
       // relative to the read below.

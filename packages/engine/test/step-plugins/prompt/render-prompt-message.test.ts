@@ -5,7 +5,9 @@ describe("render-prompt-message", () => {
   it("puts the instruction text first, then the step's whole input object", () => {
     const message = renderPromptMessage("Summarize the release.", { version: "1.2.0", commits: 7 });
 
-    expect(message).toBe('Summarize the release.\n\nInput object:\n{\n  "version": "1.2.0",\n  "commits": 7\n}');
+    expect(message).toBe(
+      'Summarize the release.\n\nInput object:\n{\n  "version": "1.2.0",\n  "commits": 7\n}',
+    );
   });
 
   it("renders a string input raw, mirroring the binary step's stdin convention (format doc §4.2)", () => {
@@ -21,6 +23,8 @@ describe("render-prompt-message", () => {
   it("renders non-object inputs (the default-input chain can carry any JSON value)", () => {
     expect(renderPromptMessage("Double it.", 21)).toBe("Double it.\n\nInput object:\n21");
     expect(renderPromptMessage("Check it.", null)).toBe("Check it.\n\nInput object:\nnull");
-    expect(renderPromptMessage("List it.", [1, 2])).toBe("List it.\n\nInput object:\n[\n  1,\n  2\n]");
+    expect(renderPromptMessage("List it.", [1, 2])).toBe(
+      "List it.\n\nInput object:\n[\n  1,\n  2\n]",
+    );
   });
 });

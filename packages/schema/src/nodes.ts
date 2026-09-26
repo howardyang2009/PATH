@@ -1,11 +1,10 @@
-import { z, type ZodRawShape } from "zod";
+import { type ZodRawShape, z } from "zod";
 import { ConditionSchema } from "./conditions.js";
 import { ConfigObjectSchema } from "./config.js";
 import { IdSchema, NameSchema } from "./ids.js";
 import { interpolableString, interpolatedJsonValue } from "./interpolation.js";
 import type { WorkflowNode } from "./node-type.js";
 import { PUBLISH_ROOTS, STEP_ROOTS } from "./roots.js";
-
 
 // The envelope fields every step node carries, shared by `buildPluginMember`. `worker` is a
 // worker-*name* string, not a tagged object (`@3` §4, ADR 0021 sub-8): each step type's `worker` is a
@@ -27,7 +26,9 @@ export const commonStepFields = {
 const RefSchema = z
   .string()
   .min(1)
-  .refine((value) => !value.startsWith("/"), { message: "ref must be a relative path, not absolute" });
+  .refine((value) => !value.startsWith("/"), {
+    message: "ref must be a relative path, not absolute",
+  });
 
 const MaxIterationsSchema = z.union([z.number().int().positive(), interpolableString(STEP_ROOTS)]);
 
@@ -209,7 +210,11 @@ export const RESERVED_TYPE_NAMES = [
  * factory rejects a `fields` key that collides with it (below), and a consumer that splits a node at
  * the envelope — the designer's raw-JSON payload editor — reads it from here rather than re-listing it.
  */
-export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([...Object.keys(commonStepFields), "type", "worker"]);
+export const ENVELOPE_KEYS: ReadonlySet<string> = new Set([
+  ...Object.keys(commonStepFields),
+  "type",
+  "worker",
+]);
 
 /**
  * One plugin-contributed leaf member, composed so a plugin author cannot declare the envelope wrong
@@ -250,7 +255,8 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
       // bad worker, not just the legal set).
       worker: z
         .enum(workerNames as [string, ...string[]], {
-          error: (issue) => describeUnknownWorker(typeName, workerNames, (issue as { input?: unknown }).input),
+          error: (issue) =>
+            describeUnknownWorker(typeName, workerNames, (issue as { input?: unknown }).input),
         })
         .optional(),
     })
@@ -262,7 +268,11 @@ function buildPluginMember(typeName: string, entry: RegistryStepType): z.ZodObje
 // the file `worker_defaults` registry check (ADR 0044 #516), so the two channels report an unshipped
 // worker in exactly one wording. zod v4's default enum message drops the received value; this restores
 // it — the `(type, name)` selection error must name the bad worker, not just the legal set.
-export function describeUnknownWorker(typeName: string, workerNames: string[], received: unknown): string {
+export function describeUnknownWorker(
+  typeName: string,
+  workerNames: string[],
+  received: unknown,
+): string {
   return `unknown worker "${String(received)}" — "${typeName}" ships ${workerNames.map((w) => `"${w}"`).join(" | ")}`;
 }
 
@@ -274,7 +284,12 @@ export function describeUnknownWorker(typeName: string, workerNames: string[], r
 // file `worker_defaults` registry check (ADR 0044 #516), whose absent-type entry reports in this same
 // unknown-`type` wording.
 export function describeUnknownStepType(received: unknown, known: (string | number)[]): string {
-  const badType = typeof received === "string" ? `"${received}"` : received === undefined ? "(none)" : JSON.stringify(received);
+  const badType =
+    typeof received === "string"
+      ? `"${received}"`
+      : received === undefined
+        ? "(none)"
+        : JSON.stringify(received);
   const knownList = known.length > 0 ? known.join(", ") : "(none)";
   const remedy =
     typeof received === "string"
@@ -321,7 +336,9 @@ export function makeNodeSchema(registry: StepPluginRegistry): z.ZodType<Workflow
   const SingleNodeSchema: z.ZodType<WorkflowNode> = z.lazy(() => NodeSchema);
 
   const coreMembers = buildCoreMembers({ NodeArraySchema, SingleNodeSchema });
-  const pluginMembers = Object.entries(registry).map(([typeName, entry]) => buildPluginMember(typeName, entry));
+  const pluginMembers = Object.entries(registry).map(([typeName, entry]) =>
+    buildPluginMember(typeName, entry),
+  );
 
   NodeSchema = z.discriminatedUnion(
     "type",

@@ -23,7 +23,11 @@ describe("#388 cross-node problems", () => {
     const file = wrap([step(2, "reader", { input: { q: "${context.missing}" } })]);
     const problems = fileProblems(file);
     expect(problems).toHaveLength(1);
-    expect(problems[0]).toMatchObject({ nodeId: uuid(2), nodeName: "reader", kind: "dangling-interpolation" });
+    expect(problems[0]).toMatchObject({
+      nodeId: uuid(2),
+      nodeName: "reader",
+      kind: "dangling-interpolation",
+    });
     expect(problems[0]!.message).toContain("missing");
   });
 
@@ -70,7 +74,12 @@ describe("#388 cross-node problems", () => {
         type: "branch",
         id: uuid(2),
         name: "gate",
-        arms: [{ when: { type: "exists", path: "context.flag" }, node: step(3, "leg", { publish: { flag: "${output.a}" } }) }],
+        arms: [
+          {
+            when: { type: "exists", path: "context.flag" },
+            node: step(3, "leg", { publish: { flag: "${output.a}" } }),
+          },
+        ],
       } as never,
     ]);
     expect(fileProblems(file).filter((p) => p.kind === "dangling-condition")).toHaveLength(0);
@@ -83,7 +92,10 @@ describe("#388 cross-node problems", () => {
         id: uuid(10),
         name: "fan",
         join: "collect",
-        branches: [step(2, "b1", { publish: { k: "${output.a}" } }), step(3, "b2", { publish: { k: "${output.a}" } })],
+        branches: [
+          step(2, "b1", { publish: { k: "${output.a}" } }),
+          step(3, "b2", { publish: { k: "${output.a}" } }),
+        ],
       } as never,
     ]);
     const problems = fileProblems(file);
@@ -118,7 +130,10 @@ describe("#388 cross-node problems", () => {
 
   it("flags a `workflow`-ref whose target has no saved file yet (create-new, not saved)", () => {
     const file = wrap([refNode(2, "child", "flows/child.workflow.json")]);
-    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() });
+    const problems = fileProblems(file, {
+      filePath: "flows/parent.workflow.json",
+      knownPaths: new Set(),
+    });
     expect(problems).toHaveLength(1);
     expect(problems[0]).toMatchObject({ nodeId: uuid(2), nodeName: "child", kind: "dangling-ref" });
     expect(problems[0]!.message).toContain("child.workflow.json");
@@ -128,7 +143,10 @@ describe("#388 cross-node problems", () => {
     // Ref stored relative to the parent's directory; resolved against the known set clears the marker.
     const file = wrap([refNode(2, "child", "child.workflow.json")]);
     const known = new Set(["flows/child.workflow.json"]);
-    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: known });
+    const problems = fileProblems(file, {
+      filePath: "flows/parent.workflow.json",
+      knownPaths: known,
+    });
     expect(problems).toHaveLength(0);
   });
 
@@ -139,12 +157,17 @@ describe("#388 cross-node problems", () => {
 
   it("does not flag an empty ref (target not yet chosen)", () => {
     const file = wrap([refNode(2, "child", "")]);
-    expect(fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() })).toHaveLength(0);
+    expect(
+      fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() }),
+    ).toHaveLength(0);
   });
 
   it("marks the node so the canvas ⚠ and the panel both name the dangling ref", () => {
     const file = wrap([refNode(2, "child", "child.workflow.json")]);
-    const problems = fileProblems(file, { filePath: "flows/parent.workflow.json", knownPaths: new Set() });
+    const problems = fileProblems(file, {
+      filePath: "flows/parent.workflow.json",
+      knownPaths: new Set(),
+    });
     const marks = problemMarks(problems);
     expect(marks.get(uuid(2))).toContain("child.workflow.json");
   });
@@ -161,7 +184,9 @@ describe("#388 cross-node problems", () => {
   });
 
   it("marks nothing for a clean file", () => {
-    const file = wrap([step(2, "a", { input: { x: "${config.model}" }, publish: { done: "${output.a}" } })]);
+    const file = wrap([
+      step(2, "a", { input: { x: "${config.model}" }, publish: { done: "${output.a}" } }),
+    ]);
     expect(fileProblems(file)).toHaveLength(0);
     expect(problemMarks(fileProblems(file)).size).toBe(0);
   });
@@ -169,7 +194,10 @@ describe("#388 cross-node problems", () => {
 
 describe("file input seeds context", () => {
   it("does not flag a context read of a key the file's own `input` seeds", () => {
-    const file = { ...wrap([step(2, "draft", { input: { topic: "${context.topic}" } })]), input: { topic: "release notes" } };
+    const file = {
+      ...wrap([step(2, "draft", { input: { topic: "${context.topic}" } })]),
+      input: { topic: "release notes" },
+    };
     expect(fileProblems(file)).toHaveLength(0);
   });
 
@@ -189,7 +217,10 @@ describe("file input seeds context", () => {
   });
 
   it("still flags a key neither the file input nor any step supplies", () => {
-    const file = { ...wrap([step(2, "draft", { input: { q: "${context.other}" } })]), input: { topic: "x" } };
+    const file = {
+      ...wrap([step(2, "draft", { input: { q: "${context.other}" } })]),
+      input: { topic: "x" },
+    };
     const problems = fileProblems(file);
     expect(problems).toHaveLength(1);
     expect(problems[0]!.message).toContain("other");

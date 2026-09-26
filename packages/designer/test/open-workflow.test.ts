@@ -30,7 +30,12 @@ function validFile(): Record<string, unknown> {
         type: "branch",
         id: uuid(6),
         name: "gate",
-        arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: uuid(7), name: "arm-a", prompt: "a" } }],
+        arms: [
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: uuid(7), name: "arm-a", prompt: "a" },
+          },
+        ],
         else: { type: "prompt", id: uuid(8), name: "fallback", prompt: "f" },
       },
       {
@@ -43,7 +48,14 @@ function validFile(): Record<string, unknown> {
           type: "sequence",
           id: uuid(10),
           name: "seq",
-          body: [{ type: "checkpoint", id: uuid(11), name: "chk", condition: { type: "exists", path: "output.z" } }],
+          body: [
+            {
+              type: "checkpoint",
+              id: uuid(11),
+              name: "chk",
+              condition: { type: "exists", path: "output.z" },
+            },
+          ],
         },
       },
       { type: "workflow", id: uuid(12), name: "sub", ref: "sub/child.workflow.json" },
@@ -82,7 +94,11 @@ describe("openWorkflowFile", () => {
 
   it("names an absent type nested inside a block, not just top-level ones", () => {
     const file = validFile();
-    (file.body as { branches: unknown[] }[])[1]!.branches.push({ type: "api-call", id: uuid(22), name: "nested-call" });
+    (file.body as { branches: unknown[] }[])[1]!.branches.push({
+      type: "api-call",
+      id: uuid(22),
+      name: "nested-call",
+    });
     const result = openWorkflowFile(JSON.stringify(file), DEFAULT_PLUGINS);
     expect(result.status).toBe("unregistered-types");
     if (result.status !== "unregistered-types") return;

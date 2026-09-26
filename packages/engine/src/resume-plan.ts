@@ -1,16 +1,16 @@
 import {
   findRootRun,
   isStepType,
+  type JsonValue,
+  type RunRecord,
   rerunBoundaryIndex,
   rerunDisposition,
   serialOrder,
-  walkNodes,
-  type JsonValue,
-  type RunRecord,
   type WorkflowFile,
+  walkNodes,
 } from "@path/schema";
-import { planReuse, recordedChild, type ReusePlan } from "./plan-reuse.js";
 import { RUN_BLOB_FILE } from "./persistence/paths.js";
+import { planReuse, type ReusePlan, recordedChild } from "./plan-reuse.js";
 import type { ResumeInput } from "./run-workflow.js";
 
 /**
@@ -54,7 +54,6 @@ export interface RunResume extends ResumeEntry {
   plan: ReusePlan;
 }
 
-
 /**
  * The root run's entry: its counterpart is the predecessor tree's own root run, and it carries the
  * whole rerun path. `Project.resume` validated that path against this file already.
@@ -74,7 +73,10 @@ export function rootResumeEntry(input: ResumeInput): ResumeEntry {
  * serialized-later run-producing node id, over this file's own serial order (ADR 0064: a sequence body
  * is transparent). `undefined` off-path / plain Resume.
  */
-function suppressSet(file: WorkflowFile, rerunPath: readonly RerunPathLevel[]): Set<string> | undefined {
+function suppressSet(
+  file: WorkflowFile,
+  rerunPath: readonly RerunPathLevel[],
+): Set<string> | undefined {
   const bIndex = rerunBoundaryIndex(file.body, suffixOf(rerunPath));
   if (bIndex === undefined) return undefined;
   const suppress = new Set<string>();
@@ -97,7 +99,12 @@ export function resolveResume(entry: ResumeEntry, file: WorkflowFile): RunResume
   return {
     ...entry,
     plan: counterpart
-      ? planReuse(entry.input.originalRuns, file, counterpart.runId, suppressSet(file, entry.rerunPath))
+      ? planReuse(
+          entry.input.originalRuns,
+          file,
+          counterpart.runId,
+          suppressSet(file, entry.rerunPath),
+        )
       : new Map(),
   };
 }
@@ -108,9 +115,14 @@ export function resolveResume(entry: ResumeEntry, file: WorkflowFile): RunResume
  * K. `undefined` for a nested run (its own interpolated input already is its seed, secrets real) and
  * for a root with no counterpart (a first attempt seeds fresh).
  */
-export function resumeSeed(entry: ResumeEntry | undefined, isRoot: boolean): { [key: string]: JsonValue } | undefined {
+export function resumeSeed(
+  entry: ResumeEntry | undefined,
+  isRoot: boolean,
+): { [key: string]: JsonValue } | undefined {
   if (!entry?.counterpart || !isRoot) return undefined;
-  return entry.input.readBlob(entry.counterpart, RUN_BLOB_FILE.input) as { [key: string]: JsonValue };
+  return entry.input.readBlob(entry.counterpart, RUN_BLOB_FILE.input) as {
+    [key: string]: JsonValue;
+  };
 }
 
 /**
@@ -124,12 +136,22 @@ export function resumeSeed(entry: ResumeEntry | undefined, isRoot: boolean): { [
  *
  * `undefined` when this run is not resuming.
  */
-export function enterNested(resume: RunResume | undefined, file: WorkflowFile, nodeId: string): ResumeEntry | undefined {
+export function enterNested(
+  resume: RunResume | undefined,
+  file: WorkflowFile,
+  nodeId: string,
+): ResumeEntry | undefined {
   if (!resume) return undefined;
   const disposition = rerunDisposition(file.body, suffixOf(resume.rerunPath), nodeId);
   const counterpart =
-    disposition === "rerun-entire" ? undefined : recordedChild(resume.input.originalRuns, resume.counterpart?.runId, { nodeId });
-  return { input: resume.input, counterpart, rerunPath: disposition === "descend" ? resume.rerunPath.slice(1) : [] };
+    disposition === "rerun-entire"
+      ? undefined
+      : recordedChild(resume.input.originalRuns, resume.counterpart?.runId, { nodeId });
+  return {
+    input: resume.input,
+    counterpart,
+    rerunPath: disposition === "descend" ? resume.rerunPath.slice(1) : [],
+  };
 }
 
 /**
@@ -146,7 +168,11 @@ export function enterIteration(
 ): RunResume | undefined {
   if (!resume?.counterpart) return undefined;
   if (rerunDisposition(file.body, suffixOf(resume.rerunPath), nodeId) !== "reuse") return undefined;
-  const counterpart = recordedChild(resume.input.originalRuns, resume.counterpart.runId, { nodeId, iteration, succeeded: true });
+  const counterpart = recordedChild(resume.input.originalRuns, resume.counterpart.runId, {
+    nodeId,
+    iteration,
+    succeeded: true,
+  });
   if (!counterpart) return undefined;
   return resolveResume({ input: resume.input, counterpart, rerunPath: [] }, file);
 }
@@ -164,20 +190,38 @@ export function enterIteration(
  * pass (a goto added since) pairs nothing, since pairing without the boundary would silently reuse
  * the work the operator asked to drop.
  */
-export function passResumer(resume: RunResume, file: WorkflowFile): (pass: number, openerId: string | null) => RunResume {
-  const fresh: RunResume = { input: resume.input, counterpart: undefined, rerunPath: [], plan: new Map() };
+export function passResumer(
+  resume: RunResume,
+  file: WorkflowFile,
+): (pass: number, openerId: string | null) => RunResume {
+  const fresh: RunResume = {
+    input: resume.input,
+    counterpart: undefined,
+    rerunPath: [],
+    plan: new Map(),
+  };
   const head = resume.rerunPath[0];
   const boundaryPass = head ? head.pass : undefined;
   let paired = head === undefined || typeof boundaryPass === "number";
   return (pass, openerId) => {
     if (!paired || (typeof boundaryPass === "number" && pass > boundaryPass)) return fresh;
-    const counterpart = recordedChild(resume.input.originalRuns, resume.counterpart?.runId, { pass, nodeId: openerId });
+    const counterpart = recordedChild(resume.input.originalRuns, resume.counterpart?.runId, {
+      pass,
+      nodeId: openerId,
+    });
     if (!counterpart) {
       paired = false;
       return fresh;
     }
-    return resolveResume({ input: resume.input, counterpart, rerunPath: pass === boundaryPass ? resume.rerunPath : [] }, file);
+    return resolveResume(
+      {
+        input: resume.input,
+        counterpart,
+        rerunPath: pass === boundaryPass ? resume.rerunPath : [],
+      },
+      file,
+    );
   };
 }
 
-export { recordedChild, type RecordedScopeKey } from "./plan-reuse.js";
+export { type RecordedScopeKey, recordedChild } from "./plan-reuse.js";

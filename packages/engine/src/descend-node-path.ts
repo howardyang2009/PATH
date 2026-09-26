@@ -62,7 +62,8 @@ export function descendNodePath(
     // Descend into this level's path-node for the next level's file. Anything that blocks the descent
     // ends it here with the reason; the caller renders its own message from `miss.reason`.
     if (node === undefined) return { levels, miss: { atIndex: index, reason: "node-missing" } };
-    if (node.type !== "workflow") return { levels, miss: { atIndex: index, reason: "not-workflow" } };
+    if (node.type !== "workflow")
+      return { levels, miss: { atIndex: index, reason: "not-workflow" } };
     if (files === undefined) return { levels, miss: { atIndex: index, reason: "no-file-tree" } };
     const child = resolveChildRef(dir, node.ref, files);
     if (child === undefined) return { levels, miss: { atIndex: index, reason: "ref-unresolved" } };

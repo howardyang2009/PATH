@@ -29,7 +29,8 @@ export function confineToProjectRoot(
 ): string | undefined {
   const absPath = resolve(projectDir, relPath);
   const relFromRoot = relative(projectDir, absPath);
-  if (relFromRoot === "" || relFromRoot.startsWith("..") || isAbsolute(relFromRoot)) return undefined;
+  if (relFromRoot === "" || relFromRoot.startsWith("..") || isAbsolute(relFromRoot))
+    return undefined;
 
   let current = projectDir;
   for (const segment of relFromRoot.split(sep)) {

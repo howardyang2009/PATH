@@ -1,4 +1,4 @@
-import { PathApiClient, type FetchLike, type WireStepPlugin } from "@path/client-core";
+import { type FetchLike, PathApiClient, type WireStepPlugin } from "@path/client-core";
 
 /**
  * A stand-in `path-server` for Designer tests: one injected `fetch` routing the two read endpoints the
@@ -19,7 +19,12 @@ export const DEFAULT_PLUGINS: WireStepPlugin[] = [
     workers: ["spawn"],
     default_worker: "spawn",
   },
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
+  {
+    name: "prompt",
+    fields: { prompt: { type: "string", optional: false } },
+    workers: ["anthropic"],
+    default_worker: "anthropic",
+  },
 ];
 
 /** Every write/lock request body the stub saw, for assertions in the edit-lock + save tests (#371). */
@@ -27,11 +32,19 @@ export interface StubCalls {
   lock: { workflow_path: string; session_id: string; takeover?: boolean }[];
   heartbeat: { workflow_path: string; session_id: string }[];
   release: { workflow_path: string; session_id: string }[];
-  put: { body: { workflow_path: string; workflow: Record<string, unknown> }; ifMatch: string | null }[];
+  put: {
+    body: { workflow_path: string; workflow: Record<string, unknown> };
+    ifMatch: string | null;
+  }[];
   /** The `GET /v0/runs` query strings the run list sent (`?...`), for the `workflow_id`-scope assertions (#372). */
   listRuns: string[];
   /** Every `POST /v0/runs` launch body, for the save-first launch assertions (#372). */
-  startRun: { workflow_path: string; input?: unknown; config?: unknown; worker_defaults?: unknown }[];
+  startRun: {
+    workflow_path: string;
+    input?: unknown;
+    config?: unknown;
+    worker_defaults?: unknown;
+  }[];
   /** Every `POST /v0/runs/:id/cancel` root run id (#372). */
   cancel: string[];
   /** Every `POST /v0/runs/:id/resume` — the id and the optional config-override body (#372). */
@@ -71,7 +84,9 @@ export class EventStreamStub {
   }
 
   push(event: Record<string, unknown>): void {
-    this.controller?.enqueue(new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`));
+    this.controller?.enqueue(
+      new TextEncoder().encode(`id: ${String(event["seq"])}\ndata: ${JSON.stringify(event)}\n\n`),
+    );
   }
 }
 
@@ -89,7 +104,10 @@ export interface DesignerStubOptions {
   /** Override `POST /v0/workflows/lock` per call. Default: grant a fresh lease. */
   onLock?: (body: { workflow_path: string; session_id: string; takeover?: boolean }) => Response;
   /** Override `PUT /v0/workflows` per call. Default: 200 with a fresh ETag. */
-  onPut?: (body: { workflow_path: string; workflow: Record<string, unknown> }, ifMatch: string | null) => Response;
+  onPut?: (
+    body: { workflow_path: string; workflow: Record<string, unknown> },
+    ifMatch: string | null,
+  ) => Response;
   /** Body for `GET /v0/runs` — the run-list window. Defaults to an empty list. */
   runs?: unknown;
   /** Body for `GET /v0/runs/:root_run_id` — the run tree. Defaults to an empty tree. */
@@ -121,7 +139,18 @@ export interface DesignerStubOptions {
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
 export function makeCalls(): StubCalls {
-  return { lock: [], heartbeat: [], release: [], put: [], listRuns: [], startRun: [], cancel: [], resume: [], templateWrites: [], deletes: [] };
+  return {
+    lock: [],
+    heartbeat: [],
+    release: [],
+    put: [],
+    listRuns: [],
+    startRun: [],
+    cancel: [],
+    resume: [],
+    templateWrites: [],
+    deletes: [],
+  };
 }
 
 /** A granted lease for a session — the default lock response. */
@@ -169,12 +198,23 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       const rootRunId = decodeURIComponent(resumeMatch[1]!);
       const body = init?.body ? JSON.parse(init.body as string) : undefined;
       calls?.resume.push({ rootRunId, body });
-      return options.onResumeRun ? options.onResumeRun({ rootRunId, body }) : json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
+      return options.onResumeRun
+        ? options.onResumeRun({ rootRunId, body })
+        : json({ run_id: "resumed-root", root_run_id: "resumed-root" }, 202);
     }
     if (input === "/v0/runs" && init?.method === "POST") {
-      const b = init?.body ? (JSON.parse(init.body as string) as { workflow_path: string; input?: unknown; config?: unknown; worker_defaults?: unknown }) : { workflow_path: "" };
+      const b = init?.body
+        ? (JSON.parse(init.body as string) as {
+            workflow_path: string;
+            input?: unknown;
+            config?: unknown;
+            worker_defaults?: unknown;
+          })
+        : { workflow_path: "" };
       calls?.startRun.push(b);
-      return options.onStartRun ? options.onStartRun(b) : json({ run_id: "new-root", root_run_id: "new-root" }, 202);
+      return options.onStartRun
+        ? options.onStartRun(b)
+        : json({ run_id: "new-root", root_run_id: "new-root" }, 202);
     }
     if (input === "/v0/runs" || input.startsWith("/v0/runs?")) {
       calls?.listRuns.push(input.slice("/v0/runs".length));
@@ -182,7 +222,15 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     }
     const treeMatch = /^\/v0\/runs\/([^/?]+)$/.exec(input);
     if (treeMatch && (init?.method ?? "GET") === "GET") {
-      return json(options.tree ?? { root_run_id: decodeURIComponent(treeMatch[1]!), status: "pending", output: null, runs: [] }, options.treeStatus ?? 200);
+      return json(
+        options.tree ?? {
+          root_run_id: decodeURIComponent(treeMatch[1]!),
+          status: "pending",
+          output: null,
+          runs: [],
+        },
+        options.treeStatus ?? 200,
+      );
     }
     if (init?.method === "DELETE") {
       const ifMatch = ((init.headers as Record<string, string>) ?? {})["If-Match"] ?? null;
@@ -193,7 +241,10 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     if (fileMatch) {
       const path = decodeURIComponent(fileMatch[1]!);
       if (!(path in files)) return json({ error: { message: `not found: ${path}` } }, 404);
-      return new Response(files[path], { status: 200, headers: { "Content-Type": "application/json", ETag: '"stub"' } });
+      return new Response(files[path], {
+        status: 200,
+        headers: { "Content-Type": "application/json", ETag: '"stub"' },
+      });
     }
     const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
     if (input === "/v0/workflows/lock") {
@@ -216,11 +267,23 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       if (templateWrite.method === "POST") {
         const created = templateWrite.body["body"] as { id: string };
         const name = templateWrite.body["name"] as string;
-        return json({ id: created.id, relative_path: `.path/template/step-template/${name}.step-template.json`, etag: '"created"' }, 201);
+        return json(
+          {
+            id: created.id,
+            relative_path: `.path/template/step-template/${name}.step-template.json`,
+            etag: '"created"',
+          },
+          201,
+        );
       }
-      const envelope = (options.templateBodies ?? {})[templateWrite.id!] as { read_only?: boolean } | undefined;
+      const envelope = (options.templateBodies ?? {})[templateWrite.id!] as
+        | { read_only?: boolean }
+        | undefined;
       if (envelope?.read_only) return json({ error: { message: "template is read-only" } }, 403);
-      return json({ id: templateWrite.id, relative_path: "t.step-template.json", etag: '"rewritten"' }, 200);
+      return json(
+        { id: templateWrite.id, relative_path: "t.step-template.json", etag: '"rewritten"' },
+        200,
+      );
     }
     if (input === "/v0/templates") {
       return json(options.templates ?? { templates: [] }, options.templatesStatus ?? 200);
@@ -241,7 +304,14 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
       calls?.put.push({ body: b, ifMatch });
       return options.onPut
         ? options.onPut(b, ifMatch)
-        : json({ relative_path: b.workflow_path, id: (b.workflow as { id: string }).id, etag: '"saved"' }, 200);
+        : json(
+            {
+              relative_path: b.workflow_path,
+              id: (b.workflow as { id: string }).id,
+              etag: '"saved"',
+            },
+            200,
+          );
     }
     return json({ error: { message: `unexpected request: ${input}` } }, 500);
   };
@@ -250,7 +320,10 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
 }
 
 function json(body: unknown, status: number): Response {
-  return new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
 }
 
 /** A `POST /v0/templates` or `PUT /v0/templates/:id` as a recorded write, or `null` for any other request. */
@@ -260,7 +333,8 @@ function templateWriteOf(url: string, init: RequestInit | undefined): TemplateWr
   const body = init?.body ? (JSON.parse(init.body as string) as Record<string, unknown>) : {};
   if (url === "/v0/templates" && method === "POST") return { method, id: null, body, ifMatch };
   const match = /^\/v0\/templates\/([^/?]+)$/.exec(url);
-  if (match && method === "PUT") return { method, id: decodeURIComponent(match[1]!), body, ifMatch };
+  if (match && method === "PUT")
+    return { method, id: decodeURIComponent(match[1]!), body, ifMatch };
   return null;
 }
 

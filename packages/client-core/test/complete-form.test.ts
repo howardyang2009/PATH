@@ -80,7 +80,9 @@ describe("coerceCompleteOutput", () => {
 
   it("keeps a false boolean but drops a blank number", () => {
     const fields = buildCompleteFields(schema);
-    expect(coerceCompleteOutput(fields, { approved: false, amount: "" })).toEqual({ approved: false });
+    expect(coerceCompleteOutput(fields, { approved: false, amount: "" })).toEqual({
+      approved: false,
+    });
   });
 });
 
@@ -110,26 +112,43 @@ describe("validateCompleteDraft", () => {
       properties: { code: { type: "string", pattern: "^[A-Z]{3}$" } },
     };
 
-    expect(validateCompleteDraft(outputSchema, { code: "nope" }).fieldErrors.code).toMatch(/pattern/i);
+    expect(validateCompleteDraft(outputSchema, { code: "nope" }).fieldErrors.code).toMatch(
+      /pattern/i,
+    );
     expect(validateCompleteDraft(outputSchema, { code: "ABC" }).fieldErrors).toEqual({});
   });
 
   it("checks nothing for a node with no schema, which accepts any JSON (ADR 0040)", () => {
-    expect(validateCompleteDraft(null, { anything: true })).toEqual({ fieldErrors: {}, formErrors: [] });
+    expect(validateCompleteDraft(null, { anything: true })).toEqual({
+      fieldErrors: {},
+      formErrors: [],
+    });
   });
 
   it("reports an uncompilable schema at the form level rather than throwing", () => {
     const bad: JsonValue = { type: "object", properties: { x: { type: "nonsense" } } };
 
-    expect(validateCompleteDraft(bad, { x: 1 }).formErrors.join(" ")).toMatch(/not a valid JSON Schema/);
+    expect(validateCompleteDraft(bad, { x: 1 }).formErrors.join(" ")).toMatch(
+      /not a valid JSON Schema/,
+    );
   });
 });
 
 describe("mapCompleteErrors", () => {
   it("maps ajv required + field issues to their keys, verbatim messages", () => {
     const details: JsonValue = [
-      { instancePath: "", keyword: "required", params: { missingProperty: "reviewer" }, message: "must have required property 'reviewer'" },
-      { instancePath: "/riskLevel", keyword: "enum", params: { allowedValues: ["low", "medium", "high"] }, message: "must be equal to one of the allowed values" },
+      {
+        instancePath: "",
+        keyword: "required",
+        params: { missingProperty: "reviewer" },
+        message: "must have required property 'reviewer'",
+      },
+      {
+        instancePath: "/riskLevel",
+        keyword: "enum",
+        params: { allowedValues: ["low", "medium", "high"] },
+        message: "must be equal to one of the allowed values",
+      },
     ];
     const mapped = mapCompleteErrors(details);
     expect(mapped.fieldErrors.reviewer).toBe("must have required property 'reviewer'");

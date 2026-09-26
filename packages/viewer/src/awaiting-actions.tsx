@@ -37,11 +37,20 @@ const FALLBACK_NODE: AwaitingNode = { description: null, assignee: null, outputS
  * leaf's `awaiting → succeeded` transition folds into the live snapshot, the run's status leaves
  * `awaiting`, and the panel stops mounting this surface on its own.
  */
-export function AwaitingActions({ client, run, awaitingNode, launchSecretKeys }: AwaitingActionsProps) {
+export function AwaitingActions({
+  client,
+  run,
+  awaitingNode,
+  launchSecretKeys,
+}: AwaitingActionsProps) {
   const node = awaitingNode ?? FALLBACK_NODE;
 
   return (
-    <section className="awaiting-actions" data-testid="awaiting-actions" aria-label="Complete awaiting step">
+    <section
+      className="awaiting-actions"
+      data-testid="awaiting-actions"
+      aria-label="Complete awaiting step"
+    >
       {node.assignee !== null && <AssigneeChip assignee={node.assignee} />}
       {node.description !== null && (
         <p className="awaiting-callout" data-testid="awaiting-description">
@@ -50,11 +59,16 @@ export function AwaitingActions({ client, run, awaitingNode, launchSecretKeys }:
       )}
       {awaitingNode === null && (
         <p className="pane-note" data-testid="awaiting-unresolved">
-          This step's form could not be read from the workflow file. Submitting sends an empty output.
+          This step's form could not be read from the workflow file. Submitting sends an empty
+          output.
         </p>
       )}
 
-      <section className="io-block" data-testid="awaiting-output-schema" aria-labelledby="awaiting-output-schema-title">
+      <section
+        className="io-block"
+        data-testid="awaiting-output-schema"
+        aria-labelledby="awaiting-output-schema-title"
+      >
         <h3 className="io-title" id="awaiting-output-schema-title">
           Output schema
         </h3>

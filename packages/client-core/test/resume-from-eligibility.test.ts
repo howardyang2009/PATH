@@ -66,7 +66,11 @@ describe("resumeFromEligibility precedence", () => {
       selectedRunId: null,
       dirty: CLEAN,
     });
-    expect(result).toEqual({ ok: false, reason: "no-selection", message: "Select a node in the run tree." });
+    expect(result).toEqual({
+      ok: false,
+      reason: "no-selection",
+      message: "Select a node in the run tree.",
+    });
   });
 
   it("(1) folds the root row into no-selection — the root run is never a K", () => {
@@ -122,7 +126,11 @@ describe("resumeFromEligibility legal K", () => {
   });
 
   it("treats a succeeded reuse row as a legal K", () => {
-    const reuse = run("b", { reusedFromRunId: "orig", reusedFromRootRunId: "prevroot", status: "succeeded" });
+    const reuse = run("b", {
+      reusedFromRunId: "orig",
+      reusedFromRootRunId: "prevroot",
+      status: "succeeded",
+    });
     const result = resumeFromEligibility({
       rootRunId: "root",
       runs: mapOf(rootRow(), run("a"), reuse),
@@ -269,9 +277,17 @@ describe("resumeFromEligibility #5 — a skipped prefix path is not a broken one
 });
 
 describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", () => {
-  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body }) as unknown as WorkflowNode;
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode =>
+    ({ type: "sequence", id, name: id, body }) as unknown as WorkflowNode;
   const loop = (id: string, node: WorkflowNode): WorkflowNode =>
-    ({ type: "while-do", id, name: id, condition: { type: "exists", path: "context.x" }, max_iterations: 2, node }) as unknown as WorkflowNode;
+    ({
+      type: "while-do",
+      id,
+      name: id,
+      condition: { type: "exists", path: "context.x" },
+      max_iterations: 2,
+      node,
+    }) as unknown as WorkflowNode;
 
   it("enables K inside a sequence at the root level", () => {
     const result = resumeFromEligibility({
@@ -290,7 +306,12 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
     run("pass-1", { nodeId: "g", nodeName: "g", pass: 1 }),
     run("a-1", { parentRunId: "pass-1", nodeId: "a", nodeName: "a" }),
     run("b-1", { parentRunId: "pass-1", nodeId: "b", nodeName: "b" }),
-    run("c-1", { parentRunId: "pass-1", nodeId: "c", nodeName: "c", status: over.c1 ?? "succeeded" }),
+    run("c-1", {
+      parentRunId: "pass-1",
+      nodeId: "c",
+      nodeName: "c",
+      status: over.c1 ?? "succeeded",
+    }),
     run("pass-2", { nodeId: "g", nodeName: "g", pass: 2, status: "failed" }),
     run("b-2", { parentRunId: "pass-2", nodeId: "b", nodeName: "b" }),
     run("c-2", { parentRunId: "pass-2", nodeId: "c", nodeName: "c" }),
@@ -323,7 +344,11 @@ describe("resumeFromEligibility — a sequence body is transparent (ADR 0064)", 
   it("disables a goto pass row itself, as the engine refuses it", () => {
     const result = resumeFromEligibility({
       rootRunId: "root",
-      runs: mapOf(...passRows().map((r) => (r.runId === "pass-2" ? { ...r, status: "succeeded" as const } : r))),
+      runs: mapOf(
+        ...passRows().map((r) =>
+          r.runId === "pass-2" ? { ...r, status: "succeeded" as const } : r,
+        ),
+      ),
       rootFile: file([leaf("a"), seq("test", [leaf("b"), leaf("c")])]),
       selectedRunId: "pass-2",
       dirty: CLEAN,

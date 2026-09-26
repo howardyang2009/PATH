@@ -6,7 +6,13 @@ import type { RunContext, RunIdentity } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
 import type { Observation } from "../src/run-observer.js";
 
-const parentIdentity: RunIdentity = { runId: "parent", rootRunId: "root", parentRunId: "root", nodeId: "n", nodeName: "n" };
+const parentIdentity: RunIdentity = {
+  runId: "parent",
+  rootRunId: "root",
+  parentRunId: "root",
+  nodeId: "n",
+  nodeName: "n",
+};
 const file: WorkflowFile = { format: "path/workflow@5", id: "wf", name: "wf", body: [] };
 const loop = { id: "loop-id", name: "loop" };
 
@@ -28,13 +34,25 @@ function parentRun(into: Observation[]): RunContext {
 describe("childIdentity", () => {
   it("mints a fresh id under the parent, owned by the node", () => {
     const identity = childIdentity(parentIdentity, { owner: loop, iteration: 2 });
-    expect(identity).toMatchObject({ rootRunId: "root", parentRunId: "parent", nodeId: "loop-id", nodeName: "loop", iteration: 2 });
+    expect(identity).toMatchObject({
+      rootRunId: "root",
+      parentRunId: "parent",
+      nodeId: "loop-id",
+      nodeName: "loop",
+      iteration: 2,
+    });
     expect(identity.runId).not.toBe(childIdentity(parentIdentity, { owner: loop }).runId);
   });
 
   it("re-enters a recorded row in place (ADR 0041)", () => {
-    expect(childIdentity(parentIdentity, { owner: null, pass: 1 }, "recorded").runId).toBe("recorded");
-    expect(childIdentity(parentIdentity, { owner: null, pass: 1 }, "recorded")).toMatchObject({ nodeId: null, nodeName: null, pass: 1 });
+    expect(childIdentity(parentIdentity, { owner: null, pass: 1 }, "recorded").runId).toBe(
+      "recorded",
+    );
+    expect(childIdentity(parentIdentity, { owner: null, pass: 1 }, "recorded")).toMatchObject({
+      nodeId: null,
+      nodeName: null,
+      pass: 1,
+    });
   });
 });
 
@@ -51,7 +69,11 @@ describe("openContainerRun", () => {
     expect(container.run.identity.parentRunId).toBe("parent");
     await container.finish({ status: "succeeded", output: "done" });
     expect(observed.map((o) => o.type)).toEqual(["run-started", "run-finished"]);
-    expect(observed[0]).toMatchObject({ runId: container.run.identity.runId, input: { seed: 1 }, iteration: 1 });
+    expect(observed[0]).toMatchObject({
+      runId: container.run.identity.runId,
+      input: { seed: 1 },
+      iteration: 1,
+    });
   });
 
   it("re-enters a running container without a second run-started", async () => {
@@ -69,7 +91,12 @@ describe("openContainerRun", () => {
 
   it("swaps only identity, emitter and resume into the parent's context", async () => {
     const parent = parentRun([]);
-    const container = await openContainerRun(parent, { key: { owner: loop, iteration: 1 }, existingRunId: undefined, input: null, resume: undefined });
+    const container = await openContainerRun(parent, {
+      key: { owner: loop, iteration: 1 },
+      existingRunId: undefined,
+      input: null,
+      resume: undefined,
+    });
     expect(container.run.file).toBe(parent.file);
     expect(container.run.runtime).toBe(parent.runtime);
     expect(container.run.detached).toBe(parent.detached);

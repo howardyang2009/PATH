@@ -1,4 +1,3 @@
-import { useMemo, useState } from "react";
 import type { WorkflowTreeFolder, WorkflowTreeNode } from "@path/client-core";
 import {
   buildWorkflowTree,
@@ -7,7 +6,8 @@ import {
   nextOpenFolder,
   workflowBaseName,
 } from "@path/client-core";
-import { discoveredWorkflows, type DiscoveryLoad } from "./discovery.js";
+import { useMemo, useState } from "react";
+import { type DiscoveryLoad, discoveredWorkflows } from "./discovery.js";
 
 /**
  * The open-existing-workflow picker (#254, designer-spec § Opening a file). A modal over the

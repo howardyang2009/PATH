@@ -3,13 +3,16 @@ import { ConditionSchema } from "../src/conditions.js";
 
 describe("ConditionSchema — leaf predicates", () => {
   it("validates exists", () => {
-    expect(ConditionSchema.safeParse({ type: "exists", path: "context.verdict.pass" }).success).toBe(true);
+    expect(
+      ConditionSchema.safeParse({ type: "exists", path: "context.verdict.pass" }).success,
+    ).toBe(true);
     expect(ConditionSchema.safeParse({ type: "exists" }).success).toBe(false);
   });
 
   it("validates equals with a scalar value", () => {
     expect(
-      ConditionSchema.safeParse({ type: "equals", path: "context.verdict.pass", value: false }).success,
+      ConditionSchema.safeParse({ type: "equals", path: "context.verdict.pass", value: false })
+        .success,
     ).toBe(true);
     expect(
       ConditionSchema.safeParse({
@@ -29,29 +32,42 @@ describe("ConditionSchema — leaf predicates", () => {
         values: ["short", "long"],
       }).success,
     ).toBe(true);
-    expect(ConditionSchema.safeParse({ type: "one-of", path: "context.x", values: [] }).success).toBe(false);
+    expect(
+      ConditionSchema.safeParse({ type: "one-of", path: "context.x", values: [] }).success,
+    ).toBe(false);
   });
 
   it("validates matches with a compileable regex pattern", () => {
     expect(
-      ConditionSchema.safeParse({ type: "matches", path: "context.raw_changes", pattern: "\\S" }).success,
+      ConditionSchema.safeParse({ type: "matches", path: "context.raw_changes", pattern: "\\S" })
+        .success,
     ).toBe(true);
     expect(
-      ConditionSchema.safeParse({ type: "matches", path: "context.raw_changes", pattern: "(unclosed" }).success,
+      ConditionSchema.safeParse({
+        type: "matches",
+        path: "context.raw_changes",
+        pattern: "(unclosed",
+      }).success,
     ).toBe(false);
   });
 
   it("validates range requiring at least min or max", () => {
-    expect(ConditionSchema.safeParse({ type: "range", path: "context.n", min: 1 }).success).toBe(true);
-    expect(ConditionSchema.safeParse({ type: "range", path: "context.n", max: 10 }).success).toBe(true);
-    expect(ConditionSchema.safeParse({ type: "range", path: "context.n", min: 1, max: 10 }).success).toBe(
+    expect(ConditionSchema.safeParse({ type: "range", path: "context.n", min: 1 }).success).toBe(
       true,
     );
+    expect(ConditionSchema.safeParse({ type: "range", path: "context.n", max: 10 }).success).toBe(
+      true,
+    );
+    expect(
+      ConditionSchema.safeParse({ type: "range", path: "context.n", min: 1, max: 10 }).success,
+    ).toBe(true);
     expect(ConditionSchema.safeParse({ type: "range", path: "context.n" }).success).toBe(false);
   });
 
   it("validates valid-json", () => {
-    expect(ConditionSchema.safeParse({ type: "valid-json", path: "context.raw" }).success).toBe(true);
+    expect(ConditionSchema.safeParse({ type: "valid-json", path: "context.raw" }).success).toBe(
+      true,
+    );
   });
 
   it("rejects unknown fields on any predicate (strict)", () => {

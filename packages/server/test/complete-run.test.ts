@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 /**
  * `POST /v0/runs/:step_run_id/complete` to spec §4.4 (#485, ADR 0040/0041). The path names the parked
@@ -46,7 +46,11 @@ async function launch(workflowPath: string, config?: Record<string, unknown>): P
   const res = await fetch(`${handle.url}/v0/runs`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(config === undefined ? { workflow_path: workflowPath } : { workflow_path: workflowPath, config }),
+    body: JSON.stringify(
+      config === undefined
+        ? { workflow_path: workflowPath }
+        : { workflow_path: workflowPath, config },
+    ),
   });
   expect(res.status).toBe(202);
   const { root_run_id } = (await res.json()) as { root_run_id: string };
@@ -67,7 +71,11 @@ async function awaitingLeafId(rootRunId: string): Promise<string> {
   return leaf.run_id;
 }
 
-function complete(stepRunId: string, body: unknown, headers: Record<string, string> = {}): Promise<Response> {
+function complete(
+  stepRunId: string,
+  body: unknown,
+  headers: Record<string, string> = {},
+): Promise<Response> {
   return fetch(`${handle.url}/v0/runs/${stepRunId}/complete`, {
     method: "POST",
     headers: { "Content-Type": "application/json", ...headers },
@@ -98,7 +106,9 @@ describe("valid output → 202, lease, CAS, tail in background", () => {
     expect(settled.status).toBe("succeeded");
     expect(settled.runs.find((r) => r.run_id === leafId)!.status).toBe("succeeded");
     // The tail after the parked leaf ran in the same tree.
-    expect(settled.runs.some((r) => r.node_id === "f599b76c-2230-4eca-8020-5d1287aa13e9")).toBe(true);
+    expect(settled.runs.some((r) => r.node_id === "f599b76c-2230-4eca-8020-5d1287aa13e9")).toBe(
+      true,
+    );
   });
 
   it("accepts any JSON when the node declares no outputSchema", async () => {
@@ -177,13 +187,19 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
 
     // An `$env` in the override would let a browser operator read the server's environment — the one
     // divergence ADR 0012 pins, and it holds on this door too.
-    const envRes = await complete(leafId, { output: { approved: true }, config: { token: { $env: "PATH_TOKEN" } } });
+    const envRes = await complete(leafId, {
+      output: { approved: true },
+      config: { token: { $env: "PATH_TOKEN" } },
+    });
     expect(envRes.status).toBe(400);
     const refusal = (await envRes.json()) as { error: { message: string } };
     expect(refusal.error.message).toContain("may not source from the server environment");
 
     // A literal `$secret` is the sanctioned channel, and the run proceeds.
-    const res = await complete(leafId, { output: { approved: true }, config: { token: { $secret: "t" } } });
+    const res = await complete(leafId, {
+      output: { approved: true },
+      config: { token: { $secret: "t" } },
+    });
     expect(res.status).toBe(202);
     expect((await settle(rootRunId)).status).toBe("succeeded");
   });
@@ -198,7 +214,9 @@ describe("validate-before-lease: invalid output → 400 with ajv issues, leaf un
 
 describe("error taxonomy", () => {
   it("404 for an unknown step_run_id", async () => {
-    const res = await complete("00000000-0000-4000-8000-000000000000", { output: { approved: true } });
+    const res = await complete("00000000-0000-4000-8000-000000000000", {
+      output: { approved: true },
+    });
     expect(res.status).toBe(404);
   });
 
@@ -275,13 +293,19 @@ describe("error taxonomy", () => {
     const res = await complete(leafId, { output: { approved: true } });
 
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("id changed");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "id changed",
+    );
   });
 
   it("403 for a cross-origin browser call", async () => {
     const rootRunId = await launch("awaiting-complete.workflow.json");
     const leafId = await awaitingLeafId(rootRunId);
-    const res = await complete(leafId, { output: { approved: true } }, { Origin: "http://evil.example" });
+    const res = await complete(
+      leafId,
+      { output: { approved: true } },
+      { Origin: "http://evil.example" },
+    );
     expect(res.status).toBe(403);
     // The leaf was never touched by the rejected call.
     const t = await tree(rootRunId);

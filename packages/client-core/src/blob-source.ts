@@ -1,4 +1,4 @@
-import { isRootRun, type BlobName } from "@path/schema";
+import { type BlobName, isRootRun } from "@path/schema";
 import type { RunNodeState } from "./view-model.js";
 
 /**
@@ -43,7 +43,9 @@ export interface RunBlobSource {
  */
 function contextRef(run: RunNodeState): string {
   const sibling = run.inputRef ?? run.outputRef;
-  return sibling !== null ? sibling.replace(/[^/]+$/, "context.json") : `runs/${run.rootRunId}/${run.runId}/context.json`;
+  return sibling !== null
+    ? sibling.replace(/[^/]+$/, "context.json")
+    : `runs/${run.rootRunId}/${run.runId}/context.json`;
 }
 
 /**
@@ -56,7 +58,13 @@ export function runBlobSource(run: RunNodeState, name: BlobName): RunBlobSource 
   if (name === "context") {
     // No `context_ref` rides on a run row, so there is no ref to gate the read or to signal a change:
     // read unconditionally and trust the 404 (a workflow-run has a context, a leaf step does not).
-    return { rootRunId: run.rootRunId, runId: run.runId, gatedBy: null, ref: contextRef(run), resumedFrom: null };
+    return {
+      rootRunId: run.rootRunId,
+      runId: run.runId,
+      gatedBy: null,
+      ref: contextRef(run),
+      resumedFrom: null,
+    };
   }
 
   if (name === "input") {
@@ -72,8 +80,20 @@ export function runBlobSource(run: RunNodeState, name: BlobName): RunBlobSource 
         resumedFrom: predecessor,
       };
     }
-    return { rootRunId: run.rootRunId, runId: run.runId, gatedBy: run.inputRef, ref: run.inputRef, resumedFrom: null };
+    return {
+      rootRunId: run.rootRunId,
+      runId: run.runId,
+      gatedBy: run.inputRef,
+      ref: run.inputRef,
+      resumedFrom: null,
+    };
   }
 
-  return { rootRunId: run.rootRunId, runId: run.runId, gatedBy: run.outputRef, ref: run.outputRef, resumedFrom: null };
+  return {
+    rootRunId: run.rootRunId,
+    runId: run.runId,
+    gatedBy: run.outputRef,
+    ref: run.outputRef,
+    resumedFrom: null,
+  };
 }

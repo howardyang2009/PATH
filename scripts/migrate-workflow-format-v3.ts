@@ -158,7 +158,13 @@ function walkNode(node: unknown, pointer: string, ctx: Ctx): void {
   } else if (node.type === "binary" || node.type === "prompt") {
     const isPrompt = node.type === "prompt";
     const stepHasModel = isObject(node.config) && "model" in node.config;
-    rewriteWorker(node, `${pointer}/worker`, ctx.fileConfigHasModel || stepHasModel, isPrompt, ctx.fileWorkerType);
+    rewriteWorker(
+      node,
+      `${pointer}/worker`,
+      ctx.fileConfigHasModel || stepHasModel,
+      isPrompt,
+      ctx.fileWorkerType,
+    );
   }
 
   // Recurse into every nested-node slot (`@2` §4.3/§4.4): a step carries none, a controller does.
@@ -174,7 +180,9 @@ function walkNode(node: unknown, pointer: string, ctx: Ctx): void {
 }
 
 function walkNodeArray(nodes: unknown[], pointer: string, ctx: Ctx): void {
-  nodes.forEach((node, index) => walkNode(node, `${pointer}/${index}`, ctx));
+  nodes.forEach((node, index) => {
+    walkNode(node, `${pointer}/${index}`, ctx);
+  });
 }
 
 /** @returns the migrated document, or null when the file is not a `@2` workflow (already `@3`, or `@0`/`@1`). */
@@ -186,7 +194,10 @@ function migrateDocument(doc: unknown): JsonObject | null {
   // The file worker is read (its `type`) then rewritten first, so a file-level llm `model` lands in
   // `config` before the benign step check reads `config.model`, and a step's inherited worker type is
   // known when the step carries no `worker` of its own.
-  const fileWorkerType = isObject(migrated.worker) && typeof migrated.worker.type === "string" ? migrated.worker.type : undefined;
+  const fileWorkerType =
+    isObject(migrated.worker) && typeof migrated.worker.type === "string"
+      ? migrated.worker.type
+      : undefined;
   const fileConfigHasModelBefore = isObject(migrated.config) && "model" in migrated.config;
   rewriteWorker(migrated, "/worker", fileConfigHasModelBefore, false, undefined);
 
@@ -211,7 +222,8 @@ function discoverWorkflowFiles(dir: string): string[] {
 
 function main(): void {
   const args = process.argv.slice(2);
-  const files = args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
+  const files =
+    args.length > 0 ? args.map((a) => resolve(a)) : discoverWorkflowFiles(process.cwd());
 
   let migrated = 0;
   let skipped = 0;
@@ -236,7 +248,9 @@ function main(): void {
     migrated += 1;
     console.log(`migrated ${file}`);
   }
-  console.log(`\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @2 workflow file).`);
+  console.log(
+    `\n${migrated} migrated, ${skipped} already at ${NEXT_FORMAT} (or not a @2 workflow file).`,
+  );
   if (refused.length > 0) {
     console.error(`\n${refused.length} refused:`);
     for (const line of refused) console.error(`  ${line}`);
@@ -250,4 +264,4 @@ if (process.argv[1] && resolve(process.argv[1]) === resolve(fileURLToPath(import
   main();
 }
 
-export { migrateDocument, MigrationRefused };
+export { MigrationRefused, migrateDocument };

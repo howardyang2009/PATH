@@ -1,4 +1,10 @@
-import { findRootRun, isStepType, walkNodes, type RunRecord, type WorkflowFile } from "@path/schema";
+import {
+  findRootRun,
+  isStepType,
+  type RunRecord,
+  type WorkflowFile,
+  walkNodes,
+} from "@path/schema";
 
 /** A re-read tree's node ids that reuse, each pointing at the original run whose data it reuses. */
 export type ReusePlan = Map<string, RunRecord>;
@@ -79,7 +85,8 @@ function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string
     if (isStepType(inner.type)) {
       const record = plan.get(inner.id);
       const finishedAt = record?.finishedAt ?? null;
-      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt)) completedAt = finishedAt;
+      if (finishedAt !== null && (completedAt === null || finishedAt > completedAt))
+        completedAt = finishedAt;
     }
   }
   return completedAt;
@@ -96,7 +103,10 @@ function reusedBranchCompletion(branch: ParallelBranch, plan: ReusePlan): string
  * see. Picking the first-*declared* winner instead would land a different branch than the original
  * run's `join-applied` named, breaking resume determinism (ADR 0001).
  */
-export function pickReusedWaitOneWinner(node: ParallelNode, plan: ReusePlan): ParallelBranch | undefined {
+export function pickReusedWaitOneWinner(
+  node: ParallelNode,
+  plan: ReusePlan,
+): ParallelBranch | undefined {
   const winners = node.branches.filter((branch) => branchIsReusedWinner(branch, plan));
   if (winners.length <= 1) return winners[0];
   return [...winners].sort((a, b) => {

@@ -3,8 +3,8 @@ import type { JsonValue, RunRecord, WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import type { StepRequest, WorkerDescriptor } from "../src/plugin/seam.js";
 import type { Observation } from "../src/run-observer.js";
-import { fakeObserver, type FakeObserver } from "./fake-observer.js";
-import { runWorkflow, type ResumeInput } from "../src/run-workflow.js";
+import { type ResumeInput, runWorkflow } from "../src/run-workflow.js";
+import { type FakeObserver, fakeObserver } from "./fake-observer.js";
 import { stampNames } from "./stamp-names.js";
 
 /**
@@ -17,7 +17,9 @@ import { stampNames } from "./stamp-names.js";
  * with a scripted worker recording which nodes actually executed.
  */
 
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "orig-root",
     nodeName: overrides.nodeId,
@@ -71,11 +73,19 @@ function reader(blobs: { [key: string]: JsonValue }, reads: string[]): ResumeInp
 }
 
 function tree(body: WorkflowFile["body"], output?: WorkflowFile["output"]): WorkflowFile {
-  return stampNames({ format: "path/workflow@5", name: "resumed", config: { model: "m" }, body, ...(output ? { output } : {}) });
+  return stampNames({
+    format: "path/workflow@5",
+    name: "resumed",
+    config: { model: "m" },
+    body,
+    ...(output ? { output } : {}),
+  });
 }
 
 function markers(observer: FakeObserver): Extract<Observation, { type: "reuse-marker" }>[] {
-  return observer.all().filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
+  return observer
+    .all()
+    .filter((o): o is Extract<Observation, { type: "reuse-marker" }> => o.type === "reuse-marker");
 }
 
 // A three-node all-succeeded original tree over top-level prompts a, b, c.
@@ -91,9 +101,27 @@ const abc = () =>
 
 const abcOriginalRuns = (): RunRecord[] => [
   run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-  run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
-  run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "succeeded" }),
-  run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", nodeName: "c", status: "succeeded" }),
+  run({
+    runId: "a-run",
+    parentRunId: "orig-root",
+    nodeId: "a",
+    nodeName: "a",
+    status: "succeeded",
+  }),
+  run({
+    runId: "b-run",
+    parentRunId: "orig-root",
+    nodeId: "b",
+    nodeName: "b",
+    status: "succeeded",
+  }),
+  run({
+    runId: "c-run",
+    parentRunId: "orig-root",
+    nodeId: "c",
+    nodeName: "c",
+    status: "succeeded",
+  }),
 ];
 
 describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
@@ -125,13 +153,30 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
     const reads: string[] = [];
     const observer = fakeObserver();
     const nestedPath = join("/tmp", "nested.workflow.json");
-    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner", publish: { r: "${output}" } }], {
-      r: "${context.r}",
-    });
+    const nested = tree(
+      [
+        {
+          type: "prompt",
+          id: "inner",
+          name: "inner",
+          prompt: "inner",
+          publish: { r: "${output}" },
+        },
+      ],
+      {
+        r: "${context.r}",
+      },
+    );
     const file = tree([
       { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
       // A workflow node needs a JSON-object input to seed the child context (format §6.3).
-      { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { seed: "${context.fromA}" } },
+      {
+        type: "workflow",
+        id: "sub",
+        name: "sub",
+        ref: "./nested.workflow.json",
+        input: { seed: "${context.fromA}" },
+      },
     ]);
 
     const result = await runWorkflow(file, "/tmp", {
@@ -140,10 +185,34 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
       workerOverrides: promptOverride(recordingWorker({ inner: "FRESH_INNER" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-          run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
-          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "succeeded",
+          }),
+          run({
+            runId: "a-run",
+            parentRunId: "orig-root",
+            nodeId: "a",
+            nodeName: "a",
+            status: "succeeded",
+          }),
+          run({
+            runId: "sub-run",
+            parentRunId: "orig-root",
+            nodeId: "sub",
+            nodeName: "sub",
+            status: "succeeded",
+          }),
+          run({
+            runId: "inner-run",
+            parentRunId: "sub-run",
+            nodeId: "inner",
+            nodeName: "inner",
+            status: "succeeded",
+          }),
         ],
         readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A" }, reads),
         // K = sub (a ≥K workflow node): its whole subtree re-runs, inner included.
@@ -156,13 +225,17 @@ describe("Resume-from-K — top-level boundary (ADR 0035)", () => {
     expect(ran).toEqual(["inner"]);
     expect(markers(observer).map((m) => m.nodeId)).toEqual(["a"]);
     // The collapsed subtree's original blob was never read — sub re-ran fresh, it did not reuse.
-    expect(reads.some((key) => key.startsWith("sub-run/") || key.startsWith("inner-run/"))).toBe(false);
+    expect(reads.some((key) => key.startsWith("sub-run/") || key.startsWith("inner-run/"))).toBe(
+      false,
+    );
   });
 });
 
 describe("Resume-from-K — the superset invariant (spec §4)", () => {
   it("an empty path is plain Resume byte-for-byte", async () => {
-    async function once(rerunFromNodePath: string[] | undefined): Promise<{ ran: string[]; markers: (string | null)[]; output: JsonValue }> {
+    async function once(
+      rerunFromNodePath: string[] | undefined,
+    ): Promise<{ ran: string[]; markers: (string | null)[]; output: JsonValue }> {
       const ran: string[] = [];
       const reads: string[] = [];
       const observer = fakeObserver();
@@ -172,13 +245,41 @@ describe("Resume-from-K — the superset invariant (spec §4)", () => {
         workerOverrides: promptOverride(recordingWorker({ c: "FRESH_C" }, ran)),
         resume: {
           originalRuns: [
-            run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-            run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
-            run({ runId: "b-run", parentRunId: "orig-root", nodeId: "b", nodeName: "b", status: "succeeded" }),
-            run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", nodeName: "c", status: "failed" }),
+            run({
+              runId: "orig-root",
+              parentRunId: null,
+              nodeId: null,
+              nodeName: null,
+              status: "failed",
+            }),
+            run({
+              runId: "a-run",
+              parentRunId: "orig-root",
+              nodeId: "a",
+              nodeName: "a",
+              status: "succeeded",
+            }),
+            run({
+              runId: "b-run",
+              parentRunId: "orig-root",
+              nodeId: "b",
+              nodeName: "b",
+              status: "succeeded",
+            }),
+            run({
+              runId: "c-run",
+              parentRunId: "orig-root",
+              nodeId: "c",
+              nodeName: "c",
+              status: "failed",
+            }),
           ],
           readBlob: reader(
-            { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "b-run/output.json": "REUSED_B" },
+            {
+              "orig-root/input.json": {},
+              "a-run/output.json": "REUSED_A",
+              "b-run/output.json": "REUSED_B",
+            },
             reads,
           ),
           rerunFromNodePath,
@@ -207,17 +308,41 @@ const nestedPkq = () =>
 const rootAsubD = () =>
   tree([
     { type: "prompt", id: "a", name: "a", prompt: "a", publish: { fromA: "${output}" } },
-    { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { seed: "${context.fromA}" } },
+    {
+      type: "workflow",
+      id: "sub",
+      name: "sub",
+      ref: "./nested.workflow.json",
+      input: { seed: "${context.fromA}" },
+    },
     { type: "prompt", id: "d", name: "d", prompt: "d", publish: { fromD: "${output}" } },
   ]);
 const asubdOriginalRuns = (): RunRecord[] => [
   run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-  run({ runId: "a-run", parentRunId: "orig-root", nodeId: "a", nodeName: "a", status: "succeeded" }),
-  run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
+  run({
+    runId: "a-run",
+    parentRunId: "orig-root",
+    nodeId: "a",
+    nodeName: "a",
+    status: "succeeded",
+  }),
+  run({
+    runId: "sub-run",
+    parentRunId: "orig-root",
+    nodeId: "sub",
+    nodeName: "sub",
+    status: "succeeded",
+  }),
   run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", nodeName: "p", status: "succeeded" }),
   run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", nodeName: "k", status: "succeeded" }),
   run({ runId: "q-run", parentRunId: "sub-run", nodeId: "q", nodeName: "q", status: "succeeded" }),
-  run({ runId: "d-run", parentRunId: "orig-root", nodeId: "d", nodeName: "d", status: "succeeded" }),
+  run({
+    runId: "d-run",
+    parentRunId: "orig-root",
+    nodeId: "d",
+    nodeName: "d",
+    status: "succeeded",
+  }),
 ];
 
 describe("Resume-from-K — nested boundary (ADR 0036)", () => {
@@ -229,7 +354,9 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     const result = await runWorkflow(rootAsubD(), "/tmp", {
       observer,
       files: new Map([[NESTED_PATH, nestedPkq()]]),
-      workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", q: "FRESH_Q", d: "FRESH_D" }, ran)),
+      workerOverrides: promptOverride(
+        recordingWorker({ k: "FRESH_K", q: "FRESH_Q", d: "FRESH_D" }, ran),
+      ),
       resume: {
         originalRuns: asubdOriginalRuns(),
         readBlob: reader(
@@ -267,7 +394,9 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
       { type: "prompt", id: "p", name: "p", prompt: "p", publish: { fromP: "${output}" } },
       { type: "prompt", id: "k", name: "k", prompt: "k", publish: { fromK: "${output}" } },
     ]);
-    const nestedP2 = tree([{ type: "prompt", id: "p2", name: "p2", prompt: "p2", publish: { fromP2: "${output}" } }]);
+    const nestedP2 = tree([
+      { type: "prompt", id: "p2", name: "p2", prompt: "p2", publish: { fromP2: "${output}" } },
+    ]);
     const rootTwoSubs = tree([
       { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} },
       { type: "workflow", id: "sub2", name: "sub2", ref: "./sub2.workflow.json", input: {} },
@@ -282,12 +411,48 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
       workerOverrides: promptOverride(recordingWorker({ k: "FRESH_K", p2: "FRESH_P2" }, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
-          run({ runId: "p-run", parentRunId: "sub-run", nodeId: "p", nodeName: "p", status: "succeeded" }),
-          run({ runId: "k-run", parentRunId: "sub-run", nodeId: "k", nodeName: "k", status: "succeeded" }),
-          run({ runId: "sub2-run", parentRunId: "orig-root", nodeId: "sub2", nodeName: "sub2", status: "succeeded" }),
-          run({ runId: "p2-run", parentRunId: "sub2-run", nodeId: "p2", nodeName: "p2", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "succeeded",
+          }),
+          run({
+            runId: "sub-run",
+            parentRunId: "orig-root",
+            nodeId: "sub",
+            nodeName: "sub",
+            status: "succeeded",
+          }),
+          run({
+            runId: "p-run",
+            parentRunId: "sub-run",
+            nodeId: "p",
+            nodeName: "p",
+            status: "succeeded",
+          }),
+          run({
+            runId: "k-run",
+            parentRunId: "sub-run",
+            nodeId: "k",
+            nodeName: "k",
+            status: "succeeded",
+          }),
+          run({
+            runId: "sub2-run",
+            parentRunId: "orig-root",
+            nodeId: "sub2",
+            nodeName: "sub2",
+            status: "succeeded",
+          }),
+          run({
+            runId: "p2-run",
+            parentRunId: "sub2-run",
+            nodeId: "p2",
+            nodeName: "p2",
+            status: "succeeded",
+          }),
         ],
         readBlob: reader(
           { "orig-root/input.json": {}, "sub-run/input.json": {}, "p-run/output.json": "REUSED_P" },
@@ -302,29 +467,62 @@ describe("Resume-from-K — nested boundary (ADR 0036)", () => {
     expect(ran).toEqual(["k", "p2"]);
     expect(markers(observer).map((m) => m.nodeId)).toEqual(["p"]);
     // The after-B subtree was forced fresh: its collapsed original blob was never read.
-    expect(reads.some((key) => key.startsWith("sub2-run/") || key.startsWith("p2-run/"))).toBe(false);
+    expect(reads.some((key) => key.startsWith("sub2-run/") || key.startsWith("p2-run/"))).toBe(
+      false,
+    );
   });
 });
 
 describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
-  const prompt = (id: string) => ({ type: "prompt" as const, id, name: id, prompt: id, publish: { [`from${id.toUpperCase()}`]: "${output}" } });
+  const prompt = (id: string) => ({
+    type: "prompt" as const,
+    id,
+    name: id,
+    prompt: id,
+    publish: { [`from${id.toUpperCase()}`]: "${output}" },
+  });
 
   it("K inside a sequence: earlier siblings reuse, K, later siblings, and later nodes re-run", async () => {
     const ran: string[] = [];
     const reads: string[] = [];
     const observer = fakeObserver();
     // Root [a, s{b, c, d}, e]; K = c. Serial order a, b, c, d, e.
-    const file = tree([prompt("a"), { type: "sequence", id: "s", name: "s", body: [prompt("b"), prompt("c"), prompt("d")] }, prompt("e")]);
+    const file = tree([
+      prompt("a"),
+      { type: "sequence", id: "s", name: "s", body: [prompt("b"), prompt("c"), prompt("d")] },
+      prompt("e"),
+    ]);
 
     const result = await runWorkflow(file, "/tmp", {
       observer,
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-          ...["a", "b", "c", "d", "e"].map((id) => run({ runId: `${id}-run`, parentRunId: "orig-root", nodeId: id, nodeName: id, status: "succeeded" })),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "succeeded",
+          }),
+          ...["a", "b", "c", "d", "e"].map((id) =>
+            run({
+              runId: `${id}-run`,
+              parentRunId: "orig-root",
+              nodeId: id,
+              nodeName: id,
+              status: "succeeded",
+            }),
+          ),
         ],
-        readBlob: reader({ "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "b-run/output.json": "REUSED_B" }, reads),
+        readBlob: reader(
+          {
+            "orig-root/input.json": {},
+            "a-run/output.json": "REUSED_A",
+            "b-run/output.json": "REUSED_B",
+          },
+          reads,
+        ),
         rerunFromNodePath: ["c"],
       },
     });
@@ -338,14 +536,19 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
     const ran: string[] = [];
     const reads: string[] = [];
     const observer = fakeObserver();
-    const nested = tree([{ type: "prompt", id: "inner", name: "inner", prompt: "inner", publish: { r: "${output}" } }]);
+    const nested = tree([
+      { type: "prompt", id: "inner", name: "inner", prompt: "inner", publish: { r: "${output}" } },
+    ]);
     // Root [s{sub→[inner], c}]; K = c.
     const file = tree([
       {
         type: "sequence",
         id: "s",
         name: "s",
-        body: [{ type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} }, prompt("c")],
+        body: [
+          { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} },
+          prompt("c"),
+        ],
       },
     ]);
 
@@ -355,12 +558,39 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       workerOverrides: promptOverride(recordingWorker({}, ran)),
       resume: {
         originalRuns: [
-          run({ runId: "orig-root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
-          run({ runId: "sub-run", parentRunId: "orig-root", nodeId: "sub", nodeName: "sub", status: "succeeded" }),
-          run({ runId: "inner-run", parentRunId: "sub-run", nodeId: "inner", nodeName: "inner", status: "succeeded" }),
-          run({ runId: "c-run", parentRunId: "orig-root", nodeId: "c", nodeName: "c", status: "succeeded" }),
+          run({
+            runId: "orig-root",
+            parentRunId: null,
+            nodeId: null,
+            nodeName: null,
+            status: "succeeded",
+          }),
+          run({
+            runId: "sub-run",
+            parentRunId: "orig-root",
+            nodeId: "sub",
+            nodeName: "sub",
+            status: "succeeded",
+          }),
+          run({
+            runId: "inner-run",
+            parentRunId: "sub-run",
+            nodeId: "inner",
+            nodeName: "inner",
+            status: "succeeded",
+          }),
+          run({
+            runId: "c-run",
+            parentRunId: "orig-root",
+            nodeId: "c",
+            nodeName: "c",
+            status: "succeeded",
+          }),
         ],
-        readBlob: reader({ "orig-root/input.json": {}, "sub-run/output.json": { r: "REUSED" } }, reads),
+        readBlob: reader(
+          { "orig-root/input.json": {}, "sub-run/output.json": { r: "REUSED" } },
+          reads,
+        ),
         rerunFromNodePath: ["c"],
       },
     });
@@ -380,7 +610,16 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
         type: "sequence",
         id: "s",
         name: "s",
-        body: [prompt("a"), { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: { seed: "${context.fromA}" } }],
+        body: [
+          prompt("a"),
+          {
+            type: "workflow",
+            id: "sub",
+            name: "sub",
+            ref: "./nested.workflow.json",
+            input: { seed: "${context.fromA}" },
+          },
+        ],
       },
       prompt("d"),
     ]);
@@ -392,7 +631,12 @@ describe("Resume-from-K — a sequence body is transparent (ADR 0064)", () => {
       resume: {
         originalRuns: asubdOriginalRuns(),
         readBlob: reader(
-          { "orig-root/input.json": {}, "a-run/output.json": "REUSED_A", "sub-run/input.json": {}, "p-run/output.json": "REUSED_P" },
+          {
+            "orig-root/input.json": {},
+            "a-run/output.json": "REUSED_A",
+            "sub-run/input.json": {},
+            "p-run/output.json": "REUSED_P",
+          },
           reads,
         ),
         rerunFromNodePath: ["sub", "k"],

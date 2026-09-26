@@ -50,7 +50,11 @@ export class RunEventHub {
    * run has no open channel (already finished, or never started) — the caller distinguishes those
    * two cases via the run store.
    */
-  subscribe(rootRunId: string, onEvent: EventListener, onClose: CloseListener): (() => void) | null {
+  subscribe(
+    rootRunId: string,
+    onEvent: EventListener,
+    onClose: CloseListener,
+  ): (() => void) | null {
     const channel = this.channels.get(rootRunId);
     if (!channel) return null;
     channel.listeners.add(onEvent);

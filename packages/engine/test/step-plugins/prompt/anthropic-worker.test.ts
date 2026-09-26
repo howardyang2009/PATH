@@ -35,7 +35,9 @@ describe("anthropic prompt worker", () => {
   beforeEach(() => query.mockReset());
 
   it("returns the result text on a clean success", async () => {
-    query.mockReturnValue(session({ type: "result", subtype: "success", is_error: false, result: "the verdict" }));
+    query.mockReturnValue(
+      session({ type: "result", subtype: "success", is_error: false, result: "the verdict" }),
+    );
 
     const result = await run(request());
 
@@ -64,7 +66,12 @@ describe("anthropic prompt worker", () => {
 
   it("fails an error subtype and joins its errors", async () => {
     query.mockReturnValue(
-      session({ type: "result", subtype: "error_during_execution", is_error: true, errors: ["boom", "again"] }),
+      session({
+        type: "result",
+        subtype: "error_during_execution",
+        is_error: true,
+        errors: ["boom", "again"],
+      }),
     );
 
     const result = await run(request());

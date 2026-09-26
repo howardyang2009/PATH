@@ -29,7 +29,9 @@ function paneFile(): Record<string, unknown> {
 }
 
 async function openPane(seed: Record<string, unknown> = paneFile()) {
-  render(<App client={stubClient({ files: { [PATH]: JSON.stringify(seed) } })} initialPath={PATH} />);
+  render(
+    <App client={stubClient({ files: { [PATH]: JSON.stringify(seed) } })} initialPath={PATH} />,
+  );
   await screen.findByText("alpha");
   const canvas = screen.getByRole("region", { name: "Workflow canvas" });
   const pane = screen.getByRole("region", { name: "Properties" });
@@ -85,8 +87,12 @@ describe("#387 config value mode selector", () => {
     selectNode(canvas, "alpha");
     openSection(pane, "config");
     fireEvent.change(within(pane).getByLabelText("region mode"), { target: { value: "secret" } });
-    fireEvent.change(within(pane).getByLabelText("region $secret source"), { target: { value: "env" } });
-    fireEvent.change(within(pane).getByLabelText("region $secret $env variable"), { target: { value: "TOKEN" } });
+    fireEvent.change(within(pane).getByLabelText("region $secret source"), {
+      target: { value: "env" },
+    });
+    fireEvent.change(within(pane).getByLabelText("region $secret $env variable"), {
+      target: { value: "TOKEN" },
+    });
     expect(within(pane).getByText("$secret · $env · TOKEN")).toBeInTheDocument();
   });
 
@@ -128,6 +134,9 @@ describe("#387 wrapper round-trips through open/serialize", () => {
     const opened = openWorkflowFile(JSON.stringify(composed), DEFAULT_PLUGINS);
     if (opened.status !== "opened") throw new Error(opened.status);
     const roundTripped = JSON.parse(canonicalSerialize(opened.file)) as typeof composed;
-    expect(roundTripped.config).toEqual({ token: { $secret: { $env: "TOK" } }, region: { $env: "REGION" } });
+    expect(roundTripped.config).toEqual({
+      token: { $secret: { $env: "TOK" } },
+      region: { $env: "REGION" },
+    });
   });
 });

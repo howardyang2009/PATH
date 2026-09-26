@@ -3,7 +3,12 @@ import { describe, expect, it } from "vitest";
 import { editorTier, fieldsLayOut } from "../src/editor-tiers.js";
 
 const plugins: WireStepPlugin[] = [
-  { name: "prompt", fields: { prompt: { type: "string", optional: false } }, workers: ["anthropic"], default_worker: "anthropic" },
+  {
+    name: "prompt",
+    fields: { prompt: { type: "string", optional: false } },
+    workers: ["anthropic"],
+    default_worker: "anthropic",
+  },
   {
     name: "binary",
     fields: {
@@ -16,14 +21,24 @@ const plugins: WireStepPlugin[] = [
   },
   {
     name: "api-call",
-    fields: { endpoint: { type: "string", optional: false }, retries: { type: "number", optional: true } },
+    fields: {
+      endpoint: { type: "string", optional: false },
+      retries: { type: "number", optional: true },
+    },
     workers: ["http"],
     default_worker: "http",
   },
-  { name: "weird", fields: { shape: { type: "object", optional: false } }, workers: ["w"], default_worker: "w" },
+  {
+    name: "weird",
+    fields: { shape: { type: "object", optional: false } },
+    workers: ["w"],
+    default_worker: "w",
+  },
   {
     name: "listy",
-    fields: { tags: { type: "array", optional: true, element: { type: "string", optional: false } } },
+    fields: {
+      tags: { type: "array", optional: true, element: { type: "string", optional: false } },
+    },
     workers: ["w"],
     default_worker: "w",
   },
@@ -51,9 +66,22 @@ describe("editorTier — the three-tier resolution", () => {
 
 describe("fieldsLayOut", () => {
   it("is true for scalars and a flat scalar array, false for an object or nested array", () => {
-    expect(fieldsLayOut({ a: { type: "string", optional: false }, b: { type: "number", optional: true } })).toBe(true);
-    expect(fieldsLayOut({ a: { type: "array", optional: false, element: { type: "boolean", optional: false } } })).toBe(true);
+    expect(
+      fieldsLayOut({
+        a: { type: "string", optional: false },
+        b: { type: "number", optional: true },
+      }),
+    ).toBe(true);
+    expect(
+      fieldsLayOut({
+        a: { type: "array", optional: false, element: { type: "boolean", optional: false } },
+      }),
+    ).toBe(true);
     expect(fieldsLayOut({ a: { type: "record", optional: false } })).toBe(false);
-    expect(fieldsLayOut({ a: { type: "array", optional: false, element: { type: "object", optional: false } } })).toBe(false);
+    expect(
+      fieldsLayOut({
+        a: { type: "array", optional: false, element: { type: "object", optional: false } },
+      }),
+    ).toBe(false);
   });
 });

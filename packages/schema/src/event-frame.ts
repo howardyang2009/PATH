@@ -69,11 +69,12 @@ export function createEventFrameDecoder(): EventFrameDecoder {
       buffer += chunk;
       const frames: EventFrame[] = [];
 
-      let separator: number;
       // The frame boundary is the blank line, per the SSE grammar.
-      while ((separator = buffer.indexOf("\n\n")) !== -1) {
+      let separator = buffer.indexOf("\n\n");
+      while (separator !== -1) {
         const block = buffer.slice(0, separator);
         buffer = buffer.slice(separator + 2);
+        separator = buffer.indexOf("\n\n");
 
         const lines = block.split("\n");
         const dataLine = lines.find((line) => line.startsWith("data:"));

@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 let projectDir: string;
 let handle: PathServerHandle;
@@ -64,7 +64,9 @@ describe("PUT /v0/workflows", () => {
   it("creates a `/`-bearing nested path, making intermediate dirs", async () => {
     const res = await put("lib/deep/flow.workflow.json", workflow());
     expect(res.status).toBe(201);
-    expect(readFileSync(join(projectDir, "lib/deep/flow.workflow.json"), "utf8")).toContain("path/workflow@5");
+    expect(readFileSync(join(projectDir, "lib/deep/flow.workflow.json"), "utf8")).toContain(
+      "path/workflow@5",
+    );
   });
 
   it("preserves every client-minted id unchanged (identity-agnostic, ADR 0015)", async () => {
@@ -101,7 +103,9 @@ describe("PUT /v0/workflows", () => {
     };
     const res = await put("ordered.workflow.json", wf);
     expect(res.status).toBe(201);
-    expect(readFileSync(join(projectDir, "ordered.workflow.json"), "utf8")).toBe(`${JSON.stringify(wf, null, 2)}\n`);
+    expect(readFileSync(join(projectDir, "ordered.workflow.json"), "utf8")).toBe(
+      `${JSON.stringify(wf, null, 2)}\n`,
+    );
   });
 
   it("accepts an authored $env wrapper in workflow config (ADR 0012 restricts $env only in operator config)", async () => {
@@ -122,7 +126,11 @@ describe("PUT /v0/workflows", () => {
       const first = workflow();
       const etag = await seed("draft.workflow.json", first);
 
-      const next = workflow({ id: first.id, name: "draft", body: [{ type: "binary", id: randomUUID(), name: "step-two", command: "ls" }] });
+      const next = workflow({
+        id: first.id,
+        name: "draft",
+        body: [{ type: "binary", id: randomUUID(), name: "step-two", command: "ls" }],
+      });
       const res = await put("draft.workflow.json", next, { "If-Match": etag });
       expect(res.status).toBe(200);
 
@@ -231,7 +239,12 @@ describe("PUT /v0/workflows", () => {
     });
 
     it("400s a workflow whose shape fails @path/schema", async () => {
-      const res = await put("bad.workflow.json", { format: "path/workflow@5", id: randomUUID(), name: "bad", body: [] });
+      const res = await put("bad.workflow.json", {
+        format: "path/workflow@5",
+        id: randomUUID(),
+        name: "bad",
+        body: [],
+      });
       expect(res.status).toBe(400);
     });
 
@@ -256,7 +269,9 @@ describe("PUT /v0/workflows", () => {
       const res = await put("dup.workflow.json", wf);
       expect(res.status).toBe(400);
 
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join("\n");
+      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
+        "\n",
+      );
       expect(detail).toContain("body.1.id");
       expect(detail).toContain("body.0.id");
       expect(() => readFileSync(join(projectDir, "dup.workflow.json"))).toThrow();
@@ -264,10 +279,15 @@ describe("PUT /v0/workflows", () => {
 
     it("400s when a node reuses the workflow's own id", async () => {
       const sharedId = randomUUID();
-      const wf = workflow({ id: sharedId, body: [{ type: "binary", id: sharedId, name: "s", command: "echo" }] });
+      const wf = workflow({
+        id: sharedId,
+        body: [{ type: "binary", id: sharedId, name: "s", command: "echo" }],
+      });
       const res = await put("selfdup.workflow.json", wf);
       expect(res.status).toBe(400);
-      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join("\n");
+      const detail = ((await res.json()) as { error: { details: string[] } }).error.details.join(
+        "\n",
+      );
       expect(detail).toContain("body.0.id");
       expect(detail).toContain("id already used at id");
     });

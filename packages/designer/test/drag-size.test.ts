@@ -1,6 +1,6 @@
 import { act, renderHook } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import { useDragSize, type DragSizeOptions } from "../src/drag-size.js";
+import { type DragSizeOptions, useDragSize } from "../src/drag-size.js";
 
 /**
  * The one drag-set-dimension seam (`drag-size.ts`). These drive `useDragSize` head-on — the size, the

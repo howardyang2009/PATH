@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { makeWorkflowFileSchema, safeParseWorkflowFile as safeParse } from "../src/workflow-file.js";
+import {
+  makeWorkflowFileSchema,
+  safeParseWorkflowFile as safeParse,
+} from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
 // The closed `WorkflowFileSchema` const is gone (#337): a file is validated against the open schema a
@@ -32,16 +35,28 @@ describe("WorkflowFileSchema — envelope", () => {
   it("rejects a superseded or wrong format version", () => {
     // `@5` is the only accepted format string; `@0`–`@4` are superseded (the loader gives a targeted
     // "run the codemod" message — see the actionable-errors block below).
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0" }).success).toBe(false);
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@1" }).success).toBe(false);
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@2" }).success).toBe(false);
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@3" }).success).toBe(false);
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@4" }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@0" }).success).toBe(
+      false,
+    );
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@1" }).success).toBe(
+      false,
+    );
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@2" }).success).toBe(
+      false,
+    );
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@3" }).success).toBe(
+      false,
+    );
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@4" }).success).toBe(
+      false,
+    );
     expect(WorkflowFileSchema.safeParse({ ...minimal, format: "workflow" }).success).toBe(false);
   });
 
   it("requires an exact format string match", () => {
-    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(
+      false,
+    );
   });
 
   it("requires a workflow-level id (the durable GUID)", () => {
@@ -80,7 +95,9 @@ describe("WorkflowFileSchema — envelope", () => {
   it("rejects a file-level worker (a worker is a per-step name now, `@3` §4)", () => {
     // `@2` required a file-level `worker`; `@3` has none — the field is deleted, so a strict parse
     // rejects it as an unknown top-level key.
-    expect(WorkflowFileSchema.safeParse({ ...minimal, worker: { type: "engine" } }).success).toBe(false);
+    expect(WorkflowFileSchema.safeParse({ ...minimal, worker: { type: "engine" } }).success).toBe(
+      false,
+    );
     expect(WorkflowFileSchema.safeParse({ ...minimal, worker: "spawn" }).success).toBe(false);
   });
 
@@ -217,8 +234,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
           name: "p",
           join: "collect",
           branches: [
-            { type: "binary", id: UUID, name: "a", command: "echo", publish: { result: "${output}" } },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
           ],
         },
       ],
@@ -236,8 +265,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
           name: "p",
           join: "collect",
           branches: [
-            { type: "binary", id: UUID, name: "a", command: "echo", publish: { result: "${output}" } },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
           ],
         },
       ],
@@ -260,8 +301,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
           name: "p",
           join: "collect",
           branches: [
-            { type: "binary", id: UUID, name: "a", command: "echo", publish: { a_result: "${output}" } },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { b_result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { a_result: "${output}" },
+            },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { b_result: "${output}" },
+            },
           ],
         },
       ],
@@ -285,9 +338,21 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
               name: "a",
               condition: { type: "exists", path: "context.x" },
               max_iterations: 2,
-              node: { type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } },
+              node: {
+                type: "binary",
+                id: UUID,
+                name: "x",
+                command: "echo",
+                publish: { result: "${output}" },
+              },
             },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
           ],
         },
       ],
@@ -311,10 +376,22 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
               name: "a",
               body: [
                 { type: "binary", id: UUID, name: "x1", command: "echo" },
-                { type: "binary", id: UUID, name: "x2", command: "echo", publish: { result: "${output}" } },
+                {
+                  type: "binary",
+                  id: UUID,
+                  name: "x2",
+                  command: "echo",
+                  publish: { result: "${output}" },
+                },
               ],
             },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
           ],
         },
       ],
@@ -343,8 +420,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
           name: "race",
           join: "wait-one",
           branches: [
-            { type: "binary", id: UUID, name: "a", command: "echo", publish: { answer: "${output}" } },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { answer: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { answer: "${output}" },
+            },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { answer: "${output}" },
+            },
           ],
         },
       ],
@@ -368,8 +457,20 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
               name: "inner",
               join: "collect",
               branches: [
-                { type: "binary", id: UUID, name: "i", command: "echo", publish: { dup: "${output}" } },
-                { type: "binary", id: UUID, name: "j", command: "echo", publish: { dup: "${output}" } },
+                {
+                  type: "binary",
+                  id: UUID,
+                  name: "i",
+                  command: "echo",
+                  publish: { dup: "${output}" },
+                },
+                {
+                  type: "binary",
+                  id: UUID,
+                  name: "j",
+                  command: "echo",
+                  publish: { dup: "${output}" },
+                },
               ],
             },
             { type: "binary", id: UUID, name: "b", command: "echo", publish: { dup: "${output}" } },
@@ -389,14 +490,30 @@ describe("WorkflowFileSchema — duplicate publish keys across parallel siblings
           id: UUID,
           name: "p1",
           join: "collect",
-          branches: [{ type: "binary", id: UUID, name: "a", command: "echo", publish: { result: "${output}" } }],
+          branches: [
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+          ],
         },
         {
           type: "parallel",
           id: UUID,
           name: "p2",
           join: "collect",
-          branches: [{ type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } }],
+          branches: [
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+          ],
         },
       ],
     });
@@ -449,7 +566,15 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
           id: UUID,
           name: "fire",
           join: "do-not-wait",
-          branches: [{ type: "binary", id: UUID, name: "notify", command: "echo", publish: { result: "${output}" } }],
+          branches: [
+            {
+              type: "binary",
+              id: UUID,
+              name: "notify",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+          ],
         },
       ],
     });
@@ -475,7 +600,13 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
               name: "notify",
               condition: { type: "exists", path: "context.x" },
               max_iterations: 2,
-              node: { type: "binary", id: UUID, name: "x", command: "echo", publish: { result: "${output}" } },
+              node: {
+                type: "binary",
+                id: UUID,
+                name: "x",
+                command: "echo",
+                publish: { result: "${output}" },
+              },
             },
           ],
         },
@@ -502,7 +633,13 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
               name: "notify",
               body: [
                 { type: "binary", id: UUID, name: "x1", command: "echo" },
-                { type: "binary", id: UUID, name: "x2", command: "echo", publish: { result: "${output}" } },
+                {
+                  type: "binary",
+                  id: UUID,
+                  name: "x2",
+                  command: "echo",
+                  publish: { result: "${output}" },
+                },
               ],
             },
           ],
@@ -525,14 +662,30 @@ describe("WorkflowFileSchema — do-not-wait branch may not publish", () => {
           id: UUID,
           name: "collected",
           join: "collect",
-          branches: [{ type: "binary", id: UUID, name: "a", command: "echo", publish: { result: "${output}" } }],
+          branches: [
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+          ],
         },
         {
           type: "parallel",
           id: UUID,
           name: "raced",
           join: "wait-one",
-          branches: [{ type: "binary", id: UUID, name: "b", command: "echo", publish: { answer: "${output}" } }],
+          branches: [
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { answer: "${output}" },
+            },
+          ],
         },
       ],
     });
@@ -642,7 +795,12 @@ describe("safeParseWorkflowFile — actionable errors", () => {
   });
 
   it("G-S-09: a malformed version string still gets the literal mismatch", () => {
-    for (const format of ["path/workflow@6 ", "path/workflow@x", "path/workflow@06", "workflow@6"]) {
+    for (const format of [
+      "path/workflow@6 ",
+      "path/workflow@x",
+      "path/workflow@06",
+      "workflow@6",
+    ]) {
       const result = safeParseWorkflowFile({ ...minimal, format });
       expect(result.success, format).toBe(false);
       if (!result.success) {
@@ -683,7 +841,10 @@ describe("safeParseWorkflowFile — actionable errors", () => {
 describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, #516)", () => {
   it("accepts a worker_defaults naming a real type and a worker it ships", () => {
     // `prompt` ships `anthropic`; `binary` ships `spawn` — both are real (type, worker) selections.
-    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { prompt: "anthropic", binary: "spawn" } });
+    const result = safeParseWorkflowFile({
+      ...minimal,
+      worker_defaults: { prompt: "anthropic", binary: "spawn" },
+    });
     expect(result.success).toBe(true);
   });
 
@@ -714,7 +875,10 @@ describe("WorkflowFileSchema — worker_defaults registry validation (ADR 0044, 
   });
 
   it("reports every bad entry in one pass (aggregate)", () => {
-    const result = safeParseWorkflowFile({ ...minimal, worker_defaults: { nope: "anthropic", prompt: "deepseek" } });
+    const result = safeParseWorkflowFile({
+      ...minimal,
+      worker_defaults: { nope: "anthropic", prompt: "deepseek" },
+    });
     expect(result.success).toBe(false);
     if (!result.success) {
       const joined = result.errors.join("\n");

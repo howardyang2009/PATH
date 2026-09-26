@@ -21,6 +21,8 @@ describe("formatClockTime", () => {
   });
 
   it("keeps one width for two events a millisecond apart", () => {
-    expect(formatClockTime("2026-07-25T10:00:00.001Z")).toHaveLength(formatClockTime("2026-07-25T23:59:59.999Z").length);
+    expect(formatClockTime("2026-07-25T10:00:00.001Z")).toHaveLength(
+      formatClockTime("2026-07-25T23:59:59.999Z").length,
+    );
   });
 });

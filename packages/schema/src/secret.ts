@@ -62,7 +62,9 @@ export function mapSecrets(
     value,
     (node, path) => {
       if (!isSecretWrapper(node)) return undefined;
-      return typeof node.$secret === "string" ? visit(node.$secret, path) : (node as unknown as JsonValue);
+      return typeof node.$secret === "string"
+        ? visit(node.$secret, path)
+        : (node as unknown as JsonValue);
     },
     basePath,
   );

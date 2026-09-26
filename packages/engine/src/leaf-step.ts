@@ -121,7 +121,10 @@ export async function settleStepResult(args: SettleStepResult): Promise<SeqOutco
   // 3. Leaf-only spend (§5.7), from a metering worker only: recorded here, never rolled up — subtree
   //    figures are a read-time SUM. Emitted for a failed step too, before its finish.
   if (meters && (result.usage !== undefined || result.estimatedCostUsd !== undefined)) {
-    await step.usage({ usage: result.usage ?? null, estimatedCostUsd: result.estimatedCostUsd ?? null });
+    await step.usage({
+      usage: result.usage ?? null,
+      estimatedCostUsd: result.estimatedCostUsd ?? null,
+    });
   }
 
   // 4. A worker failure: prefix the node name and end the step, its own run the cancelling cause.
@@ -182,12 +185,19 @@ const NEVER_ABORT = new AbortController().signal;
  * that means "this step failed" returns `failed`, and a throw propagates as an engine fault (ADR 0020
  * sub-5), masked on the way out of `runWorkflow`.
  */
-export async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx: StepContext): Promise<SeqOutcome> {
+export async function runLeafStep(
+  node: LeafStepNode,
+  stepInput: JsonValue,
+  ctx: StepContext,
+): Promise<SeqOutcome> {
   const plugin = ctx.run.runtime.registry[node.type];
   if (!plugin) {
     // Unreachable through a schema-validated file — the load rejects a type no registry contributes.
     // A hand-constructed node can still reach here, so it fails the run loudly rather than silently.
-    return { status: "failed", error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it` };
+    return {
+      status: "failed",
+      error: `step "${node.name}": unknown step type "${node.type}" — no plugin contributes it`,
+    };
   }
   // Four-tier dispatch resolution (ADR 0044), first hit wins: a step's explicit `worker` pin; the
   // operator's run-wide `launchWorkerDefaults[type]`; the owning file's `worker_defaults[type]`; the
@@ -207,7 +217,10 @@ export async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx:
     plugin.defaultWorker;
   const descriptor = plugin.workers[workerName];
   if (!descriptor) {
-    return { status: "failed", error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"` };
+    return {
+      status: "failed",
+      error: `step "${node.name}": step type "${node.type}" has no worker "${workerName}"`,
+    };
   }
 
   // The plugin's own `fields` are the node keys its `fields` fragment names; the engine interpolates
@@ -226,7 +239,9 @@ export async function runLeafStep(node: LeafStepNode, stepInput: JsonValue, ctx:
     return { status: "failed", error: describeInterpolationError(node.name, err) };
   }
 
-  const release = descriptor.needsProcessorSlot ? await ctx.run.runtime.semaphore.acquire() : undefined;
+  const release = descriptor.needsProcessorSlot
+    ? await ctx.run.runtime.semaphore.acquire()
+    : undefined;
   try {
     // The step's run id is minted (and its row starts) only once any processor slot is really held.
     const step = ctx.run.emitter.step(node);

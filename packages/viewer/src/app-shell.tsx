@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
 
 export interface AppShellProps {
   /** Top of the left rail: workflow discovery + inline launch (#233). */
@@ -234,9 +234,8 @@ function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }
       <Pane id="pane-workflows" title="Workflows">
         {workflows}
       </Pane>
-      <div
+      <hr
         className="row-resizer"
-        role="separator"
         aria-orientation="horizontal"
         aria-label="Resize workflows panel"
         aria-valuenow={Math.round(height)}
@@ -265,9 +264,8 @@ function Resizer({
   onKeyDown: (e: React.KeyboardEvent) => void;
 }) {
   return (
-    <div
+    <hr
       className="pane-resizer"
-      role="separator"
       aria-orientation="vertical"
       aria-label={`Resize ${rail === "left" ? "runs" : "node I/O/C/E"} pane`}
       aria-valuenow={Math.round(width)}

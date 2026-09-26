@@ -5,7 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dbFilePath, openDb, readNdjsonLog } from "@path/engine";
 import { createEventFrameDecoder, type EventFrame, type LogEvent } from "@path/schema";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { startPathServer, type PathServerHandle } from "../src/create-server.js";
+import { type PathServerHandle, startPathServer } from "../src/create-server.js";
 
 const fixturesDir = join(dirname(fileURLToPath(import.meta.url)), "fixtures");
 
@@ -72,7 +72,6 @@ async function getBlob(rootRunId: string, runId: string, name: string): Promise<
   return fetch(`${handle.url}/v0/runs/${rootRunId}/blobs/${runId}/${name}`);
 }
 
-
 /**
  * Reads an SSE response body to completion. Decoded with the same codec a real client uses, so
  * these assertions are about what a client would actually see on the wire.
@@ -97,7 +96,9 @@ async function cancelRun(rootRunId: string): Promise<Response> {
 async function resumeRun(rootRunId: string, body?: unknown): Promise<Response> {
   return fetch(`${handle.url}/v0/runs/${rootRunId}/resume`, {
     method: "POST",
-    ...(body === undefined ? {} : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
+    ...(body === undefined
+      ? {}
+      : { headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }),
   });
 }
 
@@ -154,7 +155,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const root = finalBody.runs.find((r) => r.parent_run_id === null)!;
     expect(root.run_id).toBe(started.root_run_id);
     expect(root.node_id).toBeNull();
-    expect(new Set(finalBody.runs.map((r) => r.node_name))).toEqual(new Set([null, "greet", "shout"]));
+    expect(new Set(finalBody.runs.map((r) => r.node_name))).toEqual(
+      new Set([null, "greet", "shout"]),
+    );
     expect(finalBody.runs.every((r) => r.status === "succeeded")).toBe(true);
     expect(finalBody.runs.every((r) => r.root_run_id === started.root_run_id)).toBe(true);
   });
@@ -250,7 +253,14 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
         id: "af72905e-1cd4-4b83-9e07-32516da8bc4f",
         name: "superseded",
         worker: { type: "engine" },
-        body: [{ type: "binary", id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a", name: "step-one", command: "echo" }],
+        body: [
+          {
+            type: "binary",
+            id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a",
+            name: "step-one",
+            command: "echo",
+          },
+        ],
       }),
     );
 
@@ -270,7 +280,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   // workflow-authored config) accepts `$env`, so the reject is a post-parse walk on the operator
   // path only. `$env` authored *inside* a workflow.json is untouched.
   describe("operator config rejects $env ($secret literal still allowed)", () => {
-    it("400s a bare {\"$env\": ...} in operator config, and starts no run", async () => {
+    it('400s a bare {"$env": ...} in operator config, and starts no run', async () => {
       const res = await postRun({
         workflow_path: "two-binary-steps.workflow.json",
         config: { repo_path: { $env: "SECRET_X" } },
@@ -283,7 +293,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
       expect(listed.runs).toHaveLength(0);
     });
 
-    it("400s the composed {\"$secret\": {\"$env\": ...}} form, reporting the config path", async () => {
+    it('400s the composed {"$secret": {"$env": ...}} form, reporting the config path', async () => {
       const res = await postRun({
         workflow_path: "two-binary-steps.workflow.json",
         config: { token: { $secret: { $env: "SECRET_X" } } },
@@ -295,7 +305,7 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
       expect(body.error.message).toContain("token");
     });
 
-    it("accepts a literal {\"$secret\": \"...\"} in operator config", async () => {
+    it('accepts a literal {"$secret": "..."} in operator config', async () => {
       const res = await postRun({
         workflow_path: "two-binary-steps.workflow.json",
         config: { token: { $secret: "hunter2" } },
@@ -323,7 +333,10 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   // The launch gate confines like every other file door (`confine.ts`): a symlink inside the project
   // could otherwise point the run at a file outside it, which the read and write doors already refuse.
   it("404s a workflow_path that traverses a symlink, and starts no run", async () => {
-    symlinkSync(join(projectDir, "two-binary-steps.workflow.json"), join(projectDir, "linked.workflow.json"));
+    symlinkSync(
+      join(projectDir, "two-binary-steps.workflow.json"),
+      join(projectDir, "linked.workflow.json"),
+    );
     const res = await postRun({ workflow_path: "linked.workflow.json" });
     expect(res.status).toBe(404);
     const runs = (await (await listRuns()).json()) as { runs: RootRunSummary[] };
@@ -372,7 +385,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     });
 
     it("403s a cross-origin cancel", async () => {
-      const started = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+      const started = (await (
+        await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+      ).json()) as {
         root_run_id: string;
       };
       const res = await fetch(`${handle.url}/v0/runs/${started.root_run_id}/cancel`, {
@@ -384,11 +399,15 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
   });
 
   it("GET /v0/runs lists root runs most-recent-first, with limit and status filters", async () => {
-    const first = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const first = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(first.root_run_id);
-    const second = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const second = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(second.root_run_id);
@@ -415,7 +434,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     const limited = (await (await listRuns("?limit=1")).json()) as { runs: RootRunSummary[] };
     expect(limited.runs.map((r) => r.run_id)).toEqual([second.root_run_id]);
 
-    const succeeded = (await (await listRuns("?status=succeeded")).json()) as { runs: RootRunSummary[] };
+    const succeeded = (await (await listRuns("?status=succeeded")).json()) as {
+      runs: RootRunSummary[];
+    };
     expect(succeeded.runs).toHaveLength(2);
     const failed = (await (await listRuns("?status=failed")).json()) as { runs: RootRunSummary[] };
     expect(failed.runs).toHaveLength(0);
@@ -431,27 +452,37 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
     // Two roots of one workflow (`two-binary-steps`, succeeds) and one of another (`failing-step`) — a
     // set with more than one distinct `workflow_id`, so the filter has something to pick out (#365).
     const wfIdBinary = "418fca45-8a32-4069-8b17-f3f43ce7c30f";
-    const first = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const first = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(first.root_run_id);
-    const other = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const other = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(other.root_run_id);
-    const second = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const second = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(second.root_run_id);
 
     // The filter alone: only the two `two-binary-steps` roots, most-recent-first, and past the `failing-step`
     // root that sits between them in the unfiltered window.
-    const filtered = (await (await listRuns(`?workflow_id=${wfIdBinary}`)).json()) as { runs: RootRunSummary[] };
+    const filtered = (await (await listRuns(`?workflow_id=${wfIdBinary}`)).json()) as {
+      runs: RootRunSummary[];
+    };
     expect(filtered.runs.map((r) => r.run_id)).toEqual([second.root_run_id, first.root_run_id]);
     expect(filtered.runs.every((r) => r.workflow_id === wfIdBinary)).toBe(true);
 
     // Composes with `limit` (the newer of the two) and with `status` (both succeeded; the failing one is excluded).
-    const limited = (await (await listRuns(`?workflow_id=${wfIdBinary}&limit=1`)).json()) as { runs: RootRunSummary[] };
+    const limited = (await (await listRuns(`?workflow_id=${wfIdBinary}&limit=1`)).json()) as {
+      runs: RootRunSummary[];
+    };
     expect(limited.runs.map((r) => r.run_id)).toEqual([second.root_run_id]);
     const succeeded = (await (
       await listRuns(`?workflow_id=${wfIdBinary}&status=succeeded`)
@@ -483,7 +514,9 @@ describe("POST /v0/runs + GET /v0/runs/:root_run_id — end to end", () => {
 
 describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () => {
   it("deletes a finished run's rows and blobs, then 404s a re-read", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
@@ -509,7 +542,9 @@ describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () =>
   });
 
   it("409s deleting a run still in flight (cancel it first)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "slow-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "slow-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     // The run is running — a delete must refuse rather than pull rows out from under it.
@@ -523,7 +558,9 @@ describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () =>
   });
 
   it("403s a cross-origin delete", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(root_run_id);
@@ -539,7 +576,9 @@ describe("DELETE /v0/runs/:root_run_id — remove a run from both stores", () =>
 
 describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", () => {
   it("serves a child run's input and output blobs as application/json", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
@@ -558,7 +597,9 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
   });
 
   it("404s for an unknown run_id under a known root", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(root_run_id);
@@ -573,12 +614,16 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
     // A run where `keep` succeeds and `boom` fails, then resumed: `keep` reuses. Its reuse row holds
     // no blobs of its own, so the blob route must reach through to the source run — otherwise the
     // viewer's I/O panel shows "no input object recorded" for a step that plainly has one.
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "reuse-then-fail.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "reuse-then-fail.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(original)).status).toBe("failed");
 
-    const { root_run_id: successor } = (await (await resumeRun(original)).json()) as { root_run_id: string };
+    const { root_run_id: successor } = (await (await resumeRun(original)).json()) as {
+      root_run_id: string;
+    };
     const successorTree = await pollUntilTerminal(successor);
     const keepRow = successorTree.runs.find((r) => r.node_name === "keep")!;
     // The reuse row is a real succeeded row carrying the pointer to the source run.
@@ -608,12 +653,18 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
   });
 
   it("404s for an unknown root_run_id", async () => {
-    const res = await getBlob("00000000-0000-0000-0000-000000000000", "00000000-0000-0000-0000-000000000000", "output");
+    const res = await getBlob(
+      "00000000-0000-0000-0000-000000000000",
+      "00000000-0000-0000-0000-000000000000",
+      "output",
+    );
     expect(res.status).toBe(404);
   });
 
   it("404s for an unserved blob name (stderr is not served by this route)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
@@ -623,7 +674,9 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
   });
 
   it("serves the context.json of both a workflow-run and a leaf step", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     const tree = await pollUntilTerminal(root_run_id);
@@ -643,7 +696,9 @@ describe("GET /v0/runs/:root_run_id/blobs/:run_id/:name — run blob content", (
 
 describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
   it("streams live events in seq order, each frame carrying id: <seq>, and closes when the root finishes", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-slow-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
 
@@ -679,7 +734,9 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
   });
 
   it("replays the full persisted history from seq 1 for an already-finished run (no Last-Event-ID)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(root_run_id);
@@ -696,7 +753,9 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
   });
 
   it("replays full history from seq 1 then continues live when connecting fresh (no Last-Event-ID)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-slow-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
 
@@ -714,7 +773,9 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
   });
 
   it("reconnecting with Last-Event-ID: N replays only seq > N, then continues live with no gap or duplicate", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-slow-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-slow-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
 
@@ -737,7 +798,10 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
     const secondFrames = await readSseStream(secondRes);
 
     expect(secondFrames.every((f) => f.event.seq > lastSeenId)).toBe(true);
-    const allSeqs = [...firstFrames.map((f) => Number(f.id)), ...secondFrames.map((f) => f.event.seq)];
+    const allSeqs = [
+      ...firstFrames.map((f) => Number(f.id)),
+      ...secondFrames.map((f) => f.event.seq),
+    ];
     // Combined, the two connections cover the whole run with no gap and no duplicate.
     expect(allSeqs).toEqual(Array.from({ length: allSeqs.length }, (_, i) => i + 1));
     expect(secondFrames.at(-1)!.event.type).toBe("step-finished");
@@ -746,10 +810,12 @@ describe("GET /v0/runs/:root_run_id/events — live SSE stream", () => {
   });
 
   it("running with ndjson disabled: connecting mid-run still replays from seq 1, out of log_events", async () => {
-    const { root_run_id } = (await (await postRun({
-      workflow_path: "two-slow-steps.workflow.json",
-      log_backends: ["db"],
-    })).json()) as { root_run_id: string };
+    const { root_run_id } = (await (
+      await postRun({
+        workflow_path: "two-slow-steps.workflow.json",
+        log_backends: ["db"],
+      })
+    ).json()) as { root_run_id: string };
 
     // Let the run's early events (its own step-started, and the first ~200ms step) fire before any
     // SSE subscriber exists. There is no run.log, but every one of them is in `log_events`.
@@ -822,7 +888,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
   }
 
   it("202s, and the run actually ends cancelled with the row and the NDJSON log agreeing", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "long-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     // Cancel while the step's child process is genuinely alive, not between nodes — otherwise the
@@ -844,13 +912,24 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
     // The log tells the same story the rows do, and names the operator as the cause.
     const events: LogEvent[] = readNdjsonLog(projectDir, root_run_id);
     expect(events).toContainEqual(
-      expect.objectContaining({ type: "run-cancelled", node_name: "linger", cause: "operator", cause_run_id: null }),
+      expect.objectContaining({
+        type: "run-cancelled",
+        node_name: "linger",
+        cause: "operator",
+        cause_run_id: null,
+      }),
     );
-    expect(events.at(-1)).toMatchObject({ type: "step-finished", node_id: null, status: "cancelled" });
+    expect(events.at(-1)).toMatchObject({
+      type: "step-finished",
+      node_id: null,
+      status: "cancelled",
+    });
     // The 10s step was killed, not waited out: the fixture never got to publish its result.
-    expect(events.some((e) => e.type === "step-finished" && e.node_id === "linger" && e.status === "succeeded")).toBe(
-      false,
-    );
+    expect(
+      events.some(
+        (e) => e.type === "step-finished" && e.node_id === "linger" && e.status === "succeeded",
+      ),
+    ).toBe(false);
   });
 
   it("404s for an unknown root_run_id", async () => {
@@ -861,7 +940,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
   });
 
   it("409s for a run that already finished, naming the status it actually reached", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
@@ -873,7 +954,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
   });
 
   it("409s for a run that already ended cancelled — a cancel is not repeatable once it lands", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "long-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilStepAlive("long-step.alive");
@@ -925,7 +1008,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
   it("answers 202 again on a repeated cancel of a still-unwinding run (double-click is safe)", async () => {
     // This fixture's step traps SIGTERM and takes ~600ms to go, so the unwind window the 202
     // contract exists for is real and observable here rather than a sub-millisecond race.
-    const { root_run_id } = (await (await postRun({ workflow_path: "stubborn-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "stubborn-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilStepAlive("stubborn-step.alive");
@@ -945,7 +1030,9 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
   });
 
   it("is not swallowed by any other route: GET on the cancel path is a JSON 404, not a cancel", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "long-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilStepAlive("long-step.alive");
@@ -963,14 +1050,19 @@ describe("POST /v0/runs/:root_run_id/cancel — cancel a run in flight", () => {
 
 describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessful run", () => {
   it("202s resuming a failed run as a distinct successor that itself runs to terminal", async () => {
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(original)).status).toBe("failed");
 
     const res = await resumeRun(original);
     expect(res.status).toBe(202);
-    const { run_id, root_run_id: successor } = (await res.json()) as { run_id: string; root_run_id: string };
+    const { run_id, root_run_id: successor } = (await res.json()) as {
+      run_id: string;
+      root_run_id: string;
+    };
     // A resumed run is a *successor* (ADR 0001): its own fresh root id, never the predecessor's.
     expect(successor).not.toBe(original);
     expect(run_id).toBe(successor);
@@ -980,11 +1072,15 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     const successorBody = await pollUntilTerminal(successor);
     expect(successorBody.status).toBe("failed");
     const successorRoot = successorBody.runs.find((r) => r.parent_run_id === null)!;
-    expect((successorRoot as unknown as { resumed_from_root_run_id: string }).resumed_from_root_run_id).toBe(original);
+    expect(
+      (successorRoot as unknown as { resumed_from_root_run_id: string }).resumed_from_root_run_id,
+    ).toBe(original);
   });
 
   it("202s resuming a cancelled run", async () => {
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "long-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilStepAlive("long-step.alive");
@@ -1004,7 +1100,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("409s a run that is still running (nothing to resume yet)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "long-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "long-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilStepAlive("long-step.alive");
@@ -1018,20 +1116,26 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("409s a run that already succeeded (nothing to resume)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("succeeded");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "succeeded",
+    );
   });
 
   // Resume-from-K (#444): the already-succeeded gate is relaxed when `rerun_from_run_id` is supplied —
   // a succeeded region is a legitimate re-run target. Plain Resume of a succeeded run stays 409 above.
   it("202s Resume-from-K on a succeeded run and persists rerun_from_node_path on the successor", async () => {
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     const originalBody = await pollUntilTerminal(original);
@@ -1048,14 +1152,20 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     expect(successorBody.status).toBe("succeeded");
     const successorRoot = successorBody.runs.find((r) => r.parent_run_id === null)!;
     // The boundary rides the read wire, root-only, as {nodeId, nodeName}[] (#418).
-    expect(successorRoot.rerun_from_node_path).toEqual([{ nodeId: "bf356711-5a8c-4e46-9ca3-ea4f9aa9610a", nodeName: "shout" }]);
+    expect(successorRoot.rerun_from_node_path).toEqual([
+      { nodeId: "bf356711-5a8c-4e46-9ca3-ea4f9aa9610a", nodeName: "shout" },
+    ]);
     // greet reused (<K), shout re-ran (K).
-    expect(successorBody.runs.find((r) => r.node_name === "greet")!.reused_from_run_id).not.toBeNull();
+    expect(
+      successorBody.runs.find((r) => r.node_name === "greet")!.reused_from_run_id,
+    ).not.toBeNull();
     expect(successorBody.runs.find((r) => r.node_name === "shout")!.reused_from_run_id).toBeNull();
   });
 
   it("forwards an engine Resume-from-K refusal verbatim, with its taxonomy status", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("succeeded");
@@ -1063,7 +1173,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
     // An unresolvable selection — reason #1, status 400 (spec §5), message forwarded verbatim.
     const res = await resumeRun(root_run_id, { rerun_from_run_id: "not-a-run" });
     expect(res.status).toBe(400);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("not in the run tree being resumed");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "not in the run tree being resumed",
+    );
   });
 
   it("404s for an unknown root_run_id", async () => {
@@ -1075,7 +1187,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("403s a cross-origin resume (state-changing route, #237 gate)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(root_run_id);
@@ -1101,11 +1215,15 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(rootRunId);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("no recorded workflow path");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "no recorded workflow path",
+    );
   });
 
   it("404s when the recorded workflow file no longer exists on disk", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
@@ -1113,16 +1231,23 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(404);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("failing-step.workflow.json");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "failing-step.workflow.json",
+    );
   });
 
   it("400s when the recorded workflow file no longer passes validation", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
     // The file at that path is now schema-invalid — a resume of it is a 400, as a fresh launch would be.
-    writeFileSync(join(projectDir, "failing-step.workflow.json"), JSON.stringify({ format: "path/workflow@2" }));
+    writeFileSync(
+      join(projectDir, "failing-step.workflow.json"),
+      JSON.stringify({ format: "path/workflow@2" }),
+    );
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(400);
@@ -1132,7 +1257,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   // file rolled back to `@1` under a finished run is a 400 naming the codemod, not an upconvert of
   // the version the run originally succeeded against.
   it("400s a resume whose recorded workflow file has been rolled back to @1, naming the codemod", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
@@ -1143,7 +1270,14 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
         id: "af72905e-1cd4-4b83-9e07-32516da8bc4f",
         name: "failing-step",
         worker: { type: "engine" },
-        body: [{ type: "binary", id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a", name: "boom", command: "false" }],
+        body: [
+          {
+            type: "binary",
+            id: "31e8d4b0-7a95-4162-ac2f-e0764b95d38a",
+            name: "boom",
+            command: "false",
+          },
+        ],
       }),
     );
 
@@ -1156,7 +1290,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("accepts an optional config override on resume (202)", async () => {
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(original)).status).toBe("failed");
@@ -1169,7 +1305,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("400s a resume whose config override carries an $env wrapper (ADR 0012)", async () => {
-    const { root_run_id: original } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id: original } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(original)).status).toBe("failed");
@@ -1182,7 +1320,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("400s a resume with a malformed JSON body", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(root_run_id);
@@ -1196,7 +1336,9 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
   });
 
   it("409s when the file at the recorded path is now a different workflow (id changed)", async () => {
-    const { root_run_id } = (await (await postRun({ workflow_path: "failing-step.workflow.json" })).json()) as {
+    const { root_run_id } = (await (
+      await postRun({ workflow_path: "failing-step.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     expect((await pollUntilTerminal(root_run_id)).status).toBe("failed");
@@ -1208,13 +1350,23 @@ describe("POST /v0/runs/:root_run_id/resume — resume a finished-but-unsuccessf
         format: "path/workflow@5",
         id: "3f2504e0-4f89-41d3-9a0c-0305e82c3301",
         name: "swapped",
-        body: [{ type: "binary", id: "550e8400-e29b-41d4-a716-446655440000", name: "noop", command: "true", args: [] }],
+        body: [
+          {
+            type: "binary",
+            id: "550e8400-e29b-41d4-a716-446655440000",
+            name: "noop",
+            command: "true",
+            args: [],
+          },
+        ],
       }),
     );
 
     const res = await resumeRun(root_run_id);
     expect(res.status).toBe(409);
-    expect(((await res.json()) as { error: { message: string } }).error.message).toContain("id changed");
+    expect(((await res.json()) as { error: { message: string } }).error.message).toContain(
+      "id changed",
+    );
   });
 });
 
@@ -1254,19 +1406,27 @@ describe("GET /v0/runs — the frozen launch facts (ADR 0046)", () => {
     const listed = (await (await listRuns()).json()) as {
       runs: (RootRunSummary & { launch_secret_keys?: string[] })[];
     };
-    expect(listed.runs.find((r) => r.run_id === started.root_run_id)!.launch_secret_keys).toEqual(["apiKey"]);
+    expect(listed.runs.find((r) => r.run_id === started.root_run_id)!.launch_secret_keys).toEqual([
+      "apiKey",
+    ]);
   });
 
   it("carries no launch_facts, and no secret names, for a launch that supplied nothing", async () => {
-    const started = (await (await postRun({ workflow_path: "two-binary-steps.workflow.json" })).json()) as {
+    const started = (await (
+      await postRun({ workflow_path: "two-binary-steps.workflow.json" })
+    ).json()) as {
       root_run_id: string;
     };
     await pollUntilTerminal(started.root_run_id);
 
-    expect((await (await getRun(started.root_run_id)).json()) as TreeWithFacts).not.toHaveProperty("launch_facts");
+    expect((await (await getRun(started.root_run_id)).json()) as TreeWithFacts).not.toHaveProperty(
+      "launch_facts",
+    );
     const listed = (await (await listRuns()).json()) as {
       runs: (RootRunSummary & { launch_secret_keys?: string[] })[];
     };
-    expect(listed.runs.find((r) => r.run_id === started.root_run_id)).not.toHaveProperty("launch_secret_keys");
+    expect(listed.runs.find((r) => r.run_id === started.root_run_id)).not.toHaveProperty(
+      "launch_secret_keys",
+    );
   });
 });

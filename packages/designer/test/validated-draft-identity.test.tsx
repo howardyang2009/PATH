@@ -1,8 +1,13 @@
 import { STEP_ROOTS } from "@path/schema";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import { editKey, type EditKey } from "../src/edit-key.js";
-import { useDraft, useKeyedRows, useValidatedDraft, type DraftResult } from "../src/validated-draft.js";
+import { type EditKey, editKey } from "../src/edit-key.js";
+import {
+  type DraftResult,
+  useDraft,
+  useKeyedRows,
+  useValidatedDraft,
+} from "../src/validated-draft.js";
 
 /**
  * The draft protocol's own seam: the identity a field passes is what re-seeds it, so a caller can no
@@ -33,20 +38,38 @@ function StructuredField({
 }): JSX.Element {
   const { draft, error, onEdit } = useDraft<string, string>(
     () => `seeded-${owner}`,
-    (next) => (next.length < 3 ? { ok: false, error: "Too short." } : { ok: true, value: next.toUpperCase() }),
+    (next) =>
+      next.length < 3
+        ? { ok: false, error: "Too short." }
+        : { ok: true, value: next.toUpperCase() },
     editKey(owner, "when"),
     onCommit,
   );
   return (
     <>
-      <input aria-label="structured" value={draft} onChange={(e) => onEdit(e.target.value, editKey(owner, "when"))} />
+      <input
+        aria-label="structured"
+        value={draft}
+        onChange={(e) => onEdit(e.target.value, editKey(owner, "when"))}
+      />
       {error ? <p role="alert">{error}</p> : null}
     </>
   );
 }
 
-function RowsField({ owner, onCommit }: { owner: string; onCommit: (map: Record<string, string>, key?: EditKey) => void }): JSX.Element {
-  const { rows, setRow } = useKeyedRows(() => [{ key: "k", value: owner }], STEP_ROOTS, editKey(owner, "publish"), onCommit);
+function RowsField({
+  owner,
+  onCommit,
+}: {
+  owner: string;
+  onCommit: (map: Record<string, string>, key?: EditKey) => void;
+}): JSX.Element {
+  const { rows, setRow } = useKeyedRows(
+    () => [{ key: "k", value: owner }],
+    STEP_ROOTS,
+    editKey(owner, "publish"),
+    onCommit,
+  );
   return (
     <button type="button" onClick={() => setRow(0, { key: "k", value: "edited" })}>
       {rows.map((row) => `${row.key}=${row.value}`).join(",")}

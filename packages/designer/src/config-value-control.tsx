@@ -1,12 +1,12 @@
-import { isEnvWrapper, isSecretWrapper, type ConfigValue, type EnvWrapper } from "@path/schema";
+import { type ConfigValue, type EnvWrapper, isEnvWrapper, isSecretWrapper } from "@path/schema";
 import {
+  type ConfigMode,
   configModeOf,
   isEditableScalar,
   referenceLabel,
   renderConfigValue,
   setConfigMode,
   setSecretSource,
-  type ConfigMode,
 } from "./config-value.js";
 
 /**
@@ -50,7 +50,9 @@ export function ConfigValueControl({ value, onChange, label }: ConfigControlProp
         <option value="env">$env</option>
         <option value="secret">$secret</option>
       </select>
-      {mode === "literal" ? <LiteralControl value={value} onChange={onChange} label={label} /> : null}
+      {mode === "literal" ? (
+        <LiteralControl value={value} onChange={onChange} label={label} />
+      ) : null}
       {mode === "env" ? <EnvControl value={value} onChange={onChange} label={label} /> : null}
       {mode === "secret" ? <SecretControl value={value} onChange={onChange} label={label} /> : null}
     </div>
@@ -60,12 +62,35 @@ export function ConfigValueControl({ value, onChange, label }: ConfigControlProp
 /** The literal-mode control: a typed input matching the scalar's own type (boolean / number / string). */
 function LiteralControl({ value, onChange, label }: ConfigControlProps): JSX.Element {
   if (typeof value === "boolean") {
-    return <input type="checkbox" aria-label={label} checked={value} onChange={(e) => onChange(e.target.checked)} />;
+    return (
+      <input
+        type="checkbox"
+        aria-label={label}
+        checked={value}
+        onChange={(e) => onChange(e.target.checked)}
+      />
+    );
   }
   if (typeof value === "number") {
-    return <input className="pane-input" type="number" aria-label={label} value={value} onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))} />;
+    return (
+      <input
+        className="pane-input"
+        type="number"
+        aria-label={label}
+        value={value}
+        onChange={(e) => onChange(e.target.value === "" ? 0 : Number(e.target.value))}
+      />
+    );
   }
-  return <input className="pane-input" type="text" aria-label={label} value={typeof value === "string" ? value : ""} onChange={(e) => onChange(e.target.value)} />;
+  return (
+    <input
+      className="pane-input"
+      type="text"
+      aria-label={label}
+      value={typeof value === "string" ? value : ""}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  );
 }
 
 /** The `$env`-mode control: an env-var-name input plus the reference-only chip (`$env · NAME`). */

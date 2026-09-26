@@ -1,12 +1,12 @@
-import { describe, expect, it } from "vitest";
 import type { WireStepPlugin } from "@path/client-core";
 import { PUBLISH_ROOTS, STEP_ROOTS, type WorkflowNode } from "@path/schema";
+import { describe, expect, it } from "vitest";
 import {
-  validRowsToMap,
   validateInputDraft,
   validateJsonPayload,
   validateMaxIterations,
   validateOutputSchema,
+  validRowsToMap,
 } from "../src/validated-draft.js";
 
 /**
@@ -17,11 +17,22 @@ import {
 
 const UUID = "aaaaaaaa-1111-4111-8111-111111111111";
 const plugins: WireStepPlugin[] = [
-  { name: "api-call", fields: { endpoint: { type: "string", optional: false } }, workers: ["http"], default_worker: "http" },
+  {
+    name: "api-call",
+    fields: { endpoint: { type: "string", optional: false } },
+    workers: ["http"],
+    default_worker: "http",
+  },
 ];
 
 function apiNode(extra: Record<string, unknown> = {}): WorkflowNode {
-  return { id: UUID, name: "call", type: "api-call", endpoint: "/v1", ...extra } as unknown as WorkflowNode;
+  return {
+    id: UUID,
+    name: "call",
+    type: "api-call",
+    endpoint: "/v1",
+    ...extra,
+  } as unknown as WorkflowNode;
 }
 function asRec(node: WorkflowNode): Record<string, unknown> {
   return node as unknown as Record<string, unknown>;
@@ -42,7 +53,8 @@ describe("validateJsonPayload", () => {
   it("commits a valid payload, merged onto the node's envelope", () => {
     const r = validateJsonPayload(apiNode(), '{"endpoint":"/v2"}', plugins);
     expect(r.ok).toBe(true);
-    if (r.ok) expect(asRec(r.value)).toEqual({ id: UUID, name: "call", type: "api-call", endpoint: "/v2" });
+    if (r.ok)
+      expect(asRec(r.value)).toEqual({ id: UUID, name: "call", type: "api-call", endpoint: "/v2" });
   });
 
   it("rejects a payload whose merged node fails the registry (an unknown step type)", () => {
@@ -75,7 +87,10 @@ describe("validateMaxIterations", () => {
   });
 
   it("accepts a ${config.…} reference as a string", () => {
-    expect(validateMaxIterations("${config.max_revisions}")).toEqual({ ok: true, value: "${config.max_revisions}" });
+    expect(validateMaxIterations("${config.max_revisions}")).toEqual({
+      ok: true,
+      value: "${config.max_revisions}",
+    });
   });
 
   it("rejects an empty draft, a zero, and an ill-typed reference", () => {
@@ -87,7 +102,13 @@ describe("validateMaxIterations", () => {
 
 describe("validateOutputSchema", () => {
   function personNode(extra: Record<string, unknown> = {}): WorkflowNode {
-    return { id: UUID, name: "review", type: "person-activity", description: "do it", ...extra } as unknown as WorkflowNode;
+    return {
+      id: UUID,
+      name: "review",
+      type: "person-activity",
+      description: "do it",
+      ...extra,
+    } as unknown as WorkflowNode;
   }
 
   it("commits a valid JSON-object schema", () => {
@@ -105,22 +126,33 @@ describe("validateOutputSchema", () => {
 
   it("rejects unparseable JSON and a non-object schema without committing", () => {
     expect(validateOutputSchema(personNode(), "{ not json").ok).toBe(false);
-    expect(validateOutputSchema(personNode(), "[1,2]")).toEqual({ ok: false, error: "The output schema must be a JSON object." });
+    expect(validateOutputSchema(personNode(), "[1,2]")).toEqual({
+      ok: false,
+      error: "The output schema must be a JSON object.",
+    });
     expect(validateOutputSchema(personNode(), "42").ok).toBe(false);
   });
 });
 
 describe("validRowsToMap", () => {
   it("builds the map when every named row's value interpolates", () => {
-    expect(validRowsToMap([{ key: "out", value: "${output.x}" }], PUBLISH_ROOTS)).toEqual({ ok: true, map: { out: "${output.x}" } });
+    expect(validRowsToMap([{ key: "out", value: "${output.x}" }], PUBLISH_ROOTS)).toEqual({
+      ok: true,
+      map: { out: "${output.x}" },
+    });
   });
 
   it("reports not-ok when a named row's value is ill-typed", () => {
-    expect(validRowsToMap([{ key: "out", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({ ok: false });
+    expect(validRowsToMap([{ key: "out", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({
+      ok: false,
+    });
   });
 
   it("skips an unnamed (blank-key) in-progress row rather than failing it", () => {
-    expect(validRowsToMap([{ key: "", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({ ok: true, map: {} });
+    expect(validRowsToMap([{ key: "", value: "${output.x" }], PUBLISH_ROOTS)).toEqual({
+      ok: true,
+      map: {},
+    });
   });
 
   it("honours the roots it is given (output is not a step root)", () => {

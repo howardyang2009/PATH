@@ -34,9 +34,7 @@ function run(overrides: Partial<RunNodeState> & { runId: string }): RunNodeState
 
 function tree(...runs: RunNodeState[]) {
   const map = new Map(runs.map((entry) => [entry.runId, entry]));
-  return render(
-    <RunTree rootRunId={ROOT} runs={map} selectedRunId={null} onSelectRun={vi.fn()} />,
-  );
+  return render(<RunTree rootRunId={ROOT} runs={map} selectedRunId={null} onSelectRun={vi.fn()} />);
 }
 
 const ROOT_RUN = run({ runId: ROOT, parentRunId: null, nodeId: null });
@@ -54,7 +52,9 @@ describe("RunTree", () => {
       });
     tree(ROOT_RUN, pass(1, null), pass(2, "check"), pass(3, "check"));
 
-    const labels = [1, 2, 3].map((n) => within(screen.getByTestId(`tree-row-run_pass_${n}`)).getByText(/^Pass/).textContent);
+    const labels = [1, 2, 3].map(
+      (n) => within(screen.getByTestId(`tree-row-run_pass_${n}`)).getByText(/^Pass/).textContent,
+    );
     expect(labels).toEqual(["Pass 1", "Pass 2 · opened by check", "Pass 3 · opened by check"]);
   });
 
@@ -92,10 +92,7 @@ describe("RunTree", () => {
   });
 
   it("shows the human name, the node GUID, and the run id on a row", () => {
-    tree(
-      ROOT_RUN,
-      run({ runId: "run_a", nodeId: "node-guid-123", nodeName: "fetch-data" }),
-    );
+    tree(ROOT_RUN, run({ runId: "run_a", nodeId: "node-guid-123", nodeName: "fetch-data" }));
 
     const row = screen.getByTestId("tree-row-run_a");
     expect(row).toHaveTextContent("fetch-data");
@@ -118,20 +115,34 @@ describe("RunTree", () => {
     // status stays running (ADR 0038) — the pill is the only place this derivation lands.
     tree(
       ROOT_RUN,
-      run({ runId: "run_mid", nodeId: "mid", parentRunId: ROOT, startedAt: "2026-07-25T10:00:01.000Z" }),
-      run({ runId: "run_leaf", nodeId: "leaf", parentRunId: "run_mid", status: "awaiting", startedAt: "2026-07-25T10:00:02.000Z" }),
+      run({
+        runId: "run_mid",
+        nodeId: "mid",
+        parentRunId: ROOT,
+        startedAt: "2026-07-25T10:00:01.000Z",
+      }),
+      run({
+        runId: "run_leaf",
+        nodeId: "leaf",
+        parentRunId: "run_mid",
+        status: "awaiting",
+        startedAt: "2026-07-25T10:00:02.000Z",
+      }),
     );
 
-    expect(within(screen.getByTestId(`tree-row-${ROOT}`)).getByText("awaiting")).toBeInTheDocument();
-    expect(within(screen.getByTestId("tree-row-run_mid")).getByText("awaiting")).toBeInTheDocument();
-    expect(within(screen.getByTestId("tree-row-run_leaf")).getByText("awaiting")).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId(`tree-row-${ROOT}`)).getByText("awaiting"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("tree-row-run_mid")).getByText("awaiting"),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByTestId("tree-row-run_leaf")).getByText("awaiting"),
+    ).toBeInTheDocument();
   });
 
   it("leaves a running run with no awaiting descendant showing running", () => {
-    tree(
-      ROOT_RUN,
-      run({ runId: "run_a", nodeId: "a", parentRunId: ROOT, status: "running" }),
-    );
+    tree(ROOT_RUN, run({ runId: "run_a", nodeId: "a", parentRunId: ROOT, status: "running" }));
 
     expect(within(screen.getByTestId("tree-row-run_a")).getByText("running")).toBeInTheDocument();
     // The root has no awaiting anywhere below, so it stays running too.

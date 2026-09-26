@@ -80,7 +80,9 @@ describe("Delete", () => {
 
     expect(confirm).toHaveBeenCalledWith(expect.stringContaining(`Delete "${WORKFLOW_PATH}"?`));
     await waitFor(() => expect(calls.deletes).toHaveLength(1));
-    expect(calls.deletes[0]!.url).toMatch(/^\/v0\/workflows\/file\?path=flows%2Fmain\.workflow\.json&session_id=/);
+    expect(calls.deletes[0]!.url).toMatch(
+      /^\/v0\/workflows\/file\?path=flows%2Fmain\.workflow\.json&session_id=/,
+    );
     expect(calls.deletes[0]!.ifMatch).toBe('"stub"');
     expect((await screen.findByText("Deleted")).closest(".topbar-title")).not.toBeNull();
     expect(screen.queryByText("alpha")).not.toBeInTheDocument();
@@ -104,7 +106,11 @@ describe("Delete", () => {
         client={stubClient({
           files: { [WORKFLOW_PATH]: JSON.stringify(WORKFLOW_FILE) },
           calls,
-          onDelete: () => new Response(JSON.stringify({ error: { message: "workflow is being edited in another session" } }), { status: 409 }),
+          onDelete: () =>
+            new Response(
+              JSON.stringify({ error: { message: "workflow is being edited in another session" } }),
+              { status: 409 },
+            ),
         })}
         initialPath={WORKFLOW_PATH}
       />,
@@ -114,7 +120,9 @@ describe("Delete", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Delete" }));
 
-    const alert = await screen.findByText(/Could not delete: workflow is being edited in another session/);
+    const alert = await screen.findByText(
+      /Could not delete: workflow is being edited in another session/,
+    );
     expect(alert.closest(".topbar-title")).not.toBeNull();
     expect(screen.getByText("alpha")).toBeInTheDocument();
   });
@@ -147,10 +155,10 @@ describe("Workflow | Template edit-mode switch", () => {
   it("starts in workflow mode and switches to an empty template canvas", async () => {
     renderApp();
     await screen.findByRole("button", { name: "New workflow" });
-    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toBeChecked();
 
     await switchTo("Template");
-    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toBeChecked();
     expect(screen.getByRole("button", { name: "New template" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Open template" })).toBeInTheDocument();
   });
@@ -166,14 +174,22 @@ describe("Workflow | Template edit-mode switch", () => {
     const dialog = await screen.findByRole("dialog", { name: "Save new template" });
     // The Template is the only kind (ADR 0063): the dialog offers no kind choice.
     expect(within(dialog).queryByLabelText("Workflow-template")).not.toBeInTheDocument();
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "weekly" } });
-    fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "weekly steps" } });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "weekly" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "weekly steps" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     // The green "Saved" status replaces the file name in the top bar.
     await screen.findByText("Saved");
     expect(screen.queryByTestId("author-mode")).not.toBeInTheDocument();
-    expect(calls.templateWrites[0]).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "weekly" } });
+    expect(calls.templateWrites[0]).toMatchObject({
+      method: "POST",
+      id: null,
+      body: { kind: "step", name: "weekly" },
+    });
   });
 
   it("a new template needs a description before it can be created", async () => {
@@ -188,11 +204,22 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "gate" } });
     expect(within(dialog).getByRole("button", { name: "Create" })).toBeDisabled();
 
-    fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "a gate" } });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "a gate" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
     await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
-    expect(calls.templateWrites[0]!.body).toMatchObject({ kind: "step", name: "gate", description: "a gate" });
-    expect(Object.keys(calls.templateWrites[0]!.body["body"] as object).sort()).toEqual(["body", "description", "format", "id"]);
+    expect(calls.templateWrites[0]!.body).toMatchObject({
+      kind: "step",
+      name: "gate",
+      description: "a gate",
+    });
+    expect(Object.keys(calls.templateWrites[0]!.body["body"] as object).sort()).toEqual([
+      "body",
+      "description",
+      "format",
+      "id",
+    ]);
   });
 
   it("Open… in template mode lists templates and opens the chosen one", async () => {
@@ -201,7 +228,9 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open…" }));
 
     const dialog = await screen.findByRole("dialog", { name: "Open a template" });
-    fireEvent.click(await within(dialog).findByRole("button", { name: /nightly\.step-template\.json/ }));
+    fireEvent.click(
+      await within(dialog).findByRole("button", { name: /nightly\.step-template\.json/ }),
+    );
 
     await screen.findByText("draft");
     expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json");
@@ -213,12 +242,15 @@ describe("Workflow | Template edit-mode switch", () => {
     const palette = screen.getByRole("region", { name: "Palette" });
     fireEvent.click(within(palette).getByRole("tab", { name: "Templates" }));
     const card = await within(palette).findByRole("button", { name: /^nightly/ });
-    expect(card).toHaveAttribute("title", expect.stringContaining("Switch to Template mode to edit this template."));
+    expect(card).toHaveAttribute(
+      "title",
+      expect.stringContaining("Switch to Template mode to edit this template."),
+    );
 
     // In workflow mode the double-click leaves the open workflow alone.
     fireEvent.doubleClick(card);
     expect(screen.getByText("alpha")).toBeInTheDocument();
-    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toBeChecked();
 
     await switchTo("Template");
     fireEvent.doubleClick(await within(palette).findByRole("button", { name: /^nightly/ }));
@@ -233,23 +265,27 @@ describe("Workflow | Template edit-mode switch", () => {
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
-    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Template" })).toBeChecked();
 
     fireEvent.click(screen.getByRole("button", { name: "New" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Workflow" }));
-    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toBeChecked();
     expect(confirm).not.toHaveBeenCalled();
   });
 
-  it("shows \"Unsaved edits\" in the top bar only once a New workflow is edited", async () => {
+  it('shows "Unsaved edits" in the top bar only once a New workflow is edited', async () => {
     renderApp();
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
     expect(screen.queryByText("Unsaved edits")).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByText("Prompt"));
-    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", {
+        name: /add prompt here/,
+      }),
+    );
     expect(screen.getByText("Unsaved edits").closest(".topbar-title")).not.toBeNull();
   });
 
@@ -258,13 +294,17 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(await screen.findByRole("button", { name: "New workflow" }));
     await screen.findByRole("region", { name: "Workflow canvas" });
     fireEvent.click(screen.getByText("Prompt"));
-    fireEvent.click(within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", { name: /add prompt here/ }));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Workflow canvas" })).getByRole("button", {
+        name: /add prompt here/,
+      }),
+    );
     const confirm = vi.spyOn(window, "confirm").mockReturnValue(false);
 
     fireEvent.click(within(modeSwitch()).getByRole("radio", { name: "Template" }));
 
     expect(confirm).toHaveBeenCalledWith("Discard unsaved changes?");
-    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toHaveAttribute("aria-checked", "true");
+    expect(within(modeSwitch()).getByRole("radio", { name: "Workflow" })).toBeChecked();
     expect(screen.getByRole("region", { name: "Workflow canvas" })).toBeInTheDocument();
   });
 
@@ -281,7 +321,11 @@ describe("Workflow | Template edit-mode switch", () => {
     await screen.findByText("alpha");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Workflow…/ }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", {
+        name: /Workflow…/,
+      }),
+    );
     const dialog = await screen.findByRole("dialog", { name: "Save workflow as" });
     expect(within(dialog).getByLabelText("Filename")).toHaveValue("main-copy");
     fireEvent.change(within(dialog).getByLabelText("Filename"), { target: { value: "other" } });
@@ -304,23 +348,37 @@ describe("Workflow | Template edit-mode switch", () => {
     await screen.findByText("alpha");
 
     fireEvent.click(screen.getByRole("button", { name: "Save as…" }));
-    fireEvent.click(within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", { name: /Template…/ }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog", { name: "Save as" })).getByRole("button", {
+        name: /Template…/,
+      }),
+    );
     const dialog = await screen.findByRole("dialog", { name: "Save workflow as template" });
     expect(within(dialog).getByLabelText("Template name")).toHaveValue("main");
     expect(within(dialog).getByRole("note")).toHaveTextContent("A template keeps only the body.");
-    fireEvent.change(within(dialog).getByLabelText("Template name"), { target: { value: "main-steps" } });
-    fireEvent.change(within(dialog).getByLabelText("Template description"), { target: { value: "an alpha step" } });
+    fireEvent.change(within(dialog).getByLabelText("Template name"), {
+      target: { value: "main-steps" },
+    });
+    fireEvent.change(within(dialog).getByLabelText("Template description"), {
+      target: { value: "an alpha step" },
+    });
     fireEvent.click(within(dialog).getByRole("button", { name: "Create" }));
 
     await waitFor(() => expect(calls.templateWrites).toHaveLength(1));
     const write = calls.templateWrites[0]!;
-    expect(write).toMatchObject({ method: "POST", id: null, body: { kind: "step", name: "main-steps", description: "an alpha step" } });
+    expect(write).toMatchObject({
+      method: "POST",
+      id: null,
+      body: { kind: "step", name: "main-steps", description: "an alpha step" },
+    });
     const body = write.body["body"] as { id: string; body: unknown[] };
     expect(Object.keys(body).sort()).toEqual(["body", "description", "format", "id"]);
     // A fresh identity (a template must not share the workflow's), and the workflow's body.
     expect(body.id).not.toBe(WORKFLOW_FILE.id);
     expect(body.body).toEqual(WORKFLOW_FILE.body);
-    expect((await screen.findByText('Saved as template "main-steps"')).closest(".topbar-title")).not.toBeNull();
+    expect(
+      (await screen.findByText('Saved as template "main-steps"')).closest(".topbar-title"),
+    ).not.toBeNull();
     // The workflow stays open and was not written.
     expect(screen.getByText("alpha")).toBeInTheDocument();
     expect(calls.put).toHaveLength(0);
@@ -356,7 +414,9 @@ describe("Workflow | Template edit-mode switch", () => {
     fireEvent.click(card);
     fireEvent.doubleClick(card);
 
-    await waitFor(() => expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json"));
+    await waitFor(() =>
+      expect(screen.getByTestId("author-mode")).toHaveTextContent("nightly.step-template.json"),
+    );
     expect(confirm).not.toHaveBeenCalled();
   });
 });

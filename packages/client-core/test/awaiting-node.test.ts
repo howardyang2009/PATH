@@ -22,7 +22,11 @@ const personNode = {
   name: "legal-signoff",
   description: "Review the contract for {{client.name}}.",
   assignee: "legal@acme.co",
-  outputSchema: { type: "object", required: ["approved"], properties: { approved: { type: "boolean" } } },
+  outputSchema: {
+    type: "object",
+    required: ["approved"],
+    properties: { approved: { type: "boolean" } },
+  },
 };
 
 describe("findAwaitingNode", () => {
@@ -31,7 +35,11 @@ describe("findAwaitingNode", () => {
     expect(found).toEqual({
       description: "Review the contract for {{client.name}}.",
       assignee: "legal@acme.co",
-      outputSchema: { type: "object", required: ["approved"], properties: { approved: { type: "boolean" } } },
+      outputSchema: {
+        type: "object",
+        required: ["approved"],
+        properties: { approved: { type: "boolean" } },
+      },
     });
   });
 
@@ -75,10 +83,22 @@ describe("awaitingNodeForRun", () => {
   });
 
   it("scans a set of files and resolves a node that lives in a nested one, not only the root", () => {
-    const root = file([{ id: "step-sub", type: "workflow", name: "sub", ref: "sub.workflow.json" }]);
-    const sub = file([{ id: "nested", type: "person-activity", name: "nested", description: "Nested.", assignee: "ops@acme.co" }]);
+    const root = file([
+      { id: "step-sub", type: "workflow", name: "sub", ref: "sub.workflow.json" },
+    ]);
+    const sub = file([
+      {
+        id: "nested",
+        type: "person-activity",
+        name: "nested",
+        description: "Nested.",
+        assignee: "ops@acme.co",
+      },
+    ]);
     // The node id is defined in the sub-file; the array form finds it wherever it sits.
-    expect(awaitingNodeForRun([root, sub], run({ nodeId: "nested" }))?.assignee).toBe("ops@acme.co");
+    expect(awaitingNodeForRun([root, sub], run({ nodeId: "nested" }))?.assignee).toBe(
+      "ops@acme.co",
+    );
     // Root-only cannot resolve it — the caller then degrades to the schema-less submit.
     expect(awaitingNodeForRun([root], run({ nodeId: "nested" }))).toBeNull();
     // An empty set resolves nothing.

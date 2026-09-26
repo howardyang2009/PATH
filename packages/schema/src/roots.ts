@@ -22,12 +22,19 @@ export const STEP_ROOTS = ["config", "context"] as const satisfies readonly Inte
  * What a `publish` expression may read: everything a step could read, plus the `output` the step
  * just produced — which is the point of publishing (format §6.2).
  */
-export const PUBLISH_ROOTS = ["config", "context", "output"] as const satisfies readonly InterpolationRoot[];
+export const PUBLISH_ROOTS = [
+  "config",
+  "context",
+  "output",
+] as const satisfies readonly InterpolationRoot[];
 
 /**
  * What a condition may read (format §9): the workflow-run's context, and the predecessor node's
  * output object. Notably **not** `config` — that is a deliberate extension point held open in the
  * deferred register (mvp spec §10, "config as a condition root — additive third root").
  */
-export const CONDITION_ROOTS = ["context", "output"] as const satisfies readonly InterpolationRoot[];
+export const CONDITION_ROOTS = [
+  "context",
+  "output",
+] as const satisfies readonly InterpolationRoot[];
 export type ConditionRoot = (typeof CONDITION_ROOTS)[number];

@@ -1,4 +1,4 @@
-import { PathApiError, type PathApiClient } from "@path/client-core";
+import { type PathApiClient, PathApiError } from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { ARM_TIMEOUT_MS } from "../src/cancel-button.js";
@@ -50,9 +50,23 @@ const TREE = {
  * The pane is a view over a snapshot the app owns (one connection feeds the detail and node-I/O
  * panes), so the tests connect it the way the app does rather than reaching past `useRunView`.
  */
-function ConnectedDetail({ client, onSelectRun }: { client: PathApiClient; onSelectRun: () => void }) {
+function ConnectedDetail({
+  client,
+  onSelectRun,
+}: {
+  client: PathApiClient;
+  onSelectRun: () => void;
+}) {
   const load = useRunView(client, ROOT);
-  return <RunDetail client={client} load={load} rootRunId={ROOT} selectedRunId={null} onSelectRun={onSelectRun} />;
+  return (
+    <RunDetail
+      client={client}
+      load={load}
+      rootRunId={ROOT}
+      selectedRunId={null}
+      onSelectRun={onSelectRun}
+    />
+  );
 }
 
 function renderDetail(client: PathApiClient, onSelectRun = vi.fn()) {
@@ -90,8 +104,12 @@ describe("RunDetail", () => {
 
     const head = await screen.findByTestId("run-head");
     expect(head.querySelector(".run-workflow-name")).toHaveTextContent("release-notes");
-    expect(head.querySelector(".run-workflow-id")).toHaveTextContent("018f3a2b-0000-7000-8000-000000000001");
-    expect(head.querySelector(".run-workflow-path")).toHaveTextContent("release-notes.workflow.json");
+    expect(head.querySelector(".run-workflow-id")).toHaveTextContent(
+      "018f3a2b-0000-7000-8000-000000000001",
+    );
+    expect(head.querySelector(".run-workflow-path")).toHaveTextContent(
+      "release-notes.workflow.json",
+    );
   });
 
   it("falls back to — for workflow fields the root run has no value for", async () => {
@@ -194,7 +212,9 @@ describe("RunDetail", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByTestId("narrative-events")).toHaveTextContent("shout (step-c) started · spawn");
+      expect(screen.getByTestId("narrative-events")).toHaveTextContent(
+        "shout (step-c) started · spawn",
+      );
     });
   });
 
@@ -321,7 +341,9 @@ describe("RunDetail", () => {
 
     it("surfaces a 409 rather than claiming the cancel was sent", async () => {
       const client = stubClient({ tree: TREE });
-      vi.spyOn(client, "cancelRun").mockRejectedValue(new PathApiError(409, "run is not executing here"));
+      vi.spyOn(client, "cancelRun").mockRejectedValue(
+        new PathApiError(409, "run is not executing here"),
+      );
       renderDetail(client);
 
       const button = await screen.findByTestId("cancel-button");
@@ -360,9 +382,7 @@ describe("RunDetail", () => {
   describe("tree/narrative split (drag-resize)", () => {
     /** jsdom leaves every element `clientHeight === 0`; pin the pane so the clamp has real room. */
     function withPaneHeight(px: number) {
-      const spy = vi
-        .spyOn(HTMLElement.prototype, "clientHeight", "get")
-        .mockReturnValue(px);
+      const spy = vi.spyOn(HTMLElement.prototype, "clientHeight", "get").mockReturnValue(px);
       return () => spy.mockRestore();
     }
 

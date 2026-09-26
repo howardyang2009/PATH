@@ -14,19 +14,37 @@ const bytes = Buffer.from('{"a":1}\n', "utf8");
 
 describe("checkPrecondition", () => {
   it("create-or-overwrite: absent If-Match creates a missing file and refuses an existing one", () => {
-    expect(checkPrecondition(undefined, undefined, "create-or-overwrite")).toEqual({ ok: true, create: true });
-    expect(checkPrecondition(bytes, undefined, "create-or-overwrite")).toEqual({ ok: false, conflict: "exists" });
+    expect(checkPrecondition(undefined, undefined, "create-or-overwrite")).toEqual({
+      ok: true,
+      create: true,
+    });
+    expect(checkPrecondition(bytes, undefined, "create-or-overwrite")).toEqual({
+      ok: false,
+      conflict: "exists",
+    });
   });
 
   it("a present If-Match overwrites only a matching file", () => {
-    expect(checkPrecondition(bytes, strongEtag(bytes), "create-or-overwrite")).toEqual({ ok: true, create: false });
-    expect(checkPrecondition(bytes, '"stale"', "overwrite")).toEqual({ ok: false, conflict: "changed" });
+    expect(checkPrecondition(bytes, strongEtag(bytes), "create-or-overwrite")).toEqual({
+      ok: true,
+      create: false,
+    });
+    expect(checkPrecondition(bytes, '"stale"', "overwrite")).toEqual({
+      ok: false,
+      conflict: "changed",
+    });
     expect(checkPrecondition(bytes, "*", "overwrite")).toEqual({ ok: false, conflict: "changed" });
-    expect(checkPrecondition(undefined, strongEtag(bytes), "overwrite")).toEqual({ ok: false, conflict: "missing" });
+    expect(checkPrecondition(undefined, strongEtag(bytes), "overwrite")).toEqual({
+      ok: false,
+      conflict: "missing",
+    });
   });
 
   it("overwrite: If-Match is required", () => {
-    expect(checkPrecondition(bytes, undefined, "overwrite")).toEqual({ ok: false, conflict: "required" });
+    expect(checkPrecondition(bytes, undefined, "overwrite")).toEqual({
+      ok: false,
+      conflict: "required",
+    });
   });
 });
 

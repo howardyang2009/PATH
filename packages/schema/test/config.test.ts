@@ -64,7 +64,9 @@ describe("ConfigValueSchema", () => {
   it("treats an $env object with extra keys as a plain config object, not a wrapper", () => {
     // Same rule as $secret above: an object that happens to have an $env key alongside others is
     // just a regular config object, not an env marking — and it is valid as one.
-    expect(ConfigValueSchema.safeParse({ $env: "GITHUB_TOKEN", other: "field" }).success).toBe(true);
+    expect(ConfigValueSchema.safeParse({ $env: "GITHUB_TOKEN", other: "field" }).success).toBe(
+      true,
+    );
   });
 
   it("rejects an unknown sole $-prefixed key, naming it and what is known", () => {

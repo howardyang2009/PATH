@@ -28,26 +28,26 @@ export function OpenTemplateDialog({
           <p className="new-file-error" role="alert">
             Could not list templates: {templateList.message}
           </p>
+        ) : templateList.templates.length === 0 ? (
+          <p className="ref-existing-empty">No templates</p>
         ) : (
-          templateList.templates.length === 0 ? (
-            <p className="ref-existing-empty">No templates</p>
-          ) : (
-            <ul className="template-picker-list">
-              {templateList.templates
-                .filter((template) => template.id !== null)
-                .map((template) => (
-                  <li key={`${template.origin}:${template.kind}:${template.name}`}>
-                    <button type="button" className="workflow-row" onClick={() => onOpen(template)}>
-                      <span className="workflow-file-name">
-                        {template.name}
-                        {TEMPLATE_SUFFIX}
-                      </span>
-                      {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
-                    </button>
-                  </li>
-                ))}
-            </ul>
-          )
+          <ul className="template-picker-list">
+            {templateList.templates
+              .filter((template) => template.id !== null)
+              .map((template) => (
+                <li key={`${template.origin}:${template.kind}:${template.name}`}>
+                  <button type="button" className="workflow-row" onClick={() => onOpen(template)}>
+                    <span className="workflow-file-name">
+                      {template.name}
+                      {TEMPLATE_SUFFIX}
+                    </span>
+                    {template.origin === "shipped" ? (
+                      <span className="palette-card-tag">shipped</span>
+                    ) : null}
+                  </button>
+                </li>
+              ))}
+          </ul>
         )}
         <div className="dialog-actions">
           <button type="button" onClick={onCancel}>

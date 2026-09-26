@@ -1,7 +1,13 @@
 import { readFileSync } from "node:fs";
 import { dirname, relative, resolve } from "node:path";
-import { makeWorkflowFileSchema, safeParseWorkflowFileWith, walkNodes, type WorkflowFile, type WorkflowNode } from "@path/schema";
-import { scanStepPlugins, type LoadedStepPluginRegistry } from "./plugin/scan.js";
+import {
+  makeWorkflowFileSchema,
+  safeParseWorkflowFileWith,
+  type WorkflowFile,
+  type WorkflowNode,
+  walkNodes,
+} from "@path/schema";
+import { type LoadedStepPluginRegistry, scanStepPlugins } from "./plugin/scan.js";
 
 /**
  * One workflow, loaded: the entry file itself, where it sits, and every file it reaches.
@@ -53,7 +59,9 @@ export interface LoadedWorkflow {
   storeRelativePath(storeDir: string): string;
 }
 
-export type LoadResult = { success: true; workflow: LoadedWorkflow } | { success: false; errors: string[] };
+export type LoadResult =
+  | { success: true; workflow: LoadedWorkflow }
+  | { success: false; errors: string[] };
 
 // A `workflow` step's ref can sit inside any nesting of control blocks, so this walks the whole
 // body — using @path/schema's descent rather than restating it, which is what let a new block type
@@ -123,7 +131,10 @@ export async function loadWorkflowTree(entryPath: string): Promise<LoadResult> {
   // caller wrote out, guarding against a state the loader had already ruled out for them.
   const rootFile = files.get(rootPath);
   if (!rootFile) {
-    return { success: false, errors: [`${rootPath}: internal error: entry file missing from the loaded tree`] };
+    return {
+      success: false,
+      errors: [`${rootPath}: internal error: entry file missing from the loaded tree`],
+    };
   }
 
   return {

@@ -1,6 +1,6 @@
 import type { ServerResponse } from "node:http";
-import { sendError, sendJson } from "../http-json.js";
 import { toWireLaunchFacts, toWireRunRecord } from "@path/schema";
+import { sendError, sendJson } from "../http-json.js";
 import type { RouteContext } from "./route-context.js";
 
 export function handleGetRun(res: ServerResponse, ctx: RouteContext, rootRunId: string): void {

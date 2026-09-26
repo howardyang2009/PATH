@@ -16,15 +16,21 @@ export function SaveAsChoiceDialog({
     <div className="dialog-scrim" role="dialog" aria-modal="true" aria-label="Save as">
       <div className="dialog">
         <h2 className="dialog-title">Save as</h2>
-        <p className="dialog-hint">Save a copy of this workflow. The open workflow is not changed on disk.</p>
+        <p className="dialog-hint">
+          Save a copy of this workflow. The open workflow is not changed on disk.
+        </p>
         <div className="save-as-choices">
           <button type="button" className="save-as-choice" onClick={onWorkflow}>
             <span className="save-as-choice-label">Workflow…</span>
-            <span className="save-as-choice-hint">A new *.workflow.json file. The editor then edits the copy.</span>
+            <span className="save-as-choice-hint">
+              A new *.workflow.json file. The editor then edits the copy.
+            </span>
           </button>
           <button type="button" className="save-as-choice" onClick={onTemplate}>
             <span className="save-as-choice-label">Template…</span>
-            <span className="save-as-choice-hint">A new template of the workflow's body. The workflow stays open.</span>
+            <span className="save-as-choice-hint">
+              A new template of the workflow's body. The workflow stays open.
+            </span>
           </button>
         </div>
         <div className="dialog-actions">

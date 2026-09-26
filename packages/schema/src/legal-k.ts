@@ -1,7 +1,13 @@
-import { enclosingControlBlock, isStepType, serialOrder, walkNodes, type ControlBlockKind } from "./node-walk.js";
 import type { WorkflowNode } from "./node-type.js";
-import type { RunStatus } from "./run-status.js";
+import {
+  type ControlBlockKind,
+  enclosingControlBlock,
+  isStepType,
+  serialOrder,
+  walkNodes,
+} from "./node-walk.js";
 import { isPassRun, type RunKindFields } from "./run-kind.js";
+import type { RunStatus } from "./run-status.js";
 import { findRootRun, pathToRoot, type RunTreeFields } from "./run-tree.js";
 
 /**
@@ -81,12 +87,15 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
     const presentSomewhere = [...walkNodes(body)].some((node) => node.id === nodeId);
     if (!presentSomewhere) return { ok: false, reason: "not-in-file" };
     const container = enclosingControlBlock(body, nodeId);
-    return container ? { ok: false, reason: "in-body", container } : { ok: false, reason: "in-body" };
+    return container
+      ? { ok: false, reason: "in-body", container }
+      : { ok: false, reason: "in-body" };
   }
 
   // #4 — the leaf K's own run must have succeeded (a reuse row counts — it is written `succeeded`).
   // Only the leaf level is gated: an intermediate path-node is descended and re-run, not reused.
-  if (leafStatus !== null && leafStatus !== "succeeded") return { ok: false, reason: "not-succeeded" };
+  if (leafStatus !== null && leafStatus !== "succeeded")
+    return { ok: false, reason: "not-succeeded" };
 
   // #5 — every run-producing node in the prefix `<K` that actually ran must have a succeeded run under
   // this level's scope, so it can be reused. A descendant that produced no run under scope was
@@ -97,16 +106,20 @@ export function classifyLevelK(args: ClassifyLevelKArgs): LegalKLevelResult {
   // before K whole, so every node of the body is its prefix there, not only the nodes before K.
   const rowArray = [...rows];
   const prefixBroken = (scope: string | undefined, prefix: WorkflowNode[]): boolean => {
-    const ranInScope = (id: string): boolean => rowArray.some((r) => r.parentRunId === scope && r.nodeId === id);
+    const ranInScope = (id: string): boolean =>
+      rowArray.some((r) => r.parentRunId === scope && r.nodeId === id);
     const succeededInScope = (id: string): boolean =>
       rowArray.some((r) => r.parentRunId === scope && r.nodeId === id && r.status === "succeeded");
     for (const inner of walkNodes(prefix)) {
-      if (isStepType(inner.type) && ranInScope(inner.id) && !succeededInScope(inner.id)) return true;
+      if (isStepType(inner.type) && ranInScope(inner.id) && !succeededInScope(inner.id))
+        return true;
     }
     return false;
   };
-  if (earlierPassRunIds.some((passRunId) => prefixBroken(passRunId, body))) return { ok: false, reason: "prefix-unsucceeded" };
-  if (prefixBroken(scopeRunId, order.slice(0, serialIndex))) return { ok: false, reason: "prefix-unsucceeded" };
+  if (earlierPassRunIds.some((passRunId) => prefixBroken(passRunId, body)))
+    return { ok: false, reason: "prefix-unsucceeded" };
+  if (prefixBroken(scopeRunId, order.slice(0, serialIndex)))
+    return { ok: false, reason: "prefix-unsucceeded" };
 
   return { ok: true };
 }
@@ -136,7 +149,10 @@ export interface BoundaryLevel<T extends BoundaryLevelRun> {
  * holds only the root file, so it classifies a one-level result and backstops deeper ones to the engine.
  * `[]` when `selectedRunId` is not in `rows` or is the root run.
  */
-export function boundaryLevels<T extends BoundaryLevelRun>(rows: Iterable<T>, selectedRunId: string): BoundaryLevel<T>[] {
+export function boundaryLevels<T extends BoundaryLevelRun>(
+  rows: Iterable<T>,
+  selectedRunId: string,
+): BoundaryLevel<T>[] {
   const all = [...rows];
   const levels: BoundaryLevel<T>[] = [];
   let scopeRunId = findRootRun(all)?.runId;
@@ -148,7 +164,9 @@ export function boundaryLevels<T extends BoundaryLevelRun>(rows: Iterable<T>, se
     }
     const pass = passRun;
     const earlierPassRunIds = pass
-      ? all.filter((r) => r.parentRunId === scopeRunId && isPassRun(r) && r.pass < pass.pass).map((r) => r.runId)
+      ? all
+          .filter((r) => r.parentRunId === scopeRunId && isPassRun(r) && r.pass < pass.pass)
+          .map((r) => r.runId)
       : [];
     levels.push({ run, passRun: pass, scopeRunId: pass?.runId ?? scopeRunId, earlierPassRunIds });
     scopeRunId = run.runId;
@@ -172,11 +190,18 @@ export type BoundarySelection<T extends BoundaryLevelRun> =
  * Classify `selectedRunId` among `rows` before any level is classified. The engine and the client's
  * eager mirror both start here, so neither can accept a selection the other refuses.
  */
-export function selectBoundary<T extends BoundaryLevelRun>(rows: Iterable<T>, selectedRunId: string): BoundarySelection<T> {
+export function selectBoundary<T extends BoundaryLevelRun>(
+  rows: Iterable<T>,
+  selectedRunId: string,
+): BoundarySelection<T> {
   const all = [...rows];
   const selected = all.find((r) => r.runId === selectedRunId);
   if (!selected) return { kind: "not-in-tree" };
   if (isPassRun(selected)) return { kind: "pass-run", pass: selected.pass };
   if (selected.parentRunId === null || selected.nodeId === null) return { kind: "root-run" };
-  return { kind: "node", run: selected as T & { nodeId: string }, levels: boundaryLevels(all, selectedRunId) };
+  return {
+    kind: "node",
+    run: selected as T & { nodeId: string },
+    levels: boundaryLevels(all, selectedRunId),
+  };
 }

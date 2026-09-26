@@ -2,8 +2,8 @@ import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { safeParseWorkflowFile } from "@path/schema";
-import { builtinRegistry } from "./builtin-registry.js";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { builtinRegistry } from "./builtin-registry.js";
 import { runCodemod } from "./run-codemod.js";
 
 /**
@@ -63,7 +63,9 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
       id: UUID,
       name: "wf",
       worker: { type: "engine" },
-      body: [{ type: "binary", id: UUID, name: "step-one", worker: { type: "engine" }, command: "echo" }],
+      body: [
+        { type: "binary", id: UUID, name: "step-one", worker: { type: "engine" }, command: "echo" },
+      ],
     });
 
     const { status } = runCodemod([file], dir, V3);
@@ -106,7 +108,11 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
           id: UUID,
           name: "ask",
           prompt: "Hi.",
-          worker: { type: "llm", model: "claude-opus-4-8", options: { mcpServers: { docs: { type: "stdio" } } } },
+          worker: {
+            type: "llm",
+            model: "claude-opus-4-8",
+            options: { mcpServers: { docs: { type: "stdio" } } },
+          },
         },
       ],
     });
@@ -115,7 +121,10 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
 
     const step = (read(file).body as Record<string, unknown>[])[0]!;
     expect(step).not.toHaveProperty("worker");
-    expect(step.config).toEqual({ model: "claude-opus-4-8", options: { mcpServers: { docs: { type: "stdio" } } } });
+    expect(step.config).toEqual({
+      model: "claude-opus-4-8",
+      options: { mcpServers: { docs: { type: "stdio" } } },
+    });
     expectSchemaValid(file);
   });
 
@@ -125,7 +134,15 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
       id: UUID,
       name: "wf",
       worker: { type: "engine" },
-      body: [{ type: "workflow", id: UUID, name: "call", ref: "./child.workflow.json", worker: { type: "llm", model: "m" } }],
+      body: [
+        {
+          type: "workflow",
+          id: UUID,
+          name: "call",
+          ref: "./child.workflow.json",
+          worker: { type: "llm", model: "m" },
+        },
+      ],
     });
 
     runCodemod([file], dir, V3);
@@ -142,7 +159,15 @@ describe("migrate-workflow-format-v3 — the rewrite", () => {
       name: "wf",
       worker: { type: "engine" },
       config: { model: "claude-sonnet-5" },
-      body: [{ type: "prompt", id: UUID, name: "ask", prompt: "Hi.", worker: { type: "llm", model: "${config.model}" } }],
+      body: [
+        {
+          type: "prompt",
+          id: UUID,
+          name: "ask",
+          prompt: "Hi.",
+          worker: { type: "llm", model: "${config.model}" },
+        },
+      ],
     });
 
     const { status } = runCodemod([file], dir, V3);
@@ -177,7 +202,15 @@ describe("migrate-workflow-format-v3 — the refusals (ADR 0021 sub-12)", () => 
       id: UUID,
       name: "wf",
       worker: { type: "engine" },
-      body: [{ type: "prompt", id: UUID, name: "ask", prompt: "Hi.", worker: { type: "llm", model: "${context.chosen}" } }],
+      body: [
+        {
+          type: "prompt",
+          id: UUID,
+          name: "ask",
+          prompt: "Hi.",
+          worker: { type: "llm", model: "${context.chosen}" },
+        },
+      ],
     });
     const before = bytes(file);
 

@@ -1,6 +1,15 @@
-import { isEnvWrapper, isSecretWrapper, mapSecrets, updateAtConfigPath, valueAtConfigPath, type ConfigObject, type JsonValue, type LaunchFacts } from "@path/schema";
+import {
+  type ConfigObject,
+  isEnvWrapper,
+  isSecretWrapper,
+  type JsonValue,
+  type LaunchFacts,
+  mapSecrets,
+  updateAtConfigPath,
+  valueAtConfigPath,
+} from "@path/schema";
 import { mergeConfig } from "./merge-config.js";
-import { resolveEffectiveConfig, type EnvSource } from "./resolve-env.js";
+import { type EnvSource, resolveEffectiveConfig } from "./resolve-env.js";
 
 /**
  * The operator's **launch facts** (ADR 0046), assembled, masked, and recovered in one place.
@@ -58,10 +67,18 @@ export function buildLaunchFacts(
   inheritedSecretKeys: readonly string[] = [],
 ): LaunchFacts | undefined {
   const { input, config, workerDefaults } = inputs;
-  if (input === undefined && config === undefined && workerDefaults === undefined && inheritedSecretKeys.length === 0) {
+  if (
+    input === undefined &&
+    config === undefined &&
+    workerDefaults === undefined &&
+    inheritedSecretKeys.length === 0
+  ) {
     return undefined;
   }
-  const secretKeys = config === undefined ? [...inheritedSecretKeys] : [...new Set([...secretPathsOf(config), ...inheritedSecretKeys])];
+  const secretKeys =
+    config === undefined
+      ? [...inheritedSecretKeys]
+      : [...new Set([...secretPathsOf(config), ...inheritedSecretKeys])];
   return {
     ...(input !== undefined ? { input } : {}),
     ...(config !== undefined ? { config: resolveEffectiveConfig(config, env) } : {}),
@@ -91,7 +108,11 @@ export function recoverLaunchConfig(
 ): RecoveredLaunch {
   const frozenConfig = frozen?.config;
   const config =
-    frozenConfig === undefined ? supplied : supplied === undefined ? frozenConfig : mergeConfig(frozenConfig, supplied);
+    frozenConfig === undefined
+      ? supplied
+      : supplied === undefined
+        ? frozenConfig
+        : mergeConfig(frozenConfig, supplied);
   const missingSecretKeys = (frozen?.secretKeys ?? []).filter(
     (path) => valueAtConfigPath(supplied as unknown as JsonValue | undefined, path) === undefined,
   );
@@ -115,7 +136,9 @@ export function wrapSecretsAtPaths(config: ConfigObject, paths: readonly string[
     wrapped = updateAtConfigPath(wrapped, path, (leaf) =>
       // Already marked, or a value a `$secret` cannot hold: left alone. An `$env` wrapper is marked too —
       // `{"$secret": {"$env": …}}` is the composed form (ADR 0022).
-      isSecretWrapper(leaf) || (typeof leaf !== "string" && !isEnvWrapper(leaf)) ? leaf : ({ $secret: leaf } as unknown as JsonValue),
+      isSecretWrapper(leaf) || (typeof leaf !== "string" && !isEnvWrapper(leaf))
+        ? leaf
+        : ({ $secret: leaf } as unknown as JsonValue),
     );
   }
   return wrapped as unknown as ConfigObject;

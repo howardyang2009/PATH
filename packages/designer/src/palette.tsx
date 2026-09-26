@@ -1,7 +1,7 @@
-import { useState } from "react";
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
 import type { WorkflowFile } from "@path/schema";
-import { paletteGroups, type PaletteEntry, type PaletteSubTab } from "./palette-data.js";
+import { useState } from "react";
+import { type PaletteEntry, type PaletteSubTab, paletteGroups } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
 import type { Armed, ArmedState } from "./use-armed.js";
 
@@ -64,7 +64,12 @@ export function Palette({
           </button>
         ))}
       </div>
-      <div className="palette" role="tabpanel" id={`palette-panel-${tab}`} aria-labelledby={`palette-tab-${tab}`}>
+      <div
+        className="palette"
+        role="tabpanel"
+        id={`palette-panel-${tab}`}
+        aria-labelledby={`palette-tab-${tab}`}
+      >
         {tab === "nodes" ? (
           <NodesTab plugins={plugins} armed={arming.armed} onArm={arming.arm} />
         ) : (
@@ -173,7 +178,11 @@ function PaletteSubTabs({
           </button>
         ))}
       </div>
-      <div role="tabpanel" id={`${prefix}-panel-${current.key}`} aria-labelledby={`${prefix}-tab-${current.key}`}>
+      <div
+        role="tabpanel"
+        id={`${prefix}-panel-${current.key}`}
+        aria-labelledby={`${prefix}-tab-${current.key}`}
+      >
         <PaletteCardList entries={current.entries} armed={armed} onArm={onArm} />
       </div>
     </>
@@ -231,7 +240,15 @@ function TemplatesTab({
 }
 
 /** One palette card — a toggle button that arms its kind. The hue swatch names the kind by colour. */
-function PaletteCard({ entry, armed, onArm }: { entry: PaletteEntry; armed: boolean; onArm: (kind: string | null) => void }) {
+function PaletteCard({
+  entry,
+  armed,
+  onArm,
+}: {
+  entry: PaletteEntry;
+  armed: boolean;
+  onArm: (kind: string | null) => void;
+}) {
   const style = {
     "--card-fg": `var(--k-${entry.hue})`,
     "--card-bg": `var(--k-${entry.hue}-bg)`,
@@ -278,10 +295,15 @@ function TemplateCard({
   onDisarm: () => void;
   onEdit: () => void;
 }) {
-  const style = { "--card-fg": "var(--k-template)", "--card-bg": "var(--k-template-bg)" } as React.CSSProperties;
+  const style = {
+    "--card-fg": "var(--k-template)",
+    "--card-bg": "var(--k-template-bg)",
+  } as React.CSSProperties;
   const disabled = !template.valid;
   const editable = canEdit && template.id !== null;
-  const editHint = canEdit ? "Double-click to edit the template." : "Switch to Template mode to edit this template.";
+  const editHint = canEdit
+    ? "Double-click to edit the template."
+    : "Switch to Template mode to edit this template.";
   return (
     <li>
       <button
@@ -299,7 +321,11 @@ function TemplateCard({
         <span className="palette-card-text">
           <span className="palette-card-label">{template.name}</span>
           <span className="palette-card-blurb">{template.description}</span>
-          {template.valid ? null : <span className="palette-card-error">{template.error?.message ?? "invalid template"}</span>}
+          {template.valid ? null : (
+            <span className="palette-card-error">
+              {template.error?.message ?? "invalid template"}
+            </span>
+          )}
         </span>
         {template.origin === "shipped" ? <span className="palette-card-tag">shipped</span> : null}
       </button>

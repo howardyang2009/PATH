@@ -1,4 +1,11 @@
-import { PathApiClient, PathApiError, displayStatusByRun, type FetchLike, type RootRunSummary, type RunNodeState } from "@path/client-core";
+import {
+  displayStatusByRun,
+  type FetchLike,
+  PathApiClient,
+  PathApiError,
+  type RootRunSummary,
+  type RunNodeState,
+} from "@path/client-core";
 import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { RUNS_REFRESH_MS, RunsList } from "../src/runs-list.js";
@@ -91,7 +98,10 @@ function awaitingNode(over: Partial<RunNodeState> & { runId: string }): RunNodeS
   };
 }
 
-function renderList(client: PathApiClient, overrides: Partial<Parameters<typeof RunsList>[0]> = {}) {
+function renderList(
+  client: PathApiClient,
+  overrides: Partial<Parameters<typeof RunsList>[0]> = {},
+) {
   return render(
     <RunsList
       client={client}
@@ -131,7 +141,9 @@ describe("RunsList", () => {
       "Nightly Sync",
     );
     // CANCELLED has workflow_name: null — the em dash placeholder stands in.
-    expect(screen.getByTestId("run-row-run_gamma").querySelector(".run-workflow")).toHaveTextContent("—");
+    expect(
+      screen.getByTestId("run-row-run_gamma").querySelector(".run-workflow"),
+    ).toHaveTextContent("—");
   });
 
   it("shows status as color + glyph, never hue alone", async () => {
@@ -267,13 +279,16 @@ describe("RunsList", () => {
   // under a workflow row: a click opens it, a second click closes it (single-open), and only a
   // finished-but-unsuccessful row offers it at all.
   describe("resume affordance", () => {
-    it.each([CANCELLED, FAILED])("expands Resume under a %s row when it is clicked", async (run) => {
-      const { client } = stubClient([run]);
-      renderList(client);
+    it.each([CANCELLED, FAILED])(
+      "expands Resume under a %s row when it is clicked",
+      async (run) => {
+        const { client } = stubClient([run]);
+        renderList(client);
 
-      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
-      expect(await screen.findByTestId("resume-button")).toHaveTextContent("Resume run");
-    });
+        fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+        expect(await screen.findByTestId("resume-button")).toHaveTextContent("Resume run");
+      },
+    );
 
     it("collapses the Resume expand when the same row is clicked again (toggle)", async () => {
       const { client } = stubClient([CANCELLED]);
@@ -315,7 +330,10 @@ describe("RunsList", () => {
 
     it("resumes the run and hands the successor up to the app", async () => {
       const { client } = stubClient([CANCELLED]);
-      vi.spyOn(client, "resumeRun").mockResolvedValue({ run_id: "successor", root_run_id: "successor" });
+      vi.spyOn(client, "resumeRun").mockResolvedValue({
+        run_id: "successor",
+        root_run_id: "successor",
+      });
       const onResumed = vi.fn();
       renderList(client, { onResumed });
 
@@ -332,7 +350,9 @@ describe("RunsList", () => {
 
       fireEvent.click(await screen.findByTestId(`run-row-${FAILED.run_id}`));
       fireEvent.click(screen.getByTestId("resume-config-toggle")); // reveal the optional field
-      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"output_file":"OUT.md"}' } });
+      fireEvent.change(screen.getByTestId("resume-config"), {
+        target: { value: '{"output_file":"OUT.md"}' },
+      });
       fireEvent.click(screen.getByTestId("resume-button"));
 
       expect(resumeRun).toHaveBeenCalledWith(FAILED.run_id, { output_file: "OUT.md" });
@@ -373,12 +393,16 @@ describe("RunsList", () => {
       expect(resumeRun).not.toHaveBeenCalled();
 
       // A whitespace-only value is no more a credential than an empty one.
-      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"   "}' } });
+      fireEvent.change(screen.getByTestId("resume-config"), {
+        target: { value: '{"DEEPSEEK_API_KEY":"   "}' },
+      });
       expect(screen.getByTestId("resume-button")).toBeDisabled();
       expect(screen.getByTestId("resume-secret-error")).toHaveTextContent('"DEEPSEEK_API_KEY"');
 
       // Supplied, the reason clears and the verb is live again.
-      fireEvent.change(screen.getByTestId("resume-config"), { target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' } });
+      fireEvent.change(screen.getByTestId("resume-config"), {
+        target: { value: '{"DEEPSEEK_API_KEY":"sk-live"}' },
+      });
       expect(screen.queryByTestId("resume-secret-error")).toBeNull();
       fireEvent.click(screen.getByTestId("resume-button"));
 
@@ -405,13 +429,16 @@ describe("RunsList", () => {
   // finished row — succeeded as well as cancelled/failed — but not on a run still in flight, which the
   // server would 409 anyway. It is two-step: an arm, then a confirm that spells out which run goes.
   describe("delete affordance", () => {
-    it.each([SUCCEEDED, CANCELLED, FAILED])("offers Delete when a %s row is clicked", async (run) => {
-      const { client } = stubClient([run]);
-      renderList(client);
+    it.each([SUCCEEDED, CANCELLED, FAILED])(
+      "offers Delete when a %s row is clicked",
+      async (run) => {
+        const { client } = stubClient([run]);
+        renderList(client);
 
-      fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
-      expect(await screen.findByTestId("delete-arm")).toBeInTheDocument();
-    });
+        fireEvent.click(await screen.findByTestId(`run-row-${run.run_id}`));
+        expect(await screen.findByTestId("delete-arm")).toBeInTheDocument();
+      },
+    );
 
     it("arms a confirmation showing the run's identity, then deletes and notifies the app", async () => {
       const { client } = stubClient([SUCCEEDED]);
@@ -450,7 +477,9 @@ describe("RunsList", () => {
 
     it("surfaces a delete error rather than claiming it was removed", async () => {
       const { client } = stubClient([CANCELLED]);
-      vi.spyOn(client, "deleteRun").mockRejectedValue(new PathApiError(409, "a live successor still reuses its data"));
+      vi.spyOn(client, "deleteRun").mockRejectedValue(
+        new PathApiError(409, "a live successor still reuses its data"),
+      );
       const onDeleted = vi.fn();
       renderList(client, { onDeleted });
 
@@ -470,7 +499,10 @@ describe("RunsList", () => {
       const { client } = stubClient([RUNNING]);
       // The affordance present and this row selected is the one case that would otherwise show
       // `Resume from …`; it must still stay hidden because the run is in flight.
-      renderList(client, { selectedRootRunId: RUNNING.run_id, resumeFrom: { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false } });
+      renderList(client, {
+        selectedRootRunId: RUNNING.run_id,
+        resumeFrom: { runs: new Map(), selectedRunId: null, rootFile: null, dirty: false },
+      });
 
       fireEvent.click(await screen.findByTestId(`run-row-${RUNNING.run_id}`));
       await screen.findByTestId(`run-actions-${RUNNING.run_id}`);
@@ -478,7 +510,9 @@ describe("RunsList", () => {
       expect(screen.queryByTestId("resume-button")).toBeNull();
       expect(screen.queryByTestId("resume-from-submit")).toBeNull();
       expect(screen.queryByTestId("delete-arm")).toBeNull();
-      expect(screen.getByTestId(`run-actions-${RUNNING.run_id}`)).toHaveTextContent("still in flight");
+      expect(screen.getByTestId(`run-actions-${RUNNING.run_id}`)).toHaveTextContent(
+        "still in flight",
+      );
     });
 
     it("offers no actions when a running root reads awaiting through its parked leaf", async () => {

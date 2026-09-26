@@ -1,6 +1,6 @@
-import { useEffect, useRef, useState } from "react";
 import type { PathApiClient } from "@path/client-core";
 import { useRunView } from "@path/viewer";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * The Designer's **run-watching** state (#372), gathered out of `App` into one module. The App used to hold
@@ -48,7 +48,7 @@ export function useRunWatch(client: PathApiClient, rootWorkflowId: string | null
   // leaf below reads `awaiting`. Falls back to the raw root status before the root's row lands in the map.
   const workflowRunStatus =
     load.phase === "ready" && rootRunId !== null
-      ? load.value.displayStatus.get(rootRunId) ?? load.value.status
+      ? (load.value.displayStatus.get(rootRunId) ?? load.value.status)
       : null;
 
   // Switching root run drops the node-in-tree selection: a run id from the previous tree names nothing here.

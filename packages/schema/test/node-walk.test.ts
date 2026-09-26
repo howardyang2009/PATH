@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import type { WorkflowNode } from "../src/node-type.js";
-import { CONTROL_CHILD_SLOTS, childBodies, enclosingControlBlock, isStepType, mapChildBodies, serialOrder, walkNodes } from "../src/node-walk.js";
+import {
+  CONTROL_CHILD_SLOTS,
+  childBodies,
+  enclosingControlBlock,
+  isStepType,
+  mapChildBodies,
+  serialOrder,
+  walkNodes,
+} from "../src/node-walk.js";
 import { safeParseWorkflowFile } from "../src/workflow-file.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -54,9 +62,14 @@ function deeplyNested(inner: WorkflowNode): WorkflowNode {
 describe("childBodies", () => {
   it("returns nothing for a leaf", () => {
     expect(childBodies(step("s"))).toEqual([]);
-    expect(childBodies({ type: "checkpoint", id: "gate", name: "gate", condition: { type: "exists", path: "context.x" } })).toEqual(
-      [],
-    );
+    expect(
+      childBodies({
+        type: "checkpoint",
+        id: "gate",
+        name: "gate",
+        condition: { type: "exists", path: "context.x" },
+      }),
+    ).toEqual([]);
   });
 
   it("reports a parallel's branches as concurrent single nodes", () => {
@@ -102,7 +115,9 @@ describe("childBodies", () => {
       max_iterations: 2,
       node: step("inner"),
     };
-    expect(childBodies(loop)).toEqual([{ nodes: [step("inner")], path: ["node"], concurrent: false }]);
+    expect(childBodies(loop)).toEqual([
+      { nodes: [step("inner")], path: ["node"], concurrent: false },
+    ]);
   });
 
   it("reports a sequence's body as a sequential node array", () => {
@@ -112,7 +127,9 @@ describe("childBodies", () => {
       name: "steps",
       body: [step("a"), step("b")],
     };
-    expect(childBodies(seq)).toEqual([{ nodes: [step("a"), step("b")], path: ["body"], concurrent: false }]);
+    expect(childBodies(seq)).toEqual([
+      { nodes: [step("a"), step("b")], path: ["body"], concurrent: false },
+    ]);
   });
 });
 
@@ -124,12 +141,19 @@ describe("walkNodes", () => {
   });
 
   it("descends through a sequence", () => {
-    const seq: WorkflowNode = { type: "sequence", id: "steps", name: "steps", body: [step("a"), step("b")] };
+    const seq: WorkflowNode = {
+      type: "sequence",
+      id: "steps",
+      name: "steps",
+      body: [step("a"), step("b")],
+    };
     expect([...walkNodes([seq])].map((n) => n.id)).toEqual(["steps", "a", "b"]);
   });
 
   it("does not descend into a workflow step's ref'd file", () => {
-    const ids = [...walkNodes([{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }])].map((n) => n.id);
+    const ids = [
+      ...walkNodes([{ type: "workflow", id: "call", name: "call", ref: "./child.workflow.json" }]),
+    ].map((n) => n.id);
     expect(ids).toEqual(["call"]);
   });
 });
@@ -159,7 +183,10 @@ describe("validation reaches deeply nested bodies", () => {
       if (key in n) n[key] = guidify(n[key]);
     }
     if (Array.isArray(n.arms)) {
-      n.arms = (n.arms as Record<string, unknown>[]).map((arm) => ({ ...arm, node: guidify(arm.node) }));
+      n.arms = (n.arms as Record<string, unknown>[]).map((arm) => ({
+        ...arm,
+        node: guidify(arm.node),
+      }));
     }
     return n as T;
   }
@@ -168,7 +195,10 @@ describe("validation reaches deeply nested bodies", () => {
   }
 
   it("catches a duplicate name buried under every block kind", () => {
-    const result = safeParseWorkflowFile(file([step("twice"), deeplyNested(step("twice"))]), builtinRegistry);
+    const result = safeParseWorkflowFile(
+      file([step("twice"), deeplyNested(step("twice"))]),
+      builtinRegistry,
+    );
     expect(result.success).toBe(false);
     if (result.success) throw new Error("expected a failure");
     expect(result.errors.join("\n")).toMatch(/twice/);
@@ -200,7 +230,12 @@ describe("validation reaches deeply nested bodies", () => {
           type: "branch",
           id: "route",
           name: "route",
-          arms: [{ when: { type: "exists", path: "context.x" }, node: step("r", { shared: "${output}" }) }],
+          arms: [
+            {
+              when: { type: "exists", path: "context.x" },
+              node: step("r", { shared: "${output}" }),
+            },
+          ],
         },
       ],
     };
@@ -243,7 +278,8 @@ describe("mapChildBodies", () => {
   it("rebuilds every child slot and preserves the node's own fields (join, when, else, condition)", () => {
     const tree = deeplyNested(step("inner"));
     // Rename every occupant by mapping each child body through the same transform.
-    const rename = (node: WorkflowNode): WorkflowNode => mapChildBodies({ ...node, name: `${node.name}!` }, (body) => body.map(rename));
+    const rename = (node: WorkflowNode): WorkflowNode =>
+      mapChildBodies({ ...node, name: `${node.name}!` }, (body) => body.map(rename));
     const out = rename(tree);
     // Own fields survive.
     expect(out).toMatchObject({ type: "parallel", join: "collect", name: "fan!" });
@@ -254,12 +290,15 @@ describe("mapChildBodies", () => {
     expect(arm.when).toEqual({ type: "exists", path: "context.x" });
     expect(arm.node).toMatchObject({ type: "while-do", name: "spin!" });
     // The `else` occupant is rebuilt too.
-    expect((branch as Extract<WorkflowNode, { type: "branch" }>).else).toMatchObject({ name: "fallback!" });
+    expect((branch as Extract<WorkflowNode, { type: "branch" }>).else).toMatchObject({
+      name: "fallback!",
+    });
   });
 
   it("is the write inverse of childBodies — identity fn returns an equal tree", () => {
     const tree = deeplyNested(step("inner"));
-    const idMap = (node: WorkflowNode): WorkflowNode => mapChildBodies(node, (body) => body.map(idMap));
+    const idMap = (node: WorkflowNode): WorkflowNode =>
+      mapChildBodies(node, (body) => body.map(idMap));
     expect(idMap(tree)).toEqual(tree);
   });
 });
@@ -308,7 +347,12 @@ describe("isStepType", () => {
 });
 
 describe("serialOrder (ADR 0064)", () => {
-  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body });
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({
+    type: "sequence",
+    id,
+    name: id,
+    body,
+  });
   const loop = (id: string, node: WorkflowNode): WorkflowNode => ({
     type: "while-do",
     id,
@@ -335,7 +379,12 @@ describe("serialOrder (ADR 0064)", () => {
 });
 
 describe("enclosingControlBlock (ADR 0064)", () => {
-  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({ type: "sequence", id, name: id, body });
+  const seq = (id: string, body: WorkflowNode[]): WorkflowNode => ({
+    type: "sequence",
+    id,
+    name: id,
+    body,
+  });
 
   it("is undefined for a node enclosed only by sequences", () => {
     expect(enclosingControlBlock([seq("s", [seq("t", [step("a")])])], "a")).toBeUndefined();
@@ -343,7 +392,14 @@ describe("enclosingControlBlock (ADR 0064)", () => {
 
   it("names the innermost non-sequence controller, looking through sequences", () => {
     const body: WorkflowNode[] = [
-      { type: "while-do", id: "spin", name: "spin", condition: { type: "exists", path: "context.x" }, max_iterations: 2, node: seq("s", [step("a")]) },
+      {
+        type: "while-do",
+        id: "spin",
+        name: "spin",
+        condition: { type: "exists", path: "context.x" },
+        max_iterations: 2,
+        node: seq("s", [step("a")]),
+      },
     ];
     expect(enclosingControlBlock(body, "a")).toBe("loop");
   });

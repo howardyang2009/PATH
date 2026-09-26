@@ -13,8 +13,20 @@ function file(): WorkflowFile {
     name: "flow",
     config: { model: "gpt", region: "eu" },
     body: [
-      { type: "prompt", id: uuid(2), name: "a", prompt: "x", publish: { score: "${output.score}" } } as never,
-      { type: "prompt", id: uuid(3), name: "b", prompt: "y", publish: { verdict: "${output.v}" } } as never,
+      {
+        type: "prompt",
+        id: uuid(2),
+        name: "a",
+        prompt: "x",
+        publish: { score: "${output.score}" },
+      } as never,
+      {
+        type: "prompt",
+        id: uuid(3),
+        name: "b",
+        prompt: "y",
+        publish: { verdict: "${output.v}" },
+      } as never,
     ],
   };
 }
@@ -41,13 +53,22 @@ describe("#370 parseInputDraft", () => {
 
   it("accepts any JSON value: a literal and an array (§6.1)", () => {
     expect(parseInputDraft("3", STEP_ROOTS)).toEqual({ ok: true, value: 3 });
-    expect(parseInputDraft('["${context.a}", 2]', STEP_ROOTS)).toEqual({ ok: true, value: ["${context.a}", 2] });
+    expect(parseInputDraft('["${context.a}", 2]', STEP_ROOTS)).toEqual({
+      ok: true,
+      value: ["${context.a}", 2],
+    });
   });
 
   it("accepts a whole-string interpolation authored raw, without JSON quotes (§6.1/§6.6)", () => {
-    expect(parseInputDraft("${context.final_notes}", STEP_ROOTS)).toEqual({ ok: true, value: "${context.final_notes}" });
+    expect(parseInputDraft("${context.final_notes}", STEP_ROOTS)).toEqual({
+      ok: true,
+      value: "${context.final_notes}",
+    });
     // The quoted form parses as the same string.
-    expect(parseInputDraft('"${context.final_notes}"', STEP_ROOTS)).toEqual({ ok: true, value: "${context.final_notes}" });
+    expect(parseInputDraft('"${context.final_notes}"', STEP_ROOTS)).toEqual({
+      ok: true,
+      value: "${context.final_notes}",
+    });
   });
 
   it("rejects malformed JSON, an unclosed placeholder, and an illegal root", () => {

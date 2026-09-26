@@ -27,14 +27,36 @@ const KIND: Record<string, KindDescriptor> = {
   // A `person-activity` leaf carries its own teal hue and a person glyph, so it no longer reads as a
   // generic step in the indigo `--k-step` (#470, #487). It suspends the run as `awaiting` until a person
   // completes the offline activity (CONTEXT.md § Awaiting).
-  "person-activity": { hue: "person", explanation: "An offline activity a person completes; the run awaits their Complete.", glyph: "👤" },
-  workflow: { hue: "workflow", explanation: "A reference to another workflow file, run as a nested run." },
-  parallel: { hue: "parallel", explanation: "Runs its branches together; the join mode decides how their outputs land." },
-  branch: { hue: "branch", explanation: "First-match-wins arms, each guarded by a condition, with an optional else." },
-  "while-do": { hue: "while", explanation: "Repeats one body while a condition holds, up to a maximum count." },
+  "person-activity": {
+    hue: "person",
+    explanation: "An offline activity a person completes; the run awaits their Complete.",
+    glyph: "👤",
+  },
+  workflow: {
+    hue: "workflow",
+    explanation: "A reference to another workflow file, run as a nested run.",
+  },
+  parallel: {
+    hue: "parallel",
+    explanation: "Runs its branches together; the join mode decides how their outputs land.",
+  },
+  branch: {
+    hue: "branch",
+    explanation: "First-match-wins arms, each guarded by a condition, with an optional else.",
+  },
+  "while-do": {
+    hue: "while",
+    explanation: "Repeats one body while a condition holds, up to a maximum count.",
+  },
   sequence: { hue: "sequence", explanation: "An ordered stack of nodes, run one after another." },
-  checkpoint: { hue: "checkpoint", explanation: "Asserts a condition on the run; a failed assertion fails the run." },
-  goto: { hue: "goto", explanation: "Jumps back or ahead to a first-level node, at most max jumps times." },
+  checkpoint: {
+    hue: "checkpoint",
+    explanation: "Asserts a condition on the run; a failed assertion fails the run.",
+  },
+  goto: {
+    hue: "goto",
+    explanation: "Jumps back or ahead to a first-level node, at most max jumps times.",
+  },
 };
 
 /** The hue-token stem for a node type. A leaf step and any unlisted (registry) type share the step hue. */

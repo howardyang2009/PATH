@@ -9,7 +9,10 @@ import { isPlainObject } from "./wrapper.js";
  */
 
 /** The value at `path`, or `undefined` when any segment is absent. */
-export function valueAtConfigPath(value: JsonValue | undefined, path: string): JsonValue | undefined {
+export function valueAtConfigPath(
+  value: JsonValue | undefined,
+  path: string,
+): JsonValue | undefined {
   let current = value;
   for (const segment of path.split(".")) {
     current = childAt(current, segment);
@@ -22,17 +25,26 @@ export function valueAtConfigPath(value: JsonValue | undefined, path: string): J
  * `value` with the leaf at `path` replaced by `update(leaf)`, copying only the containers on the path.
  * Returned unchanged when the path does not exist.
  */
-export function updateAtConfigPath(value: JsonValue, path: string, update: (leaf: JsonValue) => JsonValue): JsonValue {
+export function updateAtConfigPath(
+  value: JsonValue,
+  path: string,
+  update: (leaf: JsonValue) => JsonValue,
+): JsonValue {
   return updateAt(value, path.split("."), update);
 }
 
-function updateAt(value: JsonValue, segments: readonly string[], update: (leaf: JsonValue) => JsonValue): JsonValue {
+function updateAt(
+  value: JsonValue,
+  segments: readonly string[],
+  update: (leaf: JsonValue) => JsonValue,
+): JsonValue {
   const [head, ...rest] = segments;
   if (head === undefined) return update(value);
   const child = childAt(value, head);
   if (child === undefined) return value;
   const next = updateAt(child, rest, update);
-  if (Array.isArray(value)) return value.map((item, index) => (index === Number(head) ? next : item));
+  if (Array.isArray(value))
+    return value.map((item, index) => (index === Number(head) ? next : item));
   return { ...(value as { [key: string]: JsonValue }), [head]: next };
 }
 

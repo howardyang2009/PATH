@@ -49,7 +49,12 @@ function makeLeaf(type: string, used: Set<string>): WorkflowNode {
 export function createNode(kind: string, used: Set<string>, defaultLeaf = "prompt"): WorkflowNode {
   switch (kind) {
     case "sequence":
-      return { id: crypto.randomUUID(), name: uniqueName("sequence", used), type: "sequence", body: [makeLeaf(defaultLeaf, used)] };
+      return {
+        id: crypto.randomUUID(),
+        name: uniqueName("sequence", used),
+        type: "sequence",
+        body: [makeLeaf(defaultLeaf, used)],
+      };
     case "parallel":
       return {
         id: crypto.randomUUID(),
@@ -75,18 +80,32 @@ export function createNode(kind: string, used: Set<string>, defaultLeaf = "promp
         node: makeLeaf(defaultLeaf, used),
       };
     case "checkpoint":
-      return { id: crypto.randomUUID(), name: uniqueName("checkpoint", used), type: "checkpoint", condition: defaultCondition() };
+      return {
+        id: crypto.randomUUID(),
+        name: uniqueName("checkpoint", used),
+        type: "checkpoint",
+        condition: defaultCondition(),
+      };
     case "goto":
       // Born pointing nowhere (`""`): the pane's target picker shows it as `missing:` until the author
       // picks one, and `max_jumps` is pre-filled `3` because the field is mandatory (designer-spec § goto).
-      return { id: crypto.randomUUID(), name: uniqueName("goto", used), type: "goto", target: "", max_jumps: 3 };
+      return {
+        id: crypto.randomUUID(),
+        name: uniqueName("goto", used),
+        type: "goto",
+        target: "",
+        max_jumps: 3,
+      };
     default:
       return makeLeaf(kind, used);
   }
 }
 
 /** A fresh `branch` arm — a default `when` over a default leaf occupant — for the add-arm affordance. */
-export function createArm(used: Set<string>, defaultLeaf = "prompt"): { when: Condition; node: WorkflowNode } {
+export function createArm(
+  used: Set<string>,
+  defaultLeaf = "prompt",
+): { when: Condition; node: WorkflowNode } {
   return { when: defaultCondition(), node: makeLeaf(defaultLeaf, used) };
 }
 

@@ -1,4 +1,4 @@
-import { isPlainObject, validateOutputSchema, type JsonValue } from "@path/schema";
+import { isPlainObject, type JsonValue, validateOutputSchema } from "@path/schema";
 
 /**
  * The Complete form model (ADR 0040, CONTEXT.md § Person-activity): a `person-activity` node's
@@ -34,7 +34,10 @@ export interface CompleteField {
 /** The value a form control holds before coercion: a checkbox's boolean, or any other control's text. */
 export type CompleteFieldValue = string | boolean;
 
-function fieldKind(prop: { [key: string]: JsonValue }): { kind: CompleteFieldKind; enumValues: string[] | null } {
+function fieldKind(prop: { [key: string]: JsonValue }): {
+  kind: CompleteFieldKind;
+  enumValues: string[] | null;
+} {
   if (Array.isArray(prop.enum)) {
     return { kind: "enum", enumValues: prop.enum.map((value) => String(value)) };
   }
@@ -51,7 +54,9 @@ function fieldKind(prop: { [key: string]: JsonValue }): { kind: CompleteFieldKin
  */
 export function buildCompleteFields(outputSchema: JsonValue | null): CompleteField[] {
   if (!isPlainObject(outputSchema) || !isPlainObject(outputSchema.properties)) return [];
-  const required = new Set(Array.isArray(outputSchema.required) ? outputSchema.required.map((v) => String(v)) : []);
+  const required = new Set(
+    Array.isArray(outputSchema.required) ? outputSchema.required.map((v) => String(v)) : [],
+  );
   const fields: CompleteField[] = [];
   for (const [key, raw] of Object.entries(outputSchema.properties)) {
     if (!isPlainObject(raw)) continue;
@@ -124,14 +129,19 @@ export function coerceCompleteOutput(
  * same `mapCompleteErrors` that maps the route's `400`, so a failure reads identically whether it was
  * caught here or there. A node with no schema accepts any JSON, so there is nothing to check.
  */
-export function validateCompleteDraft(outputSchema: JsonValue | null, output: JsonValue): MappedCompleteErrors {
+export function validateCompleteDraft(
+  outputSchema: JsonValue | null,
+  output: JsonValue,
+): MappedCompleteErrors {
   if (outputSchema === null) return { fieldErrors: {}, formErrors: [] };
   // Validate the bytes the route will see, not the in-memory value: serializing turns a `NaN` (what
   // `coerceCompleteOutput` makes of a number field the person typed text into) into `null`, so the
   // pre-check reaches the verdict the route reaches instead of accepting what the wire cannot carry.
   const wire = JSON.parse(JSON.stringify(output)) as JsonValue;
   const validation = validateOutputSchema(outputSchema, wire);
-  return validation.ok ? { fieldErrors: {}, formErrors: [] } : mapCompleteErrors(validation.issues as unknown as JsonValue);
+  return validation.ok
+    ? { fieldErrors: {}, formErrors: [] }
+    : mapCompleteErrors(validation.issues as unknown as JsonValue);
 }
 
 /** The Complete route's `400` decoded onto the form: per-field messages plus any form-level ones. */
@@ -163,7 +173,11 @@ export function mapCompleteErrors(details: JsonValue | undefined): MappedComplet
 
 /** The field an ajv issue is about, or `null` for a form-level one. */
 function fieldKeyOf(issue: { [key: string]: JsonValue }): string | null {
-  if (issue.keyword === "required" && isPlainObject(issue.params) && typeof issue.params.missingProperty === "string") {
+  if (
+    issue.keyword === "required" &&
+    isPlainObject(issue.params) &&
+    typeof issue.params.missingProperty === "string"
+  ) {
     return issue.params.missingProperty;
   }
   if (typeof issue.instancePath === "string" && issue.instancePath.startsWith("/")) {

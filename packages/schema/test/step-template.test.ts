@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import {
   makeStepTemplateSchema,
-  safeParseStepTemplate as safeParse,
   parseStepTemplate as parse,
+  safeParseStepTemplate as safeParse,
 } from "../src/step-template.js";
 import { builtinRegistry } from "./builtin-registry.js";
 
@@ -81,7 +81,10 @@ describe("StepTemplateSchema — envelope", () => {
   });
 
   it("rejects a `worker_defaults` table — that table is the target file's (strict)", () => {
-    expect(StepTemplateSchema.safeParse({ ...minimal, worker_defaults: { prompt: "anthropic" } }).success).toBe(false);
+    expect(
+      StepTemplateSchema.safeParse({ ...minimal, worker_defaults: { prompt: "anthropic" } })
+        .success,
+    ).toBe(false);
   });
 
   it("rejects other file-level envelope keys (config/input/output) — strict", () => {
@@ -97,9 +100,13 @@ describe("StepTemplateSchema — envelope", () => {
 
 describe("StepTemplateSchema — format stamp", () => {
   it("requires the current body-grammar stamp, path/workflow@5", () => {
-    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5" }).success).toBe(true);
+    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5" }).success).toBe(
+      true,
+    );
     expect(StepTemplateSchema.safeParse({ ...minimal, format: "workflow" }).success).toBe(false);
-    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(false);
+    expect(StepTemplateSchema.safeParse({ ...minimal, format: "path/workflow@5 " }).success).toBe(
+      false,
+    );
   });
 
   it("rejects a `@2`-stamped envelope through the superseded-format path (codemod message)", () => {
@@ -114,7 +121,12 @@ describe("StepTemplateSchema — format stamp", () => {
   });
 
   it("rejects every other superseded stamp (@0/@1/@3/@4) through the same path", () => {
-    for (const format of ["path/workflow@0", "path/workflow@1", "path/workflow@3", "path/workflow@4"]) {
+    for (const format of [
+      "path/workflow@0",
+      "path/workflow@1",
+      "path/workflow@3",
+      "path/workflow@4",
+    ]) {
       const result = safeParseStepTemplate({ ...minimal, format });
       expect(result.success).toBe(false);
       if (!result.success) expect(result.errors.join("\n")).toMatch(/is no longer read/);
@@ -124,7 +136,8 @@ describe("StepTemplateSchema — format stamp", () => {
   it("rejects a newer stamp with the upgrade-PATH message (G-S-09)", () => {
     const result = safeParseStepTemplate({ ...minimal, format: "path/workflow@6" });
     expect(result.success).toBe(false);
-    if (!result.success) expect(result.errors.join("\n")).toMatch(/path\/workflow@6 is newer than this engine reads/);
+    if (!result.success)
+      expect(result.errors.join("\n")).toMatch(/path\/workflow@6 is newer than this engine reads/);
   });
 });
 
@@ -190,8 +203,20 @@ describe("StepTemplateSchema — body is registry-relative, per-node only", () =
           name: "p",
           join: "collect",
           branches: [
-            { type: "binary", id: UUID, name: "a", command: "echo", publish: { result: "${output}" } },
-            { type: "binary", id: UUID, name: "b", command: "echo", publish: { result: "${output}" } },
+            {
+              type: "binary",
+              id: UUID,
+              name: "a",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
+            {
+              type: "binary",
+              id: UUID,
+              name: "b",
+              command: "echo",
+              publish: { result: "${output}" },
+            },
           ],
         },
       ],
@@ -226,6 +251,8 @@ describe("parseStepTemplate", () => {
   });
 
   it("throws with the collected errors on an invalid input", () => {
-    expect(() => parse({ ...minimal, description: "" }, builtinRegistry)).toThrow(/invalid step template/);
+    expect(() => parse({ ...minimal, description: "" }, builtinRegistry)).toThrow(
+      /invalid step template/,
+    );
   });
 });

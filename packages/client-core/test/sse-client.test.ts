@@ -1,15 +1,48 @@
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
-
-import { afterEach, describe, expect, it } from "vitest";
 import type { LogEvent } from "@path/schema";
+import { afterEach, describe, expect, it } from "vitest";
 import { subscribeRunEvents } from "../src/sse-client.js";
 
 const EVENTS: LogEvent[] = [
-  { type: "step-started", seq: 1, ts: "t1", run_id: "root", node_id: null, node_name: null, step_type: "workflow", worker_name: "spawn" },
-  { type: "step-started", seq: 2, ts: "t2", run_id: "child", node_id: "draft", node_name: "draft", step_type: "prompt", worker_name: "anthropic" },
-  { type: "step-finished", seq: 3, ts: "t3", run_id: "child", node_id: "draft", node_name: "draft", status: "succeeded" },
-  { type: "step-finished", seq: 4, ts: "t4", run_id: "root", node_id: null, node_name: null, status: "succeeded" },
+  {
+    type: "step-started",
+    seq: 1,
+    ts: "t1",
+    run_id: "root",
+    node_id: null,
+    node_name: null,
+    step_type: "workflow",
+    worker_name: "spawn",
+  },
+  {
+    type: "step-started",
+    seq: 2,
+    ts: "t2",
+    run_id: "child",
+    node_id: "draft",
+    node_name: "draft",
+    step_type: "prompt",
+    worker_name: "anthropic",
+  },
+  {
+    type: "step-finished",
+    seq: 3,
+    ts: "t3",
+    run_id: "child",
+    node_id: "draft",
+    node_name: "draft",
+    status: "succeeded",
+  },
+  {
+    type: "step-finished",
+    seq: 4,
+    ts: "t4",
+    run_id: "root",
+    node_id: null,
+    node_name: null,
+    status: "succeeded",
+  },
 ];
 
 function frame(event: LogEvent): string {
@@ -17,7 +50,9 @@ function frame(event: LogEvent): string {
 }
 
 /** A stub SSE server; `onRequest` decides which frames to write (and whether to drop) per request. */
-function startStub(onRequest: (req: IncomingMessage, res: ServerResponse) => void): Promise<{ server: Server; url: string }> {
+function startStub(
+  onRequest: (req: IncomingMessage, res: ServerResponse) => void,
+): Promise<{ server: Server; url: string }> {
   const server = createServer(onRequest);
   return new Promise((resolve) => {
     server.listen(0, "127.0.0.1", () => {
@@ -32,8 +67,14 @@ function waitFor(predicate: () => boolean): Promise<void> {
   return new Promise((resolve, reject) => {
     const started = Date.now();
     const tick = (): void => {
-      if (predicate()) return resolve();
-      if (Date.now() - started > 2000) return reject(new Error("timed out waiting for condition"));
+      if (predicate()) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started > 2000) {
+        reject(new Error("timed out waiting for condition"));
+        return;
+      }
       setTimeout(tick, 5);
     };
     tick();
@@ -140,8 +181,24 @@ describe("subscribeRunEvents", () => {
   });
 
   it("waits and slow-polls (not reconnects) while a leaf is awaiting, then resumes on completion", async () => {
-    const AWAITING: LogEvent = { type: "step-awaiting", seq: 2, ts: "t2", run_id: "child", node_id: "review", node_name: "review", assignee: null };
-    const FINISHED_CHILD: LogEvent = { type: "step-finished", seq: 3, ts: "t3", run_id: "child", node_id: "review", node_name: "review", status: "succeeded" };
+    const AWAITING: LogEvent = {
+      type: "step-awaiting",
+      seq: 2,
+      ts: "t2",
+      run_id: "child",
+      node_id: "review",
+      node_name: "review",
+      assignee: null,
+    };
+    const FINISHED_CHILD: LogEvent = {
+      type: "step-finished",
+      seq: 3,
+      ts: "t3",
+      run_id: "child",
+      node_id: "review",
+      node_name: "review",
+      status: "succeeded",
+    };
     const ROOT_TERMINAL = EVENTS[3]!; // seq 4, root step-finished
 
     let connection = 0;
@@ -162,7 +219,8 @@ describe("subscribeRunEvents", () => {
         return;
       }
       // A completion happened elsewhere: replay after the high-water seq through the terminal.
-      for (const e of [FINISHED_CHILD, ROOT_TERMINAL].filter((ev) => ev.seq > after)) res.write(frame(e));
+      for (const e of [FINISHED_CHILD, ROOT_TERMINAL].filter((ev) => ev.seq > after))
+        res.write(frame(e));
       res.end();
     });
     server = stub.server;
@@ -232,7 +290,11 @@ describe("subscribeRunEvents", () => {
     server = stub.server;
 
     const seen: number[] = [];
-    const sub = subscribeRunEvents({ baseUrl: stub.url, rootRunId: "root", onEvent: (e) => seen.push(e.seq) });
+    const sub = subscribeRunEvents({
+      baseUrl: stub.url,
+      rootRunId: "root",
+      onEvent: (e) => seen.push(e.seq),
+    });
 
     await waitFor(() => seen.length === 1);
     sub.close();

@@ -1,4 +1,4 @@
-import { createContext, useContext, type ReactNode } from "react";
+import { createContext, type ReactNode, useContext } from "react";
 
 /**
  * The node validation markers, threaded to every block without drilling through each block signature
@@ -13,7 +13,13 @@ import { createContext, useContext, type ReactNode } from "react";
  */
 const ConflictContext = createContext<ReadonlyMap<string, string>>(new Map());
 
-export function ConflictProvider({ value, children }: { value: ReadonlyMap<string, string>; children: ReactNode }): JSX.Element {
+export function ConflictProvider({
+  value,
+  children,
+}: {
+  value: ReadonlyMap<string, string>;
+  children: ReactNode;
+}): JSX.Element {
   return <ConflictContext.Provider value={value}>{children}</ConflictContext.Provider>;
 }
 
@@ -27,7 +33,12 @@ export function ConflictMarker({ id }: { id: string }): JSX.Element | null {
   const message = useConflict(id);
   if (!message) return null;
   return (
-    <span className="node-marker" role="img" aria-label={`Validation error: ${message}`} title={message}>
+    <span
+      className="node-marker"
+      role="img"
+      aria-label={`Validation error: ${message}`}
+      title={message}
+    >
       ⚠
     </span>
   );

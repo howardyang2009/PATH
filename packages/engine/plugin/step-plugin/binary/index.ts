@@ -1,7 +1,6 @@
 import { spawn } from "node:child_process";
-
-import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
 import type { StepRequest, StepResult } from "@path/engine/plugin";
+import { defineStepPlugin, resolveAgainstWorkflowDir, z } from "@path/engine/plugin";
 
 /**
  * PATH's built-in `binary` leaf step type, shipped as a plugin folder under `plugin/step-plugin/` and
@@ -87,7 +86,11 @@ function runSpawn(request: StepRequest<typeof fields, typeof config>): Promise<S
       if (code !== 0) {
         // The message keeps only the tail; the audit blob keeps the whole stderr (format doc §4.2).
         const tail = stderr.trim().slice(-500);
-        settle({ status: "failed", error: `exited with code ${code}${tail ? `: ${tail}` : ""}`, stderr });
+        settle({
+          status: "failed",
+          error: `exited with code ${code}${tail ? `: ${tail}` : ""}`,
+          stderr,
+        });
         return;
       }
       settle({ status: "succeeded", output: stdout, stderr });

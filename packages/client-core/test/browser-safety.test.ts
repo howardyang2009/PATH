@@ -24,7 +24,14 @@ function sourceFiles(dir: string): string[] {
   });
 }
 
-const BANNED = ["@path/engine", "better-sqlite3", "node:fs", "node:child_process", "node:path", "node:os"];
+const BANNED = [
+  "@path/engine",
+  "better-sqlite3",
+  "node:fs",
+  "node:child_process",
+  "node:path",
+  "node:os",
+];
 
 describe("client-core stays browser-safe", () => {
   it("declares no dependency that cannot run in a browser", () => {
@@ -39,7 +46,8 @@ describe("client-core stays browser-safe", () => {
     for (const file of sourceFiles(join(packageRoot, "src"))) {
       const source = readFileSync(file, "utf8");
       for (const banned of BANNED) {
-        if (source.includes(`"${banned}"`)) offenders.push(`${file.slice(packageRoot.length + 1)} → ${banned}`);
+        if (source.includes(`"${banned}"`))
+          offenders.push(`${file.slice(packageRoot.length + 1)} → ${banned}`);
       }
     }
     expect(offenders).toEqual([]);

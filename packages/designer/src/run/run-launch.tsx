@@ -34,7 +34,14 @@ export interface RunLaunchProps {
  * The **launch worker-default** field rides along with it (ADR 0044): it is operator input for this
  * launch, not file data, so it belongs to the launch door — and this dock is one.
  */
-export function RunLaunch({ client, plugins, workflowPath, dirty, warningCount, onLaunched }: RunLaunchProps): JSX.Element {
+export function RunLaunch({
+  client,
+  plugins,
+  workflowPath,
+  dirty,
+  warningCount,
+  onLaunched,
+}: RunLaunchProps): JSX.Element {
   // A launch runs the file on disk, so an unsaved or dirty buffer must save first (#371, ADR 0025). A
   // brand-new buffer has no path for `prepareWorkflow` to load, so its first save creates the target.
   const gate =

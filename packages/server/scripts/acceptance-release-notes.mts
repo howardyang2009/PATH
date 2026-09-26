@@ -10,8 +10,9 @@
  *
  * The project dir defaults to the current directory. Exits non-zero if any criterion fails.
  */
-import { startPathServer } from "../src/create-server.js";
+
 import { runAcceptance } from "../src/acceptance/run-acceptance.js";
+import { startPathServer } from "../src/create-server.js";
 
 const projectDir = process.argv[2] ?? process.cwd();
 

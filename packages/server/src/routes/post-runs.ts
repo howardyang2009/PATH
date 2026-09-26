@@ -1,9 +1,16 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { LOG_BACKEND_IDS } from "@path/engine";
-import { ConfigObjectSchema, launchInput, validateLaunchWorkerDefaults, type JsonValue, type StartRunResponse } from "@path/schema";
+import {
+  ConfigObjectSchema,
+  type JsonValue,
+  launchInput,
+  type StartRunResponse,
+  validateLaunchWorkerDefaults,
+} from "@path/schema";
 import { z } from "zod";
 import { readRequestBody, sendError, sendJson } from "../http-json.js";
 import { operatorConfigEnvError, prepareWorkflow } from "../launch.js";
+import type { StartedRun } from "../live-runs.js";
 import type { RouteContext } from "./route-context.js";
 
 const PostRunsBodySchema = z
@@ -23,7 +30,11 @@ const PostRunsBodySchema = z
   })
   .strict();
 
-export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, ctx: RouteContext): Promise<void> {
+export async function handlePostRuns(
+  req: IncomingMessage,
+  res: ServerResponse,
+  ctx: RouteContext,
+): Promise<void> {
   const body = await readRequestBody(req, res, PostRunsBodySchema);
   if (!body) return;
   const {
@@ -66,15 +77,16 @@ export async function handlePostRuns(req: IncomingMessage, res: ServerResponse, 
   // run's one registry (the one the load validated the file against). Every bad entry is reported in one
   // pass, prefixed `worker_defaults:` so the operator knows which field to fix — the same taxonomy the
   // CLI `--worker-default` boundary uses.
-  const workerDefaultErrors = validateLaunchWorkerDefaults(launchWorkerDefaults, workflow.registry).map(
-    (message) => `worker_defaults: ${message}`,
-  );
+  const workerDefaultErrors = validateLaunchWorkerDefaults(
+    launchWorkerDefaults,
+    workflow.registry,
+  ).map((message) => `worker_defaults: ${message}`);
   if (workerDefaultErrors.length > 0) {
     sendError(res, 400, "invalid worker_defaults", workerDefaultErrors);
     return;
   }
 
-  let ids;
+  let ids: StartedRun;
   try {
     // `workflow.workflowDir` is the *root workflow file's own* directory — what the engine resolves
     // nested `workflow` refs and binary `cwd`s against. Distinct from the project directory, which is

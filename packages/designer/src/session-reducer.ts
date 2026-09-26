@@ -1,8 +1,8 @@
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import type { EditKey } from "./edit-key.js";
 import { sameEditKey } from "./edit-key.js";
-import type { OpenResult } from "./open-workflow.js";
 import { editFile, findById, unwrapEdit } from "./edit-tree.js";
+import type { OpenResult } from "./open-workflow.js";
 import { basename, relativeRefPath, resolveRefPath } from "./resolve-ref.js";
 import { canonicalSerialize } from "./serialize.js";
 
@@ -175,10 +175,26 @@ const NEW_FILE_DEFAULT_NAME = "untitled";
  * so the breadcrumb's run badge survives the frame's fetch; `undefined` for a root open. `loadSeq` is the
  * fetch this frame awaits — see {@link Frame.loadSeq}.
  */
-export function loadingFrame(path: string | null, descendedVia: string | undefined, loadSeq: number, template?: TemplateSource): Frame {
+export function loadingFrame(
+  path: string | null,
+  descendedVia: string | undefined,
+  loadSeq: number,
+  template?: TemplateSource,
+): Frame {
   // It targets an on-disk file, so it is `written`; the lease/launch gates read `openedResultOf` too, so
   // a still-loading frame is not yet leased regardless. A template frame has no path, only its `template`.
-  return { path, written: true, state: { phase: "loading" }, etag: null, baseline: "", openedBytes: "", history: freshHistory(), descendedVia, loadSeq, template };
+  return {
+    path,
+    written: true,
+    state: { phase: "loading" },
+    etag: null,
+    baseline: "",
+    openedBytes: "",
+    history: freshHistory(),
+    descendedVia,
+    loadSeq,
+    template,
+  };
 }
 
 /**
@@ -187,7 +203,10 @@ export function loadingFrame(path: string | null, descendedVia: string | undefin
  * `frameDirty`, which keeps Save live. `path` is `null` for a new **root** (#390), or the pre-assigned
  * child path for a create-new nested ref (#391); either way the frame is `written: false`.
  */
-export function scratchFrame(path: string | null = null, refParent?: { depth: number; nodeId: string }): Frame {
+export function scratchFrame(
+  path: string | null = null,
+  refParent?: { depth: number; nodeId: string },
+): Frame {
   const name = path === null ? NEW_FILE_DEFAULT_NAME : stemName(path);
   const file: WorkflowFile = { format: FORMAT_VERSION, id: crypto.randomUUID(), name, body: [] };
   const openedBytes = canonicalSerialize(file);
@@ -228,7 +247,8 @@ function withSavePoint(frame: Frame, etag: string, savedBytes: string): Frame {
  * that the canvas, the toolbar, and the save path all ask, kept in one place so the call sites cannot drift.
  */
 export function openedResultOf(frame: Frame | undefined): OpenedResult | null {
-  if (frame && frame.state.phase === "open" && frame.state.result.status === "opened") return frame.state.result;
+  if (frame && frame.state.phase === "open" && frame.state.result.status === "opened")
+    return frame.state.result;
   return null;
 }
 
@@ -284,7 +304,12 @@ export interface SessionState {
 }
 
 /** The empty session before any file opens. */
-export const initialSessionState: SessionState = { mode: "workflow", frames: [], activeIndex: 0, saveState: { phase: "idle" } };
+export const initialSessionState: SessionState = {
+  mode: "workflow",
+  frames: [],
+  activeIndex: 0,
+  saveState: { phase: "idle" },
+};
 
 /**
  * Every transition the session makes. The reducer owns each **decision** — whether a descent re-enters
@@ -339,7 +364,16 @@ export type SessionAction =
    * A file fetch-and-open landed. Patched in **only** when the frame at `depth` still awaits `loadSeq` —
    * the pure staleness guard that drops a result whose destination the author already left (or replaced).
    */
-  | { type: "loadLanded"; depth: number; path: string | null; loadSeq: number; frameState: FrameState; etag: string | null; baseline: string; openedBytes: string }
+  | {
+      type: "loadLanded";
+      depth: number;
+      path: string | null;
+      loadSeq: number;
+      frameState: FrameState;
+      etag: string | null;
+      baseline: string;
+      openedBytes: string;
+    }
   /** A `PUT` is in flight — the transient `saving` phase. */
   | { type: "saveStarted" }
   /**
@@ -363,13 +397,27 @@ export type SessionAction =
    * `fromId`, now edits the new `template` and its `file` (the fresh workflow id), clean at `etag`. The
    * history starts fresh — an undo past the Save-As would restore the old template's id.
    */
-  | { type: "templateSavedAs"; depth: number; fromId: string | null; template: TemplateSource; file: WorkflowFile; etag: string }
+  | {
+      type: "templateSavedAs";
+      depth: number;
+      fromId: string | null;
+      template: TemplateSource;
+      file: WorkflowFile;
+      etag: string;
+    }
   /**
    * A workflow-mode Save as… wrote a copy to a new `*.workflow.json` at `relativePath`. If the frame at
    * `depth` still edits the file with id `fromId`, the session becomes that saved file as a fresh root,
    * the way a Save-As moves the editor onto the file it wrote. Always sets the `saved` phase.
    */
-  | { type: "detachedSaved"; depth: number; fromId: string; file: WorkflowFile; relativePath: string; etag: string }
+  | {
+      type: "detachedSaved";
+      depth: number;
+      fromId: string;
+      file: WorkflowFile;
+      relativePath: string;
+      etag: string;
+    }
   /**
    * The root file named by `plan` was deleted. If the root frame still holds it, the stack clears to an
    * empty canvas in the same mode, in the `deleted` phase; otherwise only the phase resets.
@@ -385,7 +433,12 @@ export const IDLE: SaveState = { phase: "idle" };
 export function reduceSession(state: SessionState, action: SessionAction): SessionState {
   switch (action.type) {
     case "openLoading":
-      return { mode: "workflow", frames: [loadingFrame(action.path, undefined, action.loadSeq)], activeIndex: 0, saveState: IDLE };
+      return {
+        mode: "workflow",
+        frames: [loadingFrame(action.path, undefined, action.loadSeq)],
+        activeIndex: 0,
+        saveState: IDLE,
+      };
 
     case "newFile":
       return { mode: "workflow", frames: [scratchFrame()], activeIndex: 0, saveState: IDLE };
@@ -399,13 +452,21 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     case "deleted": {
       const root = state.frames[0];
       const plan = action.plan;
-      const stillOpen = plan.kind === "template" ? root?.template?.id === plan.id : root?.path === plan.path && !root.template;
+      const stillOpen =
+        plan.kind === "template"
+          ? root?.template?.id === plan.id
+          : root?.path === plan.path && !root.template;
       if (!stillOpen) return { ...state, saveState: IDLE };
       return { mode: state.mode, frames: [], activeIndex: 0, saveState: { phase: "deleted" } };
     }
 
     case "openTemplateLoading":
-      return { mode: "template", frames: [loadingFrame(null, undefined, action.loadSeq, action.template)], activeIndex: 0, saveState: IDLE };
+      return {
+        mode: "template",
+        frames: [loadingFrame(null, undefined, action.loadSeq, action.template)],
+        activeIndex: 0,
+        saveState: IDLE,
+      };
 
     case "descend": {
       const depth = state.activeIndex;
@@ -424,7 +485,10 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // is the `workflow` block crossed, kept on the child frame for the breadcrumb's run badge (#372).
       return {
         mode: state.mode,
-        frames: [...state.frames.slice(0, depth + 1), loadingFrame(path, action.nodeId, action.loadSeq)],
+        frames: [
+          ...state.frames.slice(0, depth + 1),
+          loadingFrame(path, action.nodeId, action.loadSeq),
+        ],
         activeIndex: depth + 1,
         saveState: IDLE,
       };
@@ -435,11 +499,17 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       if (!state.frames[depth]) return state;
       const childDepth = depth + 1;
       const child = scratchFrame(null, { depth, nodeId: action.parentNodeId });
-      return { mode: state.mode, frames: [...state.frames.slice(0, childDepth), child], activeIndex: childDepth, saveState: IDLE };
+      return {
+        mode: state.mode,
+        frames: [...state.frames.slice(0, childDepth), child],
+        activeIndex: childDepth,
+        saveState: IDLE,
+      };
     }
 
     case "goTo": {
-      const activeIndex = action.index < 0 || action.index >= state.frames.length ? state.activeIndex : action.index;
+      const activeIndex =
+        action.index < 0 || action.index >= state.frames.length ? state.activeIndex : action.index;
       return { ...state, activeIndex, saveState: IDLE };
     }
 
@@ -455,7 +525,11 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // collide two fields into one entry by minting the same string for both.
       const fold = action.key !== undefined && sameEditKey(action.key, frame.history.coalesceKey);
       const past = fold ? frame.history.past : [...frame.history.past, opened.file];
-      return withBuffer(state, depth, frame, action.next, { past, future: [], coalesceKey: action.key });
+      return withBuffer(state, depth, frame, action.next, {
+        past,
+        future: [],
+        coalesceKey: action.key,
+      });
     }
 
     case "undo": {
@@ -470,7 +544,11 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       // The present moves to the redo stack; clean re-derives from `restored` against the (unchanged)
       // baseline, so an undo past the save-point re-dirties the buffer for free (ADR 0030). Close any
       // coalesce run so a following field edit opens a fresh entry rather than folding into the undone one.
-      return withBuffer(state, depth, frame, restored, { past, future: [opened.file, ...frame.history.future], coalesceKey: undefined });
+      return withBuffer(state, depth, frame, restored, {
+        past,
+        future: [opened.file, ...frame.history.future],
+        coalesceKey: undefined,
+      });
     }
 
     case "redo": {
@@ -480,7 +558,11 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       if (!frame || !opened || frame.history.future.length === 0) return state;
       const future = frame.history.future.slice();
       const restored = future.shift()!;
-      return withBuffer(state, depth, frame, restored, { past: [...frame.history.past, opened.file], future, coalesceKey: undefined });
+      return withBuffer(state, depth, frame, restored, {
+        past: [...frame.history.past, opened.file],
+        future,
+        coalesceKey: undefined,
+      });
     }
 
     case "reload": {
@@ -527,33 +609,61 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
     // who navigated away mid-save must not have another frame re-based. Each case states what "still
     // the saved frame" means for its door; `landSave` does the rest.
     case "saved":
-      return landSave(state, action.depth, (frame) => frame.path === action.path, (frame) =>
-        withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
+      return landSave(
+        state,
+        action.depth,
+        (frame) => frame.path === action.path,
+        (frame) =>
+          withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
       );
 
     case "templateSaved":
-      return landSave(state, action.depth, (frame) => frame.template?.id === action.id, (frame) =>
-        withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
+      return landSave(
+        state,
+        action.depth,
+        (frame) => frame.template?.id === action.id,
+        (frame) =>
+          withFrame(state, action.depth, withSavePoint(frame, action.etag, action.savedBytes)),
       );
 
     // A from-scratch buffer's first save: it is still that buffer while it is unwritten and path-less.
     case "newFileSaved":
-      return landSave(state, action.depth, (frame) => !frame.written && frame.path === null, (frame) => landNewFile(state, frame, action));
+      return landSave(
+        state,
+        action.depth,
+        (frame) => !frame.written && frame.path === null,
+        (frame) => landNewFile(state, frame, action),
+      );
 
     // `fromId: null` is a new template's first save: the frame held no template yet.
     case "templateSavedAs":
-      return landSave(state, action.depth, (frame) => (frame.template?.id ?? null) === action.fromId, (frame, opened) =>
-        withFrame(state, action.depth, { ...frame, template: action.template, ...savedBuffer(action.file, action.etag, opened) }),
+      return landSave(
+        state,
+        action.depth,
+        (frame) => (frame.template?.id ?? null) === action.fromId,
+        (frame, opened) =>
+          withFrame(state, action.depth, {
+            ...frame,
+            template: action.template,
+            ...savedBuffer(action.file, action.etag, opened),
+          }),
       );
 
     // A detached copy saved as a plain workflow replaces the whole session with that one file.
     case "detachedSaved":
-      return landSave(state, action.depth, (_frame, opened) => opened.file.id === action.fromId, () => ({
-        mode: "workflow",
-        frames: [{ path: action.relativePath, loadSeq: null, ...savedBuffer(action.file, action.etag) }],
-        activeIndex: 0,
-        saveState: IDLE,
-      }));
+      return landSave(
+        state,
+        action.depth,
+        (_frame, opened) => opened.file.id === action.fromId,
+        () => ({
+          mode: "workflow",
+          frames: [
+            { path: action.relativePath, loadSeq: null, ...savedBuffer(action.file, action.etag) },
+          ],
+          activeIndex: 0,
+          saveState: IDLE,
+        }),
+      );
 
     case "setSaveState":
       return { ...state, saveState: action.saveState };
@@ -568,9 +678,19 @@ function withFrame(state: SessionState, depth: number, frame: Frame): SessionSta
 }
 
 /** An edit, undo or redo: the active frame's buffer becomes `file`, under `history`. */
-function withBuffer(state: SessionState, depth: number, frame: Frame, file: WorkflowFile, history: History): SessionState {
+function withBuffer(
+  state: SessionState,
+  depth: number,
+  frame: Frame,
+  file: WorkflowFile,
+  history: History,
+): SessionState {
   const opened = openedResultOf(frame)!;
-  const next = withFrame(state, depth, { ...frame, state: { phase: "open", result: { ...opened, file } }, history });
+  const next = withFrame(state, depth, {
+    ...frame,
+    state: { phase: "open", result: { ...opened, file } },
+    history,
+  });
   return { ...next, activeIndex: depth, saveState: IDLE };
 }
 
@@ -591,11 +711,18 @@ function landSave(
 }
 
 /** A buffer that now matches what is on disk: written, open on `file`, its save point at `file`'s bytes. */
-function savedBuffer(file: WorkflowFile, etag: string, opened?: OpenedResult): Omit<Frame, "path" | "loadSeq"> {
+function savedBuffer(
+  file: WorkflowFile,
+  etag: string,
+  opened?: OpenedResult,
+): Omit<Frame, "path" | "loadSeq"> {
   const bytes = canonicalSerialize(file);
   return {
     written: true,
-    state: { phase: "open", result: opened ? { ...opened, file } : { status: "opened", file, idsStamped: false } },
+    state: {
+      phase: "open",
+      result: opened ? { ...opened, file } : { status: "opened", file, idsStamped: false },
+    },
     etag,
     baseline: bytes,
     openedBytes: bytes,
@@ -609,9 +736,17 @@ function savedBuffer(file: WorkflowFile, etag: string, opened?: OpenedResult): O
  * The parent buffer moves off its baseline, so it reads dirty and is saved like any edit. A parent frame
  * or node that is gone is skipped silently, leaving the child standing on its own.
  */
-function landNewFile(state: SessionState, child: Frame, action: Extract<SessionAction, { type: "newFileSaved" }>): SessionState {
+function landNewFile(
+  state: SessionState,
+  child: Frame,
+  action: Extract<SessionAction, { type: "newFileSaved" }>,
+): SessionState {
   const frames = state.frames.slice();
-  frames[action.depth] = { ...withSavePoint(child, action.etag, action.savedBytes), path: action.relativePath, refParent: undefined };
+  frames[action.depth] = {
+    ...withSavePoint(child, action.etag, action.savedBytes),
+    path: action.relativePath,
+    refParent: undefined,
+  };
   const link = child.refParent;
   const parent = link ? frames[link.depth] : undefined;
   const parentResult = openedResultOf(parent);
@@ -619,8 +754,17 @@ function landNewFile(state: SessionState, child: Frame, action: Extract<SessionA
     const node = findById(parentResult.file.body, link.nodeId);
     if (node && node.type === "workflow") {
       const ref = relativeRefPath(parent.path, action.relativePath);
-      const nextParent = unwrapEdit(editFile(parentResult.file, { kind: "replace", id: link.nodeId, node: { ...node, ref } as WorkflowNode }));
-      frames[link.depth] = { ...parent, state: { phase: "open", result: { ...parentResult, file: nextParent } } };
+      const nextParent = unwrapEdit(
+        editFile(parentResult.file, {
+          kind: "replace",
+          id: link.nodeId,
+          node: { ...node, ref } as WorkflowNode,
+        }),
+      );
+      frames[link.depth] = {
+        ...parent,
+        state: { phase: "open", result: { ...parentResult, file: nextParent } },
+      };
     }
   }
   return { ...state, frames };
@@ -644,9 +788,22 @@ function landNewFile(state: SessionState, child: Frame, action: Extract<SessionA
  * is a stale-write **conflict** to reload from, a create is a path **collision** to retarget.
  */
 export type SavePlan =
-  | { kind: "overwrite"; depth: number; path: string; file: WorkflowFile; ifMatch: string | undefined }
+  | {
+      kind: "overwrite";
+      depth: number;
+      path: string;
+      file: WorkflowFile;
+      ifMatch: string | undefined;
+    }
   | { kind: "create"; depth: number; path: string; file: WorkflowFile; ifMatch: undefined }
-  | { kind: "template"; depth: number; id: string; template: TemplateSource; file: WorkflowFile; ifMatch: string };
+  | {
+      kind: "template";
+      depth: number;
+      id: string;
+      template: TemplateSource;
+      file: WorkflowFile;
+      ifMatch: string;
+    };
 
 export function planSave(state: SessionState): SavePlan | null {
   const depth = state.activeIndex;
@@ -654,11 +811,24 @@ export function planSave(state: SessionState): SavePlan | null {
   const opened = openedResultOf(frame);
   if (frame?.template && opened) {
     // The read always carries an ETag; an empty token would only earn the honest `412`.
-    return { kind: "template", depth, id: frame.template.id, template: frame.template, file: opened.file, ifMatch: frame.etag ?? "" };
+    return {
+      kind: "template",
+      depth,
+      id: frame.template.id,
+      template: frame.template,
+      file: opened.file,
+      ifMatch: frame.etag ?? "",
+    };
   }
   if (!frame || !opened || frame.path === null) return null;
   return frame.written
-    ? { kind: "overwrite", depth, path: frame.path, file: opened.file, ifMatch: frame.etag ?? undefined }
+    ? {
+        kind: "overwrite",
+        depth,
+        path: frame.path,
+        file: opened.file,
+        ifMatch: frame.etag ?? undefined,
+      }
     : { kind: "create", depth, path: frame.path, file: opened.file, ifMatch: undefined };
 }
 
@@ -673,13 +843,18 @@ export function planSave(state: SessionState): SavePlan | null {
  *
  * A new buffer that was never saved has nothing on disk, so it has no plan either.
  */
-export type DeletePlan = { kind: "workflow"; path: string; ifMatch: string } | { kind: "template"; id: string; name: string };
+export type DeletePlan =
+  | { kind: "workflow"; path: string; ifMatch: string }
+  | { kind: "template"; id: string; name: string };
 
 export function planDelete(state: SessionState): DeletePlan | null {
   if (state.activeIndex !== 0) return null;
   const frame = state.frames[0];
   if (!frame || frame.state.phase !== "open") return null;
-  if (frame.template) return frame.template.readOnly ? null : { kind: "template", id: frame.template.id, name: frame.template.name };
+  if (frame.template)
+    return frame.template.readOnly
+      ? null
+      : { kind: "template", id: frame.template.id, name: frame.template.name };
   if (!frame.written || frame.path === null || frame.etag === null) return null;
   return { kind: "workflow", path: frame.path, ifMatch: frame.etag };
 }

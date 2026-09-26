@@ -1,15 +1,15 @@
-import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readdirSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
-import type Database from "better-sqlite3";
 import type { WorkflowFile } from "@path/schema";
+import type Database from "better-sqlite3";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createLogBackends } from "../../src/logging/backends.js";
 import { createLoggingObserver } from "../../src/logging/logging-observer.js";
 import { openDb } from "../../src/persistence/db.js";
-import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
 import { dbFilePath, RUN_BLOB_FILE, runBlobDir } from "../../src/persistence/paths.js";
+import { createPersistedObserver } from "../../src/persistence/persisted-observer.js";
 import { composeObservers } from "../../src/run-observer.js";
 import { runWorkflow } from "../../src/run-workflow.js";
 
@@ -176,7 +176,9 @@ describe("acceptance: a plugin inherits masking on its return path (ADR 0020 sub
       echoed: SECRET_MASK,
     });
     // step-stderr → stderr.txt: the worker's returned diagnostic text, masked.
-    expect(readFileSync(blobPath(step.run_id, RUN_BLOB_FILE.stderr), "utf8")).toContain(SECRET_MASK);
+    expect(readFileSync(blobPath(step.run_id, RUN_BLOB_FILE.stderr), "utf8")).toContain(
+      SECRET_MASK,
+    );
     // step-usage → the run row's `usage` column: the worker's own report, masked (numbers untouched).
     expect(JSON.parse(step.usage!)).toEqual({ note: `spent on ${SECRET_MASK}`, tokens: 1 });
   });

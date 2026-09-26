@@ -1,4 +1,10 @@
-import { mapSecrets, resolveDotPath as resolvePath, tokenizeInterpolation, type ConfigObject, type JsonValue } from "@path/schema";
+import {
+  type ConfigObject,
+  type JsonValue,
+  mapSecrets,
+  resolveDotPath as resolvePath,
+  tokenizeInterpolation,
+} from "@path/schema";
 
 /** The `config`/`context`/`output` values a `${dot.path}` resolves against (format doc §5). */
 export type InterpolationScope = { [root: string]: JsonValue };
@@ -83,13 +89,17 @@ export function interpolateString(value: string, scope: InterpolationScope): Jso
       case "placeholder": {
         const resolved = resolveDotPath(scope, token.path);
         if (resolved !== null && typeof resolved === "object") {
-          throw new InterpolationError(`cannot splice a non-scalar value at "\${${token.path}}" into "${value}"`);
+          throw new InterpolationError(
+            `cannot splice a non-scalar value at "\${${token.path}}" into "${value}"`,
+          );
         }
         result += resolved === null ? "null" : String(resolved);
         break;
       }
       case "unclosed":
-        throw new InterpolationError(`unclosed placeholder starting at index ${token.index} in "${value}"`);
+        throw new InterpolationError(
+          `unclosed placeholder starting at index ${token.index} in "${value}"`,
+        );
     }
   }
   return result;
@@ -102,7 +112,9 @@ export function interpolateToString(value: string, scope: InterpolationScope): s
   const resolved = interpolateString(value, scope);
   if (typeof resolved === "string") return resolved;
   if (resolved === null || typeof resolved === "object") {
-    throw new InterpolationError(`expected a string value at "${value}", got ${resolved === null ? "null" : "a non-scalar"}`);
+    throw new InterpolationError(
+      `expected a string value at "${value}", got ${resolved === null ? "null" : "a non-scalar"}`,
+    );
   }
   return String(resolved);
 }

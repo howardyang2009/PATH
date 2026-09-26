@@ -1,5 +1,5 @@
-import { FORMAT_VERSION } from "./workflow-file-type.js";
 import type { WorkflowNode } from "./node-type.js";
+import type { FORMAT_VERSION } from "./workflow-file-type.js";
 
 // A `.step-template.json` is a strict envelope around a workflow **body** that validates exactly as a
 // file's body does (ADR 0048). It is a fragment inserted into someone else's workflow file, so it

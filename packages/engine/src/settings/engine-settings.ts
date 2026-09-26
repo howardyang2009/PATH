@@ -39,7 +39,10 @@ export function loadEngineSettings(projectDir: string): LoadEngineSettingsResult
   try {
     raw = JSON.parse(readFileSync(file, "utf8"));
   } catch (err) {
-    return { success: false, error: `${file}: ${err instanceof Error ? err.message : String(err)}` };
+    return {
+      success: false,
+      error: `${file}: ${err instanceof Error ? err.message : String(err)}`,
+    };
   }
 
   // Strict-unknown-field, like the workflow format: a typo'd key is a settings file that does not
@@ -47,11 +50,15 @@ export function loadEngineSettings(projectDir: string): LoadEngineSettingsResult
   const parsed = EngineSettingsFileSchema.safeParse(raw);
   if (!parsed.success) {
     const issues = formatIssues(parsed.error);
-    return { success: false, error: [`${file}: invalid engine-settings file`, ...issues].join("\n") };
+    return {
+      success: false,
+      error: [`${file}: invalid engine-settings file`, ...issues].join("\n"),
+    };
   }
 
   const settings: EngineSettings = {};
   if (parsed.data["log.backends"] !== undefined) settings.logBackends = parsed.data["log.backends"];
-  if (parsed.data["processor.concurrency"] !== undefined) settings.processorConcurrency = parsed.data["processor.concurrency"];
+  if (parsed.data["processor.concurrency"] !== undefined)
+    settings.processorConcurrency = parsed.data["processor.concurrency"];
   return { success: true, settings };
 }

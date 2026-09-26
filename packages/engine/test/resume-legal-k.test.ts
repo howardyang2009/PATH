@@ -11,7 +11,9 @@ import { stampNames } from "./stamp-names.js";
  * `Project.resume` feeds it — the source tree's raw rows and the current file.
  */
 
-function run(overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">): RunRecord {
+function run(
+  overrides: Partial<RunRecord> & Pick<RunRecord, "runId" | "parentRunId" | "nodeId" | "status">,
+): RunRecord {
   return {
     rootRunId: "orig-root",
     nodeName: overrides.nodeId,
@@ -46,7 +48,9 @@ const abcFile = tree([
   { type: "prompt", id: "c", name: "c", prompt: "c" },
 ]);
 
-function abcRows(statuses: { a?: RunRecord["status"]; b?: RunRecord["status"]; c?: RunRecord["status"] } = {}): RunRecord[] {
+function abcRows(
+  statuses: { a?: RunRecord["status"]; b?: RunRecord["status"]; c?: RunRecord["status"] } = {},
+): RunRecord[] {
   return [
     run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
     run({ runId: "a-run", parentRunId: "root", nodeId: "a", status: statuses.a ?? "succeeded" }),
@@ -62,7 +66,11 @@ describe("resolveLegalK — the legal path", () => {
   });
 
   it("accepts the first node (empty prefix)", () => {
-    expect(resolveLegalK(abcFile, abcRows(), "a-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["a"], passes: [null] });
+    expect(resolveLegalK(abcFile, abcRows(), "a-run", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["a"],
+      passes: [null],
+    });
   });
 });
 
@@ -137,7 +145,13 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
   it("reports K-not-succeeded (#4) before a broken prefix (#5) when both fail", () => {
     // K = b failed AND a before it failed. The dependency order is #4 before #5, so the reason is
     // the boundary's own failure, not the prefix.
-    const verdict = resolveLegalK(abcFile, abcRows({ a: "failed", b: "failed" }), "b-run", new Map(), "/tmp");
+    const verdict = resolveLegalK(
+      abcFile,
+      abcRows({ a: "failed", b: "failed" }),
+      "b-run",
+      new Map(),
+      "/tmp",
+    );
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.message).toContain("did not succeed");
@@ -155,7 +169,11 @@ describe("resolveLegalK — the refusal taxonomy (spec §5)", () => {
       reusedFromRunId: "src-run",
       reusedFromRootRunId: "src-root",
     });
-    expect(resolveLegalK(abcFile, rows, "b-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["b"], passes: [null] });
+    expect(resolveLegalK(abcFile, rows, "b-run", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["b"],
+      passes: [null],
+    });
   });
 });
 
@@ -174,7 +192,12 @@ const rootWithSub = tree([
 const nestedFiles = new Map([[NESTED_PATH, nestedFile]]);
 
 function nestedRows(
-  over: { sub?: RunRecord["status"]; p?: RunRecord["status"]; k?: RunRecord["status"]; q?: RunRecord["status"] } = {},
+  over: {
+    sub?: RunRecord["status"];
+    p?: RunRecord["status"];
+    k?: RunRecord["status"];
+    q?: RunRecord["status"];
+  } = {},
 ): RunRecord[] {
   return [
     run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
@@ -221,7 +244,13 @@ describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
 
   it("a broken prefix one level down (before K inside sub) is 409", () => {
     // p (before k, inside sub) did not succeed — the inner prefix cannot be reused.
-    const verdict = resolveLegalK(rootWithSub, nestedRows({ p: "failed" }), "k-run", nestedFiles, "/tmp");
+    const verdict = resolveLegalK(
+      rootWithSub,
+      nestedRows({ p: "failed" }),
+      "k-run",
+      nestedFiles,
+      "/tmp",
+    );
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(409);
@@ -229,7 +258,13 @@ describe("resolveLegalK — a nested descent path (ADR 0036)", () => {
   });
 
   it("an unsucceeded nested K is 409", () => {
-    const verdict = resolveLegalK(rootWithSub, nestedRows({ k: "failed" }), "k-run", nestedFiles, "/tmp");
+    const verdict = resolveLegalK(
+      rootWithSub,
+      nestedRows({ k: "failed" }),
+      "k-run",
+      nestedFiles,
+      "/tmp",
+    );
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.status).toBe(409);
@@ -260,11 +295,15 @@ describe("resolveLegalK — the refusal reason code (spec §6)", () => {
   });
 
   it("an unsucceeded K is reason `not-succeeded`", () => {
-    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "b-run", new Map(), "/tmp").reason).toBe("not-succeeded");
+    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "b-run", new Map(), "/tmp").reason).toBe(
+      "not-succeeded",
+    );
   });
 
   it("a broken prefix is reason `prefix-unsucceeded`", () => {
-    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "c-run", new Map(), "/tmp").reason).toBe("prefix-unsucceeded");
+    expect(refusalOf(abcFile, abcRows({ b: "failed" }), "c-run", new Map(), "/tmp").reason).toBe(
+      "prefix-unsucceeded",
+    );
   });
 
   it("a node inside a while-do body is reason `in-body` with container `loop`", () => {
@@ -307,7 +346,12 @@ describe("resolveLegalK — the refusal reason code (spec §6)", () => {
         type: "branch",
         id: "br",
         name: "br",
-        arms: [{ when: { type: "exists", path: "context.x" }, node: { type: "prompt", id: "b", name: "b", prompt: "b" } }],
+        arms: [
+          {
+            when: { type: "exists", path: "context.x" },
+            node: { type: "prompt", id: "b", name: "b", prompt: "b" },
+          },
+        ],
       },
     ]);
     const refusal = refusalOf(nestedB, abcRows(), "b-run", new Map(), "/tmp");
@@ -329,8 +373,14 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
       id: "pick",
       name: "pick",
       arms: [
-        { when: { type: "exists", path: "context.short" }, node: { type: "prompt", id: "fmt-short", name: "fmt-short", prompt: "s" } },
-        { when: { type: "exists", path: "context.long" }, node: { type: "prompt", id: "fmt-long", name: "fmt-long", prompt: "l" } },
+        {
+          when: { type: "exists", path: "context.short" },
+          node: { type: "prompt", id: "fmt-short", name: "fmt-short", prompt: "s" },
+        },
+        {
+          when: { type: "exists", path: "context.long" },
+          node: { type: "prompt", id: "fmt-long", name: "fmt-long", prompt: "l" },
+        },
       ],
     },
     { type: "binary", id: "write", name: "write", command: "echo" },
@@ -339,17 +389,32 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
     return [
       run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
       // `fmt-short` never ran — the branch took the other arm. No row for it.
-      run({ runId: "long-run", parentRunId: "root", nodeId: "fmt-long", status: over.long ?? "succeeded" }),
+      run({
+        runId: "long-run",
+        parentRunId: "root",
+        nodeId: "fmt-long",
+        status: over.long ?? "succeeded",
+      }),
       run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
     ];
   }
 
   it("an untaken branch arm before K does not break the prefix", () => {
-    expect(resolveLegalK(pickFile, pickRows(), "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"], passes: [null] });
+    expect(resolveLegalK(pickFile, pickRows(), "write-run", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["write"],
+      passes: [null],
+    });
   });
 
   it("a branch arm that ran and failed before K still breaks the prefix", () => {
-    const verdict = resolveLegalK(pickFile, pickRows({ long: "failed" }), "write-run", new Map(), "/tmp");
+    const verdict = resolveLegalK(
+      pickFile,
+      pickRows({ long: "failed" }),
+      "write-run",
+      new Map(),
+      "/tmp",
+    );
     expect(verdict.ok).toBe(false);
     if (verdict.ok) throw new Error("unreachable");
     expect(verdict.refusal.reason).toBe("prefix-unsucceeded");
@@ -372,17 +437,35 @@ describe("resolveLegalK — a skipped prefix path is not a broken one (#5)", () 
       run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "succeeded" }),
       run({ runId: "write-run", parentRunId: "root", nodeId: "write", status: "succeeded" }),
     ];
-    expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["write"], passes: [null] });
+    expect(resolveLegalK(loopFile, rows, "write-run", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["write"],
+      passes: [null],
+    });
   });
 });
 
 describe("resolveLegalK — a sequence body is transparent (ADR 0064)", () => {
-  const seq = (id: string, body: WorkflowFile["body"]): WorkflowFile["body"][number] => ({ type: "sequence", id, name: id, body });
-  const prompt = (id: string): WorkflowFile["body"][number] => ({ type: "prompt", id, name: id, prompt: id });
+  const seq = (id: string, body: WorkflowFile["body"]): WorkflowFile["body"][number] => ({
+    type: "sequence",
+    id,
+    name: id,
+    body,
+  });
+  const prompt = (id: string): WorkflowFile["body"][number] => ({
+    type: "prompt",
+    id,
+    name: id,
+    prompt: id,
+  });
 
   it("resolves K inside a sequence to its length-1 node path", () => {
     const file = tree([prompt("a"), seq("s", [prompt("b"), prompt("c")])]);
-    expect(resolveLegalK(file, abcRows(), "c-run", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["c"], passes: [null] });
+    expect(resolveLegalK(file, abcRows(), "c-run", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["c"],
+      passes: [null],
+    });
   });
 
   it("counts an earlier sibling in the same sequence as prefix", () => {
@@ -394,8 +477,18 @@ describe("resolveLegalK — a sequence body is transparent (ADR 0064)", () => {
   });
 
   it("descends through an intermediate workflow path-node inside a sequence", () => {
-    const file = tree([seq("s", [prompt("a"), { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} }]), prompt("d")]);
-    expect(resolveLegalK(file, nestedRows(), "k-run", nestedFiles, "/tmp")).toEqual({ ok: true, nodePath: ["sub", "k"], passes: [null, null] });
+    const file = tree([
+      seq("s", [
+        prompt("a"),
+        { type: "workflow", id: "sub", name: "sub", ref: "./nested.workflow.json", input: {} },
+      ]),
+      prompt("d"),
+    ]);
+    expect(resolveLegalK(file, nestedRows(), "k-run", nestedFiles, "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["sub", "k"],
+      passes: [null, null],
+    });
   });
 
   it("refuses K inside a sequence inside a loop, naming the loop", () => {
@@ -422,14 +515,32 @@ describe("resolveLegalK — a sequence body is transparent (ADR 0064)", () => {
     const file = tree([prompt("a"), seq("test", [prompt("b"), prompt("c")])]);
     const rows = [
       run({ runId: "root", parentRunId: null, nodeId: null, nodeName: null, status: "failed" }),
-      run({ runId: "pass-1", parentRunId: "root", nodeId: "g", nodeName: "g", pass: 1, status: "succeeded" }),
+      run({
+        runId: "pass-1",
+        parentRunId: "root",
+        nodeId: "g",
+        nodeName: "g",
+        pass: 1,
+        status: "succeeded",
+      }),
       run({ runId: "a-1", parentRunId: "pass-1", nodeId: "a", status: "succeeded" }),
       run({ runId: "b-1", parentRunId: "pass-1", nodeId: "b", status: "succeeded" }),
       run({ runId: "c-1", parentRunId: "pass-1", nodeId: "c", status: "succeeded" }),
-      run({ runId: "pass-2", parentRunId: "root", nodeId: "g", nodeName: "g", pass: 2, status: "failed" }),
+      run({
+        runId: "pass-2",
+        parentRunId: "root",
+        nodeId: "g",
+        nodeName: "g",
+        pass: 2,
+        status: "failed",
+      }),
       run({ runId: "b-2", parentRunId: "pass-2", nodeId: "b", status: "succeeded" }),
       run({ runId: "c-2", parentRunId: "pass-2", nodeId: "c", status: "succeeded" }),
     ];
-    expect(resolveLegalK(file, rows, "c-2", new Map(), "/tmp")).toEqual({ ok: true, nodePath: ["c"], passes: [2] });
+    expect(resolveLegalK(file, rows, "c-2", new Map(), "/tmp")).toEqual({
+      ok: true,
+      nodePath: ["c"],
+      passes: [2],
+    });
   });
 });

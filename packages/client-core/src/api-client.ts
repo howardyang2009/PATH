@@ -18,8 +18,8 @@ import type {
   WireLeaseOpRequest,
   WireLockHeldBody,
   WireLockRequest,
-  WirePutWorkflowRequest,
   WirePostTemplateRequest,
+  WirePutWorkflowRequest,
   WirePutWorkflowResponse,
   WireTemplateWriteResponse,
   WireWorkflowLease,
@@ -284,7 +284,11 @@ export class PathApiClient {
    * refusing an illegal pick with the taxonomy status + message. It sends a body even when `config` is
    * omitted, so a K with no config override is still a JSON request, not the no-body plain resume.
    */
-  async resumeRun(rootRunId: string, config?: ConfigObject, rerunFromRunId?: string): Promise<StartRunResponse> {
+  async resumeRun(
+    rootRunId: string,
+    config?: ConfigObject,
+    rerunFromRunId?: string,
+  ): Promise<StartRunResponse> {
     const path = `/v0/runs/${encodeURIComponent(rootRunId)}/resume`;
     const body: { config?: ConfigObject; rerun_from_run_id?: string } = {};
     if (config !== undefined) body.config = config;
@@ -309,13 +313,20 @@ export class PathApiClient {
    * run — the engine refuses before its first step until the operator enters it again. Omitted, the
    * body is `{ output }` alone, byte-identical to before.
    */
-  async completeStep(stepRunId: string, output: JsonValue, config?: ConfigObject): Promise<CompleteRunResponse> {
+  async completeStep(
+    stepRunId: string,
+    output: JsonValue,
+    config?: ConfigObject,
+  ): Promise<CompleteRunResponse> {
     // Same optional-body handling as `resumeRun`: only a supplied config rides the request, so a plain
     // Complete sends nothing extra for the server to validate. The body is the shared wire type, so its
     // field set cannot drift from the one the route decodes.
     const body: CompleteRunRequest = { output };
     if (config !== undefined) body.config = config;
-    return this.requestJson<CompleteRunResponse>(`/v0/runs/${encodeURIComponent(stepRunId)}/complete`, { method: "POST", body });
+    return this.requestJson<CompleteRunResponse>(
+      `/v0/runs/${encodeURIComponent(stepRunId)}/complete`,
+      { method: "POST", body },
+    );
   }
 
   /**
@@ -333,7 +344,8 @@ export class PathApiClient {
     if (options.config !== undefined) body.config = options.config;
     if (options.workerDefaults !== undefined) body.worker_defaults = options.workerDefaults;
     if (options.logBackends !== undefined) body.log_backends = options.logBackends;
-    if (options.processorConcurrency !== undefined) body.processor_concurrency = options.processorConcurrency;
+    if (options.processorConcurrency !== undefined)
+      body.processor_concurrency = options.processorConcurrency;
     return this.requestJson<StartRunResponse>("/v0/runs", { method: "POST", body });
   }
 
@@ -381,7 +393,12 @@ export class PathApiClient {
    * and an unknown id a `404`, each as a `PathApiError`.
    */
   async putTemplate(input: PutTemplateInput): Promise<TemplateWriteResult> {
-    return this.writeTemplate(`/v0/templates/${encodeURIComponent(input.id)}`, "PUT", input.body, input.ifMatch);
+    return this.writeTemplate(
+      `/v0/templates/${encodeURIComponent(input.id)}`,
+      "PUT",
+      input.body,
+      input.ifMatch,
+    );
   }
 
   /**
@@ -393,8 +410,17 @@ export class PathApiClient {
   }
 
   /** The one transport behind both template writes: a JSON body, an optional `If-Match`, a parsed reply. */
-  private async writeTemplate(path: string, method: "POST" | "PUT", body: unknown, ifMatch: string | undefined): Promise<TemplateWriteResult> {
-    const reply = await this.requestJson<WireTemplateWriteResponse>(path, { method, body, headers: ifMatchHeader(ifMatch) });
+  private async writeTemplate(
+    path: string,
+    method: "POST" | "PUT",
+    body: unknown,
+    ifMatch: string | undefined,
+  ): Promise<TemplateWriteResult> {
+    const reply = await this.requestJson<WireTemplateWriteResponse>(path, {
+      method,
+      body,
+      headers: ifMatchHeader(ifMatch),
+    });
     return { id: reply.id, relativePath: reply.relative_path, etag: reply.etag };
   }
 
@@ -434,8 +460,15 @@ export class PathApiClient {
   async putWorkflow(input: PutWorkflowInput): Promise<PutWorkflowResult> {
     // The camelCase input is renamed inline to the shared wire shape (ADR 0013): one declaration, so a
     // field the server stops reading is a compile error here rather than a silently dropped write.
-    const body: WirePutWorkflowRequest = { workflow_path: input.workflowPath, workflow: input.workflow as WirePutWorkflowRequest["workflow"] };
-    const reply = await this.requestJson<WirePutWorkflowResponse>("/v0/workflows", { method: "PUT", body, headers: ifMatchHeader(input.ifMatch) });
+    const body: WirePutWorkflowRequest = {
+      workflow_path: input.workflowPath,
+      workflow: input.workflow as WirePutWorkflowRequest["workflow"],
+    };
+    const reply = await this.requestJson<WirePutWorkflowResponse>("/v0/workflows", {
+      method: "PUT",
+      body,
+      headers: ifMatchHeader(input.ifMatch),
+    });
     return { relativePath: reply.relative_path, id: reply.id, etag: reply.etag };
   }
 
@@ -446,10 +479,17 @@ export class PathApiClient {
    * lease, which the delete removes with the file; another session's live lease is a `409`. A `404` (the
    * file is gone or the path escapes the root) and a `400` (a template path) also arrive as `PathApiError`s.
    */
-  async deleteWorkflowFile(input: { path: string; ifMatch: string; sessionId?: string }): Promise<void> {
+  async deleteWorkflowFile(input: {
+    path: string;
+    ifMatch: string;
+    sessionId?: string;
+  }): Promise<void> {
     const query = new URLSearchParams({ path: input.path });
     if (input.sessionId !== undefined) query.set("session_id", input.sessionId);
-    await this.request(`/v0/workflows/file?${query.toString()}`, { method: "DELETE", headers: { "If-Match": input.ifMatch } });
+    await this.request(`/v0/workflows/file?${query.toString()}`, {
+      method: "DELETE",
+      headers: { "If-Match": input.ifMatch },
+    });
   }
 
   /**
@@ -459,11 +499,19 @@ export class PathApiClient {
    * that escapes the project root) and other non-2xx statuses raise `PathApiError`.
    */
   async acquireLock(input: AcquireLockInput): Promise<AcquireLockResult> {
-    const body: WireLockRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const body: WireLockRequest = {
+      workflow_path: input.workflowPath,
+      session_id: input.sessionId,
+    };
     if (input.takeover !== undefined) body.takeover = input.takeover;
     const { status, text } = await this.send("/v0/workflows/lock", { method: "POST", body });
-    if (status === 200) return { status: "granted", lease: parseReply<WorkflowLease>(status, text) };
-    if (status === 409) return { status: "held-by-other", expiresAt: parseReply<WireLockHeldBody>(status, text).expires_at ?? null };
+    if (status === 200)
+      return { status: "granted", lease: parseReply<WorkflowLease>(status, text) };
+    if (status === 409)
+      return {
+        status: "held-by-other",
+        expiresAt: parseReply<WireLockHeldBody>(status, text).expires_at ?? null,
+      };
     throw toApiError(status, text);
   }
 
@@ -473,9 +521,16 @@ export class PathApiClient {
    * stops beating and warns "editing lease lost" with a re-acquire affordance. Other non-2xx throw.
    */
   async heartbeatLock(input: LeaseOpInput): Promise<HeartbeatResult> {
-    const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
-    const { status, text } = await this.send("/v0/workflows/lock/heartbeat", { method: "POST", body });
-    if (status === 200) return { status: "renewed", lease: parseReply<WorkflowLease>(status, text) };
+    const body: WireLeaseOpRequest = {
+      workflow_path: input.workflowPath,
+      session_id: input.sessionId,
+    };
+    const { status, text } = await this.send("/v0/workflows/lock/heartbeat", {
+      method: "POST",
+      body,
+    });
+    if (status === 200)
+      return { status: "renewed", lease: parseReply<WorkflowLease>(status, text) };
     if (status === 409) return { status: "lost" };
     throw toApiError(status, text);
   }
@@ -487,7 +542,10 @@ export class PathApiClient {
    * uses `navigator.sendBeacon` against `url("/v0/workflows/lock/release")` instead, which is POST-only.
    */
   async releaseLock(input: LeaseOpInput): Promise<void> {
-    const body: WireLeaseOpRequest = { workflow_path: input.workflowPath, session_id: input.sessionId };
+    const body: WireLeaseOpRequest = {
+      workflow_path: input.workflowPath,
+      session_id: input.sessionId,
+    };
     await this.request("/v0/workflows/lock/release", { method: "POST", body });
   }
 
@@ -503,7 +561,11 @@ export class PathApiClient {
         ? { headers: { Accept: "application/json", ...headers } }
         : {
             method,
-            headers: { Accept: "application/json", ...(body !== undefined ? { "Content-Type": "application/json" } : {}), ...headers },
+            headers: {
+              Accept: "application/json",
+              ...(body !== undefined ? { "Content-Type": "application/json" } : {}),
+              ...headers,
+            },
             ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
           };
     const res = await this.fetch(this.url(path), init);
