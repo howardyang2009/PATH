@@ -68,7 +68,7 @@ function TailSocket({
   socket: ListSocket;
   editor?: EditorApi;
 }): JSX.Element | null {
-  if (!editor || !editor.socketOpen(socket.flavor, socket.ownerId)) return null;
+  if (!editor?.socketOpen(socket.flavor, socket.ownerId)) return null;
   return (
     <button
       type="button"
@@ -426,7 +426,7 @@ function SlotSwap({
   target: SingleSlot;
   editor?: EditorApi;
 }): JSX.Element | null {
-  if (!editor || !editor.socketOpen("single", target.ownerId)) return null;
+  if (!editor?.socketOpen("single", target.ownerId)) return null;
   return (
     <button type="button" className="socket socket-swap" onClick={() => editor.swapSingle(target)}>
       swap for {editor.armedLabel}

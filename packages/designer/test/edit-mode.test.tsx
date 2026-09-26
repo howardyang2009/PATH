@@ -214,7 +214,7 @@ describe("Workflow | Template edit-mode switch", () => {
       name: "gate",
       description: "a gate",
     });
-    expect(Object.keys(calls.templateWrites[0]!.body["body"] as object).sort()).toEqual([
+    expect(Object.keys(calls.templateWrites[0]!.body.body as object).sort()).toEqual([
       "body",
       "description",
       "format",
@@ -336,8 +336,8 @@ describe("Workflow | Template edit-mode switch", () => {
     // An exclusive create in the source file's directory; the copy is a new workflow with its new name.
     expect(calls.put[0]!.ifMatch).toBeNull();
     expect(workflow_path).toBe("flows/other.workflow.json");
-    expect(workflow["name"]).toBe("other");
-    expect(workflow["id"]).not.toBe(WORKFLOW_FILE.id);
+    expect(workflow.name).toBe("other");
+    expect(workflow.id).not.toBe(WORKFLOW_FILE.id);
     expect(JSON.stringify(workflow)).not.toContain(uuid(21));
     await waitFor(() => expect(screen.queryByRole("dialog")).not.toBeInTheDocument());
     expect(screen.getByText("alpha")).toBeInTheDocument();
@@ -371,7 +371,7 @@ describe("Workflow | Template edit-mode switch", () => {
       id: null,
       body: { kind: "step", name: "main-steps", description: "an alpha step" },
     });
-    const body = write.body["body"] as { id: string; body: unknown[] };
+    const body = write.body.body as { id: string; body: unknown[] };
     expect(Object.keys(body).sort()).toEqual(["body", "description", "format", "id"]);
     // A fresh identity (a template must not share the workflow's), and the workflow's body.
     expect(body.id).not.toBe(WORKFLOW_FILE.id);

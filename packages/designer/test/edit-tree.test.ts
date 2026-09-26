@@ -9,7 +9,7 @@ import {
   locate,
   unwrapEdit,
 } from "../src/edit-tree.js";
-import { cloneWithFreshIdentity, createArm, createNode, usedNames } from "../src/node-factory.js";
+import { cloneWithFreshIdentity, createArm, usedNames } from "../src/node-factory.js";
 
 /** Apply one op and unwrap it to the new file — for the total ops (every op but `delete`). */
 function apply(file: WorkflowFile, op: EditOp): WorkflowFile {

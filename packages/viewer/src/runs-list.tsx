@@ -2,9 +2,7 @@ import {
   isTerminal,
   type PathApiClient,
   type RootRunSummary,
-  type RunNodeState,
   type RunStatus,
-  type WorkflowFile,
 } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { DeleteButton } from "./delete-button.js";

@@ -9,7 +9,7 @@ import {
   openedResultOf,
   useOpenFile,
 } from "../src/use-open-file.js";
-import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
+import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #389 — the per-file undo/redo stack (designer-spec § Dirty-state, undo, and the save-point). These drive

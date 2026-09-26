@@ -446,7 +446,7 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       // An unwritten buffer has no on-disk bytes to re-fetch; a template frame has no path but re-reads by id.
-      if (!frame || !frame.written || (frame.path === null && !frame.template)) return state;
+      if (!frame?.written || (frame.path === null && !frame.template)) return state;
       const frames = state.frames.slice();
       // A reload keeps the frame's descent origin, so a re-fetched child still badges its run status.
       frames[depth] = loadingFrame(frame.path, frame.descendedVia, action.loadSeq, frame.template);
@@ -700,7 +700,7 @@ export type DeletePlan =
 export function planDelete(state: SessionState): DeletePlan | null {
   if (state.activeIndex !== 0) return null;
   const frame = state.frames[0];
-  if (!frame || frame.state.phase !== "open") return null;
+  if (frame?.state.phase !== "open") return null;
   if (frame.template)
     return frame.template.readOnly
       ? null

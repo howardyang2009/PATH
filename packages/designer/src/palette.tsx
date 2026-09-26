@@ -1,5 +1,4 @@
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
 import { useState } from "react";
 import { type PaletteEntry, type PaletteSubTab, paletteGroups } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";

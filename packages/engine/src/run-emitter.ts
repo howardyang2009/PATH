@@ -7,7 +7,7 @@ import {
 } from "@path/schema";
 import type { Trace } from "./condition.js";
 import type { Emit, RunIdentity } from "./run-context.js";
-import type { Observation, RunOutcome } from "./run-observer.js";
+import type { RunOutcome } from "./run-observer.js";
 
 /**
  * The run-scoped producer of **observations**: one per workflow-run, owning the shared envelope so a call site

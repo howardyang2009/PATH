@@ -216,7 +216,7 @@ describe("instantiateWorkflow — a whole-workflow copy with a fresh identity", 
     const out = instantiateWorkflow(source);
     expect(source).toEqual(before);
     (out.input as { ticket: string }).ticket = "changed";
-    (out.worker_defaults as Record<string, string>)["prompt"] = "changed";
+    (out.worker_defaults as Record<string, string>).prompt = "changed";
     expect(source).toEqual(before);
   });
 });

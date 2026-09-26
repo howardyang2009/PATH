@@ -166,7 +166,7 @@ export class LeaseController {
   /** One heartbeat, epoch-guarded like `acquire`: a `lost` stops the beat and flips the UI to re-acquire. */
   private async beat(path: string): Promise<void> {
     const entry = this.entries.get(path);
-    if (!entry || entry.state.phase !== "held") return;
+    if (entry?.state.phase !== "held") return;
     const epoch = entry.epoch;
 
     let result: HeartbeatResult;

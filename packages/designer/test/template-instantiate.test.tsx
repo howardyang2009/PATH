@@ -145,13 +145,13 @@ describe("Insert a Template into a workflow", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: /add draft-judge here/ }));
 
     const body = await savedBody(calls);
-    expect(body.map((node) => node["name"])).toEqual(["alpha", "loop", "fan", "alpha-2", "judge"]);
+    expect(body.map((node) => node.name)).toEqual(["alpha", "loop", "fan", "alpha-2", "judge"]);
     const inserted = body.slice(3);
-    expect(inserted.map((node) => node["prompt"])).toEqual(["draft it", "judge it"]);
+    expect(inserted.map((node) => node.prompt)).toEqual(["draft it", "judge it"]);
     // Fresh ids, and nothing in the file points back at the template.
     const saved = JSON.stringify(calls.put[0]!.body.workflow);
     for (const id of [...TEMPLATE_NODE_IDS, "draft-judge-id"]) expect(saved).not.toContain(id);
-    expect(new Set(inserted.map((node) => node["id"])).size).toBe(2);
+    expect(new Set(inserted.map((node) => node.id)).size).toBe(2);
   });
 
   it("wraps a 2+-node body in a fresh sequence at a single-node slot", async () => {
@@ -161,8 +161,8 @@ describe("Insert a Template into a workflow", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: /swap for draft-judge/ }));
 
     const body = await savedBody(calls);
-    const loop = body.find((node) => node["name"] === "loop")!;
-    const occupant = loop["node"] as { type: string; body: { name: string }[] };
+    const loop = body.find((node) => node.name === "loop")!;
+    const occupant = loop.node as { type: string; body: { name: string }[] };
     expect(occupant.type).toBe("sequence");
     expect(occupant.body.map((node) => node.name)).toEqual(["alpha-2", "judge"]);
   });
@@ -174,8 +174,8 @@ describe("Insert a Template into a workflow", () => {
     fireEvent.click(within(canvas).getByRole("button", { name: /add draft-judge branch/ }));
 
     const body = await savedBody(calls);
-    const fan = body.find((node) => node["name"] === "fan")!;
-    const branches = fan["branches"] as { type: string; name: string; body?: { name: string }[] }[];
+    const fan = body.find((node) => node.name === "fan")!;
+    const branches = fan.branches as { type: string; name: string; body?: { name: string }[] }[];
     expect(branches.map((branch) => branch.type)).toEqual(["prompt", "sequence"]);
     expect(branches[1]!.body!.map((node) => node.name)).toEqual(["alpha-2", "judge"]);
   });
@@ -205,7 +205,7 @@ describe("Insert a Template into a workflow", () => {
     });
 
     const body = await savedBody(calls);
-    expect(body.find((node) => node["name"] === "judge")!["prompt"]).toBe("judge it harder");
+    expect(body.find((node) => node.name === "judge")!.prompt).toBe("judge it harder");
   });
 
   it("disarms after a place and on a second click of the armed card", async () => {
