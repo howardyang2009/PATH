@@ -22,10 +22,13 @@ import { maskRunEvent } from "./secret-mask.js";
 export { runContainerBody, runNode, runSequence } from "./run-node.js";
 export type {
   ContinuationInput,
+  ContinuationRunOptions,
   ContinueInput,
+  LaunchRunOptions,
   ResumeInput,
   RunOptions,
   RunResult,
+  RunSeams,
   WorkerOverrides,
 } from "./run-options.js";
 

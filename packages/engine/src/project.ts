@@ -20,8 +20,10 @@ import { createRunArchive, type RunArchive } from "./run-archive.js";
 import { composeObservers, type RunObserver } from "./run-observer.js";
 import {
   type ContinuationInput,
-  type RunOptions,
+  type ContinuationRunOptions,
+  type LaunchRunOptions,
   type RunResult,
+  type RunSeams,
   runWorkflow,
 } from "./run-workflow.js";
 import { type EngineSettings, loadEngineSettings } from "./settings/engine-settings.js";
@@ -53,7 +55,7 @@ export interface Project {
    * Run one workflow against this project. `workflowDir` is the root workflow file's own directory,
    * which nested `workflow` refs and binary `cwd`s resolve against — not `dir`.
    */
-  run(rootFile: WorkflowFile, workflowDir: string, opts?: ProjectRunOptions): Promise<RunResult>;
+  run(rootFile: WorkflowFile, workflowDir: string, opts?: ProjectLaunchOptions): Promise<RunResult>;
   /**
    * Resume a prior root run: re-run `rootFile` as a successor of the tree rooted at `rootRunId`,
    * reusing every node whose recorded run still matches, the original tree left read-only. `found:
@@ -63,7 +65,7 @@ export interface Project {
     rootFile: WorkflowFile,
     rootRunId: string,
     workflowDir: string,
-    opts?: ProjectRunOptions,
+    opts?: ProjectResumeOptions,
   ): Promise<ResumeResult>;
   /**
    * Dry-run of resume: compute but launch nothing — DFS pre-order runs, each with the verdict the
@@ -88,7 +90,7 @@ export interface Project {
     stepRunId: string,
     output: JsonValue,
     workflowDir: string,
-    opts?: ProjectRunOptions,
+    opts?: ProjectContinuationOptions,
   ): Promise<CompleteResult>;
   /**
    * Cancel a parked `awaiting` tree at the store (`awaiting → cancelled`, ancestors too): a park
@@ -99,23 +101,45 @@ export interface Project {
   close(): void;
 }
 
-/** `RunOptions` minus the audit seam (the `Project` composes it), plus setting overrides and
- * seams. */
-export interface ProjectRunOptions extends Omit<RunOptions, "observer"> {
+/** What the `Project` adds to a run's own options, whichever mode: settings overrides and seams. */
+export interface ProjectRunSeams {
   /** Overrides `.path/settings.json`, which overrides the built-in default. */
   logBackends?: LogBackendId[];
   processorConcurrency?: number;
   /** Backends alongside the configured ones — the server's live SSE forwarding. */
   extraBackends?: LogBackend[];
-  /** Resume-only: the operator's source run id naming the rerun boundary K. Absent = plain
-   * Resume. */
-  rerunFromRunId?: string;
   /**
    * Appended after the built-in pair, always: the capture observer must run after persistence wrote
    * the row and logging opened its channel.
    */
   extraObservers?: RunObserver[];
 }
+
+/** A `Project.run` call: the launch arm, so an operator input is the one thing it can carry that a
+ * continuation cannot. The continuation itself is the assembly's to add, never the caller's. */
+export type ProjectLaunchOptions = Omit<LaunchRunOptions, "observer" | "continuation"> &
+  ProjectRunSeams;
+
+/** A `Project.resume` / `Project.complete` call: the continuation arm, likewise without the
+ * continuation object. */
+export type ProjectContinuationOptions = Omit<ContinuationRunOptions, "observer" | "continuation"> &
+  ProjectRunSeams;
+
+/** A Resume adds the rerun boundary K to the continuation arm (ADR 0032); Complete has no K. */
+export type ProjectResumeOptions = ProjectContinuationOptions & { rerunFromRunId?: string };
+
+/** Either arm, as a caller states it. */
+export type ProjectRunOptions = ProjectLaunchOptions | ProjectContinuationOptions;
+
+/** Either arm as the run assembly receives it: the caller's options with the continuation the
+ * assembly built for it. */
+export type ProjectExecOptions =
+  | (ProjectLaunchOptions & { continuation?: undefined })
+  | (ProjectContinuationOptions & { continuation: ContinuationInput });
+
+/** What both arms share: a caller that builds one options object for launch and resume (the CLI)
+ * states only these, so no mode-specific field is in scope to leak into the wrong call. */
+export type ProjectSharedOptions = Omit<RunSeams, "observer"> & ProjectRunSeams;
 
 /** What the resume and complete paths share with `openProject`: the open db, the project dir, and
  * the run assembly. */
@@ -125,8 +149,7 @@ export interface ProjectCore {
   execute(
     rootFile: WorkflowFile,
     workflowDir: string,
-    opts: ProjectRunOptions,
-    continuation: ContinuationInput | undefined,
+    options: ProjectExecOptions,
     appendObservers: RunObserver[],
   ): Promise<RunResult>;
 }
@@ -166,8 +189,7 @@ export function openProject(dir: string): OpenProjectResult {
   function execute(
     rootFile: WorkflowFile,
     workflowDir: string,
-    opts: ProjectRunOptions,
-    continuation: ContinuationInput | undefined,
+    options: ProjectExecOptions,
     appendObservers: RunObserver[],
   ): Promise<RunResult> {
     const {
@@ -176,7 +198,7 @@ export function openProject(dir: string): OpenProjectResult {
       extraBackends = [],
       extraObservers = [],
       ...runOptions
-    } = opts;
+    } = options;
 
     // Nearest wins: an explicit override beats `.path/settings.json`, which beats the built-in
     // default.
@@ -186,8 +208,11 @@ export function openProject(dir: string): OpenProjectResult {
     // A Complete continues the existing per-root log stream: seq picks up from `RunLog.lastSeq()`
     // and events append to `run.log` rather than truncating it.
     const loggingOptions =
-      continuation?.kind === "complete"
-        ? { startSeq: openRunLog(absDir, db, continuation.rootRunId).lastSeq(), append: true }
+      runOptions.continuation?.kind === "complete"
+        ? {
+            startSeq: openRunLog(absDir, db, runOptions.continuation.rootRunId).lastSeq(),
+            append: true,
+          }
         : {};
 
     // Persistence first, deliberately: a log write failure aborts the remaining observers, so
@@ -203,7 +228,6 @@ export function openProject(dir: string): OpenProjectResult {
       ...runOptions,
       observer,
       processorConcurrency: processorConcurrency ?? settings.processorConcurrency,
-      continuation,
     });
   }
 
@@ -215,7 +239,7 @@ export function openProject(dir: string): OpenProjectResult {
       archive: createRunArchive(db, absDir),
       settings,
       run: (rootFile, workflowDir, opts = {}) =>
-        execute(rootFile, workflowDir, opts, undefined, []),
+        execute(rootFile, workflowDir, { ...opts, continuation: undefined }, []),
       resume: (rootFile, rootRunId, workflowDir, opts = {}) =>
         resumeProjectRun(core, rootFile, rootRunId, workflowDir, opts),
       listEligible: (rootFile, rootRunId, workflowDir, files = new Map()) =>

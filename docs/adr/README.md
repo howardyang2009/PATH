@@ -71,6 +71,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0065](0065-comments-state-what-and-why-decisions-live-in-adrs.md) | Source comments state what and why; decisions live in ADRs | accepted |
 | [0066](0066-the-log-event-is-the-only-event-vocabulary.md) | The log event is the only event vocabulary | accepted |
 | [0067](0067-a-container-body-walk-cannot-take-a-jump.md) | A container body's walk cannot take a jump | accepted |
+| [0068](0068-the-run-entry-options-are-two-arms.md) | The run entry options are two arms: a launch and a continuation | accepted |
 
 ## Superseded decisions
 

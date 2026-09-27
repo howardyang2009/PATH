@@ -13,6 +13,9 @@ export {
   type OpenProjectResult,
   openProject,
   type Project,
+  type ProjectContinuationOptions,
+  type ProjectLaunchOptions,
+  type ProjectResumeOptions,
   type ProjectRunOptions,
   type ResumeResult,
 } from "./project.js";
@@ -33,7 +36,9 @@ export {
 } from "./run-observer.js";
 export {
   type ContinuationInput,
+  type ContinuationRunOptions,
   type ContinueInput,
+  type LaunchRunOptions,
   type ResumeInput,
   type RunOptions,
   type RunResult,

@@ -9,22 +9,12 @@ import type { RunObserver } from "./run-observer.js";
  * **replace-only**. */
 export type WorkerOverrides = { [type: string]: { [name: string]: WorkerDescriptor } };
 
-export interface RunOptions {
+/** The seams and settings every entry point accepts, whichever mode it runs in. */
+export interface RunSeams {
+  /** The seed a fresh run starts from; a continuation's context comes from its own seed or the
+   * predecessor, so this is only the fallback. */
   input?: { [key: string]: JsonValue };
   operatorConfig?: ConfigObject;
-  /**
-   * The operator's **override input** as supplied (ADR 0046) — the pre-fallback seed; never
-   * re-applied on a continuation.
-   */
-  operatorInput?: JsonValue;
-  /**
-   * Frozen launch-config secrets the continuation did not supply again (ADR 0046); the run ends
-   * before its first step naming them.
-   */
-  unresolvedLaunchSecrets?: string[];
-  /** The `secretKeys` a continuation inherited (ADR 0046), so its own frozen copy still marks
-   * them. */
-  inheritedLaunchSecretKeys?: string[];
   files?: Map<string, WorkflowFile>;
   observer?: RunObserver;
   warn?: (message: string) => void;
@@ -52,13 +42,42 @@ export interface RunOptions {
    * already-aborted cancels at once (§5.6).
    */
   signal?: AbortSignal;
-  /**
-   * Continue an existing tree: Resume mints a successor (ADR 0062), Complete replays this one in
-   * place (ADR 0041). The two are exclusive by construction.
-   */
-  continuation?: ContinuationInput;
   sourceWorkflowPath?: string;
 }
+
+/**
+ * A fresh **launch** (ADR 0046): the operator's **override input** is identity-defining, so it has
+ * a home here and only here — a continuation restores the Context blackboard and never re-applies
+ * one.
+ */
+export interface LaunchRunOptions extends RunSeams {
+  operatorInput?: JsonValue;
+  unresolvedLaunchSecrets?: undefined;
+  inheritedLaunchSecretKeys?: undefined;
+  continuation?: undefined;
+}
+
+/**
+ * A **continuation** — Resume mints a successor (ADR 0062), Complete replays this tree in place
+ * (ADR 0041). The seed is the predecessor's, so `operatorInput` has no effect and, typed
+ * `undefined`, no way to be passed: the launch facts a successor records cannot claim an input
+ * override it never applied.
+ */
+export interface ContinuationRunOptions extends RunSeams {
+  operatorInput?: undefined;
+  /**
+   * Frozen launch-config secrets the continuation did not supply again (ADR 0046); the run ends
+   * before its first step naming them.
+   */
+  unresolvedLaunchSecrets?: string[];
+  /** The `secretKeys` a continuation inherited (ADR 0046), so its own frozen copy still marks
+   * them. */
+  inheritedLaunchSecretKeys?: string[];
+  continuation: ContinuationInput;
+}
+
+/** What `runWorkflow` is asked to do: a launch, or a continuation of an existing tree. */
+export type RunOptions = LaunchRunOptions | ContinuationRunOptions;
 
 /**
  * What a successor run needs from the original tree: its run rows plus a reader for one blob. The
