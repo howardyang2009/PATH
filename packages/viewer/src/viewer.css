@@ -46,6 +46,9 @@
    Designer uses between its run-dock panes and shell rails (`.run-dock-vresizer` / `.rail-vresizer`). */
 .pane-resizer {
   position: relative;
+  /* Reset the `<hr>` UA box: its inset border draws a gray outline, its margin shortens the bar. */
+  margin: 0;
+  border: none;
   cursor: col-resize;
   background: none;
   touch-action: none;
@@ -644,6 +647,8 @@ button.workflow-row:focus-visible {
   flex: none;
   height: 8px;
   margin: -4px 0;
+  /* Drop the `<hr>` UA inset border, which otherwise outlines the whole grab strip in gray. */
+  border: none;
   cursor: row-resize;
   touch-action: none;
   z-index: 1;
