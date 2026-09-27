@@ -22,7 +22,7 @@ An Architecture Decision Record (ADR) records one decision PATH has made: the sh
 | [0016](0016-workflow-write-route-client-named-put-upsert-precondition-gated.md) | The workflow write route is a single client-named `PUT` upsert, gated by an ETag precondition | accepted |
 | [0017](0017-designer-edit-lock-is-a-server-owned-expiring-file-lease.md) | The Designer edit-lock is a server-owned expiring file lease, materialized on disk | accepted |
 | [0018](0018-open-node-union-via-pure-registry-factory.md) | The closed node union opens through a pure `makeWorkflowFileSchema(registry)` factory | accepted |
-| [0019](0019-step-plugins-are-folders-under-packages-engine-step-plugins.md) | Step plugins are convention-only folders under `packages/engine/plugin/step-plugin/` (the folder moved after ADR 0019), built-ins included | accepted |
+| [0019](0019-step-plugins-are-folders-under-packages-engine-step-plugins.md) | Step plugins are convention-only folders under `packages/engine/plugin/step-plugin/`, built-ins included | accepted |
 | [0020](0020-plugin-masking-is-inherited-and-a-plugin-is-engine-trust.md) | A plugin inherits masking at the emit choke point, and a plugin is engine-level trust | accepted |
 | [0021](0021-built-ins-are-the-first-two-plugins-and-the-engine-llm-union-is-gone.md) | The built-ins are the first two plugins, and the `engine \| llm` worker union is gone | accepted |
 | [0022](0022-config-vs-field-vs-input-line-for-a-step-type.md) | A step type declares typed `fields` and `config` fragments, and the line between them is operator-invariance | accepted |

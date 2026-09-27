@@ -36,7 +36,7 @@ not open the file read-only, and it does not box the unknown node as an opaque r
 The refusal is **legible and recoverable**, mirroring ADR 0018 sub-decision 5's aggregate load error:
 
 - It names **every** absent type in one message, not the first one hit, plus the
-  `packages/engine/step-plugins/<name>/` folder that would resolve each — the same remedy the engine's
+  `packages/engine/plugin/step-plugin/<name>/` folder that would resolve each — the same remedy the engine's
   own unknown-type error names.
 - Because the same registry source (the server the Designer is talking to) makes a **stale snapshot**
   the only in-fork cause, the refusal offers **refresh-the-registry-and-retry**.

@@ -1,4 +1,4 @@
-# Step plugins are convention-only folders under `packages/engine/step-plugins/`, built-ins included
+# Step plugins are convention-only folders under `packages/engine/plugin/step-plugin/`, built-ins included
 
 **Status:** accepted; the folder-contract and discovery decision of map
 [#308](https://github.com/howardyang2009/PATH/issues/308), resolving
@@ -25,7 +25,7 @@ lives on disk, what files it consists of, when it is loaded, or what happens whe
 plugin and a built-in, want the same name. That is this ADR.
 
 Decision: **a step plugin is a directory under a single fixed location,
-`packages/engine/step-plugins/<name>/`, holding one conventional entry module and no manifest. The
+`packages/engine/plugin/step-plugin/<name>/`, holding one conventional entry module and no manifest. The
 engine scans that one directory, imports each entry, and freezes the registry before the first workflow
 file parses. `binary` and `prompt` ship as folders there like any other plugin.** There is no second
 location, no search path, and therefore no precedence order and no cross-layer shadowing rule anywhere
@@ -80,7 +80,7 @@ in this design.
 
 ### Where the engine looks
 
-7. **One fixed location: `packages/engine/step-plugins/<name>/`.** Not the workflow file's directory, not
+7. **One fixed location: `packages/engine/plugin/step-plugin/<name>/`.** Not the workflow file's directory, not
    the project directory, not an upward search, not a global location, and not several with a precedence
    order.
 
@@ -117,7 +117,7 @@ in this design.
    fixable, which a silent shadow across two locations would not be.
 
    **If PATH is ever published as a package, this sub-decision must be revisited before it is**, because
-   `packages/engine/step-plugins/` would become `node_modules/@path/engine/step-plugins/` — a directory
+   `packages/engine/plugin/step-plugin/` would become `node_modules/@path/engine/plugin/step-plugin/` — a directory
    every install wipes, taking user plugins with it.
 
 10. **`binary` and `prompt` ship as folders there, not as engine-seeded code.** This closes #308's parked
@@ -257,7 +257,7 @@ in this design.
 - **ADR 0018 sub-decision 3** — "the empty registry reproduces today's built-in-only grammar exactly" no
   longer holds. Under sub-decision 10 an empty registry reproduces *nothing*: no `binary`, no `prompt`,
   and every existing workflow fails to load. The property does not disappear, it changes owner — the
-  built-in grammar is now a fact about what ships in `packages/engine/step-plugins/`, not a property of
+  built-in grammar is now a fact about what ships in `packages/engine/plugin/step-plugin/`, not a property of
   `@path/schema`. `@path/schema`'s own purity is untouched: it still receives the registry as injected
   data and still reproduces exactly the grammar its input describes.
 - **ADR 0018 sub-decision 6, and the #313 resolution's sub-decision 19** — the reserved-name set shrinks
@@ -278,7 +278,7 @@ in this design.
 - **Anchor on the workflow file's own directory.** Rejected: it keeps ADR 0005 intact but forces a copy
   of every plugin into every workflow-bearing directory, and leaves a nested-ref file able to resolve
   against a different registry standalone than under its parent (sub-decision 11).
-- **Anchor on a discovered project root — walk up to the nearest ancestor holding `step-plugins/`.**
+- **Anchor on a discovered project root — walk up to the nearest ancestor holding `plugin/step-plugin/`.**
   Rejected in favour of the fixed location. It solved the copy problem and left `-C` alone, but it
   required a stop boundary for the walk, kept the standalone/nested divergence, and made the anchor a
   derived value that three callers would each have to derive identically.
@@ -311,8 +311,8 @@ in this design.
 - **[#319](https://github.com/howardyang2009/PATH/issues/319) grows materially.** Its title —
   migrate the built-ins to the worker-name model and remove the `engine|llm` union — now also covers
   physically relocating `packages/engine/src/binary-worker.ts` and
-  `packages/engine/src/llm/agent-sdk-worker.ts` into `packages/engine/step-plugins/binary/` and
-  `packages/engine/step-plugins/prompt/`, and rewriting them against the public subpath. #319 cannot
+  `packages/engine/src/llm/agent-sdk-worker.ts` into `packages/engine/plugin/step-plugin/binary/` and
+  `packages/engine/plugin/step-plugin/prompt/`, and rewriting them against the public subpath. #319 cannot
   decline that work without reopening sub-decision 10.
 - **[#316](https://github.com/howardyang2009/PATH/issues/316)'s subject widens.** Secret-masking and
   trust for an in-process plugin now covers PATH's own shipped step types, since they run through the

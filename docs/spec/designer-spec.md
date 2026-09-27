@@ -279,7 +279,7 @@ is normative.
 
 The step half of the palette is **not a closed set**. Leaf step types are step-type plugins (CONTEXT.md
 § Step-type plugins): `binary` and `prompt` are two folders under
-`packages/engine/step-plugins/`, peers of any `api-call`, not a privileged pair. **Validity is
+`packages/engine/plugin/step-plugin/`, peers of any `api-call`, not a privileged pair. **Validity is
 registry-relative** — a file is valid *against a registry*, never in the abstract
 ([ADR 0018](../adr/0018-open-node-union-via-pure-registry-factory.md)) — so the Designer, a pure browser
 consumer that cannot scan the plugin folder, **receives a registry as data** and reproduces exactly the
@@ -498,7 +498,7 @@ stale snapshot, or a cross-fork file this tree holds no plugin for (which the se
 read-only, and it does not box the unknown node as an opaque round-trip node.
 
 The refusal is **legible and recoverable**: it names **every** absent type in one message and the
-`packages/engine/step-plugins/<name>/` folder that would resolve each — mirroring ADR 0018
+`packages/engine/plugin/step-plugin/<name>/` folder that would resolve each — mirroring ADR 0018
 sub-decision 5's aggregate load error — and, because the same-registry-source makes a stale snapshot the
 only in-fork cause, it offers **refresh-the-registry-and-retry**. This matches ADR 0015's
 refuse-on-structural-defect precedent (a duplicate or malformed `id` refuses the open) and the server's

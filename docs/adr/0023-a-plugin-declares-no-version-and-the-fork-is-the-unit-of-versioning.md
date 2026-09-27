@@ -45,7 +45,7 @@ in the code:
 
 - **Run provenance** — a root run recording which plugin versions produced it. Under clone-or-fork
   (ADR 0019 sub-decision 9) a plugin folder's identity and history already *are* a commit in the reader's
-  own tree; `git log -- packages/engine/step-plugins/<name>/` answers "which version ran" exactly, and a
+  own tree; `git log -- packages/engine/plugin/step-plugin/<name>/` answers "which version ran" exactly, and a
   run knows its own `HEAD`. A declared version duplicating that is decoration. #315 declined provenance
   as *portability* machinery, not as audit — but audit is precisely where git already answers, so there
   is nothing left for a declared version to add.

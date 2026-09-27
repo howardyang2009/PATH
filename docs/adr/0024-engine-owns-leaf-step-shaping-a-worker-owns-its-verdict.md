@@ -36,7 +36,7 @@ result before believing it. That reading is wrong, and acting on it would be a m
   A `binary` worker's failure signal is a non-zero exit code; a hypothetical `api-call` worker's is an
   HTTP status. There is no shape an engine-side validator could check across every worker, because
   "what counts as success" is exactly the knowledge a worker exists to hold (CONTEXT, **Worker**).
-- The fix that shipped is in the *worker* (`step-plugins/prompt/index.ts`, commit `4f395ec`): it now
+- The fix that shipped is in the *worker* (`plugin/step-plugin/prompt/index.ts`, commit `4f395ec`): it now
   treats `subtype !== "success" || is_error` as failure. That is the right home. The SDK knowledge
   lives with the code that talks to the SDK.
 

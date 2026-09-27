@@ -8,7 +8,7 @@
 per step type, no worker inheritance), the [#313](https://github.com/howardyang2009/PATH/issues/313)
 resolution (the `StepRequest`/`StepResult` seam and one-lookup dispatch), and
 [ADR 0019](0019-step-plugins-are-folders-under-packages-engine-step-plugins.md) (a plugin is a folder
-under `packages/engine/step-plugins/`, built-ins included). ADR 0019 sub-decision 10 forecast this
+under `packages/engine/plugin/step-plugin/`, built-ins included). ADR 0019 sub-decision 10 forecast this
 ticket; nothing here amends 0019.
 
 ADR 0019 fixed *where* `binary` and `prompt` live (folders) and *that* they are discovered. #309 fixed
@@ -16,7 +16,7 @@ ADR 0019 fixed *where* `binary` and `prompt` live (folders) and *that* they are 
 old `engine | llm` worker schema, moved `model`/`options` off the worker, migrated the workflow files
 that still carry `worker: {type: llm, …}`, or corrected `CONTEXT.md`. That is this ADR.
 
-Decision: **`binary` and `prompt` become folders under `packages/engine/step-plugins/`, each shipping
+Decision: **`binary` and `prompt` become folders under `packages/engine/plugin/step-plugin/`, each shipping
 exactly one worker; the `engine | llm` worker union and the `worker.ts`/`worker-type.ts` schema are
 deleted; the `worker` field becomes an optional worker-*name* string; `model` and `options` move to
 config; and the workflow format bumps to `path/workflow@3` with a codemod that refuses every case it
@@ -57,9 +57,9 @@ test, not by a shipped plugin.
    That is coverage a future metering plugin extends; it is not a hole this ADR can fill without
    inventing a type, which sub-decision 3 just declined.
 
-4. **The files move, they are not copied.** `src/binary-worker.ts` becomes `step-plugins/binary/index.ts`;
-   `src/llm/agent-sdk-worker.ts` becomes `step-plugins/prompt/index.ts`;
-   `src/llm/render-prompt-message.ts` becomes `step-plugins/prompt/render-prompt-message.ts`;
+4. **The files move, they are not copied.** `src/binary-worker.ts` becomes `plugin/step-plugin/binary/index.ts`;
+   `src/llm/agent-sdk-worker.ts` becomes `plugin/step-plugin/prompt/index.ts`;
+   `src/llm/render-prompt-message.ts` becomes `plugin/step-plugin/prompt/render-prompt-message.ts`;
    `src/llm/llm-worker.ts` is **deleted** (its `PromptRequest`/`PromptResult`/`LlmWorker` types are
    replaced wholesale by the #313 seam's `StepRequest`/`StepResult`/`WorkerDescriptor`);
    `src/llm/processor-semaphore.ts` moves up to `src/processor-semaphore.ts`. The `src/llm/` directory
@@ -221,7 +221,7 @@ override seam — the four things this migration can break.
 
 ## Consequences
 
-- **`src/llm/` is deleted.** `binary` and `prompt` live under `packages/engine/step-plugins/`,
+- **`src/llm/` is deleted.** `binary` and `prompt` live under `packages/engine/plugin/step-plugin/`,
   `processor-semaphore.ts` moves to `src/`, and the `LlmWorker` seam types are replaced by the #313
   seam. `@path/engine`'s public index sheds three exports.
 - **`@path/schema` sheds five type exports** (`WorkerSchema`, `Worker`, `EngineWorker`, `LlmWorker`, and

@@ -4,7 +4,7 @@
 
 A leaf step type stops being hardcoded. PATH used to ship exactly two leaf step types — `binary` and
 `prompt` — baked into a **closed** discriminated union in `@path/schema`. A leaf step type is now a
-**plugin**: a folder under `packages/engine/step-plugins/`, discovered at load, that contributes its
+**plugin**: a folder under `packages/engine/plugin/step-plugin/`, discovered at load, that contributes its
 own typed `fields` and `config` fragments and its own named `workers`. The two built-ins are now the
 first two plugins, and they import the public `@path/engine/plugin` surface exactly as a third-party
 plugin would — the dogfood that proves the surface adequate (ADR 0019, 0021). Seven ADRs (0018–0024)

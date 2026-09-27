@@ -52,7 +52,7 @@ The seven pinned sub-decisions:
 
 3. **The registry arrives as an optional parameter on the existing door, empty-map default.**
    `safeParseWorkflowFile` / `parseWorkflowFile` gain a `registry?` parameter; the engine's `loadWorkflowTree`
-   (impure, owns the future `./step-plugins/*/` scan) builds the registry and passes it. The **empty
+   (impure, owns the future `./plugin/step-plugin/*/` scan) builds the registry and passes it. The **empty
    registry reproduces today's built-in-only grammar exactly**, so nothing downstream changes until a plugin
    drops in. No `fs`, `glob`, or import-time side effect ever enters `@path/schema`.
 
@@ -66,7 +66,7 @@ The seven pinned sub-decisions:
    **Amended (ADR 0019).** "The empty registry reproduces today's built-in-only grammar exactly" no
    longer holds. Sub-decision 10 of that ADR ships `binary` and `prompt` as plugin folders, so an empty
    registry describes no leaf step at all. The built-in grammar is now a fact about what sits in
-   `packages/engine/step-plugins/`, not a property of `@path/schema`.
+   `packages/engine/plugin/step-plugin/`, not a property of `@path/schema`.
 
    **Amended (#315). The registry is a required parameter, and the empty-registry defaults are deleted.**
    Once ADR 0019 removed the property above, the optional `registry?` with an empty-map default stopped
