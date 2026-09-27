@@ -14,6 +14,8 @@ export interface PaneWidthsOptions {
   defaults: readonly [number, number];
   /** Floor for each resizable pane; `fluidMin` is the fluid region's. */
   min: number;
+  /** Absolute ceiling for each pane, when the caller wants one independent of the container. */
+  max?: number;
   fluidMin: number;
   separatorSpan: number;
   containerRef: RefObject<HTMLElement | null>;
@@ -60,7 +62,16 @@ function loadWidths(
 }
 
 export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
-  const { storageKey, defaults, min, fluidMin, separatorSpan, containerRef, grow } = opts;
+  const {
+    storageKey,
+    defaults,
+    min,
+    max: ceiling,
+    fluidMin,
+    separatorSpan,
+    containerRef,
+    grow,
+  } = opts;
   const [widths, setWidths] = useState<[number, number]>(() =>
     loadWidths(storageKey, defaults, min),
   );
@@ -87,15 +98,15 @@ export function usePaneWidths(opts: PaneWidthsOptions): PaneWidths {
       setWidths((prev) => {
         const container = containerRef.current?.clientWidth ?? 0;
         const other = prev[index === 0 ? 1 : 0];
-        const max =
-          container > 0 ? Math.max(min, container - other - fluidMin - separatorSpan) : Infinity;
+        const fluid = container > 0 ? container - other - fluidMin - separatorSpan : Infinity;
+        const max = Math.min(ceiling ?? Infinity, Math.max(min, fluid));
         const width = Math.max(min, Math.min(max, px));
         const next: [number, number] = [prev[0], prev[1]];
         next[index] = width;
         return next;
       });
     },
-    [containerRef, min, fluidMin, separatorSpan],
+    [containerRef, min, ceiling, fluidMin, separatorSpan],
   );
 
   const onPointerMove = useCallback(

@@ -1,4 +1,6 @@
-import { type ReactNode, useCallback, useEffect, useRef, useState } from "react";
+import { type CSSProperties, type ReactNode, useRef } from "react";
+import { useDragSize } from "./drag-size.js";
+import { type PaneHandleProps, usePaneWidths } from "./use-pane-resize.js";
 
 export interface AppShellProps {
   /** Top of the left rail: workflow discovery + inline launch. */
@@ -16,30 +18,8 @@ const DEFAULT_RIGHT = 340;
 /** Keep each rail usable and never let it starve the fluid centre. */
 const MIN_RAIL = 180;
 const MAX_RAIL = 640;
-
-interface RailWidths {
-  left: number;
-  right: number;
-}
-
-function clampRail(px: number): number {
-  return Math.min(MAX_RAIL, Math.max(MIN_RAIL, px));
-}
-
-function loadWidths(): RailWidths {
-  if (typeof localStorage === "undefined") return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT };
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT };
-    const parsed = JSON.parse(raw) as Partial<RailWidths>;
-    return {
-      left: clampRail(Number(parsed.left) || DEFAULT_LEFT),
-      right: clampRail(Number(parsed.right) || DEFAULT_RIGHT),
-    };
-  } catch {
-    return { left: DEFAULT_LEFT, right: DEFAULT_RIGHT };
-  }
-}
+/** Total width the two vertical separators eat (2 × 6px), reserved when clamping. */
+const RAIL_VRESIZER_SPAN = 12;
 
 /**
  * The pinned app frame: **Variant A, the three-pane console** —
@@ -50,68 +30,22 @@ function loadWidths(): RailWidths {
  * `localStorage`, so the fluid centre never starves.
  */
 export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
-  const [widths, setWidths] = useState<RailWidths>(loadWidths);
   const panesRef = useRef<HTMLDivElement>(null);
-  const dragRef = useRef<{ rail: "left" | "right"; startX: number; startWidth: number } | null>(
-    null,
-  );
-
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(widths));
-    } catch {
-      /* storage full or blocked — a non-persisted resize still works this session */
-    }
-  }, [widths]);
-
-  const onPointerMove = useCallback((e: PointerEvent) => {
-    const drag = dragRef.current;
-    if (!drag) return;
-    // The left divider grows the rail as the pointer moves right; the right divider is mirrored.
-    const delta = e.clientX - drag.startX;
-    const next = clampRail(drag.startWidth + (drag.rail === "left" ? delta : -delta));
-    setWidths((w) => ({ ...w, [drag.rail]: next }));
-  }, []);
-
-  const endDrag = useCallback(() => {
-    dragRef.current = null;
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
-  const startDrag = useCallback(
-    (rail: "left" | "right") => (e: React.PointerEvent) => {
-      e.preventDefault();
-      dragRef.current = { rail, startX: e.clientX, startWidth: widths[rail] };
-      document.body.style.cursor = "col-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", endDrag);
-    },
-    [widths, onPointerMove, endDrag],
-  );
-
-  // Keyboard resize: arrows nudge the focused divider so the layout is reachable without a mouse.
-  const onKeyDown = useCallback(
-    (rail: "left" | "right") => (e: React.KeyboardEvent) => {
-      const step = e.shiftKey ? 32 : 8;
-      if (e.key === "ArrowLeft") {
-        e.preventDefault();
-        setWidths((w) => ({ ...w, [rail]: clampRail(w[rail] + (rail === "left" ? -step : step)) }));
-      } else if (e.key === "ArrowRight") {
-        e.preventDefault();
-        setWidths((w) => ({ ...w, [rail]: clampRail(w[rail] + (rail === "left" ? step : -step)) }));
-      }
-    },
-    [],
-  );
+  // The left handle grows its rail towards the right (+1); the right handle is mirrored (-1).
+  const { widths, handleProps } = usePaneWidths({
+    storageKey: STORAGE_KEY,
+    defaults: [DEFAULT_LEFT, DEFAULT_RIGHT],
+    min: MIN_RAIL,
+    max: MAX_RAIL,
+    fluidMin: 0,
+    separatorSpan: RAIL_VRESIZER_SPAN,
+    containerRef: panesRef,
+    grow: [1, -1],
+  });
 
   const style = {
-    gridTemplateColumns: `${widths.left}px 6px 1fr 6px ${widths.right}px`,
-  } as React.CSSProperties;
+    gridTemplateColumns: `${widths[0]}px 6px 1fr 6px ${widths[1]}px`,
+  } as CSSProperties;
 
   return (
     <div className="shell">
@@ -121,21 +55,11 @@ export function AppShell({ workflows, runs, detail, nodeIo }: AppShellProps) {
       </header>
       <div className="panes" ref={panesRef} style={style}>
         <LeftRail workflows={workflows} runs={runs} />
-        <Resizer
-          rail="left"
-          width={widths.left}
-          onPointerDown={startDrag("left")}
-          onKeyDown={onKeyDown("left")}
-        />
+        <Resizer rail="left" {...handleProps(0)} />
         <Pane id="pane-detail" title="Run detail">
           {detail}
         </Pane>
-        <Resizer
-          rail="right"
-          width={widths.right}
-          onPointerDown={startDrag("right")}
-          onKeyDown={onKeyDown("right")}
-        />
+        <Resizer rail="right" {...handleProps(1)} />
         <Pane id="pane-io" title="Node I/O/C/E">
           {nodeIo}
         </Pane>
@@ -151,12 +75,6 @@ const MIN_WORKFLOWS_HEIGHT = 80;
 /** Leave at least this much for the runs list so the workflows panel can never swallow the rail. */
 const MIN_RUNS_HEIGHT = 140;
 
-function loadWorkflowsHeight(): number {
-  if (typeof localStorage === "undefined") return DEFAULT_WORKFLOWS_HEIGHT;
-  const raw = Number(localStorage.getItem(LEFT_SPLIT_KEY));
-  return raw >= MIN_WORKFLOWS_HEIGHT ? raw : DEFAULT_WORKFLOWS_HEIGHT;
-}
-
 /**
  * The left rail, split top/bottom: **Workflows** above (discovery + inline launch), **Runs** below.
  * One drag-resizable divider between them, the vertical mirror of the column resizers. The
@@ -165,83 +83,26 @@ function loadWorkflowsHeight(): number {
  */
 function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }) {
   const railRef = useRef<HTMLDivElement>(null);
-  const [height, setHeight] = useState<number>(loadWorkflowsHeight);
-  const dragRef = useRef<{ startY: number; startHeight: number } | null>(null);
+  const { size: height, handleProps } = useDragSize({
+    storageKey: LEFT_SPLIT_KEY,
+    defaultSize: DEFAULT_WORKFLOWS_HEIGHT,
+    min: MIN_WORKFLOWS_HEIGHT,
+    // Read live, so the cap follows the rail as the window resizes.
+    max: () => (railRef.current?.clientHeight ?? Infinity) - MIN_RUNS_HEIGHT,
+    axis: "y",
+    grow: 1,
+    cursor: "row-resize",
+    ariaOrientation: "horizontal",
+  });
 
-  useEffect(() => {
-    if (typeof localStorage === "undefined") return;
-    try {
-      localStorage.setItem(LEFT_SPLIT_KEY, String(Math.round(height)));
-    } catch {
-      /* storage blocked — resize still works this session */
-    }
-  }, [height]);
-
-  const clamp = useCallback((px: number) => {
-    const cap = (railRef.current?.clientHeight ?? Infinity) - MIN_RUNS_HEIGHT;
-    return Math.max(MIN_WORKFLOWS_HEIGHT, Math.min(cap, px));
-  }, []);
-
-  const onPointerMove = useCallback(
-    (e: PointerEvent) => {
-      const drag = dragRef.current;
-      if (!drag) return;
-      setHeight(clamp(drag.startHeight + (e.clientY - drag.startY)));
-    },
-    [clamp],
-  );
-
-  const endDrag = useCallback(() => {
-    dragRef.current = null;
-    document.body.style.removeProperty("cursor");
-    document.body.style.removeProperty("user-select");
-    window.removeEventListener("pointermove", onPointerMove);
-    window.removeEventListener("pointerup", endDrag);
-  }, [onPointerMove]);
-
-  const startDrag = useCallback(
-    (e: React.PointerEvent) => {
-      e.preventDefault();
-      dragRef.current = { startY: e.clientY, startHeight: height };
-      document.body.style.cursor = "row-resize";
-      document.body.style.userSelect = "none";
-      window.addEventListener("pointermove", onPointerMove);
-      window.addEventListener("pointerup", endDrag);
-    },
-    [height, onPointerMove, endDrag],
-  );
-
-  const onKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      const step = e.shiftKey ? 32 : 8;
-      if (e.key === "ArrowUp") {
-        e.preventDefault();
-        setHeight((h) => clamp(h - step));
-      } else if (e.key === "ArrowDown") {
-        e.preventDefault();
-        setHeight((h) => clamp(h + step));
-      }
-    },
-    [clamp],
-  );
-
-  const style = { gridTemplateRows: `${height}px 8px 1fr` } as React.CSSProperties;
+  const style = { gridTemplateRows: `${height}px 8px 1fr` } as CSSProperties;
 
   return (
     <div className="left-rail" ref={railRef} style={style}>
       <Pane id="pane-workflows" title="Workflows">
         {workflows}
       </Pane>
-      <hr
-        className="row-resizer"
-        aria-orientation="horizontal"
-        aria-label="Resize workflows panel"
-        aria-valuenow={Math.round(height)}
-        aria-valuemin={MIN_WORKFLOWS_HEIGHT}
-        tabIndex={0}
-        onPointerDown={startDrag}
-        onKeyDown={onKeyDown}
-      />
+      <hr className="row-resizer" aria-label="Resize workflows panel" {...handleProps} />
       <Pane id="pane-runs" title="Runs">
         {runs}
       </Pane>
@@ -251,28 +112,13 @@ function LeftRail({ workflows, runs }: { workflows: ReactNode; runs: ReactNode }
 
 /** A drag handle between two panes. Exposed as a `separator` so screen readers can resize it
  * too. */
-function Resizer({
-  rail,
-  width,
-  onPointerDown,
-  onKeyDown,
-}: {
-  rail: "left" | "right";
-  width: number;
-  onPointerDown: (e: React.PointerEvent) => void;
-  onKeyDown: (e: React.KeyboardEvent) => void;
-}) {
+function Resizer({ rail, ...handle }: { rail: "left" | "right" } & PaneHandleProps) {
   return (
     <hr
       className="pane-resizer"
-      aria-orientation="vertical"
       aria-label={`Resize ${rail === "left" ? "runs" : "node I/O/C/E"} pane`}
-      aria-valuenow={Math.round(width)}
-      aria-valuemin={MIN_RAIL}
       aria-valuemax={MAX_RAIL}
-      tabIndex={0}
-      onPointerDown={onPointerDown}
-      onKeyDown={onKeyDown}
+      {...handle}
     />
   );
 }
