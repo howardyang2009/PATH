@@ -5,8 +5,8 @@ import {
   planBlobRead,
   resolveBlobError,
 } from "@path/client-core";
-import { useEffect, useState } from "react";
-import { errorMessage, type Load } from "./load-state.js";
+import type { Load } from "./load-state.js";
+import { useResource } from "./use-resource.js";
 
 export type BlobLoad = Load<BlobContent>;
 
@@ -41,38 +41,18 @@ export function useRunBlob({
   settled,
   reloadToken,
 }: RunBlobRequest): BlobLoad {
-  const [load, setLoad] = useState<BlobLoad>({ phase: "loading" });
-
-  // biome-ignore lint/correctness/useExhaustiveDependencies: reloadToken is the caller's re-read signal.
-  useEffect(() => {
-    const plan = planBlobRead(ref, settled);
-    if (!plan.read) {
-      setLoad({ phase: "ready", value: plan.content });
-      return;
-    }
-
-    let cancelled = false;
-    setLoad({ phase: "loading" });
-
-    client
+  const plan = planBlobRead(ref, settled);
+  // A read the plan refuses is a value already known (no blob was written), not a request.
+  const { load } = useResource(() => {
+    if (!plan.read) return plan.content;
+    return client
       .getBlob(rootRunId, runId, name)
-      .then((value) => {
-        if (!cancelled) setLoad({ phase: "ready", value: { present: true, value } });
-      })
+      .then((value) => ({ present: true, value }) as BlobContent)
       .catch((error: unknown) => {
-        if (cancelled) return;
         const absent = resolveBlobError(ref, error);
-        if (absent !== null) {
-          setLoad({ phase: "ready", value: absent });
-          return;
-        }
-        setLoad({ phase: "error", message: errorMessage(error) });
+        if (absent !== null) return absent;
+        throw error;
       });
-
-    return () => {
-      cancelled = true;
-    };
   }, [client, rootRunId, runId, name, ref, settled, reloadToken]);
-
   return load;
 }

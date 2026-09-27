@@ -1,15 +1,11 @@
-import {
-  EMPTY_RUN_FILE_SET,
-  type PathApiClient,
-  type RunFileSet,
-  runFileSetFromDisk,
-} from "@path/client-core";
-import { useEffect, useState } from "react";
+import { EMPTY_RUN_FILE_SET, type PathApiClient, runFileSetFromDisk } from "@path/client-core";
+import { useState } from "react";
 import { AppShell } from "./app-shell.js";
 import { LaunchPanel } from "./launch-panel.js";
 import { NodeIo } from "./node-io.js";
 import { RunDetail } from "./run-detail.js";
 import { RunsList } from "./runs-list.js";
+import { useResource } from "./use-resource.js";
 import { useRunView } from "./use-run-view.js";
 
 /**
@@ -25,35 +21,24 @@ export function App({ client }: { client: PathApiClient }) {
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [runsReloadNonce, setRunsReloadNonce] = useState(0);
   const load = useRunView(client, selectedRootRunId);
+  // The watched root run's source file, as the live snapshot records it.
+  const rootWorkflowPath =
+    load.phase === "ready" && selectedRootRunId !== null
+      ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
+      : null;
 
   // The watched run's reachable workflow files (root + transitively-ref'd), read from disk (a GET,
   // no lease — ADR 0017). The eager `Resume from …` legal-K check needs the root file; the awaiting
   // surface needs the whole set, since a `person-activity` leaf can live in a nested file. Unresolved
   // while loading or on a failed read: the checks fall back to run-tree-derivable reasons.
-  const [runFiles, setRunFiles] = useState<RunFileSet>(EMPTY_RUN_FILE_SET);
+  const readRunFiles = useResource(
+    () =>
+      rootWorkflowPath === null ? EMPTY_RUN_FILE_SET : runFileSetFromDisk(client, rootWorkflowPath),
+    [client, rootWorkflowPath],
+  );
+  const runFiles =
+    readRunFiles.load.phase === "ready" ? readRunFiles.load.value : EMPTY_RUN_FILE_SET;
   const rootFile = runFiles.rootFile;
-  const rootWorkflowPath =
-    load.phase === "ready" && selectedRootRunId !== null
-      ? (load.value.runs.get(selectedRootRunId)?.workflowPath ?? null)
-      : null;
-  useEffect(() => {
-    if (rootWorkflowPath === null) {
-      setRunFiles(EMPTY_RUN_FILE_SET);
-      return;
-    }
-    let cancelled = false;
-    setRunFiles(EMPTY_RUN_FILE_SET);
-    runFileSetFromDisk(client, rootWorkflowPath)
-      .then((files) => {
-        if (!cancelled) setRunFiles(files);
-      })
-      .catch(() => {
-        if (!cancelled) setRunFiles(EMPTY_RUN_FILE_SET);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, rootWorkflowPath]);
 
   // Switching root run drops the node selection: a run id from the previous tree names nothing
   // here.

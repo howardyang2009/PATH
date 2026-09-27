@@ -1,17 +1,12 @@
-import {
-  isTerminal,
-  type PathApiClient,
-  type RootRunSummary,
-  type RunStatus,
-} from "@path/client-core";
+import { isTerminal, type PathApiClient, type RunStatus } from "@path/client-core";
 import { useEffect, useRef, useState } from "react";
 import { DeleteButton } from "./delete-button.js";
 import { formatTimestamp } from "./format-time.js";
-import { errorMessage, type Load } from "./load-state.js";
 import { PaneError, PaneLoading } from "./pane-note.js";
 import { ResumeActions, type ResumeFromAffordance } from "./resume-actions.js";
 import { ORDERED_RUN_STATUSES } from "./status-glyph.js";
 import { StatusPill } from "./status-pill.js";
+import { useResource } from "./use-resource.js";
 
 /**
  * Root runs the pane asks for. `GET /v0/runs` is most-recent-first (server-api-v0.md §3), so this
@@ -83,70 +78,35 @@ export function RunsList({
   // `null` (nothing open) never reaches a query — the effects short-circuit and the render is idle.
   const scope = typeof workflowId === "string" ? workflowId : undefined;
   const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [state, setState] = useState<Load<RootRunSummary[]>>({ phase: "loading" });
   // The expanded row's action panel, or none. Independent of `selectedRootRunId`, so collapsing the
   // panel never stops the centre pane watching the run.
   const [openFor, setOpenFor] = useState<string | null>(null);
 
-  // A ref, not a dependency: a launch re-reads the same window, and a filter change should not be a
-  // reason for the nonce effect to re-read.
-  const statusFilterRef = useRef(statusFilter);
-  statusFilterRef.current = statusFilter;
-
-  useEffect(() => {
-    if (workflowId === null) return;
-    let cancelled = false;
-
-    const read = (initial: boolean): void => {
-      if (initial) setState({ phase: "loading" });
+  // The latest-N window, re-read on a timer: there is a stream per root run, none for the set.
+  const { load: state, refetch } = useResource(
+    () =>
       client
         .listRuns({
           limit: RUNS_LIMIT,
           status: statusFilter === "all" ? undefined : statusFilter,
           workflowId: scope,
         })
-        .then((res) => {
-          if (!cancelled) setState({ phase: "ready", value: res.runs });
-        })
-        .catch((error: unknown) => {
-          if (cancelled) return;
-          setState({ phase: "error", message: errorMessage(error) });
-        });
-    };
-
-    read(true);
-    const timer = setInterval(() => read(false), RUNS_REFRESH_MS);
-
-    return () => {
-      cancelled = true;
-      clearInterval(timer);
-    };
-  }, [client, statusFilter, workflowId, scope]);
+        .then((res) => res.runs),
+    [client, statusFilter, scope],
+    { enabled: workflowId !== null, pollMs: RUNS_REFRESH_MS },
+  );
 
   // A launch bumps `reloadNonce`: re-read once, in place. Mount is skipped so this never doubles
-  // the initial fetch; an unset `reloadNonce` opts out.
+  // the initial read; an unset `reloadNonce` opts out.
   const nonceStarted = useRef(false);
   useEffect(() => {
     if (reloadNonce === undefined) return;
-    if (workflowId === null) return;
     if (!nonceStarted.current) {
       nonceStarted.current = true;
       return;
     }
-    let cancelled = false;
-    const status = statusFilterRef.current === "all" ? undefined : statusFilterRef.current;
-    client
-      .listRuns({ limit: RUNS_LIMIT, status, workflowId: scope })
-      .then((res) => {
-        if (!cancelled) setState({ phase: "ready", value: res.runs });
-      })
-      .catch((error: unknown) => {
-        if (!cancelled) setState({ phase: "error", message: errorMessage(error) });
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [client, reloadNonce, workflowId, scope]);
+    refetch();
+  }, [reloadNonce, refetch]);
 
   // A scoped surface with nothing open: an idle note, no toolbar, no reads.
   if (workflowId === null) {
