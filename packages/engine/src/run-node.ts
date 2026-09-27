@@ -10,7 +10,7 @@ import {
   type WorkflowFile,
 } from "@path/schema";
 import { childIdentity } from "./child-run.js";
-import { continuationOf } from "./continuation.js";
+import type { Continuation } from "./continuation.js";
 import { runBranchNode, runCheckpointNode, runGotoNode, runWhileDoNode } from "./controllers.js";
 import { runTopLevelWalk } from "./goto-pass.js";
 import {
@@ -20,17 +20,13 @@ import {
   interpolationScope,
 } from "./interpolate.js";
 import { finishSucceeded, type LeafStepNode, runLeafStep, type StepContext } from "./leaf-step.js";
-import { RUN_BLOB_FILE } from "./persistence/paths.js";
 import { resolveChildRef } from "./ref-tree.js";
 import { type EnvSource, effectiveConfig } from "./resolve-env.js";
-import { enterNested, type ResumeEntry, resolveResume, resumeSeed } from "./resume-plan.js";
 import type {
   Cancellation,
-  ContinueState,
   NodeExecContext,
   RunContext,
   RunIdentity,
-  RunResume,
   SeqOutcome,
   StepRuntime,
 } from "./run-context.js";
@@ -63,8 +59,11 @@ export interface WorkflowRunParams {
    */
   signal?: AbortSignal;
   cancellation?: Cancellation;
-  resume?: ResumeEntry;
-  continue?: { state: ContinueState; existing: RunRecord | undefined };
+  /**
+   * What is already recorded under this run (Resume or Complete); a fresh launch passes
+   * `noContinuation()`.
+   */
+  continuation: Continuation;
   rerunFromNodePath?: RerunFromNodePathEntry[];
   resumedFromRootRunId?: string;
   sourceWorkflowPath?: string;
@@ -73,23 +72,14 @@ export interface WorkflowRunParams {
 /** Executes one workflow-run: walks the file's body sequentially (mvp spec §5.1) — leaf steps on
  * their workers, `workflow` steps as nested runs, controls evaluated in the same walk. */
 export async function executeWorkflowRun(params: WorkflowRunParams): Promise<RunResult> {
-  const { file, fileDir, input, incomingConfig, identity, files, emitter } = params;
+  const { file, fileDir, input, incomingConfig, identity, files, emitter, continuation } = params;
 
   // Resume replays from the run's **seed**, never the counterpart's final `context.json` — under
   // Resume-from-K that holds keys written after K. Complete re-entry restores its parked blackboard
   // (ADR 0062).
-  const continueReenter = params.continue?.existing;
-  const seed = resumeSeed(params.resume, identity.parentRunId === null) ?? input;
-  const parkedContext =
-    params.continue && continueReenter
-      ? (params.continue.state.readBlob(continueReenter, RUN_BLOB_FILE.context) as {
-          [key: string]: JsonValue;
-        })
-      : undefined;
-  const context: { [key: string]: JsonValue } = { ...(parkedContext ?? seed) }; // format doc §6.3
-  const resume: RunResume | undefined = params.resume
-    ? resolveResume(params.resume, file)
-    : undefined;
+  const reentry = continuation.reentry();
+  const seed = continuation.seed() ?? input;
+  const context: { [key: string]: JsonValue } = { ...(reentry?.context ?? seed) }; // format doc §6.3
   let previousOutput: JsonValue = seed;
 
   // Incoming config shadows this file's defaults key by key (format doc §8); the second point
@@ -104,8 +94,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     files,
     env: params.env,
     runtime: params.runtime,
-    resume,
-    continue: params.continue?.state,
+    continuation,
     detached: [],
   };
   const fail = async (error: string): Promise<RunResult> => {
@@ -153,7 +142,7 @@ export async function executeWorkflowRun(params: WorkflowRunParams): Promise<Run
     // Source identity is root-only: the root run *is* the top-level workflow (invariant 2); the
     // emitter drops a nested run's file id. A Complete re-entry (ADR 0041) already has its row and
     // `context.json`, so it skips its start — a second one would duplicate the row.
-    if (continueReenter === undefined) {
+    if (reentry === undefined) {
       await emitter.runStarted({
         // The seed, not raw `input`: recording it lets a Resume of this successor replay from it.
         input: seed,
@@ -261,11 +250,10 @@ async function runWorkflowNode(
     runtime: ctx.run.runtime,
     signal: ctx.exec.signal,
     cancellation: ctx.exec.cancellation,
-    // Continue this child in place when the tree is being Completed, else undefined.
-    continue: ctx.run.continue ? { state: ctx.run.continue, existing: existingRun } : undefined,
-    // Resume recurses into every non-succeeded workflow-run, each against its own counterpart (ADR
-    // 0036).
-    resume: enterNested(ctx.run.resume, ctx.run.file, node.id),
+    // The parent's continuation scopes itself to this child run (Resume recurses into every
+    // non-succeeded workflow-run against its own counterpart, ADR 0036; Complete re-enters the same
+    // run in place, ADR 0041).
+    continuation: ctx.run.continuation.enter({ owner: node }, child.file, identity),
   });
 
   if (childResult.status === "cancelled") return { status: "cancelled" };
@@ -317,9 +305,9 @@ export async function runNode(
   // the call the gate validated against.
   const stepConfig = effectiveConfig(run.fileConfig, node.config, run.env);
 
-  // The continuation adapter owns what a recorded row means, so every walker agrees without knowing
+  // The continuation owns what a recorded row means, so every walker agrees without knowing
   // Resume from Complete.
-  const disposition = continuationOf(run).disposition(node);
+  const disposition = run.continuation.disposition(node);
   let outcome: SeqOutcome;
   // The leaf runner reports its step emitter here, so the post-publish snapshot is attributed to
   // its own run id.

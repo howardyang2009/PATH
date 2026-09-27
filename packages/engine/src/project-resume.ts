@@ -16,7 +16,7 @@ import {
 import { getLaunchFacts, getRunsForRoot } from "./persistence/run-store.js";
 import type { ProjectCore, ProjectRunOptions } from "./project.js";
 import { type LegalKContainer, type LegalKReasonCode, resolveLegalK } from "./resume-legal-k.js";
-import type { ResumeInput } from "./run-options.js";
+import type { ContinuationInput } from "./run-options.js";
 
 /**
  * The outcome of `Project.resume`: a Result because "no such root run" is ordinary operator input;
@@ -150,7 +150,8 @@ export async function resumeProjectRun(
   // source, a read-only blob reader, and the recorded launch facts.
   const originalRuns = sourceRuns(db, directRuns);
   const capture = successorCapture();
-  const resume: ResumeInput = {
+  const continuation: ContinuationInput = {
+    kind: "resume",
     originalRuns,
     readBlob: continuationBlobReader(absDir),
     rerunFromNodePath,
@@ -163,7 +164,7 @@ export async function resumeProjectRun(
     // Launch facts are identity-defining like `input` (ADR 0046): a resume recovers the
     // predecessor's frozen config and worker defaults; the file tier stays live.
     continuationRunOptions(runOpts, getLaunchFacts(db, rootRunId)),
-    resume,
+    continuation,
     [capture.observer],
   );
 

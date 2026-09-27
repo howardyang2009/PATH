@@ -52,13 +52,11 @@ export interface RunOptions {
    * already-aborted cancels at once (§5.6).
    */
   signal?: AbortSignal;
-  /** Resume a prior tree: reuse every succeeded run whose node id still matches (ADR 0062). */
-  resume?: ResumeInput;
   /**
-   * Complete an awaiting leaf by replaying the existing tree in place (ADR 0041): same tree and
-   * ids, then append forward.
+   * Continue an existing tree: Resume mints a successor (ADR 0062), Complete replays this one in
+   * place (ADR 0041). The two are exclusive by construction.
    */
-  continue?: ContinueInput;
+  continuation?: ContinuationInput;
   sourceWorkflowPath?: string;
 }
 
@@ -87,6 +85,12 @@ export interface ContinueInput {
   readBlob: (run: RunRecord, filename: string) => JsonValue;
   target: { stepRunId: string; output: JsonValue };
 }
+
+/** The one continuation a run is launched with: `resume` reuses a predecessor tree by node id,
+ * `complete` re-drives this same tree in place. */
+export type ContinuationInput =
+  | ({ kind: "resume" } & ResumeInput)
+  | ({ kind: "complete" } & ContinueInput);
 
 // A failed run still carries the last-succeeded node's output, so `output` is unconditional.
 export interface RunResult {

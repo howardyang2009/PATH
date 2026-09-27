@@ -1,6 +1,5 @@
 import type { JsonValue, WorkflowFile } from "@path/schema";
 import { blockCancellation } from "./cancellation.js";
-import { pickReusedWaitOneWinner } from "./plan-reuse.js";
 import type { NodeExecContext, RunContext, SeqOutcome } from "./run-context.js";
 
 /** The `parallel` block: collect/wait-one/do-not-wait joins, the block-local cancellation cascade,
@@ -123,11 +122,10 @@ export async function runParallelNode(
     return launchDoNotWait(run, node, seedInput, exec);
   }
 
-  // Resume short-circuit: replaying a decided race reuses the winner and cancels the losers, so
-  // find the reused winner and run only it — cause-blind resume could re-fire a loser's side
-  // effects.
-  if (node.join === "wait-one" && run.resume) {
-    const reusedWinner = pickReusedWaitOneWinner(node, run.resume.plan);
+  // A decided race replays its winner and cancels the losers, so a continuation that knows the
+  // winner runs only it — cause-blind reuse could re-fire a loser's side effects.
+  if (node.join === "wait-one") {
+    const reusedWinner = run.continuation.decidedRaceWinner(node);
     if (reusedWinner) {
       const view = branchView(exec);
       const outcome = await exec.walk(run, [reusedWinner], seedInput, view.exec);

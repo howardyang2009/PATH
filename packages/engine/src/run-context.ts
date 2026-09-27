@@ -1,8 +1,8 @@
 import type { ConfigObject, JsonValue, RunRecord, WorkflowFile } from "@path/schema";
+import type { Continuation } from "./continuation.js";
 import type { LoadedStepPluginRegistry } from "./plugin-seam/scan.js";
 import type { ProcessorSemaphore } from "./processor-semaphore.js";
 import type { EnvSource } from "./resolve-env.js";
-import type { RunResume } from "./resume-plan.js";
 import type { Emitter } from "./run-emitter.js";
 import type { RunEvent } from "./run-observer.js";
 
@@ -109,19 +109,26 @@ export interface RunContext {
   /** Shared by the whole run tree, so the registry and processor cap span nested runs too (mvp spec
    * §5.5). */
   runtime: StepRuntime;
-  resume?: RunResume;
   /**
-   * Complete-continue state (ADR 0041), present only during a Complete replay. Unlike Resume, it
-   * re-drives **this same tree** in place: re-entered runs keep their ids and already-`succeeded`
-   * nodes are reused read-only from their own rows.
+   * This run's view of what is already recorded under it — the one thing every walker reads to
+   * decide reuse, re-entry and pass pairing (Resume ADR 0036, Complete ADR 0041).
    */
-  continue?: ContinueState;
+  continuation: Continuation;
   /**
    * Detached `do-not-wait` branch runs launched under this workflow-run; the owning run drains them
    * at its exit barrier so the tree stays strictly nested and no live work is left behind. A branch
    * failure is isolated, so a promise never rejects except on an audit fault.
    */
   detached: Promise<void>[];
+}
+
+/** What identifies a child run beside its parent: the node that owns it, and its ordinal if it is a
+ * container. */
+export interface ChildRunKey {
+  /** The owning node, or `null` for goto pass 1. */
+  owner: { id: string; name: string } | null;
+  iteration?: number;
+  pass?: number;
 }
 
 /**
@@ -135,6 +142,3 @@ export interface ContinueState {
   readBlob: (run: RunRecord, filename: string) => JsonValue;
   target: { stepRunId: string; output: JsonValue };
 }
-
-/** One workflow-run's resume state — owned by the Resume plan module (`resume-plan.ts`). */
-export type { RunResume } from "./resume-plan.js";

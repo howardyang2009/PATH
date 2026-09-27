@@ -1,6 +1,7 @@
 import type { WorkflowFile } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { childIdentity, openContainerRun } from "../src/child-run.js";
+import { noContinuation } from "../src/continuation.js";
 import { createProcessorSemaphore } from "../src/processor-semaphore.js";
 import type { RunContext, RunIdentity } from "../src/run-context.js";
 import { createEmitter } from "../src/run-emitter.js";
@@ -27,6 +28,7 @@ function parentRun(into: RunEvent[]): RunContext {
     }),
     env: {},
     runtime: { registry: {}, semaphore: createProcessorSemaphore(1) },
+    continuation: noContinuation(),
     detached: [],
   };
 }
@@ -63,7 +65,6 @@ describe("openContainerRun", () => {
       key: { owner: loop, iteration: 1 },
       existingRunId: undefined,
       input: { seed: 1 },
-      resume: undefined,
     });
     expect(container.started).toBe(true);
     expect(container.run.identity.parentRunId).toBe("parent");
@@ -82,20 +83,18 @@ describe("openContainerRun", () => {
       key: { owner: null, pass: 3 },
       existingRunId: "running-pass",
       input: null,
-      resume: undefined,
     });
     expect(container.started).toBe(false);
     expect(container.run.identity.runId).toBe("running-pass");
     expect(observed).toEqual([]);
   });
 
-  it("swaps only identity, emitter and resume into the parent's context", async () => {
+  it("swaps only identity, emitter and continuation into the parent's context", async () => {
     const parent = parentRun([]);
     const container = await openContainerRun(parent, {
       key: { owner: loop, iteration: 1 },
       existingRunId: undefined,
       input: null,
-      resume: undefined,
     });
     expect(container.run.file).toBe(parent.file);
     expect(container.run.runtime).toBe(parent.runtime);
