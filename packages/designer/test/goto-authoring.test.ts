@@ -1,3 +1,4 @@
+import { DEFAULT_PLUGINS } from "@path/client-core/test-utils";
 import { FORMAT_VERSION, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { editFile, unwrapEdit } from "../src/edit-tree.js";
@@ -14,7 +15,6 @@ import { openWorkflowFile } from "../src/open-workflow.js";
 import { paletteGroups } from "../src/palette-data.js";
 import { fileProblems } from "../src/problems.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS } from "./stub-server.js";
 
 /**
  * #619 — goto authoring in the Designer (docs/spec/goto.md §9, designer-spec § goto): the pure seams —

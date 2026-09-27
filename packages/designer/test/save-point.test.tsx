@@ -1,10 +1,10 @@
+import { DEFAULT_PLUGINS, makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
 import { frameDirty, openedResultOf, useOpenFile } from "../src/use-open-file.js";
-import { DEFAULT_PLUGINS, makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * The save-point content-equality model (#386, ADR 0030): "clean" is `canonicalSerialize(buffer) ===

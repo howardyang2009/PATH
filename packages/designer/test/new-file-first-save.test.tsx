@@ -1,7 +1,7 @@
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #390 — new-file placement + naming. An author starts a workflow from scratch (no path, no lease until

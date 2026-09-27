@@ -1,10 +1,10 @@
+import { DEFAULT_PLUGINS, type StubServerOptions, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, type DesignerStubOptions, stubClient } from "./stub-server.js";
 
 /**
  * #392 — the launch warning badge and the dangling-`workflow`-ref marker. A create-new child ref (#391)
@@ -56,7 +56,7 @@ function summary(relativePath: string) {
   };
 }
 
-async function openParent(options: DesignerStubOptions) {
+async function openParent(options: StubServerOptions) {
   render(<App client={stubClient(options)} initialPath={PARENT_PATH} />);
   await screen.findByText("child", { selector: ".node-name" });
   return screen.getByRole("region", { name: "Workflow canvas" });
@@ -106,7 +106,7 @@ describe("dangling-`workflow`-ref marker + launch badge", () => {
     // Id-less parent opens dirty (ids stamped on import), so Save is enabled without a UI edit. The stub
     // reads `options.workflows` fresh per request, so flipping it before the save models the child's first
     // save landing on disk; the save re-fetches discovery and the ref stops being dangling.
-    const options: DesignerStubOptions = {
+    const options: StubServerOptions = {
       files: { [PARENT_PATH]: JSON.stringify(parentFile(false)) },
       workflows: { workflows: [summary(PARENT_PATH)] },
     };

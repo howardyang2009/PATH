@@ -1,13 +1,12 @@
 import { type FetchLike, PathApiClient, type WireStepPlugin } from "@path/client-core";
 
 /**
- * A stand-in `path-server` for Designer tests: one injected `fetch` routing the two read endpoints the
- * open route uses — `GET /v0/step-plugins` (the registry) and `GET /v0/workflows/file?path=` (the raw
- * bytes). Nothing is mocked above the transport, so tests exercise the real `@path/client-core` decode
- * and the real open pipeline.
+ * A stand-in `path-server` for the Viewer and Designer tests: one injected `fetch` routing every v0
+ * endpoint the two consoles call. Nothing is mocked above the transport, so tests exercise the real
+ * `@path/client-core` decode, SSE parse and view-model folding.
  */
 
-/** The built-in trio the Designer ships editors for — `prompt` and `binary` as registry leaf types. */
+/** The built-in registry leaf types the Designer ships editors for: `prompt` and `binary`. */
 export const DEFAULT_PLUGINS: WireStepPlugin[] = [
   {
     name: "binary",
@@ -90,7 +89,7 @@ export class EventStreamStub {
   }
 }
 
-export interface DesignerStubOptions {
+export interface StubServerOptions {
   /** The registry snapshot for `GET /v0/step-plugins`. Defaults to the built-in `prompt`/`binary` pair. */
   plugins?: WireStepPlugin[];
   /** Status for the registry response, for the failure path. */
@@ -135,6 +134,12 @@ export interface DesignerStubOptions {
    * for an id whose `templateBodies` envelope is `read_only`, the server's shipped-template refusal, else `200`.
    */
   onTemplateWrite?: (write: TemplateWrite) => Response;
+  /**
+   * Canned reply for `POST /v0/runs/:step_run_id/complete`. Omitted, the route answers a `202` with a
+   * `{ step_run_id, root_run_id }` echo. `completeBodies` records each request's parsed body.
+   */
+  complete?: { status: number; body: unknown };
+  completeBodies?: unknown[];
 }
 
 /** A fresh empty call recorder — pass one into `stubClient({ calls })` and assert against it. */
@@ -167,7 +172,7 @@ function grantedLease(sessionId: string, expiresInMs = 30_000): Response {
   );
 }
 
-export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
+export function stubClient(options: StubServerOptions = {}): PathApiClient {
   const plugins = options.plugins ?? DEFAULT_PLUGINS;
   const files = options.files ?? {};
   const calls = options.calls;
@@ -192,6 +197,15 @@ export function stubClient(options: DesignerStubOptions = {}): PathApiClient {
     if (cancelMatch && init?.method === "POST") {
       calls?.cancel.push(decodeURIComponent(cancelMatch[1]!));
       return json({ root_run_id: decodeURIComponent(cancelMatch[1]!) }, 202);
+    }
+    const completeMatch = /^\/v0\/runs\/([^/]+)\/complete$/.exec(input);
+    if (completeMatch && init?.method === "POST") {
+      options.completeBodies?.push(init.body ? JSON.parse(init.body as string) : undefined);
+      if (options.complete) return json(options.complete.body, options.complete.status);
+      return json(
+        { step_run_id: decodeURIComponent(completeMatch[1]!), root_run_id: "run_root" },
+        202,
+      );
     }
     const resumeMatch = /^\/v0\/runs\/([^/]+)\/resume$/.exec(input);
     if (resumeMatch && init?.method === "POST") {

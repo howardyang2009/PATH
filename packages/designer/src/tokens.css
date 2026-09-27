@@ -1,26 +1,15 @@
 /*
- * @path/designer design tokens. The Designer reuses the Viewer's run panels (ADR 0031) but keeps its
- * **own** copy of the shared palette here — the same neutrals and type scale,
- * plus the per-kind block hues the #255 canvas prototype pinned. Themed at
- * the token level: defaults are light; dark is redefined under `@media (prefers-color-scheme: dark)`
- * AND `:root[data-theme="dark"]` so a future theme toggle wins over the OS preference.
+ * @path/designer design tokens: only the per-kind block hues the canvas prototype pinned. The
+ * neutrals, accent, run-status pairs and type scale come from `@path/viewer/tokens.css`, which
+ * `main.tsx` loads first. Themed like that sheet: light by default, dark under both
+ * `:root[data-theme="dark"]` and `@media (prefers-color-scheme: dark)`.
  *
  * Block kind is always hue + label, never hue alone (accessibility, per the `dataviz` skill).
  */
 
 :root {
-  /* Neutrals — cool blue-grey. */
-  --ground: #fbfcfd;
-  --surface: #ffffff;
-  --border: #d8dee4;
-  --text: #1c2128;
-  --text-muted: #656d76;
-
-  /* Accent — indigo, selection/interactive only (not decoration). */
-  --accent: #4c6ef5;
-
-  /* Per-kind hues (foreground + soft background), shared with the prototype so the author learns the
-   * palette once. Steps share the step hue; the workflow-ref keeps its own, the one boundary-crosser. */
+  /* Foreground + soft background per kind. Steps share the step hue; the workflow-ref keeps its own,
+   * the one boundary-crosser. */
   --k-step: #4c6ef5;
   --k-step-bg: #eef2ff;
   --k-person: #0f766e;
@@ -41,46 +30,9 @@
   --k-goto-bg: #fff1e5;
   --k-template: #6639ba;
   --k-template-bg: #f1ecff;
-
-  /* Run status (#372) — colour + glyph, never hue alone. Foreground + soft background per status. */
-  --run-running: #1f6feb;
-  --run-running-bg: #ddf0ff;
-  --run-awaiting: #8250df;
-  --run-awaiting-bg: #fbefff;
-  --run-succeeded: #1a7f37;
-  --run-succeeded-bg: #dcfce7;
-  --run-failed: #cf222e;
-  --run-failed-bg: #ffebe9;
-  --run-cancelled: #656d76;
-  --run-cancelled-bg: #eaeef2;
-  --run-pending: #9a6700;
-  --run-pending-bg: #fff8c5;
-
-  /* JSON syntax colours for the run inspector's I/O blocks. */
-  --json-key: #4c6ef5;
-  --json-string: #1a7f37;
-  --json-number: #1f6feb;
-  --json-atom: #cf222e;
-
-  /* Type. Mono for JSON/ids; system sans for UI chrome. Dense dev-tool scale. */
-  --font-sans: system-ui, -apple-system, "Segoe UI", sans-serif;
-  --font-mono: ui-monospace, "SF Mono", "Menlo", "Consolas", monospace;
-  --fs-xs: 11px;
-  --fs-sm: 12px;
-  --fs-base: 13px;
-  --fs-md: 15px;
-  --fs-lg: 19px;
-  --fs-xl: 24px;
 }
 
 :root[data-theme="dark"] {
-  --ground: #0e1116;
-  --surface: #161b22;
-  --border: #30363d;
-  --text: #e6edf3;
-  --text-muted: #8b949e;
-  --accent: #5c7cff;
-
   --k-step: #6b8bff;
   --k-step-bg: #131b33;
   --k-person: #2dd4bf;
@@ -101,37 +53,14 @@
   --k-goto-bg: #2d1c0f;
   --k-template: #b083f0;
   --k-template-bg: #1e1633;
-
-  --run-running: #58a6ff;
-  --run-running-bg: #12283f;
-  --run-awaiting: #bc8cff;
-  --run-awaiting-bg: #271a3a;
-  --run-succeeded: #3fb950;
-  --run-succeeded-bg: #12261a;
-  --run-failed: #f85149;
-  --run-failed-bg: #2d1416;
-  --run-cancelled: #8b949e;
-  --run-cancelled-bg: #21262d;
-  --run-pending: #d29922;
-  --run-pending-bg: #2a2213;
-
-  --json-key: #6b8bff;
-  --json-string: #3fb950;
-  --json-number: #58a6ff;
-  --json-atom: #f85149;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
-    --ground: #0e1116;
-    --surface: #161b22;
-    --border: #30363d;
-    --text: #e6edf3;
-    --text-muted: #8b949e;
-    --accent: #5c7cff;
-
     --k-step: #6b8bff;
     --k-step-bg: #131b33;
+    --k-person: #2dd4bf;
+    --k-person-bg: #0d2b28;
     --k-workflow: #f85149;
     --k-workflow-bg: #2d1416;
     --k-parallel: #3fb950;
@@ -148,23 +77,5 @@
     --k-goto-bg: #2d1c0f;
     --k-template: #b083f0;
     --k-template-bg: #1e1633;
-
-    --run-running: #58a6ff;
-    --run-running-bg: #12283f;
-    --run-awaiting: #bc8cff;
-    --run-awaiting-bg: #271a3a;
-    --run-succeeded: #3fb950;
-    --run-succeeded-bg: #12261a;
-    --run-failed: #f85149;
-    --run-failed-bg: #2d1416;
-    --run-cancelled: #8b949e;
-    --run-cancelled-bg: #21262d;
-    --run-pending: #d29922;
-    --run-pending-bg: #2a2213;
-
-    --json-key: #6b8bff;
-    --json-string: #3fb950;
-    --json-number: #58a6ff;
-    --json-atom: #f85149;
   }
 }

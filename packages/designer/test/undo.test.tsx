@@ -1,3 +1,4 @@
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION, type WorkflowFile } from "@path/schema";
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
@@ -9,7 +10,6 @@ import {
   openedResultOf,
   useOpenFile,
 } from "../src/use-open-file.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #389 — the per-file undo/redo stack (designer-spec § Dirty-state, undo, and the save-point). These drive

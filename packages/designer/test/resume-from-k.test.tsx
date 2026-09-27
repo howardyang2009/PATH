@@ -1,16 +1,16 @@
+import {
+  DEFAULT_PLUGINS,
+  makeCalls,
+  type StubCalls,
+  type StubServerOptions,
+  stubClient,
+} from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import {
-  DEFAULT_PLUGINS,
-  type DesignerStubOptions,
-  makeCalls,
-  type StubCalls,
-  stubClient,
-} from "./stub-server.js";
 
 /** Canonical on-disk bytes, so a re-open reads clean (ADR 0030) — the same helper the run-surfaces test uses. */
 function canonicalBytes(file: Record<string, unknown>): string {
@@ -96,7 +96,7 @@ async function renderWatching(
   opts: {
     rootStatus: string;
     treeRuns: Record<string, unknown>[];
-    onResumeRun?: DesignerStubOptions["onResumeRun"];
+    onResumeRun?: StubServerOptions["onResumeRun"];
     /** The root summary's recorded `$secret` paths (ADR 0046), so the resume card asks for them again. */
     launchSecretKeys?: string[];
   },

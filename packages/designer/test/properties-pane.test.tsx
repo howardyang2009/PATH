@@ -1,8 +1,8 @@
+import { makeCalls, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION, type WireStepPlugin } from "@path/schema";
 import { fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { makeCalls, stubClient } from "./stub-server.js";
 
 /**
  * #369 — the properties pane: a selection populates it, the id re-key is confirmation-gated, and the

@@ -1,7 +1,7 @@
+import { stubClient } from "@path/client-core/test-utils";
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { stubClient } from "./stub-server.js";
 
 const RUN = "run_abc";
 

@@ -1,0 +1,14 @@
+{
+  // The shared compiler options of the two React consoles (`packages/viewer`, `packages/designer`).
+  // Each package's own tsconfig extends this and names only its `include` list.
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "jsx": "react-jsx",
+    "types": ["node", "vite/client", "vitest/globals", "@testing-library/jest-dom"],
+    "noEmit": true,
+    "allowImportingTsExtensions": true
+  }
+}

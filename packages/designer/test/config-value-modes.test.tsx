@@ -1,10 +1,10 @@
+import { DEFAULT_PLUGINS, stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
 import { openWorkflowFile } from "../src/open-workflow.js";
 import { canonicalSerialize } from "../src/serialize.js";
-import { DEFAULT_PLUGINS, stubClient } from "./stub-server.js";
 
 /**
  * #387 — the `$env` / `$secret` authoring affordance on a config value (designer-spec § `$env` / `$secret`

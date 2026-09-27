@@ -1,7 +1,7 @@
+import { DEFAULT_PLUGINS } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { describe, expect, it } from "vitest";
 import { openWorkflowFile } from "../src/open-workflow.js";
-import { DEFAULT_PLUGINS } from "./stub-server.js";
 
 /** A distinct valid UUIDv4 per seed, so fixtures read as ids without a random source. */
 function uuid(n: number): string {

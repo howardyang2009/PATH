@@ -1,8 +1,8 @@
+import { stubClient } from "@path/client-core/test-utils";
 import { FORMAT_VERSION } from "@path/schema";
 import { fireEvent, render, screen, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import { App } from "../src/app.js";
-import { stubClient } from "./stub-server.js";
 
 /**
  * #619 — goto authoring on the canvas and in the pane (docs/spec/goto.md §9, designer-spec § goto): the
