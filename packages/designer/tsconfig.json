@@ -1,5 +1,10 @@
 {
   "extends": "../../tsconfig.browser.json",
   // The JSX-namespace shim lives once, in the Viewer.
-  "include": ["src", "test", "vite.config.ts", "../viewer/src/jsx-compat.d.ts"]
+  "include": [
+    "src",
+    "test",
+    "vite.config.ts",
+    "../viewer/src/jsx-compat.d.ts"
+  ]
 }

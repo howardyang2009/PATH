@@ -60,7 +60,9 @@
   transform: translateX(-50%);
   width: 1px;
   background: var(--border);
-  transition: width 0.12s ease, background 0.12s ease;
+  transition:
+    width 0.12s ease,
+    background 0.12s ease;
 }
 
 .pane-resizer:hover::before,

@@ -5,6 +5,7 @@ import {
   isReuseRow,
   type JsonValue,
   type LaunchFacts,
+  must,
   pathToRoot,
   type RerunFromNodePathEntry,
   type RunRecord,
@@ -242,13 +243,18 @@ function resumeFromResume(resume: RunResume, file: WorkflowFile, isRoot: boolean
     reentry: () => undefined,
     enter(key, childFile) {
       if (key.iteration !== undefined) {
-        const iteration = enterIteration(resume, file, key.owner!.id, key.iteration);
+        const iteration = enterIteration(
+          resume,
+          file,
+          must(key.owner, "owner of a loop iteration").id,
+          key.iteration,
+        );
         return iteration ? resumeFromResume(iteration, childFile, false) : FRESH;
       }
       if (key.pass !== undefined) {
         return resumeFromResume(resumer(key.pass, key.owner?.id ?? null), childFile, false);
       }
-      const nested = enterNested(resume, file, key.owner!.id);
+      const nested = enterNested(resume, file, must(key.owner, "owner of a nested run").id);
       return nested ? resumeContinuation(nested, childFile, false) : FRESH;
     },
     decidedRaceWinner(node) {
@@ -343,7 +349,7 @@ function completePassWalk(
   const reentered = passes.find((recorded) => recorded.status === "running");
   if (!reentered) return walk;
   walk.reentered = reentered;
-  walk.pass = reentered.pass!;
+  walk.pass = must(reentered.pass, "pass number of a pass run");
   walk.carried = state.readBlob(reentered, RUN_BLOB_FILE.input);
   if (walk.pass === 1) return walk;
 
@@ -376,17 +382,20 @@ export function passFirstNode(target: WorkflowNode): WorkflowNode | undefined {
 export function recordedPasses(rows: readonly RunRecord[], parentRunId: string): RunRecord[] {
   return rows
     .filter((r) => r.parentRunId === parentRunId && isPassRun(r))
-    .sort((a, b) => a.pass! - b.pass!);
+    .sort((a, b) => (a.pass ?? 0) - (b.pass ?? 0));
 }
 
 /** The parked target leaf, when it sits under a pass row of this tree (ADR 0060 §2). */
 function parkedLeafUnder(state: ContinueState, ancestorRunId: string): ParkedLeaf | undefined {
   const path = pathToRoot(state.existingRuns, state.target.stepRunId);
   if (!path.some((run) => run.parentRunId === ancestorRunId)) return undefined;
-  const leaf = path[path.length - 1]!;
+  const leaf = must(path.at(-1), "parked leaf run");
   return {
     runId: leaf.runId,
-    node: { id: leaf.nodeId!, name: leaf.nodeName! },
+    node: {
+      id: must(leaf.nodeId, "node id of the parked leaf"),
+      name: must(leaf.nodeName, "node name of the parked leaf"),
+    },
     output: state.target.output,
   };
 }

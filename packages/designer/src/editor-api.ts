@@ -1,4 +1,4 @@
-import { instantiate, type WorkflowFile, type WorkflowNode } from "@path/schema";
+import { instantiate, must, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import {
   editFile,
   findById,
@@ -109,7 +109,9 @@ export function createEditor(
     swapSingle(target) {
       if (armed === null) return;
       const [node] = arrivals(armed, "single");
-      applyEdit(unwrapEdit(editFile(file, { kind: "swap-single", target, node: node! })));
+      applyEdit(
+        unwrapEdit(editFile(file, { kind: "swap-single", target, node: must(node, "armed node") })),
+      );
       disarm();
     },
     addArm(branchId) {

@@ -1,4 +1,5 @@
 import type { TemplateSummary, WireStepPlugin } from "@path/client-core";
+import { must } from "@path/schema";
 import { useState } from "react";
 import { type PaletteEntry, type PaletteSubTab, paletteGroups } from "./palette-data.js";
 import type { TemplateListLoad } from "./template-list.js";
@@ -157,8 +158,9 @@ function PaletteSubTabs({
   armed: Armed | null;
   onArm: (armed: Armed | null) => void;
 }) {
-  const [selected, setSelected] = useState(tabs[0]!.key);
-  const current = tabs.find((tab) => tab.key === selected) ?? tabs[0]!;
+  const firstTab = must(tabs[0], "first palette tab");
+  const [selected, setSelected] = useState(firstTab.key);
+  const current = tabs.find((tab) => tab.key === selected) ?? firstTab;
   const prefix = `palette-${group.toLowerCase().replace(/\s+/g, "-")}`;
   return (
     <>

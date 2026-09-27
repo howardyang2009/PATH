@@ -28,12 +28,16 @@ export function configRows(
   const rows: ConfigRow[] = [];
   for (const key of [...keys].sort()) {
     if (hide.has(key)) continue;
-    const inNode = Object.hasOwn(node, key);
-    const inFile = Object.hasOwn(file, key);
-    if (inNode) {
-      rows.push({ key, value: node[key]!, origin: inFile ? "overridden" : "local" });
-    } else {
-      rows.push({ key, value: file[key]!, origin: "inherited" });
+    const nodeValue = Object.hasOwn(node, key) ? node[key] : undefined;
+    const fileValue = Object.hasOwn(file, key) ? file[key] : undefined;
+    if (nodeValue !== undefined) {
+      rows.push({
+        key,
+        value: nodeValue,
+        origin: fileValue !== undefined ? "overridden" : "local",
+      });
+    } else if (fileValue !== undefined) {
+      rows.push({ key, value: fileValue, origin: "inherited" });
     }
   }
   return rows;

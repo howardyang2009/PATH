@@ -3,5 +3,10 @@
   "compilerOptions": {
     "outDir": "dist"
   },
-  "include": ["src", "test", "bin", "scripts"]
+  "include": [
+    "src",
+    "test",
+    "bin",
+    "scripts"
+  ]
 }

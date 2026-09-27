@@ -103,10 +103,12 @@ export type RunsTableRow = [string, string, string, string, string, string];
 // Space-aligned columns: every column but the last padded to its widest cell.
 function formatTable(headers: readonly string[], rows: readonly (readonly string[])[]): string {
   const widths = headers.map((header, col) =>
-    Math.max(header.length, ...rows.map((row) => row[col]!.length)),
+    Math.max(header.length, ...rows.map((row) => (row[col] ?? "").length)),
   );
   const line = (cols: readonly string[]): string =>
-    cols.map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col]!) : cell)).join("  ");
+    cols
+      .map((cell, col) => (col < cols.length - 1 ? cell.padEnd(widths[col] ?? 0) : cell))
+      .join("  ");
   return [line(headers), ...rows.map(line)].join("\n");
 }
 

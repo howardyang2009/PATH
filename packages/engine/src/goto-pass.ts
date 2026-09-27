@@ -1,4 +1,4 @@
-import { type GotoNode, type JsonValue, walkNodes } from "@path/schema";
+import { type GotoNode, type JsonValue, must, walkNodes } from "@path/schema";
 import { childIdentity, openContainerRun } from "./child-run.js";
 import type { PassDivergence } from "./continuation.js";
 import { resolveBound } from "./controllers.js";
@@ -52,15 +52,15 @@ export async function runTopLevelWalk(
       return outcome;
     }
 
-    const goto = gotos.get(outcome.goto)!;
+    const goto = must(gotos.get(outcome.goto), `goto ${outcome.goto}`);
     const maxJumps = resolveBound(run, goto, exec);
     if (typeof maxJumps !== "number") {
       await container.finish(maxJumps);
       return maxJumps;
     }
     // `runGotoNode` names a first-level node of this same file, so the target is always indexed.
-    const targetIndex = indexById.get(outcome.target)!;
-    const target = body[targetIndex]!;
+    const targetIndex = must(indexById.get(outcome.target), `goto target ${outcome.target}`);
+    const target = must(body[targetIndex], `goto target ${outcome.target}`);
     const spent = jumpsSpent.get(goto.id) ?? 0;
     // Cause first (ADR 0061 §5): the goto event, then the closing pass's step-finished.
     if (spent >= maxJumps) {
@@ -110,8 +110,12 @@ async function failDivergedPass(run: RunContext, divergence: PassDivergence): Pr
   }
   const passRow = divergence.diverged;
   const failed: SeqOutcome = { status: "failed", error: divergence.error };
-  const owner = passRow.nodeId === null ? null : { id: passRow.nodeId, name: passRow.nodeName! };
-  const identity = childIdentity(run.identity, { owner, pass: passRow.pass! }, passRow.runId);
+  const owner =
+    passRow.nodeId === null
+      ? null
+      : { id: passRow.nodeId, name: must(passRow.nodeName, "node name of a pass run") };
+  const pass = must(passRow.pass, "pass number of a pass run");
+  const identity = childIdentity(run.identity, { owner, pass }, passRow.runId);
   await run.emitter.child(identity).runFinished(failed);
   return failed;
 }

@@ -2,7 +2,9 @@
   "format": "path/workflow@5",
   "id": "4a08fd8d-ae68-4e38-bf25-a04bdfc62b1b",
   "name": "awaiting-config-schema",
-  "config": { "allowed": "high" },
+  "config": {
+    "allowed": "high"
+  },
   "body": [
     {
       "type": "person-activity",
@@ -11,8 +13,16 @@
       "description": "a person grades against a config-driven allowed value",
       "outputSchema": {
         "type": "object",
-        "properties": { "level": { "enum": ["${config.allowed}"] } },
-        "required": ["level"],
+        "properties": {
+          "level": {
+            "enum": [
+              "${config.allowed}"
+            ]
+          }
+        },
+        "required": [
+          "level"
+        ],
         "additionalProperties": false
       }
     }

@@ -29,7 +29,7 @@ export interface PaletteSubTab {
 }
 
 function titleCase(name: string): string {
-  return name.length === 0 ? name : name[0]!.toUpperCase() + name.slice(1);
+  return name.charAt(0).toUpperCase() + name.slice(1);
 }
 
 function leafBlurb(name: string): string {

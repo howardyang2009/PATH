@@ -55,7 +55,8 @@ async function readFrames(
   until: ((frames: LogEvent[]) => boolean) | undefined,
   controller: AbortController | undefined,
 ): Promise<{ frames: LogEvent[]; ended: boolean }> {
-  const reader = res.body!.getReader();
+  if (!res.body) throw new Error("event stream response has no body");
+  const reader = res.body.getReader();
   const text = new TextDecoder();
   const decoder = createEventFrameDecoder();
   const frames: LogEvent[] = [];
@@ -156,7 +157,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
     (f) => f.length >= disconnectAfter,
     controllerA,
   );
-  const lastSeqA = framesA.length > 0 ? framesA[framesA.length - 1]!.seq : 0;
+  const lastSeqA = framesA.at(-1)?.seq ?? 0;
 
   // Wait out the run before reconnecting — this is also §5.3's terminal tree.
   const tree = await pollTerminal(opts.url, rootRunId);
@@ -166,7 +167,7 @@ export async function runAcceptance(opts: AcceptanceOptions): Promise<Acceptance
 
   const narrative = [...framesA, ...framesB];
   const narrativeSeqs = narrative.map((e) => e.seq);
-  const firstBSeq = framesB.length > 0 ? framesB[0]!.seq : undefined;
+  const firstBSeq = framesB[0]?.seq;
   const contiguous = isContiguousFrom1(narrativeSeqs);
   // The disk narrative is the yardstick for "no gap": whatever run.log holds beyond lastSeqA is
   // exactly what the reconnect must have replayed, so the seam is real (not vacuously empty).

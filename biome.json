@@ -6,31 +6,69 @@
     "useIgnoreFile": true
   },
   "files": {
-    "includes": ["**/*.ts", "**/*.tsx", "**/*.mts", "**/*.cts"]
+    "includes": [
+      "**/*.ts",
+      "**/*.tsx",
+      "**/*.mts",
+      "**/*.cts",
+      "**/*.js",
+      "**/*.json",
+      "**/*.css"
+    ]
   },
   "formatter": {
     "enabled": true,
-    "indentStyle": "space",
-    "indentWidth": 2,
+    "useEditorconfig": true,
     "lineWidth": 100
   },
   "linter": {
     "enabled": true,
     "rules": {
       "preset": "recommended",
-      "style": {
-        "noNonNullAssertion": "off"
-      },
       "suspicious": {
         "noTemplateCurlyInString": "off"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": [
+        "**/*.css"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noDescendingSpecificity": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": [
+        "**/test/**",
+        "**/test-utils/**",
+        "**/*.test.ts",
+        "**/*.test.tsx"
+      ],
+      "linter": {
+        "rules": {
+          "style": {
+            "noNonNullAssertion": "off"
+          }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {
         "organizeImports": "on"
       }
+    }
+  },
+  "json": {
+    "formatter": {
+      "expand": "always"
     }
   },
   "javascript": {

@@ -57,9 +57,10 @@ export function createLoggingObserver(
     const targets = managed.filter((mb) => mb.active);
     const results = await Promise.allSettled(targets.map((mb) => enqueue(mb, () => op(mb))));
     const reasons: string[] = [];
-    results.forEach((result, i) => {
-      if (result.status === "rejected") {
-        targets[i]!.active = false;
+    targets.forEach((mb, i) => {
+      const result = results[i];
+      if (result?.status === "rejected") {
+        mb.active = false;
         reasons.push(
           result.reason instanceof Error ? result.reason.message : String(result.reason),
         );

@@ -67,7 +67,8 @@ export function Canvas({
   if (registry.phase === "error") {
     return <CanvasNote title="Registry unavailable" hint={registry.message} />;
   }
-  if (frames.length === 0) {
+  const active = frames[activeIndex];
+  if (!active) {
     const noun = session.mode === "template" ? "template" : "workflow";
     return (
       <CanvasNote
@@ -87,7 +88,6 @@ export function Canvas({
     );
   }
 
-  const active = frames[activeIndex]!;
   return (
     <section className="canvas" aria-label="Workflow canvas">
       <Breadcrumb

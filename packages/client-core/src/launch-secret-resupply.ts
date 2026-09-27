@@ -1,4 +1,4 @@
-import { type JsonValue, valueAtConfigPath } from "@path/schema";
+import { type JsonValue, must, valueAtConfigPath } from "@path/schema";
 import { type JsonFieldResult, parseJsonField } from "./launch-json.js";
 
 /** The client half of the launch-facts secret-restore rule (ADR 0046): a continuation recovers the
@@ -61,10 +61,11 @@ export function secretSkeletonJson(keys: readonly string[]): string {
   const skeleton: { [key: string]: JsonValue } = {};
   for (const key of keys) {
     const segments = key.split(".");
+    const leaf = must(segments.pop(), "last key segment");
     let cursor = skeleton;
     // Every segment but the last is a container path; create it when absent, reuse it when present,
     // and replace it when a shorter key already made it a leaf.
-    for (const segment of segments.slice(0, -1)) {
+    for (const segment of segments) {
       const child = cursor[segment];
       if (typeof child === "object" && child !== null && !Array.isArray(child)) {
         cursor = child;
@@ -74,7 +75,7 @@ export function secretSkeletonJson(keys: readonly string[]): string {
         cursor = nested;
       }
     }
-    cursor[segments[segments.length - 1]!] = "";
+    cursor[leaf] = "";
   }
   return JSON.stringify(skeleton, null, 2);
 }

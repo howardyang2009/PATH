@@ -29,8 +29,7 @@ export async function loadReachableWorkflowFiles(
   const seen = new Set<string>([rootPath]);
   const queue: string[] = [rootPath];
 
-  while (queue.length > 0) {
-    const path = queue.shift()!;
+  for (let path = queue.shift(); path !== undefined; path = queue.shift()) {
     let file: WorkflowFile;
     try {
       const raw = await client.getWorkflowFile(path);

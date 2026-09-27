@@ -41,7 +41,6 @@ export async function loadDocument(
   plugins: WireStepPlugin[],
 ): Promise<LoadedDocument | null> {
   const { path, template } = frame;
-  if (!template && path === null) return null;
   try {
     if (template) {
       const envelope = await client.getTemplate(template.id);
@@ -53,7 +52,8 @@ export async function loadDocument(
       };
       return opened(canonicalSerialize(file), plugins, envelope.etag);
     }
-    const raw = await client.getWorkflowFile(path!);
+    if (path === null) return null;
+    const raw = await client.getWorkflowFile(path);
     return opened(raw.text, plugins, raw.etag);
   } catch (error) {
     return {

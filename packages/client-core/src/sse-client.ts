@@ -180,7 +180,8 @@ async function readFrames(
   onEvent: (event: LogEvent) => void,
   isClosed: () => boolean,
 ): Promise<void> {
-  const reader = res.body!.getReader();
+  if (!res.body) throw new Error("event stream response has no body");
+  const reader = res.body.getReader();
   const text = new TextDecoder();
   const frames = createEventFrameDecoder();
   for (;;) {

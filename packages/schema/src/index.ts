@@ -105,6 +105,7 @@ export {
   type StepFinishedEvent,
   type StepStartedEvent,
 } from "./log-event.js";
+export { must } from "./must.js";
 // Node identity's one rule, as data (ADR 0006/0015): the load refinement's name check, the write
 // route's duplicate-`id` check and the Designer's pre-parse open gate all read these, so the three
 // doors cannot disagree about which occurrence offends, which one already held the value, and why.

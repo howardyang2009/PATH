@@ -13,8 +13,8 @@ export function rerunBoundaryIndex(
   body: WorkflowNode[],
   suffix: readonly string[],
 ): number | undefined {
-  if (suffix.length === 0) return undefined;
-  const head = suffix[0]!;
+  const [head] = suffix;
+  if (head === undefined) return undefined;
   const index = serialOrder(body).findIndex((node) => node.id === head);
   if (index < 0) {
     throw new Error(

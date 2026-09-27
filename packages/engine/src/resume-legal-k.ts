@@ -2,6 +2,7 @@ import {
   type ControlBlockKind,
   classifyLevelK,
   type LegalKLevelReason,
+  must,
   type RunRecord,
   selectBoundary,
   type WorkflowFile,
@@ -99,16 +100,15 @@ export function resolveLegalK(
   }
   const { levels } = selection;
   // non-null: the levels exclude the root and pass runs
-  const nodePath = levels.map((level) => level.run.nodeId!);
+  const nodePath = levels.map((level) => must(level.run.nodeId, "node id of a boundary level"));
   const passes = levels.map((level) => level.passRun?.pass ?? null);
 
   // Descend the current file tree along the node-id path once, up front, so each level's file feeds
   // the taxonomy and no `ref` is resolved twice. The run chain supplies each level's scope.
   const descent = descendNodePath(rootFile, rootDir, files, nodePath);
 
-  for (let level = 0; level < levels.length; level++) {
-    const { run: pathRun, scopeRunId, earlierPassRunIds } = levels[level]!;
-    const nodeId = pathRun.nodeId!;
+  for (const [level, { run: pathRun, scopeRunId, earlierPassRunIds }] of levels.entries()) {
+    const nodeId = must(pathRun.nodeId, "node id of a boundary level");
     const label = pathRun.nodeName ?? nodeId;
     const isLeaf = level === levels.length - 1;
 

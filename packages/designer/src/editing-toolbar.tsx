@@ -118,10 +118,10 @@ export function FileStatus({
     );
   }
   const opened = openedResultOf(frame);
-  if (opened && frameHasUnsavedWork(frame)) {
+  if (frame && opened && frameHasUnsavedWork(frame)) {
     // `pristine`: the buffer still equals its bytes at the last save-point, so only the id stamp
     // dirties it.
-    const pristine = canonicalSerialize(opened.file) === frame!.openedBytes;
+    const pristine = canonicalSerialize(opened.file) === frame.openedBytes;
     return (
       <span className="file-status file-status-unsaved" role="status">
         {opened.idsStamped && pristine

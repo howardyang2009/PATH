@@ -18,7 +18,7 @@ export function resolveRefPath(fromPath: string, ref: string): string {
 
 export function basename(path: string): string {
   const segments = path.split("/").filter((s) => s !== "");
-  return segments.length > 0 ? segments[segments.length - 1]! : path;
+  return segments.at(-1) ?? path;
 }
 
 /**

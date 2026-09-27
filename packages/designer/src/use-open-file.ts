@@ -1,5 +1,5 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import { instantiateWorkflow, type WorkflowFile } from "@path/schema";
+import { instantiateWorkflow, must, type WorkflowFile } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type DocumentWrite, loadDocument, writeDocument } from "./document.js";
@@ -215,7 +215,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!pluginsRef.current) return;
       const seq = ++loadSeq.current;
       const next = apply({ type: "openLoading", path, loadSeq: seq });
-      fetchFrame(next.frames[next.activeIndex]!, next.activeIndex, seq);
+      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
     },
     [apply, fetchFrame],
   );
@@ -225,7 +225,7 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
       if (!pluginsRef.current) return;
       const seq = ++loadSeq.current;
       const next = apply({ type: "openTemplateLoading", template, loadSeq: seq });
-      fetchFrame(next.frames[next.activeIndex]!, next.activeIndex, seq);
+      fetchFrame(must(next.frames[next.activeIndex], "opened frame"), next.activeIndex, seq);
     },
     [apply, fetchFrame],
   );

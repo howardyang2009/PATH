@@ -4,6 +4,7 @@ import {
   childBodies,
   gotoIssues,
   mapChildBodies,
+  must,
   type WorkflowFile,
   type WorkflowNode,
   walkNodes,
@@ -98,8 +99,7 @@ export type Site =
 
 /** Find `id` in the file and describe where it sits, or `null` if it is not present. */
 export function locate(file: WorkflowFile, id: string): Site | null {
-  for (let i = 0; i < file.body.length; i++) {
-    const node = file.body[i]!;
+  for (const [i, node] of file.body.entries()) {
     if (node.id === id) return { where: "file-body", index: i };
     const deep = locateWithin(node, id);
     if (deep) return deep;
@@ -114,8 +114,7 @@ export function locate(file: WorkflowFile, id: string): Site | null {
  */
 function locateWithin(owner: WorkflowNode, id: string): Site | null {
   for (const child of childBodies(owner)) {
-    for (let index = 0; index < child.nodes.length; index++) {
-      const occupant = child.nodes[index]!;
+    for (const [index, occupant] of child.nodes.entries()) {
       if (occupant.id === id) return siteFromPath(owner.id, child.path, index);
       const deep = locateWithin(occupant, id);
       if (deep) return deep;
@@ -381,9 +380,12 @@ function moveNode(file: WorkflowFile, id: string, delta: -1 | 1): WorkflowFile {
 
 /** A copy of `list` with the elements at `i` and `j` swapped, or `null` if `j` is out of range. */
 function swapAt<T>(list: T[], i: number, j: number): T[] | null {
-  if (j < 0 || j >= list.length) return null;
+  const a = list[i];
+  const b = list[j];
+  if (a === undefined || b === undefined) return null;
   const next = list.slice();
-  [next[i], next[j]] = [next[j]!, next[i]!];
+  next[i] = b;
+  next[j] = a;
   return next;
 }
 
@@ -404,7 +406,7 @@ function deleteNode(file: WorkflowFile, id: string): EditResult {
   switch (site.where) {
     case "file-body":
     case "list": {
-      const { ownerId, index } = listSiteOf(site)!;
+      const { ownerId, index } = must(listSiteOf(site), "list site of a list node");
       const list = listOf(file, ownerId);
       if (ownerId !== null && list !== null && list.length <= 1) {
         if (site.where === "list" && site.listKind === "branches")

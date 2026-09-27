@@ -4,7 +4,9 @@
   "name": "file-input",
   "input": {
     "ticket": 7,
-    "labels": ["from-file"]
+    "labels": [
+      "from-file"
+    ]
   },
   "body": [
     {

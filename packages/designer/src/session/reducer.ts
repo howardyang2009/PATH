@@ -1,4 +1,4 @@
-import type { WorkflowFile, WorkflowNode } from "@path/schema";
+import { must, type WorkflowFile, type WorkflowNode } from "@path/schema";
 import { sameEditKey } from "../edit-key.js";
 import { editFile, findById, unwrapEdit } from "../edit-tree.js";
 import { relativeRefPath, resolveRefPath } from "../resolve-ref.js";
@@ -120,9 +120,10 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
       // Nothing to undo is a true no-op, keeping a standing "Saved"/conflict phase.
-      if (!frame || !opened || frame.history.past.length === 0) return state;
+      if (!frame || !opened) return state;
       const past = frame.history.past.slice();
-      const restored = past.pop()!;
+      const restored = past.pop();
+      if (restored === undefined) return state;
       // The present moves to the redo stack; clean re-derives against the unchanged baseline, so an
       // undo past the save-point re-dirties for free (ADR 0030). Closing the coalesce run opens a
       // fresh entry next.
@@ -137,9 +138,10 @@ export function reduceSession(state: SessionState, action: SessionAction): Sessi
       const depth = state.activeIndex;
       const frame = state.frames[depth];
       const opened = openedResultOf(frame);
-      if (!frame || !opened || frame.history.future.length === 0) return state;
+      if (!frame || !opened) return state;
       const future = frame.history.future.slice();
-      const restored = future.shift()!;
+      const restored = future.shift();
+      if (restored === undefined) return state;
       return withBuffer(state, depth, frame, restored, {
         past: [...frame.history.past, opened.file],
         future,
@@ -266,7 +268,7 @@ function withBuffer(
   file: WorkflowFile,
   history: History,
 ): SessionState {
-  const opened = openedResultOf(frame)!;
+  const opened = must(openedResultOf(frame), "opened result of the edited frame");
   const next = withFrame(state, depth, {
     ...frame,
     state: { phase: "open", result: { ...opened, file } },
