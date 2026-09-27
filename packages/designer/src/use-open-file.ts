@@ -1,9 +1,7 @@
 import type { PathApiClient, WireStepPlugin } from "@path/client-core";
-import type { WorkflowFile } from "@path/schema";
 import { errorMessage } from "@path/viewer";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadDocument, writeDocument } from "./document.js";
-import type { EditCommit, EditKey } from "./edit-key.js";
 import { canonicalSerialize } from "./serialize.js";
 import {
   type EditMode,
@@ -16,9 +14,7 @@ import {
   type SaveAsIntent,
   type SaveState,
   type SessionAction,
-  type SessionOutcome,
   type SessionState,
-  type TemplateSource,
   type WritePlan,
 } from "./session-reducer.js";
 
@@ -78,55 +74,26 @@ export interface OpenSession {
   /** The index of the active frame in `frames` — what the canvas renders and every edit/save op
    * targets. */
   activeIndex: number;
-  /** Open `path` as a fresh root, discarding any current stack. */
-  open: (path: string) => void;
-  /** Open a `*.step-template.json` in **author mode** as a fresh root; the frame's Save writes back
-   * to it. */
-  openTemplate: (template: TemplateSource) => void;
-  /** Start a **from-scratch** buffer as a fresh root: no path, no lease, dirty from open. */
-  newFile: () => void;
   mode: EditMode;
-  /** Switch the edit mode, discarding any current stack. The canvas is empty in the new mode. */
-  switchMode: (mode: EditMode) => void;
-  /** Start a new, unsaved template in template mode, discarding any current stack. */
-  newTemplate: () => void;
-  /** Descend across the active file's `workflow`-ref; a frame ahead already holding that target is
-   * reused. */
-  descend: (ref: string, nodeId: string) => void;
+  /** The active frame's save state — drives the save button and the stale-write conflict banner. */
+  saveState: SaveState;
   /**
-   * Descend into a fresh, unwritten, path-less child linked to `parentNodeId`; its first save
-   * back-fills the parent's `ref`.
+   * Apply one session action. The reducer owns every transition and the read it asks for; this hook
+   * only performs that read — and queues it until the step-plugin registry lands, so an early open
+   * or descend waits rather than vanishing.
    */
-  descendNewUnbound: (parentNodeId: string) => void;
-  /** Make the breadcrumb entry at `index` active — an ascend or a forward re-entry; no frame is
-   * discarded. */
-  goTo: (index: number) => void;
-  /**
-   * Commit an edit, re-deriving dirtiness; a field edit's `EditKey` folds a keystroke run to one
-   * entry. Any edit clears redo.
-   */
-  applyEdit: EditCommit<WorkflowFile>;
-  /** Undo the active frame's last edit, re-deriving clean. A no-op when its past stack is empty. */
-  undo: () => void;
-  /** Redo the active frame's last undo, re-deriving clean. A no-op when its future stack is
-   * empty. */
-  redo: () => void;
+  apply: (action: SessionAction) => void;
   /** Save the active buffer under its `If-Match` ETag (ADR 0016); a `412` becomes a `conflict` to
    * resolve. */
   save: () => void;
   /** Write the active buffer to a document it does not yet have; `workflow-as-template` leaves the
    * workflow open. */
   saveAs: (intent: SaveAsIntent) => Promise<SaveAsResult>;
-  /** Re-fetch the active frame from disk, discarding its unsaved buffer — the stale-write
-   * recovery. */
-  reloadActive: () => void;
   /**
    * Delete the root file (`planDelete`): a workflow under its read's `If-Match` with this session's
    * lease, or a template by id.
    */
   deleteActive: (sessionId: string) => void;
-  /** The active frame's save state — drives the save button and the stale-write conflict banner. */
-  saveState: SaveState;
 }
 
 export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSession {
@@ -138,17 +105,47 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
   // advances with the dispatch rather than a render later, so two actions in one tick cannot read a
   // stale trail.
   const sessionRef = useRef(session);
-  // The registry plugins, so an open callback reads them without waiting on a state read.
   const pluginsRef = useRef<WireStepPlugin[] | null>(null);
+  // The reads the reducer asked for before the registry landed. A read is a fact the author
+  // requested, so it waits for its parser rather than being dropped.
+  const queuedFetches = useRef<FetchRequest[]>([]);
+  // The current `apply`, for a load landing that must dispatch after the fetch resolves.
+  const applyRef = useRef<(action: SessionAction) => void>(() => {});
 
-  /** Apply one session action and return what it produced: the next state, and the read it asks for
-   * (if any). The reducer resolves both, so the hook performs I/O and decides nothing. */
-  const apply = useCallback((action: SessionAction): SessionOutcome => {
-    const outcome = reduceSession(sessionRef.current, action);
-    sessionRef.current = outcome.state;
-    setSession(outcome.state);
-    return outcome;
-  }, []);
+  /** Perform the read the reducer asked for, echoing its token back so a landing the author has
+   * since outrun is dropped. */
+  const performFetch = useCallback(
+    (request: FetchRequest): void => {
+      const plugins = pluginsRef.current;
+      if (!plugins) {
+        queuedFetches.current.push(request);
+        return;
+      }
+      const { frame, depth, token } = request;
+      void loadDocument(client, frame, plugins).then((loaded) => {
+        if (loaded) {
+          applyRef.current({ type: "loadLanded", depth, path: frame.path, token, ...loaded });
+        }
+      });
+    },
+    [client],
+  );
+
+  /** Apply one action and run the read it asked for: the whole shape of an I/O step, and the one
+   * verb every caller edits the session through. */
+  const apply = useCallback(
+    (action: SessionAction): void => {
+      const outcome = reduceSession(sessionRef.current, action);
+      sessionRef.current = outcome.state;
+      setSession(outcome.state);
+      if (outcome.fetch) performFetch(outcome.fetch);
+    },
+    [performFetch],
+  );
+
+  useEffect(() => {
+    applyRef.current = apply;
+  }, [apply]);
 
   useEffect(() => {
     let alive = true;
@@ -158,6 +155,9 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
         if (!alive) return;
         pluginsRef.current = response.step_plugins;
         setRegistry({ phase: "ready", plugins: response.step_plugins });
+        const queued = queuedFetches.current;
+        queuedFetches.current = [];
+        for (const request of queued) performFetch(request);
       })
       .catch((error: unknown) => {
         if (alive) setRegistry({ phase: "error", message: errorMessage(error) });
@@ -165,105 +165,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     return () => {
       alive = false;
     };
-  }, [client]);
+  }, [client, performFetch]);
 
-  /** Perform the read the reducer asked for, echoing its token back so a landing the author has
-   * since outrun is dropped. */
-  const fetchFrame = useCallback(
-    (request: FetchRequest): void => {
-      const plugins = pluginsRef.current;
-      if (!plugins) return;
-      const { frame, depth, token } = request;
-      void loadDocument(client, frame, plugins).then((loaded) => {
-        if (loaded) apply({ type: "loadLanded", depth, path: frame.path, token, ...loaded });
-      });
-    },
-    [apply, client],
-  );
-
-  /** Apply an action and run whatever read it asked for — the whole shape of an I/O step. */
-  const applyAndFetch = useCallback(
-    (action: SessionAction): void => {
-      const { fetch } = apply(action);
-      if (fetch) fetchFrame(fetch);
-    },
-    [apply, fetchFrame],
-  );
-
-  const open = useCallback(
-    (path: string): void => {
-      if (!pluginsRef.current) return;
-      applyAndFetch({ type: "openLoading", path });
-    },
-    [applyAndFetch],
-  );
-
-  const openTemplate = useCallback(
-    (template: TemplateSource): void => {
-      if (!pluginsRef.current) return;
-      applyAndFetch({ type: "openTemplateLoading", template });
-    },
-    [applyAndFetch],
-  );
-
-  const newFile = useCallback((): void => {
-    // A from-scratch buffer fetches nothing, so any in-flight load is dropped by the reducer.
-    apply({ type: "newFile" });
-  }, [apply]);
-
-  const switchMode = useCallback(
-    (mode: EditMode): void => {
-      apply({ type: "switchMode", mode });
-    },
-    [apply],
-  );
-
-  const newTemplate = useCallback((): void => {
-    apply({ type: "newTemplate" });
-  }, [apply]);
-
-  const descend = useCallback(
-    (ref: string, nodeId: string): void => {
-      // A descent needs a file open and the registry ready to parse what comes back.
-      if (!pluginsRef.current) return;
-      // Re-entering the frame ahead asks for no read; the reducer's outcome says so.
-      applyAndFetch({ type: "descend", ref, nodeId });
-    },
-    [applyAndFetch],
-  );
-
-  const descendNewUnbound = useCallback(
-    (parentNodeId: string): void => {
-      apply({ type: "descendNewUnbound", parentNodeId });
-    },
-    [apply],
-  );
-
-  const goTo = useCallback(
-    (index: number): void => {
-      // Only the active index moves; no frame is discarded, so a dirty child keeps its buffer and
-      // lease.
-      apply({ type: "goTo", index });
-    },
-    [apply],
-  );
-
-  const applyEdit = useCallback(
-    (next: WorkflowFile, key?: EditKey): void => {
-      apply({ type: "applyEdit", next, key });
-    },
-    [apply],
-  );
-
-  // A no-op undo/redo is the reducer's to swallow, so a standing "Saved"/conflict phase survives
-  // it.
-  const undo = useCallback((): void => {
-    apply({ type: "undo" });
-  }, [apply]);
-
-  const redo = useCallback((): void => {
-    apply({ type: "redo" });
-  }, [apply]);
+  // The deep-link open, applied once: the read queues behind the registry if it has not landed.
+  const openedInitial = useRef(false);
+  useEffect(() => {
+    if (initialPath === undefined || openedInitial.current) return;
+    openedInitial.current = true;
+    apply({ type: "openLoading", path: initialPath });
+  }, [initialPath, apply]);
 
   const deleteActive = useCallback(
     (sessionId: string): void => {
@@ -285,12 +195,6 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     },
     [apply, client],
   );
-
-  const reloadActive = useCallback((): void => {
-    if (!pluginsRef.current) return;
-    // An unwritten buffer asks for no read, so it is never thrown away for a 404.
-    applyAndFetch({ type: "reload" });
-  }, [applyAndFetch]);
 
   /**
    * The persist-and-advance-the-save-point spine behind `save` and `saveAs`: set `saving`, write
@@ -338,35 +242,15 @@ export function useOpenFile(client: PathApiClient, initialPath?: string): OpenSe
     [apply, commitSave],
   );
 
-  // Open the initial deep-link once the registry is ready (guarded so it fires once).
-  const openedInitial = useRef(false);
-  useEffect(() => {
-    if (registry.phase === "ready" && initialPath && !openedInitial.current) {
-      openedInitial.current = true;
-      open(initialPath);
-    }
-  }, [registry, initialPath, open]);
-
   return {
     registry,
     mode: session.mode,
-    switchMode,
-    newTemplate,
     frames,
     activeIndex,
-    open,
-    openTemplate,
-    newFile,
-    descend,
-    descendNewUnbound,
-    goTo,
-    applyEdit,
-    undo,
-    redo,
+    saveState,
+    apply,
     save,
     saveAs,
-    reloadActive,
     deleteActive,
-    saveState,
   };
 }

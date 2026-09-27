@@ -136,8 +136,8 @@ export function App({
   const inTemplateMode = session.mode === "template";
   const onNew = (): void => {
     if (!confirmDiscard()) return;
-    if (inTemplateMode) session.newTemplate();
-    else session.newFile();
+    if (inTemplateMode) session.apply({ type: "newTemplate" });
+    else session.apply({ type: "newFile" });
   };
   const onOpen = (): void =>
     inTemplateMode ? setOpenTemplateOpen(true) : setOpenExistingOpen(true);
@@ -147,12 +147,15 @@ export function App({
     // The double-click's own single clicks armed this card; disarm so an in-flight template read is
     // dropped instead of landing after the open.
     arming.arm(null);
-    session.openTemplate({
-      id: template.id,
-      kind: template.kind,
-      name: template.name,
-      description: template.description,
-      readOnly: template.read_only,
+    session.apply({
+      type: "openTemplateLoading",
+      template: {
+        id: template.id,
+        kind: template.kind,
+        name: template.name,
+        description: template.description,
+        readOnly: template.read_only,
+      },
     });
   };
 
@@ -160,7 +163,7 @@ export function App({
   // leases, so the selection resets through the active-frame effect above. Close the picker.
   const openExisting = (path: string): void => {
     setOpenExistingOpen(false);
-    if (confirmDiscard()) session.open(path);
+    if (confirmDiscard()) session.apply({ type: "openLoading", path });
   };
 
   // The run surfaces, gathered into one module (`useRunWatch`); the App reads its derived values
@@ -199,7 +202,7 @@ export function App({
   // re-subscribes only when the enablement flips.
   const canUndo = frameCanUndo(active);
   const canRedo = frameCanRedo(active);
-  const { undo, redo } = session;
+  const { apply } = session;
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
       // Editing-key parity with the toolbar buttons: ⌘/Ctrl+Z undoes, +Shift+Z or Ctrl+Y redoes. A
@@ -216,16 +219,16 @@ export function App({
       if (wantsRedo) {
         if (canRedo) {
           event.preventDefault();
-          redo();
+          apply({ type: "redo" });
         }
       } else if (canUndo) {
         event.preventDefault();
-        undo();
+        apply({ type: "undo" });
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [canUndo, canRedo, undo, redo]);
+  }, [canUndo, canRedo, apply]);
 
   return (
     <>
@@ -234,7 +237,7 @@ export function App({
           <ModeSwitch
             mode={session.mode}
             onSwitch={(mode) => {
-              if (confirmDiscard()) session.switchMode(mode);
+              if (confirmDiscard()) session.apply({ type: "switchMode", mode });
             }}
           />
         }
@@ -244,7 +247,7 @@ export function App({
           <FileStatus
             frame={active}
             saveState={session.saveState}
-            onReload={session.reloadActive}
+            onReload={() => session.apply({ type: "reload" })}
             fileName={
               openedResult ? (
                 inTemplateMode ? (
@@ -268,8 +271,8 @@ export function App({
               dirty={dirty}
               canUndo={canUndo}
               canRedo={canRedo}
-              onUndo={undo}
-              onRedo={redo}
+              onUndo={() => apply({ type: "undo" })}
+              onRedo={() => apply({ type: "redo" })}
               // A from-scratch buffer (no path) has no on-disk file yet: Save opens the first-save
               // dialog — the new-template dialog in template mode — rather than overwriting. A
               // saved frame saves in place through the write route, and a template source writes
@@ -330,7 +333,7 @@ export function App({
               file={openedFile}
               selectedId={selectedId}
               plugins={plugins}
-              applyEdit={session.applyEdit}
+              applyEdit={(next, key) => session.apply({ type: "applyEdit", next, key })}
               onReselect={setSelectedId}
               // The ref-target chooser needs the parent's path to store a relative ref, so offer it
               // only for a file that has one; a from-scratch root falls back to the plain path

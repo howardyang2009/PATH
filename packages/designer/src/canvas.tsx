@@ -50,7 +50,12 @@ export function Canvas({
    * watched. */
   workflowRunStatus: RunStatus | null;
 }): JSX.Element {
-  const { registry, frames, activeIndex, descend, goTo, applyEdit } = session;
+  const { registry, frames, activeIndex, apply } = session;
+  // This canvas' own verbs over the session's one: it names the gesture, the session owns the
+  // transition.
+  const descend = (ref: string, nodeId: string): void => apply({ type: "descend", ref, nodeId });
+  const goTo = (index: number): void => apply({ type: "goTo", index });
+  const applyEdit = (next: WorkflowFile): void => apply({ type: "applyEdit", next });
   const selection = useSelection();
 
   // A double-click on a `workflow` block: a set ref descends across the boundary; an unset ref

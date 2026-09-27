@@ -77,13 +77,13 @@ describe("save-point: clean is content-equality to the baseline (ADR 0030)", () 
 
     // Rename the step → dirty.
     const renamed = withName("renamed");
-    act(() => hook.result.current.applyEdit(renamed));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: renamed }));
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);
 
     // Rename it back to a byte-identical buffer → clean, though a mutation happened (the ADR
     // headline).
     const restored = withName("draft");
-    act(() => hook.result.current.applyEdit(restored));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: restored }));
     expect(canonicalSerialize(buffer(hook))).toBe(canonicalSerialize(original));
     expect(frameDirty(hook.result.current.frames[0])).toBe(false);
   });
@@ -96,7 +96,7 @@ describe("save-point: clean is content-equality to the baseline (ADR 0030)", () 
     const withPrompt = (prompt: string): WorkflowFile =>
       ({ ...original, body: [{ ...original.body[0]!, prompt }] }) as WorkflowFile;
     const edited = withPrompt("changed");
-    act(() => hook.result.current.applyEdit(edited));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: edited }));
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);
 
     act(() => hook.result.current.save());
@@ -109,7 +109,7 @@ describe("save-point: clean is content-equality to the baseline (ADR 0030)", () 
     expect(hook.result.current.frames[0]!.etag).toBe('"saved"');
 
     // A further edit past the new save-point is dirty again.
-    act(() => hook.result.current.applyEdit(withPrompt("again")));
+    act(() => hook.result.current.apply({ type: "applyEdit", next: withPrompt("again") }));
     expect(frameDirty(hook.result.current.frames[0])).toBe(true);
   });
 });
